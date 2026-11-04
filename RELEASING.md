@@ -79,7 +79,15 @@ To rotate, generate a new pair, append its public key to `keys.txt`, ship a rele
 
 ### Release notes
 
-On macOS an in-place update replaces the app bundle, and the system may ask for keychain access on first launch afterwards. Mention this in the release notes.
+The release job drafts the notes with `scripts/release.sh notes`, in this order:
+
+1. A one-line intro counting the changes, such as "This release adds 3 features and fixes 5 bugs." For the first release it reads "The first release of Apinata." Reword it in the draft before publishing.
+2. `## What's Changed`: the `feat` and `fix` subjects since the previous `v*` tag, without the type prefix; test, CI, release, build and dependency commits are left out. A `**Full Changelog**` compare link follows, except on the first release.
+3. `## Downloads`: the versioned file names per platform, marked `-unsigned` when the Windows build is, and how to check them against `SHA256SUMS`.
+4. `## Before you install`: SmartScreen on Windows, Gatekeeper and the `xattr` commands on macOS, nothing extra on Linux.
+5. `## Updates`: in-place signed updates, and that macOS may ask for keychain access on first launch after one, since the update replaces the app bundle.
+
+Read and reword the draft before publishing it. Preview the notes locally with `scripts/release.sh notes v<version> <owner>/<repo> <dist dir> notes.md`.
 
 ## Rehearsal
 
