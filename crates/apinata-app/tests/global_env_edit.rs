@@ -1465,3 +1465,75 @@ fn a_change_batched_with_a_watch_failure_is_still_reloaded(cx: &mut TestAppConte
         "the change was read"
     );
 }
+
+// Escape, pressed as the platform sends it, closes the dialog opened from the picker after
+// each step of the empty-pane flow: opening, naming (whose first Escape cancels the name),
+// creating and deleting.
+#[gpui_kit::test]
+fn escape_closes_the_dialog_after_each_step_from_the_empty_pane(cx: &mut TestAppContext) {
+    let keys = |cx: &mut TestAppContext, win, keys: &[&str]| {
+        for key in keys {
+            platform_press(cx, win, key);
+            settle_frames(cx, win);
+        }
+    };
+    for steps in 0..4 {
+        let col = write_tree(&[("opencollection.yml", ROOT)]);
+        let s = started(cx, &col);
+        let win = s.win;
+        cx.update_window(win, |_, w, _| w.activate_window())
+            .unwrap();
+        platform_click(cx, win, "global-env-select");
+        settle_frames(cx, win);
+        cx.update_window(win, |_, w, cx| {
+            w.within("global-env-selector")
+                .click("global-env-manage", cx)
+        })
+        .unwrap();
+        settle_frames(cx, win);
+        if steps >= 1 {
+            platform_click(cx, win, "global-env-empty-create");
+            settle_frames(cx, win);
+            assert!(present(cx, win, "global-env-name-input"));
+        }
+        if steps == 1 {
+            keys(cx, win, &["escape"]);
+            assert!(
+                !present(cx, win, "global-env-name-input"),
+                "the first Escape cancels naming"
+            );
+            assert!(
+                present(cx, win, "global-env-editor"),
+                "and keeps the dialog"
+            );
+        }
+        if steps >= 2 {
+            keys(cx, win, &["g", "1", "enter"]);
+            assert_eq!(names(cx, &s.ws), ["g1"]);
+        }
+        if steps >= 3 {
+            platform_click(cx, win, "global-env-delete");
+            settle_frames(cx, win);
+            platform_click(cx, win, "confirm-delete");
+            settle_frames(cx, win);
+            assert!(names(cx, &s.ws).is_empty(), "g1 is deleted");
+            assert!(present(cx, win, "global-env-empty-create"));
+        }
+        keys(cx, win, &["escape"]);
+        assert!(
+            !present(cx, win, "global-env-editor"),
+            "Escape closes the dialog after {steps} steps"
+        );
+        cx.update_window(win, |_, w, _| w.remove_window()).unwrap();
+        cx.run_until_parked();
+    }
+}
+
+// Lets the dialogs' open and close animations finish, then draws.
+fn settle_frames(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle) {
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(400));
+    cx.run_until_parked();
+    next_frame(cx, win);
+    next_frame(cx, win);
+}
