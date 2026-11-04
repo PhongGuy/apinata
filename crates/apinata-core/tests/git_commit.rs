@@ -782,6 +782,14 @@ mod pipes {
         assert!(matches!(error, GitError::Timeout), "{error}");
     }
 
+    #[test]
+    fn staging_under_a_pipe_info_exclude_or_attributes_ends_at_the_time_limit() {
+        for rel in [".git/info/exclude", ".git/info/attributes"] {
+            let error = stage_under_a_pipe(rel).expect_err("git waits on the pipe");
+            assert!(matches!(error, GitError::Timeout), "{rel}: {error}");
+        }
+    }
+
     // Staging a directory walks it, so a pipe in a folder below the path counts too.
     #[test]
     fn staging_a_folder_with_a_pipe_gitignore_below_ends_at_the_time_limit() {

@@ -213,27 +213,35 @@ pub fn stage(
         .into_iter()
         .partition(|spec| under_link(root, Path::new(spec)));
     if !specs.is_empty() {
-        // Git waits on a pipe where it reads attributes or ignore rules. Two reads of those
-        // rules, which run no filters, end that wait under the caller's own limit, long before
-        // the write's floor would: ignore rules above each path, then the walk below it.
-        let probes: [&[&str]; 2] = [
-            &["check-ignore", "--no-index", "--"],
-            &[
-                "--literal-pathspecs",
-                "ls-files",
-                "--eol",
-                "-c",
-                "-o",
-                "--exclude-standard",
-                "--",
-            ],
+        // Git waits on a pipe where it reads attributes or ignore rules. Reads of those rules
+        // that open no file's content and run no filters end that wait under the caller's own
+        // limit, long before the write's floor would: ignore rules above each path, the walk
+        // below it, then the attributes of every path the walk found.
+        let mut args: Vec<OsString> = ["check-ignore", "--no-index", "--"]
+            .into_iter()
+            .map(OsString::from)
+            .collect();
+        args.extend(specs.iter().cloned());
+        // Only a timeout or a missing git matters here; the add reports anything else.
+        run::git(&args, root, options)?;
+        let walk = [
+            "--literal-pathspecs",
+            "ls-files",
+            "-z",
+            "-c",
+            "-o",
+            "--exclude-standard",
+            "--",
         ];
-        for probe in probes {
-            let mut args: Vec<OsString> = probe.iter().map(OsString::from).collect();
-            args.extend(specs.iter().cloned());
-            // Only a timeout or a missing git matters here; the add reports anything else.
-            run::git(&args, root, options)?;
-        }
+        let mut args: Vec<OsString> = walk.into_iter().map(OsString::from).collect();
+        args.extend(specs.iter().cloned());
+        let listed = run::git(&args, root, options)?.stdout;
+        run::git_input(
+            &["check-attr", "-a", "--stdin", "-z"],
+            listed,
+            root,
+            options,
+        )?;
         let mut args: Vec<OsString> = vec!["add".into(), "-A".into(), "--".into()];
         args.extend(specs);
         run_write(&args, root, options)?;
