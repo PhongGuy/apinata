@@ -1838,6 +1838,7 @@ mod oauth {
     use apinata_app::oauth2_editor::OAuth2Field;
     use apinata_app::request_editor::Section;
     use apinata_app::shell::CloseCollection;
+    use apinata_app::tab_area::{CloseAllTabs, CloseTab};
     use apinata_app::tabs::TabKind;
     use apinata_core::{AuthSpec, OAuth2Flow, OAuth2Spec};
 
@@ -1863,6 +1864,16 @@ mod oauth {
     // The running app with a client secret typed in `tab`'s OAuth 2.0 form, which still has
     // focus; with `other`, a second request holds an unsaved URL edit too.
     fn app(cx: &mut TestAppContext, tab: Tab, other: bool) -> (tempfile::TempDir, Started) {
+        app_with(cx, tab, other, false)
+    }
+
+    // As `app`; with `tabbed`, the second request has its own tab, opened first.
+    fn app_with(
+        cx: &mut TestAppContext,
+        tab: Tab,
+        other: bool,
+        tabbed: bool,
+    ) -> (tempfile::TempDir, Started) {
         let col = write_tree(&[
             ("opencollection.yml", ROOT),
             ("a.yml", REQUEST),
@@ -1870,6 +1881,12 @@ mod oauth {
         ]);
         let s = started(cx, &col);
         let root = s.root.clone();
+        if tabbed {
+            s.ws.update(cx, |w, cx| w.open_item(&root, ip("b.yml"), false, cx))
+                .expect("a second request");
+            cx.run_until_parked();
+            frame(cx, s.win);
+        }
         let scope = match tab {
             Tab::Request => {
                 s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx))
@@ -2066,5 +2083,94 @@ mod oauth {
         a_discarded_window_close_stores_no_settings_secret => (Tab::Settings, Close::Window);
         a_discarded_collection_close_stores_no_request_secret => (Tab::Request, Close::Collection);
         a_discarded_collection_close_stores_no_settings_secret => (Tab::Settings, Close::Collection);
+    }
+
+    // A tab close covers the secret tab alone, or with `other` the second request's tab too.
+    fn start_tab_close(cx: &mut TestAppContext, s: &Started, other: bool) {
+        match other {
+            true => cx.dispatch_action(s.win, CloseAllTabs),
+            false => cx.dispatch_action(s.win, CloseTab),
+        }
+        cx.run_until_parked();
+        let asked = title(cx).unwrap_or_default();
+        assert!(asked.starts_with("Save changes to"), "{asked}");
+    }
+
+    fn tabs_open(cx: &mut TestAppContext, s: &Started) -> usize {
+        s.ws.read_with(cx, |w, _| w.tabs().entries().len())
+    }
+
+    fn tab_save_stores_the_secret(cx: &mut TestAppContext, tab: Tab, other: bool) {
+        let (col, s) = app_with(cx, tab, other, other);
+        start_tab_close(cx, &s, other);
+        answer_confirm(cx, "confirm-save");
+        cx.run_until_parked();
+        let saved = read(&col, file_of(tab));
+        assert!(
+            saved.contains(MOVED) && !saved.contains("typed-s3cret"),
+            "{saved}"
+        );
+        let env = read(&col, ".env");
+        assert!(env.contains(STORED), "{env}");
+        if other {
+            assert!(read(&col, "b.yml").contains(OTHER_URL));
+        }
+        assert_eq!(tabs_open(cx, &s), 0);
+    }
+
+    // Cancel at a tab close writes nothing, stores nothing and keeps the typing in its field.
+    fn tab_cancel_stores_nothing(cx: &mut TestAppContext, tab: Tab, other: bool) {
+        let (col, s) = app_with(cx, tab, other, other);
+        let before = (read(&col, file_of(tab)), read(&col, "b.yml"));
+        let open = tabs_open(cx, &s);
+        start_tab_close(cx, &s, other);
+        answer_confirm(cx, CANCEL);
+        cx.run_until_parked();
+        assert_eq!(tabs_open(cx, &s), open);
+        assert_eq!((read(&col, file_of(tab)), read(&col, "b.yml")), before);
+        let env = read(&col, ".env");
+        assert!(!env.contains("typed-s3cret"), "{env}");
+        let unsaved = cx.update(|cx| s.ws.read(cx).unsaved(None, cx));
+        let targets: Vec<Target> = unsaved.into_iter().flat_map(|u| u.targets).collect();
+        let expected = match other {
+            true => vec![Target::Request(ip("b.yml"))],
+            false => Vec::new(),
+        };
+        assert_eq!(targets, expected);
+        assert_eq!(shown(cx, &s, tab), "typed-s3cret");
+    }
+
+    // Don't save at a tab close closes with nothing written and nothing stored.
+    fn tab_discard_stores_nothing(cx: &mut TestAppContext, tab: Tab, other: bool) {
+        let (col, s) = app_with(cx, tab, other, other);
+        let before = (read(&col, file_of(tab)), read(&col, "b.yml"));
+        start_tab_close(cx, &s, other);
+        answer_confirm(cx, "confirm-discard");
+        cx.run_until_parked();
+        assert_eq!(tabs_open(cx, &s), 0);
+        assert_eq!((read(&col, file_of(tab)), read(&col, "b.yml")), before);
+        let env = read(&col, ".env");
+        assert!(!env.contains("typed-s3cret"), "{env}");
+    }
+
+    cases! { tab_save_stores_the_secret:
+        a_tab_close_saves_a_request_tabs_typed_secret => (Tab::Request, false);
+        a_tab_close_saves_a_settings_tabs_typed_secret => (Tab::Settings, false);
+        a_tab_close_saves_a_request_tabs_secret_with_another_edit => (Tab::Request, true);
+        a_tab_close_saves_a_settings_tabs_secret_with_another_edit => (Tab::Settings, true);
+    }
+
+    cases! { tab_cancel_stores_nothing:
+        a_cancelled_tab_close_keeps_a_request_tabs_typing => (Tab::Request, false);
+        a_cancelled_tab_close_keeps_a_settings_tabs_typing => (Tab::Settings, false);
+        a_cancelled_tab_close_stores_no_request_secret_with_another_edit => (Tab::Request, true);
+        a_cancelled_tab_close_stores_no_settings_secret_with_another_edit => (Tab::Settings, true);
+    }
+
+    cases! { tab_discard_stores_nothing:
+        a_discarded_tab_close_stores_no_request_secret => (Tab::Request, false);
+        a_discarded_tab_close_stores_no_settings_secret => (Tab::Settings, false);
+        a_discarded_tab_close_stores_no_request_secret_with_another_edit => (Tab::Request, true);
+        a_discarded_tab_close_stores_no_settings_secret_with_another_edit => (Tab::Settings, true);
     }
 }
