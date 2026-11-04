@@ -213,6 +213,14 @@ pub fn stage(
         .into_iter()
         .partition(|spec| under_link(root, Path::new(spec)));
     if !specs.is_empty() {
+        // Git waits on a pipe where it reads attributes or ignore rules. A dry run under the
+        // caller's own limit ends that wait long before the write's floor would.
+        let mut probe: Vec<OsString> = ["--literal-pathspecs", "add", "-n", "-A", "--"]
+            .into_iter()
+            .map(OsString::from)
+            .collect();
+        probe.extend(specs.iter().cloned());
+        run::git(&probe, root, options)?;
         let mut args: Vec<OsString> = vec!["add".into(), "-A".into(), "--".into()];
         args.extend(specs);
         run_write(&args, root, options)?;
@@ -353,11 +361,13 @@ mod tests {
         );
     }
 
-    /// Sleeps one second in `add` and `reset`; answers the reads stage and unstage make first.
+    /// Sleeps one second in `add` and `reset`; answers the reads stage and unstage make first,
+    /// and the dry run of `add`, which runs no filters.
     const SLOW_WRITE_GIT: &str = r#"#!/bin/sh
 case "$*" in
   *rev-parse*) printf '\n' ;;
   *status*) printf '# branch.oid (initial)\000'; printf '# branch.head main\000' ;;
+  *" add -n "*) ;;
   *" add "*|*" reset "*) sleep 1 ;;
 esac
 "#;

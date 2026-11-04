@@ -147,7 +147,7 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
     let bin = sb.fake_git("rec", RECORDER);
     let root = sb.path().join("col");
     fs::create_dir_all(&root).unwrap();
-    // On disk, so `stage` has no gone path to look up and `add` is its only git call.
+    // On disk, so `stage` has no gone path to look up: its calls are the dry run, then `add`.
     for name in ["a b.yml", "*"] {
         fs::write(root.join(name), "x\n").unwrap();
     }
@@ -160,9 +160,8 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
 
     let args = fs::read_to_string(bin.join("args")).unwrap();
     let lines: Vec<&str> = args.lines().collect();
-    assert_eq!(
-        lines,
-        [
+    let call = |extra: &[&'static str]| {
+        let mut line = vec![
             "--no-optional-locks",
             "-c",
             "core.fsmonitor=false",
@@ -170,15 +169,14 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
             "protocol.ext.allow=never",
             "--literal-pathspecs",
             "add",
-            "-A",
-            "--",
-            "a b.yml",
-            "*",
-            "END"
-        ]
-    );
+        ];
+        line.extend(extra);
+        line.extend(["-A", "--", "a b.yml", "*", "END"]);
+        line
+    };
+    assert_eq!(lines, [call(&["-n"]), call(&[])].concat());
     let env = fs::read_to_string(bin.join("env")).unwrap();
-    assert_eq!(values(&env, "GIT_TERMINAL_PROMPT"), ["0"]);
-    assert_eq!(values(&env, "GIT_OPTIONAL_LOCKS"), ["0"]);
+    assert_eq!(values(&env, "GIT_TERMINAL_PROMPT"), ["0", "0"]);
+    assert_eq!(values(&env, "GIT_OPTIONAL_LOCKS"), ["0", "0"]);
     assert!(values(&env, "GIT_INDEX_FILE").is_empty(), "{env}");
 }

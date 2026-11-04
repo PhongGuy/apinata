@@ -726,6 +726,34 @@ mod pipes {
         );
     }
 
+    // Git waits on a pipe where it reads attributes or ignore rules; the stage ends at the
+    // configured limit, not the longer one a write is given.
+    fn stage_under_a_pipe(rel: &str) -> Result<(), GitError> {
+        let sb = Sandbox::new();
+        let (repo, col) = committed(&sb);
+        write(&col, "a.yml", "changed\n");
+        pipe_over(&repo.join(rel));
+        let options = sb.options().timeout(Duration::from_secs(1));
+        let (done, got) = channel();
+        thread::spawn(move || {
+            let _ = done.send(stage(&col, &["a.yml"], &options));
+        });
+        got.recv_timeout(Duration::from_secs(15))
+            .expect("the stage outlived its time limit")
+    }
+
+    #[test]
+    fn staging_under_a_pipe_gitattributes_ends_at_the_time_limit() {
+        let error = stage_under_a_pipe(".gitattributes").expect_err("git waits on the pipe");
+        assert!(matches!(error, GitError::Timeout), "{error}");
+    }
+
+    #[test]
+    fn staging_under_a_pipe_gitignore_ends_at_the_time_limit() {
+        let error = stage_under_a_pipe(".gitignore").expect_err("git waits on the pipe");
+        assert!(matches!(error, GitError::Timeout), "{error}");
+    }
+
     #[test]
     fn staging_a_pipe_over_a_tracked_file_says_git_refused() {
         let sb = Sandbox::new();
