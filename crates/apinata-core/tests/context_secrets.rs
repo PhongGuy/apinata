@@ -220,3 +220,40 @@ fn a_failing_store_is_reported_as_typed_failures() {
     let failure: &SecretReadFailure = &ctx.secret_read_failures()[0];
     assert!(ctx.warnings().contains(&failure.to_string()));
 }
+
+/// A file that already holds one name twice: the later plain row wins, and a secret wins over a
+/// plain row of its name whichever comes first, matching the format's own resolution.
+#[test]
+fn a_duplicated_name_resolves_to_the_last_row_and_a_secret_beats_a_plain_twin() {
+    let request = |name: &str| {
+        format!(
+            "info:\n  name: {name}\n  type: http\nhttp:\n  method: get\n  url: \"https://x.test/{{{{{name}}}}}\"\n"
+        )
+    };
+    let dir = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: 1.0.0\ninfo:\n  name: c\n",
+        ),
+        (
+            "environments/dev.yml",
+            "name: dev\nvariables:\n  - name: twice\n    value: first\n  - name: twice\n    value: second\n  - secret: true\n    name: before\n  - name: before\n    value: plain\n  - name: after\n    value: plain\n  - secret: true\n    name: after\n  - name: off\n    value: on\n  - name: off\n    value: dropped\n    disabled: true\n",
+        ),
+        ("twice.yml", &request("twice")),
+        ("before.yml", &request("before")),
+        ("after.yml", &request("after")),
+        ("off.yml", &request("off")),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    assert!(c.load_errors().is_empty(), "{:?}", c.load_errors());
+    let store = store_for(&c, &[("dev", "before", "s1"), ("dev", "after", "s2")]);
+    let ctx =
+        VarContext::new(&c, ContextOptions::new().env("dev").secrets(store)).expect("context");
+    assert_eq!(
+        url(&c, &ctx, "twice.yml"),
+        Ok("https://x.test/second".into())
+    );
+    assert_eq!(url(&c, &ctx, "before.yml"), Ok("https://x.test/s1".into()));
+    assert_eq!(url(&c, &ctx, "after.yml"), Ok("https://x.test/s2".into()));
+    assert_eq!(url(&c, &ctx, "off.yml"), Ok("https://x.test/on".into()));
+}
