@@ -11,7 +11,8 @@ use apinata_core::{GitError, GitState, collection_status_with, stage};
 use git_support::Sandbox;
 
 /// Records each call's argv and environment beside itself, answers `rev-parse` with `col/`
-/// and `status` with the two branch headers of an empty repository.
+/// and `status` with the two branch headers of an empty repository; `ls-files` lists two
+/// paths and `check-attr` keeps what it reads on stdin.
 const RECORDER: &str = r#"#!/bin/sh
 dir=${0%/*}
 for a in "$@"; do printf '%s\n' "$a"; done >> "$dir/args"
@@ -20,6 +21,8 @@ env >> "$dir/env"
 case "$*" in
   *rev-parse*) printf 'col/\n' ;;
   *status*) printf '# branch.oid (initial)\000'; printf '# branch.head main\000' ;;
+  *ls-files*) printf 'a b.yml\000*\000' ;;
+  *check-attr*) cat > "$dir/stdin" ;;
 esac
 exit 0
 "#;
@@ -147,7 +150,7 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
     let bin = sb.fake_git("rec", RECORDER);
     let root = sb.path().join("col");
     fs::create_dir_all(&root).unwrap();
-    // On disk, so `stage` has no gone path to look up and `add` is its only git call.
+    // On disk, so `stage` has no gone path to look up: its calls are the three probes, then `add`.
     for name in ["a b.yml", "*"] {
         fs::write(root.join(name), "x\n").unwrap();
     }
@@ -160,25 +163,44 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
 
     let args = fs::read_to_string(bin.join("args")).unwrap();
     let lines: Vec<&str> = args.lines().collect();
-    assert_eq!(
-        lines,
-        [
+    let prefixed = |args: &[&'static str]| {
+        let mut line = vec![
             "--no-optional-locks",
             "-c",
             "core.fsmonitor=false",
             "-c",
             "protocol.ext.allow=never",
-            "--literal-pathspecs",
-            "add",
-            "-A",
-            "--",
-            "a b.yml",
-            "*",
-            "END"
-        ]
+        ];
+        line.extend(args);
+        line
+    };
+    let call = |args: &[&'static str]| {
+        let mut line = prefixed(args);
+        line.extend(["--", "a b.yml", "*", "END"]);
+        line
+    };
+    // check-ignore refuses every pathspec magic, `--literal-pathspecs` included.
+    let ignore = call(&["check-ignore", "--no-index"]);
+    // No `--eol`: the walk lists paths without reading any file's content.
+    let walk = call(&[
+        "--literal-pathspecs",
+        "ls-files",
+        "-z",
+        "-c",
+        "-o",
+        "--exclude-standard",
+    ]);
+    // The attributes of every listed path, fed on stdin rather than argv.
+    let attrs = prefixed(&["check-attr", "-a", "--stdin", "-z", "END"]);
+    let add = call(&["--literal-pathspecs", "add", "-A"]);
+    assert_eq!(lines, [ignore, walk, attrs, add].concat());
+    assert_eq!(
+        fs::read_to_string(bin.join("stdin")).unwrap(),
+        "a b.yml\0*\0"
     );
     let env = fs::read_to_string(bin.join("env")).unwrap();
-    assert_eq!(values(&env, "GIT_TERMINAL_PROMPT"), ["0"]);
-    assert_eq!(values(&env, "GIT_OPTIONAL_LOCKS"), ["0"]);
+    assert_eq!(values(&env, "GIT_TERMINAL_PROMPT"), ["0", "0", "0", "0"]);
+    assert_eq!(values(&env, "GIT_OPTIONAL_LOCKS"), ["0", "0", "0", "0"]);
+    assert_eq!(values(&env, "LC_ALL"), ["C", "C", "C", "C"]);
     assert!(values(&env, "GIT_INDEX_FILE").is_empty(), "{env}");
 }

@@ -4,6 +4,7 @@ use super::bru::parse_bruno_json;
 use super::convert::{hash_stream, open_regular};
 use super::error::{BruError, ConvertError};
 use super::yml::{FileError, ROOT_COLLECTION, ignored_names, is_bru, plan_walked, walk_files};
+use crate::document::read_regular;
 use crate::yaml::emit::to_bruno_yaml;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -111,7 +112,7 @@ pub fn plan_conversion(root: &Path) -> Result<ConversionPlan, ConvertError> {
     let parse_one = |error: FileError| ConvertError::Parse {
         errors: vec![bru_error(error)],
     };
-    let bytes = fs::read(root.join(bruno_json_rel))
+    let bytes = read_regular(&root.join(bruno_json_rel))
         .map_err(|e| parse_one(FileError::new(bruno_json_rel, 0, e.to_string())))?;
     let bruno_json = match std::str::from_utf8(&bytes) {
         Err(e) => return Err(parse_one(FileError::new(bruno_json_rel, 0, e.to_string()))),
@@ -127,7 +128,7 @@ pub fn plan_conversion(root: &Path) -> Result<ConversionPlan, ConvertError> {
     )];
     let (bru, others): (Vec<&PathBuf>, Vec<&PathBuf>) = walked.iter().partition(|p| is_bru(p));
     for rel in &bru {
-        if let Ok(source) = fs::read(root.join(rel)) {
+        if let Ok(source) = read_regular(&root.join(rel)) {
             hashes.push(((*rel).clone(), Sha256::digest(&source).to_vec()));
         }
     }
@@ -146,7 +147,7 @@ pub fn plan_conversion(root: &Path) -> Result<ConversionPlan, ConvertError> {
     // name), so it is hashed too; it joins the removals only when the walk listed it.
     let root_collection = Path::new(ROOT_COLLECTION);
     if !hashes.iter().any(|(p, _)| p == root_collection)
-        && let Ok(source) = fs::read(root.join(root_collection))
+        && let Ok(source) = read_regular(&root.join(root_collection))
     {
         hashes.push((
             root_collection.to_path_buf(),

@@ -20,6 +20,7 @@ use super::resolved::domain_matches;
 use super::{CertificateFiles, RequestNetwork};
 use crate::cancel::CancelHandle;
 use crate::context::VarContext;
+use crate::document::read_regular_async;
 use crate::dynamic::{Generator, next_generated};
 use crate::execute::ExecError;
 use crate::interpolate::{Vars, interpolate_tracked};
@@ -353,7 +354,11 @@ impl Preloaded {
         };
         let mut out = Vec::new();
         for path in paths {
-            out.push(tokio::fs::read(&path.read).await.map_err(|e| e.to_string()));
+            out.push(
+                read_regular_async(&path.read)
+                    .await
+                    .map_err(|e| e.to_string()),
+            );
         }
         Preloaded(out)
     }

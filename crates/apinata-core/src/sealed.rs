@@ -71,7 +71,7 @@ pub(crate) fn file_key(
 
 /// The decrypted value, or `None` when the file is missing, malformed or sealed with another key.
 pub(crate) fn read<T: DeserializeOwned>(path: &Path, key: &[u8; 32]) -> Option<T> {
-    let body: FileBody = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    let body: FileBody = serde_json::from_slice(&crate::document::read_regular(path).ok()?).ok()?;
     if body.version != FILE_VERSION {
         return None;
     }
@@ -123,6 +123,17 @@ mod tests {
     use crate::secrets::{MemoryStore, SecretError, SecretKey, SecretStore};
     use serde_json::{Value, json};
     use tempfile::TempDir;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pipe_reads_as_no_file() {
+        let dir = TempDir::new().unwrap();
+        let pipe = dir.path().join("sealed.json");
+        crate::hang_guard::mkfifo(&pipe);
+        let path = pipe.clone();
+        let read = crate::hang_guard::off_the_pipe(&pipe, move || read::<Value>(&path, &[7; 32]));
+        assert_eq!(read, None);
+    }
 
     struct Locked;
     impl SecretStore for Locked {

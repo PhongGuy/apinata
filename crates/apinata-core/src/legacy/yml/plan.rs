@@ -1,6 +1,7 @@
 //! The migration walk: every YAML file a legacy collection converts to, computed in memory.
 
 use super::{map_collection, map_environment, map_folder, map_request};
+use crate::document::read_regular_text;
 use crate::legacy::bru::{
     BruError, parse_bruno_json, parse_collection, parse_environment, parse_request,
 };
@@ -40,7 +41,7 @@ const IGNORED_NAMES: [&str; 2] = ["node_modules", ".git"];
 pub(crate) fn plan_files(root: &Path) -> Result<Vec<(PathBuf, Mapping)>, Vec<FileError>> {
     // Without a readable, valid `bruno.json` the folder is not a legacy root: stop at once.
     let bruno_json_path = Path::new("bruno.json");
-    let bruno_json = fs::read_to_string(root.join(bruno_json_path))
+    let bruno_json = read_regular_text(&root.join(bruno_json_path))
         .map_err(|e| vec![FileError::new(bruno_json_path, 0, e.to_string())])
         .and_then(|text| {
             parse_bruno_json(&text)
@@ -85,7 +86,7 @@ pub(crate) fn plan_walked(
         .iter()
         .filter(|rel| is_bru(rel) && rel.as_path() != Path::new(ROOT_COLLECTION))
     {
-        let parsed = fs::read_to_string(root.join(rel))
+        let parsed = read_regular_text(&root.join(rel))
             .map_err(|e| FileError::new(rel, 0, e.to_string()))
             .and_then(|text| {
                 convert(rel, &text).map_err(|e| FileError::new(rel, e.line, e.message))
@@ -117,7 +118,7 @@ pub(crate) fn is_bru(rel: &Path) -> bool {
 /// link) is no root, an unreadable or unparsable one is a failure naming it.
 fn read_root_collection(root: &Path) -> Result<Option<Value>, FileError> {
     let rel = Path::new(ROOT_COLLECTION);
-    let text = match fs::read_to_string(root.join(rel)) {
+    let text = match read_regular_text(&root.join(rel)) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(FileError::new(rel, 0, e.to_string())),

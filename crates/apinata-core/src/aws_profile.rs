@@ -65,7 +65,7 @@ pub(crate) fn profile_keys(
 }
 
 fn read(path: &std::path::Path) -> String {
-    std::fs::read_to_string(path).unwrap_or_default()
+    crate::document::read_regular_text(path).unwrap_or_default()
 }
 
 /// The `key = value` pairs of every `[name]` section in INI `text`; later keys win, and lines
@@ -90,6 +90,22 @@ fn section(text: &str, name: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pipe_reads_as_an_empty_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (pipe, conf) = (dir.path().join("credentials"), dir.path().join("config"));
+        crate::hang_guard::mkfifo(&pipe);
+        std::fs::write(
+            &conf,
+            "[default]\naws_access_key_id = A\naws_secret_access_key = B\n",
+        )
+        .unwrap();
+        let files = AwsSharedFiles::new(&pipe, &conf);
+        let keys = crate::hang_guard::off_the_pipe(&pipe, move || profile_keys(&files, "default"));
+        assert_eq!(keys, Some(("A".into(), "B".into(), String::new())));
+    }
 
     #[test]
     fn credentials_win_key_by_key_over_config_and_default_has_no_prefix() {

@@ -5,9 +5,11 @@ use std::time::Duration;
 
 use reqwest::Client;
 use reqwest::redirect::Policy;
+use tokio::io::AsyncReadExt;
 use url::Url;
 
 use super::PacSource;
+use crate::document::open_regular_async;
 use crate::execute::chain;
 use crate::network::read_ca;
 
@@ -56,13 +58,16 @@ async fn read_file(url: &Url, opts: &FetchOptions) -> Result<Vec<u8>, String> {
     let path = url
         .to_file_path()
         .map_err(|()| "not a usable file path".to_owned())?;
-    let meta = tokio::fs::metadata(&path)
-        .await
-        .map_err(|e| e.to_string())?;
+    let file = open_regular_async(&path).await.map_err(|e| e.to_string())?;
+    let meta = file.metadata().await.map_err(|e| e.to_string())?;
     if meta.len() > opts.max_bytes {
         return Err(too_large(opts.max_bytes));
     }
-    let bytes = tokio::fs::read(&path).await.map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    file.take(opts.max_bytes + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|e| e.to_string())?;
     // The file may have grown since the size check.
     if bytes.len() as u64 > opts.max_bytes {
         return Err(too_large(opts.max_bytes));
@@ -157,6 +162,24 @@ mod tests {
     fn the_bounds_are_five_seconds_and_one_mebibyte() {
         let o = opts();
         assert_eq!((o.timeout, o.max_bytes), (Duration::from_secs(5), 1 << 20));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pipe_file_source_is_refused() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let pipe = dir.path().join("p.pac");
+        crate::hang_guard::mkfifo(&pipe);
+        let text = pipe.to_str().expect("utf-8").to_owned();
+        let fetched = crate::hang_guard::off_the_pipe(&pipe, move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a runtime");
+            runtime.block_on(fetch(&source(&text), &opts()))
+        });
+        let err = fetched.expect_err("a pipe is no script file");
+        assert!(err.contains("not a regular file"), "{err}");
     }
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 //! One git call (read or write): fixed flags and environment, a time limit, and the raw result.
 
 use std::ffi::{OsStr, OsString};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
@@ -91,7 +91,22 @@ pub(crate) fn git<S: AsRef<OsStr>>(
         .map(OsString::from)
         .chain(args.iter().map(|a| a.as_ref().to_owned()))
         .collect();
-    spawn(&argv, cwd, options).map_err(Halt::into_error)
+    spawn(&argv, None, cwd, options).map_err(Halt::into_error)
+}
+
+/// Like [`git`], with `input` written to git's stdin.
+pub(crate) fn git_input<S: AsRef<OsStr>>(
+    args: &[S],
+    input: Vec<u8>,
+    cwd: &Path,
+    options: &GitOptions,
+) -> Result<Output, GitError> {
+    let argv: Vec<OsString> = PREFIX
+        .iter()
+        .map(OsString::from)
+        .chain(args.iter().map(|a| a.as_ref().to_owned()))
+        .collect();
+    spawn(&argv, Some(input), cwd, options).map_err(Halt::into_error)
 }
 
 /// Like [`git`] for a call that changes the repository: the argv is `PREFIX`,
@@ -104,7 +119,7 @@ pub(crate) fn git_write<S: AsRef<OsStr>>(
     cwd: &Path,
     options: &GitOptions,
 ) -> Result<Output, GitError> {
-    match spawn(&write_argv(args, config), cwd, options) {
+    match spawn(&write_argv(args, config), None, cwd, options) {
         Ok(out) => match held_lock(&out, cwd) {
             Some(lock) => Err(GitError::Busy { lock }),
             None => Ok(out),
@@ -266,12 +281,22 @@ fn write_argv<S: AsRef<OsStr>>(args: &[S], config: &[&str]) -> Vec<OsString> {
     argv
 }
 
-/// Spawn git with the already-built `argv` under the fixed environment and the time limit.
-fn spawn(argv: &[OsString], cwd: &Path, options: &GitOptions) -> Result<Output, Halt> {
+/// Spawn git with the already-built `argv` under the fixed environment and the time limit, its
+/// stdin fed `input` or else empty.
+fn spawn(
+    argv: &[OsString],
+    input: Option<Vec<u8>>,
+    cwd: &Path,
+    options: &GitOptions,
+) -> Result<Output, Halt> {
     let mut cmd = Command::new("git");
     cmd.args(argv)
         .current_dir(cwd)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for (key, value) in &options.env {
@@ -291,6 +316,13 @@ fn spawn(argv: &[OsString], cwd: &Path, options: &GitOptions) -> Result<Output, 
     // never joined, because a grandchild may keep a pipe open long after git is gone.
     let stdout = drain(child.stdout.take());
     let stderr = drain(child.stderr.take());
+    // The input goes in from its own thread too, so git stuck before reading it cannot stall
+    // the time limit; a git that exits early only makes the write fail, which is ignored.
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        thread::spawn(move || {
+            let _ = stdin.write_all(&input);
+        });
+    }
 
     let status = loop {
         if let Some(status) = child.try_wait()? {

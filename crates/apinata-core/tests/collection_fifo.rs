@@ -1,11 +1,17 @@
 //! A named pipe in a collection is never opened: opening one waits for a writer that never comes.
 
 use crate::common;
+use crate::network_support::{pem_certificates, pki, root_with};
 use crate::script_support;
 use crate::tree_support::ip;
 
+use apinata_core::legacy::plan_conversion;
 use apinata_core::watch::seams::gap_paths;
-use apinata_core::{Collection, ContextOptions, DropTarget, SaveError, TreeError, VarContext};
+use apinata_core::{
+    Collection, ContextOptions, DropTarget, ExecOptions, Executor, GlobalProxy, NetworkAck,
+    NetworkAnswer, NetworkCheck, NetworkQuestion, NetworkSettings, NetworkSnapshot, SaveError,
+    TreeError, VarContext,
+};
 use common::{request, write_tree};
 use std::fs;
 use std::os::unix::fs::FileTypeExt;
@@ -34,8 +40,9 @@ fn with_pipe(rel: &str) -> (TempDir, PathBuf) {
     (dir, pipe)
 }
 
-// Runs `job` on its own thread under a time limit. A job stuck on `pipe` fails the test, and a
-// writer is opened apart so the stuck thread ends; that open never returns for a job not on it.
+// Runs `job` on its own thread; one stuck on `pipe` for 5 s fails the test. The pipe is then
+// opened read-write, which never waits: a job stuck opening it to read gains a writer that
+// closes at once (end of file), and one stuck opening it to write a reader that closes at once.
 fn finishes<T: Send + 'static>(pipe: &Path, job: impl FnOnce() -> T + Send + 'static) -> T {
     let (done, got) = channel();
     thread::spawn(move || {
@@ -43,8 +50,7 @@ fn finishes<T: Send + 'static>(pipe: &Path, job: impl FnOnce() -> T + Send + 'st
     });
     got.recv_timeout(Duration::from_secs(5))
         .unwrap_or_else(|_| {
-            let released = pipe.to_path_buf();
-            thread::spawn(move || drop(fs::OpenOptions::new().write(true).open(released)));
+            drop(fs::OpenOptions::new().read(true).write(true).open(pipe));
             panic!("blocked on the pipe at {}", pipe.display());
         })
 }
@@ -319,6 +325,11 @@ fn request_over_a_pipe(under_http: &str, rel: &str) -> (TempDir, PathBuf) {
 
 // Resolves and sends `r.yml`, giving back what went wrong.
 fn send_failure(root: &Path, pipe: &Path) -> String {
+    send_failure_on(root, pipe, ExecOptions::new())
+}
+
+// As `send_failure`, through an executor made from `options`.
+fn send_failure_on(root: &Path, pipe: &Path, options: ExecOptions) -> String {
     let root = root.to_path_buf();
     finishes(pipe, move || {
         let c = Collection::open(&root).expect("opens");
@@ -328,10 +339,95 @@ fn send_failure(root: &Path, pipe: &Path) -> String {
             .build()
             .expect("a runtime");
         let request = common::at(&c, &ctx, "r.yml").map_err(|e| e.to_string())?;
-        let sent = runtime.block_on(common::executor().send(&request));
+        let executor = Executor::new(options).expect("an executor");
+        let sent = runtime.block_on(executor.send(&request));
         sent.map(|_| ()).map_err(|e| e.to_string())
     })
     .expect_err("a pipe is not a file to send")
+}
+
+// A collection whose client certificate for 127.0.0.1 is a pipe, with `r.yml` sent there.
+fn certificate_over_a_pipe() -> (TempDir, PathBuf) {
+    let dir = TempDir::new().expect("tempdir");
+    let pipe = dir.path().join("client.pem");
+    let key = pki("client.key").display().to_string();
+    let entry = [("127.0.0.1", pipe.to_str().expect("utf-8"), key.as_str(), "")];
+    let root = root_with(&pem_certificates(&entry));
+    let request = ITEM.replace("https://x.test/", "https://127.0.0.1:9/");
+    for (rel, text) in [("opencollection.yml", &root), ("r.yml", &request)] {
+        fs::write(dir.path().join(rel), text).expect("write");
+    }
+    mkfifo(&pipe);
+    (dir, pipe)
+}
+
+fn no_proxy() -> NetworkSettings {
+    NetworkSettings::new().proxy(GlobalProxy::Off)
+}
+
+#[test]
+fn a_pipe_as_the_ca_file_fails_the_send() {
+    let (dir, pipe) = request_over_a_pipe("", "ca.pem");
+    let options = ExecOptions::new().network(no_proxy().ca_file(Some(pipe.clone())));
+    let failure = send_failure_on(dir.path(), &pipe, options);
+    assert!(failure.contains("not a regular file"), "{failure}");
+}
+
+#[test]
+fn a_pipe_as_a_client_certificate_fails_the_send() {
+    let (dir, pipe) = certificate_over_a_pipe();
+    let options = ExecOptions::new().network(no_proxy());
+    let failure = send_failure_on(dir.path(), &pipe, options);
+    assert!(failure.contains("not a regular file"), "{failure}");
+}
+
+// The network check reads the certificate before the send does, and hashes it for the record.
+#[test]
+fn a_pipe_as_a_checked_client_certificate_fails_the_send() {
+    let (dir, pipe) = certificate_over_a_pipe();
+    let ask = |_: NetworkQuestion| async { NetworkAnswer::SendOnce };
+    let check = NetworkCheck::new(dir.path().join("ack.json"), ask);
+    let options = ExecOptions::new().network(no_proxy()).network_check(check);
+    let failure = send_failure_on(dir.path(), &pipe, options);
+    assert!(failure.contains("not a regular file"), "{failure}");
+}
+
+#[test]
+fn a_pipe_certificate_hashes_as_a_missing_one() {
+    let (dir, pipe) = certificate_over_a_pipe();
+    let root = dir.path().to_path_buf();
+    let snapshot = move || {
+        let c = Collection::open(&root).expect("opens");
+        let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+        NetworkSnapshot::resolve(&c.file().network(), &ctx, "salt").fingerprint()
+    };
+    let snapshot_again = snapshot.clone();
+    let piped = finishes(&pipe, snapshot);
+    fs::remove_file(&pipe).unwrap();
+    assert_eq!(piped, snapshot_again());
+}
+
+#[test]
+fn a_pipe_as_the_network_record_reads_as_empty() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipe = dir.path().join("network-ack.json");
+    mkfifo(&pipe);
+    let path = pipe.clone();
+    let loaded = finishes(&pipe, move || NetworkAck::load(path).map(|_| ()));
+    assert!(loaded.is_ok(), "{loaded:?}");
+}
+
+// The root `collection.bru` is read even when the walk, which skips pipes, never lists it.
+#[test]
+fn a_legacy_plan_passes_over_a_pipe_root_collection() {
+    let bru = "meta {\n  name: a\n  type: http\n  seq: 1\n}\n\nget {\n  url: https://x.test\n}\n";
+    let bruno = r#"{"version": "1", "name": "Legacy", "type": "collection"}"#;
+    let dir = write_tree(&[("bruno.json", bruno), ("a.bru", bru)]);
+    let pipe = dir.path().join("collection.bru");
+    mkfifo(&pipe);
+    let root = dir.path().to_path_buf();
+    let planned = finishes(&pipe, move || plan_conversion(&root).map(|_| ()));
+    assert!(planned.is_ok(), "{planned:?}");
 }
 
 #[test]

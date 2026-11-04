@@ -213,6 +213,35 @@ pub fn stage(
         .into_iter()
         .partition(|spec| under_link(root, Path::new(spec)));
     if !specs.is_empty() {
+        // Git waits on a pipe where it reads attributes or ignore rules. Reads of those rules
+        // that open no file's content and run no filters end that wait under the caller's own
+        // limit, long before the write's floor would: ignore rules above each path, the walk
+        // below it, then the attributes of every path the walk found.
+        let mut args: Vec<OsString> = ["check-ignore", "--no-index", "--"]
+            .into_iter()
+            .map(OsString::from)
+            .collect();
+        args.extend(specs.iter().cloned());
+        // Only a timeout or a missing git matters here; the add reports anything else.
+        run::git(&args, root, options)?;
+        let walk = [
+            "--literal-pathspecs",
+            "ls-files",
+            "-z",
+            "-c",
+            "-o",
+            "--exclude-standard",
+            "--",
+        ];
+        let mut args: Vec<OsString> = walk.into_iter().map(OsString::from).collect();
+        args.extend(specs.iter().cloned());
+        let listed = run::git(&args, root, options)?.stdout;
+        run::git_input(
+            &["check-attr", "-a", "--stdin", "-z"],
+            listed,
+            root,
+            options,
+        )?;
         let mut args: Vec<OsString> = vec!["add".into(), "-A".into(), "--".into()];
         args.extend(specs);
         run_write(&args, root, options)?;
@@ -353,7 +382,8 @@ mod tests {
         );
     }
 
-    /// Sleeps one second in `add` and `reset`; answers the reads stage and unstage make first.
+    /// Sleeps one second in `add` and `reset`; answers the reads stage and unstage make first,
+    /// the rule probes among them, at once.
     const SLOW_WRITE_GIT: &str = r#"#!/bin/sh
 case "$*" in
   *rev-parse*) printf '\n' ;;
