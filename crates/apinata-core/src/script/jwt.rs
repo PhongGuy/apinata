@@ -132,6 +132,8 @@ fn algorithm(alg: &str) -> Result<Algorithm, String> {
         "PS512" => Algorithm::PS512,
         "ES256" => Algorithm::ES256,
         "ES384" => Algorithm::ES384,
+        // The crate has no ES512; the value only matters for HMAC, ECDSA signs through crypto.rs.
+        "ES512" => Algorithm::ES384,
         _ => return Err(format!("{alg} is not supported by Apinata")),
     };
     Ok(algorithm)
@@ -168,10 +170,10 @@ fn check_signing_key(alg: &str, key: &KeyInput) -> Result<(), String> {
         (_, Public::Ed(_)) => Err(NO_OPERATION.into()),
         ("ES", Public::Rsa(_)) => Err(NOT_ECDSA.into()),
         ("ES", Public::Ec(curve, _)) => {
-            let wanted = if alg == "ES256" {
-                Curve::P256
-            } else {
-                Curve::P384
+            let wanted = match alg {
+                "ES256" => Curve::P256,
+                "ES384" => Curve::P384,
+                _ => Curve::P521,
             };
             if curve == wanted {
                 Ok(())
@@ -356,7 +358,7 @@ mod tests {
         if let Err(e) = verify(&vector("ES256"), "ES256", &text(secret)) {
             assert!(!e.contains("VE9QU0VD"), "{e}");
         }
-        for alg in ["ES512", "none", "EdDSA"] {
+        for alg in ["none", "EdDSA"] {
             let err = sign(alg, &header(alg), PAYLOAD, &text("k")).expect_err(alg);
             assert_eq!(err, format!("{alg} is not supported by Apinata"));
         }

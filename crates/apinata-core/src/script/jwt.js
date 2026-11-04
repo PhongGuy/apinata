@@ -176,7 +176,7 @@
       throw err;
     };
 
-    if (header.alg === "ES512" || header.alg === "none") return failure(new JsonWebTokenError(`${header.alg} is not supported by Apinata`));
+    if (header.alg === "none") return failure(new JsonWebTokenError(`${header.alg} is not supported by Apinata`));
     if (!secretOrPrivateKey) return failure(new Error("secretOrPrivateKey must have a value"));
     let key;
     try {
@@ -282,7 +282,7 @@
   const HS_ALGS = ["HS256", "HS384", "HS512"];
   const RSA_ALGS = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512"];
   const EC_ALGS = ["ES256", "ES384", "ES512"];
-  const ES_BYTES = { ES256: 64, ES384: 96 };
+  const ES_BYTES = { ES256: 64, ES384: 96, ES512: 132 };
 
   // Follows jsonwebtoken's verify step by step; a callback is called synchronously with its result.
   function verify(jwtString, secretOrPublicKey, options, callback) {
