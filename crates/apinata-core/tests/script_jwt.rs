@@ -7,7 +7,7 @@ use script_support::*;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const KEYS: [(&str, &str); 8] = [
+const KEYS: [(&str, &str); 10] = [
     ("RSA", include_str!("fixtures/jwt/rsa.pem")),
     ("RSA_PKCS1", include_str!("fixtures/jwt/rsa-pkcs1.pem")),
     ("RSA_PUB", include_str!("fixtures/jwt/rsa.pub.pem")),
@@ -16,6 +16,8 @@ const KEYS: [(&str, &str); 8] = [
     ("EC256_PUB", include_str!("fixtures/jwt/ec256.pub.pem")),
     ("EC384", include_str!("fixtures/jwt/ec384.pem")),
     ("EC384_PUB", include_str!("fixtures/jwt/ec384.pub.pem")),
+    ("EC521", include_str!("fixtures/jwt/ec521.pem")),
+    ("EC521_PUB", include_str!("fixtures/jwt/ec521.pub.pem")),
 ];
 const VECTORS: &str = include_str!("fixtures/jwt/vectors.json");
 const SHOW: &str = "const show = (f) => { try { f(); return 'ok'; } catch (e) { return [e.name, e.message, e.expiredAt ? e.expiredAt.toISOString() : e.date ? e.date.toISOString() : null, e instanceof Error]; } };\nconst P = { sub: '1234567890', name: 'J\\u00f6rg \\u2713', admin: true, iat: 1700000000 };";
@@ -112,6 +114,34 @@ console.log(show(() => jwt.verify(near, "k"))[0], jwt.verify(near, "k", { clockT
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn es512_signs_verifies_and_accepts_a_node_token() {
+    // NODE was signed by Node's jsonwebtoken 9.0.2 with ec521.pem: ES512, sub 1234567890, iat 1700000000.
+    let node = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiYWRtaW4iOnRydWUsImlhdCI6MTcwMDAwMDAwMH0.ATyhEndAadCPTYfn6_LrnQVkgoXkZ4HbD4QUjVgUaDWMa_ufUAdAy3I4BmvSTbiHgPWaeox5-H_S0AIa9Q1EQ0PPAdhrv8rNFnvEmo6NxxuA1K0sBcSPIhvR5dUp9q-Osb-CeCT4RzJCgIebHPor9zEogujpACODW5enn0UilnJrl3vV";
+    let code = format!(
+        r#"const NODE = "{node}";
+const token = jwt.sign(P, EC521, {{ algorithm: "ES512" }});
+const full = jwt.verify(token, EC521_PUB, {{ complete: true }});
+console.log(full.header.alg, full.payload.admin, Buffer.from(token.split(".")[2], "base64url").length);
+console.log(jwt.verify(NODE, EC521_PUB).sub, jwt.verify(NODE, EC521_PUB, {{ algorithms: ["ES512"] }}).admin);
+const [nh, np] = NODE.split("."), other = jwt.sign({{ sub: "evil" }}, EC521, {{ algorithm: "ES512" }}).split(".");
+const forged = [nh, np, other[2]].join(".");
+const swapped = [nh, other[1], NODE.split(".")[2]].join(".");
+console.log(show(() => jwt.verify(forged, EC521_PUB))[1], "|", show(() => jwt.verify(swapped, EC521_PUB))[1]);
+console.log(show(() => jwt.verify(NODE, EC384_PUB))[1]);"#
+    );
+    let result = run_jwt(&code).await;
+    assert_eq!(
+        console(&result),
+        [
+            "log:ES512 true 132",
+            "log:1234567890 true",
+            "log:invalid signature | invalid signature",
+            r#"log:"alg" parameter "ES512" requires curve "secp521r1"."#,
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sign_errors_follow_node_and_never_echo_the_key() {
     let code = r#"const rows = {
   bad_timespan: show(() => jwt.sign({}, "k", { expiresIn: "soon" })),
@@ -132,7 +162,7 @@ console.log(leaks.map((r) => r[1]).join(" | "), JSON.stringify(leaks).includes("
         console(&result),
         [
             "log:[]",
-            "log:JsonWebTokenError: ES512 is not supported by Apinata | JsonWebTokenError: none is not supported by Apinata",
+            r#"log:Error: "alg" parameter "ES512" requires curve "secp521r1". | JsonWebTokenError: none is not supported by Apinata"#,
             r#"log:"alg" parameter "ES256" requires curve "prime256v1". "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512. Unsupported key: text with a PEM marker is never a secret, and this is no key that opens here (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519)"#,
             "log:Unsupported key: text with a PEM marker is never a secret, and this is no key that opens here (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519) | Unsupported key: text with a PEM marker is never a secret, and this is no key that opens here (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519) false",
         ]
