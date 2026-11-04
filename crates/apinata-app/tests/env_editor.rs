@@ -2247,3 +2247,20 @@ fn an_outside_edit_under_a_draft_raises_the_banner_and_keeps_the_typing(cx: &mut
     });
     assert_eq!(shown_value(cx, &ed, 0), "xy");
 }
+
+// Another program's rewrite of a collection environment reaches the open editor promptly.
+#[gpui_kit::test]
+fn an_outside_edit_reaches_the_open_environment_editor_promptly(cx: &mut TestAppContext) {
+    let col = tree();
+    let w = watched(cx, &col);
+    let (_win, ed) = env_editor(cx, &w.ws, &w.root);
+    let table = ed.read_with(cx, |e, _| e.table().clone());
+    settle(cx);
+    let written = std::time::Instant::now();
+    let outside = DEV.replace("value: x", "value: outside");
+    std::fs::write(col.path().join("environments/dev.yml"), outside).unwrap();
+    wait_for(cx, "the outside value in the environment editor", |cx| {
+        table.read_with(cx, |t, cx| t.rows(cx)[0].value == "outside")
+    });
+    assert!(written.elapsed() < std::time::Duration::from_secs(3));
+}
