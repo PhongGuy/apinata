@@ -485,11 +485,14 @@ impl GlobalEnvEditor {
             let step = this.update_in(cx, |e, window, cx| {
                 e.lock_step(&env, &variable, secret, read, window, cx)
             });
-            let go = step.unwrap_or(LockStep::Stop).confirmed().await;
+            let step = step.unwrap_or(LockStep::Stop);
+            // A toggle that asks nothing loses no stored value, so it keeps the typing.
+            let keep = !matches!(step, LockStep::Ask(_));
+            let go = step.confirmed().await;
             this.update_in(cx, |e, window, cx| {
                 e.set_checking(false, cx);
                 if go {
-                    e.toggle_lock(env, variable, secret, window, cx);
+                    e.toggle_lock(env, variable, secret, keep, window, cx);
                 }
             })
             .ok();
@@ -531,13 +534,14 @@ impl GlobalEnvEditor {
     }
 
     // A toggle first saves the table as it stands, so the reload after it keeps other rows'
-    // typing and a row not yet in the file exists; it drops typing for the toggled variable,
-    // since the toggle moves the stored value itself.
+    // typing and a row not yet in the file exists. The toggled variable's typing is stored with
+    // that Save when `keep`, so the toggle moves it; otherwise the stored value moves instead.
     fn toggle_lock(
         &mut self,
         env: String,
         variable: String,
         secret: bool,
+        keep: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -547,11 +551,15 @@ impl GlobalEnvEditor {
             if e.selected.as_deref() != Some(env.as_str()) {
                 return;
             }
-            e.table.update(cx, |t, cx| {
+            let typed = e.table.update(cx, |t, cx| {
                 t.confirm_typing(&variable, cx);
                 t.take_typing(&variable, cx)
             });
-            e.secrets.retain(|(v, _)| *v != variable);
+            if !keep {
+                e.secrets.retain(|(v, _)| *v != variable);
+            }
+            e.secrets
+                .extend(typed.filter(|_| keep).map(|t| (variable.clone(), t)));
             let _ = e.save(cx);
             let outcome = e.send(
                 GlobalOp::SetSecret {

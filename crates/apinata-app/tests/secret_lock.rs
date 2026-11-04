@@ -1484,6 +1484,21 @@ fn a_global_lock_does_not_name_the_row_it_toggles(cx: &mut TestAppContext) {
     assert_eq!(f.held(), None);
 }
 
+// With nothing stored, Make plain keeps what was typed, as the collection editor does.
+#[gpui_kit::test]
+fn typing_over_nothing_stored_reaches_the_file_unasked_in_a_global(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Global, SECRET);
+    f.store.delete(&f.key).unwrap();
+    frame(cx, f.win);
+    type_at_end(cx, f.win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    click_lock(cx, f.win, 1);
+    assert!(!confirm_open(cx));
+    assert!(f.bytes().contains("typed"), "{}", f.bytes());
+    assert!(!f.bytes().contains("secret: true"), "{}", f.bytes());
+    assert_eq!(f.held(), None);
+}
+
 mod held {
     use super::*;
     use apinata_app::tab_area::CloseTab;
