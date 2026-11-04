@@ -2204,3 +2204,46 @@ fn an_outside_change_making_the_secret_plain_replaces_the_typing(cx: &mut TestAp
     assert_eq!(t.text(cx), "disk");
     assert_eq!(t.stored(), None, "nothing reached the store");
 }
+
+// The value input of row `ix` as the open editor shows it.
+fn shown_value(
+    cx: &mut TestAppContext,
+    ed: &gpui_kit::Entity<apinata_app::env_editor::EnvEditor>,
+    ix: usize,
+) -> String {
+    let table = ed.read_with(cx, |e, _| e.table().clone());
+    table
+        .read_with(cx, |t, _| t.value_input(ix).cloned())
+        .map(|i| i.read_with(cx, |i, _| i.value().to_string()))
+        .unwrap_or_default()
+}
+
+const OUTSIDE: &str = "name: dev\nvariables:\n  - name: host\n    value: outside\n";
+
+#[gpui_kit::test]
+fn an_outside_edit_shows_in_the_open_editor_without_a_click(cx: &mut TestAppContext) {
+    let col = tree();
+    let w = watched(cx, &col);
+    let (win, ed) = env_editor(cx, &w.ws, &w.root);
+    assert_eq!(shown_value(cx, &ed, 0), "x");
+    std::fs::write(w.root.join("environments/dev.yml"), OUTSIDE).unwrap();
+    wait_for(cx, "the outside value in the editor", |cx| {
+        frame(cx, win);
+        shown_value(cx, &ed, 0) == "outside"
+    });
+}
+
+// Typing makes a draft, so the same edit raises the disk banner and leaves the typing alone.
+#[gpui_kit::test]
+fn an_outside_edit_under_a_draft_raises_the_banner_and_keeps_the_typing(cx: &mut TestAppContext) {
+    let col = tree();
+    let w = watched(cx, &col);
+    let (win, ed) = env_editor(cx, &w.ws, &w.root);
+    type_at_end(cx, win, None, ("env-value", 0usize), "y");
+    cx.run_until_parked();
+    std::fs::write(w.root.join("environments/dev.yml"), OUTSIDE).unwrap();
+    wait_for(cx, "the changed-on-disk banner", |cx| {
+        present(cx, win, "banner-changed")
+    });
+    assert_eq!(shown_value(cx, &ed, 0), "xy");
+}

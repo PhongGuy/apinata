@@ -77,6 +77,22 @@ pub fn banner_row(
     banner: Banner,
     answer: impl Fn(Banner, Choice, &mut Window, &mut App) + Clone + 'static,
 ) -> AnyElement {
+    row(banner, true, answer)
+}
+
+/// [`banner_row`] without Compare, for an editor with no document to diff against.
+pub fn plain_banner_row(
+    banner: Banner,
+    answer: impl Fn(Banner, Choice, &mut Window, &mut App) + Clone + 'static,
+) -> AnyElement {
+    row(banner, false, answer)
+}
+
+fn row(
+    banner: Banner,
+    compare: bool,
+    answer: impl Fn(Banner, Choice, &mut Window, &mut App) + Clone + 'static,
+) -> AnyElement {
     let (id, text, primary, secondary) = match banner {
         Banner::ChangedOnDisk => (
             "banner-changed",
@@ -118,7 +134,7 @@ pub fn banner_row(
         .child(div().flex_1().min_w_0().child(text))
         .child(button(primary, Choice::Primary))
         .child(button(secondary, Choice::Secondary))
-        .when(banner == Banner::ChangedOnDisk, |row| {
+        .when(compare && banner == Banner::ChangedOnDisk, |row| {
             row.child(button(("banner-compare", "Compare"), Choice::Tertiary))
         })
         .into_any_element()

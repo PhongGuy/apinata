@@ -942,3 +942,178 @@ fn an_outside_rename_of_the_global_secret_replaces_the_typing(cx: &mut TestAppCo
     let (_g, _ws, _editor, shown) = typed_then_reloaded(cx, &[("g.yml", &renamed)]);
     assert_eq!(shown, "");
 }
+
+// A global environment's value in the open editor's first row.
+fn first_value(
+    cx: &mut TestAppContext,
+    editor: &Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) -> String {
+    let rows = editor.read_with(cx, |e, cx| e.table().read(cx).rows(cx));
+    rows.first().map(|r| r.value.clone()).unwrap_or_default()
+}
+
+const HOST_A: &str = "name: g\nvariables:\n  - name: host\n    value: a\n";
+const HOST_OUTSIDE: &str = "name: g\nvariables:\n  - name: host\n    value: outside\n";
+
+// The watched global directory carries another program's rewrite into the open editor.
+#[gpui_kit::test]
+fn an_outside_edit_shows_in_the_open_global_editor_without_a_click(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (_win, editor) = open_editor(cx, &ws, "g");
+    assert_eq!(first_value(cx, &editor), "a");
+    settle(cx);
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    wait_for(cx, "the outside value in the global editor", |cx| {
+        first_value(cx, &editor) == "outside"
+    });
+}
+
+// The watcher's reload keeps a secret's unsent typing through a change to another variable.
+#[gpui_kit::test]
+fn a_watched_outside_edit_keeps_unsent_global_secret_typing(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", TOK)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (win, editor) = open_editor(cx, &ws, "g");
+    settle(cx);
+    let table = editor.read_with(cx, |e, _| e.table().clone());
+    let input = table.read_with(cx, |t, _| t.value_input(0).unwrap().clone());
+    cx.update_window(win, |_, w, cx| {
+        input.update(cx, |s, cx| s.set_value("typed", w, cx))
+    })
+    .unwrap();
+    let more = format!("{TOK}  - name: host\n    value: a\n");
+    std::fs::write(g.path().join("g.yml"), more).unwrap();
+    wait_for(cx, "the outside variable in the global editor", |cx| {
+        table.read_with(cx, |t, cx| t.rows(cx).len()) == 2
+    });
+    let shown = input.read_with(cx, |i, _| i.value().to_string());
+    assert_eq!(shown, "typed");
+}
+
+// `g` open under the watched global directory with `typed` over its plain `host`, after
+// another program rewrote the file to `outside` and the banner rose.
+fn plain_typing_under_a_watched_edit(
+    cx: &mut TestAppContext,
+) -> (
+    tempfile::TempDir,
+    gpui_kit::AnyWindowHandle,
+    Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (win, editor) = open_editor(cx, &ws, "g");
+    settle(cx);
+    let table = editor.read_with(cx, |e, _| e.table().clone());
+    let input = table.read_with(cx, |t, _| t.value_input(0).unwrap().clone());
+    cx.update_window(win, |_, w, cx| {
+        input.update(cx, |s, cx| s.set_value("typed", w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    wait_for(cx, "the changed-on-disk banner", |cx| {
+        present(cx, win, "banner-changed")
+    });
+    (g, win, editor)
+}
+
+// The watcher's reload under plain typing keeps the draft and says the file changed.
+#[gpui_kit::test]
+fn a_watched_outside_edit_keeps_plain_global_typing_under_the_banner(cx: &mut TestAppContext) {
+    let (_g, _win, editor) = plain_typing_under_a_watched_edit(cx);
+    assert_eq!(first_value(cx, &editor), "typed");
+    assert!(editor.read_with(cx, |e, cx| e.has_edits(cx)));
+}
+
+// The banner's Reload takes the file's values and drops the typing.
+#[gpui_kit::test]
+fn the_global_banner_reload_takes_the_outside_values(cx: &mut TestAppContext) {
+    let (_g, win, editor) = plain_typing_under_a_watched_edit(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("banner-reload", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(first_value(cx, &editor), "outside");
+    assert!(!present(cx, win, "banner-changed"));
+}
+
+// The banner's Overwrite writes the typing over the outside edit.
+#[gpui_kit::test]
+fn the_global_banner_overwrite_saves_the_typing(cx: &mut TestAppContext) {
+    let (g, win, editor) = plain_typing_under_a_watched_edit(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("banner-overwrite", cx);
+    })
+    .unwrap();
+    wait_for(cx, "the typing on disk", |_| {
+        std::fs::read_to_string(g.path().join("g.yml")).is_ok_and(|t| t.contains("typed"))
+    });
+    settle(cx);
+    assert_eq!(first_value(cx, &editor), "typed");
+    assert!(!present(cx, win, "banner-changed"));
+}
+
+// A global directory that cannot be watched says so, as the collection beside it does.
+#[gpui_kit::test]
+fn a_global_watch_that_cannot_start_is_a_watch_failure(cx: &mut TestAppContext) {
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    let seen = events(cx, &ws);
+    let broken: apinata_app::watch::set::WatchFactory =
+        std::sync::Arc::new(|_| Err("no inotify".to_string()));
+    ws.update(cx, |w, cx| w.set_watch_factory(Some(broken), cx));
+    cx.run_until_parked();
+    let failed: Vec<_> = seen
+        .borrow()
+        .iter()
+        .filter(|e| {
+            matches!(e, apinata_app::workspace::WorkspaceEvent::WatchFailed { root, .. }
+                if root == g.path())
+        })
+        .cloned()
+        .collect();
+    assert_eq!(
+        failed,
+        [apinata_app::workspace::WorkspaceEvent::WatchFailed {
+            root: g.path().to_path_buf(),
+            message: "no inotify".into()
+        }]
+    );
+}
+
+// An edit between the first load and the watch being placed has no event, so placing the
+// watch reads the directory once.
+#[gpui_kit::test]
+fn placing_the_global_watch_reads_an_edit_made_before_it(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    cx.run_until_parked();
+    let value = ws.read_with(cx, |w, _| {
+        let globals = w.globals().expect("loaded");
+        let vars = globals.environment("g").map(|e| e.variables()).unwrap();
+        vars[0].value.clone()
+    });
+    assert!(
+        value == VarValue::Text("outside".into()),
+        "the outside value was read"
+    );
+}
