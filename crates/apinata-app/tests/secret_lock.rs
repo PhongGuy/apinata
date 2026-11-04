@@ -1018,6 +1018,53 @@ fn undo_and_redo_ask_before_dropping_a_new_rows_typing(cx: &mut TestAppContext) 
     assert!(f.bytes().contains("old"), "{}", f.bytes());
 }
 
+// Add to environment selects its target as a switch does: held typing is asked about first.
+#[gpui_kit::test]
+fn add_to_environment_asks_over_held_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let (ws, root) = f.outside.clone().expect("a collection");
+    f.hold(cx);
+    ws.update(cx, |w, cx| {
+        w.select_environment(&root, Some("prod".into()), cx)
+    });
+    cx.run_until_parked();
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "the switch asks");
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+}
+
+// Rename waits for a clean environment, so only held typing can meet it, and it asks.
+#[gpui_kit::test]
+fn rename_asks_over_held_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.hold(cx);
+    env_menu(cx, f.win, apinata_app::env_editor::ENV_MENU_RENAME);
+    let rename = |cx: &mut TestAppContext| {
+        frame(cx, f.win);
+        replace_input(cx, f.win, None, "env-name-input", "qa");
+        cx.update_window(f.win, |_, w, cx| w.press("enter", cx))
+            .unwrap();
+        cx.run_until_parked();
+    };
+    rename(cx);
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?")
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    rename(cx);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert!(!f.typing(cx));
+}
+
 // A click on another environment asks through the close guard, whose Save checks the store.
 fn switch_in_the_global_list(cx: &mut TestAppContext, f: &Fix) {
     frame(cx, f.win);
