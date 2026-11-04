@@ -671,12 +671,10 @@ impl EnvVarTable {
             if locked_new && self.saved_secrets.contains(&name) {
                 return self.refuse_name(ix, &name, window, cx);
             }
+            // A refused lock's note outlives the late edit that brought the name it names.
+            let still_refused = self.saved_secrets.contains(&name);
             self.rows[ix].named = name;
-            if self
-                .name_note
-                .as_ref()
-                .is_some_and(|(note, _)| note == input)
-            {
+            if !still_refused && (self.name_note.as_ref()).is_some_and(|(note, _)| note == input) {
                 self.name_note = None;
             }
         }
@@ -708,10 +706,14 @@ impl EnvVarTable {
     fn refuse_name(&mut self, ix: usize, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         let row = &self.rows[ix];
         set_text(&row.name, &row.named.clone(), window, cx);
+        self.note_saved_secret(ix, name, cx);
+    }
+
+    fn note_saved_secret(&mut self, ix: usize, name: &str, cx: &mut Context<Self>) {
         let note = format!(
             "\"{name}\" is a saved secret. Choose another name, or remove it and save first."
         );
-        self.name_note = Some((row.name.clone(), note));
+        self.name_note = Some((self.rows[ix].name.clone(), note));
         cx.notify();
     }
 
@@ -884,9 +886,16 @@ impl EnvVarTable {
         cx: &mut Context<Self>,
     ) {
         if let Some(row) = self.rows.get_mut(ix).filter(|r| r.meta.unsaved) {
-            if row.name.read(cx).value().is_empty() {
+            let name = row.name.read(cx).value().to_string();
+            if name.is_empty() {
                 return;
             }
+            // Locking under a saved secret's name would make the row that secret, so a blur
+            // would store over it; the input's text counts, as its last edit may not have landed.
+            if secret && self.saved_secrets.contains(&name) {
+                return self.note_saved_secret(ix, &name, cx);
+            }
+            let row = &mut self.rows[ix];
             row.meta.secret = secret;
             row.committed = String::new();
             row.shown = false;
