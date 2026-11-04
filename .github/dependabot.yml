@@ -19,5 +19,15 @@ updates:
       cargo:
         patterns:
           - "*"
+    # Held back: similar 3 changes line-diff output, ico 0.6 changes the committed
+    # icon export, and tree-sitter-graphql and quick-xml must match gpui's versions.
     ignore:
       - dependency-name: "gpui*"
+      - dependency-name: "similar"
+        versions: [">=3"]
+      - dependency-name: "ico"
+        versions: [">=0.6"]
+      - dependency-name: "tree-sitter-graphql"
+        versions: [">=0.2"]
+      - dependency-name: "quick-xml"
+        versions: [">=0.42"]
