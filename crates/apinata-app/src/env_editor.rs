@@ -1418,7 +1418,12 @@ impl EnvEditor {
         cx: &mut Context<Self>,
         act: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) {
-        if self.checking || !self.owes_replace_check(true, cx) {
+        // Typing a Save would ask about must not leave while another check holds the prompt.
+        let owed = self.owes_replace_check(true, cx);
+        if self.checking && owed {
+            return;
+        }
+        if self.checking || !owed {
             return self.after_held(window, cx, act);
         }
         let read = self.begin_replace_check(true, cx);

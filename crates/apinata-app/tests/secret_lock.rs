@@ -63,6 +63,7 @@ fn fix(cx: &mut TestAppContext, kind: Kind, vars: &str) -> Fix {
                 ("opencollection.yml", ROOT),
                 ("environments/dev.yml", &file),
                 ("environments/prod.yml", "name: prod\n"),
+                ("environments/stage.yml", "name: stage\n"),
             ]);
             let (store, key) = seeded(&col);
             let (state, ws, root) = open_dir_with(cx, &col, store.clone());
@@ -881,6 +882,10 @@ fn a_switch_asks_over_a_stored_value(cx: &mut TestAppContext) {
     answer_confirm(cx, REPLACE);
     assert_eq!(f.selected(cx).as_deref(), Some("prod"));
     assert_eq!(f.held().as_deref(), Some("typed"));
+    // Replace saves the draft as Create's does; the held row was already in the file.
+    let saved =
+        "name: dev\nvariables:\n  - name: host\n    value: a\n  - secret: true\n    name: old\n";
+    assert_eq!(f.bytes(), saved);
 }
 
 #[gpui_kit::test]
@@ -1050,6 +1055,35 @@ fn add_to_environment_asks_before_dropping_a_new_rows_typing(cx: &mut TestAppCon
     assert_eq!(f.selected(cx).as_deref(), Some("prod"));
     assert_eq!(f.held().as_deref(), Some("typed"));
     assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
+// A second click while the first switch's check reads the store must not switch unasked.
+#[gpui_kit::test]
+fn a_switch_during_a_check_waits_for_its_answer(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    frame(cx, f.win);
+    cx.update_window(f.win, |_, w, cx| {
+        w.click(("env-item", 1usize), cx);
+        w.click(("env-item", 2usize), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?")
+    );
+    answer_confirm(cx, CANCEL);
+    assert!(!confirm_open(cx), "one prompt");
+    assert_eq!(
+        f.selected(cx).as_deref(),
+        Some("dev"),
+        "the selection stays"
+    );
+    assert!(f.typing(cx), "the typing stays");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    assert_eq!(f.bytes(), before);
 }
 
 // With nothing stored there is nothing to replace: the switch goes ahead and saves nothing.
