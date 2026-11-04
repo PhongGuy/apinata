@@ -1775,6 +1775,45 @@ mod tabs {
         cancel_then_confirm(cx, SaveAll);
     }
 
+    // A Cancel on the Replace prompt keeps only the environment unsaved; a dirty request tab the
+    // prompt does not touch is saved anyway.
+    #[gpui_kit::test]
+    fn a_cancelled_save_all_still_saves_the_other_tabs(cx: &mut TestAppContext) {
+        let dev = format!("name: dev\n{HOST}");
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            ("a.yml", &request("a", "http://x")),
+            ("environments/dev.yml", &dev),
+        ]);
+        let (store, key) = seeded(&col);
+        let s = started_with_store(cx, &col, store.clone());
+        open_tab(cx, &s.ws, &s.root, "a.yml");
+        let root = s.root.clone();
+        s.ws.update(cx, |w, cx| w.send(&root, edit_url("a.yml", "http://y"), cx));
+        cx.run_until_parked();
+        cx.update_window(s.win, |_, w, cx| {
+            w.within("title-bar").click("environments", cx)
+        })
+        .unwrap();
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-name", 1usize), "old");
+        cx.run_until_parked();
+        click_lock(cx, s.win, 1);
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-value", 1usize), "typed");
+        cx.run_until_parked();
+        let before = file(&col);
+        cx.dispatch_action(s.win, SaveAll);
+        cx.run_until_parked();
+        answer_confirm(cx, CANCEL);
+        cx.run_until_parked();
+        let request = std::fs::read_to_string(col.path().join("a.yml")).unwrap();
+        assert!(request.contains("http://y"), "{request}");
+        assert_eq!(file(&col), before);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+        assert!(typing(cx, &s), "the typing stays");
+    }
+
     #[gpui_kit::test]
     fn closing_a_tab_through_save_asks(cx: &mut TestAppContext) {
         let (col, s, store, key) = app(cx);
