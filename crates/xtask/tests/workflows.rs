@@ -373,3 +373,28 @@ fn each_build_uploads_its_platform_directory_flat() {
         "target/dist/${{ runner.os == 'Linux' && 'linux' || runner.os == 'macOS' && 'macos' || 'windows' }}/"
     );
 }
+
+#[test]
+fn the_draft_uses_generated_notes_from_full_history() {
+    // The notes list commits since the previous tag, so the checkout needs every
+    // commit and tag, and the draft takes the generated file instead of GitHub's.
+    let rel = load("release.yml");
+    let all = steps(&rel, "checksums");
+    let checkout = all
+        .iter()
+        .find(|s| str_of(&s["uses"]).starts_with("actions/checkout@"))
+        .expect("a checkout");
+    assert_eq!(checkout["with"]["fetch-depth"], Value::Number(0.into()));
+    let draft = all
+        .iter()
+        .map(|s| str_of(&s["run"]))
+        .find(|r| r.contains("gh release create"))
+        .unwrap();
+    let notes = draft
+        .find(r#"scripts/release.sh notes "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" dist release-notes.md"#)
+        .expect("drafts the notes");
+    let create = draft.find("gh release create").unwrap();
+    assert!(notes < create, "{draft}");
+    assert!(draft.contains("--notes-file release-notes.md"), "{draft}");
+    assert!(!draft.contains("--generate-notes"), "{draft}");
+}

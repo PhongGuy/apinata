@@ -351,8 +351,104 @@ stable_copies() {
   fi
 }
 
+# Print the user-facing feat and fix subjects in RANGE, oldest first, as
+# "feat|fix<TAB>description"; scopes for tests, CI, releases, builds and
+# dependencies are housekeeping and left out.
+change_subjects() {
+  git log --no-merges --reverse --format=%s "$1" |
+    sed -nE '/^(feat|fix)\((test|tests|ci|release|build|deps)\)!?:/d
+      s/^(feat|fix)(\([^)]*\))?!?: *(.+)$/\1	\3/p'
+}
+
+# "N noun" with an s for any N but 1.
+plural() {
+  if (($1 == 1)); then echo "1 $2"; else echo "$1 $2s"; fi
+}
+
+# The one-line intro for COUNTS of features and fixes; a person rewords it in the draft.
+notes_intro() {
+  local feats=$1 fixes=$2 first=$3 parts=()
+  if [[ $first == true ]]; then
+    echo "The first release of Apinata."
+    return 0
+  fi
+  ((feats == 0)) || parts+=("adds $(plural "$feats" feature)")
+  ((fixes == 0)) || parts+=("fixes $(plural "$fixes" bug)")
+  case ${#parts[@]} in
+    0) echo "This release has maintenance changes only." ;;
+    1) echo "This release ${parts[0]}." ;;
+    *) echo "This release ${parts[0]} and ${parts[1]}." ;;
+  esac
+}
+
+# Write OUT, the draft notes for TAG in REPO (owner/name): the intro, What's
+# Changed since the previous v* tag, Downloads named from the tag's version,
+# and the install and update notes. DIST tells a signed Windows build from an
+# unsigned one. Runs in the repository, which needs full history and tags.
+release_notes() {
+  local tag=$1 repo=$2 dist=$3 out=$4
+  local v=${tag#v} prev="" range=$tag first=true subjects feats fixes win="" f
+  if prev=$(git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>/dev/null); then
+    range=$prev..$tag
+    first=false
+  fi
+  subjects=$(change_subjects "$range") || return 1
+  feats=$(printf '%s\n' "$subjects" | grep -c '^feat	' || true)
+  fixes=$(printf '%s\n' "$subjects" | grep -c '^fix	' || true)
+  for f in "$dist"/*-setup-unsigned.exe; do
+    [[ -e $f ]] && win=-unsigned
+  done
+  {
+    notes_intro "$feats" "$fixes" "$first"
+    echo
+    echo "## What's Changed"
+    echo
+    if [[ -n $subjects ]]; then
+      printf '%s\n' "$subjects" | sed 's/^[a-z]*	/- /'
+    else
+      echo "- Maintenance only."
+    fi
+    if [[ $first == false ]]; then
+      echo
+      echo "**Full Changelog**: https://github.com/$repo/compare/$prev...$tag"
+    fi
+    cat <<NOTES
+
+## Downloads
+
+| Platform | Desktop app | Command line |
+| --- | --- | --- |
+| Linux x86_64 | \`apinata-app_${v}_amd64.deb\` or \`apinata-app_${v}_x86_64.AppImage\` | \`apinata-$v-x86_64-unknown-linux-gnu.tar.gz\` |
+| Linux arm64 | \`apinata-app_${v}_arm64.deb\` or \`apinata-app_${v}_aarch64.AppImage\` | \`apinata-$v-aarch64-unknown-linux-gnu.tar.gz\` |
+| macOS Apple silicon | \`Apinata_${v}_aarch64.dmg\` | \`apinata-$v-aarch64-apple-darwin.tar.gz\` |
+| macOS Intel | \`Apinata_${v}_x86_64.dmg\` | \`apinata-$v-x86_64-apple-darwin.tar.gz\` |
+| Windows x86_64 | \`apinata-app_${v}_x64-setup$win.exe\` | \`apinata-$v-x86_64-pc-windows-msvc$win.zip\` |
+
+Check a download with \`sha256sum -c SHA256SUMS\`.
+
+## Before you install
+
+NOTES
+    if [[ -n $win ]]; then
+      echo '- **Windows:** the installer and the zip are not code-signed, so SmartScreen warns on first run. Choose "More info", then "Run anyway".'
+    else
+      echo '- **Windows:** the installer and the zip are signed with a certificate Windows does not trust yet, so SmartScreen warns on first run. Choose "More info", then "Run anyway".'
+    fi
+    cat <<'NOTES'
+- **macOS:** the app is not notarised, so Gatekeeper blocks the first open. Right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Apinata.app`. For the command line, run `xattr -d com.apple.quarantine apinata`.
+- **Linux:** no extra steps.
+
+## Updates
+
+This release checks for signed updates. Later versions install in place from inside the app, after verifying the signature against the key built into this release.
+
+On macOS, the system may ask for keychain access the first time the app starts after an update.
+NOTES
+  } >"$out"
+}
+
 usage() {
-  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT" >&2
+  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO DIST OUT" >&2
   exit 2
 }
 
@@ -384,6 +480,10 @@ main() {
     stable)
       (($# == 3)) || usage
       stable_copies "$2" "$3"
+      ;;
+    notes)
+      (($# == 5)) || usage
+      release_notes "$2" "$3" "$4" "$5"
       ;;
     *) usage ;;
   esac
