@@ -73,6 +73,10 @@ pub(crate) fn installer() -> Installer {
         g.set("__verify", Function::new(ctx.clone(), verify_host)?)?;
         g.set("__keyObject", Function::new(ctx.clone(), key_object_host)?)?;
         g.set("__jwkKey", Function::new(ctx.clone(), jwk_key_host)?)?;
+        g.set(
+            "__keyDetails",
+            Function::new(ctx.clone(), key_details_host)?,
+        )?;
         g.set("__jwkParts", Function::new(ctx.clone(), jwk_parts_host)?)?;
         ctx.eval::<(), _>(CRYPTO_JS)
     })
@@ -1119,4 +1123,53 @@ fn key_object_host<'js>(
     key_object(&KeyInput::Bytes(key), public, passphrase.as_deref())
         .map(|(kind, der)| List((kind.to_string(), der)))
         .map_err(|e| throw(&ctx, &e))
+}
+
+/// The curve OID inside the algorithm identifier of a PKCS#8 (`private`) or SPKI key.
+fn curve_oid(der: &[u8], private: bool) -> Option<&[u8]> {
+    let (_, body, _) = element(der)?;
+    let algorithm = if private {
+        let (_, _, rest) = element(body)?;
+        element(rest)?.1
+    } else {
+        element(body)?.1
+    };
+    let (_, _, params) = element(algorithm)?;
+    element(params).map(|(_, oid, _)| oid)
+}
+
+/// `[modulus bits, exponent bytes, curve name]` for a held RSA or EC key; the unused parts are
+/// zero, empty or "". Behind the shim's `asymmetricKeyDetails`.
+fn key_details_host<'js>(
+    ctx: Ctx<'js>,
+    kind: String,
+    der: Vec<u8>,
+    private: bool,
+) -> rquickjs::Result<List<(u32, Vec<u8>, String)>> {
+    let bad = || throw(&ctx, BAD_PRIVATE);
+    match kind.as_str() {
+        "rsa" => {
+            let (n, e) = if private {
+                let parts = super::crypto_keys::rsa_private_parts(&der).ok_or_else(bad)?;
+                (
+                    BigUint::from_bytes_be(&parts[0]),
+                    BigUint::from_bytes_be(&parts[1]),
+                )
+            } else {
+                rsa_public_parts(&der).ok_or_else(bad)?
+            };
+            let bits = u32::try_from(n.bits()).map_err(|_| bad())?;
+            Ok(List((bits, e.to_bytes_be(), String::new())))
+        }
+        "ec" => {
+            let name = match curve_oid(&der, private).ok_or_else(bad)? {
+                OID_P256 => "prime256v1",
+                OID_P384 => "secp384r1",
+                OID_P521 => "secp521r1",
+                _ => return Err(bad()),
+            };
+            Ok(List((0, Vec::new(), name.to_string())))
+        }
+        _ => Ok(List((0, Vec::new(), String::new()))),
+    }
 }

@@ -1075,3 +1075,67 @@ console.log("failed", failed > 40);"#;
         }
     }
 }
+
+/// `asymmetricKeyDetails` of private and public KeyObjects matches Node 24, including the BigInt `publicExponent`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn asymmetric_key_details_match_node() {
+    let keys = [
+        ("RSA", include_str!("fixtures/jwt/rsa.pem")),
+        ("RSA_PUB", include_str!("fixtures/jwt/rsa.pub.pem")),
+        ("RSA512", include_str!("fixtures/rsa-sizes/rsa512.pem")),
+        (
+            "RSA1024_PUB",
+            include_str!("fixtures/rsa-sizes/rsa1024.pub.pem"),
+        ),
+        ("RSA8192", include_str!("fixtures/rsa-sizes/rsa8192.pem")),
+        ("EC256", include_str!("fixtures/jwt/ec256-sec1.pem")),
+        ("EC256_PUB", include_str!("fixtures/jwt/ec256.pub.pem")),
+        ("EC384", include_str!("fixtures/jwt/ec384.pem")),
+        ("EC384_PUB", include_str!("fixtures/jwt/ec384.pub.pem")),
+        ("EC521", include_str!("fixtures/jwt/ec521.pem")),
+        ("EC521_PUB", include_str!("fixtures/jwt/ec521.pub.pem")),
+        // The 2048-bit key as PKCS#8 with an empty `[0]` attributes field after the key.
+        (
+            "RSA_ATTRS",
+            include_str!("fixtures/crypto-keys/rsa-attrs.pkcs8.pem"),
+        ),
+    ];
+    let mut code = String::from("const P = {};\n");
+    for (name, pem) in keys {
+        code.push_str(&format!("P.{name} = {pem:?};\n"));
+    }
+    code.push_str(
+        r#"const ED = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIJ1hsZ3v/VpguoRK9JLsLMREScVpezJpGXA7rAMcrn9g\n-----END PRIVATE KEY-----\n";
+const show = (k) => JSON.stringify(k.asymmetricKeyDetails, (_, v) => (typeof v === "bigint" ? v + "n" : v));
+for (const n of Object.keys(P)) {
+  const k = n.endsWith("PUB") ? crypto.createPublicKey(P[n]) : crypto.createPrivateKey(P[n]);
+  console.log(n, k.type, k.asymmetricKeyType, show(k));
+}
+const ed = crypto.createPrivateKey(ED);
+console.log("ED", show(ed), show(crypto.createPublicKey(ed)));
+const rsa = crypto.createPrivateKey(P.RSA).asymmetricKeyDetails;
+const same = (k) => k.asymmetricKeyDetails === k.asymmetricKeyDetails;
+console.log(same(crypto.createPrivateKey(P.RSA)), same(crypto.createPublicKey(P.EC384_PUB)), same(ed));
+console.log(typeof rsa.publicExponent, show(crypto.createPublicKey(crypto.createPrivateKey(P.RSA))), show(crypto.createSecretKey(Buffer.from("a"))));"#,
+    );
+    assert_eq!(
+        run_crypto(&code).await,
+        [
+            r#"log:RSA private rsa {"modulusLength":2048,"publicExponent":"65537n"}"#,
+            r#"log:RSA_PUB public rsa {"modulusLength":2048,"publicExponent":"65537n"}"#,
+            r#"log:RSA512 private rsa {"modulusLength":512,"publicExponent":"65537n"}"#,
+            r#"log:RSA1024_PUB public rsa {"modulusLength":1024,"publicExponent":"65537n"}"#,
+            r#"log:RSA8192 private rsa {"modulusLength":8192,"publicExponent":"65537n"}"#,
+            r#"log:EC256 private ec {"namedCurve":"prime256v1"}"#,
+            r#"log:EC256_PUB public ec {"namedCurve":"prime256v1"}"#,
+            r#"log:EC384 private ec {"namedCurve":"secp384r1"}"#,
+            r#"log:EC384_PUB public ec {"namedCurve":"secp384r1"}"#,
+            r#"log:EC521 private ec {"namedCurve":"secp521r1"}"#,
+            r#"log:EC521_PUB public ec {"namedCurve":"secp521r1"}"#,
+            r#"log:RSA_ATTRS private rsa {"modulusLength":2048,"publicExponent":"65537n"}"#,
+            "log:ED {} {}",
+            "log:true true false",
+            r#"log:bigint {"modulusLength":2048,"publicExponent":"65537n"} undefined"#,
+        ]
+    );
+}

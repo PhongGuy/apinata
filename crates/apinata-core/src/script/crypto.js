@@ -4,8 +4,8 @@
 // calls, and KeyObjects keep their bytes here. Node's `Received` text is kept for values that
 // cannot be secret; a passphrase or a JWK member is described by its type alone.
 (() => {
-  const NAMES = ["__timingSafeEqual", "__pbkdf2", "__scrypt", "__cipher", "__sign", "__verify", "__keyObject", "__jwkKey", "__jwkParts"];
-  const [equal, pbkdf2, scrypt, cipher, sign, verify, keyObject, jwkKey, jwkParts] = NAMES.map((n) => globalThis[n]);
+  const NAMES = ["__timingSafeEqual", "__pbkdf2", "__scrypt", "__cipher", "__sign", "__verify", "__keyObject", "__jwkKey", "__jwkParts", "__keyDetails"];
+  const [equal, pbkdf2, scrypt, cipher, sign, verify, keyObject, jwkKey, jwkParts, keyDetails] = NAMES.map((n) => globalThis[n]);
   for (const n of NAMES) delete globalThis[n];
   const crypto = globalThis.crypto;
   const Buf = () => globalThis.Buffer;
@@ -110,6 +110,17 @@
     }
     get type() { return KEY_DATA.get(this).type; }
     get asymmetricKeyType() { return KEY_DATA.get(this).kind; }
+    // Node builds the object once for RSA and EC keys and anew on each read for Ed25519.
+    get asymmetricKeyDetails() {
+      const data = KEY_DATA.get(this);
+      if (data.type === "secret") return undefined;
+      if (data.kind === "ed25519") return {};
+      if (data.details === undefined) {
+        const [bits, exponent, curve] = keyDetails(data.kind, data.bytes, data.type === "private");
+        data.details = data.kind === "ec" ? { namedCurve: curve } : { modulusLength: bits, publicExponent: BigInt("0x" + (Buf().from(exponent).toString("hex") || "0")) };
+      }
+      return data.details;
+    }
     get symmetricKeySize() { const k = KEY_DATA.get(this); return k.type === "secret" ? k.bytes.length : undefined; }
     export(options) {
       const { type, kind, bytes } = KEY_DATA.get(this);

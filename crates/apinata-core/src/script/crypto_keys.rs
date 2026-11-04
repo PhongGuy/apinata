@@ -361,7 +361,7 @@ fn pkcs8_rsa_key(der: &[u8]) -> Option<&[u8]> {
 }
 
 /// The eight RSAPrivateKey integers of a PKCS#8 key, None unless it is plain `rsaEncryption`.
-fn rsa_private_parts(der: &[u8]) -> Option<Vec<Vec<u8>>> {
+pub(super) fn rsa_private_parts(der: &[u8]) -> Option<Vec<Vec<u8>>> {
     let (_, key, _) = element(pkcs8_rsa_key(der)?)?;
     let (_, _, mut rest) = element(key)?;
     let mut parts = Vec::with_capacity(8);
