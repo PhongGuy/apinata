@@ -1094,6 +1094,11 @@ async fn asymmetric_key_details_match_node() {
         ("EC384_PUB", include_str!("fixtures/jwt/ec384.pub.pem")),
         ("EC521", include_str!("fixtures/jwt/ec521.pem")),
         ("EC521_PUB", include_str!("fixtures/jwt/ec521.pub.pem")),
+        // The 2048-bit key as PKCS#8 with an empty `[0]` attributes field after the key.
+        (
+            "RSA_ATTRS",
+            include_str!("fixtures/crypto-keys/rsa-attrs.pkcs8.pem"),
+        ),
     ];
     let mut code = String::from("const P = {};\n");
     for (name, pem) in keys {
@@ -1109,6 +1114,8 @@ for (const n of Object.keys(P)) {
 const ed = crypto.createPrivateKey(ED);
 console.log("ED", show(ed), show(crypto.createPublicKey(ed)));
 const rsa = crypto.createPrivateKey(P.RSA).asymmetricKeyDetails;
+const same = (k) => k.asymmetricKeyDetails === k.asymmetricKeyDetails;
+console.log(same(crypto.createPrivateKey(P.RSA)), same(crypto.createPublicKey(P.EC384_PUB)), same(ed));
 console.log(typeof rsa.publicExponent, show(crypto.createPublicKey(crypto.createPrivateKey(P.RSA))), show(crypto.createSecretKey(Buffer.from("a"))));"#,
     );
     assert_eq!(
@@ -1125,7 +1132,9 @@ console.log(typeof rsa.publicExponent, show(crypto.createPublicKey(crypto.create
             r#"log:EC384_PUB public ec {"namedCurve":"secp384r1"}"#,
             r#"log:EC521 private ec {"namedCurve":"secp521r1"}"#,
             r#"log:EC521_PUB public ec {"namedCurve":"secp521r1"}"#,
+            r#"log:RSA_ATTRS private rsa {"modulusLength":2048,"publicExponent":"65537n"}"#,
             "log:ED {} {}",
+            "log:true true false",
             r#"log:bigint {"modulusLength":2048,"publicExponent":"65537n"} undefined"#,
         ]
     );
