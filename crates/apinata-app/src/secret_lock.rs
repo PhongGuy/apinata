@@ -62,28 +62,47 @@ impl LockStep {
     }
 }
 
+/// How a check of what a Save would replace came out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplaceAnswer {
+    /// No stored value would be replaced, so nothing was asked.
+    Nothing,
+    /// The person agreed to replace the values named.
+    Replace,
+    /// A read failed, or the prompt was cancelled or went unanswered.
+    Stop,
+}
+
 /// Whether a Save may go ahead once `reads` have named what it would replace: `None` from a
 /// read means it failed and has said so. All the names share one prompt.
 pub async fn replace_agreed(
     reads: Vec<Task<Option<Vec<String>>>>,
     cx: &mut AsyncWindowContext,
 ) -> bool {
+    replace_answer(reads, cx).await != ReplaceAnswer::Stop
+}
+
+/// [`replace_agreed`], telling apart a Save that asked from one with nothing to ask.
+pub async fn replace_answer(
+    reads: Vec<Task<Option<Vec<String>>>>,
+    cx: &mut AsyncWindowContext,
+) -> ReplaceAnswer {
     let mut names = Vec::new();
     for read in reads {
         match read.await {
             Some(found) => names.extend(found),
-            None => return false,
+            None => return ReplaceAnswer::Stop,
         }
     }
     names.sort();
     names.dedup();
     if names.is_empty() {
-        return true;
+        return ReplaceAnswer::Nothing;
     }
     let spec = confirm::replace_secret_ask(&names);
     let opened = cx.update(|window: &mut Window, cx| confirm::ask(spec, window, cx));
     match opened {
-        Ok(answer) => answer.recv().await == Ok(1),
-        Err(_) => false,
+        Ok(answer) if answer.recv().await == Ok(1) => ReplaceAnswer::Replace,
+        _ => ReplaceAnswer::Stop,
     }
 }

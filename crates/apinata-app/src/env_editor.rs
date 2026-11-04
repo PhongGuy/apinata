@@ -28,7 +28,7 @@ use crate::env_table::{EnvTableEvent, EnvVarTable, env_rows, env_vars_from};
 use crate::orphan_section::{self, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
 use crate::scroll_follow::FocusFollow;
-use crate::secret_lock::{self, LockStep};
+use crate::secret_lock::{self, LockStep, ReplaceAnswer};
 use crate::snapshot::{CollectionSnapshot, DiskState, EnvView};
 use crate::style::{self, PANE_INSET};
 use crate::ui;
@@ -1384,12 +1384,47 @@ impl EnvEditor {
     fn commit_name(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         // Both land by selecting a new name, which would take held typing with it.
         let text = text.to_owned();
+        let creating = self.naming == Some(Naming::Create) && !text.is_empty();
+        if creating && !self.checking && self.owes_replace_check(true, cx) {
+            return self.create_asking(text, window, cx);
+        }
+        self.commit_name_after_held(text, window, cx);
+    }
+
+    fn commit_name_after_held(
+        &mut self,
+        text: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !text.is_empty() && self.holds_typing(cx) {
             return self.after_held(window, cx, move |e, window, cx| {
                 e.commit_name_now(&text, window, cx)
             });
         }
         self.commit_name_now(&text, window, cx);
+    }
+
+    // A create leaves the table's typing behind, so it runs the Save check first: Replace saves
+    // as Save does and then creates, Cancel or a failed read creates nothing and keeps the typing.
+    fn create_asking(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        let read = self.begin_replace_check(true, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let answer = secret_lock::replace_answer(vec![read], cx).await;
+            this.update_in(cx, |e, window, cx| {
+                e.end_replace_check(answer == ReplaceAnswer::Replace, cx);
+                match answer {
+                    ReplaceAnswer::Replace => {
+                        e.save(cx);
+                        e.commit_name_now(&text, window, cx);
+                    }
+                    ReplaceAnswer::Nothing => e.commit_name_after_held(text, window, cx),
+                    ReplaceAnswer::Stop => {}
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn commit_name_now(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {

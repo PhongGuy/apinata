@@ -895,6 +895,87 @@ fn a_failed_read_stops_a_switch(cx: &mut TestAppContext) {
     assert!(f.typing(cx));
 }
 
+impl Fix {
+    /// New environment, a name, Enter; a field still open from a cancelled create is reused.
+    fn create(&self, cx: &mut TestAppContext, name: &str) {
+        frame(cx, self.win);
+        if !present(cx, self.win, "env-name-input") {
+            cx.update_window(self.win, |_, w, cx| w.click("env-create", cx))
+                .unwrap();
+            frame(cx, self.win);
+        }
+        replace_input(cx, self.win, None, "env-name-input", name);
+        cx.update_window(self.win, |_, w, cx| w.press("enter", cx))
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn names(&self, cx: &mut TestAppContext) -> Vec<String> {
+        let (ws, root) = self.outside.as_ref().expect("a collection");
+        ws.read_with(cx, |w, cx| {
+            let snapshot = w.snapshot(root, cx).expect("a snapshot");
+            let envs = snapshot.content.environments.iter();
+            envs.map(|e| e.name.clone()).collect()
+        })
+    }
+}
+
+// Create asks as Save All does: Cancel keeps the typing and creates nothing, Replace saves.
+#[gpui_kit::test]
+fn create_asks_over_a_stored_value(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.create(cx, "qa");
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?"),
+        "the create asks"
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(
+        f.selected(cx).as_deref(),
+        Some("dev"),
+        "the selection stays"
+    );
+    assert!(!f.names(cx).contains(&"qa".to_owned()), "nothing created");
+    assert!(f.typing(cx), "the typing stays");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    f.create(cx, "qa");
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
+// With nothing stored there is nothing to replace: Create goes ahead unasked and saves nothing.
+#[gpui_kit::test]
+fn create_with_nothing_stored_asks_nothing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.store.delete(&f.key).unwrap();
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    f.create(cx, "qa");
+    assert!(!confirm_open(cx));
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert_eq!(f.bytes(), before);
+    assert_eq!(f.held(), None);
+}
+
+// A failed read stops the create and keeps the typing, as it stops a Save.
+#[gpui_kit::test]
+fn a_failed_read_stops_a_create(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.store.fail_get.store(true, Ordering::SeqCst);
+    f.create(cx, "qa");
+    assert!(!confirm_open(cx));
+    assert!(f.shows_error(cx));
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(f.typing(cx));
+    f.store.fail_get.store(false, Ordering::SeqCst);
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+}
+
 // A click on another environment asks through the close guard, whose Save checks the store.
 fn switch_in_the_global_list(cx: &mut TestAppContext, f: &Fix) {
     frame(cx, f.win);
