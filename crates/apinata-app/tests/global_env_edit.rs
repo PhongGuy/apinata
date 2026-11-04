@@ -942,3 +942,59 @@ fn an_outside_rename_of_the_global_secret_replaces_the_typing(cx: &mut TestAppCo
     let (_g, _ws, _editor, shown) = typed_then_reloaded(cx, &[("g.yml", &renamed)]);
     assert_eq!(shown, "");
 }
+
+// A global environment's value in the open editor's first row.
+fn first_value(
+    cx: &mut TestAppContext,
+    editor: &Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) -> String {
+    let rows = editor.read_with(cx, |e, cx| e.table().read(cx).rows(cx));
+    rows.first().map(|r| r.value.clone()).unwrap_or_default()
+}
+
+const HOST_A: &str = "name: g\nvariables:\n  - name: host\n    value: a\n";
+const HOST_OUTSIDE: &str = "name: g\nvariables:\n  - name: host\n    value: outside\n";
+
+// The watched global directory carries another program's rewrite into the open editor.
+#[gpui_kit::test]
+fn an_outside_edit_shows_in_the_open_global_editor_without_a_click(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (_win, editor) = open_editor(cx, &ws, "g");
+    assert_eq!(first_value(cx, &editor), "a");
+    settle(cx);
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    wait_for(cx, "the outside value in the global editor", |cx| {
+        first_value(cx, &editor) == "outside"
+    });
+}
+
+// The watcher's reload keeps a secret's unsent typing through a change to another variable.
+#[gpui_kit::test]
+fn a_watched_outside_edit_keeps_unsent_global_secret_typing(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", TOK)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (win, editor) = open_editor(cx, &ws, "g");
+    settle(cx);
+    let table = editor.read_with(cx, |e, _| e.table().clone());
+    let input = table.read_with(cx, |t, _| t.value_input(0).unwrap().clone());
+    cx.update_window(win, |_, w, cx| {
+        input.update(cx, |s, cx| s.set_value("typed", w, cx))
+    })
+    .unwrap();
+    let more = format!("{TOK}  - name: host\n    value: a\n");
+    std::fs::write(g.path().join("g.yml"), more).unwrap();
+    wait_for(cx, "the outside variable in the global editor", |cx| {
+        table.read_with(cx, |t, cx| t.rows(cx).len()) == 2
+    });
+    let shown = input.read_with(cx, |i, _| i.value().to_string());
+    assert_eq!(shown, "typed");
+}

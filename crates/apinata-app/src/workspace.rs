@@ -29,7 +29,7 @@ use crate::session::{SavedExample, SavedPanel, SavedPanelKind, SavedTab, Session
 use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
 use crate::tabs::{TabId, TabKind, Tabs};
 use crate::watch::rules::WatchMsg;
-use crate::watch::set::WatchFactory;
+use crate::watch::set::{EventHandler, Watch, WatchFactory};
 use crate::watch::watcher::CollectionWatcher;
 
 /// What happened to the workspace's collections.
@@ -458,6 +458,8 @@ pub struct Workspace {
     // never precedes an edit's write.
     global_reload_waiting: bool,
     global_error: Option<String>,
+    // The watch on the global directory and the task reloading it after each batch.
+    global_watch: Option<(Box<dyn Watch>, Task<()>)>,
     // The reference workspace opened last, read-only, whose environments join the picker.
     reference: Option<ReferenceWorkspace>,
     // Counts the commands that change a document's content, so autosave can tell an edit
@@ -517,6 +519,7 @@ impl Workspace {
             global_draining: false,
             global_reload_waiting: false,
             global_error: None,
+            global_watch: None,
             reference: None,
             edit_generation: 0,
             git_options: None,
@@ -1174,7 +1177,38 @@ impl Workspace {
     /// session's saved global becomes active, or none (and the session forgets it) when gone.
     pub fn set_global_dir(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
         self.global_dir = Some(dir);
+        self.sync_global_watch(cx);
         self.reload_globals(cx);
+    }
+
+    // Watches the global directory while there is a factory, so another program's edit is
+    // reloaded as a collection's is. The directory is made first, so a fresh install is watched
+    // from its first environment; one that cannot be watched is read on demand only.
+    fn sync_global_watch(&mut self, cx: &mut Context<Self>) {
+        self.global_watch = None;
+        let (Some(factory), Some(dir)) = (self.factory.clone(), self.global_dir.clone()) else {
+            return;
+        };
+        let (tx, batches) = async_channel::unbounded();
+        let handler: EventHandler = Box::new(move |_| {
+            let _ = tx.try_send(());
+        });
+        let _ = std::fs::create_dir_all(&dir);
+        let Ok(mut watch) = factory(handler) else {
+            return;
+        };
+        if watch.watch(&dir).is_err() {
+            return;
+        }
+        let pump = cx.spawn(async move |this, cx| {
+            while batches.recv().await.is_ok() {
+                while batches.try_recv().is_ok() {}
+                if this.update(cx, |w, cx| w.reload_globals(cx)).is_err() {
+                    break;
+                }
+            }
+        });
+        self.global_watch = Some((watch, pump));
     }
 
     /// Re-read the directory off the main thread and publish it; nothing without a directory.
@@ -1748,6 +1782,7 @@ impl Workspace {
         for root in roots {
             self.sync_watch(&root, cx);
         }
+        self.sync_global_watch(cx);
     }
 
     /// Turns git status on with `options` and refreshes every open collection, or off with
