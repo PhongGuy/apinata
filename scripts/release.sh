@@ -353,10 +353,10 @@ stable_copies() {
 
 # Print the user-facing feat and fix subjects in RANGE, oldest first, as
 # "feat|fix<TAB>description"; scopes for tests, CI, releases, builds and
-# dependencies are housekeeping and left out.
+# dependencies are housekeeping and left out, alone or as a comma list.
 change_subjects() {
   git log --no-merges --reverse --format=%s "$1" |
-    sed -nE '/^(feat|fix)\((test|tests|ci|release|build|deps)\)!?:/d
+    sed -nE '/^(feat|fix)\(((test|tests|ci|release|build|deps) *, *)*(test|tests|ci|release|build|deps)\)!?:/d
       s/^(feat|fix)(\([^)]*\))?!?: *(.+)$/\1	\3/p'
 }
 
@@ -388,7 +388,8 @@ notes_intro() {
 release_notes() {
   local tag=$1 repo=$2 dist=$3 out=$4
   local v=${tag#v} prev="" range=$tag first=true subjects feats fixes win="" f
-  if prev=$(git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>/dev/null); then
+  # A pre-release tag (v1.0.0-rc.1) is never the base of a release.
+  if prev=$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$tag^" 2>/dev/null); then
     range=$prev..$tag
     first=false
   fi

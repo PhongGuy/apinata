@@ -7,14 +7,24 @@ use tempfile::TempDir;
 
 const REPO: &str = "example/apinata";
 
-/// Run git in DIR, isolated from the user's config and hooks.
-fn git(dir: &Path, home: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(dir)
+/// A command in DIR with git isolated from the user's config and from any
+/// repository a calling hook points git at.
+fn isolated(program: &str, dir: &Path, home: &Path) -> Command {
+    let mut cmd = Command::new(program);
+    cmd.current_dir(dir)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
         .env("HOME", home)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null");
+    cmd
+}
+
+/// Run git in DIR, isolated from the user's config and hooks.
+fn git(dir: &Path, home: &Path, args: &[&str]) {
+    let out = isolated("git", dir, home)
+        .args(args)
         .env("GIT_AUTHOR_NAME", "Test")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
         .env("GIT_COMMITTER_NAME", "Test")
@@ -49,15 +59,12 @@ fn notes(t: &TempDir, tag: &str, files: &[&str]) -> String {
         std::fs::write(dist.join(f), b"x").unwrap();
     }
     let out_file = t.path().join("notes.md");
-    let out = Command::new("bash")
+    let repo = t.path().join("repo");
+    let out = isolated("bash", &repo, &t.path().join("home"))
         .arg(xtask::workspace_root().join("scripts/release.sh"))
         .args(["notes", tag, REPO])
         .arg(&dist)
         .arg(&out_file)
-        .current_dir(t.path().join("repo"))
-        .env("HOME", t.path().join("home"))
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .output()
         .unwrap();
     assert!(out.status.success(), "{out:?}");
@@ -230,4 +237,49 @@ fn before_you_install_and_updates_cover_each_platform() {
         updates.contains("install in place") && updates.contains("keychain"),
         "{updates}"
     );
+}
+
+#[test]
+fn a_pre_release_tag_is_not_the_previous_release() {
+    let t = history(&[
+        "feat: one",
+        "tag:v0.1.0",
+        "feat: two",
+        "tag:v0.2.0-rc.1",
+        "feat: three",
+        "tag:v0.2.0",
+    ]);
+    let text = notes(&t, "v0.2.0", &[]);
+    let changed = section(&text, "What's Changed");
+    let items: Vec<&str> = changed.lines().filter(|l| l.starts_with("- ")).collect();
+    assert_eq!(items, ["- two", "- three"], "{changed}");
+    assert!(changed.contains("compare/v0.1.0...v0.2.0"), "{changed}");
+}
+
+#[test]
+fn housekeeping_scopes_are_left_out_inside_a_comma_list() {
+    let t = history(&[
+        "feat: base",
+        "tag:v0.1.0",
+        "fix(ci, deps): x",
+        "fix(deps,build): w",
+        "fix(app, core): y",
+        "tag:v0.2.0",
+    ]);
+    let text = notes(&t, "v0.2.0", &[]);
+    let items: Vec<&str> = section(&text, "What's Changed")
+        .lines()
+        .filter(|l| l.starts_with("- "))
+        .collect();
+    assert_eq!(items, ["- y"]);
+}
+
+#[test]
+fn the_helper_removes_the_variables_that_redirect_git() {
+    let t = tempfile::tempdir().unwrap();
+    let cmd = isolated("git", t.path(), t.path());
+    for key in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"] {
+        let set = cmd.get_envs().find(|(k, _)| *k == key);
+        assert_eq!(set, Some((std::ffi::OsStr::new(key), None)), "{key}");
+    }
 }
