@@ -177,7 +177,8 @@ console.log(ret);"#;
             "log:Error Digest method not supported: \"{alg}\" (supported: md5, sha1, sha224, sha256, sha384, sha512; require('crypto-js') has more)"
         )
     };
-    let algorithm = "log:TypeError The \"algorithm\" argument must be of type string";
+    let algorithm =
+        "log:TypeError The \"algorithm\" argument must be of type string. Received undefined";
     let range = "log:RangeError The \"size\" argument must be an integer from 0 to 65536";
     assert_eq!(
         console(&result),
@@ -187,8 +188,8 @@ console.log(ret);"#;
             unsupported("whirlpool"),
             algorithm.into(),
             algorithm.into(),
-            algorithm.into(),
-            "log:TypeError The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView".into(),
+            "log:TypeError The \"hmac\" argument must be of type string. Received type number (1)".into(),
+            "log:TypeError The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (42)".into(),
             "log:Error Digest already called".into(),
             "log:Error Digest already called".into(),
             "log:TypeError The \"size\" argument must be of type number".into(),
