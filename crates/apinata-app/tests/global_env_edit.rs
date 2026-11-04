@@ -1153,3 +1153,118 @@ fn an_idle_watched_global_directory_reloads_nothing(cx: &mut TestAppContext) {
     settle(cx);
     assert_eq!(ws_snap(cx, &ws, &root).seq, before);
 }
+
+// A watch that hands each handler to the test, so it can deliver any batch it likes.
+struct Quiet;
+impl apinata_app::watch::set::Watch for Quiet {
+    fn watch(&mut self, _: &std::path::Path) -> Result<(), apinata_app::watch::set::WatchError> {
+        Ok(())
+    }
+    fn unwatch(&mut self, _: &std::path::Path) {}
+}
+
+type Handlers = std::sync::Arc<std::sync::Mutex<Vec<apinata_app::watch::set::EventHandler>>>;
+
+fn capturing() -> (apinata_app::watch::set::WatchFactory, Handlers) {
+    let handlers: Handlers = Default::default();
+    let kept = handlers.clone();
+    let factory: apinata_app::watch::set::WatchFactory = std::sync::Arc::new(move |handler| {
+        kept.lock().unwrap().push(handler);
+        Ok(Box::new(Quiet) as Box<dyn apinata_app::watch::set::Watch>)
+    });
+    (factory, handlers)
+}
+
+fn global_failures(
+    seen: &std::cell::RefCell<Vec<apinata_app::workspace::WorkspaceEvent>>,
+    dir: &std::path::Path,
+) -> Vec<apinata_app::workspace::WorkspaceEvent> {
+    (seen.borrow().iter())
+        .filter(|e| {
+            matches!(e, apinata_app::workspace::WorkspaceEvent::WatchFailed { root, .. }
+                if root == dir)
+        })
+        .cloned()
+        .collect()
+}
+
+// The watch limit reached after the global watch started stops it and says so, once.
+#[gpui_kit::test]
+fn a_global_watch_that_fails_later_is_a_watch_failure(cx: &mut TestAppContext) {
+    use notify_debouncer_full::notify::{Error, ErrorKind};
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    let seen = events(cx, &ws);
+    let (factory, handlers) = capturing();
+    ws.update(cx, |w, cx| w.set_watch_factory(Some(factory), cx));
+    cx.run_until_parked();
+    assert!(global_failures(&seen, g.path()).is_empty());
+    let limit = Error::new(ErrorKind::MaxFilesWatch);
+    let message = limit.to_string();
+    for handler in handlers.lock().unwrap().iter_mut() {
+        handler(Err(vec![Error::new(ErrorKind::MaxFilesWatch)]));
+        handler(Err(vec![Error::new(ErrorKind::MaxFilesWatch)]));
+    }
+    cx.run_until_parked();
+    assert_eq!(
+        global_failures(&seen, g.path()),
+        [apinata_app::workspace::WorkspaceEvent::WatchFailed {
+            root: g.path().to_path_buf(),
+            message
+        }]
+    );
+}
+
+// Once the file is back to what the editor loaded, the changed-on-disk banner goes away.
+#[gpui_kit::test]
+fn the_global_banner_clears_when_the_file_returns_to_base(cx: &mut TestAppContext) {
+    let (g, win, editor) = plain_typing_under_a_watched_edit(cx);
+    std::fs::write(g.path().join("g.yml"), HOST_A).unwrap();
+    wait_for(cx, "the banner to clear", |cx| {
+        !present(cx, win, "banner-changed")
+    });
+    assert_eq!(first_value(cx, &editor), "typed");
+}
+
+// The notify message ends its own sentence before the advice, in both arms.
+#[test]
+fn a_watch_failure_reads_as_two_sentences() {
+    use apinata_app::shell::watch_failed_text;
+    assert_eq!(
+        watch_failed_text(None, "no inotify"),
+        "Stopped watching global environments: no inotify. \
+         Reopen Global environments to pick up changes."
+    );
+    assert_eq!(
+        watch_failed_text(Some("col"), "no inotify"),
+        "Stopped watching col: no inotify. Use Reload collection to pick up changes."
+    );
+    assert_eq!(
+        watch_failed_text(Some("col"), "OS file watch limit reached."),
+        "Stopped watching col: OS file watch limit reached. Use Reload collection to pick up changes."
+    );
+}
+
+// Watching never makes a missing global directory; the first saved environment does, and
+// from then on another program's file there is picked up.
+#[gpui_kit::test]
+fn the_global_directory_is_made_by_the_first_save_not_by_watching(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_c, base, _s, ws) = start(cx, &[]);
+    let dir = base.path().join("environments");
+    let seen = events(cx, &ws);
+    let set = dir.clone();
+    ws.update(cx, |w, cx| w.set_global_dir(set, cx));
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    cx.run_until_parked();
+    assert!(!dir.exists(), "watching made the directory");
+    assert!(global_failures(&seen, &dir).is_empty());
+    edit(cx, &ws, GlobalOp::Create("g".into()));
+    assert!(dir.exists());
+    settle(cx);
+    std::fs::write(dir.join("h.yml"), HOST_A.replace("name: g", "name: h")).unwrap();
+    wait_for(cx, "the outside environment", |cx| {
+        names(cx, &ws).contains(&"h".to_string())
+    });
+}
