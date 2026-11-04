@@ -1672,6 +1672,20 @@ impl TabArea {
         });
     }
 
+    /// Sends the edits that OAuth secrets still focused in the request and settings tabs of
+    /// `root`, or of every collection, owe, as a blur would; true when one went out.
+    pub fn send_pending_secrets(&self, root: Option<&Path>, cx: &mut Context<Self>) -> bool {
+        let ids: Vec<TabId> = (self.workspace.read(cx).tabs().entries().iter())
+            .filter(|e| root.is_none_or(|root| e.root == root))
+            .filter(|e| {
+                let view = self.editors.get(&e.id).map(|(_, view)| view);
+                matches!(view, Some(TabView::Request(_) | TabView::Config(_)))
+            })
+            .map(|e| e.id)
+            .collect();
+        !self.store_pending_secrets(&ids, false, cx).is_empty()
+    }
+
     /// Readies the environment tabs of `root`, or of every collection, for a Save sent from
     /// outside the tab area: runs the Save check, then stores their secret typing. `done` hears
     /// whether it agreed, and runs after this update has ended.
