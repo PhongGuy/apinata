@@ -1154,7 +1154,7 @@ fn an_undo_shifting_the_refused_row_leaves_no_note_on_the_row_that_took_its_plac
 
 #[gpui_kit::test]
 fn a_lock_on_a_settled_plain_row_named_like_a_saved_secret_says_why(cx: &mut TestAppContext) {
-    let (_col, _state, _store, _skey, win, ed) = saved_secret(cx);
+    let (_col, _state, store, skey, win, ed) = saved_secret(cx);
     type_at_end(cx, win, None, ("env-name", 2usize), "old");
     cx.run_until_parked();
     click_lock(cx, win, 2);
@@ -1162,6 +1162,7 @@ fn a_lock_on_a_settled_plain_row_named_like_a_saved_secret_says_why(cx: &mut Tes
     assert!(present(cx, win, "env-name-refused"), "the row says why");
     let note = note_text(cx, &ed);
     assert!(note.is_some_and(|n| n.contains("\"old\" is a saved secret")));
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
 }
 
 #[gpui_kit::test]
