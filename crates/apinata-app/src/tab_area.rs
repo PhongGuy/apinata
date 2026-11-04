@@ -1555,8 +1555,9 @@ impl TabArea {
     }
 
     // Secret typing lives only in its editor until it blurs, and the snapshot's dirty flag
-    // cannot see it, so it is stored before any close or save. An OAuth secret becomes an
-    // edit, and its tab is returned: it is owed a save before the snapshot shows it dirty.
+    // cannot see it, so it is stored before a save; a close prompt holds an OAuth secret until
+    // Save. An OAuth secret becomes an edit, and its tab is returned: it is owed a save before
+    // the snapshot shows it dirty.
     fn store_pending_secrets(
         &self,
         ids: &[TabId],
