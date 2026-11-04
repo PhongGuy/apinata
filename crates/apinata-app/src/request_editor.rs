@@ -1345,6 +1345,11 @@ impl RequestEditor {
         texts
     }
 
+    /// Whether an OAuth secret is typed here but not yet sent.
+    pub fn holds_secret_typing(&self, cx: &App) -> bool {
+        self.auth.read(cx).holds_pending(cx)
+    }
+
     /// Sends the edit an OAuth secret still focused owes, as its blur would, so a save or
     /// send after it finds the secret moved to `.env`; true when one went out.
     pub fn commit_pending_secret(&mut self, cx: &mut Context<Self>) -> bool {

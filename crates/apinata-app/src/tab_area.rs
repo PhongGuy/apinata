@@ -1672,9 +1672,23 @@ impl TabArea {
         });
     }
 
+    /// The targets of the request and settings tabs of `root`, or of every collection, whose
+    /// OAuth secret is typed but not yet sent, as `(root, target)`.
+    pub fn typed_secret_targets(&self, root: Option<&Path>, cx: &App) -> Vec<(PathBuf, Target)> {
+        (self.workspace.read(cx).tabs().entries().iter())
+            .filter(|e| root.is_none_or(|root| e.root == root))
+            .filter(|e| match self.editors.get(&e.id).map(|(_, view)| view) {
+                Some(TabView::Request(editor)) => editor.read(cx).holds_secret_typing(cx),
+                Some(TabView::Config(editor)) => editor.read(cx).holds_secret_typing(cx),
+                _ => false,
+            })
+            .filter_map(|e| Some((e.root.clone(), own_target(&e.kind)?)))
+            .collect()
+    }
+
     /// Sends the edits that OAuth secrets still focused in the request and settings tabs of
-    /// `root`, or of every collection, owe, as a blur would; true when one went out.
-    pub fn send_pending_secrets(&self, root: Option<&Path>, cx: &mut Context<Self>) -> bool {
+    /// `root`, or of every collection, owe, as a blur would.
+    pub fn send_pending_secrets(&self, root: Option<&Path>, cx: &mut Context<Self>) {
         let ids: Vec<TabId> = (self.workspace.read(cx).tabs().entries().iter())
             .filter(|e| root.is_none_or(|root| e.root == root))
             .filter(|e| {
@@ -1683,7 +1697,7 @@ impl TabArea {
             })
             .map(|e| e.id)
             .collect();
-        !self.store_pending_secrets(&ids, false, cx).is_empty()
+        self.store_pending_secrets(&ids, false, cx);
     }
 
     /// Readies the environment tabs of `root`, or of every collection, for a Save sent from
