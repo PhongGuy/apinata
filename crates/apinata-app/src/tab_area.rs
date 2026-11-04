@@ -1447,17 +1447,28 @@ impl TabArea {
         cx: &mut Context<Self>,
         then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) {
-        let editors: Vec<Entity<EnvEditor>> = (self.env_editors(ids).into_iter())
-            .filter(|editor| editor.read(cx).owes_replace_check(true, cx))
-            .collect();
-        if editors.is_empty() {
-            return then(self, window, cx);
-        }
-        self.check_replace(editors, true, window, cx, move |go, area, window, cx| {
+        self.save_check(ids, window, cx, move |go, area, window, cx| {
             if go {
                 then(area, window, cx);
             }
         });
+    }
+
+    // The Save check behind `after_replace_check`; `done` also hears a no.
+    fn save_check(
+        &mut self,
+        ids: &[TabId],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        done: impl FnOnce(bool, &mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        let editors: Vec<Entity<EnvEditor>> = (self.env_editors(ids).into_iter())
+            .filter(|editor| editor.read(cx).owes_replace_check(true, cx))
+            .collect();
+        if editors.is_empty() {
+            return done(true, self, window, cx);
+        }
+        self.check_replace(editors, true, window, cx, done);
     }
 
     fn env_editors(&self, ids: &[TabId]) -> Vec<Entity<EnvEditor>> {
@@ -1676,20 +1687,12 @@ impl TabArea {
             .filter(|e| self.env_editor(e.id).is_some())
             .map(|e| e.id)
             .collect();
-        let editors: Vec<Entity<EnvEditor>> = (self.env_editors(&ids).into_iter())
-            .filter(|editor| editor.read(cx).owes_replace_check(true, cx))
-            .collect();
-        let finish =
-            move |go: bool, area: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
-                if go {
-                    area.store_pending_secrets(&ids, true, cx);
-                }
-                window.defer(cx, move |window, cx| done(go, window, cx));
-            };
-        if editors.is_empty() {
-            return finish(true, self, window, cx);
-        }
-        self.check_replace(editors, true, window, cx, finish);
+        self.save_check(&ids.clone(), window, cx, move |go, area, window, cx| {
+            if go {
+                area.store_pending_secrets(&ids, true, cx);
+            }
+            window.defer(cx, move |window, cx| done(go, window, cx));
+        });
     }
 
     fn is_dirty(&self, entry: &TabEntry, cx: &App) -> bool {
