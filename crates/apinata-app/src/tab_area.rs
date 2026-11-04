@@ -558,7 +558,8 @@ impl TabArea {
             let choice = answer.recv().await;
             this.update_in(cx, |area, window, cx| {
                 match choice {
-                    Ok(2) => area.save_and_close(ids, dirty, window, cx),
+                    // Save ends the hold itself, once its Replace check has answered.
+                    Ok(2) => return area.save_and_close(ids, dirty, window, cx),
                     Ok(1) => area.revert_and_close(ids, dirty, cx),
                     _ => {}
                 }
@@ -570,7 +571,8 @@ impl TabArea {
     }
 
     // Clean tabs close now; each dirty one is saved and waits for its acknowledgement. Dirty
-    // drafts are left to `save_drafts_and_close`, which names them one dialog at a time.
+    // drafts are left to `save_drafts_and_close`, which names them one dialog at a time. The
+    // close prompt's hold ends once the Replace check answers, whatever the answer.
     fn save_and_close(
         &mut self,
         ids: Vec<TabId>,
@@ -588,9 +590,12 @@ impl TabArea {
         // The prompt held back typing in environment rows and OAuth secrets; Save now owns it,
         // and each secret's edit goes out ahead of its tab's save.
         let saving: Vec<TabId> = dirty.iter().map(|e| e.id).collect();
-        self.after_replace_check(&saving, window, cx, move |area, window, cx| {
-            let owed = area.store_pending_secrets(&typed, true, cx);
-            area.send_and_close(clean, dirty, drafts, owed, window, cx);
+        self.save_check(&saving, window, cx, move |go, area, window, cx| {
+            if go {
+                let owed = area.store_pending_secrets(&typed, true, cx);
+                area.send_and_close(clean, dirty, drafts, owed, window, cx);
+            }
+            closing::unhold(window, cx);
         });
     }
 
