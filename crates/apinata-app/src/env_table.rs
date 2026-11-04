@@ -920,6 +920,11 @@ impl EnvVarTable {
         }
         if let Some(row) = self.rows.get(ix) {
             let name = row.name.read(cx).value().to_string();
+            // A plain row named like a saved secret is not that variable; locking it would act
+            // on the saved one, so the row refuses and says why.
+            if secret && !row.meta.secret && self.saved_secrets.contains(&name) {
+                return self.note_saved_secret(ix, &name, cx);
+            }
             if !self.secret_locked && !name.is_empty() {
                 cx.emit(EnvTableEvent::SetSecret { name, secret });
             }
