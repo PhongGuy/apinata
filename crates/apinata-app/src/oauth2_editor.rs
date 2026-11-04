@@ -307,7 +307,12 @@ impl OAuth2Editor {
             subs.push(
                 cx.subscribe_in(state, window, move |t, _, event: &InputEvent, w, cx| {
                     if f.masked() {
-                        if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                        // The blur a close prompt causes keeps the typing; only its Save stores it.
+                        let prompted =
+                            matches!(event, InputEvent::Blur) && crate::closing::prompting(w, cx);
+                        if !prompted
+                            && matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur)
+                        {
                             t.commit_secret(f, cx);
                         }
                         return;
@@ -646,6 +651,13 @@ impl OAuth2Editor {
             *slot = text;
             self.emit(cx);
         }
+    }
+
+    /// Whether a client secret or password is typed but not yet committed.
+    pub fn has_pending_secrets(&self, cx: &App) -> bool {
+        let text = |f: OAuth2Field| self.input(f).read(cx).value().to_string();
+        text(OAuth2Field::ClientSecret) != self.base.client_secret
+            || text(OAuth2Field::Password) != self.base.password
     }
 
     /// Takes a client secret or password typed but not yet committed into the base and

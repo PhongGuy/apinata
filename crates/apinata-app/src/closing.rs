@@ -110,12 +110,11 @@ fn request_window_close(workspace: &Entity<Workspace>, window: &mut Window, cx: 
         ask_for_dialog(guard, workspace, window, cx);
         return false;
     }
-    send_typed_secrets(&CloseScope::Window, window, cx);
     if actor_behind(workspace, None, cx) || holding(&CloseScope::Window, window, cx).is_some() {
         confirm_close(workspace.clone(), CloseScope::Window, window, cx);
         return false;
     }
-    if workspace.read(cx).unsaved(None, cx).is_empty() {
+    if unsaved_in(workspace, &CloseScope::Window, window, cx).is_empty() {
         if runs_in_flight(window, cx).is_empty() {
             return true;
         }
@@ -325,11 +324,7 @@ pub fn confirm_close_or_keep(
     cx: &mut App,
     kept: impl FnOnce(&mut App) + 'static,
 ) {
-    let asking = prompting(window, cx);
-    if !asking {
-        send_typed_secrets(&scope, window, cx);
-    }
-    if !asking && actor_behind(&workspace, only(&scope), cx) {
+    if !prompting(window, cx) && actor_behind(&workspace, only(&scope), cx) {
         let (w, s) = (workspace.clone(), scope.clone());
         settle_then(workspace, scope, window, cx, move |window, cx| {
             ask_to_close(w, s, window, cx, kept)
@@ -373,7 +368,7 @@ fn ask_to_close(
         });
         return;
     }
-    let unsaved = workspace.read(cx).unsaved(only(&scope), cx);
+    let unsaved = unsaved_in(&workspace, &scope, window, cx);
     if unsaved.is_empty() {
         proceed(&workspace, &scope, window, cx, &kept);
         return;
@@ -542,12 +537,26 @@ fn holding(scope: &CloseScope, window: &Window, cx: &App) -> Option<Entity<TabAr
     tab_area(window, cx).filter(|a| a.read(cx).holds_typing_in(only(scope), cx))
 }
 
-// An OAuth secret still focused in scope becomes an edit first, as the prompt's blur would make
-// it, so a close with nothing else unsaved still asks rather than dropping the typing.
-fn send_typed_secrets(scope: &CloseScope, window: &Window, cx: &mut App) {
-    if let Some(area) = tab_area(window, cx) {
-        area.update(cx, |a, cx| a.send_pending_secrets(only(scope), cx));
+// The unsaved work in scope, counting an OAuth secret typed but not yet sent as its tab's
+// target, so the prompt asks about it while the typing stays out of the store.
+fn unsaved_in(
+    workspace: &Entity<Workspace>,
+    scope: &CloseScope,
+    window: &Window,
+    cx: &App,
+) -> Vec<Unsaved> {
+    let mut unsaved = workspace.read(cx).unsaved(only(scope), cx);
+    let typed = tab_area(window, cx)
+        .map(|a| a.read(cx).typed_secret_targets(only(scope), cx))
+        .unwrap_or_default();
+    for (root, target) in typed {
+        match unsaved.iter_mut().find(|u| u.root == root) {
+            Some(u) if u.targets.contains(&target) => {}
+            Some(u) => u.targets.push(target),
+            None => unsaved.push(Unsaved::new(root, vec![target], 0)),
+        }
     }
+    unsaved
 }
 
 // Each window's tab area, for the run check at close.
@@ -646,7 +655,11 @@ async fn save_all(
     let (tx, rx) = async_channel::unbounded::<bool>();
     let ids = Rc::new(RefCell::new(HashSet::new()));
     let started = cx.update(|window, cx| {
-        let unsaved = workspace.read(cx).unsaved(only(&scope), cx);
+        // Typed secrets become edits now, each ahead of the save that writes it.
+        let unsaved = unsaved_in(&workspace, &scope, window, cx);
+        if let Some(area) = tab_area(window, cx) {
+            area.update(cx, |a, cx| a.send_pending_secrets(only(&scope), cx));
+        }
         let mut drafts = Vec::new();
         for u in unsaved {
             for target in u.targets {

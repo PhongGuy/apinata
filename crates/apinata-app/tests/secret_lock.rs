@@ -1713,6 +1713,10 @@ mod oauth {
 
     const REQUEST: &str = "info:\n  name: a\n  type: http\n  seq: 1\n\nhttp:\n  method: GET\n  url: http://x\n  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: http://id/token\n    credentials:\n      clientId: svc\n";
     const MOVED: &str = "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}";
+    const OTHER: &str =
+        "info:\n  name: b\n  type: http\n  seq: 2\n\nhttp:\n  method: GET\n  url: http://y\n";
+    const OTHER_URL: &str = "http://y/typed";
+    const STORED: &str = "APINATA_OAUTH2_CLIENT_SECRET='typed-s3cret'";
 
     #[derive(Clone, Copy)]
     enum Tab {
@@ -1726,10 +1730,14 @@ mod oauth {
         Collection,
     }
 
-    // The running app with nothing unsaved but a client secret typed in `tab`'s OAuth 2.0 form,
-    // which still has focus.
-    fn app(cx: &mut TestAppContext, tab: Tab) -> (tempfile::TempDir, Started) {
-        let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", REQUEST)]);
+    // The running app with a client secret typed in `tab`'s OAuth 2.0 form, which still has
+    // focus; with `other`, a second request holds an unsaved URL edit too.
+    fn app(cx: &mut TestAppContext, tab: Tab, other: bool) -> (tempfile::TempDir, Started) {
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            ("a.yml", REQUEST),
+            ("b.yml", OTHER),
+        ]);
         let s = started(cx, &col);
         let root = s.root.clone();
         let scope = match tab {
@@ -1782,6 +1790,14 @@ mod oauth {
             "typed-s3cret",
         );
         frame(cx, s.win);
+        if other {
+            let edit = Command::Edit {
+                target: Target::Request(ip("b.yml")),
+                edit: apinata_app::command::Edit::Url(OTHER_URL.into()),
+            };
+            s.ws.update(cx, |w, cx| w.send(&root, edit, cx));
+            cx.run_until_parked();
+        }
         (col, s)
     }
 
@@ -1814,8 +1830,24 @@ mod oauth {
         }
     }
 
-    fn save_all_keeps_the_secret(cx: &mut TestAppContext, tab: Tab, close: Close) {
-        let (col, s) = app(cx, tab);
+    // The typing still shown in the active tab's client secret field.
+    fn shown(cx: &mut TestAppContext, s: &Started, tab: Tab) -> String {
+        let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
+        let id = s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().id);
+        cx.update(|cx| {
+            let a = area.read(cx);
+            let auth = match tab {
+                Tab::Request => a.editor(id).unwrap().read(cx).auth().clone(),
+                Tab::Settings => a.config_editor(id).unwrap().read(cx).auth().clone(),
+            };
+            let oauth2 = auth.read(cx).oauth2().clone();
+            let input = oauth2.read(cx).input(OAuth2Field::ClientSecret).clone();
+            input.read(cx).value().to_string()
+        })
+    }
+
+    fn save_all_keeps_the_secret(cx: &mut TestAppContext, tab: Tab, close: Close, other: bool) {
+        let (col, s) = app(cx, tab, other);
         start_close(cx, &s, close);
         answer_confirm(cx, "confirm-save");
         cx.run_until_parked();
@@ -1825,82 +1857,84 @@ mod oauth {
             "{saved}"
         );
         let env = read(&col, ".env");
-        assert!(
-            env.contains("APINATA_OAUTH2_CLIENT_SECRET='typed-s3cret'"),
-            "{env}"
-        );
+        assert!(env.contains(STORED), "{env}");
+        if other {
+            assert!(read(&col, "b.yml").contains(OTHER_URL));
+        }
         assert!(closed(cx, &s, close));
     }
 
-    // The prompt moved the secret to `.env` as a blur does; Cancel leaves the file unwritten,
-    // the edit unsaved and the scope open.
-    fn cancel_keeps_the_typing(cx: &mut TestAppContext, tab: Tab, close: Close) {
-        let (col, s) = app(cx, tab);
-        let before = read(&col, file_of(tab));
+    // Cancel changes nothing: no file is written, nothing reaches `.env`, the field keeps its
+    // typing and only the other edit stays unsaved.
+    fn cancel_stores_nothing(cx: &mut TestAppContext, tab: Tab, close: Close, other: bool) {
+        let (col, s) = app(cx, tab, other);
+        let before = (read(&col, file_of(tab)), read(&col, "b.yml"));
         start_close(cx, &s, close);
         answer_confirm(cx, CANCEL);
         cx.run_until_parked();
         assert!(!closed(cx, &s, close));
-        assert_eq!(read(&col, file_of(tab)), before);
+        assert_eq!((read(&col, file_of(tab)), read(&col, "b.yml")), before);
         let env = read(&col, ".env");
-        assert!(
-            env.contains("APINATA_OAUTH2_CLIENT_SECRET='typed-s3cret'"),
-            "{env}"
-        );
+        assert!(!env.contains("typed-s3cret"), "{env}");
         let unsaved = cx.update(|cx| s.ws.read(cx).unsaved(None, cx));
-        assert_eq!(unsaved.len(), 1, "the edit stays unsaved");
-        let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
-        let id = s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().id);
-        let shown = cx.update(|cx| {
-            let a = area.read(cx);
-            let auth = match tab {
-                Tab::Request => a.editor(id).unwrap().read(cx).auth().clone(),
-                Tab::Settings => a.config_editor(id).unwrap().read(cx).auth().clone(),
-            };
-            let oauth2 = auth.read(cx).oauth2().clone();
-            let input = oauth2.read(cx).input(OAuth2Field::ClientSecret).clone();
-            input.read(cx).value().to_string()
-        });
-        assert_eq!(shown, MOVED);
+        let targets: Vec<Target> = unsaved.into_iter().flat_map(|u| u.targets).collect();
+        let expected = match other {
+            true => vec![Target::Request(ip("b.yml"))],
+            false => Vec::new(),
+        };
+        assert_eq!(targets, expected);
+        assert_eq!(shown(cx, &s, tab), "typed-s3cret");
     }
 
-    #[gpui_kit::test]
-    fn a_window_close_saves_a_request_tabs_typed_secret(cx: &mut TestAppContext) {
-        save_all_keeps_the_secret(cx, Tab::Request, Close::Window);
+    // Don't save closes with nothing written and nothing in `.env`.
+    fn discard_stores_nothing(cx: &mut TestAppContext, tab: Tab, close: Close) {
+        let (col, s) = app(cx, tab, true);
+        let before = (read(&col, file_of(tab)), read(&col, "b.yml"));
+        start_close(cx, &s, close);
+        answer_confirm(cx, "confirm-discard");
+        cx.run_until_parked();
+        assert!(closed(cx, &s, close));
+        assert_eq!((read(&col, file_of(tab)), read(&col, "b.yml")), before);
+        let env = read(&col, ".env");
+        assert!(!env.contains("typed-s3cret"), "{env}");
     }
 
-    #[gpui_kit::test]
-    fn a_window_close_saves_a_settings_tabs_typed_secret(cx: &mut TestAppContext) {
-        save_all_keeps_the_secret(cx, Tab::Settings, Close::Window);
+    // One test per tab kind, close route and other-edit case.
+    macro_rules! cases {
+        ($check:ident: $($name:ident => ($($arg:expr),*);)*) => {$(
+            #[gpui_kit::test]
+            fn $name(cx: &mut TestAppContext) {
+                $check(cx, $($arg),*);
+            }
+        )*};
     }
 
-    #[gpui_kit::test]
-    fn a_collection_close_saves_a_request_tabs_typed_secret(cx: &mut TestAppContext) {
-        save_all_keeps_the_secret(cx, Tab::Request, Close::Collection);
+    cases! { save_all_keeps_the_secret:
+        a_window_close_saves_a_request_tabs_typed_secret => (Tab::Request, Close::Window, false);
+        a_window_close_saves_a_settings_tabs_typed_secret => (Tab::Settings, Close::Window, false);
+        a_collection_close_saves_a_request_tabs_typed_secret => (Tab::Request, Close::Collection, false);
+        a_collection_close_saves_a_settings_tabs_typed_secret => (Tab::Settings, Close::Collection, false);
+        a_window_close_saves_a_request_tabs_secret_with_another_edit => (Tab::Request, Close::Window, true);
+        a_window_close_saves_a_settings_tabs_secret_with_another_edit => (Tab::Settings, Close::Window, true);
+        a_collection_close_saves_a_request_tabs_secret_with_another_edit => (Tab::Request, Close::Collection, true);
+        a_collection_close_saves_a_settings_tabs_secret_with_another_edit => (Tab::Settings, Close::Collection, true);
     }
 
-    #[gpui_kit::test]
-    fn a_collection_close_saves_a_settings_tabs_typed_secret(cx: &mut TestAppContext) {
-        save_all_keeps_the_secret(cx, Tab::Settings, Close::Collection);
+    cases! { cancel_stores_nothing:
+        a_cancelled_window_close_keeps_a_request_tabs_typing => (Tab::Request, Close::Window, false);
+        a_cancelled_window_close_keeps_a_settings_tabs_typing => (Tab::Settings, Close::Window, false);
+        a_cancelled_collection_close_keeps_a_request_tabs_typing => (Tab::Request, Close::Collection, false);
+        a_cancelled_collection_close_keeps_a_settings_tabs_typing => (Tab::Settings, Close::Collection, false);
+        a_cancelled_window_close_stores_no_request_secret_with_another_edit => (Tab::Request, Close::Window, true);
+        a_cancelled_window_close_stores_no_settings_secret_with_another_edit => (Tab::Settings, Close::Window, true);
+        a_cancelled_collection_close_stores_no_request_secret_with_another_edit => (Tab::Request, Close::Collection, true);
+        a_cancelled_collection_close_stores_no_settings_secret_with_another_edit => (Tab::Settings, Close::Collection, true);
     }
 
-    #[gpui_kit::test]
-    fn a_cancelled_window_close_keeps_a_request_tabs_typing(cx: &mut TestAppContext) {
-        cancel_keeps_the_typing(cx, Tab::Request, Close::Window);
-    }
-
-    #[gpui_kit::test]
-    fn a_cancelled_window_close_keeps_a_settings_tabs_typing(cx: &mut TestAppContext) {
-        cancel_keeps_the_typing(cx, Tab::Settings, Close::Window);
-    }
-
-    #[gpui_kit::test]
-    fn a_cancelled_collection_close_keeps_a_request_tabs_typing(cx: &mut TestAppContext) {
-        cancel_keeps_the_typing(cx, Tab::Request, Close::Collection);
-    }
-
-    #[gpui_kit::test]
-    fn a_cancelled_collection_close_keeps_a_settings_tabs_typing(cx: &mut TestAppContext) {
-        cancel_keeps_the_typing(cx, Tab::Settings, Close::Collection);
+    cases! { discard_stores_nothing:
+        a_discarded_window_close_stores_no_request_secret => (Tab::Request, Close::Window);
+        a_discarded_window_close_stores_no_settings_secret => (Tab::Settings, Close::Window);
+        a_discarded_collection_close_stores_no_request_secret => (Tab::Request, Close::Collection);
+        a_discarded_collection_close_stores_no_settings_secret => (Tab::Settings, Close::Collection);
     }
 }

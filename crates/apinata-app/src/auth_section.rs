@@ -624,6 +624,11 @@ impl AuthSection {
         }
     }
 
+    /// Whether an OAuth 2.0 secret is typed but not yet committed.
+    pub fn holds_pending(&self, cx: &App) -> bool {
+        self.mode == Some(AuthMode::OAuth2) && self.oauth2.read(cx).has_pending_secrets(cx)
+    }
+
     /// The OAuth 2.0 edit a secret typed but not yet committed still owes, so a save or
     /// send can send it first; None when the mode is another or nothing is pending.
     pub fn take_pending(&mut self, cx: &mut Context<Self>) -> Option<Edit> {
