@@ -998,3 +998,73 @@ fn a_watched_outside_edit_keeps_unsent_global_secret_typing(cx: &mut TestAppCont
     let shown = input.read_with(cx, |i, _| i.value().to_string());
     assert_eq!(shown, "typed");
 }
+
+// `g` open under the watched global directory with `typed` over its plain `host`, after
+// another program rewrote the file to `outside` and the banner rose.
+fn plain_typing_under_a_watched_edit(
+    cx: &mut TestAppContext,
+) -> (
+    tempfile::TempDir,
+    gpui_kit::AnyWindowHandle,
+    Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (win, editor) = open_editor(cx, &ws, "g");
+    settle(cx);
+    let table = editor.read_with(cx, |e, _| e.table().clone());
+    let input = table.read_with(cx, |t, _| t.value_input(0).unwrap().clone());
+    cx.update_window(win, |_, w, cx| {
+        input.update(cx, |s, cx| s.set_value("typed", w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    wait_for(cx, "the changed-on-disk banner", |cx| {
+        present(cx, win, "banner-changed")
+    });
+    (g, win, editor)
+}
+
+// The watcher's reload under plain typing keeps the draft and says the file changed.
+#[gpui_kit::test]
+fn a_watched_outside_edit_keeps_plain_global_typing_under_the_banner(cx: &mut TestAppContext) {
+    let (_g, _win, editor) = plain_typing_under_a_watched_edit(cx);
+    assert_eq!(first_value(cx, &editor), "typed");
+    assert!(editor.read_with(cx, |e, cx| e.has_edits(cx)));
+}
+
+// The banner's Reload takes the file's values and drops the typing.
+#[gpui_kit::test]
+fn the_global_banner_reload_takes_the_outside_values(cx: &mut TestAppContext) {
+    let (_g, win, editor) = plain_typing_under_a_watched_edit(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("banner-reload", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(first_value(cx, &editor), "outside");
+    assert!(!present(cx, win, "banner-changed"));
+}
+
+// The banner's Overwrite writes the typing over the outside edit.
+#[gpui_kit::test]
+fn the_global_banner_overwrite_saves_the_typing(cx: &mut TestAppContext) {
+    let (g, win, editor) = plain_typing_under_a_watched_edit(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("banner-overwrite", cx);
+    })
+    .unwrap();
+    wait_for(cx, "the typing on disk", |_| {
+        std::fs::read_to_string(g.path().join("g.yml")).is_ok_and(|t| t.contains("typed"))
+    });
+    settle(cx);
+    assert_eq!(first_value(cx, &editor), "typed");
+    assert!(!present(cx, win, "banner-changed"));
+}

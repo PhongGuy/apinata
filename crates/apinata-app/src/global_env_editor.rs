@@ -11,6 +11,7 @@ use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
+use crate::banner::{self, Banner, Choice};
 use crate::dialog_guard::{self, Guard, GuardRef, SaveOutcome};
 use crate::env_table::{EnvTableEvent, EnvVarTable, env_rows, env_vars_from};
 use crate::import_report::failure_text;
@@ -35,6 +36,8 @@ pub struct GlobalEnvEditor {
     selected: Option<String>,
     table: Entity<EnvVarTable>,
     base: Vec<EnvVariable>,
+    // Whether the watcher brought other variables under plain typing, which the banner shows.
+    disk_changed: bool,
     // Secret values the table committed on blur, stored with the next Save.
     secrets: Vec<(String, String)>,
     // Why the last reveal failed; the workspace holds edit failures.
@@ -103,6 +106,7 @@ impl GlobalEnvEditor {
             selected: None,
             table,
             base: Vec::new(),
+            disk_changed: false,
             secrets: Vec::new(),
             error: None,
             orphans: Orphans::default(),
@@ -733,20 +737,51 @@ impl GlobalEnvEditor {
     }
 
     // Reloads the table from the snapshot when forced or when the file's variables changed,
-    // so an unrelated publish keeps what the user typed.
+    // so an unrelated publish keeps what the user typed. Another program's change, which the
+    // watcher brought, leaves plain typing alone under the changed-on-disk banner.
     fn load(&mut self, all: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(name) = self.selected.as_deref() else {
             return;
         };
-        let globals = self.workspace.read(cx).globals();
-        let variables = globals
+        let workspace = self.workspace.read(cx);
+        let watched = workspace.globals_from_watch();
+        let variables = (workspace.globals())
             .and_then(|g| g.environment(name).map(|e| e.variables()))
             .unwrap_or_default();
         let rows = env_rows(&variables);
-        if all || rows != env_rows(&self.base) {
-            self.base = variables;
-            self.table.update(cx, |t, cx| t.load(rows, window, cx));
+        let base = env_rows(&self.base);
+        if !all && rows == base {
+            return;
         }
+        let typed = self.table.read(cx).rows(cx);
+        if !all && watched && typed != base && typed != rows {
+            self.disk_changed = true;
+            cx.notify();
+            return;
+        }
+        self.disk_changed = false;
+        self.base = variables;
+        self.table.update(cx, |t, cx| t.load(rows, window, cx));
+    }
+
+    // Reload takes the file's variables; Overwrite saves the typing over them.
+    fn answer_disk(&mut self, choice: Choice, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.disk_changed {
+            return;
+        }
+        match choice {
+            Choice::Primary => self.load(true, window, cx),
+            Choice::Secondary => {
+                let name = self.selected.clone().unwrap_or_default();
+                self.base = (self.workspace.read(cx).globals())
+                    .and_then(|g| g.environment(&name).map(|e| e.variables()))
+                    .unwrap_or_default();
+                self.disk_changed = false;
+                let _ = self.save_asking(window, cx);
+            }
+            Choice::Tertiary => {}
+        }
+        cx.notify();
     }
 
     fn start_naming(&mut self, naming: Naming, window: &mut Window, cx: &mut Context<Self>) {
@@ -890,6 +925,13 @@ impl Render for GlobalEnvEditor {
                 ))
         });
         let selected = self.selected.is_some();
+        let this = cx.entity().downgrade();
+        let disk_banner = (selected && self.disk_changed).then(|| {
+            banner::plain_banner_row(Banner::ChangedOnDisk, move |_, choice, window, cx| {
+                this.update(cx, |e, cx| e.answer_disk(choice, window, cx))
+                    .ok();
+            })
+        });
         let orphans = self.orphans.without_drafts(&self.draft_variables(cx));
         let editor = cx.entity().downgrade();
         let on_remove = move |name: &str, window: &mut Window, cx: &mut App| {
@@ -928,6 +970,7 @@ impl Render for GlobalEnvEditor {
             .flex_1()
             .min_w(style::ENV_PANE_MIN)
             .gap_2()
+            .children(disk_banner)
             .when(selected, |body| body.child(header))
             .children(naming)
             .when(selected, |body| body.child(self.table.clone()))

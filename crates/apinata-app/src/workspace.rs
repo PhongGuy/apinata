@@ -111,6 +111,14 @@ pub enum WorkspaceEvent {
     },
 }
 
+// Why the global directory is re-read: asked for (opening the editor, the picker) or the
+// watcher noticing another program's change.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReloadCause {
+    Asked,
+    Watched,
+}
+
 /// One change to the global environments, applied by [`Workspace::edit_globals`].
 #[non_exhaustive]
 #[derive(Clone)]
@@ -456,7 +464,9 @@ pub struct Workspace {
     global_draining: bool,
     // A reload asked for while edits drain; it runs once the queue empties, so its read
     // never precedes an edit's write.
-    global_reload_waiting: bool,
+    global_reload_waiting: Option<ReloadCause>,
+    // Whether the latest published global snapshot came from the directory's watcher.
+    globals_watched: bool,
     global_error: Option<String>,
     // The watch on the global directory and the task reloading it after each batch.
     global_watch: Option<(Box<dyn Watch>, Task<()>)>,
@@ -517,7 +527,8 @@ impl Workspace {
             global_loaded: false,
             global_queue: VecDeque::new(),
             global_draining: false,
-            global_reload_waiting: false,
+            global_reload_waiting: None,
+            globals_watched: false,
             global_error: None,
             global_watch: None,
             reference: None,
@@ -1203,7 +1214,8 @@ impl Workspace {
         let pump = cx.spawn(async move |this, cx| {
             while batches.recv().await.is_ok() {
                 while batches.try_recv().is_ok() {}
-                if this.update(cx, |w, cx| w.reload_globals(cx)).is_err() {
+                let reloaded = this.update(cx, |w, cx| w.load_globals(ReloadCause::Watched, cx));
+                if reloaded.is_err() {
                     break;
                 }
             }
@@ -1213,11 +1225,26 @@ impl Workspace {
 
     /// Re-read the directory off the main thread and publish it; nothing without a directory.
     pub fn reload_globals(&mut self, cx: &mut Context<Self>) {
+        self.load_globals(ReloadCause::Asked, cx);
+    }
+
+    /// Whether the latest published global snapshot came from the watcher noticing another
+    /// program's change, rather than from an asked-for reload or an edit.
+    pub fn globals_from_watch(&self) -> bool {
+        self.globals_watched
+    }
+
+    // A reload asked for while edits drain waits for them; an asked-for one outranks a
+    // waiting watched one, so the snapshot it publishes counts as asked for.
+    fn load_globals(&mut self, cause: ReloadCause, cx: &mut Context<Self>) {
         let Some(dir) = self.global_dir.clone() else {
             return;
         };
         if self.global_draining {
-            self.global_reload_waiting = true;
+            self.global_reload_waiting = Some(match self.global_reload_waiting {
+                Some(ReloadCause::Asked) => ReloadCause::Asked,
+                _ => cause,
+            });
             return;
         }
         self.global_gen += 1;
@@ -1225,7 +1252,7 @@ impl Workspace {
         let load = cx.background_spawn(async move { GlobalEnvironments::open(dir) });
         cx.spawn(async move |this, cx| {
             let loaded = load.await;
-            this.update(cx, |w, cx| w.apply_globals(generation, loaded, cx))
+            this.update(cx, |w, cx| w.apply_globals(generation, cause, loaded, cx))
         })
         .detach();
     }
@@ -1913,6 +1940,7 @@ impl Workspace {
     fn apply_globals(
         &mut self,
         generation: u64,
+        cause: ReloadCause,
         loaded: Result<GlobalEnvironments, OpenError>,
         cx: &mut Context<Self>,
     ) {
@@ -1920,7 +1948,7 @@ impl Workspace {
             return;
         }
         if let Ok(globals) = loaded {
-            self.publish_globals(globals, cx);
+            self.publish_globals(globals, cause == ReloadCause::Watched, cx);
         }
     }
 
@@ -1931,8 +1959,8 @@ impl Workspace {
             (self.global_dir.clone(), self.global_queue.pop_front())
         else {
             self.global_draining = false;
-            if std::mem::take(&mut self.global_reload_waiting) {
-                self.reload_globals(cx);
+            if let Some(cause) = self.global_reload_waiting.take() {
+                self.load_globals(cause, cx);
             }
             return;
         };
@@ -1981,13 +2009,18 @@ impl Workspace {
                     .update(cx, |p, cx| p.update(cx, |s| s.global_environment = moved));
             }
         }
-        self.publish_globals(globals, cx);
+        self.publish_globals(globals, false, cx);
     }
 
     // Every successful load or edit lands here. The first one applies the session's saved
     // name, so an edit that outran a dropped first load still restores it; later ones keep
     // the current selection while it is listed, else select none.
-    fn publish_globals(&mut self, globals: GlobalEnvironments, cx: &mut Context<Self>) {
+    fn publish_globals(
+        &mut self,
+        globals: GlobalEnvironments,
+        watched: bool,
+        cx: &mut Context<Self>,
+    ) {
         let wanted = if self.global_loaded {
             self.selected_global.take()
         } else {
@@ -1995,6 +2028,7 @@ impl Workspace {
             self.session.read(cx).get().global_environment.clone()
         };
         self.globals = Some(Arc::new(globals));
+        self.globals_watched = watched;
         self.selected_global = wanted.filter(|n| self.is_global(n));
         self.save_global(cx);
         self.broadcast_globals(cx);
