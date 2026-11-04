@@ -1021,6 +1021,71 @@ fn deleting_and_undoing_after_a_refused_name_store_nothing(cx: &mut TestAppConte
     type_blur_and_save_store_nothing(cx, win, &store, &skey, 2);
 }
 
+/// Types `ol` into the new row at `ix` and lets it settle, then types `rest` and clicks the
+/// row's lock in one update, before that last edit settles.
+fn finish_name_and_lock(
+    cx: &mut TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    ix: usize,
+    rest: &str,
+) {
+    type_at_end(cx, win, None, ("env-name", ix), "ol");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.press("end", cx);
+        w.input(rest, cx);
+        w.click(("env-secret", ix), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn a_lock_on_a_new_row_just_named_like_a_saved_secret_is_refused(cx: &mut TestAppContext) {
+    let (_col, _state, store, skey, win, ed) = saved_secret(cx);
+    finish_name_and_lock(cx, win, 2, "d");
+    assert!(!draft_flag(cx, &ed, 2), "the lock is refused");
+    assert!(present(cx, win, "env-name-refused"), "the row says why");
+    let note = cx.update(|cx| ed.read(cx).table().read(cx).name_note().map(str::to_owned));
+    assert!(note.is_some_and(|n| n.contains("\"old\" is a saved secret")));
+    type_blur_and_save_store_nothing(cx, win, &store, &skey, 2);
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
+}
+
+#[gpui_kit::test]
+fn a_lock_on_a_new_row_just_named_otherwise_still_locks(cx: &mut TestAppContext) {
+    let (_col, _state, _store, _skey, win, ed) = saved_secret(cx);
+    finish_name_and_lock(cx, win, 2, "x");
+    assert!(draft_flag(cx, &ed, 2));
+    assert!(!present(cx, win, "env-name-refused"));
+}
+
+#[gpui_kit::test]
+fn a_lock_on_a_new_row_just_named_like_an_orphan_locks_and_save_asks_replace(
+    cx: &mut TestAppContext,
+) {
+    let col = tree();
+    let (store, skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    finish_name_and_lock(cx, win, 1, "d");
+    assert!(
+        draft_flag(cx, &ed, 1),
+        "an orphan's name is not a saved secret"
+    );
+    frame(cx, win);
+    type_at_end(cx, win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.press(&key("s"), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "the save asks Replace");
+    answer_confirm(cx, "confirm-replace");
+    cx.run_until_parked();
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("typed"));
+}
+
 #[gpui_kit::test]
 fn renaming_a_locked_row_named_like_an_orphan_before_save_brings_the_orphan_back(
     cx: &mut TestAppContext,
