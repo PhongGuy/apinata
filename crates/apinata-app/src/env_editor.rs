@@ -148,7 +148,7 @@ pub struct EnvEditor {
     naming: Option<Naming>,
     /// The rename in flight as (from, to, id): the selection and the name field wait for it.
     renaming: Option<(String, String, u64)>,
-    /// The name the last rename refused while its field held it; the error line is its.
+    /// The name the last rename or create refused while its field held it; the error is its.
     refused: Option<String>,
     sent: HashMap<u64, Sent>,
     /// The snapshots each environment's fields loaded; their edits are built from that content.
@@ -1484,6 +1484,13 @@ impl EnvEditor {
         // Both land by selecting a new name, which would take held typing with it; a create
         // leaves a dirty environment, so a new row's typing goes too.
         let create = self.naming == Some(Naming::Create);
+        // A name core would refuse is refused before the check, whose Replace saves.
+        if create && let Err(err) = apinata_core::check_environment_name(text) {
+            self.error = Some(err.to_string());
+            self.refused = Some(text.to_owned());
+            cx.notify();
+            return;
+        }
         let text = text.to_owned();
         let commit = move |e: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
             e.commit_name_now(&text, window, cx)
@@ -1916,7 +1923,7 @@ impl Render for EnvEditor {
                     // The frame hugs the input, so the danger ring covers it and no more.
                     div().w(style::NAME_INPUT_WIDTH).flex_none(),
                     &self.name_input,
-                    self.refused.is_some() && self.naming == Some(Naming::Rename),
+                    self.refused.is_some() && self.naming.is_some(),
                     (
                         "env-name-danger-ring".into(),
                         "env-name-invalid-icon".into(),

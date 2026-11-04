@@ -400,18 +400,26 @@ pub(crate) fn not_found<H: EnvHost + ?Sized>(host: &H, name: &str) -> EnvError {
     }
 }
 
+/// Checks `name` as [`Collection::create_environment`] does before it touches the disk:
+/// `Ok` with the sanitised base name, which a taken name still suffixes, or
+/// [`EnvError::InvalidName`] when no file could carry it.
+pub fn check_environment_name(name: &str) -> Result<String, EnvError> {
+    let base = sanitize_name(name);
+    match validate_name(&base) {
+        true => Ok(base),
+        false => Err(EnvError::InvalidName {
+            name: name.to_owned(),
+        }),
+    }
+}
+
 /// The body of [`Collection::create_environment`] for any [`EnvHost`].
 pub(crate) fn create_environment<H: EnvHost + ?Sized>(
     host: &mut H,
     name: &str,
     _store: &dyn SecretStore,
 ) -> Result<(String, Vec<EnvWarning>), EnvError> {
-    let base = sanitize_name(name);
-    if !validate_name(&base) {
-        return Err(EnvError::InvalidName {
-            name: name.to_owned(),
-        });
-    }
+    let base = check_environment_name(name)?;
     let dir = host.env_dir();
     let taken = stems_on_disk(&dir)?;
     let unique = unique_name(&base, |n| taken.iter().any(|t| t == n));
