@@ -680,7 +680,10 @@ impl EnvVarTable {
             }
             // A refused lock's note outlives the late edit that brought the name it names.
             let still_refused = self.saved_secrets.contains(&name);
-            let noted = (self.name_note.as_ref()).is_some_and(|(note, _)| note == input);
+            // Keys typed in one batch queue a Change each, read after the refusal put the old
+            // name back; only a name that differs from the accepted one is a new edit.
+            let renamed = name != self.rows[ix].named;
+            let noted = renamed && (self.name_note.as_ref()).is_some_and(|(note, _)| note == input);
             self.rows[ix].named = name.clone();
             // The note follows the name the row holds: another saved secret rewrites it.
             if noted && still_refused {
