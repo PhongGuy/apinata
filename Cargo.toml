@@ -11,17 +11,17 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 yaml_serde = "0.10.7"
-saphyr-parser = "=0.1.0"
+saphyr-parser = "=0.3.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_path_to_error = "0.1.20"
 ryu-js = "1"
 socket2 = "0.6"
 thiserror = "2"
-similar = "2.7"
+similar = "3.2"
 regress = { version = "0.12", features = ["utf16"] }
 markdown = "=1.0.0"
-base64 = "0.22"
+base64 = "0.23"
 rpassword = "7"
 serde_json_path = "=0.7.2"
 uppsala = "=0.12.0"
@@ -37,7 +37,7 @@ scrypt = { version = "=0.12.0", default-features = false }
 jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["use_pem", "aws_lc_rs"] }
 aws-lc-rs = "1.18"
 tempfile = "3"
-dirs = "6"
+dirs = "7"
 cookie_store = "=0.22.1"
 publicsuffix = "=2.3.0"
 time = { version = "0.3", default-features = false, features = ["std"] }
@@ -45,7 +45,7 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["rustls",
 encoding_rs = "0.8"
 mime = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tokio-util = "=0.7.19"
+tokio-util = "=0.7.20"
 rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "futures", "parallel"] }
 wiremock = "0.6.5"
 flate2 = "1"
@@ -68,19 +68,19 @@ async-channel = "2.5.0"
 # The kit links this grammar but ships no highlights query for it; the app registers one.
 tree-sitter-c-sharp = "=0.23.5"
 # The kit links this grammar with an empty highlights query; the app registers one.
-tree-sitter-graphql = "=0.1.0"
+tree-sitter-graphql = "=0.3.0"
 # Same version gpui-kit links, so its completion types are ours.
 lsp-types = "=0.97.0"
 # Exact: the seeded dynamic-variable sequence is part of core tests.
 rand = { version = "=0.9.5", default-features = false, features = ["std", "std_rng", "os_rng"] }
-uuid = { version = "=1.27.0", default-features = false, features = ["std", "v1", "v3", "v4", "v5", "v6", "v7"] }
+uuid = { version = "=1.29.0", default-features = false, features = ["std", "v1", "v3", "v4", "v5", "v6", "v7"] }
 chrono = { version = "=0.4.45", default-features = false, features = ["clock", "std"] }
 gethostname = "1.1"
 notify-debouncer-full = "=0.7.0"
 # The platform trash: freedesktop, Windows and macOS. Exact, since restore on Linux and Windows
 # finds the item again through its `os_limited` listing.
 trash = "=5.2.9"
-rmcp = { version = "=3.5.1", default-features = false, features = ["server", "macros", "transport-io"] }
+rmcp = { version = "=3.8.0", default-features = false, features = ["server", "macros", "transport-io"] }
 schemars = "1"
 minisign-verify = "=0.3.0"
 semver = "1"
@@ -93,8 +93,8 @@ hmac = "0.13"
 sha1 = "0.11"
 rsa = { version = "0.9.10", features = ["sha1", "sha2", "getrandom", "hazmat"] }
 aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
-minisign = "=0.7.9"
-self-replace = "=1.5.0"
+minisign = "=0.10.0"
+self-replace = "=1.5.1"
 
 # Dependencies build optimised in dev and test (the test profile inherits dev): GPUI's per-frame
 # replay is the cost of a keystroke burst.
