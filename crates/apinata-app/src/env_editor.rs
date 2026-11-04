@@ -24,7 +24,10 @@ use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, EnvOp, Field, Notice, NoticeKind, Target};
 use crate::edit_history::EditHistory;
 use crate::edit_track::{self, LoadStamps, same_value};
-use crate::env_table::{EnvTableEvent, EnvVarTable, env_rows, env_vars_from};
+use crate::env_table::{
+    DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, env_rows, env_vars_from,
+    writes_colliding_secrets,
+};
 use crate::orphan_section::{self, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
 use crate::scroll_follow::FocusFollow;
@@ -570,6 +573,16 @@ impl EnvEditor {
     /// Stores secret typing not yet committed, then writes the selected environment to its
     /// file; a key or button press does not blur the secret input.
     pub fn save(&mut self, cx: &mut Context<Self>) {
+        // Refused before any typing is stored: two secrets of one name would share one value.
+        if let Some(env) = self.selected.as_ref() {
+            let draft = self.table.read(cx).secret_names(cx);
+            let saved = self.saved_secrets.get(env).map(Vec::as_slice);
+            if writes_colliding_secrets(&draft, saved.unwrap_or_default()) {
+                self.error = Some(DUPLICATE_SECRET_NAMES.to_owned());
+                cx.notify();
+                return;
+            }
+        }
         self.store_pending_secrets(true, cx);
         if let Some(env) = self.selected.clone() {
             self.send(Command::Save(Target::Environment(env)), Sent::Plain, cx);

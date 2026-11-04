@@ -1436,6 +1436,16 @@ impl Actor {
                 "Choose a name and folder to save this request",
             ));
         }
+        // Every route to a Save (autosave, Save All) meets the editor's refusal of a collision.
+        if let Target::Environment(name) = target {
+            let env = c.environment(name).ok_or_else(not_found)?;
+            let draft: Vec<String> = (env.variables().into_iter().filter(|v| v.secret))
+                .map(|v| v.name)
+                .collect();
+            if crate::env_table::writes_colliding_secrets(&draft, &before) {
+                return Err(failed(target, crate::env_table::DUPLICATE_SECRET_NAMES));
+            }
+        }
         let result = match target {
             Target::Request(path) => c.request_mut(path).ok_or_else(not_found)?.save(),
             Target::Folder(path) => c.folder_file_mut(path).ok_or_else(not_found)?.save(),

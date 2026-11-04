@@ -44,6 +44,21 @@ pub const SECRET_HIDDEN: &str = "••••••••";
 /// A revealed secret row's value placeholder when nothing is stored.
 pub const SECRET_UNSET: &str = "Not set";
 
+/// The note under a secret row whose name an earlier secret row already holds.
+pub const DUPLICATE_SECRET_NAME: &str = "Secret names must be unique";
+
+/// Why a Save that would write two secrets of one name is refused.
+pub const DUPLICATE_SECRET_NAMES: &str = "Duplicate secret names are not allowed";
+
+/// Whether saving secrets named `draft` (in row order) over a file declaring `saved` would
+/// write a collision. Stored values are keyed by name, so two secrets of one name share one.
+/// A collision the file already holds does not block a save that leaves the secrets alone.
+pub fn writes_colliding_secrets(draft: &[String], saved: &[String]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    let collides = (draft.iter()).any(|name| !name.is_empty() && !seen.insert(name));
+    collides && draft != saved
+}
+
 /// One variable as the table shows it; a secret row's value is always empty.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EnvRow {
@@ -436,6 +451,24 @@ impl EnvVarTable {
         let (input, note) = self.name_note.as_ref()?;
         let shown = self.rows.iter().any(|row| &row.name == input);
         shown.then_some(note.as_str())
+    }
+
+    /// The secret rows' names, in row order.
+    pub fn secret_names(&self, cx: &App) -> Vec<String> {
+        (self.rows.iter())
+            .filter(|row| row.meta.secret)
+            .map(|row| row.name.read(cx).value().to_string())
+            .collect()
+    }
+
+    /// [`DUPLICATE_SECRET_NAME`] when row `ix` is a secret whose name an earlier secret row
+    /// holds; the first of the two stays unmarked.
+    pub fn duplicate_note(&self, ix: usize, cx: &App) -> Option<&'static str> {
+        let row = self.rows.get(ix).filter(|row| row.meta.secret)?;
+        let name = row.name.read(cx).value();
+        let twin = |r: &Row| r.meta.secret && r.name.read(cx).value() == name;
+        let taken = !name.is_empty() && self.rows[..ix].iter().any(twin);
+        taken.then_some(DUPLICATE_SECRET_NAME)
     }
 
     /// Sets the secrets the saved file declares. A locked row not yet saved cannot be renamed
@@ -1115,21 +1148,29 @@ impl EnvVarTable {
                             .then(|| ("env-delete", ix).into()),
                     )),
             );
-        let note = (self.name_note.as_ref())
+        let refused = (self.name_note.as_ref())
             .filter(|(input, _)| !blank && *input == self.rows[ix].name)
             .map(|(_, note)| note.clone());
-        let Some(note) = note else {
+        let duplicate = self.duplicate_note(ix, cx);
+        if refused.is_none() && duplicate.is_none() {
             return Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element();
+        }
+        // Each note sits under the row whose name it is about.
+        let danger = cx.theme().danger;
+        let note = |id: gpui_kit::ElementId, text: String| {
+            div()
+                .id(id)
+                .test_support()
+                .pl(KV_GRIP_WIDTH + CHECKBOX_SIZE)
+                .text_size(TEXT_SMALL)
+                .text_color(danger)
+                .child(text)
         };
-        // The note sits under the row, where the refused name was typed.
-        let note = div()
-            .id("env-name-refused")
-            .test_support()
-            .pl(KV_GRIP_WIDTH + CHECKBOX_SIZE)
-            .text_size(TEXT_SMALL)
-            .text_color(cx.theme().danger)
-            .child(note);
-        let row = v_flex().w_full().child(row).child(note);
+        let row = v_flex()
+            .w_full()
+            .child(row)
+            .children(refused.map(|text| note("env-name-refused".into(), text)))
+            .children(duplicate.map(|text| note(("env-name-duplicate", ix).into(), text.into())));
         Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element()
     }
 
