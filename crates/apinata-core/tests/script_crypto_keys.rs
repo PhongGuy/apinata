@@ -156,12 +156,37 @@ show("format sign", () => crypto.sign("sha256", m, { key: RSA, format: "pkcs" })
     );
 }
 
+/// PBES2 keys from older openssl defaults, PBKDF2-HMAC-SHA1 and DES-EDE3-CBC, open to the PKCS#8 they came from, and a wrong or missing passphrase fails as in Node.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn older_pbes2_keys_open_like_node() {
+    let code = r#"const show = (tag, f) => { try { const r = f(); console.log(tag, "ok", Buffer.isBuffer(r) ? r.length : r instanceof crypto.KeyObject ? r.type : JSON.stringify(r)); } catch (e) { console.log(tag, e.name, e.message); } };
+const m = Buffer.from("hello world"), plain = crypto.sign("sha256", m, RSA).toString("base64");
+for (const n of ["rsa_sha1", "rsa_des3"]) {
+  const o = { key: K[n], passphrase: PW };
+  console.log(n, crypto.createPrivateKey(o).export({ type: "pkcs8", format: "pem" }) === RSA, crypto.createPublicKey(o).export({ type: "spki", format: "pem" }) === RSA_PUB, crypto.sign("sha256", m, o).toString("base64") === plain);
+  show(n + " wrong", () => crypto.createPrivateKey({ key: K[n], passphrase: "wrong" }));
+  show(n + " none", () => crypto.createPrivateKey(K[n]));
+}"#;
+    assert_eq!(
+        run_keys(code).await,
+        [
+            "log:rsa_sha1 true true true",
+            "log:rsa_sha1 wrong Error bad decrypt",
+            "log:rsa_sha1 none Error interrupted or cancelled",
+            "log:rsa_des3 true true true",
+            "log:rsa_des3 wrong Error bad decrypt",
+            "log:rsa_des3 none Error interrupted or cancelled",
+        ]
+    );
+}
+
 /// Schemes Node reads and the crates do not, and keys Node also rejects, are named refusals rather than a wrong passphrase.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refused_encrypted_keys_are_named() {
     let code = r#"const show = (tag, f) => { try { const r = f(); console.log(tag, "ok", Buffer.isBuffer(r) ? r.length : r instanceof crypto.KeyObject ? r.type : JSON.stringify(r)); } catch (e) { console.log(tag, e.name, e.message); } };
 const open = (n) => show(n, () => crypto.createPrivateKey({ key: K[n], passphrase: PW }));
-for (const n of ["rsa_sha1", "rsa_des3", "rsa_camellia", "rsa_pbes1", "rsa_legacy", "bad_truncated", "bad_trunc_data"]) open(n);
+for (const n of ["rsa_camellia", "rsa_pbes1", "rsa_legacy", "bad_truncated", "bad_trunc_data"]) open(n);
+show("camellia none", () => crypto.createPrivateKey(K.rsa_camellia));
 show("legacy none", () => crypto.createPrivateKey(K.rsa_legacy));
 show("legacy public", () => crypto.createPublicKey({ key: K.rsa_legacy, passphrase: PW }));
 show("legacy sign", () => crypto.sign("sha256", Buffer.from("m"), K.rsa_legacy));
@@ -169,17 +194,16 @@ show("pbes1 none", () => crypto.createPrivateKey(K.rsa_pbes1));"#;
     assert_eq!(
         run_keys(code).await,
         [
-            "log:rsa_sha1 Error Unsupported key: an encrypted key using PBKDF2 with HMAC-SHA-1 (supported: PBES2 with PBKDF2 using HMAC-SHA-224 to HMAC-SHA-512, or scrypt, and AES-CBC or AES-GCM)",
-            "log:rsa_des3 Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
-            "log:rsa_camellia Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
-            "log:rsa_pbes1 Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
+            "log:rsa_camellia Error Unsupported key: an encrypted key using Camellia (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
+            "log:rsa_pbes1 Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:rsa_legacy Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
             "log:bad_truncated Error Unsupported key: the encrypted private key could not be read",
             "log:bad_trunc_data Error Unsupported key: the encrypted private key could not be read",
+            "log:camellia none Error Unsupported key: an encrypted key using Camellia (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:legacy none Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
             "log:legacy public Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
             "log:legacy sign Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
-            "log:pbes1 none Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
+            "log:pbes1 none Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
         ]
     );
 }
@@ -368,10 +392,10 @@ for (const n of ["iter", "iter0", "iter_max", "keylen", "salt", "n_huge", "n_mem
             "log:iter0 none Error Unsupported key: the encrypted key's PBKDF2 work is over the limit (iterations 1 to 10000000, iterations x ceil(key length / digest length) at most 16777216)",
             "log:iter_max Error Unsupported key: the encrypted key's PBKDF2 work is over the limit (iterations 1 to 10000000, iterations x ceil(key length / digest length) at most 16777216)",
             "log:iter_max none Error Unsupported key: the encrypted key's PBKDF2 work is over the limit (iterations 1 to 10000000, iterations x ceil(key length / digest length) at most 16777216)",
-            "log:keylen Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
+            "log:keylen Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:keylen none Error interrupted or cancelled",
-            "log:salt Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
-            "log:salt none Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
+            "log:salt Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
+            "log:salt none Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:n_huge Error Unsupported key: the encrypted key's scrypt work is over the limit (N a power of two above 1, r and p from 1, N x r x p at most 33554432, 256 MiB of memory)",
             "log:n_huge none Error Unsupported key: the encrypted key's scrypt work is over the limit (N a power of two above 1, r and p from 1, N x r x p at most 33554432, 256 MiB of memory)",
             "log:n_mem Error Unsupported key: the encrypted key's scrypt work is over the limit (N a power of two above 1, r and p from 1, N x r x p at most 33554432, 256 MiB of memory)",
@@ -969,7 +993,7 @@ show("sha1 none", () => crypto.createPrivateKey(K.rsa_sha1));"#;
             "log:ec spki private Error wrong tag",
             "log:true true",
             "log:trailing wrong Error bad decrypt",
-            "log:sha1 none Error Unsupported key: an encrypted key using PBKDF2 with HMAC-SHA-1 (supported: PBES2 with PBKDF2 using HMAC-SHA-224 to HMAC-SHA-512, or scrypt, and AES-CBC or AES-GCM)",
+            "log:sha1 none Error interrupted or cancelled",
         ]
     );
 }
@@ -1166,7 +1190,7 @@ jwt.sign(P, { key: E, passphrase: "wrong" }, { algorithm: "RS256" }, (e, t) => c
 /// The jwt path meets crypto's refusals: KDF parameters stop at the work caps before any derivation, and schemes the crates cannot read are named rather than called a bad key.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn jwt_keeps_cryptos_refusals_and_work_caps() {
-    let code = r#"for (const n of ["hostile_iter", "hostile_iter0", "hostile_iter_max", "hostile_n_huge", "hostile_n_mem", "hostile_n_zero", "hostile_n_three", "hostile_n_one", "hostile_r_zero", "hostile_p_zero", "hostile_rp", "hostile_salt", "rsa_sha1", "rsa_pbes1", "rsa_legacy", "pss_enc"]) {
+    let code = r#"for (const n of ["hostile_iter", "hostile_iter0", "hostile_iter_max", "hostile_n_huge", "hostile_n_mem", "hostile_n_zero", "hostile_n_three", "hostile_n_one", "hostile_r_zero", "hostile_p_zero", "hostile_rp", "hostile_salt", "rsa_camellia", "rsa_pbes1", "rsa_legacy", "pss_enc"]) {
   show(n, () => jwt.sign({}, { key: K[n], passphrase: PW }, { algorithm: "RS256" }));
 }"#;
     const PBKDF2: &str = "Error Unsupported key: the encrypted key's PBKDF2 work is over the limit (iterations 1 to 10000000, iterations x ceil(key length / digest length) at most 16777216)";
@@ -1182,9 +1206,9 @@ async fn jwt_keeps_cryptos_refusals_and_work_caps() {
     );
     expected.extend(
         [
-            "log:hostile_salt Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
-            "log:rsa_sha1 Error Unsupported key: an encrypted key using PBKDF2 with HMAC-SHA-1 (supported: PBES2 with PBKDF2 using HMAC-SHA-224 to HMAC-SHA-512, or scrypt, and AES-CBC or AES-GCM)",
-            "log:rsa_pbes1 Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
+            "log:hostile_salt Error Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
+            "log:rsa_camellia Error Unsupported key: an encrypted key using Camellia (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
+            "log:rsa_pbes1 Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:rsa_legacy Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
             "log:pss_enc Error Unsupported key: the encrypted key opened, but it is not a supported type (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519)",
         ]

@@ -40,13 +40,15 @@ const UNENCRYPTABLE: &str = "KeyObject export failed: the private key could not 
 pub(super) const OPENED_UNSUPPORTED: &str = "Unsupported key: the encrypted key opened, but it is not a supported type (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519)";
 const LEGACY_HEADER: &[u8] = b"Proc-Type: 4,ENCRYPTED";
 const LEGACY: &str = "Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)";
-const PBES1: &str = "Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)";
-const PBKDF2_SHA1: &str = "Unsupported key: an encrypted key using PBKDF2 with HMAC-SHA-1 (supported: PBES2 with PBKDF2 using HMAC-SHA-224 to HMAC-SHA-512, or scrypt, and AES-CBC or AES-GCM)";
-const PBES2: &str = "Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)";
+const PBES1: &str = "Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)";
+const PBES2: &str = "Unsupported key: an encrypted key with an unreadable or unsupported PBES2 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)";
+const CAMELLIA: &str = "Unsupported key: an encrypted key using Camellia (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)";
 const PBKDF2_OVER: &str = "Unsupported key: the encrypted key's PBKDF2 work is over the limit (iterations 1 to 10000000, iterations x ceil(key length / digest length) at most 16777216)";
 const SCRYPT_OVER: &str = "Unsupported key: the encrypted key's scrypt work is over the limit (N a power of two above 1, r and p from 1, N x r x p at most 33554432, 256 MiB of memory)";
 
 const OID_PBES2: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x05, 0x0d];
+/// The Camellia CBC arc (1.2.392.200011.61.1.1.1), whose last byte picks the key size.
+const OID_CAMELLIA_CBC: &[u8] = &[0x2a, 0x83, 0x08, 0x8c, 0x9a, 0x4b, 0x3d, 0x01, 0x01, 0x01];
 
 const INVALID_JWK: &str = "Invalid JWK data";
 const INVALID_JWK_EC: &str = "Invalid JWK EC key";
@@ -102,14 +104,15 @@ pub(super) fn decrypted(
     if oid != OID_PBES2 {
         return Err(PBES1.into());
     }
-    let info = pkcs8::EncryptedPrivateKeyInfoRef::try_from(der).map_err(|_| PBES2)?;
+    // The crate has no Camellia, so its parse fails; name the cipher rather than the scheme.
+    let info = pkcs8::EncryptedPrivateKeyInfoRef::try_from(der).map_err(|_| {
+        let camellia = pbes2_cipher(algorithm).is_some_and(|oid| {
+            oid.len() == OID_CAMELLIA_CBC.len() + 1 && oid.starts_with(OID_CAMELLIA_CBC)
+        });
+        if camellia { CAMELLIA } else { PBES2 }
+    })?;
     let scheme = info.encryption_algorithm.pbes2().ok_or(PBES1)?;
     check_work(&scheme.kdf, scheme.encryption.key_size())?;
-    if let Kdf::Pbkdf2(params) = &scheme.kdf
-        && matches!(params.prf, Pbkdf2Prf::HmacWithSha1)
-    {
-        return Err(PBKDF2_SHA1.into());
-    }
     let missing = if from_der {
         NO_PASSPHRASE_DER
     } else {
@@ -135,6 +138,15 @@ pub(super) fn decrypted(
     pkcs8::der::pem::encode_string("PRIVATE KEY", LineEnding::LF, key)
         .map(|text| Some(KeyInput::Text(text)))
         .map_err(|_| UNREADABLE.into())
+}
+
+/// The encryption scheme OID inside a PBES2 AlgorithmIdentifier body, read from the raw DER.
+fn pbes2_cipher(algorithm: &[u8]) -> Option<&[u8]> {
+    let (.., params) = element(algorithm)?;
+    let (_, params, _) = element(params)?;
+    let (.., encryption) = element(params)?;
+    let (_, encryption, _) = element(encryption)?;
+    element(encryption).map(|(_, oid, _)| oid)
 }
 
 /// PKCS#8 `der` as an EncryptedPrivateKeyInfo under `cipher` (aes-128-cbc, aes-192-cbc or
