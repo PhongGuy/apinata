@@ -498,7 +498,7 @@ fn decoded_prefix(engine: &GeneralPurpose, run: &str) -> Vec<u8> {
         match engine.decode(&run[..usable]) {
             Ok(bytes) => return bytes,
             Err(base64::DecodeError::InvalidByte(at, _))
-            | Err(base64::DecodeError::InvalidLastSymbol(at, _)) => end = at,
+            | Err(base64::DecodeError::InvalidLastSymbol { offset: at, .. }) => end = at,
             Err(_) => return Vec::new(),
         }
     }

@@ -10,7 +10,7 @@ use apinata_core::{ExecOptions, Executor, GlobalProxy, NetworkSettings, PacSourc
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -81,6 +81,16 @@ async fn a_streamed_body_with_no_length_is_cut_at_the_cap() {
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         let (mut socket, _) = listener.accept().await.unwrap();
+        // Answer only once the request head is in: a reply sent before the client has written
+        // its request is a protocol error to the client, not a response.
+        let mut request = Vec::new();
+        let mut buf = [0u8; 1024];
+        while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+            match socket.read(&mut buf).await {
+                Ok(0) | Err(_) => return,
+                Ok(n) => request.extend_from_slice(&buf[..n]),
+            }
+        }
         let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
         let _ = socket.write_all(head.as_bytes()).await;
         for _ in 0..20 {

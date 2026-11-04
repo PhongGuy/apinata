@@ -37,7 +37,7 @@ rust-embed = { version = "=8.13.0", features = ["debug-embed"] }
 
 # Plain build dependency: build.rs checks the target OS, which a cfg table cannot.
 [build-dependencies]
-winresource = "=0.1.31"
+winresource = "=0.1.34"
 
 [dev-dependencies]
 aes-gcm.workspace = true
