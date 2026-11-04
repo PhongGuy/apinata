@@ -57,23 +57,24 @@
   // call at `digest()`. A `base64url` input decodes as base64, which already reads `-_`, and
   // digest output is mapped here, so hashing never depends on Buffer's own base64url.
   const ALGORITHMS = ["md5", "sha1", "sha224", "sha256", "sha384", "sha512"];
-  const typed = (algorithm) => {
-    if (typeof algorithm !== "string") throw new TypeError('The "algorithm" argument must be of type string');
+  const typed = (algorithm, what = "algorithm") => {
+    if (typeof algorithm !== "string") throw wrongType(what, "string", algorithm);
   };
-  const checked = (algorithm) => {
-    typed(algorithm);
+  const checked = (algorithm, what) => {
+    typed(algorithm, what);
     const name = algorithm.toLowerCase();
     if (ALGORITHMS.includes(name)) return name;
     throw new Error(`Digest method not supported: "${algorithm}" (supported: ${ALGORITHMS.join(", ")}; require('crypto-js') has more)`);
   };
-  const bytesOf = (data, encoding, what = "data") => {
+  const BYTES = "string or an instance of Buffer, TypedArray, or DataView";
+  const bytesOf = (data, encoding, wrong = (v) => wrongType("data", BYTES, v)) => {
     if (typeof data === "string") {
       if (String(encoding).toLowerCase() === "base64url") return globalThis.Buffer.from(data, "base64");
       return globalThis.Buffer.from(data, encoding ?? "utf8");
     }
     if (data instanceof ArrayBuffer) return new Uint8Array(data).slice();
     if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice();
-    throw new TypeError(`The "${what}" argument must be of type string or an instance of Buffer, TypedArray, or DataView`);
+    throw wrong(data);
   };
   class Hash {
     #algorithm; #key; #chunks = []; #done = false;
@@ -108,12 +109,67 @@
 
   // Node's argument errors, which name what they received.
   const ENCODINGS = ["hex", "utf8", "utf-8", "ascii", "latin1", "binary", "base64", "base64url", "ucs2", "ucs-2", "utf16le", "utf-16le"];
+  // util.inspect's string form: single quotes unless the text holds one, control characters escaped.
+  const ESCAPES = /[\x00-\x1f\x27\x5c\x7f-\x9f]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+  const NAMED = { 8: "\\b", 9: "\\t", 10: "\\n", 12: "\\f", 13: "\\r", 39: "\\'", 92: "\\\\" };
+  const inspected = (s) => {
+    let quote = "'";
+    if (s.includes("'")) quote = !s.includes('"') ? '"' : !s.includes("`") && !s.includes("${") ? "`" : "'";
+    return quote + s.replace(ESCAPES, (c) => {
+      const code = c.charCodeAt(0);
+      if (code === 39 && quote !== "'") return c;
+      if (code in NAMED) return NAMED[code];
+      return code >= 0xd800 && code <= 0xdfff ? `\\u${code.toString(16)}` : `\\x${code.toString(16).toUpperCase().padStart(2, "0")}`;
+    }) + quote;
+  };
+  // A wrong-type error shows a string cut and quoted far more plainly than util.inspect does.
   const quoted = (s) => (s.includes("'") ? JSON.stringify(s) : `'${s}'`);
+  // A numeric separator every three digits, as Node writes an integer beyond 2^32 in a range error.
+  const grouped = (n) => {
+    const text = String(n);
+    if (!Number.isInteger(n) || Math.abs(n) <= 2 ** 32) return text;
+    let i = text.length, out = "";
+    for (const start = text.startsWith("-") ? 1 : 0; i >= start + 4; i -= 3) out = `_${text.slice(i - 3, i)}${out}`;
+    return text.slice(0, i) + out;
+  };
+  // Property reads go through descriptors so that an error message never runs a getter or a proxy trap.
+  const dataOf = (o, k) => {
+    const d = Object.getOwnPropertyDescriptor(o, k);
+    return d && "value" in d ? d.value : undefined;
+  };
+  // util.inspect at depth -1, for an object that names no constructor.
+  const bare = (v) => {
+    if (Object.getPrototypeOf(v) !== null) return Array.isArray(v) ? "[Array]" : "[Object]";
+    const tag = dataOf(v, Symbol.toStringTag);
+    const array = Array.isArray(v);
+    const empty = !Reflect.ownKeys(v).some((k) => Object.prototype.propertyIsEnumerable.call(v, k));
+    const kind = array ? `Array${empty ? "(0)" : ""}` : typeof tag === "string" && tag ? tag : "Object";
+    return `[${kind}: null prototype]${empty ? (array ? " []" : " {}") : ""}`;
+  };
+  // The first `constructor` along the prototype chain, as `v.constructor?.name` finds it.
+  const constructorName = (v) => {
+    for (let o = v; o !== null; o = Object.getPrototypeOf(o)) {
+      const d = Object.getOwnPropertyDescriptor(o, "constructor");
+      if (!d) continue;
+      const c = d.value;
+      return c !== null && (typeof c === "object" || typeof c === "function") ? dataOf(c, "name") : undefined;
+    }
+    return undefined;
+  };
   const received = (v) => {
     if (v == null) return ` Received ${v}`;
-    if (typeof v === "function") return ` Received function ${v.name}`;
-    if (typeof v === "object") return ` Received an instance of ${v.constructor?.name ?? "Object"}`;
-    const shown = typeof v === "string" ? quoted(v) : typeof v === "bigint" ? `${v}n` : Object.is(v, -0) ? "-0" : String(v);
+    try {
+      if (typeof v === "function") return ` Received function ${dataOf(v, "name") ?? ""}`;
+      if (typeof v === "object") {
+        const name = constructorName(v);
+        return typeof name === "string" ? ` Received an instance of ${name}` : ` Received ${bare(v)}`;
+      }
+    } catch {
+      return " Received [Object]";
+    }
+    // Node cuts a long string before it quotes it.
+    const text = typeof v === "string" ? (v.length > 28 ? `${v.slice(0, 25)}...` : v) : v;
+    const shown = typeof v === "string" ? quoted(text) : typeof v === "bigint" ? `${v}n` : Object.is(v, -0) ? "-0" : String(v);
     return ` Received type ${typeof v} (${shown})`;
   };
   const coded = (error, code) => Object.assign(error, { code });
@@ -122,11 +178,11 @@
   const outputEncoding = (e) => {
     if (typeof e !== "string") throw wrongType("outputEncoding", "string", e);
     if (e === "" || e.toLowerCase() === "buffer" || ENCODINGS.includes(e.toLowerCase())) return e;
-    throw coded(new TypeError(`The argument 'outputEncoding' is invalid. Received ${quoted(e)}`), "ERR_INVALID_ARG_VALUE");
+    throw coded(new TypeError(`The argument 'outputEncoding' is invalid. Received ${inspected(e)}`), "ERR_INVALID_ARG_VALUE");
   };
   const outputLength = (n) => {
     if (typeof n !== "number") throw wrongType("outputLength", "number", n);
-    const range = (rule) => coded(new RangeError(`The value of "outputLength" is out of range. It must be ${rule}. Received ${n}`), "ERR_OUT_OF_RANGE");
+    const range = (rule) => coded(new RangeError(`The value of "outputLength" is out of range. It must be ${rule}. Received ${grouped(n)}`), "ERR_OUT_OF_RANGE");
     if (!Number.isInteger(n)) throw range("an integer");
     if (n < 0 || n > 4294967295) throw range(">= 0 && <= 4294967295");
     return n;
@@ -135,7 +191,7 @@
   // No algorithm here is an XOF, so an outputLength must equal the digest length.
   const oneShot = (algorithm, data, options) => {
     typed(algorithm);
-    const bytes = bytesOf(data);
+    const bytes = bytesOf(data, undefined, (v) => wrongType("input", BYTES, v));
     let encoding = "hex", length;
     if (typeof options === "string") encoding = outputEncoding(options);
     else if (options !== undefined) {
@@ -165,7 +221,7 @@
       return array;
     },
     createHash: (algorithm) => new Hash(checked(algorithm)),
-    createHmac: (algorithm, key) => new Hmac(checked(algorithm), bytesOf(key, undefined, "key")),
+    createHmac: (algorithm, key) => new Hmac(checked(algorithm, "hmac"), bytesOf(key, undefined, () => new TypeError(`The "key" argument must be of type ${BYTES}`))),
     hash: oneShot,
     getHashes: () => ALGORITHMS.slice(),
     randomBytes(size, callback) {

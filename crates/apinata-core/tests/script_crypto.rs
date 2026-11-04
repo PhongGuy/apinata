@@ -1049,8 +1049,83 @@ console.log(h(counted), reads);"#;
             r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"options\" argument must be of type object. Received type bigint (1n)""#,
             r#"log:"86f7e437faa5a7fce15d1ddcb9eaeaea377667b8""#,
             r#"log:"86f7e437faa5a7fce15d1ddcb9eaeaea377667b8" TypeError ERR_INVALID_ARG_TYPE "The \"options\" argument must be of type object. Received null" true"#,
-            r#"log:TypeError undefined "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (1)""#,
             r#"log:"hvfkN/qlp/zhXR3cuerq6jd2Z7g=" 11"#,
+        ]
+    );
+}
+
+/// Pinned from Node 24.16 (recorded with `node -e`): the shared algorithm and data type errors, and the
+/// four received-value forms (null prototype, grouped large number, cut string, escaped string).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hash_type_errors_follow_node() {
+    let code = r#"const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message); } };
+const np = Object.create(null);
+const len = (outputLength) => () => crypto.hash("sha1", "a", { outputLength });
+console.log(tryIt(() => crypto.hash(1, "a")));
+console.log(tryIt(() => crypto.hash("sha1", 1)));
+console.log(tryIt(() => crypto.hash("sha1", np)));
+console.log(tryIt(() => crypto.hash("sha1", 2 ** 40)));
+console.log(tryIt(() => crypto.hash("sha1", null)));
+console.log(tryIt(() => crypto.hash("sha1", {})));
+console.log(tryIt(() => crypto.hash("sha1")));
+console.log(tryIt(() => crypto.createHash(1)));
+console.log(tryIt(() => crypto.createHash()));
+console.log(tryIt(() => crypto.createHmac(1, "k")));
+console.log(tryIt(() => crypto.createHash("sha1").update(42)));
+console.log(tryIt(() => crypto.createHash("sha1").update(np)));
+console.log(tryIt(() => crypto.createHash("sha1").update(function foo() {})));
+console.log(tryIt(len(2 ** 40)));
+console.log(tryIt(len(-(2 ** 40))));
+console.log(tryIt(len(2 ** 32)));
+console.log(tryIt(len(1e21)));
+console.log(tryIt(len("a".repeat(30))));
+console.log(tryIt(len("a".repeat(28))));
+console.log(tryIt(len("a\nb")));
+console.log(tryIt(len("it's\nx")));
+console.log(tryIt(len("\n".repeat(30))));
+console.log(tryIt(() => crypto.hash("sha1", Object.setPrototypeOf([], null))));
+console.log(tryIt(() => crypto.hash("sha1", { constructor: {} })));
+const enc = (outputEncoding) => () => crypto.hash("sha1", "a", { outputEncoding });
+console.log(tryIt(enc("a\nb")));
+console.log(tryIt(enc("it's\nx")));
+console.log(tryIt(enc("a".repeat(40))));
+console.log(tryIt(enc("\u0001")));
+console.log(tryIt(() => crypto.hash("sha1", Object.setPrototypeOf([1], null))));
+console.log(tryIt(() => crypto.hash("sha1", Object.assign(Object.create(null), { a: 1 }))));"#;
+    assert_eq!(
+        run_crypto(code).await,
+        [
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"algorithm\" argument must be of type string. Received type number (1)""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (1)""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (1099511627776)""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received null""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Object""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received undefined""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"algorithm\" argument must be of type string. Received type number (1)""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"algorithm\" argument must be of type string. Received undefined""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"hmac\" argument must be of type string. Received type number (1)""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (42)""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received function foo""#,
+            r#"log:RangeError ERR_OUT_OF_RANGE "The value of \"outputLength\" is out of range. It must be >= 0 && <= 4294967295. Received 1_099_511_627_776""#,
+            r#"log:RangeError ERR_OUT_OF_RANGE "The value of \"outputLength\" is out of range. It must be >= 0 && <= 4294967295. Received -1_099_511_627_776""#,
+            r#"log:RangeError ERR_OUT_OF_RANGE "The value of \"outputLength\" is out of range. It must be >= 0 && <= 4294967295. Received 4294967296""#,
+            r#"log:RangeError ERR_OUT_OF_RANGE "The value of \"outputLength\" is out of range. It must be >= 0 && <= 4294967295. Received 1e_+21""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"outputLength\" argument must be of type number. Received type string ('aaaaaaaaaaaaaaaaaaaaaaaaa...')""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"outputLength\" argument must be of type number. Received type string ('aaaaaaaaaaaaaaaaaaaaaaaaaaaa')""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"outputLength\" argument must be of type number. Received type string ('a\nb')""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"outputLength\" argument must be of type number. Received type string (\"it's\\nx\")""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"outputLength\" argument must be of type number. Received type string ('\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n...')""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Array(0): null prototype] []""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object]""#,
+            r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received 'a\\nb'""#,
+            r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received \"it's\\nx\"""#,
+            r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'""#,
+            r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received '\\x01'""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Array: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype]""#,
         ]
     );
 }
