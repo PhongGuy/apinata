@@ -966,6 +966,25 @@ fn create_with_nothing_stored_asks_nothing(cx: &mut TestAppContext) {
     assert_eq!(f.held(), None);
 }
 
+// A name core would refuse is refused before the Replace check, so nothing is asked or saved.
+#[gpui_kit::test]
+fn a_refused_create_name_saves_nothing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    f.create(cx, "CON");
+    assert!(!confirm_open(cx), "nothing to ask about");
+    assert!(f.shows_error(cx));
+    assert!(present(cx, f.win, "env-name-input"), "the field stays open");
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert_eq!(f.bytes(), before);
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    f.create(cx, "qa");
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+}
+
 // A failed read stops the create and keeps the typing, as it stops a Save.
 #[gpui_kit::test]
 fn a_failed_read_stops_a_create(cx: &mut TestAppContext) {
@@ -1100,46 +1119,99 @@ fn a_switch_with_nothing_stored_asks_nothing(cx: &mut TestAppContext) {
     assert_eq!(f.held(), None);
 }
 
-impl Fix {
-    fn step(&self, cx: &mut TestAppContext, undo: bool) {
-        let Ed::Collection(ed) = self.ed.clone() else {
-            unreachable!()
-        };
-        cx.update_window(self.win, |_, w, cx| {
-            ed.update(cx, |e, cx| match undo {
-                true => e.undo_edit(w, cx),
-                false => e.redo_edit(w, cx),
-            })
-        })
-        .unwrap();
-        cx.run_until_parked();
+fn redo_chord() -> String {
+    match cfg!(target_os = "macos") {
+        true => "cmd-shift-z".into(),
+        false => "ctrl-shift-z".into(),
     }
 }
 
-// An undo of a new row's lock would take its typing with it, so it asks as Save does.
+impl Fix {
+    /// Undo or redo through its shortcut, pressed in the cell the last typing landed in.
+    fn step(&self, cx: &mut TestAppContext, undo: bool) {
+        let chord = if undo { secondary("z") } else { redo_chord() };
+        press_key(cx, self.win, &chord);
+        cx.run_until_parked();
+    }
+
+    /// A new secret row `old` with a redo waiting behind it, then `typed` in its value: the
+    /// typing comes last, so both undo and redo would take it with them.
+    fn draft_with_a_redo(&self, cx: &mut TestAppContext) {
+        frame(cx, self.win);
+        type_at_end(cx, self.win, None, ("env-name", 1usize), "old");
+        cx.run_until_parked();
+        click_lock(cx, self.win, 1);
+        frame(cx, self.win);
+        type_at_end(cx, self.win, None, ("env-value", 0usize), "x");
+        cx.run_until_parked();
+        self.step(cx, true);
+        assert!(!confirm_open(cx), "no typing yet, so nothing to ask");
+        type_at_end(cx, self.win, None, ("env-value", 1usize), "typed");
+        cx.run_until_parked();
+    }
+
+    /// The selected environment's dirty flag and its draft variables, as the snapshot holds them.
+    fn draft_state(&self, cx: &mut TestAppContext) -> (bool, String) {
+        let (ws, root) = self.outside.as_ref().expect("a collection");
+        ws.read_with(cx, |w, cx| {
+            let snapshot = w.snapshot(root, cx).expect("a snapshot");
+            let envs = snapshot.content.environments.iter();
+            let dev = envs.into_iter().find(|e| e.name == "dev").expect("dev");
+            (dev.dirty, format!("{:?}", dev.variables))
+        })
+    }
+}
+
+// An undo or redo of a new row's step would take its typing with it, so each asks as Save does.
 #[gpui_kit::test]
 fn undo_and_redo_ask_before_dropping_a_new_rows_typing(cx: &mut TestAppContext) {
     let f = fix(cx, Kind::Collection, HOST);
     let before = f.bytes();
-    f.draft(cx, 1, "old", "typed");
+    f.draft_with_a_redo(cx);
     for undo in [true, false] {
         f.step(cx, undo);
-        if !undo && !confirm_open(cx) {
-            continue;
-        }
         assert_eq!(
             title(cx).as_deref(),
-            Some("Replace the stored value of \"old\"?")
+            Some("Replace the stored value of \"old\"?"),
+            "undo {undo} asks"
         );
         answer_confirm(cx, CANCEL);
         assert!(f.typing(cx), "the typing stays");
         assert_eq!(f.held().as_deref(), Some("s3cret"));
         assert_eq!(f.bytes(), before);
     }
-    f.step(cx, true);
+    f.step(cx, false);
     answer_confirm(cx, REPLACE);
     assert_eq!(f.held().as_deref(), Some("typed"));
     assert!(f.bytes().contains("old"), "{}", f.bytes());
+    assert!(f.draft_state(cx).0, "the redone edit follows the save");
+}
+
+// Replace in front of an undo is the Save the person could have made first: the undo then steps
+// back over it as after any Save, and redo lands on the saved file again.
+#[gpui_kit::test]
+fn undo_after_replace_is_undo_after_a_save(cx: &mut TestAppContext) {
+    let saved_first = {
+        let f = fix(cx, Kind::Collection, HOST);
+        f.draft(cx, 1, "old", "typed");
+        f.click_save(cx);
+        answer_confirm(cx, REPLACE);
+        assert!(!f.draft_state(cx).0, "the save leaves it clean");
+        f.step(cx, true);
+        assert!(!confirm_open(cx), "nothing left to ask");
+        (f.draft_state(cx), f.bytes(), f.held())
+    };
+    let f = fix(cx, Kind::Collection, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.step(cx, true);
+    answer_confirm(cx, REPLACE);
+    let replaced = (f.draft_state(cx), f.bytes(), f.held());
+    assert_eq!(replaced, saved_first);
+    f.step(cx, false);
+    assert!(!confirm_open(cx));
+    let (dirty, _) = f.draft_state(cx);
+    assert!(!dirty, "redo returns to what the file holds");
+    assert_eq!(f.bytes(), saved_first.1);
 }
 
 // Add to environment selects its target as a switch does: held typing is asked about first.
@@ -1251,31 +1323,22 @@ fn the_global_close_guard_keeps_held_typing_after_a_cancel(cx: &mut TestAppConte
 #[gpui_kit::test]
 fn undo_and_redo_keep_held_typing_out_of_harms_way(cx: &mut TestAppContext) {
     let f = fix(cx, Kind::Collection, HOST);
-    let Ed::Collection(ed) = f.ed.clone() else {
-        unreachable!()
-    };
-    f.hold(cx);
-    let step = |cx: &mut TestAppContext, undo: bool| {
-        cx.update_window(f.win, |_, w, cx| {
-            ed.update(cx, |e, cx| match undo {
-                true => e.undo_edit(w, cx),
-                false => e.redo_edit(w, cx),
-            })
-        })
-        .unwrap();
-        cx.run_until_parked();
-    };
-    step(cx, true);
-    assert!(confirm_open(cx), "the undo would take the typing with it");
-    answer_confirm(cx, CANCEL);
-    assert!(f.typing(cx));
-    assert_eq!(f.held().as_deref(), Some("s3cret"));
-    step(cx, false);
-    if confirm_open(cx) {
+    f.draft_with_a_redo(cx);
+    f.save_from_outside(cx);
+    for undo in [true, false] {
+        f.step(cx, undo);
+        assert!(
+            confirm_open(cx),
+            "undo {undo} would take the typing with it"
+        );
         answer_confirm(cx, CANCEL);
+        assert!(f.typing(cx));
+        assert_eq!(f.held().as_deref(), Some("s3cret"));
     }
-    assert!(f.typing(cx));
-    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    f.step(cx, false);
+    answer_confirm(cx, REPLACE);
+    assert!(!f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("typed"));
 }
 
 impl Fix {

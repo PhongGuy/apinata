@@ -90,6 +90,17 @@ fn create_counts_suffixes_and_files_that_failed_to_load() {
     );
 }
 
+// The check a caller can run first agrees with what create refuses and keeps.
+#[test]
+fn the_name_check_answers_as_create_does() {
+    for bad in ["", " ... ", "con"] {
+        let err = apinata_core::check_environment_name(bad).expect_err("refused");
+        assert!(matches!(err, EnvError::InvalidName { .. }), "{bad:?}");
+    }
+    let base = apinata_core::check_environment_name(" a:b ").expect("kept");
+    assert_eq!(base, "a-b");
+}
+
 #[test]
 fn create_refuses_a_name_that_sanitises_to_nothing_usable() {
     let dir = collection_with(&[]);

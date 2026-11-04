@@ -164,7 +164,10 @@ pub use edit::{
 #[doc(hidden)]
 pub use edit::auth_json_paths;
 pub use env_file::EnvVariable;
-pub use env_ops::{MovedRoot, OrphanReport, OrphanedSecret, VariableRefusal, without_variable};
+pub use env_ops::{
+    MovedRoot, OrphanReport, OrphanedSecret, VariableRefusal, check_environment_name,
+    without_variable,
+};
 pub use env_overlay::{EnvOverlay, OverlayLayer, OverlayVar};
 pub use error::{
     ContextError, CreateError, EditError, EnvError, FileError, HintShell, OpenError, ResolveError,
