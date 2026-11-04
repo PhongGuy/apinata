@@ -1148,9 +1148,13 @@ impl EnvVarTable {
         }
         let row = self.row(ix).expect("row in range");
         // A row not yet saved owns its secret flag, so a dirty or busy environment never locks it.
-        let locked = self.secret_locked && !row.meta.unsaved;
         let secret = row.meta.secret;
-        let unnamed = row.name.read(cx).value().is_empty();
+        let name = row.name.read(cx).value().to_string();
+        let unnamed = name.is_empty();
+        // A plain row named like a saved secret stays clickable, so the click can say why it is
+        // refused instead of the lock going dead without a word.
+        let clash = !secret && self.saved_secrets.contains(&name);
+        let locked = self.secret_locked && !row.meta.unsaved && !clash;
         let tip = match (locked, secret) {
             (true, _) => crate::env_editor::RENAME_LOCKED_REASON,
             (false, false) => "Make secret",
