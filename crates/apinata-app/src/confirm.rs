@@ -256,6 +256,18 @@ pub fn replace_secret_ask(names: &[String]) -> Ask {
     careful_ask(title, detail, "confirm-replace", "Replace")
 }
 
+/// Dropping typing in secret rows named like another secret row, which no Save can store:
+/// `[Cancel, Discard]`, Cancel the default.
+pub fn discard_twin_ask(names: &[String]) -> Ask {
+    let quoted: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
+    careful_ask(
+        format!("Discard the value typed for {}?", quoted.join(", ")),
+        "Secret names must be unique, so it cannot be stored.",
+        "confirm-discard",
+        "Discard",
+    )
+}
+
 /// Moving the stored value of `name` to the file: `[Cancel, Make plain]`, Cancel the default.
 pub fn move_secret_ask(name: &str) -> Ask {
     careful_ask(

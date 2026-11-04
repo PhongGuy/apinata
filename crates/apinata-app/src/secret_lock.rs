@@ -73,6 +73,16 @@ pub enum ReplaceAnswer {
     Stop,
 }
 
+/// Whether typing in the twin rows `names` may be dropped; true at once when there is none.
+pub async fn twins_dropped(names: Vec<String>, cx: &mut AsyncWindowContext) -> bool {
+    if names.is_empty() {
+        return true;
+    }
+    let spec = confirm::discard_twin_ask(&names);
+    let opened = cx.update(|window: &mut Window, cx| confirm::ask(spec, window, cx));
+    matches!(opened, Ok(answer) if answer.recv().await == Ok(1))
+}
+
 /// Whether a Save may go ahead once `reads` have named what it would replace: `None` from a
 /// read means it failed and has said so. All the names share one prompt.
 pub async fn replace_agreed(

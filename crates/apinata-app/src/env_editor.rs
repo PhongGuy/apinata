@@ -997,6 +997,13 @@ impl EnvEditor {
         if self.checking {
             return;
         }
+        // Typing no Save can store is dropped by leaving, so the person agrees to that first.
+        let twins = self.table.read(cx).twin_typing(cx);
+        if !saving && !twins.is_empty() {
+            return self.after_twins_dropped(twins, window, cx, move |e, window, cx| {
+                e.after_replace_check(saving, window, cx, then)
+            });
+        }
         if !self.owes_replace_check(saving, cx) {
             return then(self, window, cx);
         }
@@ -1006,6 +1013,42 @@ impl EnvEditor {
             this.update_in(cx, |e, window, cx| {
                 e.end_replace_check(go, cx);
                 if go {
+                    then(e, window, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The twin rows holding typing; see [`EnvVarTable::twin_typing`].
+    pub fn twin_typing(&self, cx: &App) -> Vec<String> {
+        self.table.read(cx).twin_typing(cx)
+    }
+
+    /// Empties the twin rows' typing once the person agreed to drop it.
+    pub fn discard_twin_typing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.table
+            .update(cx, |t, cx| t.discard_twin_typing(window, cx));
+    }
+
+    // Asks before dropping typing in twin rows `names`; Discard empties them and runs `then`,
+    // Cancel keeps them.
+    fn after_twins_dropped(
+        &mut self,
+        names: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        self.set_checking(true, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let go = secret_lock::twins_dropped(names, cx).await;
+            this.update_in(cx, |e, window, cx| {
+                e.set_checking(false, cx);
+                if go {
+                    e.table
+                        .update(cx, |t, cx| t.discard_twin_typing(window, cx));
                     then(e, window, cx);
                 }
             })

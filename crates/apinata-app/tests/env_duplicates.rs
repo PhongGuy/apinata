@@ -309,3 +309,116 @@ fn a_global_environment_refuses_two_secrets_of_one_name(cx: &mut TestAppContext)
         ws.read_with(cx, |w, _| (w.store().clone(), w.globals().expect("loaded")));
     assert_eq!(store.get(&globals.secret_key("g", "tok")).unwrap(), None);
 }
+
+const PROD: &str = "name: prod\n";
+
+fn typed_at(
+    cx: &mut TestAppContext,
+    ed: &gpui_kit::Entity<apinata_app::env_editor::EnvEditor>,
+    ix: usize,
+) -> Option<String> {
+    let table = ed.read_with(cx, |e, _| e.table().clone());
+    let input = table.read_with(cx, |t, _| t.value_input(ix).cloned())?;
+    Some(input.read_with(cx, |i, _| i.value().to_string()))
+}
+
+// Typing in a twin already on disk can never be stored, so a switch asks before dropping it:
+// Cancel keeps the selection and the typing, Discard switches.
+#[gpui_kit::test]
+fn a_switch_asks_before_dropping_a_twins_typing(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", TWINS),
+        ("environments/prod.yml", PROD),
+    ]);
+    let store = Arc::new(MemoryStore::new());
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    type_at_end(cx, win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    assert!(
+        ed.read_with(cx, |e, cx| e.holds_typing(cx)),
+        "it counts as unsaved"
+    );
+    let choose_prod = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| w.click(("env-item", 1usize), cx))
+            .unwrap();
+        cx.run_until_parked();
+    };
+    choose_prod(cx);
+    assert!(confirm_open(cx), "the switch asks");
+    answer_confirm(cx, "confirm-cancel");
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.selected().map(str::to_owned))
+            .as_deref(),
+        Some("dev")
+    );
+    assert_eq!(
+        typed_at(cx, &ed, 1).as_deref(),
+        Some("typed"),
+        "Cancel keeps it"
+    );
+    choose_prod(cx);
+    answer_confirm(cx, "confirm-discard");
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.selected().map(str::to_owned))
+            .as_deref(),
+        Some("prod")
+    );
+    assert_eq!(store.get(&tok_key(&col)).unwrap(), None, "nothing stored");
+}
+
+// Closing the tab asks the same: Cancel keeps the tab and the typing, Discard closes it.
+#[gpui_kit::test]
+fn a_tab_close_asks_before_dropping_a_twins_typing(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", TWINS),
+    ]);
+    let store = Arc::new(MemoryStore::new());
+    let s = started_with_store(cx, &col, store.clone());
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("title-bar").click("environments", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    type_at_end(cx, s.win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    let close = |cx: &mut TestAppContext| {
+        cx.dispatch_action(s.win, apinata_app::tab_area::CloseTab);
+        cx.run_until_parked();
+    };
+    close(cx);
+    assert!(confirm_open(cx), "the close asks");
+    answer_confirm(cx, "confirm-cancel");
+    assert!(present(cx, s.win, "env-editor"), "the tab stays");
+    let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
+    let id =
+        s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().clone());
+    assert!(
+        cx.update(|cx| area.read(cx).holds_typing(&id, cx)),
+        "Cancel keeps it"
+    );
+    close(cx);
+    answer_confirm(cx, "confirm-discard");
+    assert!(!present(cx, s.win, "env-editor"), "the tab went");
+    assert_eq!(store.get(&tok_key(&col)).unwrap(), None, "nothing stored");
+}
+
+// The lock takes a row's typing with it, but never a twin's, which would land on the shared value.
+#[gpui_kit::test]
+fn the_lock_never_stores_a_twins_typing(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", TWINS),
+    ]);
+    let store = Arc::new(MemoryStore::new());
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    type_at_end(cx, win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    lock(cx, win, 1);
+    let saved = std::fs::read_to_string(col.path().join("environments/dev.yml")).unwrap();
+    assert!(!saved.contains("typed"), "the typing never moved: {saved}");
+    assert_eq!(store.get(&tok_key(&col)).unwrap(), None, "nothing stored");
+}

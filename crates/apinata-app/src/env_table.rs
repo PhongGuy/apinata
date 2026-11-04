@@ -519,7 +519,31 @@ impl EnvVarTable {
     /// Whether a row holds typing its file has caught up with: unsaved work that nothing else
     /// shows, so every decision about leaving or closing reads this.
     pub fn holds_typing(&self, cx: &App) -> bool {
-        self.rows.iter().any(|row| row.held(cx))
+        self.rows.iter().any(|row| row.held(cx)) || !self.twin_typing(cx).is_empty()
+    }
+
+    /// The names of secret rows holding typing that can never be stored, since another secret
+    /// row shares the name; leaving drops it, so it counts as held.
+    pub fn twin_typing(&self, cx: &App) -> Vec<String> {
+        let typed = |row: &Row| row.value.read(cx).value() != row.committed.as_str();
+        let mut names: Vec<String> = (0..self.rows.len())
+            .filter(|&ix| self.has_twin(ix, cx) && typed(&self.rows[ix]))
+            .map(|ix| self.rows[ix].name.read(cx).value().to_string())
+            .collect();
+        names.dedup();
+        names
+    }
+
+    /// Put back what each twin row showed before it was typed in, once the person agreed.
+    pub fn discard_twin_typing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let twins: Vec<usize> = (0..self.rows.len())
+            .filter(|&ix| self.has_twin(ix, cx))
+            .collect();
+        for ix in twins {
+            let row = &self.rows[ix];
+            set_text(&row.value, &row.committed.clone(), window, cx);
+        }
+        cx.notify();
     }
 
     /// Whether a secret row holds typing not yet sent.
@@ -553,7 +577,12 @@ impl EnvVarTable {
     /// The typing not yet committed in saved secret row `name`, marked committed without an
     /// event, so an owner can act on it ahead of anything an event would queue behind.
     pub fn take_typing(&mut self, name: &str, cx: &App) -> Option<String> {
-        let row = (self.rows.iter_mut()).find(|row| row.name.read(cx).value() == name)?;
+        let ix = (self.rows.iter()).position(|row| row.name.read(cx).value() == name)?;
+        // A twin's value would land on the one both names share.
+        if self.has_twin(ix, cx) {
+            return None;
+        }
+        let row = &mut self.rows[ix];
         let text = row.value.read(cx).value().to_string();
         let held = !row.meta.secret || row.meta.unsaved || text == row.committed;
         if held || !row.releases(&text, cx) {
