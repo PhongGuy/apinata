@@ -309,7 +309,7 @@ impl OAuth2Editor {
                     if f.masked() {
                         // The blur a close prompt causes keeps the typing; only its Save stores it.
                         let prompted =
-                            matches!(event, InputEvent::Blur) && crate::closing::prompting(w, cx);
+                            matches!(event, InputEvent::Blur) && crate::closing::asking(w, cx);
                         if !prompted
                             && matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur)
                         {

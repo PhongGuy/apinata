@@ -435,6 +435,15 @@ struct Prompting(HashSet<WindowId>);
 
 impl Global for Prompting {}
 
+/// Whether any close prompt, a tab's included, is open or settling in this window.
+pub(crate) fn asking(window: &Window, cx: &App) -> bool {
+    let id = window.window_handle().window_id();
+    prompting(window, cx)
+        || cx
+            .try_global::<Holding>()
+            .is_some_and(|h| h.0.contains(&id))
+}
+
 pub(crate) fn prompting(window: &Window, cx: &App) -> bool {
     let id = window.window_handle().window_id();
     cx.try_global::<Prompting>()

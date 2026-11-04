@@ -511,20 +511,25 @@ impl TabArea {
             .into_iter()
             .filter(|editor| editor.read(cx).holds_typing(cx))
             .collect();
+        // Environment secret typing is stored now; an OAuth secret waits for the prompt's Save.
+        let envs: Vec<TabId> = (ids.iter().copied())
+            .filter(|id| matches!(self.editors.get(id), Some((_, TabView::Env(_)))))
+            .collect();
         if !held.is_empty() {
             return self.check_replace(held, false, window, cx, move |go, area, window, cx| {
                 if go {
-                    area.store_pending_secrets(&ids, false, cx);
+                    area.store_pending_secrets(&envs, false, cx);
                     area.close(ids, window, cx);
                 }
             });
         }
-        let owed = self.store_pending_secrets(&ids, false, cx);
+        self.store_pending_secrets(&envs, false, cx);
+        // A typed OAuth secret counts as unsaved but stays in its field until Save.
         let dirty: Vec<TabEntry> = ids
             .iter()
             .filter_map(|&id| self.workspace.read(cx).tabs().get(id).cloned())
             .filter(|e| {
-                owed.contains(&e.id)
+                self.holds_secret_typing(e.id, cx)
                     || self.is_dirty(e, cx)
                     || closing::roots_behind(&self.workspace, std::slice::from_ref(&e.root), cx)
             })
@@ -577,13 +582,15 @@ impl TabArea {
             .into_iter()
             .filter(|id| dirty.iter().all(|d| d.id != *id))
             .collect();
+        let typed: Vec<TabId> = dirty.iter().map(|e| e.id).collect();
         let (drafts, dirty): (Vec<TabEntry>, Vec<TabEntry>) =
             dirty.into_iter().partition(|e| draft_of(e).is_some());
-        // The prompt held back typing in environment rows not yet saved; Save now owns it.
+        // The prompt held back typing in environment rows and OAuth secrets; Save now owns it,
+        // and each secret's edit goes out ahead of its tab's save.
         let saving: Vec<TabId> = dirty.iter().map(|e| e.id).collect();
-        self.after_replace_check(&saving.clone(), window, cx, move |area, window, cx| {
-            area.store_pending_secrets(&saving, true, cx);
-            area.send_and_close(clean, dirty, drafts, window, cx);
+        self.after_replace_check(&saving, window, cx, move |area, window, cx| {
+            let owed = area.store_pending_secrets(&typed, true, cx);
+            area.send_and_close(clean, dirty, drafts, owed, window, cx);
         });
     }
 
@@ -592,11 +599,12 @@ impl TabArea {
         mut clean: Vec<TabId>,
         dirty: Vec<TabEntry>,
         drafts: Vec<TabEntry>,
+        owed: HashSet<TabId>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         for entry in dirty {
-            match self.send_each(&entry, Command::Save, cx) {
+            match self.send_owed(&entry, Command::Save, owed.contains(&entry.id), cx) {
                 Some(command) => self.pending.push(PendingSave {
                     tab: entry.id,
                     root: entry.root,
@@ -1677,13 +1685,18 @@ impl TabArea {
     pub fn typed_secret_targets(&self, root: Option<&Path>, cx: &App) -> Vec<(PathBuf, Target)> {
         (self.workspace.read(cx).tabs().entries().iter())
             .filter(|e| root.is_none_or(|root| e.root == root))
-            .filter(|e| match self.editors.get(&e.id).map(|(_, view)| view) {
-                Some(TabView::Request(editor)) => editor.read(cx).holds_secret_typing(cx),
-                Some(TabView::Config(editor)) => editor.read(cx).holds_secret_typing(cx),
-                _ => false,
-            })
+            .filter(|e| self.holds_secret_typing(e.id, cx))
             .filter_map(|e| Some((e.root.clone(), own_target(&e.kind)?)))
             .collect()
+    }
+
+    // Whether tab `id`'s request or settings editor holds an OAuth secret not yet sent.
+    fn holds_secret_typing(&self, id: TabId, cx: &App) -> bool {
+        match self.editors.get(&id).map(|(_, view)| view) {
+            Some(TabView::Request(editor)) => editor.read(cx).holds_secret_typing(cx),
+            Some(TabView::Config(editor)) => editor.read(cx).holds_secret_typing(cx),
+            _ => false,
+        }
     }
 
     /// Sends the edits that OAuth secrets still focused in the request and settings tabs of
