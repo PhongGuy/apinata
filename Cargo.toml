@@ -32,7 +32,8 @@ hyper-util = { version = "=0.1.21", default-features = false, features = ["clien
 tower = { version = "0.5.3", default-features = false }
 http = "1"
 http-body-util = "0.1"
-pkcs8 = { version = "=0.11.0", features = ["encryption", "pem", "std"] }
+# SHA-1 and 3DES open older openssl keys; export picks its scheme itself and never uses them.
+pkcs8 = { version = "=0.11.0", features = ["encryption", "pem", "std", "sha1-insecure", "3des"] }
 scrypt = { version = "=0.12.0", default-features = false }
 jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["use_pem", "aws_lc_rs"] }
 aws-lc-rs = "1.18"
