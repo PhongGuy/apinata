@@ -762,7 +762,11 @@ impl GlobalEnvEditor {
             .unwrap_or_default();
         let rows = env_rows(&variables);
         let base = env_rows(&self.base);
+        // A file back at what was loaded has nothing to warn about, and the typing stays.
         if !all && rows == base {
+            if std::mem::take(&mut self.disk_changed) {
+                cx.notify();
+            }
             return;
         }
         let typed = self.table.read(cx).rows(cx);

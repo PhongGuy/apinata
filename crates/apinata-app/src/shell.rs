@@ -1358,17 +1358,12 @@ impl Shell {
             WorkspaceEvent::WatchFailed { root, message }
                 if self.workspace.read(cx).global_dir() == Some(root.as_path()) =>
             {
-                let text = format!(
-                    "Stopped watching global environments: {message} Reopen Global environments to pick up changes."
-                );
+                let text = watch_failed_text(None, message);
                 window.push_notification(Notification::warning(text), cx);
                 cx.notify();
             }
             WorkspaceEvent::WatchFailed { root, message } => {
-                let text = format!(
-                    "Stopped watching {}: {message} Use Reload collection to pick up changes.",
-                    display_name(root)
-                );
+                let text = watch_failed_text(Some(&display_name(root)), message);
                 window.push_notification(Notification::warning(text), cx);
                 cx.notify();
             }
@@ -2929,6 +2924,30 @@ fn root_path_text(
         .text_size(style::TEXT_SMALL)
         .text_color(muted)
         .child(shown)
+}
+
+/// The warning for a watch that stopped: of the collection named `collection`, or of the
+/// global environments when `None`.
+pub fn watch_failed_text(collection: Option<&str>, message: &str) -> String {
+    let (subject, advice) = match collection {
+        None => (
+            "global environments",
+            "Reopen Global environments to pick up changes.",
+        ),
+        Some(name) => (name, "Use Reload collection to pick up changes."),
+    };
+    // The notify message may or may not end its sentence; the advice always starts a new one,
+    // and an empty message leaves the stop alone.
+    let message = message.trim();
+    if message.is_empty() {
+        return format!("Stopped watching {subject}. {advice}");
+    }
+    let stop = if message.ends_with(['.', '!', '?']) {
+        ""
+    } else {
+        "."
+    };
+    format!("Stopped watching {subject}: {message}{stop} {advice}")
 }
 
 /// The notification for a manual update check's report; an available release shows the

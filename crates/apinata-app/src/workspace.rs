@@ -28,7 +28,7 @@ use crate::prompt_vars::PromptMemory;
 use crate::session::{SavedExample, SavedPanel, SavedPanelKind, SavedTab, Session};
 use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
 use crate::tabs::{TabId, TabKind, Tabs};
-use crate::watch::rules::WatchMsg;
+use crate::watch::rules::{WatchMsg, translate};
 use crate::watch::set::{EventHandler, Watch, WatchError, WatchFactory};
 use crate::watch::watcher::CollectionWatcher;
 
@@ -1194,23 +1194,28 @@ impl Workspace {
     }
 
     // Watches the global directory while there is a factory, so another program's edit is
-    // reloaded as a collection's is. The directory is made first, so a fresh install is watched
-    // from its first environment; one that cannot be watched is read on demand only.
+    // reloaded as a collection's is; one that cannot be watched is read on demand only.
     fn sync_global_watch(&mut self, cx: &mut Context<Self>) {
         self.global_watch = None;
         let (Some(factory), Some(dir)) = (self.factory.clone(), self.global_dir.clone()) else {
             return;
         };
-        let (tx, batches) = async_channel::unbounded();
-        // A batch of opens and closes is the reload's own reading; acting on it would reload
-        // the directory forever, a few times a second.
-        let handler: EventHandler = Box::new(move |result| {
-            if result.is_ok_and(|events| events.iter().all(|e| e.kind.is_access())) {
-                return;
-            }
-            let _ = tx.try_send(());
-        });
+        // The platform watcher needs an existing directory, and the CLI or another window may
+        // write the first file into this config directory; an empty one costs nothing.
         let _ = std::fs::create_dir_all(&dir);
+        let (tx, batches) = async_channel::unbounded();
+        // Batches are read as a collection's are, so the reload's own opens and closes ask for
+        // nothing and only the watch limit stops watching.
+        let (root, real_root) = (
+            dir.clone(),
+            std::fs::canonicalize(&dir).unwrap_or(dir.clone()),
+        );
+        let handler: EventHandler =
+            Box::new(move |result| match translate(result, &root, &real_root) {
+                None => {}
+                Some(WatchMsg::Failed(message)) => drop(tx.try_send(Some(message))),
+                Some(_) => drop(tx.try_send(None)),
+            });
         let placed = factory(handler).and_then(|mut watch| match watch.watch(&dir) {
             Ok(()) => Ok(watch),
             Err(WatchError::Failed(message)) => Err(message),
@@ -1224,11 +1229,30 @@ impl Workspace {
                 return;
             }
         };
+        let failed_root = dir.clone();
         let pump = cx.spawn(async move |this, cx| {
-            while batches.recv().await.is_ok() {
-                while batches.try_recv().is_ok() {}
-                let reloaded = this.update(cx, |w, cx| w.load_globals(ReloadCause::Watched, cx));
-                if reloaded.is_err() {
+            // A failure drained with pending changes still reloads them before it is reported.
+            while let Ok(first) = batches.recv().await {
+                let (mut failed, mut changed) = (None, false);
+                for batch in
+                    std::iter::once(first).chain(std::iter::from_fn(|| batches.try_recv().ok()))
+                {
+                    match batch {
+                        Some(message) => failed = failed.or(Some(message)),
+                        None => changed = true,
+                    }
+                }
+                let go_on = this.update(cx, |w, cx| {
+                    if changed {
+                        w.load_globals(ReloadCause::Watched, cx);
+                    }
+                    let Some(message) = failed else {
+                        return true;
+                    };
+                    w.stop_global_watch(failed_root.clone(), message, cx);
+                    false
+                });
+                if !go_on.unwrap_or(false) {
                     break;
                 }
             }
@@ -1236,6 +1260,16 @@ impl Workspace {
         self.global_watch = Some((watch, pump));
         // An edit made before the watch was placed has no event of its own.
         self.load_globals(ReloadCause::Watched, cx);
+    }
+
+    // Drops a global watch that failed after it started and says so. This runs inside the
+    // watch's own pump, so the pump is let finish rather than dropped.
+    fn stop_global_watch(&mut self, dir: PathBuf, message: String, cx: &mut Context<Self>) {
+        if let Some((_watch, pump)) = self.global_watch.take() {
+            pump.detach();
+        }
+        cx.emit(WorkspaceEvent::WatchFailed { root: dir, message });
+        cx.notify();
     }
 
     /// Re-read the directory off the main thread and publish it; nothing without a directory.
