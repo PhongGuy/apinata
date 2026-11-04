@@ -1202,7 +1202,12 @@ impl Workspace {
             return;
         };
         let (tx, batches) = async_channel::unbounded();
-        let handler: EventHandler = Box::new(move |_| {
+        // A batch of opens and closes is the reload's own reading; acting on it would reload
+        // the directory forever, a few times a second.
+        let handler: EventHandler = Box::new(move |result| {
+            if result.is_ok_and(|events| events.iter().all(|e| e.kind.is_access())) {
+                return;
+            }
             let _ = tx.try_send(());
         });
         let _ = std::fs::create_dir_all(&dir);

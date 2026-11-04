@@ -1117,3 +1117,39 @@ fn placing_the_global_watch_reads_an_edit_made_before_it(cx: &mut TestAppContext
         "the outside value was read"
     );
 }
+
+// Another program's rewrite reaches the open global editor well inside the watcher's budget.
+#[gpui_kit::test]
+fn an_outside_edit_reaches_the_open_global_editor_promptly(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let (_win, editor) = open_editor(cx, &ws, "g");
+    settle(cx);
+    let written = std::time::Instant::now();
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    wait_for(cx, "the outside value in the global editor", |cx| {
+        first_value(cx, &editor) == "outside"
+    });
+    assert!(written.elapsed() < std::time::Duration::from_secs(3));
+}
+
+// The app's own reads of the watched global directory never set off another reload, so an
+// idle workspace publishes nothing and each collection keeps its snapshot.
+#[gpui_kit::test]
+fn an_idle_watched_global_directory_reloads_nothing(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.executor().allow_parking();
+    let (c, _g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    let root = c.path().to_path_buf();
+    settle(cx);
+    let before = ws_snap(cx, &ws, &root).seq;
+    settle(cx);
+    assert_eq!(ws_snap(cx, &ws, &root).seq, before);
+}
