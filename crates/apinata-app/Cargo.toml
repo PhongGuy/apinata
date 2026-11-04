@@ -28,7 +28,7 @@ base64.workspace = true
 url.workspace = true
 percent-encoding.workspace = true
 # Already in the lock through gpui; pinned to that version so only one copy builds.
-quick-xml = "=0.42.0"
+quick-xml = "=0.41.0"
 # Same version gpui links, so `RgbaImage` is the type `WindowOptions.icon` takes.
 image = { version = "=0.25.10", default-features = false, features = ["png", "gif", "jpeg", "webp", "bmp"] }
 # Unused directly: turns on `debug-embed` for the kit's icon set, so debug builds carry
