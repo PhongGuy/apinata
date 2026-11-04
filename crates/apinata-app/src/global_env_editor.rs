@@ -512,8 +512,13 @@ impl GlobalEnvEditor {
         if self.selected.as_deref() != Some(env) {
             return LockStep::Stop;
         }
+        // A read that answers ends whatever an earlier failed read put on the error line.
         let stored = match read {
-            Ok(stored) => stored,
+            Ok(stored) => {
+                self.error = None;
+                cx.notify();
+                stored
+            }
             Err(message) => {
                 self.error = Some(message);
                 cx.notify();
@@ -611,6 +616,11 @@ impl GlobalEnvEditor {
                     }
                 }
             }
+            this.update(cx, |e, cx| {
+                e.error = None;
+                cx.notify();
+            })
+            .ok();
             Some(secret_lock::replaced(&typing, &stored))
         });
         cx.spawn_in(window, async move |this, cx| {

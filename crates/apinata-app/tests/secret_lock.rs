@@ -1499,6 +1499,39 @@ fn typing_over_nothing_stored_reaches_the_file_unasked_in_a_global(cx: &mut Test
     assert_eq!(f.held(), None);
 }
 
+fn a_lock_check_that_reads_clears_the_failed_reads_error(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, SECRET);
+    f.store.fail_get.store(true, Ordering::SeqCst);
+    click_lock(cx, f.win, 1);
+    assert!(f.shows_error(cx));
+    f.store.fail_get.store(false, Ordering::SeqCst);
+    click_lock(cx, f.win, 1);
+    answer_confirm(cx, CANCEL);
+    assert!(!f.shows_error(cx), "the error outlived a read that worked");
+}
+both!(
+    a_lock_check_that_reads_clears_the_failed_reads_error,
+    a_lock_check_that_reads_clears_the_error_in_a_collection,
+    a_lock_check_that_reads_clears_the_error_in_a_global
+);
+
+fn a_save_check_that_reads_clears_the_failed_reads_error(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.store.fail_get.store(true, Ordering::SeqCst);
+    f.click_save(cx);
+    assert!(f.shows_error(cx));
+    f.store.fail_get.store(false, Ordering::SeqCst);
+    f.click_save(cx);
+    answer_confirm(cx, CANCEL);
+    assert!(!f.shows_error(cx), "the error outlived a read that worked");
+}
+both!(
+    a_save_check_that_reads_clears_the_failed_reads_error,
+    a_save_check_that_reads_clears_the_error_in_a_collection,
+    a_save_check_that_reads_clears_the_error_in_a_global
+);
+
 mod held {
     use super::*;
     use apinata_app::tab_area::CloseTab;
