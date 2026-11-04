@@ -17,19 +17,31 @@ fn not_regular() -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::NotFound, "not a regular file")
 }
 
-/// Options that open for reading without waiting on a pipe or device.
+/// Options that open for reading without waiting on a pipe or device, and without a tty
+/// becoming the controlling terminal.
 fn nonblocking_read() -> std::fs::OpenOptions {
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    std::os::unix::fs::OpenOptionsExt::custom_flags(
+        &mut options,
+        libc::O_NONBLOCK | libc::O_NOCTTY,
+    );
     options
 }
 
-/// `path` opened for reading, following links. The type is taken from the opened handle, so a
-/// pipe, socket or device (even one swapped in after an earlier check) is `NotFound`; reading a
-/// directory fails as it always does.
+/// `path` opened for reading, following links. A pipe, socket or device is `NotFound`: one seen
+/// before the open is never opened, since opening some devices acts, and the opened handle
+/// decides for one swapped in after that look. Reading a directory fails as it always does.
 pub(crate) fn open_regular(path: &Path) -> std::io::Result<std::fs::File> {
+    if is_special_file(path) {
+        return Err(not_regular());
+    }
+    open_checked(path)
+}
+
+/// `path` opened without waiting and refused from the opened handle when not regular.
+fn open_checked(path: &Path) -> std::io::Result<std::fs::File> {
     let file = match nonblocking_read().open(path) {
         Ok(file) => file,
         // A socket refuses the open itself.
@@ -45,6 +57,10 @@ pub(crate) fn open_regular(path: &Path) -> std::io::Result<std::fs::File> {
 
 /// [`open_regular`] for async callers.
 pub(crate) async fn open_regular_async(path: &Path) -> std::io::Result<tokio::fs::File> {
+    let seen = tokio::fs::metadata(path).await;
+    if seen.is_ok_and(|meta| !meta.is_file() && !meta.is_dir()) {
+        return Err(not_regular());
+    }
     let file = match tokio::fs::OpenOptions::from(nonblocking_read())
         .open(path)
         .await
@@ -828,7 +844,8 @@ mod tests {
         (dir, doc)
     }
 
-    // The pipe is opened without waiting and refused from the opened handle, never a stat.
+    // Past the look before the open, as for a pipe swapped in after it: the pipe is opened
+    // without waiting and refused from the opened handle.
     #[cfg(unix)]
     #[test]
     fn an_opened_pipe_is_refused_without_waiting() {
@@ -836,10 +853,25 @@ mod tests {
         let pipe = dir.path().join("p");
         crate::hang_guard::mkfifo(&pipe);
         let path = pipe.clone();
-        let opened = crate::hang_guard::off_the_pipe(&pipe, move || open_regular(&path).map(drop));
+        let opened = crate::hang_guard::off_the_pipe(&pipe, move || open_checked(&path).map(drop));
         let error = opened.expect_err("a pipe is no regular file");
         assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
         assert_eq!(error.to_string(), "not a regular file");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_char_device_is_refused() {
+        let device = Path::new("/dev/null");
+        for error in [
+            read_regular(device).expect_err("seen before the open"),
+            open_checked(device)
+                .map(drop)
+                .expect_err("seen from the handle"),
+        ] {
+            assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+            assert_eq!(error.to_string(), "not a regular file");
+        }
     }
 
     #[test]
