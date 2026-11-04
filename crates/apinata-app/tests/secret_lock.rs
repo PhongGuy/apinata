@@ -1524,6 +1524,23 @@ both!(
     a_save_check_that_reads_clears_the_error_in_a_global
 );
 
+// A read that answers ends only a failed read's error; a refusal still in force stays.
+#[gpui_kit::test]
+fn a_lock_check_keeps_the_duplicate_names_refusal_in_a_global(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Global, SECRET);
+    f.draft(cx, 2, "twin", "a");
+    f.draft(cx, 3, "twin", "b");
+    f.click_save(cx);
+    assert!(!confirm_open(cx));
+    assert!(f.shows_error(cx), "the save is refused");
+    click_lock(cx, f.win, 1);
+    answer_confirm(cx, CANCEL);
+    assert!(
+        f.shows_error(cx),
+        "the refusal went with a read that worked"
+    );
+}
+
 // The text row `ix`'s value input shows.
 fn shown_value(f: &Fix, cx: &mut TestAppContext, ix: usize) -> String {
     cx.update(|cx| {

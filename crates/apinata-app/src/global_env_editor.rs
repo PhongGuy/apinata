@@ -509,11 +509,9 @@ impl GlobalEnvEditor {
         if self.selected.as_deref() != Some(env) {
             return LockStep::Stop;
         }
-        // A read that answers ends whatever an earlier failed read put on the error line.
         let stored = match read {
             Ok(stored) => {
-                self.error = None;
-                cx.notify();
+                self.clear_read_error(cx);
                 stored
             }
             Err(message) => {
@@ -612,11 +610,7 @@ impl GlobalEnvEditor {
                     }
                 }
             }
-            this.update(cx, |e, cx| {
-                e.error = None;
-                cx.notify();
-            })
-            .ok();
+            this.update(cx, |e, cx| e.clear_read_error(cx)).ok();
             Some(secret_lock::replaced(&typing, &stored))
         });
         cx.spawn_in(window, async move |this, cx| {
@@ -710,6 +704,15 @@ impl GlobalEnvEditor {
         let outcome = self.workspace.update(cx, |w, cx| w.edit_globals(op, cx));
         cx.notify();
         outcome
+    }
+
+    // A read that answers ends an earlier failed read's error; the duplicate-names refusal is
+    // the only other error this editor holds, and it stays while the names still collide.
+    fn clear_read_error(&mut self, cx: &mut Context<Self>) {
+        if self.error.as_deref() != Some(DUPLICATE_SECRET_NAMES) {
+            self.error = None;
+            cx.notify();
+        }
     }
 
     // Drops both error sources, the workspace's and this editor's own.
