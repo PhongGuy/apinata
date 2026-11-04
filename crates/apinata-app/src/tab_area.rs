@@ -1502,6 +1502,27 @@ impl TabArea {
         if editors.iter().any(|editor| editor.read(cx).checking()) {
             return done(false, self, window, cx);
         }
+        // Typing no Save can store is dropped by the close, so the person agrees to that first.
+        let twins: Vec<String> = (editors.iter())
+            .flat_map(|editor| editor.read(cx).twin_typing(cx))
+            .collect();
+        if !saving && !twins.is_empty() {
+            cx.spawn_in(window, async move |this, cx| {
+                let go = crate::secret_lock::twins_dropped(twins, cx).await;
+                this.update_in(cx, |area, window, cx| match go {
+                    true => {
+                        for editor in &editors {
+                            editor.update(cx, |e, cx| e.discard_twin_typing(window, cx));
+                        }
+                        area.check_replace(editors, saving, window, cx, done);
+                    }
+                    false => done(false, area, window, cx),
+                })
+                .ok();
+            })
+            .detach();
+            return;
+        }
         let reads = editors
             .iter()
             .map(|editor| editor.update(cx, |e, cx| e.begin_replace_check(saving, cx)))

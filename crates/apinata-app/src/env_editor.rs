@@ -24,7 +24,10 @@ use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, EnvOp, Field, Notice, NoticeKind, Target};
 use crate::edit_history::EditHistory;
 use crate::edit_track::{self, LoadStamps, same_value};
-use crate::env_table::{EnvTableEvent, EnvVarTable, env_rows, env_vars_from};
+use crate::env_table::{
+    DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, SecretRecord, env_rows, env_vars_from,
+    secret_records, secrets_collide,
+};
 use crate::orphan_section::{self, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
 use crate::scroll_follow::FocusFollow;
@@ -137,6 +140,8 @@ pub struct EnvEditor {
     saved: HashMap<String, Vec<String>>,
     /// The names in `saved` that are secrets.
     saved_secrets: HashMap<String, Vec<String>>,
+    /// The secrets of each file as last seen clean, which a collision check compares against.
+    saved_records: HashMap<String, Vec<SecretRecord>>,
     extends: Entity<SelectState<Vec<Parent>>>,
     parent_names: Vec<Option<String>>,
     name_input: Entity<InputState>,
@@ -255,6 +260,7 @@ impl EnvEditor {
             base: Vec::new(),
             saved: HashMap::new(),
             saved_secrets: HashMap::new(),
+            saved_records: HashMap::new(),
             extends,
             parent_names: Vec::new(),
             name_input,
@@ -570,12 +576,33 @@ impl EnvEditor {
     /// Stores secret typing not yet committed, then writes the selected environment to its
     /// file; a key or button press does not blur the secret input.
     pub fn save(&mut self, cx: &mut Context<Self>) {
+        if self.refuse_colliding_secrets(cx) {
+            return;
+        }
         self.store_pending_secrets(true, cx);
         if let Some(env) = self.selected.clone() {
             self.send(Command::Save(Target::Environment(env)), Sent::Plain, cx);
             // Queued behind the save, so the actor answers from the file it just wrote.
             self.list_orphans(cx);
         }
+    }
+
+    // Refused before any typing is stored: two secrets of one name would share one value. A
+    // collision the file already holds blocks only a write that changes a secret.
+    fn refuse_colliding_secrets(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(env) = self.selected.as_ref() else {
+            return false;
+        };
+        let table = self.table.read(cx);
+        let draft = table.secret_records(cx);
+        let saved = self.saved_records.get(env).map(Vec::as_slice);
+        let changed = draft != saved.unwrap_or_default() || table.has_secret_typing(cx);
+        if !(secrets_collide(&draft) && changed) {
+            return false;
+        }
+        self.error = Some(DUPLICATE_SECRET_NAMES.to_owned());
+        cx.notify();
+        true
     }
 
     /// The variable an "Add to environment" waits to add once the environment being created
@@ -970,6 +997,13 @@ impl EnvEditor {
         if self.checking {
             return;
         }
+        // Typing no Save can store is dropped by leaving, so the person agrees to that first.
+        let twins = self.table.read(cx).twin_typing(cx);
+        if !saving && !twins.is_empty() {
+            return self.after_twins_dropped(twins, window, cx, move |e, window, cx| {
+                e.after_replace_check(saving, window, cx, then)
+            });
+        }
         if !self.owes_replace_check(saving, cx) {
             return then(self, window, cx);
         }
@@ -979,6 +1013,42 @@ impl EnvEditor {
             this.update_in(cx, |e, window, cx| {
                 e.end_replace_check(go, cx);
                 if go {
+                    then(e, window, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The twin rows holding typing; see [`EnvVarTable::twin_typing`].
+    pub fn twin_typing(&self, cx: &App) -> Vec<String> {
+        self.table.read(cx).twin_typing(cx)
+    }
+
+    /// Empties the twin rows' typing once the person agreed to drop it.
+    pub fn discard_twin_typing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.table
+            .update(cx, |t, cx| t.discard_twin_typing(window, cx));
+    }
+
+    // Asks before dropping typing in twin rows `names`; Discard empties them and runs `then`,
+    // Cancel keeps them.
+    fn after_twins_dropped(
+        &mut self,
+        names: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        self.set_checking(true, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let go = secret_lock::twins_dropped(names, cx).await;
+            this.update_in(cx, |e, window, cx| {
+                e.set_checking(false, cx);
+                if go {
+                    e.table
+                        .update(cx, |t, cx| t.discard_twin_typing(window, cx));
                     then(e, window, cx);
                 }
             })
@@ -1211,6 +1281,7 @@ impl EnvEditor {
         // A deleted or renamed environment's record goes, so a later namesake starts afresh.
         self.saved.retain(|env, _| names.contains(env));
         self.saved_secrets.retain(|env, _| names.contains(env));
+        self.saved_records.retain(|env, _| names.contains(env));
         let present = self
             .selected
             .as_ref()
@@ -1329,6 +1400,7 @@ impl EnvEditor {
                 .map(|v| v.name.clone())
                 .collect();
             self.saved_secrets.insert(name.clone(), secrets);
+            (self.saved_records).insert(name.clone(), secret_records(&view.variables));
         }
         let seq = self.snapshot(cx).map_or(0, |s| s.seq);
         for field in [Field::Variables, Field::Extends] {
@@ -1522,8 +1594,11 @@ impl EnvEditor {
             return;
         }
         let commands = banner::commands(banner, choice, &target, &held);
-        // A write of the draft stores the typing first, as Save does.
+        // A write of the draft is refused or stores the typing first, as Save does.
         if commands.iter().any(writes_draft) {
+            if self.refuse_colliding_secrets(cx) {
+                return;
+            }
             self.store_pending_secrets(true, cx);
         }
         for command in commands {

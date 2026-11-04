@@ -13,7 +13,10 @@ use gpui_kit::*;
 
 use crate::banner::{self, Banner, Choice};
 use crate::dialog_guard::{self, Guard, GuardRef, SaveOutcome};
-use crate::env_table::{EnvTableEvent, EnvVarTable, env_rows, env_vars_from};
+use crate::env_table::{
+    DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, env_rows, env_vars_from, secret_records,
+    secrets_collide,
+};
 use crate::import_report::failure_text;
 use crate::orphan_section::{self, Orphans};
 use crate::scroll_follow::FocusFollow;
@@ -377,6 +380,15 @@ impl GlobalEnvEditor {
         let Some(name) = self.selected.clone() else {
             return dialog_guard::settled(Ok(()));
         };
+        // Refused before any typing is taken: two secrets of one name would share one value.
+        let table = self.table.read(cx);
+        let draft = table.secret_records(cx);
+        let changed = draft != secret_records(&self.base) || table.has_secret_typing(cx);
+        if secrets_collide(&draft) && changed {
+            self.error = Some(DUPLICATE_SECRET_NAMES.to_owned());
+            cx.notify();
+            return dialog_guard::settled(Err(DUPLICATE_SECRET_NAMES.to_owned()));
+        }
         let (rows, typed) = self.table.update(cx, |t, cx| {
             let typed = t.take_pending_secrets(true, cx);
             (t.rows(cx), typed)

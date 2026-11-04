@@ -44,6 +44,35 @@ pub const SECRET_HIDDEN: &str = "••••••••";
 /// A revealed secret row's value placeholder when nothing is stored.
 pub const SECRET_UNSET: &str = "Not set";
 
+/// The note under a secret row whose name an earlier secret row already holds.
+pub const DUPLICATE_SECRET_NAME: &str = "Secret names must be unique";
+
+/// Why a Save that would write two secrets of one name is refused.
+pub const DUPLICATE_SECRET_NAMES: &str = "Duplicate secret names are not allowed";
+
+/// A secret as the file keeps it: its name and whether it is set.
+pub type SecretRecord = (String, bool);
+
+/// The secrets among `vars`, in file order.
+pub fn secret_records(vars: &[EnvVariable]) -> Vec<SecretRecord> {
+    (vars.iter().filter(|v| v.secret))
+        .map(|v| (v.name.clone(), v.enabled))
+        .collect()
+}
+
+/// Whether two of `secrets` share a name. Stored values are keyed by name, so they would
+/// share one value.
+pub fn secrets_collide(secrets: &[SecretRecord]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    (secrets.iter()).any(|(name, _)| !name.is_empty() && !seen.insert(name))
+}
+
+/// Whether saving `draft` over a file holding `saved` would write a collision. A collision
+/// the file already holds does not block a save that leaves every secret as it was.
+pub fn writes_colliding_secrets(draft: &[SecretRecord], saved: &[SecretRecord]) -> bool {
+    secrets_collide(draft) && draft != saved
+}
+
 /// One variable as the table shows it; a secret row's value is always empty.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EnvRow {
@@ -438,6 +467,30 @@ impl EnvVarTable {
         shown.then_some(note.as_str())
     }
 
+    /// The secret rows as the file would keep them, in row order.
+    pub fn secret_records(&self, cx: &App) -> Vec<SecretRecord> {
+        (self.rows.iter())
+            .filter(|row| row.meta.secret)
+            .map(|row| (row.name.read(cx).value().to_string(), row.meta.enabled))
+            .collect()
+    }
+
+    /// [`DUPLICATE_SECRET_NAME`] when row `ix` is a secret whose name another secret row
+    /// also holds; every row of the name is marked.
+    pub fn duplicate_note(&self, ix: usize, cx: &App) -> Option<&'static str> {
+        self.has_twin(ix, cx).then_some(DUPLICATE_SECRET_NAME)
+    }
+
+    fn has_twin(&self, ix: usize, cx: &App) -> bool {
+        let Some(row) = self.rows.get(ix).filter(|row| row.meta.secret) else {
+            return false;
+        };
+        let name = row.name.read(cx).value();
+        let twin =
+            |(j, r): (usize, &Row)| j != ix && r.meta.secret && r.name.read(cx).value() == name;
+        !name.is_empty() && self.rows.iter().enumerate().any(twin)
+    }
+
     /// Sets the secrets the saved file declares. A locked row not yet saved cannot be renamed
     /// onto one, so a blur or Save never writes over that secret's stored value unasked.
     pub fn set_saved_secrets(&mut self, names: Vec<String>) {
@@ -466,7 +519,31 @@ impl EnvVarTable {
     /// Whether a row holds typing its file has caught up with: unsaved work that nothing else
     /// shows, so every decision about leaving or closing reads this.
     pub fn holds_typing(&self, cx: &App) -> bool {
-        self.rows.iter().any(|row| row.held(cx))
+        self.rows.iter().any(|row| row.held(cx)) || !self.twin_typing(cx).is_empty()
+    }
+
+    /// The names of secret rows holding typing that can never be stored, since another secret
+    /// row shares the name; leaving drops it, so it counts as held.
+    pub fn twin_typing(&self, cx: &App) -> Vec<String> {
+        let typed = |row: &Row| row.value.read(cx).value() != row.committed.as_str();
+        let mut names: Vec<String> = (0..self.rows.len())
+            .filter(|&ix| self.has_twin(ix, cx) && typed(&self.rows[ix]))
+            .map(|ix| self.rows[ix].name.read(cx).value().to_string())
+            .collect();
+        names.dedup();
+        names
+    }
+
+    /// Put back what each twin row showed before it was typed in, once the person agreed.
+    pub fn discard_twin_typing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let twins: Vec<usize> = (0..self.rows.len())
+            .filter(|&ix| self.has_twin(ix, cx))
+            .collect();
+        for ix in twins {
+            let row = &self.rows[ix];
+            set_text(&row.value, &row.committed.clone(), window, cx);
+        }
+        cx.notify();
     }
 
     /// Whether a secret row holds typing not yet sent.
@@ -482,8 +559,12 @@ impl EnvVarTable {
     /// file; otherwise their typing stays pending, so a discard never reaches the store.
     pub fn take_pending_secrets(&mut self, unsaved: bool, cx: &App) -> Vec<(String, String)> {
         let mut pending = Vec::new();
-        let rows = self.rows.iter_mut();
-        for row in rows.filter(|row| row.meta.secret && (unsaved || !row.meta.unsaved)) {
+        // A twin's typing never leaves: it would land on the value both names share.
+        let twins: Vec<bool> = (0..self.rows.len())
+            .map(|ix| self.has_twin(ix, cx))
+            .collect();
+        let rows = self.rows.iter_mut().zip(twins).filter(|(_, twin)| !twin);
+        for (row, _) in rows.filter(|(row, _)| row.meta.secret && (unsaved || !row.meta.unsaved)) {
             let text = row.value.read(cx).value().to_string();
             if text != row.committed && row.releases(&text, cx) {
                 row.released(text.clone());
@@ -496,7 +577,12 @@ impl EnvVarTable {
     /// The typing not yet committed in saved secret row `name`, marked committed without an
     /// event, so an owner can act on it ahead of anything an event would queue behind.
     pub fn take_typing(&mut self, name: &str, cx: &App) -> Option<String> {
-        let row = (self.rows.iter_mut()).find(|row| row.name.read(cx).value() == name)?;
+        let ix = (self.rows.iter()).position(|row| row.name.read(cx).value() == name)?;
+        // A twin's value would land on the one both names share.
+        if self.has_twin(ix, cx) {
+            return None;
+        }
+        let row = &mut self.rows[ix];
         let text = row.value.read(cx).value().to_string();
         let held = !row.meta.secret || row.meta.unsaved || text == row.committed;
         if held || !row.releases(&text, cx) {
@@ -736,6 +822,10 @@ impl EnvVarTable {
     /// blur the input, and a reveal answer would overwrite typing never sent. An unsaved row
     /// may still be unticked, so its value waits for Save (`take_pending_secrets`).
     fn commit_secret(&mut self, ix: usize, cx: &mut Context<Self>) {
+        // A twin's value would land on the one both names share, so its typing waits.
+        if self.has_twin(ix, cx) {
+            return;
+        }
         let secret_saved = |row: &&mut Row| row.meta.secret && !row.meta.unsaved;
         let Some(row) = self.rows.get_mut(ix).filter(secret_saved) else {
             return;
@@ -1115,21 +1205,29 @@ impl EnvVarTable {
                             .then(|| ("env-delete", ix).into()),
                     )),
             );
-        let note = (self.name_note.as_ref())
+        let refused = (self.name_note.as_ref())
             .filter(|(input, _)| !blank && *input == self.rows[ix].name)
             .map(|(_, note)| note.clone());
-        let Some(note) = note else {
+        let duplicate = self.duplicate_note(ix, cx);
+        if refused.is_none() && duplicate.is_none() {
             return Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element();
+        }
+        // Each note sits under the row whose name it is about.
+        let danger = cx.theme().danger;
+        let note = |id: gpui_kit::ElementId, text: String| {
+            div()
+                .id(id)
+                .test_support()
+                .pl(KV_GRIP_WIDTH + CHECKBOX_SIZE)
+                .text_size(TEXT_SMALL)
+                .text_color(danger)
+                .child(text)
         };
-        // The note sits under the row, where the refused name was typed.
-        let note = div()
-            .id("env-name-refused")
-            .test_support()
-            .pl(KV_GRIP_WIDTH + CHECKBOX_SIZE)
-            .text_size(TEXT_SMALL)
-            .text_color(cx.theme().danger)
-            .child(note);
-        let row = v_flex().w_full().child(row).child(note);
+        let row = v_flex()
+            .w_full()
+            .child(row)
+            .children(refused.map(|text| note("env-name-refused".into(), text)))
+            .children(duplicate.map(|text| note(("env-name-duplicate", ix).into(), text.into())));
         Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element()
     }
 
