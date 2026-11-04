@@ -482,9 +482,9 @@ both!(
     cancel_keeps_typing_out_of_the_store_in_a_global
 );
 
-#[gpui_kit::test]
-fn confirming_sends_the_typing_to_the_file_in_a_collection(cx: &mut TestAppContext) {
-    let f = fix(cx, Kind::Collection, SECRET);
+// Over a stored value, Make plain writes what was typed, not the value it replaces.
+fn confirming_sends_the_typing_to_the_file(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, SECRET);
     frame(cx, f.win);
     type_at_end(cx, f.win, None, ("env-value", 1usize), "typed");
     cx.run_until_parked();
@@ -494,6 +494,11 @@ fn confirming_sends_the_typing_to_the_file_in_a_collection(cx: &mut TestAppConte
     assert!(!f.bytes().contains("s3cret"), "{}", f.bytes());
     assert_eq!(f.held(), None);
 }
+both!(
+    confirming_sends_the_typing_to_the_file,
+    confirming_sends_the_typing_to_the_file_in_a_collection,
+    confirming_sends_the_typing_to_the_file_in_a_global
+);
 
 #[gpui_kit::test]
 fn typing_over_nothing_stored_reaches_the_file_unasked(cx: &mut TestAppContext) {
@@ -505,19 +510,6 @@ fn typing_over_nothing_stored_reaches_the_file_unasked(cx: &mut TestAppContext) 
     click_lock(cx, f.win, 1);
     assert!(!confirm_open(cx));
     assert!(f.bytes().contains("typed"), "{}", f.bytes());
-}
-
-#[gpui_kit::test]
-fn confirming_discards_the_typing_and_moves_the_stored_value_in_a_global(cx: &mut TestAppContext) {
-    let f = fix(cx, Kind::Global, SECRET);
-    frame(cx, f.win);
-    type_at_end(cx, f.win, None, ("env-value", 1usize), "typed");
-    cx.run_until_parked();
-    click_lock(cx, f.win, 1);
-    answer_confirm(cx, MAKE_PLAIN);
-    assert!(f.bytes().contains("s3cret"), "{}", f.bytes());
-    assert!(!f.bytes().contains("typed"), "{}", f.bytes());
-    assert_eq!(f.held(), None);
 }
 
 #[gpui_kit::test]
@@ -1471,7 +1463,7 @@ fn a_switch_names_a_draft_row_in_its_prompt(cx: &mut TestAppContext) {
     assert_eq!(f.store.get(&f.two).unwrap().as_deref(), Some("second"));
 }
 
-// The toggle drops the row's typing and moves the stored value, so nothing is replaced.
+// The toggle moves the row's typing itself, so its Move prompt is the only question.
 #[gpui_kit::test]
 fn a_global_lock_does_not_name_the_row_it_toggles(cx: &mut TestAppContext) {
     let f = fix(cx, Kind::Global, HOST);
@@ -1479,8 +1471,8 @@ fn a_global_lock_does_not_name_the_row_it_toggles(cx: &mut TestAppContext) {
     click_lock(cx, f.win, 1);
     answer_confirm(cx, MAKE_PLAIN);
     assert!(!confirm_open(cx), "one question");
-    assert!(f.bytes().contains("s3cret"), "{}", f.bytes());
-    assert!(!f.bytes().contains("typed"), "{}", f.bytes());
+    assert!(f.bytes().contains("typed"), "{}", f.bytes());
+    assert!(!f.bytes().contains("s3cret"), "{}", f.bytes());
     assert_eq!(f.held(), None);
 }
 
