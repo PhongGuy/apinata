@@ -1355,6 +1355,15 @@ impl Shell {
             WorkspaceEvent::FolderNotice(text) => {
                 window.push_notification(Notification::warning(text.clone()), cx);
             }
+            WorkspaceEvent::WatchFailed { root, message }
+                if self.workspace.read(cx).global_dir() == Some(root.as_path()) =>
+            {
+                let text = format!(
+                    "Stopped watching global environments: {message} Reopen Global environments to pick up changes."
+                );
+                window.push_notification(Notification::warning(text), cx);
+                cx.notify();
+            }
             WorkspaceEvent::WatchFailed { root, message } => {
                 let text = format!(
                     "Stopped watching {}: {message} Use Reload collection to pick up changes.",

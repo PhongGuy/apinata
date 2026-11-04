@@ -29,7 +29,7 @@ use crate::session::{SavedExample, SavedPanel, SavedPanelKind, SavedTab, Session
 use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
 use crate::tabs::{TabId, TabKind, Tabs};
 use crate::watch::rules::WatchMsg;
-use crate::watch::set::{EventHandler, Watch, WatchFactory};
+use crate::watch::set::{EventHandler, Watch, WatchError, WatchFactory};
 use crate::watch::watcher::CollectionWatcher;
 
 /// What happened to the workspace's collections.
@@ -102,9 +102,10 @@ pub enum WorkspaceEvent {
     },
     /// Opening a folder as a reference workspace failed or skipped something; the text says what.
     FolderNotice(String),
-    /// Watching the collection at `root` stopped; changes on disk need a manual reload.
+    /// Watching the collection at `root`, or the global directory, stopped; changes on disk
+    /// need a manual reload.
     WatchFailed {
-        /// The collection's root.
+        /// The collection's root, or the global directory.
         root: PathBuf,
         /// Why, for display.
         message: String,
@@ -1205,12 +1206,19 @@ impl Workspace {
             let _ = tx.try_send(());
         });
         let _ = std::fs::create_dir_all(&dir);
-        let Ok(mut watch) = factory(handler) else {
-            return;
+        let placed = factory(handler).and_then(|mut watch| match watch.watch(&dir) {
+            Ok(()) => Ok(watch),
+            Err(WatchError::Failed(message)) => Err(message),
+            Err(WatchError::Unwatchable) => Err(format!("cannot watch {}", dir.display())),
+        });
+        let watch = match placed {
+            Ok(watch) => watch,
+            Err(message) => {
+                cx.emit(WorkspaceEvent::WatchFailed { root: dir, message });
+                cx.notify();
+                return;
+            }
         };
-        if watch.watch(&dir).is_err() {
-            return;
-        }
         let pump = cx.spawn(async move |this, cx| {
             while batches.recv().await.is_ok() {
                 while batches.try_recv().is_ok() {}
@@ -1221,11 +1229,18 @@ impl Workspace {
             }
         });
         self.global_watch = Some((watch, pump));
+        // An edit made before the watch was placed has no event of its own.
+        self.load_globals(ReloadCause::Watched, cx);
     }
 
     /// Re-read the directory off the main thread and publish it; nothing without a directory.
     pub fn reload_globals(&mut self, cx: &mut Context<Self>) {
         self.load_globals(ReloadCause::Asked, cx);
+    }
+
+    /// The global environments directory, once the app names it.
+    pub fn global_dir(&self) -> Option<&Path> {
+        self.global_dir.as_deref()
     }
 
     /// Whether the latest published global snapshot came from the watcher noticing another

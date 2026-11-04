@@ -1068,3 +1068,52 @@ fn the_global_banner_overwrite_saves_the_typing(cx: &mut TestAppContext) {
     assert_eq!(first_value(cx, &editor), "typed");
     assert!(!present(cx, win, "banner-changed"));
 }
+
+// A global directory that cannot be watched says so, as the collection beside it does.
+#[gpui_kit::test]
+fn a_global_watch_that_cannot_start_is_a_watch_failure(cx: &mut TestAppContext) {
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    let seen = events(cx, &ws);
+    let broken: apinata_app::watch::set::WatchFactory =
+        std::sync::Arc::new(|_| Err("no inotify".to_string()));
+    ws.update(cx, |w, cx| w.set_watch_factory(Some(broken), cx));
+    cx.run_until_parked();
+    let failed: Vec<_> = seen
+        .borrow()
+        .iter()
+        .filter(|e| {
+            matches!(e, apinata_app::workspace::WorkspaceEvent::WatchFailed { root, .. }
+                if root == g.path())
+        })
+        .cloned()
+        .collect();
+    assert_eq!(
+        failed,
+        [apinata_app::workspace::WorkspaceEvent::WatchFailed {
+            root: g.path().to_path_buf(),
+            message: "no inotify".into()
+        }]
+    );
+}
+
+// An edit between the first load and the watch being placed has no event, so placing the
+// watch reads the directory once.
+#[gpui_kit::test]
+fn placing_the_global_watch_reads_an_edit_made_before_it(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    std::fs::write(g.path().join("g.yml"), HOST_OUTSIDE).unwrap();
+    ws.update(cx, |w, cx| {
+        w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
+    });
+    cx.run_until_parked();
+    let value = ws.read_with(cx, |w, _| {
+        let globals = w.globals().expect("loaded");
+        let vars = globals.environment("g").map(|e| e.variables()).unwrap();
+        vars[0].value.clone()
+    });
+    assert!(
+        value == VarValue::Text("outside".into()),
+        "the outside value was read"
+    );
+}
