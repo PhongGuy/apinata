@@ -24,7 +24,11 @@ pub(super) fn proxy_target<'js>(ctx: Ctx<'js>, value: Value<'js>) -> Value<'js> 
     // The engine types a callable proxy as a function, so it cannot be read as a proxy; say only that it is one.
     let callable = value.is_proxy();
     let Some(proxy) = value.into_proxy() else {
-        return if callable { Value::new_bool(ctx, false) } else { Value::new_undefined(ctx) };
+        return if callable {
+            Value::new_bool(ctx, false)
+        } else {
+            Value::new_undefined(ctx)
+        };
     };
     match proxy.target() {
         Ok(target) if !target.as_value().is_null() => target.into_value(),
