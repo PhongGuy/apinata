@@ -1176,8 +1176,64 @@ fn the_empty_dialog_stacks_its_action_under_its_message_like_the_editor(cx: &mut
             );
             assert!(part.size.width < pane.size.width, "{part:?} hugs its text");
         }
+        assert_centred_vertically(pane, label, button);
     })
     .unwrap();
+}
+
+// The label and button together sit in the middle of the pane's height.
+fn assert_centred_vertically(
+    pane: gpui_kit::Bounds<gpui_kit::Pixels>,
+    label: gpui_kit::Bounds<gpui_kit::Pixels>,
+    button: gpui_kit::Bounds<gpui_kit::Pixels>,
+) {
+    use gpui_kit::px;
+    let (top, bottom) = (
+        label.top().min(button.top()),
+        label.bottom().max(button.bottom()),
+    );
+    let middle = (top + bottom) / 2.;
+    assert!(
+        (middle - pane.center().y).abs() < px(1.),
+        "{label:?} and {button:?} centred in {pane:?}"
+    );
+    assert!(
+        pane.size.height > bottom - top,
+        "{pane:?} taller than its content"
+    );
+}
+
+// Choosing a small environment does not change the dialog body's height.
+#[gpui_kit::test]
+fn the_dialog_body_keeps_its_height_between_empty_and_one_environment(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[]);
+    let (win, _e) = open_editor_unselected(cx, &ws);
+    frame(cx, win);
+    let empty = cx
+        .update_window(win, |_, w, _| {
+            w.find("global-env-editor").bounds().size.height
+        })
+        .unwrap();
+    let (_c, _g, _s, ws) = start(
+        cx,
+        &[(
+            "g.yml",
+            "name: g
+variables:
+  - name: a
+    value: b
+",
+        )],
+    );
+    let (win, _e) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    let chosen = cx
+        .update_window(win, |_, w, _| {
+            w.find("global-env-editor").bounds().size.height
+        })
+        .unwrap();
+    assert_eq!(empty, chosen);
 }
 
 // Pins the collection editor to the same arrangement, so the two cannot drift apart.
@@ -1202,7 +1258,9 @@ info:
         assert!(button.top() >= label.bottom(), "{button:?} below {label:?}");
         for part in [label, button] {
             assert!((part.center().x - pane.center().x).abs() < px(1.));
+            assert!(part.size.width < pane.size.width, "{part:?} hugs its text");
         }
+        assert_centred_vertically(pane, label, button);
     })
     .unwrap();
 }

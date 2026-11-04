@@ -1022,7 +1022,7 @@ impl Render for GlobalEnvEditor {
                 .children(disk_banner)
                 .child(empty)
                 .children(naming)
-                .children(orphans)
+                .children(orphans.map(|o| div().w_full().child(o)))
                 .into_any_element()
         };
         v_flex()
@@ -1035,9 +1035,12 @@ impl Render for GlobalEnvEditor {
             .children(error)
             .children(load_errors)
             .child(
+                // The row has a floor, and the empty pane stretches to it, so the message is
+                // centred and the dialog keeps its height from the empty state to a small one.
                 h_flex()
                     .gap_2()
-                    .items_start()
+                    .items_stretch()
+                    .min_h(style::GLOBAL_ENV_BODY_MIN)
                     .child(self.render_list(cx))
                     .child(body),
             )
