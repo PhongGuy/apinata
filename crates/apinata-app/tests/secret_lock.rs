@@ -1532,6 +1532,35 @@ both!(
     a_save_check_that_reads_clears_the_error_in_a_global
 );
 
+// The text row `ix`'s value input shows.
+fn shown_value(f: &Fix, cx: &mut TestAppContext, ix: usize) -> String {
+    cx.update(|cx| {
+        let table = match &f.ed {
+            Ed::Collection(e) => e.read(cx).table().clone(),
+            Ed::Global(e) => e.read(cx).table().clone(),
+        };
+        let input = table.read(cx).value_input(ix).unwrap().clone();
+        input.read(cx).value().to_string()
+    })
+}
+
+fn reveal_on_an_emptied_row_shows_the_stored_value(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, HOST);
+    f.hold(cx);
+    f.empty_the_row(cx);
+    frame(cx, f.win);
+    cx.update_window(f.win, |_, w, cx| w.click(("env-eye", 1usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(shown_value(&f, cx, 1), "s3cret");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+}
+both!(
+    reveal_on_an_emptied_row_shows_the_stored_value,
+    reveal_on_an_emptied_row_shows_the_stored_value_in_a_collection,
+    reveal_on_an_emptied_row_shows_the_stored_value_in_a_global
+);
+
 mod held {
     use super::*;
     use apinata_app::tab_area::CloseTab;
