@@ -305,7 +305,7 @@ fn move_asks_and_cancel_keeps(cx: &mut TestAppContext, kind: Kind) {
     click_lock(cx, f.win, 1);
     assert_eq!(
         title(cx).as_deref(),
-        Some("Move the stored value of \"old\" to the file?")
+        Some("Move the value of \"old\" into the file?")
     );
     answer_confirm(cx, CANCEL);
     assert_eq!(f.held().as_deref(), Some("s3cret"));
