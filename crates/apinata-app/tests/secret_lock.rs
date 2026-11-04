@@ -2224,22 +2224,19 @@ mod oauth {
         assert!(env.contains(STORED), "{env}");
     }
 
-    // The label of the confirm dialog stacked at `ix`; both exist when this is called.
-    fn label_at(cx: &mut TestAppContext, s: &Started, ix: usize) -> Option<String> {
-        let scope: &'static str = ["dialog-0", "dialog-1"][ix];
+    // Whether exactly one dialog shows: the first is there and none is stacked over it.
+    fn one_prompt(cx: &mut TestAppContext, s: &Started) -> bool {
         cx.update_window(s.win, |_, w, _| {
-            w.within(scope)
-                .try_find("confirm-dialog")
-                .and_then(|e| e.label().map(str::to_owned))
+            w.try_find("dialog-0").is_some() && w.try_find("dialog-1").is_none()
         })
         .unwrap()
     }
 
     // A tab close whose Save also owes the environment Replace check, with a window close asked
-    // while the tab prompt shows. The window prompt opens under the Replace prompt, so no prompt
-    // is skipped; the secret is stored once and the window prompt then finishes the close.
-    #[gpui_kit::test]
-    fn a_queued_window_close_stacks_under_the_tab_saves_replace_check(cx: &mut TestAppContext) {
+    // while the tab prompt shows, answered Save so the Replace prompt is the only one up.
+    fn replace_up_with_a_queued_window_close(
+        cx: &mut TestAppContext,
+    ) -> (tempfile::TempDir, Started, Arc<Listing>, SecretKey) {
         const DEV: &str = "name: dev\nvariables:\n  - name: host\n    value: a\n";
         let col = write_tree(&[
             ("opencollection.yml", ROOT),
@@ -2288,30 +2285,43 @@ mod oauth {
         assert_eq!(title(cx).as_deref(), Some("Save changes to 2 tabs?"));
         answer_confirm(cx, "confirm-save");
         frame(cx, s.win);
+        assert!(one_prompt(cx, &s));
         assert_eq!(
-            label_at(cx, &s, 0).as_deref(),
-            Some("Save changes before closing?")
-        );
-        assert_eq!(
-            label_at(cx, &s, 1).as_deref(),
+            title(cx).as_deref(),
             Some("Replace the stored value of \"old\"?")
         );
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
         assert!(!read(&col, ".env").contains("typed-s3cret"));
+        (col, s, store, key)
+    }
 
-        // Replace answers the top prompt, stores both secrets once and leaves the window prompt.
-        // Two dialogs share the id the helper looks for, so the button is clicked directly.
-        cx.update_window(s.win, |_, w, cx| w.click(REPLACE, cx))
-            .unwrap();
-        cx.run_until_parked();
+    // The window close waits for the Replace answer; the tab Save leaves nothing unsaved, so it
+    // closes without a second prompt and each secret is stored exactly once.
+    #[gpui_kit::test]
+    fn a_queued_window_close_waits_for_the_tab_saves_replace_check(cx: &mut TestAppContext) {
+        let (col, _s, store, key) = replace_up_with_a_queued_window_close(cx);
+        answer_confirm(cx, REPLACE);
+        assert!(cx.update(|cx| cx.windows().is_empty()));
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
         let env = read(&col, ".env");
         assert_eq!(env.matches("typed-s3cret").count(), 1, "{env}");
         assert!(read(&col, "a.yml").contains(MOVED));
-        assert_eq!(tabs_open(cx, &s), 0);
+    }
+
+    // Cancel at the Replace prompt keeps both tabs and their typing, stores nothing, and the
+    // window close asked meanwhile is asked again rather than lost.
+    #[gpui_kit::test]
+    fn a_cancelled_replace_check_re_asks_the_queued_window_close(cx: &mut TestAppContext) {
+        let (col, s, store, key) = replace_up_with_a_queued_window_close(cx);
+        answer_confirm(cx, CANCEL);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+        assert!(!read(&col, ".env").contains("typed-s3cret"));
+        assert_eq!(tabs_open(cx, &s), 2);
         assert_eq!(title(cx).as_deref(), Some("Save changes before closing?"));
-        answer_confirm(cx, "confirm-save");
-        assert!(cx.update(|cx| cx.windows().is_empty()));
-        assert_eq!(read(&col, ".env").matches("typed-s3cret").count(), 1);
+        assert!(one_prompt(cx, &s));
+        answer_confirm(cx, CANCEL);
+        assert!(!cx.update(|cx| cx.windows().is_empty()));
+        assert_eq!(tabs_open(cx, &s), 2);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
     }
 }
