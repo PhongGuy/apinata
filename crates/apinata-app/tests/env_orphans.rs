@@ -1113,6 +1113,16 @@ fn a_saved_secrets_name_entered_in_one_input_into_an_emptied_name_shows_the_note
     assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
 }
 
+#[gpui_kit::test]
+fn an_allowed_name_after_a_refusal_clears_the_note(cx: &mut TestAppContext) {
+    let (_col, _state, _store, _skey, win, ed) = saved_secret(cx);
+    one_input_onto_old_is_refused(cx, win, &ed, "olx", &["ctrl-a"]);
+    type_at_end(cx, win, None, ("env-name", 2usize), "y");
+    cx.run_until_parked();
+    assert_eq!(draft_name(cx, &ed, 2), "olxy");
+    assert!(!present(cx, win, "env-name-refused"), "the note is gone");
+}
+
 const TWO_SECRETS: &str = "name: dev\nvariables:\n  - name: host\n    value: x\n  - name: old\n    secret: true\n  - name: tok\n    secret: true\n";
 
 fn note_text(cx: &mut TestAppContext, ed: &Entity<EnvEditor>) -> Option<String> {
