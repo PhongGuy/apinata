@@ -471,9 +471,6 @@ pub struct Workspace {
     global_error: Option<String>,
     // The watch on the global directory and the task reloading it after each batch.
     global_watch: Option<(Box<dyn Watch>, Task<()>)>,
-    // The global directory did not exist when its watch was due; the next save or asked-for
-    // reload that finds it places the watch.
-    global_watch_absent: bool,
     // The reference workspace opened last, read-only, whose environments join the picker.
     reference: Option<ReferenceWorkspace>,
     // Counts the commands that change a document's content, so autosave can tell an edit
@@ -535,7 +532,6 @@ impl Workspace {
             globals_watched: false,
             global_error: None,
             global_watch: None,
-            global_watch_absent: false,
             reference: None,
             edit_generation: 0,
             git_options: None,
@@ -1198,18 +1194,15 @@ impl Workspace {
     }
 
     // Watches the global directory while there is a factory, so another program's edit is
-    // reloaded as a collection's is. A missing directory is left for the first save to make,
-    // since inotify cannot watch it; one that cannot be watched is read on demand only.
+    // reloaded as a collection's is; one that cannot be watched is read on demand only.
     fn sync_global_watch(&mut self, cx: &mut Context<Self>) {
         self.global_watch = None;
-        self.global_watch_absent = false;
         let (Some(factory), Some(dir)) = (self.factory.clone(), self.global_dir.clone()) else {
             return;
         };
-        if !dir.is_dir() {
-            self.global_watch_absent = true;
-            return;
-        }
+        // The platform watcher needs an existing directory, and the CLI or another window may
+        // write the first file into this config directory; an empty one costs nothing.
+        let _ = std::fs::create_dir_all(&dir);
         let (tx, batches) = async_channel::unbounded();
         // Batches are read as a collection's are, so the reload's own opens and closes ask for
         // nothing and only the watch limit stops watching.
@@ -1238,19 +1231,26 @@ impl Workspace {
         };
         let failed_root = dir.clone();
         let pump = cx.spawn(async move |this, cx| {
-            while let Ok(mut batch) = batches.recv().await {
-                while let Ok(next) = batches.try_recv() {
-                    batch = batch.or(next);
+            // A failure drained with pending changes still reloads them before it is reported.
+            while let Ok(first) = batches.recv().await {
+                let (mut failed, mut changed) = (None, false);
+                for batch in
+                    std::iter::once(first).chain(std::iter::from_fn(|| batches.try_recv().ok()))
+                {
+                    match batch {
+                        Some(message) => failed = failed.or(Some(message)),
+                        None => changed = true,
+                    }
                 }
-                let go_on = this.update(cx, |w, cx| match batch {
-                    Some(message) => {
-                        w.stop_global_watch(failed_root.clone(), message, cx);
-                        false
-                    }
-                    None => {
+                let go_on = this.update(cx, |w, cx| {
+                    if changed {
                         w.load_globals(ReloadCause::Watched, cx);
-                        true
                     }
+                    let Some(message) = failed else {
+                        return true;
+                    };
+                    w.stop_global_watch(failed_root.clone(), message, cx);
+                    false
                 });
                 if !go_on.unwrap_or(false) {
                     break;
@@ -1272,16 +1272,8 @@ impl Workspace {
         cx.notify();
     }
 
-    // Places the global watch put off for a missing directory once something has made it.
-    fn retry_global_watch(&mut self, cx: &mut Context<Self>) {
-        if self.global_watch_absent && self.global_dir.as_deref().is_some_and(Path::is_dir) {
-            self.sync_global_watch(cx);
-        }
-    }
-
     /// Re-read the directory off the main thread and publish it; nothing without a directory.
     pub fn reload_globals(&mut self, cx: &mut Context<Self>) {
-        self.retry_global_watch(cx);
         self.load_globals(ReloadCause::Asked, cx);
     }
 
@@ -2072,7 +2064,6 @@ impl Workspace {
             }
         }
         self.publish_globals(globals, false, cx);
-        self.retry_global_watch(cx);
     }
 
     // Every successful load or edit lands here. The first one applies the session's saved

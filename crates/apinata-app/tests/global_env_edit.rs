@@ -1238,16 +1238,36 @@ fn a_watch_failure_reads_as_two_sentences() {
         watch_failed_text(Some("col"), "no inotify"),
         "Stopped watching col: no inotify. Use Reload collection to pick up changes."
     );
+    let advice = "Use Reload collection to pick up changes.";
+    for (message, shown) in [
+        (
+            "OS file watch limit reached.",
+            "OS file watch limit reached.",
+        ),
+        ("is it gone?", "is it gone?"),
+        ("stop!", "stop!"),
+        ("no inotify \n ", "no inotify."),
+    ] {
+        assert_eq!(
+            watch_failed_text(Some("col"), message),
+            format!("Stopped watching col: {shown} {advice}")
+        );
+    }
     assert_eq!(
-        watch_failed_text(Some("col"), "OS file watch limit reached."),
-        "Stopped watching col: OS file watch limit reached. Use Reload collection to pick up changes."
+        watch_failed_text(Some("col"), " "),
+        format!("Stopped watching col. {advice}")
+    );
+    assert_eq!(
+        watch_failed_text(None, ""),
+        "Stopped watching global environments. Reopen Global environments to pick up changes."
     );
 }
 
-// Watching never makes a missing global directory; the first saved environment does, and
-// from then on another program's file there is picked up.
+// Watching makes a missing global directory, so another program's first file there reaches
+// an editor already open, with no save or reload in between.
 #[gpui_kit::test]
-fn the_global_directory_is_made_by_the_first_save_not_by_watching(cx: &mut TestAppContext) {
+fn watching_makes_the_global_directory_and_sees_the_first_outside_file(cx: &mut TestAppContext) {
+    support::init(cx);
     cx.executor().allow_parking();
     let (_c, base, _s, ws) = start(cx, &[]);
     let dir = base.path().join("environments");
@@ -1258,13 +1278,48 @@ fn the_global_directory_is_made_by_the_first_save_not_by_watching(cx: &mut TestA
         w.set_watch_factory(Some(apinata_app::watch::set::notify_factory()), cx)
     });
     cx.run_until_parked();
-    assert!(!dir.exists(), "watching made the directory");
+    assert!(dir.is_dir(), "watching did not make the directory");
     assert!(global_failures(&seen, &dir).is_empty());
-    edit(cx, &ws, GlobalOp::Create("g".into()));
-    assert!(dir.exists());
+    let (_win, editor) = open_editor(cx, &ws, "g");
     settle(cx);
-    std::fs::write(dir.join("h.yml"), HOST_A.replace("name: g", "name: h")).unwrap();
-    wait_for(cx, "the outside environment", |cx| {
-        names(cx, &ws).contains(&"h".to_string())
+    std::fs::write(dir.join("g.yml"), HOST_A).unwrap();
+    wait_for(cx, "the outside environment in the open editor", |cx| {
+        first_value(cx, &editor) == "a"
     });
+}
+
+// A change that arrives with the watch failure is still read before the watch stops.
+#[gpui_kit::test]
+fn a_change_batched_with_a_watch_failure_is_still_reloaded(cx: &mut TestAppContext) {
+    use notify_debouncer_full::DebouncedEvent;
+    use notify_debouncer_full::notify::event::{CreateKind, EventKind};
+    use notify_debouncer_full::notify::{Error, ErrorKind, Event};
+    cx.executor().allow_parking();
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    let seen = events(cx, &ws);
+    let (factory, handlers) = capturing();
+    ws.update(cx, |w, cx| w.set_watch_factory(Some(factory), cx));
+    cx.run_until_parked();
+    let file = g.path().join("g.yml");
+    std::fs::write(&file, HOST_OUTSIDE).unwrap();
+    let created = Event::new(EventKind::Create(CreateKind::File)).add_path(file);
+    for handler in handlers.lock().unwrap().iter_mut() {
+        handler(Ok(vec![DebouncedEvent::new(
+            created.clone(),
+            std::time::Instant::now(),
+        )]));
+        handler(Err(vec![Error::new(ErrorKind::MaxFilesWatch)]));
+    }
+    cx.run_until_parked();
+    assert_eq!(global_failures(&seen, g.path()).len(), 1);
+    let value = ws.read_with(cx, |w, _| {
+        let globals = w.globals().expect("loaded");
+        globals.environment("g").map(|e| e.variables()).unwrap()[0]
+            .value
+            .clone()
+    });
+    assert!(
+        value == VarValue::Text("outside".into()),
+        "the change was read"
+    );
 }

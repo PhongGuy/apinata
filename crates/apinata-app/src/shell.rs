@@ -2929,22 +2929,25 @@ fn root_path_text(
 /// The warning for a watch that stopped: of the collection named `collection`, or of the
 /// global environments when `None`.
 pub fn watch_failed_text(collection: Option<&str>, message: &str) -> String {
-    let message = message.trim_end();
-    // The notify message may or may not end its sentence; the advice always starts a new one.
+    let (subject, advice) = match collection {
+        None => (
+            "global environments",
+            "Reopen Global environments to pick up changes.",
+        ),
+        Some(name) => (name, "Use Reload collection to pick up changes."),
+    };
+    // The notify message may or may not end its sentence; the advice always starts a new one,
+    // and an empty message leaves the stop alone.
+    let message = message.trim();
+    if message.is_empty() {
+        return format!("Stopped watching {subject}. {advice}");
+    }
     let stop = if message.ends_with(['.', '!', '?']) {
         ""
     } else {
         "."
     };
-    let message = format!("{message}{stop}");
-    match collection {
-        None => format!(
-            "Stopped watching global environments: {message} Reopen Global environments to pick up changes."
-        ),
-        Some(name) => {
-            format!("Stopped watching {name}: {message} Use Reload collection to pick up changes.")
-        }
-    }
+    format!("Stopped watching {subject}: {message}{stop} {advice}")
 }
 
 /// The notification for a manual update check's report; an available release shows the
