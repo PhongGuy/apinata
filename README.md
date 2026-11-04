@@ -45,8 +45,8 @@ source under MIT or Apache-2.0.
 
 ## Download and install
 
-No release has been published yet. Until the first one, the download links
-below do not resolve, and the way in is to [build from source](#build-from-source).
+The links below always download the latest release. To build it yourself
+instead, see [build from source](#build-from-source).
 
 | Platform | Download |
 | --- | --- |
@@ -63,8 +63,8 @@ file in a release is listed in [Release files](GUIDE.md#release-files).
 
 ### Signing and checksums
 
-The macOS app is ad-hoc signed and not notarised, the Windows files are signed
-with a self-signed certificate, and Linux has no OS signing; how this works is
+The macOS app is ad-hoc signed and not notarised, the Windows files are not
+code-signed, and Linux has no OS signing; how this works is
 in [RELEASING.md](RELEASING.md). `SHA256SUMS` lists the versioned file names,
 not the fixed names the links above use, so check the versioned files:
 
