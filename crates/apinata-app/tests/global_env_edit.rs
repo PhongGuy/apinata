@@ -1153,3 +1153,145 @@ fn an_idle_watched_global_directory_reloads_nothing(cx: &mut TestAppContext) {
     settle(cx);
     assert_eq!(ws_snap(cx, &ws, &root).seq, before);
 }
+
+// The empty dialog arranges its message and action as the collection editor's empty state
+// does: the action below the message, both centred in the pane.
+#[gpui_kit::test]
+fn the_empty_dialog_stacks_its_action_under_its_message_like_the_editor(cx: &mut TestAppContext) {
+    use gpui_kit::px;
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[]);
+    let (win, _editor) = open_editor_unselected(cx, &ws);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let pane = w.find("global-env-empty-pane").bounds();
+        let label = w.find("global-env-empty-label").bounds();
+        let button = w.find("global-env-empty-create").bounds();
+        assert!(button.top() >= label.bottom(), "{button:?} below {label:?}");
+        for part in [label, button] {
+            assert!(
+                (part.center().x - pane.center().x).abs() < px(1.),
+                "{part:?} centred in {pane:?}"
+            );
+            assert!(part.size.width < pane.size.width, "{part:?} hugs its text");
+        }
+        assert_centred_vertically(pane, label, button);
+    })
+    .unwrap();
+}
+
+// The label and button together sit in the middle of the pane's height.
+fn assert_centred_vertically(
+    pane: gpui_kit::Bounds<gpui_kit::Pixels>,
+    label: gpui_kit::Bounds<gpui_kit::Pixels>,
+    button: gpui_kit::Bounds<gpui_kit::Pixels>,
+) {
+    use gpui_kit::px;
+    let (top, bottom) = (
+        label.top().min(button.top()),
+        label.bottom().max(button.bottom()),
+    );
+    let middle = (top + bottom) / 2.;
+    assert!(
+        (middle - pane.center().y).abs() < px(1.),
+        "{label:?} and {button:?} centred in {pane:?}"
+    );
+    assert!(
+        pane.size.height > bottom - top,
+        "{pane:?} taller than its content"
+    );
+}
+
+// Choosing a small environment does not change the dialog body's height.
+#[gpui_kit::test]
+fn the_dialog_body_keeps_its_height_between_empty_and_one_environment(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[]);
+    let (win, _e) = open_editor_unselected(cx, &ws);
+    frame(cx, win);
+    let empty = cx
+        .update_window(win, |_, w, _| {
+            w.find("global-env-editor").bounds().size.height
+        })
+        .unwrap();
+    let (_c, _g, _s, ws) = start(
+        cx,
+        &[(
+            "g.yml",
+            "name: g
+variables:
+  - name: a
+    value: b
+",
+        )],
+    );
+    let (win, _e) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    let chosen = cx
+        .update_window(win, |_, w, _| {
+            w.find("global-env-editor").bounds().size.height
+        })
+        .unwrap();
+    assert_eq!(empty, chosen);
+}
+
+// Pins the collection editor to the same arrangement, so the two cannot drift apart.
+#[gpui_kit::test]
+fn the_collection_editor_empty_state_has_the_same_arrangement(cx: &mut TestAppContext) {
+    use gpui_kit::px;
+    let col = write_tree(&[(
+        "opencollection.yml",
+        "opencollection: 1.0.0
+info:
+  name: c
+",
+    )]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let pane = w.find("env-empty-pane").bounds();
+        let label = w.find("env-empty-label").bounds();
+        let button = w.find("env-empty-create").bounds();
+        assert!(button.top() >= label.bottom(), "{button:?} below {label:?}");
+        for part in [label, button] {
+            assert!((part.center().x - pane.center().x).abs() < px(1.));
+            assert!(part.size.width < pane.size.width, "{part:?} hugs its text");
+        }
+        assert_centred_vertically(pane, label, button);
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_empty_dialog_action_starts_naming_a_new_environment(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[]);
+    let (win, _editor) = open_editor_unselected(cx, &ws);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("global-env-empty-create", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(present(cx, win, "global-env-name-input"));
+}
+
+// Opens the editor over a blank window and selects nothing.
+fn open_editor_unselected(
+    cx: &mut TestAppContext,
+    ws: &Entity<Workspace>,
+) -> (
+    gpui_kit::AnyWindowHandle,
+    Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) {
+    let (win, _) = cx
+        .update(|cx| gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| Blank)))
+        .unwrap();
+    let shared = ws.clone();
+    let editor = cx
+        .update_window(win, |_, w, cx| open_global_env_editor(shared, w, cx))
+        .unwrap();
+    cx.run_until_parked();
+    (win, editor)
+}

@@ -316,6 +316,8 @@ pub const GLOBAL_ENV_DIALOG_WIDTH: Rems = ui(720.);
 /// The least width of the global environment editor's content, which scrolls sideways under
 /// it: the list, its gap and the pane's minimum.
 pub const GLOBAL_ENV_CONTENT_MIN: Rems = ui(498.);
+/// The least height of the global environment editor's two-pane row.
+pub const GLOBAL_ENV_BODY_MIN: Rems = ui(200.);
 /// The Changes dialog's width: the file list beside the diff pane.
 pub const CHANGES_DIALOG_WIDTH: Rems = ui(760.);
 /// The Changes dialog's panes' height, before the window's room caps it.
