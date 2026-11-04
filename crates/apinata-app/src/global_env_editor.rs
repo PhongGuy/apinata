@@ -978,23 +978,53 @@ impl Render for GlobalEnvEditor {
                         let _ = e.save_asking(window, cx);
                     })),
             );
-        let body = v_flex()
-            .flex_1()
-            .min_w(style::ENV_PANE_MIN)
-            .gap_2()
-            .children(disk_banner)
-            .when(selected, |body| body.child(header))
-            .children(naming)
-            .when(selected, |body| body.child(self.table.clone()))
-            .children(orphans)
-            .when(!selected, |body| {
-                body.child(
+        let body = if selected {
+            v_flex()
+                .flex_1()
+                .min_w(style::ENV_PANE_MIN)
+                .gap_2()
+                .children(disk_banner)
+                .child(header)
+                .children(naming)
+                .child(self.table.clone())
+                .children(orphans)
+                .into_any_element()
+        } else {
+            // The message and its action hug their content as one group, centred in the pane
+            // as the collection editor's empty state is.
+            let empty = v_flex()
+                .id("global-env-empty")
+                .test_support()
+                .items_center()
+                .gap_2()
+                .child(
                     div()
-                        .id("global-env-empty")
+                        .id("global-env-empty-label")
                         .test_support()
+                        .text_color(cx.theme().muted_foreground)
                         .child("No global environments yet."),
                 )
-            });
+                .child(
+                    Button::new("global-env-empty-create")
+                        .label("New global environment")
+                        .on_click(cx.listener(|e, _, window, cx| {
+                            e.start_naming(Naming::Create, window, cx)
+                        })),
+                );
+            v_flex()
+                .id("global-env-empty-pane")
+                .test_support()
+                .flex_1()
+                .min_w(style::ENV_PANE_MIN)
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .children(disk_banner)
+                .child(empty)
+                .children(naming)
+                .children(orphans)
+                .into_any_element()
+        };
         v_flex()
             .id("global-env-editor")
             .test_support()
