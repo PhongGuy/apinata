@@ -213,14 +213,27 @@ pub fn stage(
         .into_iter()
         .partition(|spec| under_link(root, Path::new(spec)));
     if !specs.is_empty() {
-        // Git waits on a pipe where it reads attributes or ignore rules. A dry run under the
-        // caller's own limit ends that wait long before the write's floor would.
-        let mut probe: Vec<OsString> = ["--literal-pathspecs", "add", "-n", "-A", "--"]
-            .into_iter()
-            .map(OsString::from)
-            .collect();
-        probe.extend(specs.iter().cloned());
-        run::git(&probe, root, options)?;
+        // Git waits on a pipe where it reads attributes or ignore rules. Two reads of those
+        // rules, which run no filters, end that wait under the caller's own limit, long before
+        // the write's floor would: ignore rules above each path, then the walk below it.
+        let probes: [&[&str]; 2] = [
+            &["check-ignore", "--no-index", "--"],
+            &[
+                "--literal-pathspecs",
+                "ls-files",
+                "--eol",
+                "-c",
+                "-o",
+                "--exclude-standard",
+                "--",
+            ],
+        ];
+        for probe in probes {
+            let mut args: Vec<OsString> = probe.iter().map(OsString::from).collect();
+            args.extend(specs.iter().cloned());
+            // Only a timeout or a missing git matters here; the add reports anything else.
+            run::git(&args, root, options)?;
+        }
         let mut args: Vec<OsString> = vec!["add".into(), "-A".into(), "--".into()];
         args.extend(specs);
         run_write(&args, root, options)?;
@@ -362,12 +375,11 @@ mod tests {
     }
 
     /// Sleeps one second in `add` and `reset`; answers the reads stage and unstage make first,
-    /// and the dry run of `add`, which runs no filters.
+    /// the rule probes among them, at once.
     const SLOW_WRITE_GIT: &str = r#"#!/bin/sh
 case "$*" in
   *rev-parse*) printf '\n' ;;
   *status*) printf '# branch.oid (initial)\000'; printf '# branch.head main\000' ;;
-  *" add -n "*) ;;
   *" add "*|*" reset "*) sleep 1 ;;
 esac
 "#;

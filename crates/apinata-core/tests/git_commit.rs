@@ -681,15 +681,43 @@ mod pipes {
         assert!(made.success(), "mkfifo failed");
     }
 
-    // A commit on its own thread, under a limit past anything its own timeouts allow.
-    fn commit_bounded(col: &Path, options: GitOptions) -> Result<CommitOutcome, CommitError> {
+    // Runs `job` on its own thread and fails the test if it outlives `limit`. Before failing it
+    // opens `pipe` read-write until the job ends, so each git stuck opening the pipe reads end of
+    // file at once and none outlives the sandbox.
+    fn bounded<T: Send + 'static>(
+        pipe: &Path,
+        limit: Duration,
+        job: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
         let (done, got) = channel();
-        let col = col.to_path_buf();
         thread::spawn(move || {
-            let _ = done.send(commit(&col, "m", &options));
+            let _ = done.send(job());
         });
-        got.recv_timeout(Duration::from_secs(30))
-            .expect("the commit never ended")
+        if let Ok(value) = got.recv_timeout(limit) {
+            return value;
+        }
+        for _ in 0..600 {
+            drop(fs::OpenOptions::new().read(true).write(true).open(pipe));
+            if got.recv_timeout(Duration::from_millis(100)).is_ok() {
+                break;
+            }
+        }
+        panic!(
+            "the job outlived {limit:?} with a pipe at {}",
+            pipe.display()
+        );
+    }
+
+    // A commit under a limit past anything its own timeouts allow.
+    fn commit_bounded(
+        col: &Path,
+        pipe: &Path,
+        options: GitOptions,
+    ) -> Result<CommitOutcome, CommitError> {
+        let col = col.to_path_buf();
+        bounded(pipe, Duration::from_secs(30), move || {
+            commit(&col, "m", &options)
+        })
     }
 
     #[test]
@@ -698,8 +726,9 @@ mod pipes {
         let (repo, col) = committed(&sb);
         write(&col, "a.yml", "staged\n");
         stage(&col, &["a.yml"], &sb.options()).expect("stage");
-        pipe_over(&col.join("a.yml"));
-        commit_bounded(&col, sb.options()).expect("commits");
+        let pipe = col.join("a.yml");
+        pipe_over(&pipe);
+        commit_bounded(&col, &pipe, sb.options()).expect("commits");
         assert_eq!(sb.git(&repo, &["show", "HEAD:col/a.yml"]), "staged\n");
     }
 
@@ -709,9 +738,10 @@ mod pipes {
         let (repo, col) = committed(&sb);
         write(&col, "a.yml", "staged\n");
         stage(&col, &["a.yml"], &sb.options()).expect("stage");
-        pipe_over(&repo.join(".gitattributes"));
+        let pipe = repo.join(".gitattributes");
+        pipe_over(&pipe);
         let options = sb.options().timeout(Duration::from_secs(2));
-        let error = commit_bounded(&col, options).expect_err("git waits on the pipe");
+        let error = commit_bounded(&col, &pipe, options).expect_err("git waits on the pipe");
         assert!(
             matches!(error, CommitError::Git(GitError::Timeout)),
             "{error}"
@@ -732,14 +762,12 @@ mod pipes {
         let sb = Sandbox::new();
         let (repo, col) = committed(&sb);
         write(&col, "a.yml", "changed\n");
-        pipe_over(&repo.join(rel));
+        let pipe = repo.join(rel);
+        pipe_over(&pipe);
         let options = sb.options().timeout(Duration::from_secs(1));
-        let (done, got) = channel();
-        thread::spawn(move || {
-            let _ = done.send(stage(&col, &["a.yml"], &options));
-        });
-        got.recv_timeout(Duration::from_secs(15))
-            .expect("the stage outlived its time limit")
+        bounded(&pipe, Duration::from_secs(15), move || {
+            stage(&col, &["a.yml"], &options)
+        })
     }
 
     #[test]
@@ -754,19 +782,64 @@ mod pipes {
         assert!(matches!(error, GitError::Timeout), "{error}");
     }
 
+    // Staging a directory walks it, so a pipe in a folder below the path counts too.
+    #[test]
+    fn staging_a_folder_with_a_pipe_gitignore_below_ends_at_the_time_limit() {
+        let sb = Sandbox::new();
+        let (_repo, col) = committed(&sb);
+        write(&col, "d/e/b.yml", "new\n");
+        let pipe = col.join("d/e/.gitignore");
+        pipe_over(&pipe);
+        let options = sb.options().timeout(Duration::from_secs(1));
+        let staged = bounded(&pipe, Duration::from_secs(15), move || {
+            stage(&col, &["."], &options)
+        });
+        let error = staged.expect_err("git waits on the pipe");
+        assert!(matches!(error, GitError::Timeout), "{error}");
+    }
+
+    #[test]
+    fn staging_a_folder_with_a_pipe_gitattributes_below_ends_at_the_time_limit() {
+        let sb = Sandbox::new();
+        let (_repo, col) = committed(&sb);
+        write(&col, "d/e/b.yml", "new\n");
+        let pipe = col.join("d/e/.gitattributes");
+        pipe_over(&pipe);
+        let options = sb.options().timeout(Duration::from_secs(1));
+        let staged = bounded(&pipe, Duration::from_secs(15), move || {
+            stage(&col, &["d"], &options)
+        });
+        let error = staged.expect_err("git waits on the pipe");
+        assert!(matches!(error, GitError::Timeout), "{error}");
+    }
+
+    // The probes read rules without running filters, so a clean filter slower than the
+    // caller's limit runs only in the write, under its longer floor.
+    #[test]
+    fn a_clean_filter_slower_than_the_limit_still_stages() {
+        let sb = Sandbox::new();
+        let (repo, col) = committed(&sb);
+        sb.git(&repo, &["config", "filter.slow.clean", "sleep 2; cat"]);
+        write(&repo, ".gitattributes", "*.yml filter=slow\n");
+        write(&col, "a.yml", "changed\n");
+        let options = sb.options().timeout(Duration::from_secs(1));
+        stage(&col, &["a.yml"], &options).expect("the write's floor covers the filter");
+        assert_eq!(
+            sb.git(&repo, &["diff", "--cached", "--name-only"]),
+            "col/a.yml\n"
+        );
+    }
+
     #[test]
     fn staging_a_pipe_over_a_tracked_file_says_git_refused() {
         let sb = Sandbox::new();
         let (_repo, col) = committed(&sb);
-        pipe_over(&col.join("a.yml"));
-        let (done, got) = channel();
-        let (root, options) = (col.clone(), sb.options());
-        thread::spawn(move || {
-            let _ = done.send(stage(&root, &["a.yml"], &options));
+        let pipe = col.join("a.yml");
+        pipe_over(&pipe);
+        let options = sb.options();
+        let staged = bounded(&pipe, Duration::from_secs(30), move || {
+            stage(&col, &["a.yml"], &options)
         });
-        let staged = got
-            .recv_timeout(Duration::from_secs(30))
-            .expect("stage ended");
         let error = staged.expect_err("git refuses a pipe");
         assert!(
             error.to_string().contains("can only add regular files"),

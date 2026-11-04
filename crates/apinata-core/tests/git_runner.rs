@@ -147,7 +147,7 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
     let bin = sb.fake_git("rec", RECORDER);
     let root = sb.path().join("col");
     fs::create_dir_all(&root).unwrap();
-    // On disk, so `stage` has no gone path to look up: its calls are the dry run, then `add`.
+    // On disk, so `stage` has no gone path to look up: its calls are the two probes, then `add`.
     for name in ["a b.yml", "*"] {
         fs::write(root.join(name), "x\n").unwrap();
     }
@@ -160,23 +160,33 @@ fn a_write_call_carries_literal_pathspecs_and_the_same_environment() {
 
     let args = fs::read_to_string(bin.join("args")).unwrap();
     let lines: Vec<&str> = args.lines().collect();
-    let call = |extra: &[&'static str]| {
+    let call = |args: &[&'static str]| {
         let mut line = vec![
             "--no-optional-locks",
             "-c",
             "core.fsmonitor=false",
             "-c",
             "protocol.ext.allow=never",
-            "--literal-pathspecs",
-            "add",
         ];
-        line.extend(extra);
-        line.extend(["-A", "--", "a b.yml", "*", "END"]);
+        line.extend(args);
+        line.extend(["--", "a b.yml", "*", "END"]);
         line
     };
-    assert_eq!(lines, [call(&["-n"]), call(&[])].concat());
+    // check-ignore refuses every pathspec magic, `--literal-pathspecs` included.
+    let ignore = call(&["check-ignore", "--no-index"]);
+    let walk = call(&[
+        "--literal-pathspecs",
+        "ls-files",
+        "--eol",
+        "-c",
+        "-o",
+        "--exclude-standard",
+    ]);
+    let add = call(&["--literal-pathspecs", "add", "-A"]);
+    assert_eq!(lines, [ignore, walk, add].concat());
     let env = fs::read_to_string(bin.join("env")).unwrap();
-    assert_eq!(values(&env, "GIT_TERMINAL_PROMPT"), ["0", "0"]);
-    assert_eq!(values(&env, "GIT_OPTIONAL_LOCKS"), ["0", "0"]);
+    assert_eq!(values(&env, "GIT_TERMINAL_PROMPT"), ["0", "0", "0"]);
+    assert_eq!(values(&env, "GIT_OPTIONAL_LOCKS"), ["0", "0", "0"]);
+    assert_eq!(values(&env, "LC_ALL"), ["C", "C", "C"]);
     assert!(values(&env, "GIT_INDEX_FILE").is_empty(), "{env}");
 }
