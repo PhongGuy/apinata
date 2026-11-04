@@ -3,7 +3,9 @@
 // global (use `require('crypto-js')`); `Ajv` and `addFormats` come from one bundle, evaluated once for both.
 (() => {
   const load = globalThis.__loadLib;
+  const proxyTarget = globalThis.__proxyTarget;
   delete globalThis.__loadLib;
+  delete globalThis.__proxyTarget;
   const cache = {};
   const get = (name) => (cache[name] ??= name === "buffer" ? nodeBuffer(load(name)) : load(name));
   const modules = {
@@ -199,27 +201,54 @@
       } else if (rest > 0) output.push(more(rest));
       return output;
     };
+    // Node formats a proxy from its target and never runs a trap; a revoked one shows as such.
+    const REVOKED = {};
+    const unwrap = (v) => {
+      if (Object(v) !== v) return v;
+      const t = proxyTarget(v);
+      return t === undefined ? v : t === null ? REVOKED : t;
+    };
+    // The one own string tag a null-prototype value can carry, since it inherits none.
+    const ownTag = (v) => {
+      const d = Object.getOwnPropertyDescriptor(v, Symbol.toStringTag);
+      return d && typeof d.value === "string" && d.value !== "" ? d : null;
+    };
+    const keyText = (k) => (typeof k === "symbol" ? String(k) : /^[A-Za-z_$][\w$]*$/.test(k) ? k : quote(k));
+    // The flags come from each brand-checked getter, since `flags` itself reads properties a null prototype lacks.
+    const regexpPart = (v, k) => Object.getOwnPropertyDescriptor(RegExp.prototype, k).get.call(v);
+    const FLAGS = { hasIndices: "d", global: "g", ignoreCase: "i", multiline: "m", dotAll: "s", unicode: "u", unicodeSets: "v", sticky: "y" };
+    const flagsOf = (v) => Object.entries(FLAGS).map(([k, c]) => (regexpPart(v, k) ? c : "")).join("");
     const inspect = (v, top) => {
       const brand = brandOf(v);
-      if (brand === "Date") return Number.isNaN(Date.prototype.getTime.call(v)) ? "Invalid Date" : Date.prototype.toISOString.call(v);
-      if (brand === "RegExp") {
-        const part = (k) => Object.getOwnPropertyDescriptor(RegExp.prototype, k).get.call(v);
-        return `/${part("source")}/${part("flags")}`;
-      }
-      const array = brand === "Array", map = brand === "Map", set = brand === "Set";
+      const array = brand === "Array", map = brand === "Map", set = brand === "Set", text = brand === "Date" || brand === "RegExp";
       const name = ctorName(v);
       if (!brand && tagOf(v) !== "Object") return `[${name ?? tagOf(v)}]`;
       const size = array ? v.length : map || set ? sizeOf[brand].call(v) : 0;
       // A nested container with items prints as its name alone, so its keys need not be listed.
       const keys = !top && size > 0 ? [] : Reflect.ownKeys(v).filter((k) => !(array && isIndex(k)) && Object.prototype.propertyIsEnumerable.call(v, k));
-      const named = name === null ? "[Object: null prototype]" : name;
-      const open = array ? (name === "Array" ? "[" : `${named}(${size}) [`)
-        : map || set ? `${named}(${size}) ${named === brand ? "" : `[${brand}] `}{`
-        : name === "Object" ? "{" : `${named} {`;
+      // Node's getPrefix: a null prototype names the kind, a shown tag renames a plain object and a hidden one follows it.
+      const own = name === null ? ownTag(v) : null;
+      const kind = brand ?? (own?.enumerable ? own.value : "Object");
+      const hidden = own && !own.enumerable && own.value !== kind ? `[${own.value}] ` : "";
+      const tag = name !== null && (map || set) && !name.includes(brand) ? `[${brand}] ` : "";
+      const prefix = (count) => (name === null ? `[${kind}${count}: null prototype] ${hidden}` : `${name}${count} ${tag}`);
+      const cut = () => (name === null ? prefix("").trimEnd() : `[${prefix("").trimEnd()}]`);
+      if (text) {
+        const base = brand === "Date"
+          ? (Number.isNaN(Date.prototype.getTime.call(v)) ? "Invalid Date" : Date.prototype.toISOString.call(v))
+          : `/${regexpPart(v, "source")}/${flagsOf(v)}`;
+        const lead = prefix("");
+        const body = lead === `${brand} ` ? base : lead + base;
+        if (keys.length === 0) return body;
+        if (!top) return cut();
+        return join(`${body} {`, "}", keys.map((k) => `${keyText(k)}: ${prop(v, k)}`), false, v);
+      }
+      const open = array ? (name === "Array" ? "[" : `${prefix(`(${size})`)}[`)
+        : map || set ? `${prefix(`(${size})`)}{`
+        : name === "Object" ? "{" : `${prefix("")}{`;
       const close = array ? "]" : "}";
       if (size === 0 && keys.length === 0) return open + close;
-      if (!top) return `[${named}]`;
-      const key = (k) => (typeof k === "symbol" ? String(k) : /^[A-Za-z_$][\w$]*$/.test(k) ? k : quote(k));
+      if (!top) return cut();
       let output = [];
       if (array) output = arrayItems(v, size);
       else if (map || set) {
@@ -231,15 +260,17 @@
         }
         if (size > max) output.push(more(size - max));
       }
-      for (const k of keys) output.push(`${key(k)}: ${prop(v, k)}`);
+      for (const k of keys) output.push(`${keyText(k)}: ${prop(v, k)}`);
       return join(open, close, output, array, v);
     };
     const shown = (v) => {
       if (typeof v === "string") return quote(v);
+      if (Object(v) === v && (v = unwrap(v)) === REVOKED) return "<Revoked Proxy>";
       if (typeof v === "function") return fnName(v) ? `[Function: ${fnName(v)}]` : "[Function (anonymous)]";
       return Object(v) === v ? inspect(v, false) : nameOf(v);
     };
     const nameOf = (e) => {
+      if (Object(e) === e && (e = unwrap(e)) === REVOKED) return "<Revoked Proxy>";
       if (typeof e === "bigint") return `${e}n`;
       if (Object.is(e, -0)) return "-0";
       if (Object(e) !== e || typeof e === "function") return String(e);

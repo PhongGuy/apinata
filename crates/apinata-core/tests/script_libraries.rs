@@ -421,6 +421,87 @@ console.log(calls);"#;
     );
 }
 
+/// Pinned from Node 24.16 (recorded by running Node itself): a null-prototype array, Map, Set, Date and
+/// RegExp, a subclassed Date, RegExp and Map, a hidden or shown Symbol.toStringTag, and a Proxy around a Map,
+/// Date, RegExp, array or object, which Node formats from its target without running a trap.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_to_string_inspects_null_prototypes_subclasses_and_proxies() {
+    let code = r#"const b = Buffer.from("hi");
+const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message); } };
+const np = (o) => Object.setPrototypeOf(o, null);
+const hide = (o, t) => Object.defineProperty(o, Symbol.toStringTag, { value: t });
+const show = (o, t) => Object.defineProperty(o, Symbol.toStringTag, { value: t, enumerable: true });
+class MyDate extends Date {}
+class MyRe extends RegExp {}
+class MyMap extends Map {}
+class Foo extends Map {}
+class XMapY extends Map {}
+const revoked = Proxy.revocable(new Map(), {});
+revoked.revoke();
+const cases = [
+  np([1, 2]), np([]), Object.assign(np([1]), { x: 1 }), np(new Map([[1, 2]])), np(new Map()), np(new Set([1])), np(new Set()),
+  np(new Date(0)), np(new Date(NaN)), np(/x/g), Object.assign(np(new Date(0)), { x: 1 }),
+  np({ a: 1 }), np({}), show(np({}), "T"), hide(np({ a: 1 }), "T"), hide(np({}), "T"), hide(np(new Map([[1, 2]])), "T"), hide(np(new Date(0)), "T"),
+  new MyDate(0), new MyDate(NaN), new MyRe("x", "g"), new MyMap(), Object.assign(new Date(0), { x: 1 }),
+  new Foo([[1, 2]]), new Foo(), new XMapY([[1, 2]]),
+  new Proxy(new Map(), {}), new Proxy(new Map([[1, 2]]), {}), new Proxy(new Date(0), {}), new Proxy(/x/g, {}), new Proxy([1, 2], {}), new Proxy({ a: 1 }, {}),
+  revoked.proxy,
+  new Proxy(new Map(), { ownKeys() { throw new Error("ok"); }, getOwnPropertyDescriptor() { throw new Error("gopd"); }, getPrototypeOf() { throw new Error("gp"); } }),
+];
+for (const e of cases) console.log(tryIt(() => b.toString({ k: e })));
+for (const e of [new MyDate(0), new MyRe("x"), new MyMap([[1, 2]]), new Foo([[1, 2]]), new XMapY([[1, 2]]), new Proxy(new Map(), {}), new Proxy(new Map([[1, 2]]), {}), new Proxy([1, 2], {}), new Proxy({ a: 1 }, {})]) console.log(tryIt(() => b.toString(e)));"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(
+        console(&result),
+        [
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Array: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Array(0): null prototype] [] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Array: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Map: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Map(0): null prototype] {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Set: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Set(0): null prototype] {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Date: null prototype] 1970-01-01T00:00:00.000Z }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Date: null prototype] Invalid Date }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [RegExp: null prototype] /x/g }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Date: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object: null prototype] {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [T: null prototype] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object: null prototype] [T] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object: null prototype] [T] {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Map: null prototype] [T] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Date: null prototype] [T] 1970-01-01T00:00:00.000Z }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: MyDate 1970-01-01T00:00:00.000Z }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: MyDate Invalid Date }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: MyRe /x/g }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: MyMap(0) {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Date] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Foo [Map]] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: Foo(0) [Map] {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [XMapY] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: Map(0) {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Map] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: 1970-01-01T00:00:00.000Z }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: /x/g }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Array] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: <Revoked Proxy> }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: Map(0) {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: MyDate 1970-01-01T00:00:00.000Z""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: MyRe /x/""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: MyMap(1) { 1 => 2 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Foo(1) [Map] { 1 => 2 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: XMapY(1) { 1 => 2 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Map(0) {}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Map(1) { 1 => 2 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [ 1, 2 ]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { a: 1 }""#,
+        ]
+    );
+}
+
 /// Pinned from Node 24.16: joining a sparse array of 2^32 - 1 holes fails at once, not after a walk.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn buffer_to_string_rejects_a_huge_sparse_array_at_once() {
