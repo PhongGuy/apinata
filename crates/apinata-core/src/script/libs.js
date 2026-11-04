@@ -31,30 +31,80 @@
       if (Object(e) === e && ![Symbol.toPrimitive, "toString", "valueOf"].some(callable)) {
         throw new TypeError("Cannot convert object to primitive value");
       }
+      // Joining a sparse array past the engine's string limit fails in Node at once; do not walk the holes.
+      if (Array.isArray(e) && e.length >= 536870890 && e.toString === Array.prototype.toString && e.join === Array.prototype.join) {
+        throw new RangeError("Invalid string length");
+      }
       return String(e);
     };
     // util.format's %s: an object with a builtin toString is inspected one level deep, the rest as String().
     // The inspect subset covers plain objects, class instances, arrays, Date, RegExp, Map and Set.
-    const quote = (v) => (v.includes("'") ? JSON.stringify(v) : `'${v}'`);
-    const tagOf = (v) => Object.prototype.toString.call(v).slice(8, -1);
+    // util.inspect's string form: single quotes unless the text holds one, control characters escaped.
+    const ESCAPES = /[\x00-\x1f\x27\x5c\x7f-\x9f]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+    const NAMED = { 8: "\\b", 9: "\\t", 10: "\\n", 12: "\\f", 13: "\\r", 39: "\\'", 92: "\\\\" };
+    const quote = (s) => {
+      let mark = "'";
+      if (s.includes("'")) mark = !s.includes('"') ? '"' : !s.includes("`") && !s.includes("${") ? "`" : "'";
+      return mark + s.replace(ESCAPES, (c) => {
+        const code = c.charCodeAt(0);
+        if (code === 39 && mark !== "'") return c;
+        if (code in NAMED) return NAMED[code];
+        return code >= 0xd800 && code <= 0xdfff ? `\\u${code.toString(16)}` : `\\x${code.toString(16).toUpperCase().padStart(2, "0")}`;
+      }) + mark;
+    };
+    // The formatter runs on an error path, so it reads properties through descriptors and never runs a getter.
+    const find = (o, k) => {
+      for (; o !== null; o = Object.getPrototypeOf(o)) {
+        const d = Object.getOwnPropertyDescriptor(o, k);
+        if (d) return { d, holder: o };
+      }
+      return null;
+    };
+    const fnName = (f) => {
+      const d = Object.getOwnPropertyDescriptor(f, "name");
+      return d && typeof d.value === "string" ? d.value : "";
+    };
+    const GLOBALS = () => Object.getOwnPropertyNames(globalThis).filter((n) => /^[A-Z][a-zA-Z0-9]+$/.test(n));
+    const builtinCtor = (holder) => {
+      const c = Object.getOwnPropertyDescriptor(holder, "constructor");
+      return c !== undefined && typeof c.value === "function" && GLOBALS().includes(fnName(c.value));
+    };
+    // Builtins are told apart by brand, never by a Symbol.toStringTag a script can set.
+    const brandOf = (v) => {
+      if (Array.isArray(v)) return "Array";
+      const probes = {
+        Date: () => Date.prototype.getTime.call(v),
+        RegExp: () => Object.getOwnPropertyDescriptor(RegExp.prototype, "source").get.call(v),
+        Map: () => Map.prototype.has.call(v),
+        Set: () => Set.prototype.has.call(v),
+      };
+      for (const [name, probe] of Object.entries(probes)) {
+        try { probe(); return name; } catch { /* not this brand */ }
+      }
+      return null;
+    };
+    // "Object" for anything a script tagged itself; a builtin's own tag (Error, Promise, ...) otherwise.
+    const tagOf = (v) => {
+      const t = find(v, Symbol.toStringTag);
+      if (t && (!("value" in t.d) || !builtinCtor(t.holder))) return "Object";
+      return Object.prototype.toString.call(v).slice(8, -1);
+    };
     const ctorName = (v) => {
       for (let o = v; o !== null; o = Object.getPrototypeOf(o)) {
         const d = Object.getOwnPropertyDescriptor(o, "constructor");
-        if (d && typeof d.value === "function" && d.value.name !== "") return d.value.name;
+        if (d && typeof d.value === "function" && fnName(d.value) !== "") return fnName(d.value);
       }
       return null;
     };
     // Node treats a toString found on a builtin's prototype as builtin, so a class instance still gets inspected.
     const builtinToString = (e) => {
-      const prim = e[Symbol.toPrimitive];
-      if (typeof prim === "function" && prim !== Date.prototype[Symbol.toPrimitive]) return false;
-      if (typeof e.toString !== "function") return true;
-      if (Object.hasOwn(e, "toString")) return false;
-      let o = e;
-      do o = Object.getPrototypeOf(o); while (!Object.hasOwn(o, "toString"));
-      const d = Object.getOwnPropertyDescriptor(o, "constructor");
-      return d !== undefined && typeof d.value === "function"
-        && Object.getOwnPropertyNames(globalThis).includes(d.value.name) && /^[A-Z][a-zA-Z0-9]+$/.test(d.value.name);
+      const prim = find(e, Symbol.toPrimitive);
+      if (prim && (!("value" in prim.d) || (typeof prim.d.value === "function" && prim.d.value !== Date.prototype[Symbol.toPrimitive]))) return false;
+      const t = find(e, "toString");
+      if (!t) return true;
+      if (!("value" in t.d)) return false;
+      if (typeof t.d.value !== "function") return true;
+      return t.holder !== e && builtinCtor(t.holder);
     };
     const isIndex = (k) => typeof k === "string" && /^(0|[1-9]\d*)$/.test(k) && Number(k) < 2 ** 32 - 1;
     // Node packs more than six array entries into aligned columns; this is its groupArrayElements at breakLength 80.
@@ -78,7 +128,11 @@
         for (let j = i; j < output.length; j += columns) w = Math.max(w, lengths[j] ?? 0);
         widths.push(w + 2);
       }
-      const numeric = Array.from({ length: output.length }, (_, i) => i).every((i) => typeof value[i] === "number" || typeof value[i] === "bigint");
+      const typeAt = (i) => {
+        const d = Object.getOwnPropertyDescriptor(value, i);
+        return d && "value" in d ? typeof d.value : "accessor";
+      };
+      const numeric = Array.from({ length: output.length }, (_, i) => i).every((i) => typeAt(i) === "number" || typeAt(i) === "bigint");
       const pad = (t, n) => (numeric ? t.padStart(n) : t.padEnd(n));
       const rows = [];
       for (let i = 0; i < count; i += columns) {
@@ -101,56 +155,102 @@
       }
       return `${open}\n  ${output.join(",\n  ")}\n${close}`;
     };
+    const MAX_ITEMS = 100;
+    const more = (n) => `... ${n} more item${n > 1 ? "s" : ""}`;
+    const sizeOf = {
+      Map: Object.getOwnPropertyDescriptor(Map.prototype, "size").get,
+      Set: Object.getOwnPropertyDescriptor(Set.prototype, "size").get,
+    };
+    const prop = (v, k) => {
+      const d = Object.getOwnPropertyDescriptor(v, k);
+      if (!d) return "undefined";
+      if (!("value" in d)) return d.get ? (d.set ? "[Getter/Setter]" : "[Getter]") : "[Setter]";
+      return shown(d.value);
+    };
+    // Node's formatArray, which jumps from hole to hole through the present keys and stops after 100 entries.
+    const arrayItems = (v, size) => {
+      const output = [], max = Math.min(MAX_ITEMS, size);
+      let i = 0;
+      for (; i < max; i++) {
+        if (!Object.hasOwn(v, i)) break;
+        output.push(prop(v, i));
+      }
+      if (i === max) {
+        if (size > max) output.push(more(size - max));
+        return output;
+      }
+      const keys = Object.keys(v);
+      let index = i;
+      for (; i < keys.length && output.length < max; i++) {
+        const key = keys[i];
+        if (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) > 2 ** 32 - 2) break;
+        if (`${index}` !== key) {
+          const gap = Number(key) - index;
+          output.push(`<${gap} empty item${gap > 1 ? "s" : ""}>`);
+          index = Number(key);
+          if (output.length === max) break;
+        }
+        output.push(prop(v, key));
+        index++;
+      }
+      const rest = size - index;
+      if (output.length !== max) {
+        if (rest > 0) output.push(`<${rest} empty item${rest > 1 ? "s" : ""}>`);
+      } else if (rest > 0) output.push(more(rest));
+      return output;
+    };
     const inspect = (v, top) => {
-      const tag = tagOf(v);
-      if (tag === "Date") return Number.isNaN(Date.prototype.getTime.call(v)) ? "Invalid Date" : Date.prototype.toISOString.call(v);
-      if (tag === "RegExp") return RegExp.prototype.toString.call(v);
-      const array = Array.isArray(v), map = tag === "Map", set = tag === "Set";
+      const brand = brandOf(v);
+      if (brand === "Date") return Number.isNaN(Date.prototype.getTime.call(v)) ? "Invalid Date" : Date.prototype.toISOString.call(v);
+      if (brand === "RegExp") {
+        const part = (k) => Object.getOwnPropertyDescriptor(RegExp.prototype, k).get.call(v);
+        return `/${part("source")}/${part("flags")}`;
+      }
+      const array = brand === "Array", map = brand === "Map", set = brand === "Set";
       const name = ctorName(v);
-      if (!array && !map && !set && tag !== "Object") return `[${name ?? tag}]`;
-      const keys = Reflect.ownKeys(v).filter((k) => !(array && isIndex(k)) && Object.prototype.propertyIsEnumerable.call(v, k));
-      const size = array ? v.length : map || set ? v.size : 0;
+      if (!brand && tagOf(v) !== "Object") return `[${name ?? tagOf(v)}]`;
+      const size = array ? v.length : map || set ? sizeOf[brand].call(v) : 0;
+      // A nested container with items prints as its name alone, so its keys need not be listed.
+      const keys = !top && size > 0 ? [] : Reflect.ownKeys(v).filter((k) => !(array && isIndex(k)) && Object.prototype.propertyIsEnumerable.call(v, k));
       const named = name === null ? "[Object: null prototype]" : name;
       const open = array ? (name === "Array" ? "[" : `${named}(${size}) [`)
-        : map || set ? `${named}(${size}) ${named === (map ? "Map" : "Set") ? "" : `[${map ? "Map" : "Set"}] `}{`
+        : map || set ? `${named}(${size}) ${named === brand ? "" : `[${brand}] `}{`
         : name === "Object" ? "{" : `${named} {`;
       const close = array ? "]" : "}";
       if (size === 0 && keys.length === 0) return open + close;
       if (!top) return `[${named}]`;
       const key = (k) => (typeof k === "symbol" ? String(k) : /^[A-Za-z_$][\w$]*$/.test(k) ? k : quote(k));
-      const output = [];
-      if (array) {
-        let i = 0;
-        while (i < size && output.length < 100) {
-          if (Object.hasOwn(v, i)) output.push(shown(v[i++]));
-          else {
-            let j = i;
-            while (j < size && !Object.hasOwn(v, j)) j++;
-            output.push(`<${j - i} empty item${j - i > 1 ? "s" : ""}>`);
-            i = j;
-          }
+      let output = [];
+      if (array) output = arrayItems(v, size);
+      else if (map || set) {
+        const it = (map ? Map : Set).prototype[map ? "entries" : "values"].call(v);
+        const max = Math.min(MAX_ITEMS, size);
+        for (let n = 0; n < max; n++) {
+          const { value } = it.next();
+          output.push(map ? `${shown(value[0])} => ${shown(value[1])}` : shown(value));
         }
-        if (i < size) output.push(`... ${size - i} more item${size - i > 1 ? "s" : ""}`);
-      } else if (map) for (const [k, x] of v) output.push(`${shown(k)} => ${shown(x)}`);
-      else if (set) for (const x of v) output.push(shown(x));
-      for (const k of keys) {
-        const d = Object.getOwnPropertyDescriptor(v, k);
-        const text = d.get ? (d.set ? "[Getter/Setter]" : "[Getter]") : d.set ? "[Setter]" : shown(d.value);
-        output.push(`${key(k)}: ${text}`);
+        if (size > max) output.push(more(size - max));
       }
+      for (const k of keys) output.push(`${key(k)}: ${prop(v, k)}`);
       return join(open, close, output, array, v);
     };
     const shown = (v) => {
       if (typeof v === "string") return quote(v);
-      if (typeof v === "function") return v.name ? `[Function: ${v.name}]` : "[Function (anonymous)]";
+      if (typeof v === "function") return fnName(v) ? `[Function: ${fnName(v)}]` : "[Function (anonymous)]";
       return Object(v) === v ? inspect(v, false) : nameOf(v);
     };
     const nameOf = (e) => {
       if (typeof e === "bigint") return `${e}n`;
       if (Object.is(e, -0)) return "-0";
-      const inspectable = Object(e) === e && typeof e !== "function" && builtinToString(e)
-        && (Array.isArray(e) || ["Object", "Date", "RegExp", "Map", "Set"].includes(tagOf(e)));
-      return inspectable ? inspect(e, true) : String(e);
+      if (Object(e) !== e || typeof e === "function") return String(e);
+      // A proxy trap or a hostile prototype can still throw; the error text must not.
+      try {
+        const brand = brandOf(e);
+        const inspectable = builtinToString(e) && (brand !== null || tagOf(e) === "Object");
+        return inspectable ? inspect(e, true) : String(e);
+      } catch {
+        return "[Object]";
+      }
     };
     B.isEncoding = (e) => url(e) || isEncoding(e);
     B.from = function (...args) { return from.apply(this, plain(args)); };

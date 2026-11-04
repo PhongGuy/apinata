@@ -132,20 +132,40 @@
     for (const start = text.startsWith("-") ? 1 : 0; i >= start + 4; i -= 3) out = `_${text.slice(i - 3, i)}${out}`;
     return text.slice(0, i) + out;
   };
+  // Property reads go through descriptors so that an error message never runs a getter or a proxy trap.
+  const dataOf = (o, k) => {
+    const d = Object.getOwnPropertyDescriptor(o, k);
+    return d && "value" in d ? d.value : undefined;
+  };
   // util.inspect at depth -1, for an object that names no constructor.
   const bare = (v) => {
     if (Object.getPrototypeOf(v) !== null) return Array.isArray(v) ? "[Array]" : "[Object]";
-    const tag = v[Symbol.toStringTag];
-    const kind = Array.isArray(v) ? `Array(${v.length})` : typeof tag === "string" && tag ? tag : "Object";
+    const tag = dataOf(v, Symbol.toStringTag);
+    const array = Array.isArray(v);
     const empty = !Reflect.ownKeys(v).some((k) => Object.prototype.propertyIsEnumerable.call(v, k));
-    return `[${kind}: null prototype]${empty ? (Array.isArray(v) ? " []" : " {}") : ""}`;
+    const kind = array ? `Array${empty ? "(0)" : ""}` : typeof tag === "string" && tag ? tag : "Object";
+    return `[${kind}: null prototype]${empty ? (array ? " []" : " {}") : ""}`;
+  };
+  // The first `constructor` along the prototype chain, as `v.constructor?.name` finds it.
+  const constructorName = (v) => {
+    for (let o = v; o !== null; o = Object.getPrototypeOf(o)) {
+      const d = Object.getOwnPropertyDescriptor(o, "constructor");
+      if (!d) continue;
+      const c = d.value;
+      return c !== null && (typeof c === "object" || typeof c === "function") ? dataOf(c, "name") : undefined;
+    }
+    return undefined;
   };
   const received = (v) => {
     if (v == null) return ` Received ${v}`;
-    if (typeof v === "function") return ` Received function ${v.name}`;
-    if (typeof v === "object") {
-      const name = v.constructor?.name;
-      return typeof name === "string" ? ` Received an instance of ${name}` : ` Received ${bare(v)}`;
+    try {
+      if (typeof v === "function") return ` Received function ${dataOf(v, "name") ?? ""}`;
+      if (typeof v === "object") {
+        const name = constructorName(v);
+        return typeof name === "string" ? ` Received an instance of ${name}` : ` Received ${bare(v)}`;
+      }
+    } catch {
+      return " Received [Object]";
     }
     // Node cuts a long string before it quotes it.
     const text = typeof v === "string" ? (v.length > 28 ? `${v.slice(0, 25)}...` : v) : v;

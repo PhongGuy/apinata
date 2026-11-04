@@ -1090,7 +1090,9 @@ const enc = (outputEncoding) => () => crypto.hash("sha1", "a", { outputEncoding 
 console.log(tryIt(enc("a\nb")));
 console.log(tryIt(enc("it's\nx")));
 console.log(tryIt(enc("a".repeat(40))));
-console.log(tryIt(enc("\u0001")));"#;
+console.log(tryIt(enc("\u0001")));
+console.log(tryIt(() => crypto.hash("sha1", Object.setPrototypeOf([1], null))));
+console.log(tryIt(() => crypto.hash("sha1", Object.assign(Object.create(null), { a: 1 }))));"#;
     assert_eq!(
         run_crypto(code).await,
         [
@@ -1122,6 +1124,8 @@ console.log(tryIt(enc("\u0001")));"#;
             r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received \"it's\\nx\"""#,
             r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'""#,
             r#"log:TypeError ERR_INVALID_ARG_VALUE "The argument 'outputEncoding' is invalid. Received '\\x01'""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Array: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype]""#,
         ]
     );
 }

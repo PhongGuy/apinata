@@ -370,6 +370,67 @@ for (const e of cases) console.log(tryIt(() => b.toString(e)));"#;
     );
 }
 
+/// Pinned from Node 24.16 (recorded by running Node itself): the encoding name of a sparse array, a
+/// capped Map or Set, a script-set `Symbol.toStringTag` and an escaped string, and an element getter that
+/// the formatter must not run again (both runs read it once, in the conversion to a string).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_to_string_names_odd_encodings_safely() {
+    let code = r#"const b = Buffer.from("hi");
+const show = (e) => { try { b.toString(e); return "no error"; } catch (x) { const m = x.message.replace("Unknown encoding: ", ""); return m.length > 120 ? m.length + " " + JSON.stringify(m.slice(0, 40)) + ".." + JSON.stringify(m.slice(-40)) : JSON.stringify(m); } };
+const huge = []; huge.length = 2 ** 32 - 1;
+const gap = []; gap[5] = 1; gap[10 ** 6] = 2;
+const mid = [1]; mid.length = 50; mid[40] = 2;
+const lone = []; lone[3] = "x"; lone.extra = 1;
+let calls = 0;
+const getterAt = []; Object.defineProperty(getterAt, 0, { get() { calls++; return 7; }, enumerable: true });
+const getterNum = [1, 2, 3, 4, 5, 6, 7]; Object.defineProperty(getterNum, 3, { get() { calls++; return 4; }, enumerable: true });
+const ctorGetter = { get constructor() { throw new Error("ran"); } };
+const bigMap = new Map(Array.from({ length: 120 }, (_, i) => [i, i]));
+const bigSet = new Set(Array.from({ length: 120 }, (_, i) => i));
+class Sub extends Map {}
+const cases = [gap, mid, lone, getterAt, getterNum, ctorGetter,
+  { [Symbol.toStringTag]: "Map" }, { [Symbol.toStringTag]: "Date" }, { [Symbol.toStringTag]: "Set" }, { [Symbol.toStringTag]: "RegExp" },
+  bigMap, bigSet, new Sub([[1, 2]]), { a: "x\ny" }, [["it's\ttab"]], { "k\nx": 1 }, Object.setPrototypeOf([1], null), { a: [new Array(3)] }];
+for (const e of cases) console.log(show(e));
+console.log(calls);"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(
+        console(&result),
+        [
+            r#"log:"[ <5 empty items>, 1, <999994 empty items>, 2 ]""#,
+            r#"log:"[ 1, <39 empty items>, 2, <9 empty items> ]""#,
+            r#"log:"[ <3 empty items>, 'x', extra: 1 ]""#,
+            r#"log:"[ [Getter] ]""#,
+            r#"log:"[ 1, 2, 3, [Getter], 5, 6, 7 ]""#,
+            r#"log:"{ constructor: [Getter] }""#,
+            r#"log:"{ Symbol(Symbol.toStringTag): 'Map' }""#,
+            r#"log:"{ Symbol(Symbol.toStringTag): 'Date' }""#,
+            r#"log:"{ Symbol(Symbol.toStringTag): 'Set' }""#,
+            r#"log:"{ Symbol(Symbol.toStringTag): 'RegExp' }""#,
+            r#"log:1212 "Map(120) {\n  0 => 0,\n  1 => 1,\n  2 => 2,".."=> 98,\n  99 => 99,\n  ... 20 more items\n}""#,
+            r#"log:622 "Set(120) {\n  0,\n  1,\n  2,\n  3,\n  4,\n  5,".."\n  97,\n  98,\n  99,\n  ... 20 more items\n}""#,
+            r#"log:"Sub(1) [Map] { 1 => 2 }""#,
+            r#"log:"{ a: 'x\\ny' }""#,
+            r#"log:"[ [Array] ]""#,
+            r#"log:"{ 'k\\nx': 1 }""#,
+            r#"log:"Cannot convert object to primitive value""#,
+            r#"log:"{ a: [Array] }""#,
+            r#"log:2"#,
+        ]
+    );
+}
+
+/// Pinned from Node 24.16: joining a sparse array of 2^32 - 1 holes fails at once, not after a walk.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_to_string_rejects_a_huge_sparse_array_at_once() {
+    let code = r#"const a = []; a.length = 2 ** 32 - 1;
+try { Buffer.from("x").toString(a); } catch (e) { console.log(e.name, e.message); }"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(console(&result), ["log:RangeError Invalid string length"]);
+}
+
 /// Pinned from Node 24.16: each maximal invalid UTF-8 subpart becomes one U+FFFD, not each byte.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn buffer_utf8_replaces_each_broken_sequence_once() {
