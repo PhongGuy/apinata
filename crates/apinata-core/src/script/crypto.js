@@ -102,6 +102,47 @@
   // A KeyObject's type, asymmetric kind and bytes (secret, PKCS#8 or SPKI) live here, out of
   // the script's reach; only this file's constructor token can make one.
   const KEY_DATA = new WeakMap();
+  // The children of a DER value as [tag, start, end] spans of their contents.
+  const derChildren = (b, start, end) => {
+    const out = [];
+    for (let i = start; i < end;) {
+      const tag = b[i];
+      let len = b[i + 1], at = i + 2;
+      if (len & 0x80) {
+        const n = len & 0x7f;
+        len = 0;
+        for (let j = 0; j < n; j++) len = len * 256 + b[at + j];
+        at += n;
+      }
+      out.push([tag, at, at + len]);
+      i = at + len;
+    }
+    return out;
+  };
+  const CURVE_OIDS = { "2a8648ce3d030107": "prime256v1", "2b81040022": "secp384r1", "2b81040023": "secp521r1" };
+  // Node's asymmetricKeyDetails, read from the PKCS#8 or SPKI bytes the KeyObject keeps.
+  const keyDetails = (kind, type, bytes) => {
+    if (kind === "ed25519") return {};
+    const [top] = derChildren(bytes, 0, bytes.length);
+    const parts = derChildren(bytes, top[1], top[2]);
+    const alg = parts.find((p) => p[0] === 0x30);
+    if (kind === "ec") {
+      const oid = derChildren(bytes, alg[1], alg[2])[1];
+      const hex = bytes.slice(oid[1], oid[2]).map((x) => x.toString(16).padStart(2, "0")).join("");
+      return { namedCurve: CURVE_OIDS[hex] };
+    }
+    // The RSA key sits in an OCTET STRING (PKCS#8) or after the unused-bits byte of a BIT STRING (SPKI).
+    const holder = parts[parts.length - 1];
+    const [rsa] = derChildren(bytes, holder[1] + (type === "public" ? 1 : 0), holder[2]);
+    const ints = derChildren(bytes, rsa[1], rsa[2]);
+    const [n, e] = type === "public" ? ints : ints.slice(1);
+    let first = n[1];
+    while (first < n[2] - 1 && bytes[first] === 0) first++;
+    const modulusLength = (n[2] - first) * 8 - Math.clz32(bytes[first]) + 24;
+    let exponent = 0n;
+    for (let i = e[1]; i < e[2]; i++) exponent = exponent * 256n + BigInt(bytes[i]);
+    return { modulusLength, publicExponent: exponent };
+  };
   const MAKE = Symbol("KeyObject");
   class KeyObject {
     constructor(token, type, kind, bytes) {
@@ -110,6 +151,10 @@
     }
     get type() { return KEY_DATA.get(this).type; }
     get asymmetricKeyType() { return KEY_DATA.get(this).kind; }
+    get asymmetricKeyDetails() {
+      const { type, kind, bytes } = KEY_DATA.get(this);
+      return type === "secret" ? undefined : keyDetails(kind, type, Array.from(bytes));
+    }
     get symmetricKeySize() { const k = KEY_DATA.get(this); return k.type === "secret" ? k.bytes.length : undefined; }
     export(options) {
       const { type, kind, bytes } = KEY_DATA.get(this);
