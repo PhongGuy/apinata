@@ -14,8 +14,8 @@ use gpui_kit::*;
 use crate::banner::{self, Banner, Choice};
 use crate::dialog_guard::{self, Guard, GuardRef, SaveOutcome};
 use crate::env_table::{
-    DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, env_rows, env_vars_from,
-    writes_colliding_secrets,
+    DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, env_rows, env_vars_from, secret_records,
+    secrets_collide,
 };
 use crate::import_report::failure_text;
 use crate::orphan_section::{self, Orphans};
@@ -381,11 +381,10 @@ impl GlobalEnvEditor {
             return dialog_guard::settled(Ok(()));
         };
         // Refused before any typing is taken: two secrets of one name would share one value.
-        let draft = self.table.read(cx).secret_names(cx);
-        let saved: Vec<String> = (self.base.iter().filter(|v| v.secret))
-            .map(|v| v.name.clone())
-            .collect();
-        if writes_colliding_secrets(&draft, &saved) {
+        let table = self.table.read(cx);
+        let draft = table.secret_records(cx);
+        let changed = draft != secret_records(&self.base) || table.has_secret_typing(cx);
+        if secrets_collide(&draft) && changed {
             self.error = Some(DUPLICATE_SECRET_NAMES.to_owned());
             cx.notify();
             return dialog_guard::settled(Err(DUPLICATE_SECRET_NAMES.to_owned()));

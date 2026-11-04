@@ -24,6 +24,7 @@ use crate::command::{
     Target, TreeOp,
 };
 use crate::context_cache::ContextCache;
+use crate::env_table;
 use crate::model::OPEN_PANIC_MESSAGE;
 use crate::network_secrets;
 use crate::snapshot::{CollectionSnapshot, SnapshotCache};
@@ -1423,6 +1424,7 @@ impl Actor {
     }
 
     fn save(&mut self, id: u64, target: &Target) -> Result<(), NoticeKind> {
+        self.refuse_colliding_secrets(target)?;
         let not_found = || NoticeKind::NotFound(target.clone());
         let before = self.saved_secrets(target);
         let own_network = self.own_network_save(target);
@@ -1435,16 +1437,6 @@ impl Actor {
                 target,
                 "Choose a name and folder to save this request",
             ));
-        }
-        // Every route to a Save (autosave, Save All) meets the editor's refusal of a collision.
-        if let Target::Environment(name) = target {
-            let env = c.environment(name).ok_or_else(not_found)?;
-            let draft: Vec<String> = (env.variables().into_iter().filter(|v| v.secret))
-                .map(|v| v.name)
-                .collect();
-            if crate::env_table::writes_colliding_secrets(&draft, &before) {
-                return Err(failed(target, crate::env_table::DUPLICATE_SECRET_NAMES));
-            }
         }
         let result = match target {
             Target::Request(path) => c.request_mut(path).ok_or_else(not_found)?.save(),
@@ -1556,6 +1548,7 @@ impl Actor {
     }
 
     fn overwrite(&mut self, id: u64, target: &Target) -> Result<(), NoticeKind> {
+        self.refuse_colliding_secrets(target)?;
         let path = self.file_path(target)?;
         let before = self.saved_secrets(target);
         let result = self.collection.save_overwrite(&path);
@@ -1564,6 +1557,25 @@ impl Actor {
             self.drop_orphaned_secrets(id, target, &before);
         }
         result.map_err(|e| failed(target, e))
+    }
+
+    /// Every write of an environment draft (Save, Overwrite, autosave, Save All) is refused
+    /// when it would write two secrets of one name the file does not already hold as they are.
+    fn refuse_colliding_secrets(&self, target: &Target) -> Result<(), NoticeKind> {
+        let Target::Environment(name) = target else {
+            return Ok(());
+        };
+        let Some(env) = self.collection.environment(name) else {
+            return Ok(());
+        };
+        let draft = env_table::secret_records(&env.variables());
+        let saved = (self.collection.try_saved_variables(name))
+            .map(|vars| env_table::secret_records(&vars))
+            .unwrap_or_default();
+        if env_table::writes_colliding_secrets(&draft, &saved) {
+            return Err(failed(target, env_table::DUPLICATE_SECRET_NAMES));
+        }
+        Ok(())
     }
 
     /// The secret names of an environment target's file on disk, read just before a save so
