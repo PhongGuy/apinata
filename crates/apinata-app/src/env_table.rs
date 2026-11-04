@@ -276,6 +276,18 @@ impl EnvVarTable {
     /// row's inputs, so focused typing cannot land in a plain value. Other rows reuse by index.
     /// The empty row is never part of the reuse pool and keeps its inputs and focus.
     pub fn load(&mut self, rows: Vec<EnvRow>, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_draft(rows, false, window, cx);
+    }
+
+    /// [`Self::load`] for a draft (`dirty`): a kept row not yet saved stays unsaved whatever
+    /// its name now is, since only a Save puts it in the file.
+    pub fn load_draft(
+        &mut self,
+        rows: Vec<EnvRow>,
+        dirty: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // A control focus an earlier load left for a draw that has not come yet is where focus
         // belongs; the window's focus still names the old row's control.
         self.drop_moved_on_focus(window);
@@ -323,7 +335,8 @@ impl EnvVarTable {
                 // A save from outside the table declares the name but stores none of the typing.
                 let typing = existing.value.read(cx).value() != existing.committed.as_str();
                 existing.undeclared |= typing && existing.meta.unsaved;
-                existing.meta = meta;
+                let unsaved = meta.unsaved || (dirty && existing.meta.unsaved);
+                existing.meta = Meta { unsaved, ..meta };
                 if !existing.guarded() {
                     existing.confirmed = None;
                 }

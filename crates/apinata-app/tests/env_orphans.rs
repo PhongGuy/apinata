@@ -884,6 +884,106 @@ fn a_locked_new_row_named_like_an_orphan_is_renamed_and_save_asks_replace(cx: &m
     assert_eq!(store.get(&skey).unwrap().as_deref(), Some("typed"));
 }
 
+/// Types `typed` into row `ix`'s value, then clicks the first row's value to blur it.
+fn type_and_blur(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, ix: usize) {
+    frame(cx, win);
+    type_at_end(cx, win, None, ("env-value", ix), "typed");
+    cx.run_until_parked();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click(("env-value", 0usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+}
+
+/// Locks a new row `ol` at `ix`, renames it to `old` and blurs typing in it; the store keeps
+/// its value until the Save that follows asks Replace.
+fn rename_onto_old_asks_replace(
+    cx: &mut TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    ed: &Entity<EnvEditor>,
+    store: &Listing,
+    skey: &SecretKey,
+    ix: usize,
+) {
+    type_at_end(cx, win, None, ("env-name", ix), "ol");
+    cx.run_until_parked();
+    click_lock(cx, win, ix);
+    assert!(draft_flag(cx, ed, ix));
+    frame(cx, win);
+    type_at_end(cx, win, None, ("env-name", ix), "d");
+    cx.run_until_parked();
+    edit_name(cx, win, ix, "d");
+    assert_eq!(
+        draft_name(cx, ed, ix),
+        "old",
+        "the renamed row stays renamable"
+    );
+    type_and_blur(cx, win, ix);
+    assert_eq!(
+        store.get(skey).unwrap().as_deref(),
+        Some("s3cret"),
+        "a blur stores nothing"
+    );
+    cx.update_window(win, |_, w, cx| w.press(&key("s"), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "the save asks Replace");
+    answer_confirm(cx, "confirm-cancel");
+    assert_eq!(store.get(skey).unwrap().as_deref(), Some("s3cret"));
+}
+
+#[gpui_kit::test]
+fn a_locked_new_row_renamed_onto_a_saved_secret_asks_replace(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", SECRET_OLD),
+    ]);
+    let (store, skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    rename_onto_old_asks_replace(cx, win, &ed, &store, &skey, 2);
+}
+
+#[gpui_kit::test]
+fn a_locked_new_row_renamed_onto_a_deleted_saved_secret_asks_replace(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", SECRET_OLD),
+    ]);
+    let (store, skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click(("env-delete", 1usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    rename_onto_old_asks_replace(cx, win, &ed, &store, &skey, 1);
+}
+
+#[gpui_kit::test]
+fn renaming_a_locked_row_named_like_an_orphan_before_save_brings_the_orphan_back(
+    cx: &mut TestAppContext,
+) {
+    let col = tree();
+    let (store, skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    type_at_end(cx, win, None, ("env-name", 1usize), "old");
+    cx.run_until_parked();
+    click_lock(cx, win, 1);
+    assert!(!present(cx, win, "env-orphans"));
+    edit_name(cx, win, 1, "x");
+    assert_eq!(draft_name(cx, &ed, 1), "olx");
+    assert!(
+        present(cx, win, "env-orphans"),
+        "the stored value shows as an orphan again"
+    );
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
+}
+
 /// Deletes the `old` row and types its name into the empty row; both go to the draft.
 fn retype_old(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle) {
     frame(cx, win);
