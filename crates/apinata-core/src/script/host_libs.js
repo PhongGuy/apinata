@@ -8,6 +8,16 @@
   delete globalThis.__uuid;
   delete globalThis.__random;
   delete globalThis.__hash;
+  const proxyTarget = globalThis.__proxyTarget;
+  delete globalThis.__proxyTarget;
+  // Reflection captured before a script can patch it, so a proxy's target never reaches script code.
+  const uncurry = Function.prototype.bind.bind(Function.prototype.call);
+  const { getOwnPropertyDescriptor: gopd, getPrototypeOf: gpo } = Object;
+  const ownKeys = Reflect.ownKeys, isArray = Array.isArray, isNaNum = Number.isNaN;
+  const pie = uncurry(Object.prototype.propertyIsEnumerable);
+  const getterOf = (proto, k) => uncurry(gopd(proto, k).get);
+  const dateTime = uncurry(Date.prototype.getTime), dateISO = uncurry(Date.prototype.toISOString);
+  const reSource = getterOf(RegExp.prototype, "source"), mapSize = getterOf(Map.prototype, "size"), setSize = getterOf(Set.prototype, "size");
   const define = (name, value) =>
     Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
 
@@ -132,40 +142,60 @@
     for (const start = text.startsWith("-") ? 1 : 0; i >= start + 4; i -= 3) out = `_${text.slice(i - 3, i)}${out}`;
     return text.slice(0, i) + out;
   };
-  // Property reads go through descriptors so that an error message never runs a getter or a proxy trap.
-  const dataOf = (o, k) => {
-    const d = Object.getOwnPropertyDescriptor(o, k);
-    return d && "value" in d ? d.value : undefined;
-  };
-  // util.inspect at depth -1, for an object that names no constructor.
-  const bare = (v) => {
-    if (Object.getPrototypeOf(v) !== null) return Array.isArray(v) ? "[Array]" : "[Object]";
-    const tag = dataOf(v, Symbol.toStringTag);
-    const array = Array.isArray(v);
-    const empty = !Reflect.ownKeys(v).some((k) => Object.prototype.propertyIsEnumerable.call(v, k));
-    const kind = array ? `Array${empty ? "(0)" : ""}` : typeof tag === "string" && tag ? tag : "Object";
-    return `[${kind}: null prototype]${empty ? (array ? " []" : " {}") : ""}`;
-  };
-  // The first `constructor` along the prototype chain, as `v.constructor?.name` finds it.
-  const constructorName = (v) => {
-    for (let o = v; o !== null; o = Object.getPrototypeOf(o)) {
-      const d = Object.getOwnPropertyDescriptor(o, "constructor");
-      if (!d) continue;
-      const c = d.value;
-      return c !== null && (typeof c === "object" || typeof c === "function") ? dataOf(c, "name") : undefined;
+  // The builtin brand of a value, told apart by the engine's own brand checks and never by a script-set tag.
+  const brandOf = (v) => {
+    if (isArray(v)) return "Array";
+    const probes = [["Date", dateTime], ["RegExp", reSource], ["Map", mapSize], ["Set", setSize]];
+    for (const [name, probe] of probes) {
+      try { probe(v); return name; } catch { /* not this brand */ }
     }
-    return undefined;
+    return null;
   };
+  // A RegExp's flags come from each brand-checked getter, since `flags` reads properties a null prototype lacks.
+  const reFlags = [["d", "hasIndices"], ["g", "global"], ["i", "ignoreCase"], ["m", "multiline"], ["s", "dotAll"], ["u", "unicode"], ["v", "unicodeSets"], ["y", "sticky"]]
+    .map(([c, k]) => [c, getterOf(RegExp.prototype, k)]);
+  const regexpText = (v) => `/${reSource(v)}/${reFlags.map(([c, get]) => (get(v) ? c : "")).join("")}`;
+  // util.inspect at depth -1, for an object that names no constructor: Node's getPrefix for a null prototype.
+  // A proxy is read through its target, so no trap runs and the target reaches only captured functions.
+  const bare = (v) => {
+    const target = proxyTarget(v);
+    if (target === null) return "<Revoked Proxy>";
+    if (target !== undefined && target !== false) v = target;
+    if (gpo(v) !== null) return isArray(v) ? "[Array]" : "[Object]";
+    const brand = brandOf(v);
+    const d = gopd(v, Symbol.toStringTag);
+    const tag = d && typeof d.value === "string" && d.value !== "" ? d : null;
+    // A shown tag renames a plain object; a hidden one follows the name in brackets.
+    const kind = brand ?? (tag?.enumerable ? tag.value : "Object");
+    const hidden = tag && !tag.enumerable && tag.value !== kind ? ` [${tag.value}]` : "";
+    const keys = ownKeys(v).some((k) => pie(v, k));
+    const size = brand === "Array" ? v.length : brand === "Map" ? mapSize(v) : brand === "Set" ? setSize(v) : 0;
+    const head = (count) => `[${kind}${count}: null prototype]${hidden}`;
+    if (brand === "Date" || brand === "RegExp") {
+      if (keys) return head("");
+      return `${head("")} ${brand === "Date" ? (isNaNum(dateTime(v)) ? "Invalid Date" : dateISO(v)) : regexpText(v)}`;
+    }
+    if (keys || size > 0) return head("");
+    return `${head(brand === null ? "" : `(${size})`)} ${brand === "Array" ? "[]" : "{}"}`;
+  };
+  // Node reads `constructor` and `name` with plain property gets, so a getter or a proxy trap runs and
+  // an error it throws passes up.
   const received = (v) => {
     if (v == null) return ` Received ${v}`;
-    try {
-      if (typeof v === "function") return ` Received function ${dataOf(v, "name") ?? ""}`;
-      if (typeof v === "object") {
-        const name = constructorName(v);
-        return typeof name === "string" ? ` Received an instance of ${name}` : ` Received ${bare(v)}`;
+    if (typeof v === "function") return ` Received function ${v.name}`;
+    if (typeof v === "object") {
+      const c = v.constructor;
+      if (c) {
+        // The engine words these two errors differently from Node, so they are thrown in Node's words.
+        if (Object(c) !== c) throw new TypeError(`Cannot use 'in' operator to search for 'name' in ${String(c)}`);
+        if ("name" in c) {
+          const name = c.name;
+          if (typeof name === "symbol") throw new TypeError("Cannot convert a Symbol value to a string");
+          return ` Received an instance of ${name}`;
+        }
       }
-    } catch {
-      return " Received [Object]";
+      // The depth -1 text reads only descriptors, but a proxy can still throw from its own traps.
+      try { return ` Received ${bare(v)}`; } catch { return " Received [Object]"; }
     }
     // Node cuts a long string before it quotes it.
     const text = typeof v === "string" ? (v.length > 28 ? `${v.slice(0, 25)}...` : v) : v;

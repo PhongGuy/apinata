@@ -12,8 +12,32 @@ pub(crate) fn installer() -> Installer {
     Box::new(|ctx| {
         ctx.globals()
             .set("__loadLib", Function::new(ctx.clone(), load)?)?;
+        ctx.globals()
+            .set("__proxyTarget", Function::new(ctx.clone(), proxy_target)?)?;
         ctx.eval::<(), _>(LIBS_JS)
     })
+}
+
+/// The target behind a Proxy, read without running a trap: `undefined` for anything else and `null`
+/// for a revoked proxy (`false` for a callable one, whose target cannot be read), so the inspect text can show what Node shows.
+pub(super) fn proxy_target<'js>(ctx: Ctx<'js>, value: Value<'js>) -> Value<'js> {
+    // The engine types a callable proxy as a function, so it cannot be read as a proxy; say only that it is one.
+    let callable = value.is_proxy();
+    let Some(proxy) = value.into_proxy() else {
+        return if callable {
+            Value::new_bool(ctx, false)
+        } else {
+            Value::new_undefined(ctx)
+        };
+    };
+    match proxy.target() {
+        Ok(target) if !target.as_value().is_null() => target.into_value(),
+        _ => {
+            // A revoked proxy leaves its exception pending; clear it so the script sees none.
+            let _ = ctx.catch();
+            Value::new_null(ctx)
+        }
+    }
 }
 
 /// Evaluates one vendored UMD file under a CommonJS `module` and returns its export. Each file

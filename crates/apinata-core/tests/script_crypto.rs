@@ -1129,3 +1129,90 @@ console.log(tryIt(() => crypto.hash("sha1", Object.assign(Object.create(null), {
         ]
     );
 }
+
+/// Pinned from Node 24.16 (recorded by running Node itself): the received-value text reads `constructor`
+/// and `name` the way Node does (getters run, errors pass up) and names a null-prototype Map, Set, Date,
+/// RegExp or tagged object as util.inspect does at depth -1.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn received_text_follows_node_for_getters_and_null_prototypes() {
+    let code = r#"const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message); } };
+const np = (o) => Object.setPrototypeOf(o, null);
+const hide = (o, t) => Object.defineProperty(o, Symbol.toStringTag, { value: t });
+const named = (c) => ({ constructor: c });
+const fn = (d) => Object.defineProperty(function foo() {}, "name", d);
+const cases = [
+  { get constructor() { return { name: "Zed" }; } },
+  { get constructor() { return class Q {}; } },
+  named({ get name() { return "Gn"; } }),
+  Object.create({ get constructor() { return { name: "FromProto" }; } }),
+  named({ name: "" }), named({ name: 3 }), named({ name: Symbol("s") }), named(null), named(undefined), named(5), named({}),
+  new Proxy({}, { get(t, k) { return k === "constructor" ? { name: "Prx" } : undefined; } }),
+  new Proxy(new Map(), {}),
+  { get constructor() { throw new Error("ctor boom"); } },
+  named({ get name() { throw new Error("name boom"); } }),
+  new Proxy({}, { get() { throw new Error("trap boom"); } }),
+  fn({ get() { return "bar"; } }), fn({ value: undefined }), fn({ value: 5 }), fn({ get() { throw new Error("fn boom"); } }),
+  np([1, 2]), np([]), np(new Map([[1, 2]])), np(new Map()), np(new Set([1])), np(new Set()), np(new Date(0)), np(new Date(NaN)), np(/x/g),
+  np({ a: 1 }), np({}), np({ [Symbol.toStringTag]: "T", a: 1 }), hide(np({ a: 1 }), "T"), hide(np({}), "T"), hide(np(new Map()), "T"),
+  Object.assign(np([]), { x: 1 }), Object.assign(np(new Date(0)), { x: 1 }),
+];
+for (const e of cases) console.log(tryIt(() => crypto.hash("sha1", e)));"#;
+    assert_eq!(
+        run_crypto(code).await,
+        [
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Zed""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Q""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Gn""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of FromProto""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of ""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of 3""#,
+            r#"log:TypeError undefined "Cannot convert a Symbol value to a string""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object]""#,
+            r#"log:TypeError undefined "Cannot use 'in' operator to search for 'name' in 5""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Prx""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Map""#,
+            r#"log:Error undefined "ctor boom""#,
+            r#"log:Error undefined "name boom""#,
+            r#"log:Error undefined "trap boom""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received function bar""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received function undefined""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received function 5""#,
+            r#"log:Error undefined "fn boom""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Array: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Array(0): null prototype] []""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Map: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Map(0): null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Set: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Set(0): null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Date: null prototype] 1970-01-01T00:00:00.000Z""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Date: null prototype] Invalid Date""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [RegExp: null prototype] /x/g""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [T: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype] [T]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Object: null prototype] [T] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Map(0): null prototype] [T] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Array: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE "The \"input\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received [Date: null prototype]""#,
+        ]
+    );
+}
+
+/// Pinned from Node 24.16: the received text of a proxy around a null-prototype value reads the target.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn received_text_reads_a_proxy_target() {
+    let code = r#"const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message).slice(-60); } };
+const np = (o) => Object.setPrototypeOf(o, null);
+for (const e of [new Proxy(np(new Map()), {}), new Proxy(np([1]), {}), new Proxy(np({ a: 1 }), {})]) console.log(tryIt(() => crypto.hash("sha1", e)));"#;
+    assert_eq!(
+        run_crypto(code).await,
+        [
+            r#"log:TypeError ERR_INVALID_ARG_TYPE pedArray, or DataView. Received [Map(0): null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE , TypedArray, or DataView. Received [Array: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE  TypedArray, or DataView. Received [Object: null prototype]""#,
+        ]
+    );
+}
