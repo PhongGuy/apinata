@@ -976,6 +976,48 @@ fn a_failed_read_stops_a_create(cx: &mut TestAppContext) {
     assert_eq!(f.held().as_deref(), Some("s3cret"));
 }
 
+impl Fix {
+    fn step(&self, cx: &mut TestAppContext, undo: bool) {
+        let Ed::Collection(ed) = self.ed.clone() else {
+            unreachable!()
+        };
+        cx.update_window(self.win, |_, w, cx| {
+            ed.update(cx, |e, cx| match undo {
+                true => e.undo_edit(w, cx),
+                false => e.redo_edit(w, cx),
+            })
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+}
+
+// An undo of a new row's lock would take its typing with it, so it asks as Save does.
+#[gpui_kit::test]
+fn undo_and_redo_ask_before_dropping_a_new_rows_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    for undo in [true, false] {
+        f.step(cx, undo);
+        if !undo && !confirm_open(cx) {
+            continue;
+        }
+        assert_eq!(
+            title(cx).as_deref(),
+            Some("Replace the stored value of \"old\"?")
+        );
+        answer_confirm(cx, CANCEL);
+        assert!(f.typing(cx), "the typing stays");
+        assert_eq!(f.held().as_deref(), Some("s3cret"));
+        assert_eq!(f.bytes(), before);
+    }
+    f.step(cx, true);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
 // A click on another environment asks through the close guard, whose Save checks the store.
 fn switch_in_the_global_list(cx: &mut TestAppContext, f: &Fix) {
     frame(cx, f.win);
