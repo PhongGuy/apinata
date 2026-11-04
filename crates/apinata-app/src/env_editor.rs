@@ -135,6 +135,8 @@ pub struct EnvEditor {
     /// Each environment's variable names as last seen clean, so rows not yet in its file
     /// can be told apart from saved ones, also after switching away and back.
     saved: HashMap<String, Vec<String>>,
+    /// The names in `saved` that are secrets.
+    saved_secrets: HashMap<String, Vec<String>>,
     extends: Entity<SelectState<Vec<Parent>>>,
     parent_names: Vec<Option<String>>,
     name_input: Entity<InputState>,
@@ -254,6 +256,7 @@ impl EnvEditor {
             table,
             base: Vec::new(),
             saved: HashMap::new(),
+            saved_secrets: HashMap::new(),
             extends,
             parent_names: Vec::new(),
             name_input,
@@ -1210,6 +1213,7 @@ impl EnvEditor {
         self.renaming.take_if(|r| snapshot.acked >= r.2);
         // A deleted or renamed environment's record goes, so a later namesake starts afresh.
         self.saved.retain(|env, _| names.contains(env));
+        self.saved_secrets.retain(|env, _| names.contains(env));
         let present = self
             .selected
             .as_ref()
@@ -1324,6 +1328,10 @@ impl EnvEditor {
         if !view.dirty || !self.saved.contains_key(&name) {
             let names = view.variables.iter().map(|v| v.name.clone()).collect();
             self.saved.insert(name.clone(), names);
+            let secrets = (view.variables.iter().filter(|v| v.secret))
+                .map(|v| v.name.clone())
+                .collect();
+            self.saved_secrets.insert(name.clone(), secrets);
         }
         let seq = self.snapshot(cx).map_or(0, |s| s.seq);
         for field in [Field::Variables, Field::Extends] {
@@ -1341,8 +1349,11 @@ impl EnvEditor {
             // Only a draft of the environment already shown keeps its rows' unsaved state.
             let dirty = view.dirty && self.shown.as_deref() == Some(name.as_str());
             self.shown = Some(name.clone());
-            self.table
-                .update(cx, |t, cx| t.load_draft(rows, dirty, window, cx));
+            let secrets = self.saved_secrets.get(&name).cloned().unwrap_or_default();
+            self.table.update(cx, |t, cx| {
+                t.set_saved_secrets(secrets);
+                t.load_draft(rows, dirty, window, cx)
+            });
         }
         if all || !self.busy(Field::Extends, cx) {
             let items = parents(&self.names(cx), &name, view.extends.as_deref());

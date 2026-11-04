@@ -7,7 +7,7 @@
 use apinata_core::{EnvVariable, VarValue};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     AnyElement, App, AppContext, Context, DragMoveEvent, Entity, EventEmitter, FocusHandle,
@@ -126,6 +126,8 @@ struct Row {
     undeclared: bool,
     /// The (name, text) the owner last checked against the store, for a guarded row.
     confirmed: Option<(String, String)>,
+    /// The name as last accepted, which a refused rename goes back to.
+    named: String,
     // Not a tab stop; it only sees focus inside the row's checkbox.
     check: FocusHandle,
     // Not a tab stop; it only sees focus inside the row's Remove.
@@ -210,6 +212,10 @@ pub struct EnvVarTable {
     /// disables the locks, which drops a focused one from the focus tree before the load that
     /// follows can see it there.
     last_control: Option<(usize, Control, FocusHandle)>,
+    /// The secrets the saved file declares, names a locked new row may not take.
+    saved_secrets: Vec<String>,
+    /// The name input of the row whose last name was refused, and why.
+    name_note: Option<(Entity<InputState>, String)>,
 }
 
 impl EventEmitter<EnvTableEvent> for EnvVarTable {}
@@ -229,6 +235,8 @@ impl EnvVarTable {
             control_focus: Cell::new(None),
             pending_origin: None,
             last_control: None,
+            saved_secrets: Vec::new(),
+            name_note: None,
         }
     }
 
@@ -337,6 +345,7 @@ impl EnvVarTable {
                 existing.undeclared |= typing && existing.meta.unsaved;
                 let unsaved = meta.unsaved || (dirty && existing.meta.unsaved);
                 existing.meta = Meta { unsaved, ..meta };
+                existing.named = row.name;
                 if !existing.guarded() {
                     existing.confirmed = None;
                 }
@@ -350,6 +359,7 @@ impl EnvVarTable {
             let text = if row.secret { String::new() } else { row.value };
             set_text(&existing.name, &row.name, window, cx);
             set_text(&existing.value, &text, window, cx);
+            existing.named = row.name;
             existing.value.update(cx, |state, cx| {
                 state.set_masked(row.secret, window, cx);
                 state.set_placeholder(value_placeholder(row.secret, true), window, cx);
@@ -425,6 +435,19 @@ impl EnvVarTable {
     /// Mask the named secret again and drop its shown value.
     pub fn hide_secret(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.set_secret_text(name, String::new(), true, window, cx);
+    }
+
+    /// Why a name typed into a locked row was refused, while that row shows it.
+    pub fn name_note(&self) -> Option<&str> {
+        let (input, note) = self.name_note.as_ref()?;
+        let shown = self.rows.iter().any(|row| &row.name == input);
+        shown.then_some(note.as_str())
+    }
+
+    /// Sets the secrets the saved file declares. A locked row not yet saved cannot be renamed
+    /// onto one, so a blur or Save never writes over that secret's stored value unasked.
+    pub fn set_saved_secrets(&mut self, names: Vec<String>) {
+        self.saved_secrets = names;
     }
 
     /// Whether row `ix` is a secret row whose value is shown.
@@ -598,6 +621,7 @@ impl EnvVarTable {
 
     /// Handlers find their row by input entity, so no index goes stale after a delete.
     fn new_row(name: &str, meta: Meta, window: &mut Window, cx: &mut Context<Self>) -> Row {
+        let named = name.to_string();
         let name = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Name")
@@ -621,6 +645,7 @@ impl EnvVarTable {
             shown: false,
             undeclared: false,
             confirmed: None,
+            named,
             check: cx.focus_handle(),
             remove: cx.focus_handle(),
             within: cx.focus_handle(),
@@ -653,6 +678,21 @@ impl EnvVarTable {
         };
         let row = &self.rows[ix];
         let secret_value = row.meta.secret && &row.value == input;
+        if matches!(event, InputEvent::Change) && &row.name == input {
+            let name = row.name.read(cx).value().to_string();
+            let locked_new = row.meta.secret && row.meta.unsaved;
+            if locked_new && self.saved_secrets.contains(&name) {
+                return self.refuse_name(ix, &name, window, cx);
+            }
+            self.rows[ix].named = name;
+            if self
+                .name_note
+                .as_ref()
+                .is_some_and(|(note, _)| note == input)
+            {
+                self.name_note = None;
+            }
+        }
         match event {
             InputEvent::Change if !secret_value => {
                 let column = u8::from(&self.rows[ix].value == input);
@@ -674,6 +714,18 @@ impl EnvVarTable {
             InputEvent::Blur if secret_value && !self.blur_held => self.commit_secret(ix, cx),
             _ => {}
         }
+    }
+
+    // A saved secret's value is keyed by its name, so a locked new row taking that name would
+    // store over it; the name goes back and the row says why.
+    fn refuse_name(&mut self, ix: usize, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let row = &self.rows[ix];
+        set_text(&row.name, &row.named.clone(), window, cx);
+        let note = format!(
+            "\"{name}\" is a saved secret. Choose another name, or remove it and save first."
+        );
+        self.name_note = Some((row.name.clone(), note));
+        cx.notify();
     }
 
     /// Send row `ix`'s secret text when it differs from what was last shown or committed, so
@@ -1048,6 +1100,21 @@ impl EnvVarTable {
                             .then(|| ("env-delete", ix).into()),
                     )),
             );
+        let note = (self.name_note.as_ref())
+            .filter(|(input, _)| !blank && *input == self.rows[ix].name)
+            .map(|(_, note)| note.clone());
+        let Some(note) = note else {
+            return Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element();
+        };
+        // The note sits under the row, where the refused name was typed.
+        let note = div()
+            .id("env-name-refused")
+            .test_support()
+            .pl(KV_GRIP_WIDTH + CHECKBOX_SIZE)
+            .text_size(TEXT_SMALL)
+            .text_color(cx.theme().danger)
+            .child(note);
+        let row = v_flex().w_full().child(row).child(note);
         Followed::new(("env-row-wrapper", ix), &self.follow, row).into_any_element()
     }
 
