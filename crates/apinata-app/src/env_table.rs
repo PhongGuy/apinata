@@ -908,7 +908,7 @@ impl EnvVarTable {
         let row = if blank { &self.blank } else { &self.rows[ix] };
         let slot =
             |real: &'static str, hidden: &'static str| (if blank { hidden } else { real }, ix);
-        let secret = row.meta.secret;
+        let name_locked = row.meta.secret && !row.meta.unsaved;
         // Each input sits borderless in a shared-look cell whose edge shows on hover or focus;
         // the minimum sits on the cell, so the lock and eye never eat into it.
         let cell = |input: &Entity<InputState>, field, edge: &'static str, cx: &App| {
@@ -987,13 +987,14 @@ impl EnvVarTable {
                             })),
                     ),
             )
-            // The stored secret is keyed by the name, so it is read-only but still reads normally.
+            // A saved secret's stored value is keyed by the name, so it is read-only but still
+            // reads normally. A row not yet saved stores nothing until Save asks, so it renames.
             .child(cell(
                 &row.name,
                 ui::readonly_input(
                     ui::table_input(&row.name, false, window, cx),
                     &row.name,
-                    secret,
+                    name_locked,
                     window,
                     cx,
                 )

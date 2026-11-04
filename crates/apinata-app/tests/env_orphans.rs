@@ -808,6 +808,82 @@ fn a_new_row_named_like_an_orphan_flips_locally_and_hides_it(cx: &mut TestAppCon
     assert!(!present(cx, win, "env-orphans"));
 }
 
+fn draft_name(cx: &mut TestAppContext, ed: &Entity<EnvEditor>, ix: usize) -> String {
+    cx.update(|cx| ed.read(cx).table().read(cx).rows(cx)[ix].name.clone())
+}
+
+/// Clicks row `ix`'s name, presses Backspace at its end and types `text`.
+fn edit_name(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, ix: usize, text: &str) {
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("env-name", ix), cx);
+        w.press("end", cx);
+        w.press("backspace", cx);
+        w.input(text, cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn a_row_added_after_a_saved_removal_locks_and_its_name_stays_editable(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", SECRET_OLD),
+    ]);
+    let (store, _key) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click(("env-delete", 1usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.press(&key("s"), cx))
+        .unwrap();
+    cx.run_until_parked();
+    type_at_end(cx, win, None, ("env-name", 1usize), "old");
+    cx.run_until_parked();
+    click_lock(cx, win, 1);
+    assert!(draft_flag(cx, &ed, 1), "the lock answers");
+    edit_name(cx, win, 1, "x");
+    assert_eq!(
+        draft_name(cx, &ed, 1),
+        "olx",
+        "the name takes Backspace and typing"
+    );
+}
+
+#[gpui_kit::test]
+fn a_locked_new_row_named_like_an_orphan_is_renamed_and_save_asks_replace(cx: &mut TestAppContext) {
+    let col = tree();
+    let (store, skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    type_at_end(cx, win, None, ("env-name", 1usize), "olx");
+    cx.run_until_parked();
+    click_lock(cx, win, 1);
+    assert!(draft_flag(cx, &ed, 1));
+    edit_name(cx, win, 1, "d");
+    assert_eq!(draft_name(cx, &ed, 1), "old");
+    frame(cx, win);
+    type_at_end(cx, win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.press(&key("s"), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "the save asks Replace");
+    answer_confirm(cx, "confirm-cancel");
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
+    cx.update_window(win, |_, w, cx| w.press(&key("s"), cx))
+        .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-replace");
+    cx.run_until_parked();
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("typed"));
+}
+
 /// Deletes the `old` row and types its name into the empty row; both go to the draft.
 fn retype_old(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle) {
     frame(cx, win);
