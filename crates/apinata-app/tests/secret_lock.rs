@@ -895,6 +895,176 @@ fn a_failed_read_stops_a_switch(cx: &mut TestAppContext) {
     assert!(f.typing(cx));
 }
 
+impl Fix {
+    /// New environment, a name, Enter; a field still open from a cancelled create is reused.
+    fn create(&self, cx: &mut TestAppContext, name: &str) {
+        frame(cx, self.win);
+        if !present(cx, self.win, "env-name-input") {
+            cx.update_window(self.win, |_, w, cx| w.click("env-create", cx))
+                .unwrap();
+            frame(cx, self.win);
+        }
+        replace_input(cx, self.win, None, "env-name-input", name);
+        cx.update_window(self.win, |_, w, cx| w.press("enter", cx))
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn names(&self, cx: &mut TestAppContext) -> Vec<String> {
+        let (ws, root) = self.outside.as_ref().expect("a collection");
+        ws.read_with(cx, |w, cx| {
+            let snapshot = w.snapshot(root, cx).expect("a snapshot");
+            let envs = snapshot.content.environments.iter();
+            envs.map(|e| e.name.clone()).collect()
+        })
+    }
+}
+
+// Create asks as Save All does: Cancel keeps the typing and creates nothing, Replace saves.
+#[gpui_kit::test]
+fn create_asks_over_a_stored_value(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.create(cx, "qa");
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?"),
+        "the create asks"
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(
+        f.selected(cx).as_deref(),
+        Some("dev"),
+        "the selection stays"
+    );
+    assert!(!f.names(cx).contains(&"qa".to_owned()), "nothing created");
+    assert!(f.typing(cx), "the typing stays");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    f.create(cx, "qa");
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
+// With nothing stored there is nothing to replace: Create goes ahead unasked and saves nothing.
+#[gpui_kit::test]
+fn create_with_nothing_stored_asks_nothing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.store.delete(&f.key).unwrap();
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    f.create(cx, "qa");
+    assert!(!confirm_open(cx));
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert_eq!(f.bytes(), before);
+    assert_eq!(f.held(), None);
+}
+
+// A failed read stops the create and keeps the typing, as it stops a Save.
+#[gpui_kit::test]
+fn a_failed_read_stops_a_create(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.store.fail_get.store(true, Ordering::SeqCst);
+    f.create(cx, "qa");
+    assert!(!confirm_open(cx));
+    assert!(f.shows_error(cx));
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(f.typing(cx));
+    f.store.fail_get.store(false, Ordering::SeqCst);
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+}
+
+impl Fix {
+    fn step(&self, cx: &mut TestAppContext, undo: bool) {
+        let Ed::Collection(ed) = self.ed.clone() else {
+            unreachable!()
+        };
+        cx.update_window(self.win, |_, w, cx| {
+            ed.update(cx, |e, cx| match undo {
+                true => e.undo_edit(w, cx),
+                false => e.redo_edit(w, cx),
+            })
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+}
+
+// An undo of a new row's lock would take its typing with it, so it asks as Save does.
+#[gpui_kit::test]
+fn undo_and_redo_ask_before_dropping_a_new_rows_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    for undo in [true, false] {
+        f.step(cx, undo);
+        if !undo && !confirm_open(cx) {
+            continue;
+        }
+        assert_eq!(
+            title(cx).as_deref(),
+            Some("Replace the stored value of \"old\"?")
+        );
+        answer_confirm(cx, CANCEL);
+        assert!(f.typing(cx), "the typing stays");
+        assert_eq!(f.held().as_deref(), Some("s3cret"));
+        assert_eq!(f.bytes(), before);
+    }
+    f.step(cx, true);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
+// Add to environment selects its target as a switch does: held typing is asked about first.
+#[gpui_kit::test]
+fn add_to_environment_asks_over_held_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let (ws, root) = f.outside.clone().expect("a collection");
+    f.hold(cx);
+    ws.update(cx, |w, cx| {
+        w.select_environment(&root, Some("prod".into()), cx)
+    });
+    cx.run_until_parked();
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "the switch asks");
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+}
+
+// Rename waits for a clean environment, so only held typing can meet it, and it asks.
+#[gpui_kit::test]
+fn rename_asks_over_held_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.hold(cx);
+    env_menu(cx, f.win, apinata_app::env_editor::ENV_MENU_RENAME);
+    let rename = |cx: &mut TestAppContext| {
+        frame(cx, f.win);
+        replace_input(cx, f.win, None, "env-name-input", "qa");
+        cx.update_window(f.win, |_, w, cx| w.press("enter", cx))
+            .unwrap();
+        cx.run_until_parked();
+    };
+    rename(cx);
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?")
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    rename(cx);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert!(!f.typing(cx));
+}
+
 // A click on another environment asks through the close guard, whose Save checks the store.
 fn switch_in_the_global_list(cx: &mut TestAppContext, f: &Fix) {
     frame(cx, f.win);
