@@ -1052,6 +1052,118 @@ fn a_lock_on_a_new_row_just_named_like_a_saved_secret_is_refused(cx: &mut TestAp
     assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
 }
 
+const TWO_SECRETS: &str = "name: dev\nvariables:\n  - name: host\n    value: x\n  - name: old\n    secret: true\n  - name: tok\n    secret: true\n";
+
+fn note_text(cx: &mut TestAppContext, ed: &Entity<EnvEditor>) -> Option<String> {
+    cx.update(|cx| ed.read(cx).table().read(cx).name_note().map(str::to_owned))
+}
+
+#[gpui_kit::test]
+fn a_refused_row_renamed_onto_a_second_saved_secret_names_that_one(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", TWO_SECRETS),
+    ]);
+    let (store, _skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    finish_name_and_lock(cx, win, 3, "d");
+    assert!(note_text(cx, &ed).is_some_and(|n| n.contains("\"old\"")));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("env-name", 3usize), cx);
+        w.press("ctrl-a", cx);
+        w.input("tok", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let note = note_text(cx, &ed);
+    assert!(
+        note.as_deref().is_some_and(|n| n.contains("\"tok\"")),
+        "the note names the name the row was refused: {note:?}"
+    );
+}
+
+const SECRET_THEN_PLAIN: &str = "name: dev\nvariables:\n  - name: old\n    secret: true\n  - name: a\n    value: 1\n  - name: b\n    value: 2\n";
+
+/// The rows whose name input is the last one above the `env-name-refused` note.
+fn rows_with_note(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, n: usize) -> Vec<usize> {
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        let Some(note) = w.try_find("env-name-refused") else {
+            return Vec::new();
+        };
+        let top = note.bounds().origin.y;
+        let tops: Vec<_> = (0..n)
+            .map(|ix| w.try_find(("env-name", ix)).map(|r| r.bounds().origin.y))
+            .collect();
+        (0..n)
+            .filter(|&ix| {
+                tops[ix].is_some_and(|y| y <= top)
+                    && tops
+                        .get(ix + 1)
+                        .copied()
+                        .flatten()
+                        .is_none_or(|next| top < next)
+            })
+            .collect()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn an_undo_shifting_the_refused_row_leaves_no_note_on_the_row_that_took_its_place(
+    cx: &mut TestAppContext,
+) {
+    use apinata_app::request_editor::UndoEdit;
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", SECRET_THEN_PLAIN),
+    ]);
+    let (store, _skey) = seeded(&col);
+    let (_state, ws, root) = open_dir_with(cx, &col, store);
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    finish_name_and_lock(cx, win, 3, "d");
+    assert_eq!(
+        rows_with_note(cx, win, 4),
+        vec![3],
+        "the note sits under its row"
+    );
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click(("env-delete", 1usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        rows_with_note(cx, win, 3),
+        vec![2],
+        "the note moved with its row"
+    );
+    cx.dispatch_action(win, UndoEdit);
+    cx.run_until_parked();
+    let rows = cx.update(|cx| ed.read(cx).table().read(cx).rows(cx));
+    for ix in rows_with_note(cx, win, rows.len()) {
+        assert!(
+            rows[ix].name == "old" && !rows[ix].secret,
+            "the note sits under row {ix} named {:?}",
+            rows[ix].name
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn a_lock_on_a_settled_plain_row_named_like_a_saved_secret_says_why(cx: &mut TestAppContext) {
+    let (_col, _state, _store, _skey, win, ed) = saved_secret(cx);
+    type_at_end(cx, win, None, ("env-name", 2usize), "old");
+    cx.run_until_parked();
+    click_lock(cx, win, 2);
+    assert!(!draft_flag(cx, &ed, 2), "the row stays plain");
+    assert!(present(cx, win, "env-name-refused"), "the row says why");
+    let note = note_text(cx, &ed);
+    assert!(note.is_some_and(|n| n.contains("\"old\" is a saved secret")));
+}
+
 #[gpui_kit::test]
 fn a_lock_on_a_new_row_just_named_otherwise_still_locks(cx: &mut TestAppContext) {
     let (_col, _state, _store, _skey, win, ed) = saved_secret(cx);

@@ -344,6 +344,13 @@ impl EnvVarTable {
                 None => Self::new_row(&row.name, meta, window, cx),
             };
             let text = if row.secret { String::new() } else { row.value };
+            // A note belongs to the row it was raised on; a reload that puts another name in
+            // these inputs drops it.
+            if (self.name_note.as_ref()).is_some_and(|(note, _)| note == &existing.name)
+                && existing.name.read(cx).value() != row.name
+            {
+                self.name_note = None;
+            }
             set_text(&existing.name, &row.name, window, cx);
             set_text(&existing.value, &text, window, cx);
             existing.named = row.name;
@@ -673,8 +680,12 @@ impl EnvVarTable {
             }
             // A refused lock's note outlives the late edit that brought the name it names.
             let still_refused = self.saved_secrets.contains(&name);
-            self.rows[ix].named = name;
-            if !still_refused && (self.name_note.as_ref()).is_some_and(|(note, _)| note == input) {
+            let noted = (self.name_note.as_ref()).is_some_and(|(note, _)| note == input);
+            self.rows[ix].named = name.clone();
+            // The note follows the name the row holds: another saved secret rewrites it.
+            if noted && still_refused {
+                self.note_saved_secret(ix, &name, cx);
+            } else if noted {
                 self.name_note = None;
             }
         }
@@ -909,6 +920,11 @@ impl EnvVarTable {
         }
         if let Some(row) = self.rows.get(ix) {
             let name = row.name.read(cx).value().to_string();
+            // A plain row named like a saved secret is not that variable; locking it would act
+            // on the saved one, so the row refuses and says why.
+            if secret && !row.meta.secret && self.saved_secrets.contains(&name) {
+                return self.note_saved_secret(ix, &name, cx);
+            }
             if !self.secret_locked && !name.is_empty() {
                 cx.emit(EnvTableEvent::SetSecret { name, secret });
             }
@@ -1132,9 +1148,13 @@ impl EnvVarTable {
         }
         let row = self.row(ix).expect("row in range");
         // A row not yet saved owns its secret flag, so a dirty or busy environment never locks it.
-        let locked = self.secret_locked && !row.meta.unsaved;
         let secret = row.meta.secret;
-        let unnamed = row.name.read(cx).value().is_empty();
+        let name = row.name.read(cx).value().to_string();
+        let unnamed = name.is_empty();
+        // A plain row named like a saved secret stays clickable, so the click can say why it is
+        // refused instead of the lock going dead without a word.
+        let clash = !secret && self.saved_secrets.contains(&name);
+        let locked = self.secret_locked && !row.meta.unsaved && !clash;
         let tip = match (locked, secret) {
             (true, _) => crate::env_editor::RENAME_LOCKED_REASON,
             (false, false) => "Make secret",
