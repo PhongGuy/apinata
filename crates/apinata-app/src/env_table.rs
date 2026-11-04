@@ -344,6 +344,13 @@ impl EnvVarTable {
                 None => Self::new_row(&row.name, meta, window, cx),
             };
             let text = if row.secret { String::new() } else { row.value };
+            // A note belongs to the row it was raised on; a reload that puts another name in
+            // these inputs drops it.
+            if (self.name_note.as_ref()).is_some_and(|(note, _)| note == &existing.name)
+                && existing.name.read(cx).value() != row.name
+            {
+                self.name_note = None;
+            }
             set_text(&existing.name, &row.name, window, cx);
             set_text(&existing.value, &text, window, cx);
             existing.named = row.name;
@@ -673,8 +680,12 @@ impl EnvVarTable {
             }
             // A refused lock's note outlives the late edit that brought the name it names.
             let still_refused = self.saved_secrets.contains(&name);
-            self.rows[ix].named = name;
-            if !still_refused && (self.name_note.as_ref()).is_some_and(|(note, _)| note == input) {
+            let noted = (self.name_note.as_ref()).is_some_and(|(note, _)| note == input);
+            self.rows[ix].named = name.clone();
+            // The note follows the name the row holds: another saved secret rewrites it.
+            if noted && still_refused {
+                self.note_saved_secret(ix, &name, cx);
+            } else if noted {
                 self.name_note = None;
             }
         }
