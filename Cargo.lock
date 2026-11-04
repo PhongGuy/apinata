@@ -395,7 +395,7 @@ dependencies = [
  "serde_path_to_error",
  "sha1 0.11.0",
  "sha2 0.11.1",
- "similar 3.2.1",
+ "similar",
  "socket2",
  "tar",
  "tempfile",
@@ -4301,7 +4301,7 @@ dependencies = [
  "console",
  "once_cell",
  "serde",
- "similar 2.7.0",
+ "similar",
  "tempfile",
 ]
 
@@ -7952,15 +7952,6 @@ name = "similar"
 version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
-
-[[package]]
-name = "similar"
-version = "3.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2f8bec09ae8fae0f4f265a4559a9334be3929d8504e9b536df0a41302bd1733"
-dependencies = [
- "bstr",
-]
 
 [[package]]
 name = "simple_asn1"

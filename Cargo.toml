@@ -18,7 +18,7 @@ serde_path_to_error = "0.1.20"
 ryu-js = "1"
 socket2 = "0.6"
 thiserror = "2"
-similar = "3.2"
+similar = "2.7"
 regress = { version = "0.12", features = ["utf16"] }
 markdown = "=1.0.0"
 base64 = "0.23"
