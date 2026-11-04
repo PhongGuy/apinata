@@ -36,6 +36,7 @@ const WRONG_TAG: &str = "wrong tag";
 const MAX_PASSPHRASE: usize = 1024;
 
 const UNREADABLE: &str = "Unsupported key: the encrypted private key could not be read";
+const UNENCRYPTABLE: &str = "KeyObject export failed: the private key could not be encrypted";
 pub(super) const OPENED_UNSUPPORTED: &str = "Unsupported key: the encrypted key opened, but it is not a supported type (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519)";
 const LEGACY_HEADER: &[u8] = b"Proc-Type: 4,ENCRYPTED";
 const LEGACY: &str = "Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)";
@@ -134,6 +135,41 @@ pub(super) fn decrypted(
     pkcs8::der::pem::encode_string("PRIVATE KEY", LineEnding::LF, key)
         .map(|text| Some(KeyInput::Text(text)))
         .map_err(|_| UNREADABLE.into())
+}
+
+/// PKCS#8 `der` as an EncryptedPrivateKeyInfo under `cipher` (aes-128-cbc, aes-192-cbc or
+/// aes-256-cbc), with the parameters Node writes: PBKDF2-HMAC-SHA256 at 2048 iterations, a
+/// random 16-byte salt and a random IV.
+pub(super) fn encrypted_der(
+    der: &[u8],
+    cipher: &str,
+    passphrase: &[u8],
+) -> Result<Vec<u8>, String> {
+    use aws_lc_rs::rand::{SecureRandom, SystemRandom};
+    use pkcs8::pkcs5::pbes2::{EncryptionScheme, Parameters, Pbkdf2Params};
+    let (mut salt, mut iv) = ([0u8; 16], [0u8; 16]);
+    let random = SystemRandom::new();
+    random
+        .fill(&mut salt)
+        .and_then(|()| random.fill(&mut iv))
+        .map_err(|_| "no secure random source is available")?;
+    let encryption = match cipher {
+        "aes-128-cbc" => EncryptionScheme::Aes128Cbc { iv },
+        "aes-192-cbc" => EncryptionScheme::Aes192Cbc { iv },
+        "aes-256-cbc" => EncryptionScheme::Aes256Cbc { iv },
+        _ => return Err("Unknown cipher".into()),
+    };
+    let failed = |_| String::from(UNENCRYPTABLE);
+    let kdf = Pbkdf2Params::hmac_sha256(2048, &salt)
+        .map_err(failed)?
+        .into();
+    let params = Parameters { kdf, encryption };
+    let data = params.encrypt(passphrase, der).map_err(failed)?;
+    let info = pkcs8::EncryptedPrivateKeyInfoOwned {
+        encryption_algorithm: params.into(),
+        encrypted_data: pkcs8::der::asn1::OctetString::new(data).map_err(|_| UNENCRYPTABLE)?,
+    };
+    pkcs8::der::Encode::to_der(&info).map_err(|_| UNENCRYPTABLE.into())
 }
 
 /// Holds a key file's KDF parameters to the caps scripts get. This runs before the crate reads

@@ -4,8 +4,8 @@
 // calls, and KeyObjects keep their bytes here. Node's `Received` text is kept for values that
 // cannot be secret; a passphrase or a JWK member is described by its type alone.
 (() => {
-  const NAMES = ["__timingSafeEqual", "__pbkdf2", "__scrypt", "__cipher", "__sign", "__verify", "__keyObject", "__jwkKey", "__jwkParts", "__keyDetails"];
-  const [equal, pbkdf2, scrypt, cipher, sign, verify, keyObject, jwkKey, jwkParts, keyDetails] = NAMES.map((n) => globalThis[n]);
+  const NAMES = ["__timingSafeEqual", "__pbkdf2", "__scrypt", "__cipher", "__sign", "__verify", "__keyObject", "__jwkKey", "__jwkParts", "__keyDetails", "__encryptKey"];
+  const [equal, pbkdf2, scrypt, cipher, sign, verify, keyObject, jwkKey, jwkParts, keyDetails, encryptKey] = NAMES.map((n) => globalThis[n]);
   for (const n of NAMES) delete globalThis[n];
   const crypto = globalThis.crypto;
   const Buf = () => globalThis.Buffer;
@@ -144,7 +144,11 @@
       if (form !== (type === "private" ? "pkcs8" : "spki")) {
         throw new Error(`KeyObject export not supported: type "${form}" with format "${format}" (supported: pkcs8 for private keys and spki for public keys, as pem or der, or jwk)`);
       }
-      if (type === "private") refuseEncryption(options);
+      const encryption = type === "private" ? encryptionOf(options) : null;
+      if (encryption !== null) {
+        const der = Buf().from(encryptKey(bytes, ...encryption));
+        return format === "der" ? der : pemOf(der, "ENCRYPTED PRIVATE KEY");
+      }
       return format === "der" ? Buf().from(bytes) : pemOf(bytes, type === "private" ? "PRIVATE KEY" : "PUBLIC KEY");
     }
   }
@@ -222,15 +226,21 @@
     if (isBytes(value)) return list(value);
     throw new TypeError("The property 'options.passphrase' is invalid.");
   };
-  // Public keys ignore both options. On a private key either one rules out a clear export: half
-  // a pair is Node's error, and a whole pair is the refusal, since encrypted export is not built.
-  const refuseEncryption = ({ cipher, passphrase }) => {
-    const absent = cipher === undefined || cipher === null;
-    if (absent && passphrase === undefined) return;
-    if (typeof cipher !== "string") throw invalidOption("options.cipher", cipher);
-    passphraseOf(passphrase);
-    throw new Error("KeyObject export not supported: an encrypted export (cipher and passphrase)");
+  // Public keys ignore both options. On a private key either one asks for encryption, and half a
+  // pair is Node's error. Returns null or `[cipher, passphrase bytes]` for the host.
+  const encryptionOf = ({ cipher: name, passphrase, encoding }) => {
+    if ((name === undefined || name === null) && passphrase === undefined) return null;
+    if (typeof name !== "string") throw invalidOption("options.cipher", name);
+    const bytes = passphraseOf(passphrase, keyEncoding(encoding));
+    const lower = name.toLowerCase(), alias = /^aes(128|192|256)$/.exec(lower);
+    const canonical = alias === null ? lower : `aes-${alias[1]}-cbc`;
+    if (EXPORT_CIPHERS.includes(canonical)) return [canonical, bytes];
+    if (!NODE_CIPHERS.test(lower)) throw new Error("Unknown cipher");
+    throw new Error(`KeyObject export not supported: cipher "${name}" (supported: aes-128-cbc, aes-192-cbc and aes-256-cbc)`);
   };
+  const EXPORT_CIPHERS = ["aes-128-cbc", "aes-192-cbc", "aes-256-cbc"];
+  // The cipher families OpenSSL names in Node 24's getCiphers(); other names are unknown there.
+  const NODE_CIPHERS = /^((aes|aria|camellia)-(128|192|256)-|(aes|aria|camellia)(128|192|256)($|-)|des|sm4|chacha20|id-aes(128|192|256)-|id-smime-)/;
   // Node's `encoding` for a string key or passphrase, where "buffer" means utf8.
   const keyEncoding = (encoding) => (encoding === "buffer" ? "utf8" : encoding);
   // PKCS#1 DER holds either half; a private key opens with the integer version 0, which is no modulus.
