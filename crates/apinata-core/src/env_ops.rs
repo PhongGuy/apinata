@@ -56,6 +56,14 @@ impl Collection {
         Some(secret_names(&Environment::from_parts(env.to_owned(), doc)))
     }
 
+    /// The variables of environment `env`'s file as it is on disk, ignoring any draft; `None`
+    /// for an unknown environment or a missing or unparseable file.
+    pub fn try_saved_variables(&self, env: &str) -> Option<Vec<EnvVariable>> {
+        let path = self.environment(env)?.path();
+        let doc = Document::load(path).ok()?;
+        Some(Environment::from_parts(env.to_owned(), doc).variables())
+    }
+
     /// The orphans of `env`, sorted, from a fresh read of its file and the store: names with a
     /// stored value that the file does not mark `secret: true`.
     pub fn orphaned_secrets(

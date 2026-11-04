@@ -55,3 +55,22 @@ fn a_failed_read_is_told_apart_from_a_file_without_secrets() {
     fs::remove_file(dir.path().join("environments/dev.yml")).unwrap();
     assert_eq!(c.try_saved_secret_names("dev"), None);
 }
+
+#[test]
+fn saved_variables_read_the_file_not_the_draft() {
+    let dir = tree();
+    let mut c = Collection::open(dir.path()).unwrap();
+    let env = c.environment_mut("dev").unwrap();
+    let mut vars = env.variables();
+    vars[1].enabled = false;
+    env.set_variables(vars);
+    let saved = c.try_saved_variables("dev").expect("readable");
+    let rows: Vec<_> = saved
+        .iter()
+        .map(|v| (v.name.as_str(), v.enabled, v.secret))
+        .collect();
+    assert_eq!(rows, [("host", true, false), ("token", true, true)]);
+    assert!(c.try_saved_variables("nope").is_none());
+    fs::write(dir.path().join("environments/dev.yml"), "variables: [\n").unwrap();
+    assert!(c.try_saved_variables("dev").is_none());
+}
