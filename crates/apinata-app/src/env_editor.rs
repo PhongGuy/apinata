@@ -169,8 +169,6 @@ pub struct EnvEditor {
     /// Set while a lock or Save check is reading the store or asking; a further one is dropped,
     /// and a blur stores nothing, since a dialog taking focus must not commit the typing.
     checking: bool,
-    /// The environment the table's rows were last loaded from.
-    shown: Option<String>,
     /// The (name, text) pairs the Save check under way read, confirmed once it agrees.
     checked: Vec<(String, String)>,
     focus: FocusHandle,
@@ -275,7 +273,6 @@ impl EnvEditor {
             pending_add: None,
             orphans: Orphans::default(),
             checking: false,
-            shown: None,
             checked: Vec::new(),
             focus: cx.focus_handle(),
             list_focus: cx.focus_handle(),
@@ -1346,13 +1343,10 @@ impl EnvEditor {
             for row in &mut rows {
                 row.unsaved = !saved.contains(&row.name);
             }
-            // Only a draft of the environment already shown keeps its rows' unsaved state.
-            let dirty = view.dirty && self.shown.as_deref() == Some(name.as_str());
-            self.shown = Some(name.clone());
             let secrets = self.saved_secrets.get(&name).cloned().unwrap_or_default();
             self.table.update(cx, |t, cx| {
                 t.set_saved_secrets(secrets);
-                t.load_draft(rows, dirty, window, cx)
+                t.load(rows, window, cx)
             });
         }
         if all || !self.busy(Field::Extends, cx) {
