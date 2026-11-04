@@ -306,7 +306,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tree-sitter-c-sharp",
- "tree-sitter-graphql 0.3.0",
+ "tree-sitter-graphql",
  "url",
  "winresource",
  "wiremock",
@@ -3134,7 +3134,7 @@ dependencies = [
  "tree-sitter-bash",
  "tree-sitter-c-sharp",
  "tree-sitter-go",
- "tree-sitter-graphql 0.1.0",
+ "tree-sitter-graphql",
  "tree-sitter-html",
  "tree-sitter-java",
  "tree-sitter-javascript",
@@ -9003,16 +9003,6 @@ name = "tree-sitter-graphql"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efedc4cac157161cc23a0adc4553a2cedc908e1cd754b6cd033a919bb81ce5d6"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-graphql"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e3628190860fa4d04703babffb9d70f4da8ee934b8f79423c86ce8f3c6214b6"
 dependencies = [
  "cc",
  "tree-sitter-language",

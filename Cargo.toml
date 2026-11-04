@@ -68,7 +68,7 @@ async-channel = "2.5.0"
 # The kit links this grammar but ships no highlights query for it; the app registers one.
 tree-sitter-c-sharp = "=0.23.5"
 # The kit links this grammar with an empty highlights query; the app registers one.
-tree-sitter-graphql = "=0.3.0"
+tree-sitter-graphql = "=0.1.0"
 # Same version gpui-kit links, so its completion types are ours.
 lsp-types = "=0.97.0"
 # Exact: the seeded dynamic-variable sequence is part of core tests.
