@@ -1,0 +1,29 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: POST
+  url: https://example.com/file
+  body:
+    type: file
+    data:
+      - filePath: a.json
+        contentType: application/json
+        selected: true
+      - filePath: b.bin
+        contentType: ""
+        selected: false
+      - filePath: ""
+        contentType: text/plain
+        selected: false
+      - filePath: ""
+        contentType: ""
+        selected: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

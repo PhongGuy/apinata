@@ -1,0 +1,24 @@
+opencollection: 1.0.0
+
+info:
+  name: "Edge: cases/1"
+
+request:
+  variables:
+    - name: base_url
+      value: https://example.com
+    - name: n
+      value: "5"
+    - name: off
+      value: x
+      disabled: true
+
+docs:
+  content: Collection docs
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

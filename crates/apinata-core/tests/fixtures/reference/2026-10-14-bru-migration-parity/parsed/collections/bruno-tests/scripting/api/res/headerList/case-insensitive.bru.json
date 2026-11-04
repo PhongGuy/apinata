@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "case-insensitive",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"res.headerList.get() is case-insensitive\", function() {\n  expect(res.headerList.get('X-Powered-By')).to.equal('Express');\n  expect(res.headerList.get('x-powered-by')).to.equal('Express');\n  expect(res.headerList.get('X-POWERED-BY')).to.equal('Express');\n});\n\ntest(\"res.headerList.one() is case-insensitive\", function() {\n  var header = res.headerList.one('X-POWERED-BY');\n  expect(header).to.not.be.undefined;\n  expect(header.value).to.equal('Express');\n});\n\ntest(\"res.headerList.has() is case-insensitive\", function() {\n  expect(res.headerList.has('X-Powered-By')).to.be.true;\n  expect(res.headerList.has('x-powered-by')).to.be.true;\n  expect(res.headerList.has('X-POWERED-BY')).to.be.true;\n  expect(res.headerList.has('x-powered-by', 'Express')).to.be.true;\n  expect(res.headerList.has('X-POWERED-BY', 'wrong')).to.be.false;\n});\n\ntest(\"res.headerList.indexOf() is case-insensitive with string\", function() {\n  expect(res.headerList.indexOf('x-powered-by')).to.be.at.least(0);\n  expect(res.headerList.indexOf('X-POWERED-BY')).to.be.at.least(0);\n  expect(res.headerList.indexOf('nonexistent')).to.equal(-1);\n});"
+}

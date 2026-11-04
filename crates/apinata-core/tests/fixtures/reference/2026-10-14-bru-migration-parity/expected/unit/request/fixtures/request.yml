@@ -1,0 +1,137 @@
+info:
+  name: Send Bulk SMS
+  type: http
+  seq: 1
+  tags:
+    - foo
+    - bar
+
+http:
+  method: GET
+  url: https://api.textlocal.in/send/:id
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer 123
+    - name: key with spaces
+      value: is allowed
+    - name: colon:header
+      value: is allowed
+    - name: "{braces}"
+      value: is allowed
+    - name: nested escaped "quote"
+      value: is allowed
+    - name: disabled:colon:header
+      value: is allowed
+      disabled: true
+    - name: transaction-id
+      value: "{{transactionId}}"
+      disabled: true
+  params:
+    - name: apiKey
+      value: secret
+      type: query
+    - name: numbers
+      value: "998877665"
+      type: query
+    - name: key with spaces
+      value: is allowed
+      type: query
+    - name: colon:parameter
+      value: is allowed
+      type: query
+    - name: nested escaped "quote"
+      value: is allowed
+      type: query
+    - name: "{braces}"
+      value: is allowed
+      type: query
+    - name: disabled:colon:parameter
+      value: is allowed
+      type: query
+      disabled: true
+    - name: message
+      value: hello
+      type: query
+      disabled: true
+    - name: id
+      value: "123"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "hello": "world"
+      }
+  auth:
+    type: bearer
+    token: "123"
+
+runtime:
+  variables:
+    - name: departingDate
+      value: 2020-01-01
+    - name: returningDate
+      value: 2020-01-02
+      disabled: true
+  scripts:
+    - type: before-request
+      code: const foo = 'bar';
+    - type: tests
+      code: |-
+        function onResponse(request, response) {
+          expect(response.status).to.equal(200);
+        }
+  assertions:
+    - expression: $res.status
+      operator: eq
+      value: "200"
+    - expression: $res.body.message
+      operator: eq
+      value: success
+      disabled: true
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: $res.body.token
+        method: jsonq
+      variable:
+        name: token
+        scope: runtime
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: $res.body.orderNumber
+        method: jsonq
+      variable:
+        name: orderNumber
+        scope: request
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: $res.body.id
+        method: jsonq
+      variable:
+        name: petId
+        scope: runtime
+      disabled: true
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: $res.body.transactionId
+        method: jsonq
+      variable:
+        name: transactionId
+        scope: request
+      disabled: true
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: This request needs auth token to be set in the headers.

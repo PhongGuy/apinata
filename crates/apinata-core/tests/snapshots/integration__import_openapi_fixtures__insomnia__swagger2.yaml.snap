@@ -1,0 +1,66 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== custom-tag/folder.yml
+info:
+  name: custom-tag
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+=== custom-tag/get pet by id.yml
+info:
+  name: get pet by id
+  type: http
+  seq: 1
+  tags:
+    - custom-tag
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pets/1"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== environments/Environment.yml
+name: Environment
+variables:
+  - name: baseUrl
+    value: http://127.0.0.1:4010
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: E2E testing specification - swagger 2
+
+docs:
+  content: This is a specification representing the oas3.yaml spec
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /pets/1:
+          target: 75ee9a3e91fbaf7e
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 4f55cb6067946c83
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: custom-tag/get pet by id.yml

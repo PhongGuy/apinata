@@ -1,0 +1,185 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: content-type-header-scenarios
+== content-type-header-assignment.yml
+info:
+  name: content-type-header-assignment
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: xml
+    data: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <request>
+          <user>
+              <id>12345</id>
+              <name>John Doe</name>
+              <email>john.doe@example.com</email>
+          </user>
+          <order>
+              <id>98765</id>
+              <product>Sample Product</product>
+              <quantity>2</quantity>
+          </order>
+      </request>
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== content-type-header-override.yml
+info:
+  name: content-type-header-override
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: application/xml
+  body:
+    type: json
+    data: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <request>
+          <user>
+              <id>12345</id>
+              <name>John Doe</name>
+              <email>john.doe@example.com</email>
+          </user>
+          <order>
+              <id>98765</id>
+              <product>Sample Product</product>
+              <quantity>2</quantity>
+          </order>
+      </request>
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== multiple-content-type-headers-different-casing-without-value-set-at-body.yml
+info:
+  name: multiple-content-type-headers-different-casing-without-value-set-at-body
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: text/xml
+    - name: content-Type
+      value: application/json
+    - name: Content-type
+      value: text/plain
+    - name: CONTENT-TYPE
+      value: application/xml
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== multiple-content-type-headers-different-casing.yml
+info:
+  name: multiple-content-type-headers-different-casing
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: text/xml
+    - name: content-Type
+      value: application/json
+    - name: Content-type
+      value: text/plain
+    - name: CONTENT-TYPE
+      value: application/xml
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== multiple-content-type-headers.yml
+info:
+  name: multiple-content-type-headers
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: text/xml
+    - name: Content-Type
+      value: application/json
+    - name: Content-Type
+      value: application/xml
+  body:
+    type: json
+    data: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <request>
+          <user>
+              <id>12345</id>
+              <name>John Doe</name>
+              <email>john.doe@example.com</email>
+          </user>
+          <order>
+              <id>98765</id>
+              <product>Sample Product</product>
+              <quantity>2</quantity>
+          </order>
+      </request>
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: content-type-header-scenarios
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped content-type-header-assignment / testScript: scripts are not imported (content-type-header-assignment.yml)
+Dropped content-type-header-override / testScript: scripts are not imported (content-type-header-override.yml)
+Dropped multiple-content-type-headers / testScript: scripts are not imported (multiple-content-type-headers.yml)
+Dropped multiple-content-type-headers-different-casing / body.body: the body has no content type and is not sent; not imported (multiple-content-type-headers-different-casing.yml)
+Dropped multiple-content-type-headers-different-casing / testScript: scripts are not imported (multiple-content-type-headers-different-casing.yml)
+Dropped multiple-content-type-headers-different-casing-without-value-set-at-body / body.body: the body has no content type and is not sent; not imported (multiple-content-type-headers-different-casing-without-value-set-at-body.yml)
+Dropped multiple-content-type-headers-different-casing-without-value-set-at-body / testScript: scripts are not imported (multiple-content-type-headers-different-casing-without-value-set-at-body.yml)

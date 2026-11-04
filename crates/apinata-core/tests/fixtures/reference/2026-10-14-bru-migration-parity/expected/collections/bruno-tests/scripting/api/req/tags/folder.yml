@@ -1,0 +1,8 @@
+info:
+  name: tags
+  type: folder
+  seq: 20
+  tags:
+    - req-api
+
+request: {}

@@ -1,0 +1,133 @@
+{
+  "meta": {
+    "0": "first",
+    "1": "second",
+    "name": "Proto list",
+    "seq": "3",
+    "type": "http"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://example.com/proto"
+  },
+  "headers": [
+    {
+      "enabled": true
+    },
+    {
+      "name": "__proto__",
+      "value": "off",
+      "enabled": false
+    },
+    {
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "kept"
+        }
+      ],
+      "description": "kept"
+    },
+    {
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "enabled": true
+    },
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "vars": {
+    "req": [
+      {
+        "enabled": true,
+        "local": false
+      },
+      {
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "__proto__",
+        "value": true,
+        "enabled": false,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": true
+      },
+      {
+        "name": "a",
+        "value": "1",
+        "enabled": true,
+        "local": false
+      }
+    ],
+    "res": [
+      {
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "local": false
+      },
+      {
+        "name": "b",
+        "value": "2",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  },
+  "params": [
+    {
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "n",
+      "value": "1",
+      "enabled": true,
+      "type": "query"
+    }
+  ],
+  "body": {
+    "formUrlEncoded": [
+      {
+        "enabled": true
+      },
+      {
+        "name": "g",
+        "value": "2",
+        "enabled": true
+      }
+    ]
+  }
+}

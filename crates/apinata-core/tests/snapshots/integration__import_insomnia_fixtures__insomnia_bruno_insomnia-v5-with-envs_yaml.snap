@@ -1,0 +1,112 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Test API Collection v5 with Environments
+== API Tests/Get Users.yml
+info:
+  name: Get Users
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{base_url}}/api/users"
+  headers:
+    - name: Authorization
+      value: Bearer {{auth_token}}
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== API Tests/folder.yml
+info:
+  name: API Tests
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== environments/Base Environment.yml
+name: Base Environment
+variables:
+  - name: base_url
+    value: https://api.example.com
+  - name: auth_token
+    value: your_auth_token_here
+  - name: user.name
+    value: admin
+  - name: user.id
+    value: "123"
+  - name: user.roles[0]
+    value: admin
+  - name: user.roles[1]
+    value: user
+  - name: config.timeout
+    value: "30000"
+  - name: config.retries
+    value: "3"
+  - name: config.debug
+    value: "true"
+== environments/Development.yml
+name: Development
+variables:
+  - name: base_url
+    value: https://dev-api.example.com
+  - name: auth_token
+    value: dev_token_123
+  - name: user.name
+    value: admin
+  - name: user.id
+    value: "123"
+  - name: user.roles[0]
+    value: admin
+  - name: user.roles[1]
+    value: user
+  - name: config.timeout
+    value: "30000"
+  - name: config.retries
+    value: "3"
+  - name: config.debug
+    value: "true"
+  - name: new_feature.enabled
+    value: "true"
+  - name: new_feature.version
+    value: "2.099123123"
+== environments/Staging.yml
+name: Staging
+variables:
+  - name: base_url
+    value: https://staging-api.example.com
+  - name: auth_token
+    value: your_auth_token_here
+  - name: user.name
+    value: staging_admin
+  - name: user.id
+    value: "123"
+  - name: user.roles[0]
+    value: admin
+  - name: user.roles[1]
+    value: user
+  - name: config.timeout
+    value: "60000"
+  - name: config.retries
+    value: "3"
+  - name: config.debug
+    value: "false"
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Test API Collection v5 with Environments
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

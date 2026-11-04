@@ -1,0 +1,208 @@
+---
+source: crates/apinata-core/tests/export_html_corpus.rs
+expression: rendered(&out)
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<title>bruno-yml-testbench</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --line: #d1d9e0;
+  --panel: #f6f8fa;
+  --link: #0969da;
+  --get: #1a7f37;
+  --post: #9a6700;
+  --put: #0969da;
+  --patch: #8250df;
+  --delete: #cf222e;
+  --head: #1b7c83;
+  --other: #59636e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --line: #3d444d;
+    --panel: #151b23;
+    --link: #4493f8;
+    --get: #3fb950;
+    --post: #d29922;
+    --put: #4493f8;
+    --patch: #ab7df8;
+    --delete: #f85149;
+    --head: #39c5cf;
+    --other: #9198a1;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 24px 16px 48px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--link); }
+h1, h2, h3, h4 { line-height: 1.25; margin: 1.5em 0 0.5em; }
+header h1 { margin-top: 0; }
+nav { border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; background: var(--panel); }
+nav h2 { margin-top: 0.5em; font-size: 1em; }
+nav ul { padding-left: 1.25em; }
+section, article { margin-top: 1.5em; }
+article { border-top: 1px solid var(--line); padding-top: 0.5em; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 0.9em; }
+pre { overflow-x: auto; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.url { overflow-wrap: anywhere; }
+.docs { color: var(--fg); }
+.note, caption { color: var(--muted); }
+caption { text-align: left; font-weight: 600; padding: 4px 0; }
+table { display: block; overflow-x: auto; border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+tr.disabled td { opacity: 0.55; }
+.tag { margin-left: 6px; padding: 0 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8em; color: var(--muted); }
+.method { display: inline-block; min-width: 4.5em; padding: 1px 6px; border-radius: 4px; color: #ffffff; font: 600 0.8em ui-monospace, Menlo, Consolas, monospace; text-align: center; background: var(--other); }
+.m-get { background: var(--get); }
+.m-post { background: var(--post); }
+.m-put { background: var(--put); }
+.m-patch { background: var(--patch); }
+.m-delete { background: var(--delete); }
+.m-head, .m-options, .m-trace { background: var(--head); }
+.m-other { background: var(--other); }
+</style>
+</head>
+<body>
+<header>
+<h1>bruno-yml-testbench</h1>
+</header>
+<nav>
+<h2>Contents</h2>
+<ul>
+<li><a href="#f-1">response-time</a>
+<ul>
+<li><a href="#r-1-1"><span class="method m-get">GET</span> delayed headers</a></li>
+<li><a href="#r-1-2"><span class="method m-get">GET</span> delayed body</a></li>
+</ul>
+</li>
+<li><a href="#f-2">variable-datatypes</a>
+<ul>
+<li><a href="#r-2-1"><span class="method m-post">POST</span> typed vars</a></li>
+<li><a href="#r-2-2"><span class="method m-post">POST</span> form-urlencoded</a></li>
+<li><a href="#r-2-3"><span class="method m-post">POST</span> multipart</a></li>
+</ul>
+</li>
+</ul>
+</nav>
+<main>
+<section id="f-1">
+<h2>response-time</h2>
+<article id="r-1-1">
+<h3><span class="method m-get">GET</span> delayed headers</h3>
+<p class="url"><code>{{localhost}}/api/wait-for/headers?time=1000</code></p>
+<table>
+<caption>Query params</caption>
+<thead><tr><th>Name</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>time</td><td>1000</td><td></td></tr>
+</tbody>
+</table>
+<p class="auth">Auth: No auth</p>
+</article>
+<article id="r-1-2">
+<h3><span class="method m-get">GET</span> delayed body</h3>
+<p class="url"><code>{{localhost}}/api/wait-for/body?time=1000</code></p>
+<table>
+<caption>Query params</caption>
+<thead><tr><th>Name</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>time</td><td>1000</td><td></td></tr>
+</tbody>
+</table>
+<p class="auth">Auth: No auth</p>
+</article>
+</section>
+<section id="f-2">
+<h2>variable-datatypes</h2>
+<article id="r-2-1">
+<h3><span class="method m-post">POST</span> typed vars</h3>
+<p class="url"><code>{{echo-host}}</code></p>
+<table>
+<caption>Headers</caption>
+<thead><tr><th>Name</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>x-h-str</td><td>{{req_str}}</td><td></td></tr>
+<tr><td>x-h-num</td><td>{{req_num}}</td><td></td></tr>
+<tr><td>x-h-bool</td><td>{{req_bool}}</td><td></td></tr>
+<tr><td>x-h-obj</td><td>{{req_obj}}</td><td></td></tr>
+</tbody>
+</table>
+<p class="part">Body (json)</p>
+<pre>{
+  &quot;coll_num&quot;: {{coll_num}},
+  &quot;coll_bool&quot;: {{coll_bool}},
+  &quot;coll_obj&quot;: {{coll_obj}},
+  &quot;fold_num&quot;: {{fold_num}},
+  &quot;fold_bool&quot;: {{fold_bool}},
+  &quot;fold_obj&quot;: {{fold_obj}},
+  &quot;req_num&quot;: {{req_num}},
+  &quot;req_bool&quot;: {{req_bool}},
+  &quot;req_obj&quot;: {{req_obj}},
+  &quot;req_obj_precision&quot;: {{req_obj_precision}},
+  &quot;req_obj_empty&quot;: {{req_obj_empty}},
+  &quot;typed_env_num&quot;: {{typed_env_num}},
+  &quot;typed_env_bool&quot;: {{typed_env_bool}},
+  &quot;typed_env_obj&quot;: {{typed_env_obj}},
+  &quot;runtime_num&quot;: {{runtime_num}},
+  &quot;runtime_bool&quot;: {{runtime_bool}},
+  &quot;runtime_obj&quot;: {{runtime_obj}},
+  &quot;inferred_env_num&quot;: {{inferred_env_num}},
+  &quot;inferred_env_bool&quot;: {{inferred_env_bool}},
+  &quot;inferred_env_obj&quot;: {{inferred_env_obj}}
+}</pre>
+<p class="auth">Auth: No auth</p>
+</article>
+<article id="r-2-2">
+<h3><span class="method m-post">POST</span> form-urlencoded</h3>
+<p class="url"><code>{{echo-host}}</code></p>
+<table>
+<caption>Body (form-urlencoded)</caption>
+<thead><tr><th>Name</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>fu_str</td><td>{{fu_str}}</td><td></td></tr>
+<tr><td>fu_num</td><td>{{fu_num}}</td><td></td></tr>
+<tr><td>fu_bool</td><td>{{fu_bool}}</td><td></td></tr>
+<tr><td>fu_obj</td><td>{{fu_obj}}</td><td></td></tr>
+</tbody>
+</table>
+<p class="auth">Auth: No auth</p>
+</article>
+<article id="r-2-3">
+<h3><span class="method m-post">POST</span> multipart</h3>
+<p class="url"><code>{{echo-host}}</code></p>
+<table>
+<caption>Body (multipart-form)</caption>
+<thead><tr><th>Name</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>mp_str</td><td>{{mp_str}}</td><td></td></tr>
+<tr><td>mp_num</td><td>{{mp_num}}</td><td></td></tr>
+<tr><td>mp_bool</td><td>{{mp_bool}}</td><td></td></tr>
+<tr><td>mp_obj</td><td>{{mp_obj}}</td><td></td></tr>
+</tbody>
+</table>
+<p class="auth">Auth: No auth</p>
+</article>
+</section>
+</main>
+</body>
+</html>
+--- notes

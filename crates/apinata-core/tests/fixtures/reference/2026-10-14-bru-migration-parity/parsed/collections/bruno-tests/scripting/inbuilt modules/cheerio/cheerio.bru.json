@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "cheerio",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://echo.usebruno.com",
+    "body": "text",
+    "auth": "none"
+  },
+  "body": {
+    "text": "<h2 class=\"title\">Hello Bruno!</h2>"
+  },
+  "script": {
+    "req": "const cheerio = require('cheerio');\n\nconst $ = cheerio.load('<h2 class=\"title\">Hello world</h2>');\n\n$('h2.title').text('Hello pre-request!');\n$('h2').addClass('welcome');\n\nbru.setVar(\"cheerio-test-pre-request\", $.html());",
+    "res": "const cheerio = require('cheerio');\n\nconst $ = cheerio.load('<h2 class=\"title\">Hello world</h2>');\n\n$('h2.title').text('Hello post-response!');\n$('h2').addClass('welcome');\n\nbru.setVar(\"cheerio-test-post-response\", $.html());"
+  },
+  "tests": "const cheerio = require('cheerio');\n\ntest(\"cheerio html - from pre request script\", function() {\n  const expected = '<html><head></head><body><h2 class=\"title welcome\">Hello pre-request!</h2></body></html>';\n  const html = bru.getVar('cheerio-test-pre-request');\n  expect(html).to.eql(expected);\n});\n\ntest(\"cheerio html - from post response script\", function() {\n  const expected = '<html><head></head><body><h2 class=\"title welcome\">Hello post-response!</h2></body></html>';\n  const html = bru.getVar('cheerio-test-post-response');\n  expect(html).to.eql(expected);\n});\n\ntest(\"cheerio html - from tests\", function() {\n  const expected = '<html><head></head><body><h2 class=\"title\">Hello Bruno!</h2></body></html>';\n  const $ = cheerio.load(res.body);\n  expect($.html()).to.eql(expected);\n});"
+}

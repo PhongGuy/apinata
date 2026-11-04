@@ -1,0 +1,14 @@
+get {
+  url: https://example.com
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: implicit
+  callback_url: https://example.com/cb
+  authorization_url: https://example.com/auth
+  client_id: cid
+  scope: openid
+  state: s
+  auto_fetch_token: 0
+}

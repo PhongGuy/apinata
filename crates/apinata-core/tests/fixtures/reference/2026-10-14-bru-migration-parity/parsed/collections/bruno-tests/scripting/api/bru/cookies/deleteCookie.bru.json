@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "name": "deleteCookie",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\nawait jar.setCookies('https://testbench-sanity.usebruno.com', [\n  {\n    key: 'cookie_to_delete',\n    value: 'will_be_deleted',\n    path: '/',\n    secure: true\n  },\n  {\n    key: 'cookie_to_keep', \n    value: 'should_remain',\n    path: '/',\n    secure: true\n  }\n]);\n\nconsole.log(\"Test cookies set up\");",
+    "res": "const jar = bru.cookies.jar()\n\nconst cookiesBefore = await jar.getCookies('https://testbench-sanity.usebruno.com');\nconsole.log(`Found ${cookiesBefore.length} cookies before deletion`);\n\nconst targetCookie = await jar.getCookie('https://testbench-sanity.usebruno.com', 'cookie_to_delete');\ntest(\"cookie should exist before deletion\", function() {\n  expect(targetCookie).to.not.be.null;\n  expect(targetCookie.key).to.equal('cookie_to_delete');\n});\n\nawait jar.deleteCookie('https://testbench-sanity.usebruno.com', 'cookie_to_delete');\nconsole.log(\"Cookie deleted\");"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\ntest(\"should have deleted the target cookie\", async function() {\n  const deletedCookie = await jar.getCookie('https://testbench-sanity.usebruno.com', 'cookie_to_delete');\n  expect(deletedCookie).to.be.null;\n});\n\ntest(\"should keep other cookies intact\", async function() {\n  const cookieToKeep = await jar.getCookie('https://testbench-sanity.usebruno.com', 'cookie_to_keep');\n  expect(cookieToKeep).to.not.be.null;\n  expect(cookieToKeep.key).to.equal('cookie_to_keep');\n});\n\njar.deleteCookie(\"https://testbench-sanity.usebruno.com\", \"cookie_to_keep\", function(error) {\n  test(\"should successfully delete with callback\", function() {\n    expect(error).to.be.null;\n  });\n});\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

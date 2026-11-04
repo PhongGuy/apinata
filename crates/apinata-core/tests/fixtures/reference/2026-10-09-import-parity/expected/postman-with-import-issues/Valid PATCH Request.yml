@@ -1,0 +1,19 @@
+info:
+  name: Valid PATCH Request
+  type: http
+  seq: 10
+
+http:
+  method: PATCH
+  url: https://api.example.com/users/1/status
+  body:
+    type: text
+    data: '{"status": "active"}'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

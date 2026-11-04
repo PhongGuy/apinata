@@ -1,0 +1,11 @@
+# How gpui-pilot builds and launches Apinata for an agent; see tools/apinata-pilot.
+[headless]
+# "Open in browser" and "Open with system app" write the file under <data_dir>/pilot-open and
+# append its path to <data_dir>/pilot-opened.txt, newest last (data_dir is in the launch reply).
+# Close removes the data dir unless keep_data is set, so read the file first.
+build = ["cargo", "build", "--manifest-path", "tools/apinata-pilot/Cargo.toml"]
+binary = "tools/apinata-pilot/target/debug/apinata-pilot"
+
+[session]
+build = ["cargo", "build", "-p", "apinata-app", "--bin", "apinata-app"]
+binary = "target/debug/apinata-app"

@@ -1,0 +1,54 @@
+[
+  {
+    "id": "gql-name-small",
+    "fixture": "synthetic/graphql.yml"
+  },
+  {
+    "id": "gql-name-full",
+    "fixture": "synthetic/graphql-full.yml"
+  },
+  {
+    "id": "gql-name-reference",
+    "fixture": "reference/test-graphql.yml"
+  },
+  {
+    "id": "gql-query-set",
+    "fixture": "synthetic/graphql.yml"
+  },
+  {
+    "id": "gql-variables-single",
+    "fixture": "synthetic/graphql.yml"
+  },
+  {
+    "id": "gql-variables-multi",
+    "fixture": "reference/test-graphql.yml"
+  },
+  {
+    "id": "gql-clear-both",
+    "fixture": "synthetic/graphql-full.yml"
+  },
+  {
+    "id": "gql-url-method",
+    "fixture": "synthetic/graphql.yml"
+  },
+  {
+    "id": "gql-headers-set",
+    "fixture": "synthetic/graphql.yml"
+  },
+  {
+    "id": "gql-headers-clear",
+    "fixture": "synthetic/graphql-full.yml"
+  },
+  {
+    "id": "gql-auth-bearer",
+    "fixture": "reference/test-graphql.yml"
+  },
+  {
+    "id": "gql-auth-none",
+    "fixture": "synthetic/graphql-full.yml"
+  },
+  {
+    "id": "gql-new",
+    "fixture": null
+  }
+]

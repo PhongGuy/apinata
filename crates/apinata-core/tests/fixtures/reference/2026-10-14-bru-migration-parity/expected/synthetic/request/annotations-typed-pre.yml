@@ -1,0 +1,97 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+
+runtime:
+  variables:
+    - name: count
+      value:
+        type: number
+        data: "42"
+    - name: ratio
+      value:
+        type: number
+        data: "1.5"
+    - name: hex
+      value:
+        type: number
+        data: "31"
+    - name: bad
+      value:
+        type: number
+        data: forty
+    - name: blank
+      value:
+        type: number
+        data: ""
+    - name: huge
+      value:
+        type: number
+        data: Infinity
+    - name: flag
+      value:
+        type: boolean
+        data: "true"
+    - name: off
+      value:
+        type: boolean
+        data: "false"
+    - name: maybe
+      value:
+        type: boolean
+        data: "TRUE"
+    - name: obj
+      value:
+        type: object
+        data: |-
+          {
+            "a": 1,
+            "b": [
+              1,
+              2.5
+            ],
+            "c": null
+          }
+    - name: arr
+      value:
+        type: object
+        data: |-
+          [
+            1,
+            2
+          ]
+    - name: notjson
+      value:
+        type: object
+        data: "{a}"
+    - name: scalar
+      value:
+        type: object
+        data: "5"
+    - name: str
+      value: "12"
+    - name: last-string
+      value: "7"
+    - name: last-number
+      value:
+        type: number
+        data: "7"
+    - name: local-flag
+      value:
+        type: boolean
+        data: "true"
+      description: typed and described
+      disabled: true
+    - name: plain
+      value: text
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

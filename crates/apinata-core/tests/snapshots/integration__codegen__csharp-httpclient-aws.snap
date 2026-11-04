@@ -1,0 +1,14 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// AWS Signature auth is not included in this snippet.
+using System;
+using System.Net.Http;
+
+var client = new HttpClient();
+var request = new HttpRequestMessage(new HttpMethod("GET"), "http://x.test/aws");
+
+var response = await client.SendAsync(request);
+Console.WriteLine((int)response.StatusCode);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

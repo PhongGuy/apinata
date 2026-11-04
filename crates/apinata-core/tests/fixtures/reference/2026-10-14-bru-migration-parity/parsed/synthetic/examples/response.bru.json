@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "name": "Example response",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items/1"
+  },
+  "examples": [
+    {
+      "name": "Created",
+      "response": {
+        "headers": [
+          {
+            "name": "content-type",
+            "value": "application/json",
+            "enabled": true
+          },
+          {
+            "name": "x-trace",
+            "value": "abc",
+            "enabled": false
+          }
+        ],
+        "status": "201",
+        "statusText": "Created",
+        "body": {
+          "type": "json",
+          "content": "{\n  \"id\": 1\n}"
+        }
+      }
+    },
+    {
+      "error": "Line 8, col 1:\n  7 |   '''\n> 8 |   type: text\n      ^\n  9 | }\nExpected \"}\""
+    },
+    {
+      "name": "Content type on content",
+      "response": {
+        "body": {
+          "type": "xml",
+          "content": "<ok/>\n  ''' @contentType(application/xml)"
+        }
+      }
+    }
+  ]
+}

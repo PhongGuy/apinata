@@ -1,0 +1,48 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/headers"
+  },
+  "headers": [
+    {
+      "name": "content-type",
+      "value": "application/json",
+      "enabled": true
+    },
+    {
+      "name": "x-disabled",
+      "value": "off",
+      "enabled": false
+    },
+    {
+      "name": "x-quoted:key \"inner\"",
+      "value": "quoted value",
+      "enabled": true
+    },
+    {
+      "name": "x-disabled-quoted",
+      "value": "dq",
+      "enabled": false
+    },
+    {
+      "name": "x-empty",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "name": "",
+      "value": "no key",
+      "enabled": true
+    },
+    {
+      "name": "x-colon-value",
+      "value": "a: b: c",
+      "enabled": true
+    },
+    {
+      "name": "x-spaced",
+      "value": "padded value",
+      "enabled": true
+    }
+  ]
+}

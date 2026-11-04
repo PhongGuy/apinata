@@ -1,0 +1,14 @@
+name: Test Global Environment
+variables:
+  - name: host
+    value: https://jsonplaceholder.typicode.com
+  - name: userId
+    value: "1"
+  - name: apiKey
+    value: global-api-key-12345
+  - name: postTitle
+    value: Global Test Post from Environment
+  - name: postBody
+    value: This is a global test post body with environment variables
+  - secret: true
+    name: secretApiToken

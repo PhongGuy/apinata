@@ -1,0 +1,23 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth2"
+  },
+  "auth": {
+    "oauth2": {
+      "grantType": "implicit",
+      "callbackUrl": "https://example.com/cb",
+      "authorizationUrl": "https://example.com/auth",
+      "clientId": "cid",
+      "scope": "openid",
+      "state": "s",
+      "credentialsId": "credentials",
+      "tokenSource": "access_token",
+      "tokenPlacement": "header",
+      "tokenHeaderPrefix": "",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": 0
+    }
+  }
+}

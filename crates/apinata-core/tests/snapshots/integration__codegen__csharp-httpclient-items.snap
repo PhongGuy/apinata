@@ -1,0 +1,23 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+
+var client = new HttpClient();
+var request = new HttpRequestMessage(new HttpMethod("POST"), "http://x.test/i");
+request.Headers.TryAddWithoutValidation("X-E", "=v");
+var form = new MultipartFormDataContent();
+var part1 = new StringContent("@x");
+part1.Headers.ContentType = null;
+form.Add(part1, "a");
+var part2 = new StringContent("1");
+part2.Headers.ContentType = null;
+form.Add(part2, "k=v");
+request.Content = form;
+
+var response = await client.SendAsync(request);
+Console.WriteLine((int)response.StatusCode);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

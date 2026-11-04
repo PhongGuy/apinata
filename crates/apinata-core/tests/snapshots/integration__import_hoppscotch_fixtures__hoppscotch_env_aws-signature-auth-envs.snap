@@ -1,0 +1,24 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== AWS Signature - environments.yml
+name: AWS Signature - environments
+variables:
+  - name: awsRegion
+    value: us-east-1
+  - name: serviceName
+    value: s3
+  - secret: true
+    name: accessKey
+  - secret: true
+    name: secretKey
+  - name: url
+    value: https://echo.hoppscotch.io
+  - secret: true
+    name: serviceToken
+== report
+NeedsInput variables[3]: the secret `secretKey` has no value; enter it before sending (environments/AWS Signature - environments.yml)
+NeedsInput variables[5]: the secret `serviceToken` has no value; enter it before sending (environments/AWS Signature - environments.yml)
+secret to enter: AWS Signature - environments / secretKey
+secret to enter: AWS Signature - environments / serviceToken

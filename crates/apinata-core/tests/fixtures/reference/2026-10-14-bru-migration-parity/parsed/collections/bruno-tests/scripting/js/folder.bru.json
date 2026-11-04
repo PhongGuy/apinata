@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "js",
+    "type": "collection"
+  },
+  "headers": [
+    {
+      "name": "folder-header",
+      "value": "folder-header-value",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "// used by `scripting/js/folder-collection script-tests`\nconst shouldTestFolderScripts = bru.getVar('should-test-folder-scripts');\nif(shouldTestFolderScripts) {\n bru.setVar('folder-var-set-by-folder-script', 'folder-var-value-set-by-folder-script');\n}"
+  },
+  "tests": "// used by `scripting/js/folder-collection script-tests`\nconst shouldTestFolderScripts = bru.getVar('should-test-folder-scripts');\nconst folderVar = bru.getVar(\"folder-var-set-by-folder-script\");\nif (shouldTestFolderScripts && folderVar) {\n  test(\"folder level test - should get the var that was set by the folder script\", function() {\n    expect(folderVar).to.equal(\"folder-var-value-set-by-folder-script\");\n  }); \n  bru.setVar('folder-var-set-by-folder-script', null); \n  bru.setVar('should-test-folder-scripts', null);\n}"
+}

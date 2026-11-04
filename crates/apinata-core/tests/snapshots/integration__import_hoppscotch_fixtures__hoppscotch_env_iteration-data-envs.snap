@@ -1,0 +1,14 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== Iteration data environments.yml
+name: Iteration data environments
+variables:
+  - name: URL
+    value: https://httpbin.org/get
+  - name: BODY_KEY
+    value: overriden-body-key-at-environment
+  - name: BODY_VALUE
+    value: overriden-body-value-at-environment
+== report

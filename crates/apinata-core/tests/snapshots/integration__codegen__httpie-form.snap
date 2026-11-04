@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin 'POST' 'http://x.test/f' \
+  'content-type:application/x-www-form-urlencoded' \
+  --raw 'a=1&b=x+y%26z'

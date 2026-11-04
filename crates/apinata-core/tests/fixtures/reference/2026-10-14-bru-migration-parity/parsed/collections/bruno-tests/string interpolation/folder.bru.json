@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "name": "string interpolation",
+    "type": "collection"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "folder_pre_var",
+        "value": "folder_pre_var_value",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "folder_pre_var_2",
+        "value": "{{env.var1}}",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  }
+}

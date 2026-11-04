@@ -1,0 +1,220 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Auth/Make basic auth request.yml
+info:
+  name: Make basic auth request
+  type: http
+  seq: 1
+  tags:
+    - Auth
+
+http:
+  method: GET
+  url: "{{baseUrl}}/auth/basic"
+  auth:
+    type: basic
+    username: "{{username}}"
+    password: "{{password}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Auth/folder.yml
+info:
+  name: Auth
+  type: folder
+  seq: 3
+
+request:
+  auth: inherit
+
+=== File/Get dummy CSV file.yml
+info:
+  name: Get dummy CSV file
+  type: http
+  seq: 1
+  tags:
+    - File
+
+http:
+  method: GET
+  url: "{{baseUrl}}/file/dummy.csv"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== File/Get dummy PDF file.yml
+info:
+  name: Get dummy PDF file
+  type: http
+  seq: 2
+  tags:
+    - File
+
+http:
+  method: GET
+  url: "{{baseUrl}}/file/dummy.pdf"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== File/folder.yml
+info:
+  name: File
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+
+=== Misc/Delay by seconds.yml
+info:
+  name: Delay by seconds
+  type: http
+  seq: 2
+  tags:
+    - Misc
+
+http:
+  method: GET
+  url: "{{baseUrl}}/delay/seconds/:duration"
+  params:
+    - name: duration
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Misc/Echo id.yml
+info:
+  name: Echo id
+  type: http
+  seq: 1
+  tags:
+    - Misc
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pets/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Misc/folder.yml
+info:
+  name: Misc
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+=== environments/Environment 1.yml
+name: Environment 1
+variables:
+  - name: baseUrl
+    value: http://localhost:4010
+  - secret: true
+    name: username
+  - secret: true
+    name: password
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Smoke Test API server
+
+docs:
+  content: this is an example description in an OpenAPI Doc
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /auth/basic:
+          target: 3ec2eff515f069d0
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 3ef82e3ee70a1c8f
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Auth/Make basic auth request.yml
+        GET /delay/seconds/{}:
+          target: 8df7f8842671f054
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 1d8b7b43dd730b3e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Misc/Delay by seconds.yml
+        GET /file/dummy.csv:
+          target: 62e7b914ced6202f
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 494139221175d8fe
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: File/Get dummy CSV file.yml
+        GET /file/dummy.pdf:
+          target: 8cf5e5a6d7d25641
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 494139221175d8fe
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: File/Get dummy PDF file.yml
+        GET /pets/{}:
+          target: a56ee25cc2b89d39
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 1d8b7b43dd730b3e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Misc/Echo id.yml
+
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `password` has no value; enter it before sending
+secret Environment 1 username
+secret Environment 1 password

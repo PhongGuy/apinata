@@ -1,0 +1,32 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/multi",
+    "body": "multipartForm"
+  },
+  "headers": [
+    {
+      "name": "x-plain",
+      "value": "line one\nline two",
+      "enabled": true
+    },
+    {
+      "name": "x-typed",
+      "value": "{\"a\": 1}\n @contentType(application/json)",
+      "enabled": true
+    },
+    {
+      "name": "x-list",
+      "value": [
+        "one",
+        "two_2"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "x-after",
+      "value": "tail",
+      "enabled": true
+    }
+  ]
+}

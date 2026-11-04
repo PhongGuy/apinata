@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "name": "data types - request vars",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"boolean\": false,\n  \"number_1\": 1,\n  \"number_2\": 0,\n  \"number_3\": -1,\n  \"string\": \"bruno\",\n  \"array\": [1, 2, 3, 4, 5],\n  \"object\": {\n    \"hello\": \"bruno\"\n  },\n  \"null\": null\n}"
+  },
+  "assertions": [
+    {
+      "name": "req.body.boolean",
+      "value": "isBoolean false",
+      "enabled": true
+    },
+    {
+      "name": "req.body.number_1",
+      "value": "isNumber 1",
+      "enabled": true
+    },
+    {
+      "name": "req.body.undefined",
+      "value": "isUndefined undefined",
+      "enabled": true
+    },
+    {
+      "name": "req.body.string",
+      "value": "isString bruno",
+      "enabled": true
+    },
+    {
+      "name": "req.body.null",
+      "value": "isNull null",
+      "enabled": true
+    },
+    {
+      "name": "req.body.array",
+      "value": "isArray",
+      "enabled": true
+    },
+    {
+      "name": "req.body.boolean",
+      "value": "eq false",
+      "enabled": true
+    },
+    {
+      "name": "req.body.number_1",
+      "value": "eq 1",
+      "enabled": true
+    },
+    {
+      "name": "req.body.undefined",
+      "value": "eq undefined",
+      "enabled": true
+    },
+    {
+      "name": "req.body.string",
+      "value": "eq bruno",
+      "enabled": true
+    },
+    {
+      "name": "req.body.null",
+      "value": "eq null",
+      "enabled": true
+    },
+    {
+      "name": "req.body.number_2",
+      "value": "eq 0",
+      "enabled": true
+    },
+    {
+      "name": "req.body.number_3",
+      "value": "eq -1",
+      "enabled": true
+    },
+    {
+      "name": "req.body.number_2",
+      "value": "isNumber",
+      "enabled": true
+    },
+    {
+      "name": "req.body.number_3",
+      "value": "isNumber",
+      "enabled": true
+    }
+  ]
+}

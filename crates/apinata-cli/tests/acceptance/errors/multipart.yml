@@ -1,0 +1,14 @@
+info:
+  name: Multipart
+  type: http
+  seq: 1
+http:
+  method: POST
+  url: "{{baseUrl}}/upload"
+  body:
+    type: multipart-form
+    data:
+      - name: upload
+        type: file
+        value:
+          - missing-upload.bin

@@ -1,0 +1,25 @@
+info:
+  name: Edgegrid auth -  request level
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://localhost:6000/edgegrid/version/2
+  auth:
+    type: akamai-edgegrid
+    accessToken: akab-acc35t0k3nodujqunph3w7hzp7-request
+    clientToken: akab-c113ntt0k3n4qtari252bfxxbsl-request
+    clientSecret: C113nt53KR3TN6N90yVuAgICxIRwsObLi0E67/request=
+    nonce: ec9d20ee-1e9b-4c1f-925a-request
+    timestamp: 20160804T07:00:00+0000
+    baseURL: https://akab-h05tnam3wl42son7nktnlnnx-kbob3i3v.luna.akamaiapis.request.net
+    headersToSign: ""
+    maxBodySize: 131072
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

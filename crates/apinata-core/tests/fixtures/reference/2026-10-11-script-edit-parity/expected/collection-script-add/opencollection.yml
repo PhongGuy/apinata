@@ -1,0 +1,28 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  scripts:
+    - type: before-request
+      code: bru.setVar("c", 1);
+    - type: tests
+      code: |-
+        test("c", function() {
+          expect(1).to.equal(1);
+        });
+bundled: false
+extensions: {}

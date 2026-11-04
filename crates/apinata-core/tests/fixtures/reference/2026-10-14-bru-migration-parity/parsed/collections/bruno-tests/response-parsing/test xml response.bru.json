@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test xml response",
+    "type": "http",
+    "seq": "9"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"application/xml\" },\n  \"content\": \"<message>hello</message>\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "eq <message>hello</message>",
+      "enabled": true
+    }
+  ]
+}

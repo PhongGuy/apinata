@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "setCookies",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\n// Set multiple cookies before the request\ntry {\n  await jar.setCookies('https://example.com', [\n    {\n      key: 'auth',\n      value: 'abc123',\n      path: '/path',          \n      httpOnly: true,\n      secure: true,\n      expires: new Date(Date.now() + 24 * 60 * 60 * 1000)\n    },\n    {\n      key: 'session',\n      value: 'xyz789',\n      path: '/foo',          \n      httpOnly: true,\n      secure: true,\n    }\n  ]);\n  \n  console.log(\"Multiple cookies set successfully in pre-request script\");\n  \n} catch (error) {\n  console.error(\"setCookies operation failed in pre-request:\", error);\n  throw new Error(`Pre-request setCookies failed: ${error.message || error}`);\n}"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\ntest(\"should have set multiple cookies successfully\", function() {\n  console.log(\"Verifying cookies set in pre-request script\");\n});\n\n// Test: Verify first cookie was set correctly\nconst authCookie = await jar.getCookie('https://example.com/path', 'auth');\n\ntest(\"should retrieve first cookie with correct properties\", function() {\n    expect(authCookie.key).to.equal(\"auth\");\n    expect(authCookie.value).to.equal(\"abc123\");\n    expect(authCookie.path).to.equal(\"/path\");\n    expect(authCookie.httpOnly).to.be.true;\n    expect(authCookie.secure).to.be.true;\n    expect(authCookie.domain).to.include('example.com');\n    console.log(\"Auth cookie verified:\", authCookie);\n});\n\n// Test: Verify second cookie was set correctly\nconst sessionCookie = await jar.getCookie('https://example.com/foo', 'session');\n\ntest(\"should retrieve second cookie with correct properties\", function() {\n  expect(sessionCookie).to.not.be.null;\n  if (sessionCookie) {\n    expect(sessionCookie.key).to.equal(\"session\");\n    expect(sessionCookie.value).to.equal(\"xyz789\");\n    expect(sessionCookie.path).to.equal(\"/foo\");\n    expect(sessionCookie.httpOnly).to.be.true;\n    expect(sessionCookie.secure).to.be.true;\n    expect(sessionCookie.domain).to.include('example.com');\n    console.log(\"Session cookie verified:\", sessionCookie);\n  }\n});\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

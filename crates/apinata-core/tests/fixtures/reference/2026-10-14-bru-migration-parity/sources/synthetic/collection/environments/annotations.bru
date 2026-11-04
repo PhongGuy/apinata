@@ -1,0 +1,19 @@
+vars {
+  @description('the host')
+  host: example.com
+  @number
+  port: 8080
+  @boolean
+  flag: true
+  @object
+  config: {"a": 1.0, "b": [1, 2]}
+  @description('first')
+  @description('second')
+  @number
+  twice: 2
+  @description('''
+    multi
+    line
+  ''')
+  noted: n
+}

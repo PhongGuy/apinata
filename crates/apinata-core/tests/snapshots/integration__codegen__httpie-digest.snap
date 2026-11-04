@@ -1,0 +1,5 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin --auth-type digest --auth 'alice:p'\''w' 'GET' 'http://x.test/digest'

@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "name": "multipart-example",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://api.example.com/upload",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "body": {
+    "multipartForm": [
+      {
+        "name": "files",
+        "value": [
+          "alpha.txt",
+          "beta.txt",
+          "gamma.txt"
+        ],
+        "enabled": true,
+        "type": "file",
+        "contentType": ""
+      }
+    ]
+  },
+  "examples": [
+    {
+      "name": "Three Files Example",
+      "description": "Example with three multipart file uploads",
+      "request": {
+        "url": "https://api.example.com/upload",
+        "method": "post",
+        "body": {
+          "mode": "multipartForm",
+          "multipartForm": [
+            {
+              "name": "files",
+              "value": [
+                "alpha.txt",
+                "beta.txt",
+                "gamma.txt"
+              ],
+              "enabled": true,
+              "type": "file",
+              "contentType": ""
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

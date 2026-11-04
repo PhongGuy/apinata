@@ -1,0 +1,188 @@
+info:
+  name: Full example request
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: https://api.example.com/users/:id
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Every request field
+    request:
+      url: https://api.example.com/users/42?q=1
+      method: post
+      headers:
+        - name: content-type
+          value: application/json
+        - name: x-debug
+          value: "true"
+          disabled: true
+        - name: quoted key
+          value: quoted value
+        - name: disabled quoted
+          value: off
+          disabled: true
+      params:
+        - name: id
+          value: "42"
+          type: path
+        - name: unused
+          value: "7"
+          type: path
+          disabled: true
+        - name: q
+          value: "1"
+          type: query
+        - name: page
+          value: "2"
+          type: query
+          disabled: true
+      body:
+        type: json
+        data: |-
+          {
+            "name": "Ada",
+            "tags": ["a", "b"]
+          }
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Text body
+    request:
+      url: ""
+      method: post
+      body:
+        type: text
+        data: |-
+          plain text
+            indented
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Xml body
+    request:
+      url: ""
+      method: post
+      body:
+        type: xml
+        data: <user><id>1</id></user>
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Sparql body
+    request:
+      url: ""
+      method: post
+      body:
+        type: sparql
+        data: SELECT ?s WHERE { ?s ?p ?o }
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Graphql body
+    request:
+      url: ""
+      method: post
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Form body
+    request:
+      url: ""
+      method: post
+      body:
+        type: form-urlencoded
+        data:
+          - name: a
+            value: "1"
+          - name: b
+            value: "2"
+            disabled: true
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Multipart body
+    request:
+      url: ""
+      method: post
+      body:
+        type: multipart-form
+        data:
+          - name: field
+            type: text
+            value: value
+            contentType: text/plain
+          - name: upload
+            type: file
+            value:
+              - a.txt
+              - ""
+              - b.txt
+          - name: skipped
+            type: text
+            value: no
+            disabled: true
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: File body
+    request:
+      url: ""
+      method: post
+      body:
+        type: file
+        data:
+          - filePath: data/body.json
+            contentType: application/json
+            selected: true
+          - filePath: data/other.bin
+            contentType: ""
+            selected: false
+          - filePath: ""
+            contentType: ""
+            selected: false
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Empty mode
+    request:
+      url: https://api.example.com/none
+      method: post
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""

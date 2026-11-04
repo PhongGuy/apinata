@@ -1,0 +1,25 @@
+openapi: 3.0.3
+info: {title: Security, version: "1"}
+servers: [{url: https://secure.example.test}]
+security:
+  - bearerAuth: []
+paths:
+  /public: {get: {summary: Public, security: []}}
+  /basic: {get: {summary: Basic, security: [{basicAuth: []}]}}
+  /key: {get: {summary: Key, security: [{keyHeader: []}, {keyQuery: []}]}}
+  /cookie: {get: {summary: Cookie, security: [{keyCookie: []}]}}
+  /oauth: {get: {summary: OAuth, security: [{oauth: [read]}]}}
+  /inherit: {get: {summary: Inherit}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: Bearer}
+    basicAuth: {type: http, scheme: BASIC}
+    digestAuth: {type: http, scheme: digest}
+    keyHeader: {type: apiKey, in: header, name: X-API-Key}
+    keyQuery: {type: apiKey, in: query, name: api_key}
+    keyCookie: {type: apiKey, in: cookie, name: session}
+    oauth:
+      type: oauth2
+      flows:
+        clientCredentials: {tokenUrl: 'https://secure.example.test/token', scopes: {read: read things}}
+    oidc: {type: openIdConnect, openIdConnectUrl: 'https://secure.example.test/.well-known'}

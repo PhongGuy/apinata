@@ -1,0 +1,59 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Date Type Test
+== Date Request.yml
+info:
+  name: Date Request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://example.com/test?date=2024-01-01&is_active=false&limit=0&version=2.0&count=42
+  params:
+    - name: date
+      value: 2024-01-01
+      type: query
+    - name: is_active
+      value: "false"
+      type: query
+    - name: limit
+      value: "0"
+      type: query
+    - name: version
+      value: "2.0"
+      type: query
+    - name: count
+      value: "42"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Base.yml
+name: Base
+variables:
+  - name: expiry_date
+    value: 2024-12-31
+  - name: max_retries
+    value: "3"
+  - name: enabled
+    value: "true"
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Date Type Test
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "runtime vars",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/text",
+    "body": "text",
+    "auth": "none"
+  },
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"envVar1\": \"{{env.var1}}\",\n  \"envVar2\": \"{{env-var2}}\"\n}",
+    "text": "Hi, I am {{rUser.full_name}},\nI am {{rUser.age}} years old.\nMy favorite food is {{rUser.fav-food[0]}} and {{rUser.fav-food[1]}}.\nI like attention: {{rUser['want.attention']}}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const brunoBirthDate = new Date('2019-08-08');\n\nconst calculateAgeFromBirthDate = (birthDate = brunoBirthDate) => {\n  const today = new Date();\n  let age = today.getFullYear() - birthDate.getFullYear();\n\n  const hasBirthdayPassedThisYear =\n    today.getMonth() > birthDate.getMonth() ||\n    (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());\n\n  if (!hasBirthdayPassedThisYear) {\n    age--;\n  }\n\n  return age;\n};\n\nconst brunoAge = calculateAgeFromBirthDate(brunoBirthDate);\n\nbru.setVar(\"rUser\", {\n  full_name: 'Bruno',\n  age: brunoAge,\n  'fav-food': ['egg', 'meat'],\n  'want.attention': true\n});"
+  },
+  "tests": "test(\"should return json\", function() {\n  const brunoBirthDate = new Date('2019-08-08');\n\n  const calculateAgeFromBirthDate = (birthDate = brunoBirthDate) => {\n    const today = new Date();\n    let age = today.getFullYear() - birthDate.getFullYear();\n\n    const hasBirthdayPassedThisYear =\n      today.getMonth() > birthDate.getMonth() ||\n      (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());\n\n    if (!hasBirthdayPassedThisYear) {\n      age--;\n    }\n\n    return age;\n  };\n\n  const brunoAge = calculateAgeFromBirthDate(brunoBirthDate);\n\n  const expectedResponse = `Hi, I am Bruno,\nI am ${brunoAge} years old.\nMy favorite food is egg and meat.\nI like attention: true`;\n  expect(res.getBody()).to.equal(expectedResponse);\n});\n"
+}

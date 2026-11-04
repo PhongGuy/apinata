@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test echo any",
+    "type": "http",
+    "seq": "11"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"text/plain\" },\n  \"content\": \"hello\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "eq hello",
+      "enabled": true
+    }
+  ]
+}

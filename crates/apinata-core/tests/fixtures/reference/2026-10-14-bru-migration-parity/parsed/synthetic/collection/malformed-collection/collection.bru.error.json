@@ -1,0 +1,4 @@
+{
+  "line": 5,
+  "message": "Line 5, col 1:\n  4 | \n> 5 | body:json {\n      ^\n  6 |   {}\nExpected end of input, \"docs\", \"tests\", \"script:post-response\", \"script:pre-request\", \"vars:post-response\", \"vars:pre-request\", \"auth:oauth2:additional_params:refresh_token_req:body\", \"auth:oauth2:additional_params:refresh_token_req:queryparams\", \"auth:oauth2:additional_params:refresh_token_req:headers\", \"auth:oauth2:additional_params:access_token_req:body\", \"auth:oauth2:additional_params:access_token_req:queryparams\", \"auth:oauth2:additional_params:access_token_req:headers\", \"auth:oauth2:additional_params:auth_req:queryparams\", \"auth:oauth2:additional_params:auth_req:headers\", \"auth:akamai-edgegrid\", \"auth:apikey\", \"auth:wsse\", \"auth:oauth2\", \"auth:oauth1\", \"auth:ntlm\", \"auth:digest\", \"auth:bearer\", \"auth:basic\", \"auth:awsv4\", \"auth\", \"headers\", \"query\", or \"meta\""
+}

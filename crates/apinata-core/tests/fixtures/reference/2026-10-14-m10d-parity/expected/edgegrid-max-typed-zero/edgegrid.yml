@@ -1,0 +1,25 @@
+info:
+  name: edgegrid
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/edgegrid
+  auth:
+    type: akamai-edgegrid
+    accessToken: akab-access
+    clientToken: akab-client
+    clientSecret: "{{clientSecret}}"
+    nonce: n0nce
+    timestamp: 20140321T19:34:21+0000
+    baseURL: https://akaa-base.luna.akamaiapis.net
+    headersToSign: X-Test1, X-Test2
+    maxBodySize: 0
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "name": "Example multiline pair",
+    "type": "http",
+    "seq": "7"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items/3"
+  },
+  "examples": [
+    {
+      "name": "Multiline",
+      "request": {
+        "headers": [
+          {
+            "name": "x-multi",
+            "value": "first\nsecond",
+            "enabled": true
+          },
+          {
+            "name": "x-after",
+            "value": "tail",
+            "enabled": true
+          }
+        ]
+      },
+      "response": {
+        "headers": [
+          {
+            "name": "x-multi",
+            "value": "alpha\nbeta",
+            "enabled": true
+          }
+        ]
+      }
+    }
+  ]
+}

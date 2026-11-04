@@ -1,0 +1,23 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: ""
+
+runtime:
+  variables:
+    - name: key
+      value: value
+      description: found in C:\Users\File\Path
+    - name: key2
+      value: value
+      description: "height of 2' "
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

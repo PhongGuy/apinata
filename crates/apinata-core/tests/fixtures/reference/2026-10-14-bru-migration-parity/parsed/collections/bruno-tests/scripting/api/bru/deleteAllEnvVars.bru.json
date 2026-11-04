@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "deleteAllEnvVars",
+    "type": "http",
+    "seq": "23"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setEnvVar(\"testDelAllEnvVar\", \"to-be-deleted\");"
+  },
+  "tests": "const savedEnvVars = bru.getAllEnvVars();\nbru.deleteAllEnvVars();\n\ntest(\"should delete all env vars\", function() {\n  const val = bru.getEnvVar(\"testDelAllEnvVar\");\n  expect(val).to.be.undefined;\n});\n\ntest(\"should preserve env name after deleting all vars\", function() {\n  const envName = bru.getEnvName();\n  expect(envName).to.equal(\"Prod\");\n});\n\ntest(\"should not throw when called on empty scope\", function() {\n  expect(function() {\n    bru.deleteAllEnvVars();\n  }).to.not.throw();\n});\n\n// Restore env vars for subsequent requests\nfor (const [key, value] of Object.entries(savedEnvVars)) {\n  bru.setEnvVar(key, value);\n}"
+}

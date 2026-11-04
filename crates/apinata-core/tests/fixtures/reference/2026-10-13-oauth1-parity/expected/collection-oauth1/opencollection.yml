@@ -1,0 +1,38 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  auth:
+    type: oauth1
+    consumerKey: ck
+    consumerSecret: ""
+    accessToken: ""
+    accessTokenSecret: ""
+    callbackUrl: ""
+    verifier: ""
+    signatureMethod: PLAINTEXT
+    privateKey:
+      type: text
+      value: ""
+    timestamp: ""
+    nonce: ""
+    version: "1.0"
+    realm: r
+    placement: header
+    includeBodyHash: false
+bundled: false
+extensions: {}

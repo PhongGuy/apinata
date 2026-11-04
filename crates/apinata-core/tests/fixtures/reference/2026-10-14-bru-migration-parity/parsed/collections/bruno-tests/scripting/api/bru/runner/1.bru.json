@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "1",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://echo.usebruno.com",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setVar('bru-runner-req', 1);",
+    "res": "bru.setVar('bru.runner.skipRequest', true);"
+  }
+}

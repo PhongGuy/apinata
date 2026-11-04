@@ -1,0 +1,32 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/users/:id?page=1&~size=2"
+  },
+  "params": [
+    {
+      "name": "page",
+      "value": "1",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "size",
+      "value": "2",
+      "enabled": false,
+      "type": "query"
+    },
+    {
+      "name": "id",
+      "value": "42",
+      "enabled": true,
+      "type": "path"
+    },
+    {
+      "name": "legacy",
+      "value": "yes",
+      "enabled": true,
+      "type": "query"
+    }
+  ]
+}

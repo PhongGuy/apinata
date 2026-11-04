@@ -1,0 +1,17 @@
+get {
+  url: https://example.com
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: authorization_code
+  callback_url: https://example.com/cb
+  authorization_url: https://example.com/auth
+  access_token_url: https://example.com/token
+  client_id: cid
+  client_secret: csecret
+  scope: openid
+  state: xyz
+  pkce: true
+  token_source: id_token
+}

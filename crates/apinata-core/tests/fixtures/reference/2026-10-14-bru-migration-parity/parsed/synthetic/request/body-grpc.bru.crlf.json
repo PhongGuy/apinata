@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "name": "grpc body",
+    "type": "grpc",
+    "seq": 1
+  },
+  "body": {
+    "mode": "grpc",
+    "grpc": [
+      {
+        "name": "message 1",
+        "content": "{\r\n  \"id\": 1\r\n}"
+      },
+      {
+        "name": "message 2",
+        "content": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Dropped Missing Method (null) [-]: the request has no method
+Dropped Missing Method (absent) [-]: the request has no method
+Dropped Empty String Method [-]: the request has no method
+Dropped Whitespace-Only Method [-]: the request has no method
+Dropped API Folder / Nested Missing Method [-]: the request has no method
+Dropped API Folder / Deep Subfolder / Deep Bad Method [-]: the request has no method

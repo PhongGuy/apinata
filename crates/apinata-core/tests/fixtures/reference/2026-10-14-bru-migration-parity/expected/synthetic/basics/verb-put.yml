@@ -1,0 +1,15 @@
+info:
+  name: Verb put
+  type: http
+  seq: 2
+
+http:
+  method: PUT
+  url: https://example.com/put?x=1
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

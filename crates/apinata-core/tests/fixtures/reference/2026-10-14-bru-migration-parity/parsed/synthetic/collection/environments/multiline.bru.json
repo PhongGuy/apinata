@@ -1,0 +1,16 @@
+{
+  "variables": [
+    {
+      "name": "key",
+      "value": "-----BEGIN KEY-----\n  indented\n-----END KEY-----",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "after",
+      "value": "x",
+      "enabled": true,
+      "secret": false
+    }
+  ]
+}

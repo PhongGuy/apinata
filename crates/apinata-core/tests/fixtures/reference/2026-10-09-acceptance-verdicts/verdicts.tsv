@@ -1,0 +1,50 @@
+users/get-user.yml	res.status	eq {{expected}}	pass
+users/get-user.yml	res.statusText	eq OK	pass
+users/get-user.yml	res.status	neq 404	pass
+users/get-user.yml	res.body.id	gt 6	pass
+users/get-user.yml	res.body.id	gte {{userId}}	pass
+users/get-user.yml	res.body.score	lt 5	pass
+users/get-user.yml	res.body.score	lte 4.5	pass
+users/get-user.yml	res.body.name	in Bob, Ann Lee	pass
+users/get-user.yml	res.body.id	notIn [1, 2, 3]	pass
+users/get-user.yml	res.body.email	contains @example	pass
+users/get-user.yml	res.body.tags	notContains guest	pass
+users/get-user.yml	res.body.tags	length 2	pass
+users/get-user.yml	res.body.email	matches /^[a-z]+@/	pass
+users/get-user.yml	res.body.name	notMatches \d	pass
+users/get-user.yml	res.body.email	startsWith ann	pass
+users/get-user.yml	res.body.email	endsWith .test	pass
+users/get-user.yml	res.body.score	between 4, 5	pass
+users/get-user.yml	res.body.profile	isEmpty	pass
+users/get-user.yml	res.body.tags	isNotEmpty	pass
+users/get-user.yml	res.body.manager	isNull	pass
+users/get-user.yml	res.body.missing	isUndefined	pass
+users/get-user.yml	res.headers['x-request-id']	isDefined	pass
+users/get-user.yml	res.body.active	isTruthy	pass
+users/get-user.yml	res.body.archived	isFalsy	pass
+users/get-user.yml	res.body	isJson	pass
+users/get-user.yml	res.body.id	isNumber	pass
+users/get-user.yml	res.headers['x-request-id']	isString	pass
+users/get-user.yml	res.body.active	isBoolean	pass
+users/get-user.yml	res.body.tags	isArray	pass
+users/get-user.yml	res.body.tags[0]	eq admin	pass
+users/get-user.yml	res.body['email']	isNotEmpty	pass
+users/get-user.yml	res.responseTime	lt 10000	pass
+users/create-user.yml	res.status	eq 201	pass
+users/create-user.yml	res.body.name	eq "Bob"	pass
+users/create-user.yml	res.body.id	eq 9	fail: expected 8 to equal 9
+users/create-user.yml	res.body.id	eq ${8}	fail: expected 8 to equal '8'
+users/create-user.yml	res.url	isDefined	pass
+forms/login.yml	res.body	eq welcome ann	pass
+forms/login.yml	res.body	startsWith welcome	pass
+forms/login.yml	res.headers['content-type']	contains text/plain	pass
+forms/ping.yml	res.status	eq 204	pass
+forms/ping.yml	res.body	isEmpty	pass
+keys/query-key.yml	res.body	length 3	pass
+keys/query-key.yml	res.body[1]	eq 2	pass
+keys/header-key.yml	res.status	eq 200	pass
+flow/redirect.yml	res.status	eq 200	pass
+flow/redirect.yml	res.body.landed	isTruthy	pass
+flow/no-follow.yml	res.status	eq 302	pass
+flow/no-follow.yml	res.headers.location	eq /new	pass
+flow/whoami.yml	res.body.session	eq abc	pass

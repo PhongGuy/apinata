@@ -1,0 +1,11 @@
+{
+  "color": "#ff0000",
+  "variables": [
+    {
+      "name": "a",
+      "value": "1",
+      "enabled": true,
+      "secret": false
+    }
+  ]
+}

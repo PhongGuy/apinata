@@ -1,0 +1,27 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: POST
+  url: https://example.com/form
+  body:
+    type: form-urlencoded
+    data:
+      - name: a
+        value: "1"
+      - name: b
+        value: two
+        disabled: true
+      - name: c
+        value: |-
+          line one
+          line two
+        description: the c field
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

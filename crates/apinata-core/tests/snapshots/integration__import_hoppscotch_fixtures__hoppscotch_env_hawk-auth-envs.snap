@@ -1,0 +1,28 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== HAWK Auth - environments.yml
+name: HAWK Auth - environments
+variables:
+  - name: url
+    value: https://postman-echo.com/auth/hawk
+  - name: id
+    value: dh37fgj492je
+  - name: key
+    value: werxhqb98rpaxn39848xrunpaw3489ruxnpa98w4rxn
+  - name: algorithm
+    value: sha256
+  - name: user
+    value: ""
+  - name: nonce
+    value: ""
+  - name: ext
+    value: ""
+  - name: app
+    value: ""
+  - name: dlg
+    value: ""
+  - name: timestamp
+    value: ""
+== report

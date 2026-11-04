@@ -1,0 +1,116 @@
+[package]
+name = "apinata-core"
+version.workspace = true
+description = "UI-free core of Apinata: OpenCollection format, writer and execution"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# One integration binary: tests/main.rs declares every test file as a module.
+autotests = false
+
+[dependencies]
+yaml_serde.workspace = true
+saphyr-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true
+serde_json_path.workspace = true
+uppsala.workspace = true
+ryu-js.workspace = true
+regress.workspace = true
+markdown.workspace = true
+notify-debouncer-full.workspace = true
+thiserror.workspace = true
+similar.workspace = true
+base64.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
+hyper-util.workspace = true
+tower.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+pkcs8.workspace = true
+scrypt.workspace = true
+jsonwebtoken.workspace = true
+aws-lc-rs.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+cookie_store.workspace = true
+publicsuffix.workspace = true
+time.workspace = true
+encoding_rs.workspace = true
+mime.workspace = true
+tokio-util.workspace = true
+dirs.workspace = true
+trash.workspace = true
+tempfile.workspace = true
+rand.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "time", "sync"] }
+rquickjs.workspace = true
+aes-gcm.workspace = true
+sha2.workspace = true
+md-5.workspace = true
+md4.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+rsa.workspace = true
+aws-sigv4.workspace = true
+aws-credential-types.workspace = true
+keyring-core = { workspace = true, optional = true }
+minisign-verify = { workspace = true, optional = true }
+semver = { workspace = true, optional = true }
+tar = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = { workspace = true, optional = true }
+self-replace = { workspace = true, optional = true }
+
+[features]
+default = ["keychain"]
+# The platform keychain as a SecretStore.
+keychain = [
+    "dep:keyring-core",
+    "dep:zbus-secret-service-keyring-store",
+    "dep:apple-native-keyring-store",
+    "dep:windows-native-keyring-store",
+]
+# The signed-manifest update check and the standalone CLI installer.
+update = [
+    "dep:minisign-verify",
+    "dep:semver",
+    "dep:self-replace",
+    "dep:tar",
+    "dep:flate2",
+]
+
+[dev-dependencies]
+# Per-thread CPU time for the linear-cost translation tests.
+cpu-time = "1"
+socket2 = { workspace = true }
+tokio = { workspace = true, features = ["time", "test-util"] }
+bytes = "1"
+http-body-util = { workspace = true, features = ["channel"] }
+wiremock.workspace = true
+flate2.workspace = true
+tar.workspace = true
+tokio-rustls.workspace = true
+hyper = { workspace = true, features = ["server", "http1", "http2"] }
+hyper-util = { workspace = true, features = ["server-auto", "tokio"] }
+insta.workspace = true
+oas3.workspace = true
+minisign.workspace = true
+
+# A single test executable keeps the link count (and the target dir) small.
+[[test]]
+name = "integration"
+path = "tests/main.rs"

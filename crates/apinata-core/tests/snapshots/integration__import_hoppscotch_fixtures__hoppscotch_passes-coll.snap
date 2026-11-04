@@ -1,0 +1,66 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: tests
+== 1.yml
+info:
+  name: ""
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/{{HEADERS_TYPE1}}
+  body:
+    type: json
+    data: |-
+      {
+      "test": "{{HEADERS_TYPE1}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: tests
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== success.yml
+info:
+  name: success
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/{{HEADERS_TYPE2}}
+  body:
+    type: json
+    data: |-
+      {
+      "test": "{{HEADERS_TYPE2}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Renamed : the name `` cannot be used as a file name here, so it was written to `1.yml`; the display name is kept (1.yml)
+Dropped  / preRequestScript: scripts are not imported (1.yml)
+Dropped  / testScript: scripts are not imported (1.yml)
+Dropped success / preRequestScript: scripts are not imported (success.yml)
+Dropped success / testScript: scripts are not imported (success.yml)

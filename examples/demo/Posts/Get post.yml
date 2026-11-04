@@ -1,0 +1,42 @@
+info:
+  name: Get post
+  type: http
+  seq: 2
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/posts/:id"
+  params:
+    - name: id
+      value: "{{postId}}"
+      type: path
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.id
+      operator: eq
+      value: "1"
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.title
+        method: jsonq
+      variable:
+        name: postTitle
+        scope: runtime
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Fetches the post named by the `postId` collection variable and keeps its title as `postTitle`.

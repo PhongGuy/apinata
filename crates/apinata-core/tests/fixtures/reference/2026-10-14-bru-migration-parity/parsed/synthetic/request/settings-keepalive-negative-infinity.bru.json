@@ -1,0 +1,11 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "settings": {
+    "encodeUrl": false,
+    "timeout": 0,
+    "keepAliveInterval": "-Infinity"
+  }
+}

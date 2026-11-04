@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test JSON null response",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"application/json\" },\n  \"content\": \"null\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "eq null",
+      "enabled": true
+    }
+  ]
+}

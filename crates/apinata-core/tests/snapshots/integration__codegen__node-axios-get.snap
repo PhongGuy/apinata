@@ -1,0 +1,22 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import axios from 'axios';
+
+const url = 'http://x.test/a?q=1&r=two';
+const headers = {
+  'X-A': '2',
+  'Cookie': 'b=2',
+};
+
+const response = await axios.request({
+  method: 'GET',
+  url,
+  headers,
+  transformRequest: (d) => d,
+  transformResponse: (r) => r,
+  validateStatus: () => true,
+});
+console.log(response.status);
+console.log(response.data);

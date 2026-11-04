@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "assimilate",
+    "type": "http",
+    "seq": "9"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.headerList.assimilate([\n  { key: 'x-merged', value: 'merged-value' }\n]);"
+  },
+  "tests": "test(\"req.headerList.assimilate(source) - merges without removing existing\", function() {\n  expect(req.getHeader('bruno')).to.equal('is-awesome');\n  expect(req.getHeader('x-merged')).to.equal('merged-value');\n});"
+}

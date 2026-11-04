@@ -1,0 +1,60 @@
+meta {
+  name: Example response
+  type: http
+  seq: 4
+}
+
+get {
+  url: https://api.example.com/items/1
+}
+
+example {
+  name: Created
+  response: {
+    headers: {
+      content-type: application/json
+      ~x-trace: abc
+    }
+
+    status: {
+      code: 201
+      text: Created
+    }
+
+    body: {
+      type: json
+      content: '''
+        {
+          "id": 1
+        }
+      '''
+    }
+  }
+}
+
+example {
+  name: Defaults
+  response: {
+    status: {
+      text:
+    }
+    body: {
+      content: '''
+        plain
+      '''
+      type: text
+    }
+  }
+}
+
+example {
+  name: Content type on content
+  response: {
+    body: {
+      type: xml
+      content: '''
+        <ok/>
+      ''' @contentType(application/xml)
+    }
+  }
+}

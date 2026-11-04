@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "name": "form-urlencoded",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "formUrlEncoded",
+    "auth": "none"
+  },
+  "body": {
+    "formUrlEncoded": [
+      {
+        "name": "fu_str",
+        "value": "{{fu_str}}",
+        "enabled": true
+      },
+      {
+        "name": "fu_num",
+        "value": "{{fu_num}}",
+        "enabled": true
+      },
+      {
+        "name": "fu_bool",
+        "value": "{{fu_bool}}",
+        "enabled": true
+      },
+      {
+        "name": "fu_obj",
+        "value": "{{fu_obj}}",
+        "enabled": true
+      }
+    ]
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "fu_str",
+        "value": "form_string",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "fu_num",
+        "value": 42,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "fu_bool",
+        "value": true,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "fu_obj",
+        "value": {
+          "key": "value"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      }
+    ]
+  },
+  "tests": "test(\"form-urlencoded values stringify typed vars on the wire\", () => {\n  const raw = res.getBody();\n  expect(raw).to.contain(\"fu_str=form_string\");\n  expect(raw).to.contain(\"fu_num=42\");\n  expect(raw).to.contain(\"fu_bool=true\");\n  expect(raw).to.contain(\"fu_obj=%7B%22key%22%3A%22value%22%7D\");\n});"
+}

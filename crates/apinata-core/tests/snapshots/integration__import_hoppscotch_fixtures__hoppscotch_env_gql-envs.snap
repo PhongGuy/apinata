@@ -1,0 +1,10 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== gql-envs.yml
+name: gql-envs
+variables:
+  - name: greeting
+    value: hello-world
+== report

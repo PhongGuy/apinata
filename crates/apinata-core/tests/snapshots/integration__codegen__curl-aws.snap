@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+# AWS Signature auth is not included in this snippet.
+curl --request 'GET' \
+  --url 'http://x.test/aws'

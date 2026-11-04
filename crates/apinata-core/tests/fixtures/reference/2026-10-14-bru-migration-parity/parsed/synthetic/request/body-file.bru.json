@@ -1,0 +1,33 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/file",
+    "body": "file"
+  },
+  "body": {
+    "file": [
+      {
+        "contentType": "application/json",
+        "filePath": "a.json",
+        "selected": true
+      },
+      {
+        "contentType": "",
+        "filePath": "b.bin",
+        "selected": false
+      },
+      {
+        "name": "plain",
+        "value": "not a file",
+        "enabled": true,
+        "contentType": "text/plain"
+      },
+      {
+        "name": "other",
+        "value": "just text",
+        "enabled": true,
+        "contentType": ""
+      }
+    ]
+  }
+}

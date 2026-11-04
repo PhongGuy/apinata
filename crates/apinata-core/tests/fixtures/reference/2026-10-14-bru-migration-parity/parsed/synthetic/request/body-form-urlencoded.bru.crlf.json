@@ -1,0 +1,33 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/form",
+    "body": "formUrlEncoded"
+  },
+  "body": {
+    "formUrlEncoded": [
+      {
+        "name": "a",
+        "value": "1",
+        "enabled": true
+      },
+      {
+        "name": "b",
+        "value": "two",
+        "enabled": false
+      },
+      {
+        "name": "c",
+        "value": "line one\r\nline two",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "description",
+            "value": "the c field"
+          }
+        ],
+        "description": "the c field"
+      }
+    ]
+  }
+}

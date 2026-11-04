@@ -1,0 +1,23 @@
+info:
+  name: Tabbed
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://example.com/ws
+  headers:
+    - name: a
+      value: "1"
+    - name: b
+      value: "2"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |
+  text with trailing   

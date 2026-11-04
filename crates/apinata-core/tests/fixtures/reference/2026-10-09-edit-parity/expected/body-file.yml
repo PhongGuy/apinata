@@ -1,0 +1,24 @@
+info:
+  name: request_1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/one
+  body:
+    type: file
+    data:
+      - filePath: data/a.bin
+        contentType: application/octet-stream
+        selected: true
+      - filePath: b.json
+        contentType: ""
+        selected: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

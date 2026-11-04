@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "process",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "test(\"process exists with expected properties\", function() {\n  expect(typeof process).to.equal('object');\n  expect(process.version).to.match(/^v\\d+\\.\\d+\\.\\d+/);\n  expect(process.versions).to.have.property('node');\n  expect(process.versions).to.have.property('v8');\n});\n\ntest(\"process.arch and process.platform\", function() {\n  expect(['x64', 'arm64', 'arm', 'ia32']).to.include(process.arch);\n  expect(['darwin', 'linux', 'win32']).to.include(process.platform);\n});\n\ntest(\"process.pid and process.title\", function() {\n  expect(process.pid).to.be.a('number').and.to.be.greaterThan(0);\n  expect(process.title).to.be.a('string');\n});\n\ntest(\"process.argv is array\", function() {\n  expect(process.argv).to.be.an('array');\n});\n\ntest(\"process.env is available\", function() {\n  expect(process.env).to.be.an('object');\n});\n\ntest(\"process.nextTick is available\", function() {\n  expect(process.nextTick).to.be.a('function');\n});"
+}

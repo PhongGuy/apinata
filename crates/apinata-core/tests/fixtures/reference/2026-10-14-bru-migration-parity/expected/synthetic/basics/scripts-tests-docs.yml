@@ -1,0 +1,36 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com/scripts
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        const a = 1;
+        if (a) {
+          bru.setVar("x", a);
+        }
+    - type: after-response
+      code: console.log(res.status);
+    - type: tests
+      code: |-
+        test("ok", function() {
+          expect(res.status).to.equal(200);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  # Title
+
+  Some *docs*   with trailing spaces   
+    indented four

@@ -1,0 +1,34 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# New
+== Test.yml
+info:
+  name: Test
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://insomnia.rest
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: New
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

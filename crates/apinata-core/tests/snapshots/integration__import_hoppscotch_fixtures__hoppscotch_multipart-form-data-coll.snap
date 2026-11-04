@@ -1,0 +1,47 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: Multipart form data content type - Collection
+== multipart-form-data-sample-req.yml
+info:
+  name: multipart-form-data-sample-req
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: multipart-form
+    data:
+      - name: key1
+        type: text
+        value: value1
+      - name: key2
+        type: file
+        value:
+          - ""
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Multipart form data content type - Collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+NeedsInput multipart-form-data-sample-req / body.body[1]: the exported file is lost; choose the file to send (multipart-form-data-sample-req.yml)
+Dropped multipart-form-data-sample-req / auth.addTo: not imported (multipart-form-data-sample-req.yml)
+Dropped multipart-form-data-sample-req / auth.grantTypeInfo: not imported (multipart-form-data-sample-req.yml)
+Dropped multipart-form-data-sample-req / testScript: scripts are not imported (multipart-form-data-sample-req.yml)

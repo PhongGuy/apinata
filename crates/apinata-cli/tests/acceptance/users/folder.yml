@@ -1,0 +1,8 @@
+info:
+  name: users
+  type: folder
+  seq: 1
+request:
+  variables:
+    - name: userId
+      value: "7"

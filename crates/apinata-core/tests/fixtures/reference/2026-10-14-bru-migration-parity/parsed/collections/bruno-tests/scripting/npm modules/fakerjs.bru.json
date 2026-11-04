@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "fakerjs",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const { faker } = require('@faker-js/faker');\nconst uuid = faker.string.uuid();\n\nconst data = req.getBody();\ndata.uuid = uuid;\n\nreq.setBody(data);"
+  },
+  "tests": "test(\"should return json\", function() {\n  const data = res.getBody();\n  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n  const isUUID = (inputString) => {\n    return uuidRegex.test(inputString);\n  };\n  \n  expect(data.hello).to.equal(\"bruno\");\n  expect(isUUID(data.uuid)).to.be.true;\n});\n"
+}

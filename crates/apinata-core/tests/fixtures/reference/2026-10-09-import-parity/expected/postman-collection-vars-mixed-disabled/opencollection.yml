@@ -1,0 +1,20 @@
+opencollection: 1.0.0
+
+info:
+  name: Vars Mixed Disabled Collection
+
+request:
+  variables:
+    - name: enabledVar
+      value: value1
+    - name: disabledVar
+      value: value2
+      disabled: true
+    - name: explicitlyEnabledVar
+      value: value3
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

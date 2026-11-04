@@ -1,0 +1,12 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+# Invoke-RestMethod sends header names and values as ASCII only; left out: X-H.
+#Requires -Version 7
+
+$url = 'http://x.test/p?x=a%27b$c{d}&y=%C3%BC'
+$headers = [ordered]@{}
+$body = [System.Text.Encoding]::UTF8.GetBytes("a'b`"c\d `$e {f}`tg`nü€`u{2028}end")
+Invoke-RestMethod -Uri $url -Method Post -Headers $headers -ContentType 'text/plain' -Body $body -SkipHeaderValidation

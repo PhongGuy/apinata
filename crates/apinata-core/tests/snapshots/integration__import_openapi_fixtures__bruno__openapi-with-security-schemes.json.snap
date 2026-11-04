@@ -1,0 +1,189 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Admin get users.yml
+info:
+  name: Admin get users
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/admin/users"
+  auth:
+    type: oauth2
+    flow: authorization_code
+    authorizationUrl: https://auth.example.com/oauth/authorize
+    accessTokenUrl: https://auth.example.com/oauth/token
+    credentials:
+      clientId: "{{clientId}}"
+      clientSecret: "{{clientSecret}}"
+      placement: body
+    scope: admin
+    pkce: {}
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve all users (admin only)
+
+=== Create user.yml
+info:
+  name: Create user
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/users"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "",
+        "email": ""
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Create a new user
+
+=== Get public data.yml
+info:
+  name: Get public data
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: "{{baseUrl}}/public/data"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve public data without authentication
+
+=== Get users.yml
+info:
+  name: Get users
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve a list of users
+
+=== environments/Production server.yml
+name: Production server
+variables:
+  - name: baseUrl
+    value: https://api.example.com/v1
+  - secret: true
+    name: token
+  - name: clientId
+    value: ""
+  - secret: true
+    name: clientSecret
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: API with Security Schemes
+
+request:
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs:
+  content: An API that demonstrates various security schemes
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /admin/users:
+          target: 977dd77267348ad3
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: a35cdf8fbf2e481e
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Admin get users.yml
+        GET /public/data:
+          target: 302d15f41caae4f0
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: cc7c53ad43cfd408
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get public data.yml
+        GET /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: a36e2212f23fc6c6
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get users.yml
+        POST /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: 1ae86c2232031451
+          docs: 827ab1cac8f95a18
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Create user.yml
+
+note Converted Admin get users.yml | paths./admin/users.get.security | `oauth2` uses placeholder variables: set their values in the environment
+note NeedsInput environments/Production server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
+note NeedsInput environments/Production server.yml | components.securitySchemes | the secret `clientSecret` has no value; enter it before sending
+secret Production server token
+secret Production server clientSecret

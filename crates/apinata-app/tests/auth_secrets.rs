@@ -1,0 +1,383 @@
+//! OAuth 2.0 auth edits: a typed client secret or password goes to `.env`, never into a file.
+
+use crate::support;
+
+use apinata_app::command::{Command, Edit, NoticeKind, Target};
+use apinata_app::model::CollectionModel;
+use apinata_core::{AuthSpec, OAuth2Flow, OAuth2Spec};
+use gpui_kit::{Entity, TestAppContext};
+use std::path::Path;
+use std::process::Command as Process;
+use support::*;
+use tempfile::TempDir;
+
+const TRACKED: &str = ".env is tracked by git, so the secret was not saved; untrack it first";
+
+// A request with a client credentials auth; `credentials` lines go under `credentials:`.
+fn oauth_request(flow: &str, credentials: &str, extra: &str) -> String {
+    format!(
+        "info:\n  name: r\n  type: http\n  seq: 1\n\nhttp:\n  method: GET\n  url: http://x\n  auth:\n    type: oauth2\n    flow: {flow}\n    accessTokenUrl: http://id/token\n    credentials:\n      clientId: svc\n{credentials}{extra}"
+    )
+}
+
+fn cc_request(credentials: &str) -> String {
+    oauth_request("client_credentials", credentials, "")
+}
+
+fn request_auth(cx: &mut TestAppContext, model: &Entity<CollectionModel>) -> AuthSpec {
+    snap(cx, model).content.requests[&ip("r.yml")].auth.clone()
+}
+
+fn oauth(auth: AuthSpec) -> OAuth2Spec {
+    match auth {
+        AuthSpec::OAuth2(o) => o,
+        other => panic!("not oauth2: {other:?}"),
+    }
+}
+
+fn edit(cx: &mut TestAppContext, model: &Entity<CollectionModel>, target: Target, auth: AuthSpec) {
+    send(
+        cx,
+        model,
+        Command::Edit {
+            target,
+            edit: Edit::Auth(auth),
+        },
+    );
+    cx.run_until_parked();
+}
+
+fn save(cx: &mut TestAppContext, model: &Entity<CollectionModel>, target: Target) {
+    send(cx, model, Command::Save(target));
+    cx.run_until_parked();
+}
+
+fn with_secret(secret: &str) -> AuthSpec {
+    let mut o = OAuth2Spec::new(OAuth2Flow::ClientCredentials);
+    o.access_token_url = "http://id/token".into();
+    o.client_id = "svc".into();
+    o.client_secret = secret.into();
+    AuthSpec::OAuth2(o)
+}
+
+fn read(dir: &TempDir, rel: &str) -> String {
+    std::fs::read_to_string(dir.path().join(rel)).unwrap_or_default()
+}
+
+fn git(dir: &Path, args: &[&str]) {
+    let out = Process::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .output()
+        .expect("git runs");
+    assert!(out.status.success(), "git {args:?}");
+}
+
+#[gpui_kit::test]
+fn a_typed_client_secret_moves_to_dotenv(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &cc_request(""))]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    o.client_secret = "CL1ENTs3cret".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(
+        oauth(request_auth(cx, &model)).client_secret,
+        "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"
+    );
+    assert_eq!(
+        read(&dir, ".env"),
+        "APINATA_OAUTH2_CLIENT_SECRET='CL1ENTs3cret'\n"
+    );
+    assert_eq!(read(&dir, ".gitignore"), ".env\n");
+    assert_eq!(
+        notices(cx, &model),
+        [NoticeKind::Warnings(vec![
+            "Added .env to .gitignore".into()
+        ])]
+    );
+    save(cx, &model, Target::Request(ip("r.yml")));
+    let saved = read(&dir, "r.yml");
+    assert!(
+        saved.contains("clientSecret: \"{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}\"")
+            && !saved.contains("CL1ENTs3cret"),
+        "{saved}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_password_grant_password_moves_too(cx: &mut TestAppContext) {
+    let file = oauth_request(
+        "resource_owner_password_credentials",
+        "",
+        "    resourceOwner:\n      username: ann\n",
+    );
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &file)]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    assert_eq!(o.flow, OAuth2Flow::Password);
+    o.password = "pw-1234".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(
+        oauth(request_auth(cx, &model)).password,
+        "{{process.env.APINATA_OAUTH2_PASSWORD}}"
+    );
+    assert!(read(&dir, ".env").contains("APINATA_OAUTH2_PASSWORD='pw-1234'"));
+}
+
+#[gpui_kit::test]
+fn folder_and_collection_auth_move_too(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+    ]);
+    let model = open(cx, &dir);
+    edit(
+        cx,
+        &model,
+        Target::Folder(ip("users")),
+        with_secret("s1-folder"),
+    );
+    edit(cx, &model, Target::Collection, with_secret("s2-collection"));
+    save(cx, &model, Target::Folder(ip("users")));
+    save(cx, &model, Target::Collection);
+    let folder = read(&dir, "users/folder.yml");
+    assert!(
+        folder.contains("{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}")
+            && !folder.contains("s1-folder"),
+        "{folder}"
+    );
+    let root = read(&dir, "opencollection.yml");
+    assert!(
+        root.contains("{{process.env.APINATA_OAUTH2_CLIENT_SECRET_2}}")
+            && !root.contains("s2-collection"),
+        "{root}"
+    );
+}
+
+#[gpui_kit::test]
+fn an_existing_literal_stays(cx: &mut TestAppContext) {
+    let file = cc_request("      clientSecret: old-plain\n");
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &file)]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    assert_eq!(o.client_secret, "old-plain");
+    o.client_id = "svc2".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert!(read(&dir, "r.yml").contains("old-plain"));
+    assert!(!dir.path().join(".env").exists());
+    assert!(notices(cx, &model).is_empty());
+}
+
+#[gpui_kit::test]
+fn a_reference_keeps_its_name(cx: &mut TestAppContext) {
+    let file = cc_request("      clientSecret: \"{{process.env.MY_CS}}\"\n");
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &file),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    o.client_secret = "new-secret".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(read(&dir, ".env"), "MY_CS='new-secret'\n");
+    assert_eq!(
+        oauth(request_auth(cx, &model)).client_secret,
+        "{{process.env.MY_CS}}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_template_is_written_as_is(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &cc_request(""))]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    o.client_secret = "{{cs}}".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(oauth(request_auth(cx, &model)).client_secret, "{{cs}}");
+    assert!(!dir.path().join(".env").exists());
+    assert!(notices(cx, &model).is_empty());
+}
+
+#[gpui_kit::test]
+fn a_tracked_dotenv_refuses_and_writes_nothing(cx: &mut TestAppContext) {
+    let file = cc_request("");
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &file),
+        (".env", "X=1\n"),
+    ]);
+    git(dir.path(), &["init", "-q"]);
+    git(dir.path(), &["add", ".env"]);
+    let model = open(cx, &dir);
+    let before = request_auth(cx, &model);
+    let mut o = oauth(before.clone());
+    o.client_secret = "CL1ENTs3cret".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(
+        notices(cx, &model),
+        [NoticeKind::Failed {
+            target: Some(Target::Request(ip("r.yml"))),
+            message: TRACKED.into(),
+            row: None
+        }]
+    );
+    assert_eq!(request_auth(cx, &model), before);
+    assert_eq!(read(&dir, ".env"), "X=1\n");
+    assert!(!dir.path().join(".gitignore").exists());
+    assert_eq!(read(&dir, "r.yml"), file);
+}
+
+#[gpui_kit::test]
+fn a_held_auth_edit_writes_no_dotenv(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &cc_request(""))]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    std::fs::write(
+        dir.path().join("r.yml"),
+        cc_request("").replace("name: r", "name: renamed"),
+    )
+    .unwrap();
+    send(cx, &model, Command::Reload(vec![dir.path().join("r.yml")]));
+    o.client_secret = "CL1ENTs3cret".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(
+        notices(cx, &model),
+        [NoticeKind::Stale(Target::Request(ip("r.yml")))]
+    );
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+}
+
+#[gpui_kit::test]
+fn other_auth_modes_are_untouched(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &request("r", "http://x")),
+    ]);
+    let model = open(cx, &dir);
+    let basic = AuthSpec::Basic {
+        username: "u".into(),
+        password: "p4ss".into(),
+    };
+    edit(cx, &model, Target::Request(ip("r.yml")), basic.clone());
+    assert_eq!(request_auth(cx, &model), basic);
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert!(read(&dir, "r.yml").contains("p4ss"));
+    assert!(!dir.path().join(".env").exists());
+    assert!(notices(cx, &model).is_empty());
+}
+
+fn move_secrets(cx: &mut TestAppContext, model: &Entity<CollectionModel>, target: Target) {
+    send(
+        cx,
+        model,
+        Command::Edit {
+            target,
+            edit: Edit::MoveAuthSecrets,
+        },
+    );
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn move_to_dotenv_moves_existing_literals(cx: &mut TestAppContext) {
+    let file = oauth_request(
+        "resource_owner_password_credentials",
+        "      clientSecret: old-plain\n",
+        "    resourceOwner:\n      username: ann\n      password: old-pw\n",
+    );
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &file)]);
+    let model = open(cx, &dir);
+    let before = oauth(request_auth(cx, &model));
+    assert_eq!(
+        (before.client_secret.as_str(), before.password.as_str()),
+        ("old-plain", "old-pw")
+    );
+    move_secrets(cx, &model, Target::Request(ip("r.yml")));
+    let o = oauth(request_auth(cx, &model));
+    assert_eq!(
+        o.client_secret,
+        "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"
+    );
+    assert_eq!(o.password, "{{process.env.APINATA_OAUTH2_PASSWORD}}");
+    let env = read(&dir, ".env");
+    assert!(
+        env.contains("APINATA_OAUTH2_CLIENT_SECRET='old-plain'")
+            && env.contains("APINATA_OAUTH2_PASSWORD='old-pw'"),
+        "{env}"
+    );
+    save(cx, &model, Target::Request(ip("r.yml")));
+    let saved = read(&dir, "r.yml");
+    assert!(
+        !saved.contains("old-plain") && !saved.contains("old-pw"),
+        "{saved}"
+    );
+}
+
+#[gpui_kit::test]
+fn moving_nothing_writes_nothing(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &cc_request("      clientSecret: \"{{secret}}\"\n")),
+    ]);
+    let model = open(cx, &dir);
+    let before = request_auth(cx, &model);
+    move_secrets(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(request_auth(cx, &model), before);
+    assert!(!snap(cx, &model).content.requests[&ip("r.yml")].dirty);
+    assert!(notices(cx, &model).is_empty());
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+}
+
+#[gpui_kit::test]
+fn moving_on_an_environment_is_unsupported(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", "name: dev\nvariables: []\n"),
+    ]);
+    let model = open(cx, &dir);
+    move_secrets(cx, &model, Target::Environment("dev".into()));
+    assert!(matches!(
+        notices(cx, &model).as_slice(),
+        [NoticeKind::Unsupported { .. }]
+    ));
+}

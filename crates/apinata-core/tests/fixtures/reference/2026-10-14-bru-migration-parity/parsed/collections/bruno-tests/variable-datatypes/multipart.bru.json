@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "name": "multipart",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "body": {
+    "multipartForm": [
+      {
+        "name": "mp_str",
+        "value": "{{mp_str}}",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "mp_num",
+        "value": "{{mp_num}}",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "mp_bool",
+        "value": "{{mp_bool}}",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "mp_obj",
+        "value": "{{mp_obj}}",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      }
+    ]
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "mp_str",
+        "value": "form_string",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "mp_num",
+        "value": 42,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "mp_bool",
+        "value": true,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "mp_obj",
+        "value": {
+          "key": "value"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      }
+    ]
+  },
+  "tests": "test(\"multipart text fields stringify typed values on the wire\", () => {\n  const raw = res.getBody();\n  expect(raw).to.contain(\"form_string\");\n  expect(raw).to.match(/name=\"mp_num\"[\\s\\S]*?\\r?\\n\\r?\\n42/);\n  expect(raw).to.match(/name=\"mp_bool\"[\\s\\S]*?\\r?\\n\\r?\\ntrue/);\n  expect(raw).to.contain('{\"key\":\"value\"}');\n});"
+}

@@ -1,0 +1,10 @@
+info:
+  name: Proto folder
+  type: folder
+
+request:
+  headers:
+    - name: ""
+      value: ""
+    - name: x
+      value: "1"

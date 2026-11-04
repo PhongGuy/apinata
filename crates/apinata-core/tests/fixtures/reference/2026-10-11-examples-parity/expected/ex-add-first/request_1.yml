@@ -1,0 +1,30 @@
+info:
+  name: request_1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/one
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: example
+    request:
+      url: https://api.example.com/one
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: content-type
+          value: text/plain
+      body:
+        type: text
+        data: pong

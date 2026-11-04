@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "name": "binary upload json",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{localhost}}/api/file-binary/binary-upload-json",
+    "body": "file",
+    "auth": "none"
+  },
+  "body": {
+    "file": [
+      {
+        "contentType": "application/json",
+        "filePath": "file.json",
+        "selected": true
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.bytesReceived",
+      "value": "eq 23",
+      "enabled": true
+    },
+    {
+      "name": "res.body.sha256",
+      "value": "eq 3f5d648773fc4a79418378d0e75768005a8ef0fbee232a7638d643b716c14175",
+      "enabled": true
+    },
+    {
+      "name": "res.body.contentType",
+      "value": "eq application/json",
+      "enabled": true
+    },
+    {
+      "name": "res.body.looksLikeSerializedNodeStream",
+      "value": "eq false",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"file body is uploaded byte-exact, not as a serialized stream envelope\", function() {\n  const body = res.getBody();\n  expect(body.bytesReceived).to.equal(23);\n  expect(body.sha256).to.equal(\"3f5d648773fc4a79418378d0e75768005a8ef0fbee232a7638d643b716c14175\");\n  expect(body.looksLikeSerializedNodeStream).to.equal(false);\n  expect(body.firstBytesUtf8).to.contain('\"hello\": \"bruno\"');\n});"
+}

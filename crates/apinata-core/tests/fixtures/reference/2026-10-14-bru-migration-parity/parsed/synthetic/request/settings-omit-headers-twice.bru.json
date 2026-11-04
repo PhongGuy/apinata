@@ -1,0 +1,16 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "settings": {
+    "encodeUrl": false,
+    "timeout": 0,
+    "omitHeaders": [
+      "b-one",
+      "a-two",
+      "a-three",
+      "c-one"
+    ]
+  }
+}

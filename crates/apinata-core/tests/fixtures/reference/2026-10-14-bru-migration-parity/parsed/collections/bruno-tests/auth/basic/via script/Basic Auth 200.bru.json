@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "name": "Basic Auth 200",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/auth/basic/protected",
+    "body": "json",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.message",
+      "value": "Authentication successful",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const username = \"bruno\";\nconst password = \"della\";\n\nconst authString = `${username}:${password}`;\nconst encodedAuthString = require('btoa')(authString);\n\nreq.setHeader(\"Authorization\", `Basic ${encodedAuthString}`);"
+  }
+}

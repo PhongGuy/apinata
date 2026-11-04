@@ -1,0 +1,40 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "huge",
+        "value": {
+          "a": "Infinity",
+          "neg": "-Infinity",
+          "s": "\ud800x"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "lone-low",
+        "value": {
+          "k": "a\udc00b"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      }
+    ]
+  }
+}

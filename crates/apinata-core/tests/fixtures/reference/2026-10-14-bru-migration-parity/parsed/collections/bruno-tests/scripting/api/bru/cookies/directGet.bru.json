@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "directGet",
+    "type": "http",
+    "seq": "10"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\nconst host = bru.getEnvVar('localhost');\nawait jar.setCookie(host, {\n  key: 'session',\n  value: 'abc123',\n  path: '/'\n});"
+  },
+  "tests": "test(\"get() should return value for existing cookie\", function() {\n  expect(bru.cookies.get('session')).to.equal('abc123');\n});\n\ntest(\"get() should return undefined for nonexistent cookie\", function() {\n  expect(bru.cookies.get('nonexistent')).to.be.undefined;\n});\n\ntest(\"has() should return true for existing cookie\", function() {\n  expect(bru.cookies.has('session')).to.be.true;\n});\n\ntest(\"has() should return false for nonexistent cookie\", function() {\n  expect(bru.cookies.has('nonexistent')).to.be.false;\n});\n\ntest(\"has() with value should return true when value matches\", function() {\n  expect(bru.cookies.has('session', 'abc123')).to.be.true;\n});\n\ntest(\"has() with value should return false when value does not match\", function() {\n  expect(bru.cookies.has('session', 'wrong')).to.be.false;\n});\n\nconst jar = bru.cookies.jar()\nawait jar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

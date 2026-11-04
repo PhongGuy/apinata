@@ -1,0 +1,15 @@
+info:
+  name: Verb connect
+  type: http
+  seq: 2
+
+http:
+  method: CONNECT
+  url: https://example.com/connect?x=1
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

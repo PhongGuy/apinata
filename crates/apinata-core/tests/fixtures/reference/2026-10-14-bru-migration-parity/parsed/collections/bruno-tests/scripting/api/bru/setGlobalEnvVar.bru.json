@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "setGlobalEnvVar",
+    "type": "http",
+    "seq": "31"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "res": "bru.setGlobalEnvVar(\"testSetGlobalEnvVar\", \"global-test-value\");"
+  },
+  "tests": "test(\"should set global env var in scripts\", function() {\n  const val = bru.getGlobalEnvVar(\"testSetGlobalEnvVar\");\n  expect(val).to.equal(\"global-test-value\");\n});\n\ntest(\"should overwrite existing global env var\", function() {\n  bru.setGlobalEnvVar(\"testSetGlobalEnvVar\", \"overwritten\");\n  const val = bru.getGlobalEnvVar(\"testSetGlobalEnvVar\");\n  expect(val).to.equal(\"overwritten\");\n});"
+}

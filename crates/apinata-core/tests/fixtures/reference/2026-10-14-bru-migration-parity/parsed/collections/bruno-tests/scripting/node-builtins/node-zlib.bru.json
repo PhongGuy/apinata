@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-zlib",
+    "type": "http",
+    "seq": "17"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const zlib = require('node:zlib');\n\nconst testData = Buffer.from('Hello Bruno! '.repeat(100));\n\ntest(\"gzip and gunzip\", function() {\n  const compressed = zlib.gzipSync(testData);\n  expect(compressed.length).to.be.lessThan(testData.length);\n\n  const decompressed = zlib.gunzipSync(compressed);\n  expect(decompressed.toString()).to.equal(testData.toString());\n});\n\ntest(\"deflate and inflate\", function() {\n  const compressed = zlib.deflateSync(testData);\n  expect(compressed.length).to.be.lessThan(testData.length);\n\n  const decompressed = zlib.inflateSync(compressed);\n  expect(decompressed.toString()).to.equal(testData.toString());\n});\n\ntest(\"deflateRaw and inflateRaw\", function() {\n  const compressed = zlib.deflateRawSync(testData);\n  const decompressed = zlib.inflateRawSync(compressed);\n  expect(decompressed.toString()).to.equal(testData.toString());\n});\n\ntest(\"brotli compression\", function() {\n  const compressed = zlib.brotliCompressSync(testData);\n  expect(compressed.length).to.be.lessThan(testData.length);\n\n  const decompressed = zlib.brotliDecompressSync(compressed);\n  expect(decompressed.toString()).to.equal(testData.toString());\n});\n\ntest(\"compression levels\", function() {\n  const high = zlib.gzipSync(testData, { level: 9 });\n  const low = zlib.gzipSync(testData, { level: 1 });\n  expect(high.length).to.be.at.most(low.length);\n});\n\ntest(\"zlib.constants\", function() {\n  expect(zlib.constants).to.have.property('Z_BEST_COMPRESSION');\n});"
+}

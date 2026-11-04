@@ -1,0 +1,20 @@
+info:
+  name: a socket
+  type: websocket
+  seq: 1
+
+websocket:
+  url: wss://example.com/socket
+  headers:
+    - name: x-ws
+      value: "1"
+  message:
+    - title: message 1
+      selected: false
+      message:
+        type: text
+        data: "{}"
+
+settings:
+  timeout: 0
+  keepAliveInterval: 0

@@ -1,0 +1,23 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Dropped collection / auth [opencollection.yml]: the NTLM workstation has no counterpart
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: NTLM
+
+request:
+  auth:
+    type: ntlm
+    username: NTLM_user
+    password: pass
+    domain: example.com
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

@@ -1,0 +1,9 @@
+variables:
+  - name: ""
+    value: ""
+  - name: a
+    value: "1"
+  - secret: true
+    name: __proto__
+  - secret: true
+    name: s

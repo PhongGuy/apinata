@@ -1,0 +1,17 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+
+settings:
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+  omitHeaders:
+    - User-Agent
+    - accept_encoding

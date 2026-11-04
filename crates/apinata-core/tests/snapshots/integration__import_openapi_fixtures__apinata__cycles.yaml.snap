@@ -1,0 +1,92 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Create node.yml
+info:
+  name: Create node
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/nodes"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "",
+        "children": [
+          {}
+        ]
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Pair.yml
+info:
+  name: Pair
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pair"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== environments/Environment 1.yml
+name: Environment 1
+variables:
+  - name: baseUrl
+    value: https://cycles.example.test
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Cycles
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /pair:
+          target: b8f7ae600a38544e
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Pair.yml
+        POST /nodes:
+          target: 0f03f8a6c38f8c8d
+          headers: 7ace431cb61584cb
+          body: a4445a0381b5acdb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Create node.yml
+
+note Converted Create node.yml | paths./nodes.post.requestBody | `$ref` `#/components/schemas/Node` refers back to itself; replaced with an empty object
+note Converted Pair.yml | paths./pair.get.parameters[0] | `$ref` `#/components/parameters/A` refers back to itself; replaced with an empty object
+note Dropped Pair.yml | paths./pair.get.parameters[0] | not a parameter object, so it was not imported
+note Converted - | paths./loop | `$ref` `#/paths/~1loop` refers back to itself; replaced with an empty object

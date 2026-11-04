@@ -1,0 +1,16 @@
+opencollection: 1.0.0
+
+info:
+  name: Basic Auth
+
+request:
+  auth:
+    type: basic
+    username: john
+    password: johnm
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

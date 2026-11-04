@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "iteration-methods",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"res.headerList.each(fn)\", function() {\n  const keys = [];\n  res.headerList.each((header) => {\n    keys.push(header.key);\n  });\n  expect(keys).to.include('x-powered-by');\n});\n\ntest(\"res.headerList.map(fn)\", function() {\n  const keys = res.headerList.map(h => h.key);\n  expect(keys).to.be.an('array');\n  expect(keys).to.include('x-powered-by');\n});\n\ntest(\"res.headerList.reduce(fn, initial)\", function() {\n  const obj = res.headerList.reduce((acc, h) => {\n    acc[h.key] = h.value;\n    return acc;\n  }, {});\n  expect(obj['x-powered-by']).to.equal('Express');\n});"
+}

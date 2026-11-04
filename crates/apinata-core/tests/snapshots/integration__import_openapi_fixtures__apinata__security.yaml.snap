@@ -1,0 +1,238 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Basic.yml
+info:
+  name: Basic
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/basic"
+  auth:
+    type: basic
+    username: "{{username}}"
+    password: "{{password}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Cookie.yml
+info:
+  name: Cookie
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: "{{baseUrl}}/cookie"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Inherit.yml
+info:
+  name: Inherit
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{baseUrl}}/inherit"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Key.yml
+info:
+  name: Key
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/key"
+  auth:
+    type: apikey
+    key: X-API-Key
+    value: "{{apiKey}}"
+    placement: header
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== OAuth.yml
+info:
+  name: OAuth
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: "{{baseUrl}}/oauth"
+  auth:
+    type: oauth2
+    flow: client_credentials
+    accessTokenUrl: https://secure.example.test/token
+    credentials:
+      clientId: "{{clientId}}"
+      clientSecret: "{{clientSecret}}"
+      placement: body
+    scope: read
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Public.yml
+info:
+  name: Public
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/public"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== environments/Environment 1.yml
+name: Environment 1
+variables:
+  - name: baseUrl
+    value: https://secure.example.test
+  - secret: true
+    name: token
+  - secret: true
+    name: username
+  - secret: true
+    name: password
+  - secret: true
+    name: apiKey
+  - name: clientId
+    value: ""
+  - secret: true
+    name: clientSecret
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Security
+
+request:
+  auth:
+    type: bearer
+    token: "{{token}}"
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /basic:
+          target: 97cdce2349b68d52
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Basic.yml
+        GET /cookie:
+          target: 0f43ce291e8957e7
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Cookie.yml
+        GET /inherit:
+          target: 82a2e70c63a169ff
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Inherit.yml
+        GET /key:
+          target: d232df4952743385
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Key.yml
+        GET /oauth:
+          target: 7bd0fe8de367974d
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: OAuth.yml
+        GET /public:
+          target: c09fb9e4af32bce5
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Public.yml
+
+note Converted Key.yml | paths./key.get.security | only the first security requirement's first scheme, `keyHeader`, is used
+note Dropped Cookie.yml | paths./cookie.get.security | `keyCookie` is a `apiKey` in `cookie` scheme, which is not imported, so no auth was set
+note Converted OAuth.yml | paths./oauth.get.security | `oauth` uses placeholder variables: set their values in the environment
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `password` has no value; enter it before sending
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `apiKey` has no value; enter it before sending
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `clientSecret` has no value; enter it before sending
+secret Environment 1 token
+secret Environment 1 username
+secret Environment 1 password
+secret Environment 1 apiKey
+secret Environment 1 clientSecret

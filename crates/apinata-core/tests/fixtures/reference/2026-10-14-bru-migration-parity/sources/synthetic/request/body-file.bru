@@ -1,0 +1,11 @@
+post {
+  url: https://example.com/file
+  body: file
+}
+
+body:file {
+  file: @file(a.json) @contentType(application/json)
+  ~file: @file(b.bin)
+  plain: not a file @contentType( text/plain )
+  other: just text
+}

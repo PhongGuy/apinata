@@ -1,0 +1,199 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: CollectionA
+== FolderA/FolderB/FolderC/RequestD.yml
+info:
+  name: RequestD
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: X-Test-Header
+      value: Overriden at RequestD
+  auth:
+    type: basic
+    username: username
+    password: password
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== FolderA/FolderB/FolderC/folder.yml
+info:
+  name: FolderC
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== FolderA/FolderB/RequestC.yml
+info:
+  name: RequestC
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== FolderA/FolderB/folder.yml
+info:
+  name: FolderB
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: X-Test-Header
+      value: Overriden at FolderB
+  auth:
+    type: apikey
+    key: key
+    value: test-key
+    placement: header
+== FolderA/RequestB.yml
+info:
+  name: RequestB
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== FolderA/folder.yml
+info:
+  name: FolderA
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== RequestA.yml
+info:
+  name: RequestA
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: CollectionA
+
+request:
+  headers:
+    - name: X-Test-Header
+      value: Set at root collection
+  auth:
+    type: bearer
+    token: BearerToken
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped FolderA / FolderB / FolderC / RequestD / testScript: scripts are not imported (FolderA/FolderB/FolderC/RequestD.yml)
+Dropped FolderA / FolderB / RequestC / testScript: scripts are not imported (FolderA/FolderB/RequestC.yml)
+Dropped FolderA / RequestB / testScript: scripts are not imported (FolderA/RequestB.yml)
+Dropped RequestA / testScript: scripts are not imported (RequestA.yml)
+### collection 1: CollectionB
+== FolderA/RequestB.yml
+info:
+  name: RequestB
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== FolderA/folder.yml
+info:
+  name: FolderA
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== RequestA.yml
+info:
+  name: RequestA
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: CollectionB
+
+request:
+  headers:
+    - name: X-Test-Header
+      value: Set at root collection
+  auth:
+    type: bearer
+    token: BearerToken
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped FolderA / RequestB / testScript: scripts are not imported (FolderA/RequestB.yml)
+Dropped RequestA / testScript: scripts are not imported (RequestA.yml)

@@ -1,0 +1,14 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/basic'
+headers = {
+    'Authorization': 'Basic dTpw',
+}
+
+response = requests.request('GET', url, headers=headers)
+print(response.status_code)
+print(response.text)

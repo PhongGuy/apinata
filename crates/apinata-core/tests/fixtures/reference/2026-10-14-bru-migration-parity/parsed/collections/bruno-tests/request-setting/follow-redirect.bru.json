@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "follow-redirect",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/api/redirect/3",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "res": "test(\"body should include redirecting\", function() {\n  const data = res.getBody();\n  expect(data).to.include(\"Redirecting...\");\n});"
+  },
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0,
+    "followRedirects": false
+  }
+}

@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/m'
+files = [
+    ('a', (None, '1')),
+    ('up', ('up.bin', open('/data/up.bin', 'rb'), 'text/plain')),
+]
+
+response = requests.request('POST', url, files=files)
+print(response.status_code)
+print(response.text)

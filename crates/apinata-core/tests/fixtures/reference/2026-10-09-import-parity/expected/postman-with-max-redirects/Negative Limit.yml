@@ -1,0 +1,16 @@
+info:
+  name: Negative Limit
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: https://api.acme.test/legacy
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

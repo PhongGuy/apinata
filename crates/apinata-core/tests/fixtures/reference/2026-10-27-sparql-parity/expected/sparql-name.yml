@@ -1,0 +1,26 @@
+info:
+  name: renamed
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{endpoint}}/sparql"
+  headers:
+    - name: Accept
+      value: application/sparql-results+json
+  body:
+    type: sparql
+    data: |-
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?name WHERE {
+        ?p foaf:name ?name .
+      }
+      LIMIT {{limit}}
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

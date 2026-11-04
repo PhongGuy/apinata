@@ -1,0 +1,34 @@
+{
+  "variables": [
+    {
+      "name": "host",
+      "value": "https://example.com",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "token",
+      "value": "abc",
+      "enabled": false,
+      "secret": false
+    },
+    {
+      "name": "empty",
+      "value": "",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "port",
+      "value": "8080",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "spaced",
+      "value": "a b c",
+      "enabled": true,
+      "secret": false
+    }
+  ]
+}

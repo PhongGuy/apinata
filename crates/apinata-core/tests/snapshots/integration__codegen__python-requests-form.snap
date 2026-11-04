@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/f'
+headers = {
+    'content-type': 'application/x-www-form-urlencoded',
+}
+data = 'a=1&b=x+y%26z'.encode('utf-8')
+
+response = requests.request('POST', url, headers=headers, data=data)
+print(response.status_code)
+print(response.text)

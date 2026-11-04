@@ -1,0 +1,31 @@
+info:
+  name: scripted
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://example.com/items
+
+runtime:
+  scripts:
+    - type: before-request
+      code: bru.setVar("t", Date.now());
+    - type: after-response
+      code: bru.setVar("id", res.body.id);
+    - type: tests
+      code: |-
+        test("ok", function() {
+          expect(res.status).to.equal(200);
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

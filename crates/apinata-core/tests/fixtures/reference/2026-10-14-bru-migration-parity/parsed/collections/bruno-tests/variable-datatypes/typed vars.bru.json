@@ -1,0 +1,136 @@
+{
+  "meta": {
+    "name": "typed vars",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "json",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "x-h-str",
+      "value": "{{req_str}}",
+      "enabled": true
+    },
+    {
+      "name": "x-h-num",
+      "value": "{{req_num}}",
+      "enabled": true
+    },
+    {
+      "name": "x-h-bool",
+      "value": "{{req_bool}}",
+      "enabled": true
+    },
+    {
+      "name": "x-h-obj",
+      "value": "{{req_obj}}",
+      "enabled": true
+    }
+  ],
+  "body": {
+    "json": "{\n  \"coll_num\": {{coll_num}},\n  \"coll_bool\": {{coll_bool}},\n  \"coll_obj\": {{coll_obj}},\n  \"fold_num\": {{fold_num}},\n  \"fold_bool\": {{fold_bool}},\n  \"fold_obj\": {{fold_obj}},\n  \"req_num\": {{req_num}},\n  \"req_bool\": {{req_bool}},\n  \"req_obj\": {{req_obj}},\n  \"req_obj_precision\": {{req_obj_precision}},\n  \"req_obj_empty\": {{req_obj_empty}},\n  \"typed_env_num\": {{typed_env_num}},\n  \"typed_env_bool\": {{typed_env_bool}},\n  \"typed_env_obj\": {{typed_env_obj}},\n  \"runtime_num\": {{runtime_num}},\n  \"runtime_bool\": {{runtime_bool}},\n  \"runtime_obj\": {{runtime_obj}},\n  \"inferred_env_num\": {{inferred_env_num}},\n  \"inferred_env_bool\": {{inferred_env_bool}},\n  \"inferred_env_obj\": {{inferred_env_obj}}\n}"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "req_str",
+        "value": "request_string",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "req_num",
+        "value": 42,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "req_bool",
+        "value": true,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "req_obj",
+        "value": {
+          "key": "value"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "req_obj_precision",
+        "value": {
+          "integer": 123,
+          "negativeInteger": -99,
+          "zero": 0,
+          "float": 2.718,
+          "negativeFloat": -1.618,
+          "largeDouble": 12345.678901234567,
+          "smallDouble": 9.876e-12,
+          "booleanTrue": true,
+          "booleanFalse": false
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "req_obj_empty",
+        "value": {},
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "mismatched_num",
+        "value": "not-a-number",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      }
+    ]
+  },
+  "script": {
+    "req": "bru.setVar(\"runtime_str\", \"runtime_string\");\nbru.setVar(\"runtime_num\", 999);\nbru.setVar(\"runtime_bool\", true);\nbru.setVar(\"runtime_obj\", { nested: \"yes\" });\n\nbru.setEnvVar(\"inferred_env_num\", 700);\nbru.setEnvVar(\"inferred_env_bool\", true);\nbru.setEnvVar(\"inferred_env_obj\", { from: \"script\" });\n\nbru.setEnvVar(\"strict_num_str\", \"42\");\nbru.setEnvVar(\"strict_bool_str\", \"true\");\nbru.setEnvVar(\"strict_obj_str\", JSON.stringify({ k: 1 }));\nbru.setVar(\"strict_runtime_num_str\", \"42\");"
+  },
+  "tests": "test(\"collection vars carry their declared types\", () => {\n  expect(typeof bru.getCollectionVar(\"coll_str\")).to.equal(\"string\");\n  expect(typeof bru.getCollectionVar(\"coll_num\")).to.equal(\"number\");\n  expect(bru.getCollectionVar(\"coll_num\")).to.equal(100);\n  expect(typeof bru.getCollectionVar(\"coll_bool\")).to.equal(\"boolean\");\n  expect(bru.getCollectionVar(\"coll_bool\")).to.equal(false);\n  expect(bru.getCollectionVar(\"coll_obj\")).to.deep.equal({ scope: \"collection\" });\n});\n\ntest(\"folder vars carry their declared types\", () => {\n  expect(typeof bru.getFolderVar(\"fold_str\")).to.equal(\"string\");\n  expect(typeof bru.getFolderVar(\"fold_num\")).to.equal(\"number\");\n  expect(bru.getFolderVar(\"fold_num\")).to.equal(200);\n  expect(typeof bru.getFolderVar(\"fold_bool\")).to.equal(\"boolean\");\n  expect(bru.getFolderVar(\"fold_bool\")).to.equal(true);\n  expect(bru.getFolderVar(\"fold_obj\")).to.deep.equal({ scope: \"folder\" });\n});\n\ntest(\"request vars carry their declared types\", () => {\n  expect(typeof bru.getRequestVar(\"req_str\")).to.equal(\"string\");\n  expect(typeof bru.getRequestVar(\"req_num\")).to.equal(\"number\");\n  expect(bru.getRequestVar(\"req_num\")).to.equal(42);\n  expect(typeof bru.getRequestVar(\"req_bool\")).to.equal(\"boolean\");\n  expect(bru.getRequestVar(\"req_bool\")).to.equal(true);\n  expect(bru.getRequestVar(\"req_obj\")).to.deep.equal({ key: \"value\" });\n\n  expect(typeof bru.getRequestVar(\"req_obj_empty\")).to.equal(\"object\");\n  expect(bru.getRequestVar(\"req_obj_empty\")).to.deep.equal({});\n\n  // @number with non-numeric data falls through to the raw string — same\n  // signal the env editor uses to surface its warning icon.\n  expect(typeof bru.getRequestVar(\"mismatched_num\")).to.equal(\"string\");\n  expect(bru.getRequestVar(\"mismatched_num\")).to.equal(\"not-a-number\");\n});\n\ntest(\"typed object var preserves number precision through file → parse round-trip\", () => {\n  const v = bru.getRequestVar(\"req_obj_precision\");\n  expect(v.integer).to.equal(123);\n  expect(v.negativeInteger).to.equal(-99);\n  expect(v.zero).to.equal(0);\n  expect(v.float).to.equal(2.718);\n  expect(v.negativeFloat).to.equal(-1.618);\n  expect(v.largeDouble).to.equal(12345.678901234567);\n  expect(v.smallDouble).to.equal(9.876e-12);\n  expect(v.booleanTrue).to.equal(true);\n  expect(v.booleanFalse).to.equal(false);\n});\n\ntest(\"collection environment vars carry their declared types\", () => {\n  expect(typeof bru.getEnvVar(\"typed_env_num\")).to.equal(\"number\");\n  expect(bru.getEnvVar(\"typed_env_num\")).to.equal(300);\n  expect(typeof bru.getEnvVar(\"typed_env_bool\")).to.equal(\"boolean\");\n  expect(bru.getEnvVar(\"typed_env_bool\")).to.equal(true);\n  expect(bru.getEnvVar(\"typed_env_obj\")).to.deep.equal({ scope: \"env\" });\n});\n\ntest(\"runtime vars set via bru.setVar preserve types\", () => {\n  expect(typeof bru.getVar(\"runtime_str\")).to.equal(\"string\");\n  expect(typeof bru.getVar(\"runtime_num\")).to.equal(\"number\");\n  expect(bru.getVar(\"runtime_num\")).to.equal(999);\n  expect(typeof bru.getVar(\"runtime_bool\")).to.equal(\"boolean\");\n  expect(bru.getVar(\"runtime_obj\")).to.deep.equal({ nested: \"yes\" });\n});\n\ntest(\"setEnvVar infers dataType from the JS value\", () => {\n  expect(typeof bru.getEnvVar(\"inferred_env_num\")).to.equal(\"number\");\n  expect(bru.getEnvVar(\"inferred_env_num\")).to.equal(700);\n  expect(typeof bru.getEnvVar(\"inferred_env_bool\")).to.equal(\"boolean\");\n  expect(bru.getEnvVar(\"inferred_env_bool\")).to.equal(true);\n  expect(bru.getEnvVar(\"inferred_env_obj\")).to.deep.equal({ from: \"script\" });\n});\n\ntest(\"bru.set* identifies type via the value's runtime type, not string content\", () => {\n  expect(typeof bru.getEnvVar(\"strict_num_str\")).to.equal(\"string\");\n  expect(bru.getEnvVar(\"strict_num_str\")).to.equal(\"42\");\n  expect(typeof bru.getEnvVar(\"strict_bool_str\")).to.equal(\"string\");\n  expect(bru.getEnvVar(\"strict_bool_str\")).to.equal(\"true\");\n  expect(typeof bru.getEnvVar(\"strict_obj_str\")).to.equal(\"string\");\n  expect(bru.getEnvVar(\"strict_obj_str\")).to.equal('{\"k\":1}');\n  expect(typeof bru.getVar(\"strict_runtime_num_str\")).to.equal(\"string\");\n});\n\ntest(\"response body echoes typed values from every scope\", () => {\n  const json = res.getBody();\n  expect(json.coll_num).to.equal(100);\n  expect(json.coll_bool).to.equal(false);\n  expect(json.coll_obj).to.deep.equal({ scope: \"collection\" });\n  expect(json.fold_num).to.equal(200);\n  expect(json.fold_bool).to.equal(true);\n  expect(json.fold_obj).to.deep.equal({ scope: \"folder\" });\n  expect(json.req_num).to.equal(42);\n  expect(json.req_bool).to.equal(true);\n  expect(json.req_obj).to.deep.equal({ key: \"value\" });\n\n  expect(json.req_obj_precision.integer).to.equal(123);\n  expect(json.req_obj_precision.negativeInteger).to.equal(-99);\n  expect(json.req_obj_precision.zero).to.equal(0);\n  expect(json.req_obj_precision.float).to.equal(2.718);\n  expect(json.req_obj_precision.negativeFloat).to.equal(-1.618);\n  expect(json.req_obj_precision.largeDouble).to.equal(12345.678901234567);\n  expect(json.req_obj_precision.smallDouble).to.equal(9.876e-12);\n  expect(json.req_obj_precision.booleanTrue).to.equal(true);\n  expect(json.req_obj_precision.booleanFalse).to.equal(false);\n  expect(json.req_obj_empty).to.deep.equal({});\n\n  expect(json.typed_env_num).to.equal(300);\n  expect(json.typed_env_bool).to.equal(true);\n  expect(json.typed_env_obj).to.deep.equal({ scope: \"env\" });\n  expect(json.runtime_num).to.equal(999);\n  expect(json.runtime_bool).to.equal(true);\n  expect(json.runtime_obj).to.deep.equal({ nested: \"yes\" });\n  expect(json.inferred_env_num).to.equal(700);\n  expect(json.inferred_env_bool).to.equal(true);\n  expect(json.inferred_env_obj).to.deep.equal({ from: \"script\" });\n});\n\ntest(\"typed vars in request headers stringify on the wire\", () => {\n  // echo-host reflects request headers as response headers (lowercased).\n  const headers = res.getHeaders();\n  expect(headers[\"x-h-str\"]).to.equal(\"request_string\");\n  expect(headers[\"x-h-num\"]).to.equal(\"42\");\n  expect(headers[\"x-h-bool\"]).to.equal(\"true\");\n  expect(headers[\"x-h-obj\"]).to.equal('{\"key\":\"value\"}');\n});"
+}

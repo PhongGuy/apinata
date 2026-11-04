@@ -1,0 +1,25 @@
+meta {
+  name: Multiline description
+  type: http
+  seq: 2
+}
+
+get {
+  url: https://api.example.com/items
+}
+
+example {
+  name: Documented
+  description: '''
+    First line of the description
+      indented second line
+    third line
+  '''
+}
+
+example {
+  name: Typed description
+  description: '''
+    Body text
+  ''' @contentType(text/markdown)
+}

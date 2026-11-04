@@ -1,0 +1,44 @@
+info:
+  name: Two examples
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: https://api.example.com/items
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: First
+    request:
+      url: https://api.example.com/items?page=1
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Second renamed
+    request:
+      url: ""
+      method: get
+      headers:
+        - name: c
+          value: "3"
+        - name: b
+          value: "2"
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+
+docs: between the examples

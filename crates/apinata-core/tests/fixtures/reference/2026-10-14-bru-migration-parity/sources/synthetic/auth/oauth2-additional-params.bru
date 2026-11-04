@@ -1,0 +1,42 @@
+get {
+  url: https://example.com
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: authorization_code
+  pkce: null
+}
+
+auth:oauth2:additional_params:auth_req:headers {
+  x-auth-req: 1
+  ~x-auth-off: 2
+}
+
+auth:oauth2:additional_params:auth_req:queryparams {
+  audience: api
+}
+
+auth:oauth2:additional_params:access_token_req:headers {
+  x-token-req: 3
+}
+
+auth:oauth2:additional_params:access_token_req:queryparams {
+  resource: r
+}
+
+auth:oauth2:additional_params:access_token_req:body {
+  extra: body-value
+}
+
+auth:oauth2:additional_params:refresh_token_req:headers {
+  x-refresh: 4
+}
+
+auth:oauth2:additional_params:refresh_token_req:queryparams {
+  rq: 5
+}
+
+auth:oauth2:additional_params:refresh_token_req:body {
+  rb: 6
+}

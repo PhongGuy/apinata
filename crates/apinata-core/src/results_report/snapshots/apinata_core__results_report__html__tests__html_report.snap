@@ -1,0 +1,125 @@
+---
+source: crates/apinata-core/src/results_report/html.rs
+expression: page()
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apinata run report</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d0d7de; --panel: #f6f8fa;
+  --pass: #1a7f37; --fail: #cf222e; --error: #9a6700; --skip: #6e7781;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --border: #30363d; --panel: #161b22;
+    --pass: #3fb950; --fail: #f85149; --error: #d29922; --skip: #8d96a0;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; max-width: 1100px; padding: 16px; background: var(--bg); color: var(--fg);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+h3 { font-size: 14px; margin: 16px 0 4px; }
+.muted { color: var(--muted); }
+.summary { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px; margin-top: 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+details { border: 1px solid var(--border); border-radius: 6px; margin: 8px 0; }
+summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 8px 12px;
+  cursor: pointer; background: var(--panel); border-radius: 6px; }
+details > div { padding: 4px 12px 12px; overflow-x: auto; }
+.badge { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--bg);
+  padding: 0 6px; border-radius: 4px; }
+.passed .badge, .pass { --c: var(--pass); }
+.failed .badge, .fail { --c: var(--fail); }
+.errored .badge { --c: var(--error); }
+.skipped .badge, .skipped { --c: var(--skip); }
+.badge { background: var(--c); }
+td.pass, td.fail, td.skipped { color: var(--c); font-weight: 600; }
+.name { font-weight: 600; }
+.error { color: var(--fail); }
+.warning { color: var(--error); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--border);
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+th { color: var(--muted); font-weight: 600; }
+pre { margin: 0; padding: 8px; background: var(--panel); border-radius: 4px; white-space: pre-wrap;
+  overflow-wrap: anywhere; }
+ul { margin: 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<header>
+<h1>Apinata run report</h1>
+<p class="muted">Generated 2026-10-12 10:00:00 UTC</p>
+</header>
+<section class="summary">
+<span>Requests: 4 (1 passed, 1 failed, 1 errored, 1 not sent)</span>
+<span>Assertions: 1 passed, 1 failed, 1 skipped</span>
+<span>Tests: 3 passed, 1 failed, 0 skipped</span>
+</section>
+<h2>Load errors</h2>
+<ul>
+<li><span class="name">broken.yml</span>: <span class="error">bad yaml &amp; &lt;stuff&gt;</span></li>
+</ul>
+<h2>Requests</h2>
+<details class="request passed">
+<summary><span class="badge">passed</span> <span class="name">List users</span> <span class="muted">users/list.yml</span> <span>200 OK</span> <span class="muted">120 ms</span></summary>
+<div>
+<h3>Assertions</h3>
+<table>
+<tr><th>Expression</th><th>Operator</th><th>Value</th><th>Verdict</th><th>Result</th></tr>
+<tr><td>res.status</td><td>eq</td><td>200</td><td class="pass">pass</td><td></td></tr>
+<tr><td>res.body</td><td>isJson</td><td></td><td class="skipped">skipped</td><td>not supported</td></tr>
+</table>
+<h3>Tests</h3>
+<table>
+<tr><th>Phase</th><th>Name</th><th>Status</th><th>Message</th></tr>
+<tr><td>pre-request</td><td>sets token</td><td class="pass">pass</td><td></td></tr>
+<tr><td>post-response</td><td>stores id</td><td class="pass">pass</td><td></td></tr>
+<tr><td>tests</td><td>has users</td><td class="pass">pass</td><td></td></tr>
+</table>
+<h3>Post-response variables</h3>
+<ul>
+<li>userId: set</li>
+</ul>
+<h3>Console</h3>
+<pre>[log] 3 users</pre>
+</div>
+</details>
+<details class="request failed" open>
+<summary><span class="badge">failed</span> <span class="name">Create &quot;user&quot;</span> <span class="muted">users/create.yml</span> <span>201 Created</span> <span class="muted">1500 ms</span></summary>
+<div>
+<p class="warning">header &lt;x&gt; ignored</p>
+<h3>Assertions</h3>
+<table>
+<tr><th>Expression</th><th>Operator</th><th>Value</th><th>Verdict</th><th>Result</th></tr>
+<tr><td>res.status</td><td>eq</td><td>200</td><td class="fail">fail</td><td>actual 201; expected 201 to equal 200</td></tr>
+</table>
+<h3>Tests</h3>
+<table>
+<tr><th>Phase</th><th>Name</th><th>Status</th><th>Message</th></tr>
+<tr><td>tests</td><td>id is set</td><td class="fail">fail</td><td>expected 1 to equal 2
+at line 3</td></tr>
+</table>
+</div>
+</details>
+<details class="request errored" open>
+<summary><span class="badge">errored</span> <span class="name">Get order</span> <span class="muted">orders/get.yml</span></summary>
+<div>
+<p class="error">undefined variable `host`</p>
+</div>
+</details>
+<details class="request skipped" open>
+<summary><span class="badge">skipped</span> <span class="name">Delete order</span> <span class="muted">orders/delete.yml</span></summary>
+<div>
+</div>
+</details>
+</body>
+</html>

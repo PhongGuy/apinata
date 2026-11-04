@@ -1,0 +1,37 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com/:id
+  headers:
+    - name: authorization
+      value: Bearer x
+      description: auth header
+  params:
+    - name: page
+      value: "1"
+      type: query
+      description: the page
+    - name: off
+      value: "0"
+      type: query
+    - name: id
+      value: "7"
+      type: path
+      description: path id
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+      description: status ok
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

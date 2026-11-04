@@ -1,0 +1,14 @@
+{
+  "headers": [
+    {
+      "name": "x-disabled",
+      "value": "folder-hidden-value",
+      "enabled": false
+    },
+    {
+      "name": "x-folder-only-disabled",
+      "value": "folder-only-hidden",
+      "enabled": false
+    }
+  ]
+}

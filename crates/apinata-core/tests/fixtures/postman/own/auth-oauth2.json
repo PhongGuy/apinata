@@ -1,0 +1,695 @@
+{
+  "info": {
+    "_postman_id": "1c9d4a52-77de-4b8a-a0b3-3f6d2e8c4b03",
+    "name": "OAuth2 auth",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Client credentials",
+      "request": {
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "client_credentials",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "API token",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            },
+            {
+              "key": "tokenType",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "accessToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "refreshRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "tokenRequestParams",
+              "value": [
+                {
+                  "key": "audience",
+                  "value": "api",
+                  "send_as": "request_body",
+                  "enabled": true
+                },
+                {
+                  "key": "X-Old",
+                  "value": "x",
+                  "send_as": "request_header",
+                  "enabled": false
+                }
+              ],
+              "type": "string"
+            },
+            {
+              "key": "authRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "isAuthInSecondaryWindow",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "accessTokenUrl",
+              "value": "http://HOST/token",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "app-id",
+              "type": "string"
+            },
+            {
+              "key": "clientSecret",
+              "value": "app-secret",
+              "type": "string"
+            },
+            {
+              "key": "scope",
+              "value": "read write",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://HOST/api",
+          "protocol": "http",
+          "host": [
+            "HOST"
+          ],
+          "path": [
+            "api"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Password",
+      "request": {
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "password_credentials",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "API token",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            },
+            {
+              "key": "tokenType",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "accessToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "refreshRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "tokenRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "authRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "isAuthInSecondaryWindow",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "accessTokenUrl",
+              "value": "http://HOST/token",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "app-id",
+              "type": "string"
+            },
+            {
+              "key": "clientSecret",
+              "value": "app-secret",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "alice",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "alice-pass",
+              "type": "string"
+            },
+            {
+              "key": "scope",
+              "value": "read",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://HOST/api",
+          "protocol": "http",
+          "host": [
+            "HOST"
+          ],
+          "path": [
+            "api"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Authorization code",
+      "request": {
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "authorization_code",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "API token",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            },
+            {
+              "key": "tokenType",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "accessToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "refreshRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "tokenRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "authRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "isAuthInSecondaryWindow",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "authUrl",
+              "value": "http://HOST/authorize",
+              "type": "string"
+            },
+            {
+              "key": "accessTokenUrl",
+              "value": "http://HOST/token",
+              "type": "string"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "http://localhost/cb",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "app-id",
+              "type": "string"
+            },
+            {
+              "key": "clientSecret",
+              "value": "app-secret",
+              "type": "string"
+            },
+            {
+              "key": "state",
+              "value": "xyz",
+              "type": "string"
+            },
+            {
+              "key": "scope",
+              "value": "read",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://HOST/api",
+          "protocol": "http",
+          "host": [
+            "HOST"
+          ],
+          "path": [
+            "api"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Authorization code PKCE",
+      "request": {
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "authorization_code_with_pkce",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "API token",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            },
+            {
+              "key": "tokenType",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "accessToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "refreshRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "tokenRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "authRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "isAuthInSecondaryWindow",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "authUrl",
+              "value": "http://HOST/authorize",
+              "type": "string"
+            },
+            {
+              "key": "accessTokenUrl",
+              "value": "http://HOST/token",
+              "type": "string"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "http://localhost/cb",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "app-id",
+              "type": "string"
+            },
+            {
+              "key": "clientSecret",
+              "value": "app-secret",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://HOST/api",
+          "protocol": "http",
+          "host": [
+            "HOST"
+          ],
+          "path": [
+            "api"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Implicit",
+      "request": {
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "implicit",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "API token",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            },
+            {
+              "key": "tokenType",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "accessToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "refreshRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "tokenRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "authRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "isAuthInSecondaryWindow",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "authUrl",
+              "value": "http://HOST/authorize",
+              "type": "string"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "http://localhost/cb",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "app-id",
+              "type": "string"
+            },
+            {
+              "key": "state",
+              "value": "s1",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://HOST/api",
+          "protocol": "http",
+          "host": [
+            "HOST"
+          ],
+          "path": [
+            "api"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Client credentials query",
+      "request": {
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "client_credentials",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "API token",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "queryParams",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            },
+            {
+              "key": "tokenType",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "accessToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "refreshRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "authRequestParams",
+              "value": [],
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "isAuthInSecondaryWindow",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "key": "accessTokenUrl",
+              "value": "http://HOST/token",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "app-id",
+              "type": "string"
+            },
+            {
+              "key": "clientSecret",
+              "value": "app-secret",
+              "type": "string"
+            },
+            {
+              "key": "scope",
+              "value": "read write",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://HOST/api-query",
+          "protocol": "http",
+          "host": [
+            "HOST"
+          ],
+          "path": [
+            "api-query"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

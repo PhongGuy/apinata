@@ -1,0 +1,126 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== HTTP GET test.yml
+info:
+  name: HTTP GET test
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/get"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Test HTTP GET request
+
+=== HTTP POST test.yml
+info:
+  name: HTTP POST test
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/post"
+  body:
+    type: json
+    data: |-
+      {
+        "data": ""
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Test HTTP POST request
+
+=== Return status code.yml
+info:
+  name: Return status code
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/status/:code"
+  params:
+    - name: code
+      value: "100"
+      type: path
+      description: HTTP status code to return
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Return a specific HTTP status code
+
+=== environments/Echo test server.yml
+name: Echo test server
+variables:
+  - name: baseUrl
+    value: https://echo.usebruno.com
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Simple Test API
+
+docs:
+  content: A simple API for basic OpenAPI testing
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /get:
+          target: e3239d5ba0cd870f
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: bab5e5ede9782a59
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: HTTP GET test.yml
+        GET /status/{}:
+          target: 12cef18719773dd9
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 0449b2fb0838a32f
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Return status code.yml
+        POST /post:
+          target: 7d18fafca450f390
+          headers: 7ace431cb61584cb
+          body: a97e2fad51f4a883
+          docs: 86558ada0eee793f
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: HTTP POST test.yml

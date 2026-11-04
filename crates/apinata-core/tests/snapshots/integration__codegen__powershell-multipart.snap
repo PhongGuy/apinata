@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+#Requires -Version 7
+
+$url = 'http://x.test/m'
+$headers = [ordered]@{}
+$body = [System.Net.Http.MultipartFormDataContent]::new()
+$part1 = [System.Net.Http.StringContent]::new('1')
+$part1.Headers.ContentType = $null
+$body.Add($part1, 'a')
+$part2 = [System.Net.Http.StreamContent]::new([System.IO.File]::OpenRead('/data/up.bin'))
+$part2.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('text/plain')
+$body.Add($part2, 'up', 'up.bin')
+Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $body -SkipHeaderValidation

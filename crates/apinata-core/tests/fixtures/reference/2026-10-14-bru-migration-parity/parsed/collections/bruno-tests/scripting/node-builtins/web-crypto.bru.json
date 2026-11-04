@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "web-crypto",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "test(\"crypto global exists\", function() {\n  expect(typeof crypto).to.equal('object');\n  expect(typeof crypto.subtle).to.equal('object');\n});\n\ntest(\"crypto.randomUUID\", function() {\n  const uuid = crypto.randomUUID();\n  expect(uuid).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);\n});\n\ntest(\"crypto.getRandomValues\", function() {\n  const array = new Uint8Array(16);\n  crypto.getRandomValues(array);\n  expect(array.some(b => b !== 0)).to.equal(true);\n});\n\ntest(\"crypto.subtle methods exist\", function() {\n  expect(crypto.subtle.digest).to.be.a('function');\n  expect(crypto.subtle.generateKey).to.be.a('function');\n  expect(crypto.subtle.sign).to.be.a('function');\n  expect(crypto.subtle.verify).to.be.a('function');\n  expect(crypto.subtle.encrypt).to.be.a('function');\n  expect(crypto.subtle.decrypt).to.be.a('function');\n  expect(crypto.subtle.importKey).to.be.a('function');\n  expect(crypto.subtle.exportKey).to.be.a('function');\n});\n\ntest(\"crypto.subtle.digest returns promise\", function() {\n  const data = new TextEncoder().encode('hello');\n  const result = crypto.subtle.digest('SHA-256', data);\n  expect(result).to.be.a('promise');\n});\n\ntest(\"crypto.subtle.generateKey returns promise\", function() {\n  const result = crypto.subtle.generateKey(\n    { name: 'AES-GCM', length: 256 },\n    true,\n    ['encrypt', 'decrypt']\n  );\n  expect(result).to.be.a('promise');\n});"
+}

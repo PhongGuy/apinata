@@ -1,0 +1,28 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/assert"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.items length",
+      "value": "gt 2",
+      "enabled": true
+    },
+    {
+      "name": "res.headers['content-type']",
+      "value": "contains json",
+      "enabled": false
+    },
+    {
+      "name": "res.body.name with spaces",
+      "value": "neq   \"x\"",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "name": "ping",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.runner.stopExecution();"
+  }
+}

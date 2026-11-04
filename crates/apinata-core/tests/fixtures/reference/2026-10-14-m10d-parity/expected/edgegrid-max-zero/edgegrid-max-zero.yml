@@ -1,0 +1,25 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: akamai-edgegrid
+    accessToken: at
+    clientToken: ""
+    clientSecret: ""
+    nonce: n
+    timestamp: ""
+    baseURL: ""
+    headersToSign: ""
+    maxBodySize: 0
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

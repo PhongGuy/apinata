@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "name": "setUrl",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping/invalid",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.setUrl(\"https://testbench-sanity.usebruno.com/ping\");"
+  },
+  "tests": "test(\"req.setUrl()\", function() {\n  const url = req.getUrl();\n  expect(url).to.equal(\"https://testbench-sanity.usebruno.com/ping\");\n});"
+}

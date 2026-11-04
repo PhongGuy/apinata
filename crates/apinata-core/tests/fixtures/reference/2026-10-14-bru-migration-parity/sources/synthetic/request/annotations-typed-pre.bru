@@ -1,0 +1,44 @@
+get {
+  url: https://example.com
+}
+
+vars:pre-request {
+  @number
+  count: 42
+  @number
+  ratio: 1.50
+  @number
+  hex: 0x1F
+  @number
+  bad: forty
+  @number
+  blank: 
+  @number
+  huge: 1e400
+  @boolean
+  flag: true
+  @boolean
+  off: false
+  @boolean
+  maybe: TRUE
+  @object
+  obj: {"a": 1.0, "b": [1, 2.5], "c": null}
+  @object
+  arr: [1, 2]
+  @object
+  notjson: {a}
+  @object
+  scalar: 5
+  @string
+  str: 12
+  @number
+  @string
+  last-string: 7
+  @string
+  @number
+  last-number: 7
+  @description('typed and described')
+  @boolean
+  ~@local-flag: true
+  plain: text
+}

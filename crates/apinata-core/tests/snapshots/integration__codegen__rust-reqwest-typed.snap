@@ -1,0 +1,21 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&typed(), Target::RustReqwest)"
+---
+// Cargo.toml: reqwest = { version = "0.13", features = ["blocking", "multipart"] }
+
+use reqwest::blocking::multipart::{Form, Part};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let form = Form::new()
+        .percent_encode_noop()
+        .part("j", Part::text("{\"a\": \"x﻿y\"}").mime_str("application/json")?)
+        .text("t", "plain");
+    let response = reqwest::blocking::Client::new()
+        .request(reqwest::Method::POST, "http://x.test/t")
+        .multipart(form)
+        .send()?;
+    println!("{}", response.status());
+    println!("{}", response.text()?);
+    Ok(())
+}

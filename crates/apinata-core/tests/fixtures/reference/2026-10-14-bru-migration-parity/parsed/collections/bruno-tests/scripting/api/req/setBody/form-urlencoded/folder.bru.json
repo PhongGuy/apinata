@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "form-urlencoded",
+    "seq": "1",
+    "type": "collection"
+  },
+  "auth": {
+    "mode": "inherit"
+  }
+}

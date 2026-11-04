@@ -1,0 +1,30 @@
+get {
+  url: https://example.com/:id
+}
+
+params:query {
+  @description('the page')
+  page: 1
+  off: 0
+}
+
+params:path {
+  @description("path id")
+  id: 7
+}
+
+headers {
+  @deprecated
+  @description('auth header')
+  authorization: Bearer x
+}
+
+assert {
+  @description('status ok')
+  res.status: eq 200
+}
+
+body:form-urlencoded {
+  @tag(a b)
+  field: v
+}

@@ -1,0 +1,13 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "digest"
+  },
+  "auth": {
+    "digest": {
+      "username": "",
+      "password": "hunter2"
+    }
+  }
+}

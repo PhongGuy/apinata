@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "name": "echo form-url-encoded",
+    "type": "http",
+    "seq": "9"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "formUrlEncoded",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/x-www-form-urlencoded; charset=UTF-8",
+      "enabled": true
+    }
+  ],
+  "body": {
+    "formUrlEncoded": [
+      {
+        "name": "form-data-key",
+        "value": "{{form-data-key}}",
+        "enabled": true
+      },
+      {
+        "name": "form-data-stringified-object",
+        "value": "{{form-data-stringified-object}}",
+        "enabled": true
+      },
+      {
+        "name": "key_1",
+        "value": "value_1",
+        "enabled": true
+      },
+      {
+        "name": "key_2",
+        "value": "value_2",
+        "enabled": true
+      },
+      {
+        "name": "key_1",
+        "value": "value_3",
+        "enabled": true
+      },
+      {
+        "name": "key_2",
+        "value": "value_4",
+        "enabled": true
+      }
+    ]
+  },
+  "script": {
+    "req": "let obj = JSON.stringify({foo:123});\nbru.setVar('form-data-key', 'form-data-value');\nbru.setVar('form-data-stringified-object', obj);"
+  },
+  "tests": "test(\"form-urlencoded body with variables and duplicate keys\", function() {\n  const expected = [\n    \"form-data-key=form-data-value\",\n    \"form-data-stringified-object=%7B%22foo%22%3A123%7D\", // {\"foo\":123} URL encoded\n    \"key_1=value_1\",\n    \"key_2=value_2\", \n    \"key_1=value_3\", // duplicate key with different value\n    \"key_2=value_4\"  // duplicate key with different value\n  ].join(\"&\");\n  \n  expect(res.getBody()).to.eql(expected);\n});"
+}

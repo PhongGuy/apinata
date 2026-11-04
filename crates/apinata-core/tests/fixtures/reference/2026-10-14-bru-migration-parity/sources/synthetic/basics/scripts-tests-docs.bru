@@ -1,0 +1,27 @@
+get {
+  url: https://example.com/scripts
+}
+
+script:pre-request {
+  const a = 1;
+  if (a) {
+    bru.setVar("x", a);
+  }
+}
+
+script:post-response {
+  console.log(res.status);
+}
+
+tests {
+  test("ok", function() {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  # Title
+  
+  Some *docs*   with trailing spaces   
+    indented four
+}

@@ -1,0 +1,14 @@
+info:
+  name: Redirect
+  type: http
+  seq: 1
+http:
+  method: GET
+  url: "{{baseUrl}}/old"
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.landed
+      operator: isTruthy

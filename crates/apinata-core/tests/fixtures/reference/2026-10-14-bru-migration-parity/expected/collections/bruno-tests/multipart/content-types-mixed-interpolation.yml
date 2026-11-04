@@ -1,0 +1,35 @@
+info:
+  name: content-types-mixed-interpolation
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{echo-host}}"
+  body:
+    type: text
+    data: |-
+      ------MyCustomBoundaryString
+      Content-Disposition: form-data; name="metadata"
+      Content-Type: application/json
+
+      {{version}}
+
+      ------MyCustomBoundaryString--
+  auth: inherit
+
+runtime:
+  variables:
+    - name: version
+      value: 0.0.1
+  assertions:
+    - expression: res.body
+      operator: contains
+      value: 0.0.1
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "name": "iteration-methods",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.headerList.each(fn)\", function() {\n  const keys = [];\n  req.headerList.each((header) => {\n    keys.push(header.key);\n  });\n  expect(keys).to.include('bruno');\n  expect(keys).to.include('della');\n});\n\ntest(\"req.headerList.map(fn)\", function() {\n  const values = req.headerList.map(h => h.value);\n  expect(values).to.be.an('array');\n  expect(values).to.include('is-awesome');\n  expect(values).to.include('is-beautiful');\n});\n\ntest(\"req.headerList.reduce(fn, initial)\", function() {\n  const result = req.headerList.reduce((acc, h) => {\n    acc[h.key] = h.value;\n    return acc;\n  }, {});\n  expect(result.bruno).to.equal('is-awesome');\n  expect(result.della).to.equal('is-beautiful');\n});"
+}

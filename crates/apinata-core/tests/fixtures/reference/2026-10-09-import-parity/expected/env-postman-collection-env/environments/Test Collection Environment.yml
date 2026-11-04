@@ -1,0 +1,14 @@
+name: Test Collection Environment
+variables:
+  - name: host
+    value: https://jsonplaceholder.typicode.com
+  - name: userId
+    value: "1"
+  - name: apiKey
+    value: collection-api-key-12345
+  - name: postTitle
+    value: Collection Environment Test Post
+  - name: postBody
+    value: This is a test post created using collection environment variables
+  - secret: true
+    name: secretApiToken

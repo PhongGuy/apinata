@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "getEnvName",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "const envName = bru.getEnvName();\nbru.setVar(\"testEnvName\", envName);"
+  },
+  "tests": "test(\"should get env name in scripts\", function() {\n  const testEnvName = bru.getVar(\"testEnvName\");\n  expect(testEnvName).to.equal(\"Prod\");\n});"
+}

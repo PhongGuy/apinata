@@ -1,0 +1,14 @@
+get {
+  url: https://example.com
+}
+
+vars:pre-request {
+  @object
+  big: {"big": 9007199254740993, "ok": 9007199254740992, "pair": "😀"}
+  @object
+  list: [18446744073709551617, -9007199254740993, 1.0, 0.1e1]
+  @object
+  dup: {"a": 1, "b": 2, "a": 3}
+  @object
+  proto: {"__proto__": 1, "x": 2}
+}

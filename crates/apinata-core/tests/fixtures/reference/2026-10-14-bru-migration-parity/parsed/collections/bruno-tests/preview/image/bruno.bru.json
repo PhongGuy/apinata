@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "bruno",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://www.usebruno.com/favicon.ico",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"should return parsed xml\", function() {\n  const headers = res.getHeaders();\n  expect(headers['content-type']).to.eql(\"image/x-icon\");\n});\n"
+}

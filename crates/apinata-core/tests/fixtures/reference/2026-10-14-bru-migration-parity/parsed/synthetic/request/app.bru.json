@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "name": "an app",
+    "type": "app",
+    "seq": "3"
+  },
+  "app": {
+    "code": null,
+    "enabled": false
+  }
+}

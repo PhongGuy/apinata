@@ -1,0 +1,117 @@
+{
+  "headers": [
+    {
+      "name": "check",
+      "value": "again",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "asd"
+        }
+      ],
+      "description": "asd"
+    },
+    {
+      "name": "token",
+      "value": "{{collection_pre_var_token}}",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "asd\r\nasd\r\nasd"
+        }
+      ],
+      "description": "asd\r\nasd\r\nasd"
+    },
+    {
+      "name": "collection-header",
+      "value": "collection-header-value",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "asd"
+        }
+      ],
+      "description": "asd"
+    }
+  ],
+  "auth": {
+    "mode": "bearer",
+    "bearer": {
+      "token": "{{bearer_auth_token}}"
+    }
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "collection_pre_var",
+        "value": "collection_pre_var_value",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "collection_pre_var_token",
+        "value": "{{request_pre_var_token}}",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "collection-var",
+        "value": "collection-var-value",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "coll_str",
+        "value": "collection_string",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "coll_num",
+        "value": 100,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "coll_bool",
+        "value": false,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "coll_obj",
+        "value": {
+          "scope": "collection"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      }
+    ]
+  },
+  "script": {
+    "req": "// used by `scripting/js/folder-collection script-tests`\nconst shouldTestCollectionScripts = bru.getVar('should-test-collection-scripts');\nif(shouldTestCollectionScripts) {\n bru.setVar('collection-var-set-by-collection-script', 'collection-var-value-set-by-collection-script');\n}"
+  },
+  "tests": "// used by `scripting/js/folder-collection script-tests`\nconst shouldTestCollectionScripts = bru.getVar('should-test-collection-scripts');\nconst collectionVar = bru.getVar(\"collection-var-set-by-collection-script\");\nif (shouldTestCollectionScripts && collectionVar) {\n  test(\"collection level test - should get the var that was set by the collection script\", function() {\n    expect(collectionVar).to.equal(\"collection-var-value-set-by-collection-script\");\n  }); \n  bru.setVar('collection-var-set-by-collection-script', null); \n  bru.setVar('should-test-collection-scripts', null);\n}",
+  "docs": "# bruno-testbench 🐶\n\nThis is a test collection that I am using to test various functionalities around bruno"
+}

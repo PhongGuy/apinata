@@ -1,0 +1,93 @@
+info:
+  name: Multi-format API
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/data
+  headers:
+    - name: content-type
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: JSON API Example
+    description: An example using JSON format
+    request:
+      url: https://api.example.com/json
+      method: post
+      body:
+        type: json
+        data: |-
+          {
+            "format": "json",
+            "data": {
+              "name": "JSON Example",
+              "value": 123
+            }
+          }
+    response:
+      status: 201
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "id": 1,
+            "format": "json",
+            "created": true
+          }
+  - name: XML API Example
+    description: An example using XML format
+    request:
+      url: https://api.example.com/xml
+      method: post
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <data>
+            <format>xml</format>
+            <name>XML Example</name>
+            <value>456</value>
+          </data>
+    response:
+      status: 201
+      statusText: OK
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <response>
+            <id>2</id>
+            <format>xml</format>
+            <created>true</created>
+          </response>
+  - name: Text API Example
+    description: An example using text format
+    request:
+      url: https://api.example.com/text
+      method: post
+      body:
+        type: text
+        data: |-
+          Plain text data
+          Format: text
+          Name: Text Example
+          Value: 789
+    response:
+      status: 201
+      statusText: OK
+      body:
+        type: text
+        data: |-
+          Success: true
+          Format: text
+          ID: 3

@@ -1,0 +1,8 @@
+name: local
+variables:
+  - name: baseUrl
+    value: http://127.0.0.1:9
+  - name: token
+    value: t0k3n
+  - secret: true
+    name: apiKey

@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "name": "spacex",
+    "type": "graphql",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{localhost}}/api/graphql",
+    "body": "graphql",
+    "auth": "none"
+  },
+  "body": {
+    "graphql": {
+      "query": "{\n  company {\n    ceo\n  }\n}\n"
+    }
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.data.company.ceo",
+      "value": "eq Elon Musk",
+      "enabled": true
+    }
+  ]
+}

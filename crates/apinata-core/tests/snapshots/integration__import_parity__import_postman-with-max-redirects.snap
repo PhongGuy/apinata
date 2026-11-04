@@ -1,0 +1,112 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Converted Exponent Limit / protocolProfileBehavior.maxRedirects [Exponent Limit.yml]: the redirect limit 1e+31 is above the largest supported; 4294967295 is used
+Dropped Null Limit / protocolProfileBehavior.maxRedirects [Null Limit.yml]: the redirect limit is not a number of 0 or more; the default of 5 is used
+Dropped Negative Limit / protocolProfileBehavior.maxRedirects [Negative Limit.yml]: the redirect limit is not a number of 0 or more; the default of 5 is used
+Dropped Quoted Limit / protocolProfileBehavior.maxRedirects [Quoted Limit.yml]: the redirect limit is not a number of 0 or more; the default of 5 is used
+Converted Fractional Limit / protocolProfileBehavior.maxRedirects [Fractional Limit.yml]: the redirect limit 3.5 is not a whole number; 3 is used
+Dropped Boolean Limit / protocolProfileBehavior.maxRedirects [Boolean Limit.yml]: the redirect limit is not a number of 0 or more; the default of 5 is used
+== Boolean Limit.yml
+info:
+  name: Boolean Limit
+  type: http
+  seq: 11
+
+http:
+  method: GET
+  url: https://api.acme.test/boolean
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Exponent Limit.yml
+info:
+  name: Exponent Limit
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: https://api.acme.test/redirect-chain
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 4294967295
+  forwardAuthorizationHeader: false
+== Fractional Limit.yml
+info:
+  name: Fractional Limit
+  type: http
+  seq: 10
+
+http:
+  method: GET
+  url: https://api.acme.test/fractional
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 3
+  forwardAuthorizationHeader: false
+== Negative Limit.yml
+info:
+  name: Negative Limit
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: https://api.acme.test/legacy
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Null Limit.yml
+info:
+  name: Null Limit
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: https://api.acme.test/unlimited
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Quoted Limit.yml
+info:
+  name: Quoted Limit
+  type: http
+  seq: 9
+
+http:
+  method: GET
+  url: https://api.acme.test/quoted
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

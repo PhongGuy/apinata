@@ -1,0 +1,35 @@
+info:
+  name: request_1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/one
+
+runtime:
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.token
+        method: jsonq
+      variable:
+        name: token
+        scope: runtime
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.id
+        method: jsonq
+      variable:
+        name: id
+        scope: runtime
+      disabled: true
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

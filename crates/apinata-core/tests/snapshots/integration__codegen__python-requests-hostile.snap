@@ -1,0 +1,16 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/p?x=a%27b$c{d}&y=%C3%BC'
+headers = {
+    'X-H': 'it\'s "q" \\ $HOME {x} ü'.encode('utf-8'),
+    'content-type': 'text/plain',
+}
+data = 'a\'b"c\\d $e {f}\tg\nü€ end'.encode('utf-8')
+
+response = requests.request('POST', url, headers=headers, data=data)
+print(response.status_code)
+print(response.text)

@@ -1,0 +1,14 @@
+post {
+  url: https://example.com/form
+  body: formUrlEncoded
+}
+
+body:form-urlencoded {
+  a: 1
+  ~b: two
+  @description('the c field')
+  c: '''
+    line one
+    line two
+  '''
+}

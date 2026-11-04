@@ -1,0 +1,32 @@
+openapi: 3.1.0
+info: {title: Siblings, version: "1"}
+servers: [{url: https://siblings.example.test}]
+paths:
+  /pets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+        description: The pet to fetch
+    get:
+      summary: Get pet
+  /pets:
+    post:
+      summary: Add pet
+      requestBody:
+        $ref: '#/components/requestBodies/Pet'
+        description: overridden description
+components:
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: string}, description: generic id}
+  requestBodies:
+    Pet:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Pet'
+            properties:
+              nickname: {type: string, example: rex}
+  schemas:
+    Pet:
+      type: object
+      properties:
+        name: {type: string, example: doggie}

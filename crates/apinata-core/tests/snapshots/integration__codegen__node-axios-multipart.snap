@@ -1,0 +1,25 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import fs from 'node:fs';
+import axios from 'axios';
+
+const url = 'http://x.test/m';
+const headers = {};
+const form = new FormData();
+form.append('a', '1');
+form.append('up', new Blob([fs.readFileSync('/data/up.bin')], { type: 'text/plain' }), 'up.bin');
+const data = form;
+
+const response = await axios.request({
+  method: 'POST',
+  url,
+  headers,
+  data,
+  transformRequest: (d) => d,
+  transformResponse: (r) => r,
+  validateStatus: () => true,
+});
+console.log(response.status);
+console.log(response.data);

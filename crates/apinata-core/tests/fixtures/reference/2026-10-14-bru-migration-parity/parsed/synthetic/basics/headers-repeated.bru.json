@@ -1,0 +1,28 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/headers"
+  },
+  "headers": [
+    {
+      "name": "a",
+      "value": "1",
+      "enabled": true
+    },
+    {
+      "name": "b",
+      "value": "2",
+      "enabled": true
+    },
+    {
+      "name": "c",
+      "value": "3",
+      "enabled": true
+    },
+    {
+      "name": "a",
+      "value": "4",
+      "enabled": true
+    }
+  ]
+}

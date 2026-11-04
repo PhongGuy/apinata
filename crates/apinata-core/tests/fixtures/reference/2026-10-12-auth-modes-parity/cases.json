@@ -1,0 +1,66 @@
+[
+  {
+    "id": "digest-new",
+    "kind": "request",
+    "input": "2026-10-12-auth-modes-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "digest-edit",
+    "kind": "request",
+    "input": "2026-10-12-auth-modes-parity/normalized/synthetic/digest.yml",
+    "files": [
+      "digest.yml"
+    ]
+  },
+  {
+    "id": "digest-sparse",
+    "kind": "request",
+    "input": "2026-10-12-auth-modes-parity/sparse/digest-minimal.yml",
+    "files": [
+      "digest-minimal.yml"
+    ]
+  },
+  {
+    "id": "awsv4-new",
+    "kind": "request",
+    "input": "2026-10-12-auth-modes-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "awsv4-edit",
+    "kind": "request",
+    "input": "2026-10-12-auth-modes-parity/normalized/synthetic/awsv4.yml",
+    "files": [
+      "awsv4.yml"
+    ]
+  },
+  {
+    "id": "awsv4-to-digest",
+    "kind": "request",
+    "input": "2026-10-12-auth-modes-parity/normalized/synthetic/awsv4.yml",
+    "files": [
+      "awsv4.yml"
+    ]
+  },
+  {
+    "id": "folder-digest",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "collection-awsv4",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+info:
+  name: forms
+  type: folder
+  seq: 2
+request:
+  auth:
+    type: basic
+    username: ann
+    password: s3cret

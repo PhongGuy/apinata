@@ -1,0 +1,35 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: HAWK Auth (success state) - collection
+== hawk-auth-headers.yml
+info:
+  name: hawk-auth-headers
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{url}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: HAWK Auth (success state) - collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Converted hawk-auth-headers / auth: `hawk` auth is not supported; imported as no auth (hawk-auth-headers.yml)
+Dropped hawk-auth-headers / testScript: scripts are not imported (hawk-auth-headers.yml)

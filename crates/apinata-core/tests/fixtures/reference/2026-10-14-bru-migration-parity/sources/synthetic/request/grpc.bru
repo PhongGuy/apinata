@@ -1,0 +1,33 @@
+meta {
+  name: a grpc call
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: grpc://localhost:50051
+  method: /pkg.Service/Call
+  methodType: unary
+  protoPath: protos/a.proto
+}
+
+metadata {
+  x-trace: abc
+  ~x-off: 1
+}
+
+script:grpc:before-call-start {
+  console.log('start');
+}
+
+script:grpc:before-message-send {
+  console.log('send');
+}
+
+script:grpc:after-message-receive {
+  console.log('receive');
+}
+
+script:grpc:after-call-end {
+  console.log('end');
+}

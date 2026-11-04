@@ -1,0 +1,16 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+using System;
+using System.Net.Http;
+using System.Text;
+
+var client = new HttpClient();
+var request = new HttpRequestMessage(new HttpMethod("POST"), "http://x.test/f");
+request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes("a=1&b=x+y%26z"));
+request.Content.Headers.TryAddWithoutValidation("content-type", "application/x-www-form-urlencoded");
+
+var response = await client.SendAsync(request);
+Console.WriteLine((int)response.StatusCode);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

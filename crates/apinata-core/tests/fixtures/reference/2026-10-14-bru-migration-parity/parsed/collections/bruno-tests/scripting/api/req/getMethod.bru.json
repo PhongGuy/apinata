@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "name": "getMethod",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getMethod()()\", function() {\n  const method = req.getMethod();\n  expect(method).to.equal(\"GET\");\n});"
+}

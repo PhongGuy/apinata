@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "name": "missing values",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json?foo={{undefinedVar}}",
+    "body": "json",
+    "auth": "none"
+  },
+  "params": [
+    {
+      "name": "foo",
+      "value": "{{undefinedVar}}",
+      "enabled": true,
+      "type": "query"
+    }
+  ],
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"{{undefinedVar2}}\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"should return json\", function() {\n  const url = req.getUrl();\n  const query = url.split(\"?\")[1];\n  expect(query).to.equal(\"foo={{undefinedVar}}\");\n\n  const data = res.getBody();\n  expect(res.getBody()).to.eql({\n    \"hello\": \"{{undefinedVar2}}\"\n  });\n});\n"
+}

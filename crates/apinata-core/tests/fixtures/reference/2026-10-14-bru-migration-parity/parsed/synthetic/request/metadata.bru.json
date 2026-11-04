@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "name": "metadata",
+    "type": "grpc",
+    "seq": 1
+  },
+  "metadata": [
+    {
+      "name": "caller",
+      "value": "me",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "who calls"
+        }
+      ],
+      "description": "who calls"
+    },
+    {
+      "name": "disabled",
+      "value": "x",
+      "enabled": false
+    },
+    {
+      "name": "extra",
+      "value": "y",
+      "enabled": true
+    }
+  ]
+}

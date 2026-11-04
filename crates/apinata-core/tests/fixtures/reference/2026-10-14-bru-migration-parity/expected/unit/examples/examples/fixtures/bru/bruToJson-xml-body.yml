@@ -1,0 +1,36 @@
+info:
+  name: Test API
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: XML Example
+    description: An example with XML body
+    request:
+      url: https://api.example.com/data
+      method: post
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <data>
+            <name>Test</name>
+            <value>123</value>
+          </data>
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""

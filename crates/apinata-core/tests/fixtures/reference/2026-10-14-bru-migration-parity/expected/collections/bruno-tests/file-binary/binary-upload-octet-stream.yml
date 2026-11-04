@@ -1,0 +1,48 @@
+info:
+  name: binary upload octet-stream
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{localhost}}/api/file-binary/binary-upload-octet-stream"
+  body:
+    type: file
+    data:
+      - filePath: file.txt
+        contentType: application/octet-stream
+        selected: true
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("non-json file body is uploaded byte-exact", function() {
+          const body = res.getBody();
+          expect(body.bytesReceived).to.equal(23);
+          expect(body.sha256).to.equal("ddf1d7c7f9889618e0066558caa2ab5d0a691ce4cb73fcdd6543e0e1d386d61f");
+          expect(body.looksLikeSerializedNodeStream).to.equal(false);
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.bytesReceived
+      operator: eq
+      value: "23"
+    - expression: res.body.sha256
+      operator: eq
+      value: ddf1d7c7f9889618e0066558caa2ab5d0a691ce4cb73fcdd6543e0e1d386d61f
+    - expression: res.body.contentType
+      operator: eq
+      value: application/octet-stream
+    - expression: res.body.looksLikeSerializedNodeStream
+      operator: eq
+      value: "false"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

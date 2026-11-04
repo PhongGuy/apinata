@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "sse finite stream",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/api/sse/finite",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "res": "const body = res.getBody();\nbru.setVar(\"sseBody\", typeof body === \"string\" ? body : JSON.stringify(body));"
+  },
+  "tests": "test(\"status is 200\", function() {\n  expect(res.status).to.equal(200);\n});\n\ntest(\"content-type is text/event-stream\", function() {\n  expect(res.headers[\"content-type\"]).to.include(\"text/event-stream\");\n});\n\ntest(\"res.getBody() contains all 3 SSE events in order\", function() {\n  const body = res.getBody();\n  expect(body).to.include(\"data: Hello\");\n  expect(body).to.include(\"data: from\");\n  expect(body).to.include(\"data: SSE\");\n  expect(body.indexOf(\"data: Hello\")).to.be.lessThan(body.indexOf(\"data: from\"));\n  expect(body.indexOf(\"data: from\")).to.be.lessThan(body.indexOf(\"data: SSE\"));\n});"
+}

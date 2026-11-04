@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test JSON string with quotes response",
+    "type": "http",
+    "seq": "8"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"application/json\" },\n  \"contentJSON\": \"\\\"ok\\\"\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "eq '\"ok\"'",
+      "enabled": true
+    }
+  ]
+}

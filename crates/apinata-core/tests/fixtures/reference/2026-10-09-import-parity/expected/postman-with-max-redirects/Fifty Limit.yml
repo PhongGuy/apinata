@@ -1,0 +1,16 @@
+info:
+  name: Fifty Limit
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://api.acme.test/boundary
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 50
+  forwardAuthorizationHeader: false

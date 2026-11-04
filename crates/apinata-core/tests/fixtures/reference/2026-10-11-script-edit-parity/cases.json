@@ -1,0 +1,82 @@
+[
+  {
+    "id": "script-add-pre",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "files": [
+      "request_1.yml"
+    ]
+  },
+  {
+    "id": "script-add-all",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "files": [
+      "request_1.yml"
+    ]
+  },
+  {
+    "id": "script-trim",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "files": [
+      "request_1.yml"
+    ]
+  },
+  {
+    "id": "script-quote",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "files": [
+      "request_1.yml"
+    ]
+  },
+  {
+    "id": "script-edit-post",
+    "kind": "request",
+    "input": "2026-10-11-script-edit-parity/normalized/synthetic/scripts.yml",
+    "files": [
+      "scripts.yml"
+    ]
+  },
+  {
+    "id": "script-clear-pre",
+    "kind": "request",
+    "input": "2026-10-11-script-edit-parity/normalized/synthetic/scripts.yml",
+    "files": [
+      "scripts.yml"
+    ]
+  },
+  {
+    "id": "script-clear-all",
+    "kind": "request",
+    "input": "2026-10-11-script-edit-parity/normalized/synthetic/scripts.yml",
+    "files": [
+      "scripts.yml"
+    ]
+  },
+  {
+    "id": "script-untouched",
+    "kind": "request",
+    "input": "2026-10-11-script-edit-parity/normalized/synthetic/scripts.yml",
+    "files": [
+      "scripts.yml"
+    ]
+  },
+  {
+    "id": "folder-script-add",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "collection-script-add",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

@@ -1,0 +1,12 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+#Requires -Version 7
+
+$url = 'http://x.test/basic'
+$headers = [ordered]@{
+    'Authorization' = 'Basic dTpw'
+}
+Invoke-RestMethod -Uri $url -Method Get -Headers $headers -SkipHeaderValidation

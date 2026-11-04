@@ -1,0 +1,26 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth1
+    consumerKey: ck
+    verifier: v
+    signatureMethod: RSA-SHA1
+    privateKey:
+      type: text
+      value: "{{privateKey}}"
+    version: "1.0"
+    placement: header
+    includeBodyHash: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

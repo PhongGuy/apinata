@@ -1,0 +1,118 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Get Users (GET).yml
+info:
+  name: Get Users (GET)
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/products"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Get all products (same summary as users GET)
+
+=== Get Users (POST).yml
+info:
+  name: Get Users (POST)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/users"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Create a new user (same summary as GET)
+
+=== Get Users.yml
+info:
+  name: Get Users
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Get all users
+
+=== environments/Example server.yml
+name: Example server
+variables:
+  - name: baseUrl
+    value: https://api.example.com
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Duplicate Test Collection
+
+docs:
+  content: Test collection for handling duplicate operation names
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /products:
+          target: 631d8542b42b1e01
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 9e44e1bda6a21b52
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get Users (GET).yml
+        GET /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: aa8077009aa11077
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get Users.yml
+        POST /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 0e0d58807350e2b2
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Get Users (POST).yml
+
+note Renamed Get Users (POST).yml | paths./users.post | renamed to `Get Users (POST)` because another request here has the same name
+note Renamed Get Users (GET).yml | paths./products.get | renamed to `Get Users (GET)` because another request here has the same name

@@ -1,0 +1,30 @@
+info:
+  name: signed
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/signed
+  auth:
+    type: oauth1
+    consumerKey: ck2
+    consumerSecret: "{{consumerSecret}}"
+    accessToken: tk
+    accessTokenSecret: ts
+    callbackUrl: https://app.example.com/cb
+    verifier: v1
+    signatureMethod: HMAC-SHA256
+    timestamp: "1700000000"
+    nonce: abc
+    version: "1.0"
+    realm: Photos
+    placement: query
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

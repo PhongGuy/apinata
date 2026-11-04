@@ -1,0 +1,24 @@
+{
+  "version": "1",
+  "name": "Full collection",
+  "type": "collection",
+  "ignore": ["node_modules", ".git", "scratch"],
+  "collectionVersion": 2,
+  "scripts": {
+    "moduleWhitelist": ["crypto"],
+    "filesystemAccess": { "allow": true }
+  },
+  "presets": {
+    "requestType": "http",
+    "requestUrl": "https://example.com"
+  },
+  "proxy": {
+    "enabled": true,
+    "protocol": "http",
+    "hostname": "proxy.local",
+    "port": 3128.0,
+    "auth": { "enabled": true, "username": "u", "password": "p" },
+    "bypassProxy": "localhost"
+  },
+  "clientCertificates": { "enabled": false, "certs": [] }
+}

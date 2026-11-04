@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "object body",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "formUrlEncoded",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "req.setBody({\n  \"key\": \"value with spaces\",\n  \"name\": \"bruno\",\n  \"array\": [\"test\", \"value\"],\n});"
+  },
+  "tests": "// https://github.com/usebruno/bruno/issues/5813\ntest(\"req.setBody() with object - request body\", function() {\n  const data = req.getBody();\n  expect(data).to.eql(\"key=value%20with%20spaces&name=bruno&array=test&array=value\");\n});\n\ntest(\"req.setBody() with object - response body\", function() {\n  const data = res.getBody();\n  expect(data).to.eql(\"key=value%20with%20spaces&name=bruno&array=test&array=value\");\n});",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

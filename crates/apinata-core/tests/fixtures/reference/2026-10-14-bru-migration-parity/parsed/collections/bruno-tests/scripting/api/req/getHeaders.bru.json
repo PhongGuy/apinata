@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "name": "getHeaders",
+    "type": "http",
+    "seq": "7"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getHeaders()\", function() {\n  const h = req.getHeaders();\n  expect(h.bruno).to.equal(\"is-awesome\");\n  expect(h.della).to.equal(\"is-beautiful\");\n});"
+}

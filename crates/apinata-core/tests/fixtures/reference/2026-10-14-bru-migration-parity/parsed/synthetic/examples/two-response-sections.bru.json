@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "Two response sections",
+    "type": "http",
+    "seq": "8"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items/4"
+  },
+  "examples": [
+    {
+      "name": "Merged",
+      "response": {
+        "headers": [
+          {
+            "name": "c",
+            "value": "3",
+            "enabled": true
+          },
+          {
+            "name": "b",
+            "value": "2",
+            "enabled": true
+          }
+        ],
+        "status": 200,
+        "statusText": "OK",
+        "body": {
+          "type": "text",
+          "content": "hi"
+        }
+      }
+    }
+  ]
+}

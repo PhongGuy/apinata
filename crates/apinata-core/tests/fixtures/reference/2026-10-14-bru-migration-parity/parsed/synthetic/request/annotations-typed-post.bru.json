@@ -1,0 +1,57 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "vars": {
+    "res": [
+      {
+        "name": "count",
+        "value": "res.body.count",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "local": false
+      },
+      {
+        "name": "obj",
+        "value": "res.body",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          },
+          {
+            "name": "description",
+            "value": "an object"
+          }
+        ],
+        "description": "an object",
+        "local": false
+      },
+      {
+        "name": "two",
+        "value": "1",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          },
+          {
+            "name": "number"
+          }
+        ],
+        "local": false
+      },
+      {
+        "name": "plain",
+        "value": "res.status",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  }
+}

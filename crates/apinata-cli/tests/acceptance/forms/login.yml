@@ -1,0 +1,26 @@
+info:
+  name: Login
+  type: http
+  seq: 1
+http:
+  method: POST
+  url: "{{baseUrl}}/login"
+  body:
+    type: form-urlencoded
+    data:
+      - name: user
+        value: ann
+      - name: scope
+        value: read write
+  auth: inherit
+runtime:
+  assertions:
+    - expression: res.body
+      operator: eq
+      value: welcome ann
+    - expression: res.body
+      operator: startsWith
+      value: welcome
+    - expression: res.headers['content-type']
+      operator: contains
+      value: text/plain

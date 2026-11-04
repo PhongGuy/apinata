@@ -1,0 +1,133 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Test API Collection v5
+== API Tests/Authentication/Login User.yml
+info:
+  name: Login User
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{base_url}}/api/auth/login"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: User-Agent
+      value: insomnia/10.3.1
+  body:
+    type: json
+    data: |-
+      {
+        "username": "testuser",
+        "password": "testpass123"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== API Tests/Authentication/folder.yml
+info:
+  name: Authentication
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+== API Tests/Get Users.yml
+info:
+  name: Get Users
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{base_url}}/api/users"
+  headers:
+    - name: Authorization
+      value: Bearer {{auth_token}}
+    - name: User-Agent
+      value: insomnia/10.3.1
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve all users from the system
+== API Tests/folder.yml
+info:
+  name: API Tests
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+== Data Management/Create Post.yml
+info:
+  name: Create Post
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{base_url}}/api/posts"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{auth_token}}
+    - name: User-Agent
+      value: insomnia/10.3.1
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Test Post",
+        "content": "This is a test post content",
+        "author": "Test Author"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Data Management/folder.yml
+info:
+  name: Data Management
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== environments/Base Environment.yml
+name: Base Environment
+variables:
+  - name: base_url
+    value: https://api.example.com
+  - name: auth_token
+    value: your_auth_token_here
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Test API Collection v5
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-path",
+    "type": "http",
+    "seq": "11"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const path = require('node:path');\n\ntest(\"path.resolve\", function() {\n  const resolved = path.resolve('foo', 'bar');\n  expect(path.isAbsolute(resolved)).to.equal(true);\n});\n\ntest(\"path.dirname and path.basename\", function() {\n  expect(path.basename('/foo/bar/baz.txt')).to.equal('baz.txt');\n  expect(path.basename('/foo/bar/baz.txt', '.txt')).to.equal('baz');\n});\n\ntest(\"path.extname\", function() {\n  expect(path.extname('file.txt')).to.equal('.txt');\n  expect(path.extname('file')).to.equal('');\n  expect(path.extname('.gitignore')).to.equal('');\n});\n\ntest(\"path.parse and path.format\", function() {\n  const parsed = path.parse('/foo/bar/baz.txt');\n  expect(parsed.base).to.equal('baz.txt');\n  expect(parsed.name).to.equal('baz');\n  expect(parsed.ext).to.equal('.txt');\n});\n\ntest(\"path.isAbsolute\", function() {\n  expect(path.isAbsolute('/foo/bar')).to.equal(true);\n  expect(path.isAbsolute('foo/bar')).to.equal(false);\n});\n\ntest(\"path.sep and path.delimiter\", function() {\n  expect(path.sep).to.be.a('string');\n  expect(path.delimiter).to.be.a('string');\n});"
+}

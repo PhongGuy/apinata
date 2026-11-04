@@ -1,0 +1,17 @@
+info:
+  name: Media
+  type: folder
+  seq: 3
+
+request:
+  auth: inherit
+
+docs:
+  content: |-
+    ## Media
+
+    Responses that are not JSON:
+
+    1. **Get XML** returns an XML document, shown re-indented and highlighted.
+    2. **Get PNG** returns a PNG image, shown as a preview with its size and dimensions.
+  type: text/markdown

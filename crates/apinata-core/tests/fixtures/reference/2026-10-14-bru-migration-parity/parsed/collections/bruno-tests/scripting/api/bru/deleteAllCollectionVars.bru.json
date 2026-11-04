@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "deleteAllCollectionVars",
+    "type": "http",
+    "seq": "28"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setCollectionVar(\"testDelAllCollectionA\", \"a\");\nbru.setCollectionVar(\"testDelAllCollectionB\", \"b\");"
+  },
+  "tests": "const savedCollectionVars = bru.getAllCollectionVars();\nbru.deleteAllCollectionVars();\n\ntest(\"should delete all collection vars\", function() {\n  const valA = bru.getCollectionVar(\"testDelAllCollectionA\");\n  const valB = bru.getCollectionVar(\"testDelAllCollectionB\");\n  expect(valA).to.be.undefined;\n  expect(valB).to.be.undefined;\n});\n\ntest(\"should not throw when called on empty scope\", function() {\n  expect(function() {\n    bru.deleteAllCollectionVars();\n  }).to.not.throw();\n});\n\n// Restore collection vars for subsequent requests\nfor (const [key, value] of Object.entries(savedCollectionVars)) {\n  bru.setCollectionVar(key, value);\n}"
+}

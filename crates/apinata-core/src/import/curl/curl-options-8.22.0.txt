@@ -1,0 +1,274 @@
+- --abstract-unix-socket value
+- --alt-svc value
+- --anyauth
+-a --append
+- --aws-sigv4 value
+- --basic
+- --ca-native
+- --cacert value
+- --capath value
+-E --cert value
+- --cert-status
+- --cert-type value
+- --ciphers value
+- --compressed
+- --compressed-ssh
+-K --config value
+- --connect-timeout value
+- --connect-to value
+-C --continue-at value
+-b --cookie value
+-c --cookie-jar value
+- --create-dirs
+- --create-file-mode value
+- --crlf
+- --crlfile value
+- --curves value
+-d --data value
+- --data-ascii value
+- --data-binary value
+- --data-raw value
+- --data-urlencode value
+- --delegation value
+- --digest
+-q --disable
+- --disable-eprt
+- --disable-epsv
+- --disallow-username-in-url
+- --dns-interface value
+- --dns-ipv4-addr value
+- --dns-ipv6-addr value
+- --dns-servers value
+- --doh-cert-status
+- --doh-insecure
+- --doh-url value
+- --dump-ca-embed
+-D --dump-header value
+- --ech value
+- --egd-file value
+- --engine value
+- --etag-compare value
+- --etag-save value
+- --expect100-timeout value
+-f --fail
+- --fail-early
+- --fail-with-body
+- --false-start
+- --follow
+-F --form value
+- --form-escape
+- --form-string value
+- --ftp-account value
+- --ftp-alternative-to-user value
+- --ftp-create-dirs
+- --ftp-method value
+- --ftp-pasv
+-P --ftp-port value
+- --ftp-pret
+- --ftp-skip-pasv-ip
+- --ftp-ssl-ccc
+- --ftp-ssl-ccc-mode value
+- --ftp-ssl-control
+-G --get
+-g --globoff
+- --happy-eyeballs-timeout-ms value
+- --haproxy-clientip value
+- --haproxy-protocol
+-I --head
+-H --header value
+-h --help value
+- --hostpubmd5 value
+- --hostpubsha256 value
+- --hsts value
+- --http0.9
+-0 --http1.0
+- --http1.1
+- --http2
+- --http2-prior-knowledge
+- --http3
+- --http3-only
+- --ignore-content-length
+-k --insecure
+- --interface value
+- --ip-tos value
+- --ipfs-gateway value
+-4 --ipv4
+-6 --ipv6
+- --json value
+-j --junk-session-cookies
+- --keepalive-cnt value
+- --keepalive-time value
+- --key value
+- --key-type value
+- --knownhosts value
+- --krb value
+- --libcurl value
+- --limit-rate value
+-l --list-only
+- --local-port value
+-L --location
+- --location-trusted
+- --login-options value
+- --mail-auth value
+- --mail-from value
+- --mail-rcpt value
+- --mail-rcpt-allowfails
+-M --manual
+- --max-filesize value
+- --max-redirs value
+-m --max-time value
+- --metalink
+- --mptcp
+- --negotiate
+-n --netrc
+- --netrc-file value
+- --netrc-optional
+-: --next
+- --no-alpn
+-N --no-buffer
+- --no-clobber
+- --no-keepalive
+- --no-npn
+- --no-progress-meter
+- --no-sessionid
+- --noproxy value
+- --ntlm
+- --ntlm-wb
+- --oauth2-bearer value
+- --out-null
+-o --output value
+- --output-dir value
+-Z --parallel
+- --parallel-immediate
+- --parallel-max value
+- --parallel-max-host value
+- --pass value
+- --path-as-is
+- --pinnedpubkey value
+- --post301
+- --post302
+- --post303
+- --preproxy value
+-# --progress-bar
+- --proto value
+- --proto-default value
+- --proto-redir value
+-x --proxy value
+- --proxy-anyauth
+- --proxy-basic
+- --proxy-ca-native
+- --proxy-cacert value
+- --proxy-capath value
+- --proxy-cert value
+- --proxy-cert-type value
+- --proxy-ciphers value
+- --proxy-crlfile value
+- --proxy-digest
+- --proxy-header value
+- --proxy-http2
+- --proxy-http3
+- --proxy-insecure
+- --proxy-key value
+- --proxy-key-type value
+- --proxy-negotiate
+- --proxy-ntlm
+- --proxy-pass value
+- --proxy-pinnedpubkey value
+- --proxy-service-name value
+- --proxy-ssl-allow-beast
+- --proxy-ssl-auto-client-cert
+- --proxy-tls13-ciphers value
+- --proxy-tlsauthtype value
+- --proxy-tlspassword value
+- --proxy-tlsuser value
+- --proxy-tlsv1
+-U --proxy-user value
+- --proxy1.0 value
+-p --proxytunnel
+- --pubkey value
+-Q --quote value
+- --random-file value
+-r --range value
+- --rate value
+- --raw
+-e --referer value
+-J --remote-header-name
+-O --remote-name
+- --remote-name-all
+-R --remote-time
+- --remove-on-error
+-X --request value
+- --request-target value
+- --resolve value
+- --retry value
+- --retry-all-errors
+- --retry-connrefused
+- --retry-delay value
+- --retry-max-time value
+- --sasl-authzid value
+- --sasl-ir
+- --service-name value
+-S --show-error
+-i --show-headers
+- --sigalgs value
+-s --silent
+- --skip-existing
+- --socks4 value
+- --socks4a value
+- --socks5 value
+- --socks5-basic
+- --socks5-gssapi
+- --socks5-gssapi-nec
+- --socks5-gssapi-service value
+- --socks5-hostname value
+-Y --speed-limit value
+-y --speed-time value
+- --ssl
+- --ssl-allow-beast
+- --ssl-auto-client-cert
+- --ssl-no-revoke
+- --ssl-reqd
+- --ssl-revoke-best-effort
+- --ssl-sessions value
+-2 --sslv2
+-3 --sslv3
+- --stderr value
+- --styled-output
+- --suppress-connect-headers
+- --tcp-fastopen
+- --tcp-nodelay
+-t --telnet-option value
+- --tftp-blksize value
+- --tftp-no-options
+-z --time-cond value
+- --tls-earlydata
+- --tls-max value
+- --tls13-ciphers value
+- --tlsauthtype value
+- --tlspassword value
+- --tlsuser value
+-1 --tlsv1
+- --tlsv1.0
+- --tlsv1.1
+- --tlsv1.2
+- --tlsv1.3
+- --tr-encoding
+- --trace value
+- --trace-ascii value
+- --trace-config value
+- --trace-ids
+- --trace-time
+- --unix-socket value
+-T --upload-file value
+- --upload-flags value
+- --url value
+- --url-query value
+-B --use-ascii
+-u --user value
+-A --user-agent value
+- --variable value
+-v --verbose
+-V --version
+- --vlan-priority value
+-w --write-out value
+- --xattr

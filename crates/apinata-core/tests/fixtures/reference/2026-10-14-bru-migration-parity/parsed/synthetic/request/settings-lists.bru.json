@@ -1,0 +1,14 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "settings": {
+    "encodeUrl": false,
+    "timeout": 5000,
+    "followRedirects": false,
+    "maxRedirects": 3,
+    "forwardAuthorizationHeader": false,
+    "keepAliveInterval": 30
+  }
+}

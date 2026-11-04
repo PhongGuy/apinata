@@ -1,0 +1,59 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
+	"os"
+)
+
+func main() {
+	url := "http://x.test/m"
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	if err := form.WriteField("a", "1"); err != nil {
+		panic(err)
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", "form-data; name=\"up\"; filename=\"up.bin\"")
+	header.Set("Content-Type", "text/plain")
+	part, err := form.CreatePart(header)
+	if err != nil {
+		panic(err)
+	}
+	file, err := os.Open("/data/up.bin")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		panic(err)
+	}
+	file.Close()
+	if err := form.Close(); err != nil {
+		panic(err)
+	}
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Content-Type", form.FormDataContentType())
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
+	out, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res.Status)
+	fmt.Println(string(out))
+}

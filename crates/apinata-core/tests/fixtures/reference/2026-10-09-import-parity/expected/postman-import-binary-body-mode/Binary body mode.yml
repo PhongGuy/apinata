@@ -1,0 +1,51 @@
+info:
+  name: Binary body mode
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.com/users?X-API-KEY=12345
+  params:
+    - name: X-API-KEY
+      value: "12345"
+      type: query
+  body:
+    type: file
+    data:
+      - filePath: ./binary-payload.bin
+        contentType: application/octet-stream
+        selected: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+examples:
+  - name: Binary upload example
+    request:
+      url: https://api.com/users?X-API-KEY=12345
+      method: POST
+      params:
+        - name: X-API-KEY
+          value: "12345"
+          type: query
+      body:
+        type: file
+        data:
+          - filePath: ./binary-payload.bin
+            contentType: application/octet-stream
+            selected: true
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: ""

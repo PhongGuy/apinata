@@ -1,0 +1,28 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+  clientCertificates:
+    - domain: "*.example.com"
+      type: pem
+      certificateFilePath: certs/client.pem
+      privateKeyFilePath: certs/client.key
+      passphrase: "{{process.env.APINATA_CERT_PASSPHRASE_1}}"
+    - domain: api.example.com:8443
+      type: pkcs12
+      pkcs12FilePath: certs/client.p12
+      disabled: true
+bundled: false
+extensions: {}

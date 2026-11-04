@@ -1,0 +1,39 @@
+[package]
+name = "apinata-mcp"
+version.workspace = true
+description = "MCP server exposing one OpenCollection to AI agents over stdio"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# One integration binary: tests/main.rs declares every test file as a module.
+autotests = false
+
+[dependencies]
+apinata-core = { path = "../apinata-core" }
+base64.workspace = true
+percent-encoding.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-std", "sync", "rt", "macros", "time"] }
+tempfile.workspace = true
+tokio-util.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+rmcp = { workspace = true, features = ["client"] }
+hmac.workspace = true
+md-5.workspace = true
+md4.workspace = true
+socket2 = { workspace = true }
+tokio-rustls.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "time", "test-util"] }
+wiremock.workspace = true
+
+# A single test executable keeps the link count (and the target dir) small.
+[[test]]
+name = "integration"
+path = "tests/main.rs"

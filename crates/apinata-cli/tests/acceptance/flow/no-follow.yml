@@ -1,0 +1,17 @@
+info:
+  name: No follow
+  type: http
+  seq: 2
+http:
+  method: GET
+  url: "{{baseUrl}}/old"
+settings:
+  followRedirects: false
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "302"
+    - expression: res.headers.location
+      operator: eq
+      value: /new

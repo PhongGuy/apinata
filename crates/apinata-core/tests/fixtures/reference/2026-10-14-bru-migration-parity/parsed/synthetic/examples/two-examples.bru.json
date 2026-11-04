@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "name": "Two examples",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items"
+  },
+  "examples": [
+    {
+      "name": "First",
+      "request": {
+        "url": "https://api.example.com/items?page=1",
+        "method": "get"
+      },
+      "response": {
+        "status": "200",
+        "statusText": "OK"
+      }
+    },
+    {
+      "name": "Second renamed",
+      "request": {
+        "headers": [
+          {
+            "name": "c",
+            "value": "3",
+            "enabled": true
+          },
+          {
+            "name": "b",
+            "value": "2",
+            "enabled": true
+          }
+        ]
+      }
+    }
+  ],
+  "docs": "between the examples"
+}

@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "name": "Verb connect",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "connect",
+    "url": "https://example.com/connect?x=1",
+    "body": "none",
+    "auth": "none"
+  }
+}

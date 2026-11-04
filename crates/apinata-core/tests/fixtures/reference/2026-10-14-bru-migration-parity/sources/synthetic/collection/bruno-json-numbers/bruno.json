@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "name": "numbers \ud800 here",
+  "type": "collection",
+  "big": 9007199254740993,
+  "huge": 1e400,
+  "neg": -1e400,
+  "tiny": 1e-400,
+  "ignore": ["node_modules"]
+}

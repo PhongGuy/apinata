@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "name": "Digest Auth 200",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://www.httpfaker.org/api/auth/digest/auth/admin/password",
+    "body": "none",
+    "auth": "digest"
+  },
+  "auth": {
+    "digest": {
+      "username": "admin",
+      "password": "password"
+    }
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.authenticated",
+      "value": "isTruthy",
+      "enabled": true
+    }
+  ]
+}

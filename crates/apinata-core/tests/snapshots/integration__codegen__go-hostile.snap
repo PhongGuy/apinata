@@ -1,0 +1,35 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+func main() {
+	url := "http://x.test/p?x=a%27b$c{d}&y=%C3%BC"
+	body := strings.NewReader("a'b\"c\\d $e {f}\tg\nü€ end")
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Add("X-H", "it's \"q\" \\ $HOME {x} ü")
+	req.Header.Add("content-type", "text/plain")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
+	out, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res.Status)
+	fmt.Println(string(out))
+}

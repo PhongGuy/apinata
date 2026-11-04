@@ -1,0 +1,99 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: coll-v1
+== coll-v1-child/folder.yml
+info:
+  name: coll-v1-child
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== coll-v1-child/req-v0-II.yml
+info:
+  name: req-v0-II
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/get?key=value
+  headers:
+    - name: Inactive-Header
+      value: Inactive Header
+      disabled: true
+    - name: Authorization
+      value: Bearer token123
+  params:
+    - name: key
+      value: value
+      type: query
+    - name: inactive-key
+      value: inactive-param
+      type: query
+      disabled: true
+  body:
+    type: json
+    data: ""
+  auth:
+    type: bearer
+    token: token123
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: coll-v1
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== req-v0.yml
+info:
+  name: req-v0
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/get?key=value
+  headers:
+    - name: Inactive-Header
+      value: Inactive Header
+      disabled: true
+    - name: Authorization
+      value: Bearer token123
+  params:
+    - name: key
+      value: value
+      type: query
+    - name: inactive-key
+      value: inactive-param
+      type: query
+      disabled: true
+  body:
+    type: json
+    data: ""
+  auth:
+    type: bearer
+    token: token123
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped coll-v1-child / req-v0-II / testScript: scripts are not imported (coll-v1-child/req-v0-II.yml)
+Dropped req-v0 / testScript: scripts are not imported (req-v0.yml)

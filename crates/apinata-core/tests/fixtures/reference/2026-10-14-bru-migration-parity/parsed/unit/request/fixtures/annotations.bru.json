@@ -1,0 +1,32 @@
+{
+  "vars": {
+    "req": [
+      {
+        "name": "key",
+        "value": "value",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "description",
+            "value": "found in C:\\Users\\File\\Path"
+          }
+        ],
+        "description": "found in C:\\Users\\File\\Path",
+        "local": false
+      },
+      {
+        "name": "key2",
+        "value": "value",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "description",
+            "value": "height of 2' "
+          }
+        ],
+        "description": "height of 2' ",
+        "local": false
+      }
+    ]
+  }
+}

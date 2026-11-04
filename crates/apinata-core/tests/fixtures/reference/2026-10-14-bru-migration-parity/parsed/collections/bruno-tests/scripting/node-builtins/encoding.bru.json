@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "encoding",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "test(\"TextEncoder\", function() {\n  const encoder = new TextEncoder();\n  const encoded = encoder.encode('hello');\n  expect(encoded).to.be.instanceOf(Uint8Array);\n  expect(encoded.length).to.equal(5);\n  expect(encoded[0]).to.equal(104); // 'h'\n});\n\ntest(\"TextDecoder\", function() {\n  const decoder = new TextDecoder('utf-8');\n  const decoded = decoder.decode(new Uint8Array([104, 101, 108, 108, 111]));\n  expect(decoded).to.equal('hello');\n});\n\ntest(\"TextDecoder with utf-16le\", function() {\n  const decoder = new TextDecoder('utf-16le');\n  const decoded = decoder.decode(new Uint8Array([104, 0, 105, 0]));\n  expect(decoded).to.equal('hi');\n});\n\ntest(\"btoa and atob\", function() {\n  expect(btoa('hello bruno')).to.equal('aGVsbG8gYnJ1bm8=');\n  expect(atob('aGVsbG8gYnJ1bm8=')).to.equal('hello bruno');\n});\n\ntest(\"base64 roundtrip with binary data\", function() {\n  const binary = String.fromCharCode(0, 1, 255, 254);\n  const encoded = btoa(binary);\n  const decoded = atob(encoded);\n  expect(decoded.charCodeAt(0)).to.equal(0);\n  expect(decoded.charCodeAt(2)).to.equal(255);\n});"
+}

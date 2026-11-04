@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "name": "delayed headers",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/api/wait-for/headers?time=1000",
+    "body": "none",
+    "auth": "none"
+  },
+  "params": [
+    {
+      "name": "time",
+      "value": "1000",
+      "enabled": true,
+      "type": "query"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "const WAIT_MS = 1000;\n// The server's timer can fire a few ms before `time` has elapsed by the client's clock.\nconst TIMER_SLACK_MS = 50;\n\ntest(\"response time covers the full wait when headers are held back\", function() {\n  expect(res.getResponseTime()).to.be.at.least(WAIT_MS - TIMER_SLACK_MS);\n});"
+}

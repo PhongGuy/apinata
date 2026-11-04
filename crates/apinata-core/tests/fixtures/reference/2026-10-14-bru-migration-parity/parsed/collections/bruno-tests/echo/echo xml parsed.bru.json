@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "echo xml parsed",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/xml-parsed",
+    "body": "xml",
+    "auth": "none"
+  },
+  "body": {
+    "xml": "<hello>\n  <world>bruno</world>\n</hello>"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"should return parsed xml\", function() {\n  const data = res.getBody();\n  expect(res.getBody()).to.eql({\n    \"hello\": {\n      \"world\": [\"bruno\"]\n    }\n  });\n});\n"
+}

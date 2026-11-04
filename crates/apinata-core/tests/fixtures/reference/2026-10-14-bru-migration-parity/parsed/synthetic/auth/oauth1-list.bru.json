@@ -1,0 +1,31 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth1"
+  },
+  "auth": {
+    "oauth1": {
+      "consumerKey": [
+        "a",
+        "b"
+      ],
+      "consumerSecret": "",
+      "accessToken": "",
+      "accessTokenSecret": "",
+      "callbackUrl": "",
+      "verifier": "",
+      "signatureMethod": "",
+      "privateKey": "k",
+      "privateKeyType": "text",
+      "timestamp": "",
+      "nonce": "",
+      "version": "",
+      "realm": [
+        "r1"
+      ],
+      "placement": "",
+      "includeBodyHash": false
+    }
+  }
+}

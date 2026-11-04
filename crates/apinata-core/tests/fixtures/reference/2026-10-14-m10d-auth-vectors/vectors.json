@@ -1,0 +1,1172 @@
+{
+  "reference": "1301ea17",
+  "node": "v24.16.0",
+  "edgegrid": {
+    "signer": [
+      {
+        "id": "get-no-body",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/testapi/v1/t1"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=kOpXF0kTxwI8KJZIrdH4Ys91oHOBZ/UhQQBHjDfs4QI=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/testapi/v1/t1\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/testapi/v1/t1",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "get-query",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/testapi/v1/t1?p=q&x=a%20b&y=c+d&z=é f"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=zVKxUDj+ogkP/mKFpl68DYnNdhCEWNDQEgomi7owXXs=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/testapi/v1/t1?p=q&x=a%20b&y=c+d&z=%C3%A9%20f\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/testapi/v1/t1?p=q&x=a%20b&y=c+d&z=%C3%A9%20f",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "get-root-no-path",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://host.example"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=nnG4N6W0KnvJMM2f4+CT/oO/SyqN7bMJuNNTV5yoSjg=",
+        "dataToSign": "GET\thttps\thost.example\t/\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "host.example",
+          "pathQuery": "/",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "get-default-port-dropped",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://host.example:443/p"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=z43vaCGC+sDXP+L7hJW7cPd9AqxNDbj5cp2fOi6rtK0=",
+        "dataToSign": "GET\thttps\thost.example\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "host.example",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "get-other-port-kept",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "http://host.example:8080/p"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=SPcjjyCXvXsNj7aoI2TiY/ujyYrYnbi93vLsjc/4yAQ=",
+        "dataToSign": "GET\thttp\thost.example:8080\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "http",
+          "host": "host.example:8080",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "get-body-not-hashed",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/g",
+          "data": "ignored"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=Xupm4+XD3mrMmH26lV18FMYmDfA3ZjRs/rgb9XUIvps=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/g\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/g",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-string",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/testapi/v1/t3",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=7ThnM/AFQUAbNqNzb8MIbZhpEzzubibNXIlfN8WZA50=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/testapi/v1/t3\t\tfDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/testapi/v1/t3",
+          "contentHash": "fDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-lowercase-method",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "post",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/testapi/v1/t3",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=7ThnM/AFQUAbNqNzb8MIbZhpEzzubibNXIlfN8WZA50=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/testapi/v1/t3\t\tfDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/testapi/v1/t3",
+          "contentHash": "fDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-empty-string",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": ""
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=Fw2y2301JpxTgBSstBXN41LuxtDYhgCt0Hsb3RjBzbk=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-json-object",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": {
+            "b": 1,
+            "a": "xé"
+          }
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=Nmy5VKObvEYVyUxXGeON08voGTul1kwtdvrpqZW37QA=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\trh4T5Lk3Ie6NSD8+4/inwcHVy7RIruA04JXY2+6J6zo=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "rh4T5Lk3Ie6NSD8+4/inwcHVy7RIruA04JXY2+6J6zo="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-json-string",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "{ \"b\": 1, \"a\": \"xé\" }"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=rd1EPZQmr+QsBLcs7Bg7nsxNikv+Kuerdi8Pq55pA0w=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tg0/dASeLws69ZiW8tfjmwHgHItFw4Jv1jasy3Djabpk=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "g0/dASeLws69ZiW8tfjmwHgHItFw4Jv1jasy3Djabpk="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "put-with-body",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "PUT",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=qrvKiGHgw4x8ydUifpNDHckaLVZh9iBjmO6+1D5Ud1k=",
+        "dataToSign": "PUT\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "PUT",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "patch-with-body",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "PATCH",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=gzq23tSv3821dCEZoaY+793W9WGzJ/reF0gve7a6rLI=",
+        "dataToSign": "PATCH\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "PATCH",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-at-default-limit",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "<131072 chars: aaaa...aaaa>"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=k22M+eVB+2fVvJclFCONzXMm66Id5W9cI5Yk5tr/1iM=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\ttE/7cvzCWWdr2ASV/vG0S4CMqPH/4bFwak15EbDjHxE=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "tE/7cvzCWWdr2ASV/vG0S4CMqPH/4bFwak15EbDjHxE="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-over-default-limit",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "<131073 chars: aaaa...aaab>"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=k22M+eVB+2fVvJclFCONzXMm66Id5W9cI5Yk5tr/1iM=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\ttE/7cvzCWWdr2ASV/vG0S4CMqPH/4bFwak15EbDjHxE=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "tE/7cvzCWWdr2ASV/vG0S4CMqPH/4bFwak15EbDjHxE="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-16-string",
+        "config": {
+          "maxBodySize": "16"
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=97aRr9jgahQahBTWWFhRGJqPdV+zNRRqN8jLIaGI330=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tToGfk0H6dT2APWZbqOJ8qw2DBOmmlKSe1FjAiNVNgTQ=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "ToGfk0H6dT2APWZbqOJ8qw2DBOmmlKSe1FjAiNVNgTQ="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-16-number",
+        "config": {
+          "maxBodySize": 16
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=97aRr9jgahQahBTWWFhRGJqPdV+zNRRqN8jLIaGI330=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tToGfk0H6dT2APWZbqOJ8qw2DBOmmlKSe1FjAiNVNgTQ=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "ToGfk0H6dT2APWZbqOJ8qw2DBOmmlKSe1FjAiNVNgTQ="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-zero-is-default",
+        "config": {
+          "maxBodySize": 0
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=mtXX5DJJ5IVpqbv/IzCVQ9xbwSb5pwgb+RUNnQLrLEQ=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tfDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "fDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-nan-no-truncation",
+        "config": {
+          "maxBodySize": "abc"
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=mtXX5DJJ5IVpqbv/IzCVQ9xbwSb5pwgb+RUNnQLrLEQ=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tfDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "fDimoYqXOLntG3If/Z0K2aS9I19Pkv9P5OMCoL8lY0w="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-16abc-parses-16",
+        "config": {
+          "maxBodySize": "16abc"
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "datadatadatadatadatadatadatadata"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=97aRr9jgahQahBTWWFhRGJqPdV+zNRRqN8jLIaGI330=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tToGfk0H6dT2APWZbqOJ8qw2DBOmmlKSe1FjAiNVNgTQ=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "ToGfk0H6dT2APWZbqOJ8qw2DBOmmlKSe1FjAiNVNgTQ="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-4-non-ascii",
+        "config": {
+          "maxBodySize": 4
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "ééééé"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=KBxau5duiSzWhu2CJMUTLME/gwgq+eyu2dc47Pt381s=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tFM3nya013lo3/OKsJ2dCF1Ao/Z983w2uAf9QixJkKdk=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "FM3nya013lo3/OKsJ2dCF1Ao/Z983w2uAf9QixJkKdk="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "post-max-1-splits-surrogate",
+        "config": {
+          "maxBodySize": 1
+        },
+        "request": {
+          "headers": {},
+          "method": "POST",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p",
+          "data": "😀x"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=IcCwzyFKN1+pE8oYfsV8DpGG1YxRyXOaCcxq0IEXX00=",
+        "dataToSign": "POST\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/p\t\tg9VEzMIjwFfSv4DT8qMpgsMsPA244mdIINpQZHg/sJc=\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "POST",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/p",
+          "contentHash": "g9VEzMIjwFfSv4DT8qMpgsMsPA244mdIINpQZHg/sJc="
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "headers-to-sign",
+        "config": {
+          "headersToSign": " X-Test1 , x-test2,,X-Missing ,X-TEST3"
+        },
+        "request": {
+          "headers": {
+            "x-test1": "  value   with\t spaces ",
+            "X-Test2": "b",
+            "X-Test3": "c\n d",
+            "X-Unsigned": "u"
+          },
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/h"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=AiGCxQi+t2FYFod/W7Q6eOOYRJ+MzMRFVnFHZbxKnxA=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/h\tx-test1:value with spaces\tx-test2:b\tx-test3:c d\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/h",
+          "contentHash": ""
+        },
+        "canonicalHeaders": "x-test1:value with spaces\tx-test2:b\tx-test3:c d"
+      },
+      {
+        "id": "headers-to-sign-config-order",
+        "config": {
+          "headersToSign": "X-Test3,X-Test1"
+        },
+        "request": {
+          "headers": {
+            "X-Test1": "1",
+            "X-Test3": "3"
+          },
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/h"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=uJIv3SmNJ0hC7S0BIS9TMyHDGt0DGWJm8EoRvpvHwYw=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/h\tx-test3:3\tx-test1:1\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/h",
+          "contentHash": ""
+        },
+        "canonicalHeaders": "x-test3:3\tx-test1:1"
+      },
+      {
+        "id": "headers-duplicate-case-last-wins",
+        "config": {
+          "headersToSign": "x-a"
+        },
+        "request": {
+          "headers": {
+            "X-A": "first",
+            "x-a": "second"
+          },
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/h"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=TkQ44BiqLpxVvUDsi9F0lzLgLmNb+2hEv9gtoaAbSxY=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/h\tx-a:second\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/h",
+          "contentHash": ""
+        },
+        "canonicalHeaders": "x-a:second"
+      },
+      {
+        "id": "headers-to-sign-blank",
+        "config": {
+          "headersToSign": " , ,"
+        },
+        "request": {
+          "headers": {
+            "X-A": "1"
+          },
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/h"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=OHGbz2Wanw4E4yY5sK3Tm9xYYWyRH/tbavfJ3PCJ8b8=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/h\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/h",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "headers-to-sign-semicolon-not-split",
+        "config": {
+          "headersToSign": "X-A;X-B"
+        },
+        "request": {
+          "headers": {
+            "X-A": "1",
+            "X-B": "2"
+          },
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/h"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=OHGbz2Wanw4E4yY5sK3Tm9xYYWyRH/tbavfJ3PCJ8b8=",
+        "dataToSign": "GET\thttps\takaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net\t/h\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net",
+          "pathQuery": "/h",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "base-url-with-scheme",
+        "config": {
+          "baseURL": "https://other.example.com:8443/ignored/path?z=1"
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "http://localhost:6000/p/q?a=1"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=cOskMoO5mOVB27vs7N5omis5+VJiRwYeUJhuT3ocq50=",
+        "dataToSign": "GET\thttps\tother.example.com:8443\t/p/q?a=1\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "other.example.com:8443",
+          "pathQuery": "/p/q?a=1",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "base-url-no-scheme",
+        "config": {
+          "baseURL": "localhost:6000"
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://req.example/p?a=1"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=qR9ExT1tqC/xSpPNny9N+eiVsqj4VbH6JsGtkeh95BE=",
+        "dataToSign": "GET\thttps\tlocalhost:6000\t/p?a=1\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "https",
+          "host": "localhost:6000",
+          "pathQuery": "/p?a=1",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "base-url-padded",
+        "config": {
+          "baseURL": "  host.example  "
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "http://req.example/p"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=MMX/3z2jjSvng3N1tYgnkuTntoR39QUpMnBj6dSg8JY=",
+        "dataToSign": "GET\thttp\thost.example\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "http",
+          "host": "host.example",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "base-url-undefined-string",
+        "config": {
+          "baseURL": "undefined"
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "http://req.example/p"
+        },
+        "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=PXVUeNZ2b7RsITOKQV6aLCGlUq3pZAlE9fckHbU56I0=",
+        "dataToSign": "GET\thttp\treq.example\t/p\t\t\tEG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;",
+        "dataToSignFields": {
+          "method": "GET",
+          "scheme": "http",
+          "host": "req.example",
+          "pathQuery": "/p",
+          "contentHash": ""
+        },
+        "canonicalHeaders": ""
+      },
+      {
+        "id": "nonce-timestamp-blank-generated",
+        "config": {
+          "nonce": " ",
+          "timestamp": ""
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p"
+        },
+        "authorizationShape": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=<YYYYMMDDTHH:MM:SS+0000>;nonce=<uuid v4>;signature=<...>",
+        "timestampMatches": true,
+        "nonceMatches": true
+      },
+      {
+        "id": "missing-access-token",
+        "config": {
+          "accessToken": ""
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p"
+        },
+        "error": "EdgeGrid: accessToken is required"
+      },
+      {
+        "id": "missing-client-token",
+        "config": {
+          "clientToken": "   "
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p"
+        },
+        "error": "EdgeGrid: clientToken is required"
+      },
+      {
+        "id": "missing-client-secret",
+        "config": {
+          "clientSecret": "undefined"
+        },
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p"
+        },
+        "error": "EdgeGrid: clientSecret is required"
+      },
+      {
+        "id": "missing-all",
+        "config": {},
+        "request": {
+          "headers": {},
+          "method": "GET",
+          "url": "https://akaa-baseurl-xxxxxxxxxxx-xxxxxxxxxxxxx.luna.akamaiapis.net/p"
+        },
+        "error": "EdgeGrid: accessToken is required"
+      }
+    ],
+    "pipeline": [
+      {
+        "id": "json",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "String",
+          "bodyTextHashed": "{\n  \"a\": \"é\",\n  \"n\": 1\n}",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:application/json\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "lpZeidaT6r4Wa4xjJYxBBafBUbnoDb67Tm4chSWZqOU=",
+        "contentHashOfSeen": "lpZeidaT6r4Wa4xjJYxBBafBUbnoDb67Tm4chSWZqOU=",
+        "sentBytes": "{\n  \"a\": \"é\",\n  \"n\": 1\n}",
+        "contentHashMatchesSentBytes": true,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "application/json",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=OVAH5aZuHlYCPMc4YwBZgmwtDBtl5HEj6j9pLpGzf4M="
+        }
+      },
+      {
+        "id": "text",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "String",
+          "bodyTextHashed": "hello é",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "text/plain",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:text/plain\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "X39KKpN6OqOzCeF6M0Kz7VnhI5uWIrPHN5pDc2hctWs=",
+        "contentHashOfSeen": "X39KKpN6OqOzCeF6M0Kz7VnhI5uWIrPHN5pDc2hctWs=",
+        "sentBytes": "hello é",
+        "contentHashMatchesSentBytes": true,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "text/plain",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=YmcgGYG0cIRbDe5sW2O+0qrSljZAgEsg3WJDtNelC6M="
+        }
+      },
+      {
+        "id": "xml",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "String",
+          "bodyTextHashed": "<a>é</a>",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/xml",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:application/xml\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "Og1aGDWXRWL2ylg3J+/G6eb7ZKArT0ZcTJfUPi9zouM=",
+        "contentHashOfSeen": "Og1aGDWXRWL2ylg3J+/G6eb7ZKArT0ZcTJfUPi9zouM=",
+        "sentBytes": "<a>é</a>",
+        "contentHashMatchesSentBytes": true,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "application/xml",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=6Miquip7OmoZPSIlDFTi/SNWtN9VZcEVpIeVrSygd0E="
+        }
+      },
+      {
+        "id": "form-urlencoded",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "String",
+          "bodyTextHashed": "a=x+y&b=%C3%A9%26",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:application/x-www-form-urlencoded\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "mYyJvpst4JVgPO1OysQngIoKwOPHWaHzcdFqXOX8uXo=",
+        "contentHashOfSeen": "mYyJvpst4JVgPO1OysQngIoKwOPHWaHzcdFqXOX8uXo=",
+        "sentBytes": "a=x+y&b=%C3%A9%26",
+        "contentHashMatchesSentBytes": true,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=ZMzOFZ2Dnk7gOGbcZIlwJHFxjt05QxDwC4kGu/2SRfQ="
+        }
+      },
+      {
+        "id": "multipart",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "FormData",
+          "bodyTextHashed": "<427 chars> {\"_overheadLength\":100,\"_valueLength\":1,\"_valuesToMeasure\":[],\"writable\":false,\"readable\":true,\"dataSize\":0,\"maxDataSize\":2097152,\"pauseStreams\":true,\"_released\":false,\"_streams\":[\"----------------------------000000000000000000000000\\r\\nContent-Disposition: form-data; name=\\\"a\\\"\\r\\n\\r\\n\",\"x\",null],\"",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "multipart/form-data; boundary=--------------------------000000000000000000000000",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:multipart/form-data; boundary=--------------------------000000000000000000000000\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "25Uvm2chDQMTNeiguP/svDUW7i5xAFE9zhAHj/8GL3I=",
+        "contentHashOfSeen": "25Uvm2chDQMTNeiguP/svDUW7i5xAFE9zhAHj/8GL3I=",
+        "sentBytes": "----------------------------000000000000000000000000\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nx\r\n----------------------------000000000000000000000000--\r\n",
+        "contentHashMatchesSentBytes": false,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "multipart/form-data; boundary=--------------------------000000000000000000000000",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=wnLaeiDPkfk5GTkDIPNbu2PEoxj6Be0yh859eT+Tcvg="
+        }
+      },
+      {
+        "id": "graphql",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "Object",
+          "bodyTextHashed": "{\"query\":\"query { me }\",\"variables\":{\"id\":1}}",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:application/json\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "h6tOvOyHASD99BOjmGV8eU0LnLDtIS9kfMiaSP+57LA=",
+        "contentHashOfSeen": "h6tOvOyHASD99BOjmGV8eU0LnLDtIS9kfMiaSP+57LA=",
+        "sentBytes": "{\"query\":\"query { me }\",\"variables\":{\"id\":1}}",
+        "contentHashMatchesSentBytes": true,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "application/json",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=xZGcH02oSWqIHn71wUIlPJvcz+Ul5OGHEGAmDW1zDNw="
+        }
+      },
+      {
+        "id": "none",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "undefined",
+          "bodyTextHashed": "",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": false,
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:false\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "",
+        "contentHashOfSeen": "",
+        "sentBytes": "",
+        "contentHashMatchesSentBytes": null,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=ebxpUgQrmtGxZXrL3lcH3uXcDL3r0f3HN+gPCkR2vBc="
+        }
+      },
+      {
+        "id": "file",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "Buffer",
+          "bodyTextHashed": "{\"type\":\"Buffer\",\"data\":[102,105,108,101,32,98,111,100,121,32,195,169,10]}",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "text/plain",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b"
+          }
+        },
+        "canonicalHeaders": "content-type:text/plain\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*",
+        "contentHash": "HevzaUWz9sOkxqPSSXi6qcD+g1FUYFjXOWJHzVXD51I=",
+        "contentHashOfSeen": "HevzaUWz9sOkxqPSSXi6qcD+g1FUYFjXOWJHzVXD51I=",
+        "sentBytes": "file body é\n",
+        "contentHashMatchesSentBytes": false,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "text/plain",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "Authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=X4ZmB8EyawvOnCCpQ6IVF0+TOY6KYCOg5vTWr9PG/SE="
+        }
+      },
+      {
+        "id": "text-user-authorization-lowercase",
+        "interceptorOrder": [
+          "probe",
+          "timing"
+        ],
+        "seen": {
+          "method": "post",
+          "dataType": "String",
+          "bodyTextHashed": "x",
+          "headers": {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "text/plain",
+            "User-Agent": "bruno-runtime/x",
+            "X-Custom": "a  b",
+            "authorization": "Bearer mine"
+          }
+        },
+        "canonicalHeaders": "content-type:text/plain\tx-custom:a b\tuser-agent:bruno-runtime/x\taccept:application/json, text/plain, */*\tauthorization:Bearer mine",
+        "contentHash": "LXEWQrcmsEQBYnyp+6wy9chTD7GQPMTbAiWHF5IaSIE=",
+        "contentHashOfSeen": "LXEWQrcmsEQBYnyp+6wy9chTD7GQPMTbAiWHF5IaSIE=",
+        "sentBytes": "x",
+        "contentHashMatchesSentBytes": true,
+        "sentHeaders": {
+          "Accept": "application/json, text/plain, */*",
+          "Content-Type": "text/plain",
+          "User-Agent": "bruno-runtime/x",
+          "X-Custom": "a  b",
+          "authorization": "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=yUkIdH95rzLJi2uaDPfQs1RJkoGI10UXa9Anj2EdTiA="
+        }
+      }
+    ],
+    "truncationCheck": {
+      "firstFourChars": "FM3nya013lo3/OKsJ2dCF1Ao/Z983w2uAf9QixJkKdk=",
+      "firstFourBytes": "8TwAeh2ObhMAtZV6FDgQzdNVWCVGbPXSYXsawv2L12s=",
+      "loneHighSurrogateAsReplacement": "g9VEzMIjwFfSv4DT8qMpgsMsPA244mdIINpQZHg/sJc="
+    }
+  },
+  "wsse": [
+    {
+      "id": "ascii",
+      "auth": {
+        "username": "bob",
+        "password": "secret"
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "non-ascii-password",
+      "auth": {
+        "username": "böb",
+        "password": "päss€😀"
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"böb\", PasswordDigest=\"YTljZTQzNzNmODFjMzQyNWY5NzliNjczMjlhYzg0Nzg0MjM5ODk2NA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"böb\", PasswordDigest=\"YTljZTQzNzNmODFjMzQyNWY5NzliNjczMjlhYzg0Nzg0MjM5ODk2NA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "empty-password",
+      "auth": {
+        "username": "bob",
+        "password": ""
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"ZDUzYjlhMzljYzExYjA1ZmI1NTM5YzVjODBjZWM3NDk1ZDkzNDYyZA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"ZDUzYjlhMzljYzExYjA1ZmI1NTM5YzVjODBjZWM3NDk1ZDkzNDYyZA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "empty-username",
+      "auth": {
+        "username": "",
+        "password": "secret"
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "absent-fields",
+      "auth": {},
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"\", PasswordDigest=\"ZDUzYjlhMzljYzExYjA1ZmI1NTM5YzVjODBjZWM3NDk1ZDkzNDYyZA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"\", PasswordDigest=\"ZDUzYjlhMzljYzExYjA1ZmI1NTM5YzVjODBjZWM3NDk1ZDkzNDYyZA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "null-fields",
+      "auth": {
+        "username": null,
+        "password": null
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"null\", PasswordDigest=\"YzRmZjg5YjU3NjhlZDg5MjkwYTc3NTFmZmRiZDY3MWY3NzVkM2YzOA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"null\", PasswordDigest=\"YzRmZjg5YjU3NjhlZDg5MjkwYTc3NTFmZmRiZDY3MWY3NzVkM2YzOA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "quote-in-username",
+      "auth": {
+        "username": "a\"b",
+        "password": "secret"
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"a\"b\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"a\"b\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "variable-not-interpolated-before-digest",
+      "auth": {
+        "username": "{{user}}",
+        "password": "{{pass}}"
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"{{user}}\", PasswordDigest=\"ZjA2NDhlNjM4ZWQ1MWU4ZGUyNDc1NWRlNmFlMDkwZTU1ZWJhODRiOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"{{user}}\", PasswordDigest=\"ZjA2NDhlNjM4ZWQ1MWU4ZGUyNDc1NWRlNmFlMDkwZTU1ZWJhODRiOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "user-header-same-case-overwritten",
+      "auth": {
+        "username": "bob",
+        "password": "secret"
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "user-header-other-case-kept",
+      "auth": {
+        "username": "bob",
+        "password": "secret"
+      },
+      "headers": {
+        "x-wsse": "mine",
+        "X-WSSE": "UsernameToken Username=\"bob\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "x-wsse": "UsernameToken Username=\"bob\", PasswordDigest=\"OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "yaml-blank-username-no-password",
+      "auth": {
+        "username": null,
+        "password": null
+      },
+      "headers": {
+        "X-WSSE": "UsernameToken Username=\"null\", PasswordDigest=\"YzRmZjg5YjU3NjhlZDg5MjkwYTc3NTFmZmRiZDY3MWY3NzVkM2YzOA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      },
+      "onWire": {
+        "X-WSSE": "UsernameToken Username=\"null\", PasswordDigest=\"YzRmZjg5YjU3NjhlZDg5MjkwYTc3NTFmZmRiZDY3MWY3NzVkM2YzOA==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\""
+      }
+    },
+    {
+      "id": "inherit-folder-wsse",
+      "xWsse": "UsernameToken Username=\"folder\", PasswordDigest=\"MjYzNzI0OTRmODQyMGQ2Mjk1MjdjM2RiODE3ZTEwMDJkYjhiYTQ5Mg==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\"",
+      "edgeGridConfig": null
+    },
+    {
+      "id": "inherit-folder-inherit-collection-wsse",
+      "xWsse": "UsernameToken Username=\"coll\", PasswordDigest=\"ZmY2N2Q4MjY0OTVlOTc0OTUzY2RiOTQzMzNjZDM1NWQwNThmYjE1Nw==\", Nonce=\"000102030405060708090a0b0c0d0e0f\", Created=\"2026-10-14T12:00:00.000Z\"",
+      "edgeGridConfig": null
+    },
+    {
+      "id": "inherit-folder-edgegrid",
+      "xWsse": null,
+      "edgeGridConfig": {
+        "accessToken": "akab-access-token-xxx-xxxxxxxxxxxxxxxx",
+        "clientToken": "akab-client-token-xxx-xxxxxxxxxxxxxxxx",
+        "clientSecret": "SOMESECRET",
+        "nonce": "nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        "timestamp": "20140321T19:34:21+0000",
+        "maxBodySize": 16
+      }
+    }
+  ],
+  "wsseFormulaCheck": {
+    "ascii": "OGE3Y2UxYjZmMTcxYTBhYWZlODQ5NTBlMzJjYjM4YzllMmJiMGUyOQ==",
+    "nonAscii": "YTljZTQzNzNmODFjMzQyNWY5NzliNjczMjlhYzg0Nzg0MjM5ODk2NA=="
+  }
+}

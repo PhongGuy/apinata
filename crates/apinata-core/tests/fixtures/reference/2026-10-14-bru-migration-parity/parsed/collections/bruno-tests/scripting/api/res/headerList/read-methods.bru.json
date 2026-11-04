@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "read-methods",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"res.headerList.get(name)\", function() {\n  expect(res.headerList.get('x-powered-by')).to.equal('Express');\n  expect(res.headerList.get('nonexistent')).to.be.undefined;\n});\n\ntest(\"res.headerList.one(name)\", function() {\n  const header = res.headerList.one('x-powered-by');\n  expect(header).to.eql({ key: 'x-powered-by', value: 'Express' });\n  expect(res.headerList.one('nonexistent')).to.be.undefined;\n});\n\ntest(\"res.headerList.all()\", function() {\n  const all = res.headerList.all();\n  expect(all).to.be.an('array');\n  expect(all.length).to.be.at.least(1);\n  const keys = all.map(h => h.key);\n  expect(keys).to.include('x-powered-by');\n});\n\ntest(\"res.headerList.count()\", function() {\n  expect(res.headerList.count()).to.be.at.least(1);\n});"
+}

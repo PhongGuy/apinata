@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "axios-pre-req-script",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "const axios = require(\"axios\");\n\nconst url = \"https://testbench-sanity.usebruno.com/api/echo/json\";\nconst response = await axios.post(url, {\n  \"hello\": \"bruno\"\n});\n\nreq.setHeader('Content-Type', 'application/json');\nreq.setBody(response.data);\nreq.setMethod(\"POST\");\nreq.setUrl(url);"
+  },
+  "tests": "test(\"req.getBody()\", function() {\n  const data = res.getBody();\n  expect(data).to.eql({\n    \"hello\": \"bruno\"\n  });\n});\n"
+}

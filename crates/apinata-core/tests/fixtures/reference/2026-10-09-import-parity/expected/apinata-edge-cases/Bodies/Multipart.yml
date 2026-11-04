@@ -1,0 +1,32 @@
+info:
+  name: Multipart
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: https://example.com/upload
+  body:
+    type: multipart-form
+    data:
+      - name: t
+        type: text
+        value: text
+        description: Text part
+      - name: f
+        type: file
+        value:
+          - /tmp/a.png
+        contentType: image/png
+      - name: d
+        type: file
+        value:
+          - /tmp/b.txt
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

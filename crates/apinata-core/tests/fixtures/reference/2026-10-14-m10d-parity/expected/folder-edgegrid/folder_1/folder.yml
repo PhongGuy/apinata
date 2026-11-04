@@ -1,0 +1,15 @@
+info:
+  name: folder_1
+  type: folder
+  seq: 1
+
+request:
+  auth:
+    type: akamai-edgegrid
+    accessToken: fat
+    clientToken: ""
+    clientSecret: ""
+    nonce: ""
+    timestamp: ""
+    baseURL: ""
+    headersToSign: ""

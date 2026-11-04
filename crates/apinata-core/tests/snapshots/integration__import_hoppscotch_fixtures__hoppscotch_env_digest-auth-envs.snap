@@ -1,0 +1,14 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== Digest Auth - environments.yml
+name: Digest Auth - environments
+variables:
+  - secret: true
+    name: username
+  - secret: true
+    name: password
+  - name: url
+    value: https://test.insightres.org/digest/
+== report

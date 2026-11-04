@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "ajv",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const Ajv = require('ajv');\nconst ajv = new Ajv();\n\n// Define a JSON schema\nconst schema = {\n  type: 'object',\n  properties: {\n    name: { type: 'string', minLength: 1 },\n    age: { type: 'integer', minimum: 0 },\n    email: { type: 'string' }\n  },\n  required: ['name', 'age']\n};\n\n// Valid data to validate\nconst validData = {\n  name: 'Bruno User',\n  age: 25,\n  email: 'bruno@example.com'\n};\n\n// Compile and validate\nconst validate = ajv.compile(schema);\nconst isValid = validate(validData);\n\n// Set validation result in request body\nconst data = req.getBody();\ndata.ajvValidation = {\n  isValid: isValid,\n  validatedData: validData\n};\n\nreq.setBody(data);"
+  },
+  "tests": "test(\"ajv should validate data correctly\", function() {\n  const data = res.getBody();\n\n  expect(data.hello).to.equal(\"bruno\");\n  expect(data.ajvValidation).to.be.an('object');\n  expect(data.ajvValidation.isValid).to.be.true;\n  expect(data.ajvValidation.validatedData.name).to.equal('Bruno User');\n  expect(data.ajvValidation.validatedData.age).to.equal(25);\n});\n\ntest(\"ajv should be available in tests\", function() {\n  const Ajv = require('ajv');\n  const ajv = new Ajv();\n\n  const schema = { type: 'number' };\n  const validate = ajv.compile(schema);\n\n  expect(validate(42)).to.be.true;\n  expect(validate('not a number')).to.be.false;\n});"
+}

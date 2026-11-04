@@ -1,0 +1,36 @@
+info:
+  name: mutation
+  type: graphql
+  seq: 3
+
+graphql:
+  method: POST
+  url: "{{localhost}}/api/graphql"
+  body:
+    query: |
+      mutation create($id: String!) {
+        create(payload: { id: $id }) {
+          success
+        }
+      }
+    variables: |-
+      {
+        "id":"1"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.data.create.success
+      operator: eq
+      value: "true"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

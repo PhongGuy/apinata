@@ -1,0 +1,222 @@
+{
+  "meta": {
+    "name": "Full collection",
+    "seq": "3",
+    "type": "collection"
+  },
+  "query": [
+    {
+      "name": "page",
+      "value": "1",
+      "enabled": true
+    },
+    {
+      "name": "limit",
+      "value": "10",
+      "enabled": false
+    }
+  ],
+  "headers": [
+    {
+      "name": "x-trace",
+      "value": "abc",
+      "enabled": true
+    },
+    {
+      "name": "x-off",
+      "value": "off",
+      "enabled": false
+    },
+    {
+      "name": "x quoted",
+      "value": "q",
+      "enabled": true
+    },
+    {
+      "name": "x-multi",
+      "value": "first\r\nsecond",
+      "enabled": true
+    },
+    {
+      "name": "x-quotes",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "name": "x-described",
+      "value": "d",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "a header"
+        }
+      ],
+      "description": "a header"
+    }
+  ],
+  "auth": {
+    "mode": "oauth2",
+    "awsv4": {
+      "accessKeyId": "AKID",
+      "secretAccessKey": "secret",
+      "sessionToken": "token",
+      "service": "s3",
+      "region": "eu-west-1",
+      "profileName": "default"
+    },
+    "basic": {
+      "username": "john",
+      "password": "secret"
+    },
+    "bearer": {
+      "token": "123"
+    },
+    "digest": {
+      "username": "john",
+      "password": "secret"
+    },
+    "ntlm": {
+      "username": "john",
+      "password": "secret",
+      "domain": "corp"
+    },
+    "oauth1": {
+      "consumerKey": "ck",
+      "consumerSecret": "cs",
+      "accessToken": "at",
+      "accessTokenSecret": "ts",
+      "callbackUrl": "https://example.com/cb",
+      "verifier": "v",
+      "signatureMethod": "RSA-SHA1",
+      "privateKey": "keys/private.pem",
+      "privateKeyType": "file",
+      "timestamp": "1",
+      "nonce": "n",
+      "version": "1.0",
+      "realm": "r",
+      "placement": "header",
+      "includeBodyHash": true
+    },
+    "oauth2": {
+      "grantType": "authorization_code",
+      "callbackUrl": "https://example.com/cb",
+      "authorizationUrl": "https://example.com/auth",
+      "accessTokenUrl": "https://example.com/token",
+      "refreshTokenUrl": "https://example.com/refresh",
+      "clientId": "id",
+      "clientSecret": "secret",
+      "scope": "read",
+      "state": "st",
+      "pkce": true,
+      "credentialsPlacement": "header",
+      "credentialsId": "credentials",
+      "tokenSource": "access_token",
+      "tokenPlacement": "url",
+      "tokenHeaderPrefix": "",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": false,
+      "autoRefreshToken": true
+    },
+    "wsse": {
+      "username": "john",
+      "password": "secret"
+    },
+    "apikey": {
+      "key": "x-api-key",
+      "value": "k",
+      "placement": "header"
+    },
+    "akamaiEdgegrid": {
+      "accessToken": "a",
+      "clientToken": "c",
+      "clientSecret": "s",
+      "nonce": "",
+      "timestamp": "",
+      "baseURL": "",
+      "headersToSign": "",
+      "maxBodySize": 2048
+    }
+  },
+  "oauth2_additional_parameters_auth_req_headers": [
+    {
+      "name": "x-auth",
+      "value": "1",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_access_token_req_queryparams": [
+    {
+      "name": "aud",
+      "value": "api",
+      "enabled": false
+    }
+  ],
+  "oauth2_additional_parameters_access_token_req_bodyvalues": [
+    {
+      "name": "resource",
+      "value": "r",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_refresh_token_req_headers": [
+    {
+      "name": "x-refresh",
+      "value": "2",
+      "enabled": true
+    }
+  ],
+  "vars": {
+    "req": [
+      {
+        "name": "host",
+        "value": "example.com",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "retries",
+        "value": 3,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "local",
+        "value": "yes",
+        "enabled": true,
+        "local": true
+      },
+      {
+        "name": "off",
+        "value": "1",
+        "enabled": false,
+        "local": false
+      }
+    ],
+    "res": [
+      {
+        "name": "token",
+        "value": "res.body.token",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "local": false
+      }
+    ]
+  },
+  "script": {
+    "req": "await bru.runRequest(\"a.bru\");\nbru.setVar(\"x\", 1);",
+    "res": "await bru.runRequest('folder/b.bru');"
+  },
+  "tests": "test(\"ok\", function() {\n  expect(res.status).to.equal(200);\n});",
+  "docs": "# Full collection\n\nSome docs."
+}

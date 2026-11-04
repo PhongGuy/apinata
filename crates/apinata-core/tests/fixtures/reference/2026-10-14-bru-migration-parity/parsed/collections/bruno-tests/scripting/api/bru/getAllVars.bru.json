@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "getAllVars",
+    "type": "http",
+    "seq": "24"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setVar(\"testGetAllVarsA\", \"alphaValue\");\nbru.setVar(\"testGetAllVarsB\", \"betaValue\");"
+  },
+  "tests": "test(\"should return all runtime vars\", function() {\n  const vars = bru.getAllVars();\n  expect(vars.testGetAllVarsA).to.equal(\"alphaValue\");\n  expect(vars.testGetAllVarsB).to.equal(\"betaValue\");\n});\n\ntest(\"should return a shallow copy\", function() {\n  const vars = bru.getAllVars();\n  vars.testGetAllVarsA = \"mutated\";\n  const vars2 = bru.getAllVars();\n  expect(vars2.testGetAllVarsA).to.equal(\"alphaValue\");\n});"
+}

@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "name": "Verb trace",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "trace",
+    "url": "https://example.com/trace?x=1",
+    "body": "none",
+    "auth": "none"
+  }
+}

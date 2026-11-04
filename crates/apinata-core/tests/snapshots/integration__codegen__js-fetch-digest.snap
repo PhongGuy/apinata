@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// Digest auth is not included in this snippet.
+const url = 'http://x.test/digest';
+const headers = {};
+
+const response = await fetch(url, { method: 'GET', headers });
+console.log(response.status);
+console.log(await response.text());

@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "name": "context-binding",
+    "type": "http",
+    "seq": "13"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    },
+    {
+      "name": "x-custom",
+      "value": "test-value",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"each(fn, context) binds this\", function() {\n  var ctx = { keys: [] };\n  req.headerList.each(function(h) {\n    this.keys.push(h.key);\n  }, ctx);\n  expect(ctx.keys).to.include('bruno');\n  expect(ctx.keys).to.include('della');\n});\n\ntest(\"filter(fn, context) binds this\", function() {\n  var ctx = { target: 'bruno' };\n  var result = req.headerList.filter(function(h) {\n    return h.key === this.target;\n  }, ctx);\n  expect(result.length).to.equal(1);\n  expect(result[0].value).to.equal('is-awesome');\n});\n\ntest(\"find(fn, context) binds this\", function() {\n  var ctx = { target: 'della' };\n  var result = req.headerList.find(function(h) {\n    return h.key === this.target;\n  }, ctx);\n  expect(result).to.not.be.undefined;\n  expect(result.value).to.equal('is-beautiful');\n});\n\ntest(\"map(fn, context) binds this\", function() {\n  var ctx = { prefix: 'header-' };\n  var result = req.headerList.map(function(h) {\n    return this.prefix + h.key;\n  }, ctx);\n  expect(result).to.include('header-bruno');\n  expect(result).to.include('header-della');\n});\n\ntest(\"reduce(fn, accumulator, context) binds this\", function() {\n  var ctx = { sep: ', ' };\n  var result = req.headerList.reduce(function(acc, h) {\n    return acc ? acc + this.sep + h.key : h.key;\n  }, '', ctx);\n  expect(result).to.include('bruno');\n  expect(result).to.include('della');\n});"
+}

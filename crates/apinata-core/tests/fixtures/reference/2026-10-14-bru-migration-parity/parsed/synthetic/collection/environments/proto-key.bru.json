@@ -1,0 +1,26 @@
+{
+  "variables": [
+    {
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "a",
+      "value": "1",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "__proto__",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "s",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    }
+  ]
+}

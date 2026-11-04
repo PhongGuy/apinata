@@ -1,0 +1,12 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+const url = 'http://x.test/basic';
+const headers = {
+  'Authorization': 'Basic dTpw',
+};
+
+const response = await fetch(url, { method: 'GET', headers });
+console.log(response.status);
+console.log(await response.text());

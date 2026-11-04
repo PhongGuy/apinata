@@ -1,0 +1,49 @@
+meta {
+  name: Rejected example
+  type: http
+  seq: 7
+}
+
+get {
+  url: https://api.example.com/items
+}
+
+example {
+  name: Unknown field
+  colour: blue
+}
+
+example {
+  name: Blank line inside a dictionary
+  request: {
+    headers: {
+      a: 1
+
+      b: 2
+    }
+  }
+}
+
+example {
+  name: Body with only a type
+  response: {
+    body: {
+      type: json
+    }
+  }
+}
+
+example {
+  name: List in a file body
+  request: {
+    body:file: {
+      file: [
+        a
+      ]
+    }
+  }
+}
+
+example {
+  name: Still fine after the rejections
+}

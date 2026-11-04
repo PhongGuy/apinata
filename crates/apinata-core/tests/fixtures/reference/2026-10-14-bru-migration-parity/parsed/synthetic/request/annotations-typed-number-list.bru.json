@@ -1,0 +1,104 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "one",
+        "value": 5,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "two",
+        "value": [
+          "1",
+          "2"
+        ],
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "hexed",
+        "value": 31,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "dashed",
+        "value": -3,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "flag",
+        "value": [
+          "true"
+        ],
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "obj",
+        "value": [
+          "a",
+          "b"
+        ],
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "word",
+        "value": [
+          "five"
+        ],
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      }
+    ]
+  }
+}

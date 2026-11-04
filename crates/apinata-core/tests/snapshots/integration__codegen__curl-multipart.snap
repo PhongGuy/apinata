@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'POST' \
+  --url 'http://x.test/m' \
+  --form 'a=1' \
+  --form 'up=@/data/up.bin;type=text/plain'

@@ -1,0 +1,409 @@
+use crate::support;
+
+use apinata_app::command::Edit;
+use apinata_app::settings_section::{DocsMode, DocsSection, SettingsSection, TimeoutMode};
+use apinata_app::style::{FORM_INPUT_WIDTH, at_zoom};
+use apinata_core::{RequestSettings, Timeout};
+use gpui_kit::test::TestWindowExt;
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, Focusable as _, TestAppContext};
+use support::*;
+
+fn settings(
+    cx: &mut TestAppContext,
+    base: RequestSettings,
+) -> (
+    AnyWindowHandle,
+    Entity<SectionHost<SettingsSection>>,
+    Entity<SettingsSection>,
+) {
+    let (win, host) = host_section(cx, SettingsSection::new);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| s.update(cx, |s, cx| s.load(&base, w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    (win, host, s)
+}
+
+fn last(cx: &mut TestAppContext, host: &Entity<SectionHost<SettingsSection>>) -> RequestSettings {
+    match host.read_with(cx, |h, _| h.edits.last().cloned()) {
+        Some(Edit::Settings(s)) => s,
+        _ => panic!("no settings edit"),
+    }
+}
+
+fn click(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(id, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+fn found(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> bool {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).is_some()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn toggles_send_the_settings(cx: &mut TestAppContext) {
+    let (win, host, _s) = settings(cx, RequestSettings::new());
+    let mut want = RequestSettings::new();
+    click(cx, win, "set-follow-redirects");
+    want.follow_redirects = false;
+    assert_eq!(last(cx, &host), want);
+    click(cx, win, "set-encode-url");
+    want.encode_url = false;
+    assert_eq!(last(cx, &host), want);
+    click(cx, win, "set-forward-auth");
+    want.forward_authorization_header = false;
+    assert_eq!(last(cx, &host), want);
+}
+
+#[gpui_kit::test]
+fn max_redirects_take_digits_only(cx: &mut TestAppContext) {
+    let (win, host, _s) = settings(cx, RequestSettings::new());
+    replace_input(cx, win, None, "set-max-redirects", "2");
+    cx.run_until_parked();
+    assert_eq!(last(cx, &host).max_redirects, 2);
+    let n = host.read_with(cx, |h, _| h.edits.len());
+    type_at_end(cx, win, None, "set-max-redirects", "x");
+    cx.run_until_parked();
+    assert_eq!(host.read_with(cx, |h, _| h.edits.len()), n);
+    assert!(found(cx, win, "set-invalid"));
+    replace_input(cx, win, None, "set-max-redirects", "");
+    cx.run_until_parked();
+    assert_eq!(last(cx, &host).max_redirects, 0);
+    assert!(!found(cx, win, "set-invalid"));
+}
+
+#[gpui_kit::test]
+fn timeout_is_inherited_or_custom(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Inherit;
+    let (win, host, s) = settings(cx, base);
+    assert_eq!(
+        s.read_with(cx, |s, _| s.timeout_mode()),
+        TimeoutMode::Inherit
+    );
+    assert!(!found(cx, win, "set-timeout"));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.set_timeout_mode(TimeoutMode::Custom, w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(last(cx, &host).timeout, Timeout::Unlimited);
+    assert!(found(cx, win, "set-timeout"));
+    replace_input(cx, win, None, "set-timeout", "5000");
+    cx.run_until_parked();
+    assert_eq!(last(cx, &host).timeout, Timeout::Millis(5000));
+    replace_input(cx, win, None, "set-timeout", "0");
+    cx.run_until_parked();
+    assert_eq!(last(cx, &host).timeout, Timeout::Unlimited);
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.set_timeout_mode(TimeoutMode::Inherit, w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(last(cx, &host).timeout, Timeout::Inherit);
+}
+
+#[gpui_kit::test]
+fn docs_edit_as_markdown(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, DocsSection::new);
+    let d = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| d.update(cx, |d, cx| d.load("# Old", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    let code = d.read_with(cx, |d, _| d.code().clone());
+    assert_eq!(
+        code.read_with(cx, |c, _| (
+            c.value().to_string(),
+            c.language_name().to_string()
+        )),
+        ("# Old".into(), "markdown".into())
+    );
+    assert!(host.read_with(cx, |h, _| h.edits.is_empty()));
+    pick(cx, win, 1);
+    replace_code(cx, win, None, "docs-code", "# Title");
+    cx.update_window(win, |_, w, cx| {
+        w.press("enter", cx);
+        w.input("line two", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    match host.read_with(cx, |h, _| h.edits.last().cloned()) {
+        Some(Edit::Docs(text)) => assert_eq!(text, "# Title\nline two"),
+        _ => panic!("no docs edit"),
+    }
+}
+
+#[gpui_kit::test]
+fn the_settings_form_shares_two_columns(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Millis(5000);
+    let (win, _host, _s) = settings(cx, base);
+    let rows = [
+        "set-row-encode-url",
+        "set-row-follow-redirects",
+        "set-row-forward-auth",
+        "set-row-max-redirects",
+        "set-row-timeout",
+    ];
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let cols: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                (
+                    w.within(*r).find("form-label").bounds().left(),
+                    w.within(*r).find("form-control").bounds().left(),
+                )
+            })
+            .collect();
+        assert!(cols.windows(2).all(|p| p[0] == p[1]), "{cols:?}");
+        assert!(
+            w.within("set-row-encode-url")
+                .try_find("set-encode-url")
+                .is_some()
+        );
+        assert!(
+            w.within("set-row-timeout")
+                .try_find("set-timeout")
+                .is_some()
+        );
+        assert_eq!(
+            w.find("set-max-redirects").bounds().size.width,
+            at_zoom(FORM_INPUT_WIDTH, 1.0)
+        );
+        assert_eq!(
+            w.find("set-timeout").bounds().size.width,
+            at_zoom(FORM_INPUT_WIDTH, 1.0)
+        );
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_docs_editor_fills_its_slot(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, DocsSection::new);
+    let d = host.read_with(cx, |h, _| h.view.clone());
+    let text: String = (0..40).map(|i| format!("line {i}\n")).collect();
+    cx.update_window(win, |_, w, cx| d.update(cx, |d, cx| d.load(&text, w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    pick(cx, win, 1);
+    let code = d.read_with(cx, |d, _| d.code().clone());
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let slot = w.find("docs-code").bounds();
+        let input = code.read(cx).input_bounds();
+        assert!(
+            input.size.height >= slot.size.height - gpui_kit::px(20.),
+            "editor {input:?} short of its slot {slot:?}"
+        );
+        assert!(
+            input.bottom() <= slot.bottom() + gpui_kit::px(0.5),
+            "{input:?} past {slot:?}"
+        );
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_custom_timeout_says_zero_means_no_limit(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Inherit;
+    let (win, _host, s) = settings(cx, base);
+    assert!(!found(cx, win, "set-timeout-hint"));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.set_timeout_mode(TimeoutMode::Custom, w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(found(cx, win, "set-timeout-hint"));
+    assert_eq!(
+        apinata_app::settings_section::TIMEOUT_HINT,
+        "Milliseconds, 0 means no limit"
+    );
+}
+
+fn docs(
+    cx: &mut TestAppContext,
+    text: &str,
+) -> (
+    AnyWindowHandle,
+    Entity<SectionHost<DocsSection>>,
+    Entity<DocsSection>,
+) {
+    let (win, host) = host_section(cx, DocsSection::new);
+    let d = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| d.update(cx, |d, cx| d.load(text, w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    (win, host, d)
+}
+
+fn pick(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.within("docs-mode").click(ix, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn written_docs_open_rendered(cx: &mut TestAppContext) {
+    let (win, _host, d) = docs(cx, "# Title\n\n- one\n- two");
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Preview);
+    assert!(present(cx, win, "docs-preview"));
+    assert!(!present(cx, win, "docs-code"));
+    assert!(!present(cx, win, "docs-empty"));
+}
+
+#[gpui_kit::test]
+fn empty_docs_open_for_editing(cx: &mut TestAppContext) {
+    let (win, _host, d) = docs(cx, "  \n");
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Edit);
+    assert!(present(cx, win, "docs-code"));
+    assert!(!present(cx, win, "docs-preview"));
+}
+
+#[gpui_kit::test]
+fn the_toggle_switches_views_and_the_preview_shows_unsaved_text(cx: &mut TestAppContext) {
+    let (win, host, d) = docs(cx, "# Old");
+    pick(cx, win, 1);
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Edit);
+    assert!(present(cx, win, "docs-code"));
+    replace_code(cx, win, None, "docs-code", "# New");
+    cx.run_until_parked();
+    pick(cx, win, 0);
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Preview);
+    assert!(present(cx, win, "docs-preview"));
+    assert_eq!(d.read_with(cx, |d, cx| d.preview_text(cx)), "# New");
+    match host.read_with(cx, |h, _| h.edits.last().cloned()) {
+        Some(Edit::Docs(text)) => assert_eq!(text, "# New"),
+        _ => panic!("no docs edit"),
+    }
+}
+
+#[gpui_kit::test]
+fn a_later_load_keeps_the_mode(cx: &mut TestAppContext) {
+    let (win, _host, d) = docs(cx, "");
+    cx.update_window(win, |_, w, cx| {
+        d.update(cx, |d, cx| d.load("# Now written", w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Edit);
+
+    let (win, _host, d) = docs(cx, "# Written");
+    cx.update_window(win, |_, w, cx| d.update(cx, |d, cx| d.load("", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Preview);
+    assert!(present(cx, win, "docs-empty"));
+}
+
+#[gpui_kit::test]
+fn an_echo_of_typing_keeps_the_editor_open(cx: &mut TestAppContext) {
+    let (win, _host, d) = docs(cx, "");
+    replace_code(cx, win, None, "docs-code", "# Typed");
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| {
+        d.update(cx, |d, cx| d.load("# Typed", w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Edit);
+    assert!(present(cx, win, "docs-code"));
+}
+
+#[gpui_kit::test]
+fn choosing_edit_focuses_the_editor(cx: &mut TestAppContext) {
+    let (win, _host, d) = docs(cx, "# Written");
+    pick(cx, win, 1);
+    let code = d.read_with(cx, |d, _| d.code().clone());
+    cx.update_window(win, |_, w, cx| assert!(code.focus_handle(cx).is_focused(w)))
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_mode_chosen_before_the_first_load_is_kept(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, DocsSection::new);
+    let d = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        d.update(cx, |d, cx| {
+            d.set_mode(DocsMode::Edit, w, cx);
+            d.load("# Written", w, cx)
+        })
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(d.read_with(cx, |d, _| d.mode()), DocsMode::Edit);
+}
+
+#[gpui_kit::test]
+fn the_settings_form_stacks_at_the_minimum_window(cx: &mut TestAppContext) {
+    use apinata_app::session::{MIN_HEIGHT, MIN_WIDTH};
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Millis(5000);
+    let (win, _host, _s) = settings(cx, base);
+    cx.simulate_window_resize(
+        win,
+        gpui_kit::size(gpui_kit::px(MIN_WIDTH), gpui_kit::px(MIN_HEIGHT.max(600.))),
+    );
+    frame(cx, win);
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        for r in [
+            "set-row-encode-url",
+            "set-row-follow-redirects",
+            "set-row-forward-auth",
+            "set-row-max-redirects",
+            "set-row-timeout",
+        ] {
+            let label = w.within(r).find("form-label").bounds();
+            let control = w.within(r).find("form-control").bounds();
+            assert!(
+                label.bottom() <= control.top(),
+                "{r}: {label:?} over {control:?}"
+            );
+            assert_eq!(label.left(), control.left(), "{r}");
+        }
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_timeout_hint_sits_under_its_input(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Millis(5000);
+    let (win, _host, _s) = settings(cx, base);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let input = w.find("set-timeout").bounds();
+        let hint = w
+            .within("set-row-timeout")
+            .find("set-timeout-hint")
+            .bounds();
+        let control = w.within("set-row-timeout").find("form-control").bounds();
+        assert!(hint.top() >= input.bottom(), "{hint:?} under {input:?}");
+        assert_eq!(hint.left(), control.left());
+    })
+    .unwrap();
+}

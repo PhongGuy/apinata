@@ -1,0 +1,11 @@
+get {
+  url: https://example.com
+  auth: oauth1
+}
+
+auth:oauth1 {
+  consumer_key: ck
+  signature_method: RSA-SHA256
+  private_key: @file(key.pem)
+  include_body_hash: true
+}

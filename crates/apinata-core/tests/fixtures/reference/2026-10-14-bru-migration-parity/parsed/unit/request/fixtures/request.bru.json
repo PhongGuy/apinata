@@ -1,0 +1,346 @@
+{
+  "meta": {
+    "name": "Send Bulk SMS",
+    "type": "http",
+    "seq": "1",
+    "tags": [
+      "foo",
+      "bar"
+    ]
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.textlocal.in/send/:id",
+    "body": "json",
+    "auth": "bearer"
+  },
+  "params": [
+    {
+      "name": "apiKey",
+      "value": "secret",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "numbers",
+      "value": "998877665",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "key with spaces",
+      "value": "is allowed",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "colon:parameter",
+      "value": "is allowed",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "nested escaped \"quote\"",
+      "value": "is allowed",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "{braces}",
+      "value": "is allowed",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "disabled:colon:parameter",
+      "value": "is allowed",
+      "enabled": false,
+      "type": "query"
+    },
+    {
+      "name": "message",
+      "value": "hello",
+      "enabled": false,
+      "type": "query"
+    },
+    {
+      "name": "id",
+      "value": "123",
+      "enabled": true,
+      "type": "path"
+    }
+  ],
+  "headers": [
+    {
+      "name": "content-type",
+      "value": "application/json",
+      "enabled": true
+    },
+    {
+      "name": "Authorization",
+      "value": "Bearer 123",
+      "enabled": true
+    },
+    {
+      "name": "key with spaces",
+      "value": "is allowed",
+      "enabled": true
+    },
+    {
+      "name": "colon:header",
+      "value": "is allowed",
+      "enabled": true
+    },
+    {
+      "name": "{braces}",
+      "value": "is allowed",
+      "enabled": true
+    },
+    {
+      "name": "nested escaped \"quote\"",
+      "value": "is allowed",
+      "enabled": true
+    },
+    {
+      "name": "disabled:colon:header",
+      "value": "is allowed",
+      "enabled": false
+    },
+    {
+      "name": "transaction-id",
+      "value": "{{transactionId}}",
+      "enabled": false
+    }
+  ],
+  "auth": {
+    "awsv4": {
+      "accessKeyId": "A12345678",
+      "secretAccessKey": "thisisasecret",
+      "sessionToken": "thisisafakesessiontoken",
+      "service": "execute-api",
+      "region": "us-east-1",
+      "profileName": "test_profile"
+    },
+    "basic": {
+      "username": "john",
+      "password": "secret"
+    },
+    "wsse": {
+      "username": "john",
+      "password": "secret"
+    },
+    "bearer": {
+      "token": "123"
+    },
+    "digest": {
+      "username": "john",
+      "password": "secret"
+    },
+    "oauth2": {
+      "grantType": "authorization_code",
+      "callbackUrl": "http://localhost:8080/api/auth/oauth2/authorization_code/callback",
+      "authorizationUrl": "http://localhost:8080/api/auth/oauth2/authorization_code/authorize",
+      "accessTokenUrl": "http://localhost:8080/api/auth/oauth2/authorization_code/token",
+      "refreshTokenUrl": "",
+      "clientId": "client_id_1",
+      "clientSecret": "client_secret_1",
+      "scope": "read write",
+      "state": "807061d5f0be",
+      "pkce": false,
+      "credentialsPlacement": "body",
+      "credentialsId": "credentials",
+      "tokenSource": "access_token",
+      "tokenPlacement": "header",
+      "tokenHeaderPrefix": "Bearer",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": true,
+      "autoRefreshToken": true
+    }
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"world\"\n}",
+    "text": "This is a text body",
+    "xml": "<xml>\n  <name>John</name>\n  <age>30</age>\n</xml>",
+    "sparql": "SELECT * WHERE {\n  ?subject ?predicate ?object .\n}\nLIMIT 10",
+    "formUrlEncoded": [
+      {
+        "name": "apikey",
+        "value": "secret",
+        "enabled": true
+      },
+      {
+        "name": "numbers",
+        "value": "+91998877665",
+        "enabled": true
+      },
+      {
+        "name": "key with spaces",
+        "value": "is allowed",
+        "enabled": true
+      },
+      {
+        "name": "colon:parameter",
+        "value": "is allowed",
+        "enabled": true
+      },
+      {
+        "name": "nested escaped \"quote\"",
+        "value": "is allowed",
+        "enabled": true
+      },
+      {
+        "name": "{braces}",
+        "value": "is allowed",
+        "enabled": true
+      },
+      {
+        "name": "message",
+        "value": "hello",
+        "enabled": false
+      },
+      {
+        "name": "disabled colon:parameter",
+        "value": "is allowed",
+        "enabled": false
+      }
+    ],
+    "multipartForm": [
+      {
+        "name": "apikey",
+        "value": "secret",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "numbers",
+        "value": "+91998877665",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "key with spaces",
+        "value": "is allowed",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "colon:part",
+        "value": "is allowed",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "nested escaped \"quote\"",
+        "value": "is allowed",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "{braces}",
+        "value": "is allowed",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "message",
+        "value": "hello",
+        "enabled": false,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "disabled colon:part",
+        "value": "is allowed",
+        "enabled": false,
+        "type": "text",
+        "contentType": ""
+      }
+    ],
+    "file": [
+      {
+        "contentType": "application/json",
+        "filePath": "path/to/file.json",
+        "selected": true
+      },
+      {
+        "contentType": "application/json",
+        "filePath": "path/to/file.json",
+        "selected": true
+      },
+      {
+        "contentType": "application/json",
+        "filePath": "path/to/file2.json",
+        "selected": false
+      }
+    ],
+    "graphql": {
+      "query": "{\n  launchesPast {\n    launch_site {\n      site_name\n    }\n    launch_success\n  }\n}",
+      "variables": "{\n  \"limit\": 5\n}"
+    }
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "departingDate",
+        "value": "2020-01-01",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "returningDate",
+        "value": "2020-01-02",
+        "enabled": false,
+        "local": false
+      }
+    ],
+    "res": [
+      {
+        "name": "token",
+        "value": "$res.body.token",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "orderNumber",
+        "value": "$res.body.orderNumber",
+        "enabled": true,
+        "local": true
+      },
+      {
+        "name": "petId",
+        "value": "$res.body.id",
+        "enabled": false,
+        "local": false
+      },
+      {
+        "name": "transactionId",
+        "value": "$res.body.transactionId",
+        "enabled": false,
+        "local": true
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "$res.status",
+      "value": "200",
+      "enabled": true
+    },
+    {
+      "name": "$res.body.message",
+      "value": "success",
+      "enabled": false
+    }
+  ],
+  "script": {
+    "req": "const foo = 'bar';"
+  },
+  "tests": "function onResponse(request, response) {\n  expect(response.status).to.equal(200);\n}",
+  "docs": "This request needs auth token to be set in the headers."
+}

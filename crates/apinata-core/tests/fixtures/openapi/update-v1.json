@@ -1,0 +1,4 @@
+{"openapi":"3.0.3","info":{"title":"Shop","version":"1"},"paths":{
+ "/users/{id}":{"get":{"tags":["people"],"operationId":"getUser","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"ok"}}}},
+ "/users":{"post":{"tags":["people"],"operationId":"createUser","requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string"}}}}}},"responses":{"201":{"description":"made"}}}},
+ "/legacy":{"get":{"tags":["legacy"],"operationId":"removeLegacy","responses":{"200":{"description":"ok"}}}}}}

@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "name": "getQueryString",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping?page=1&limit=10&sort=desc",
+    "body": "none",
+    "auth": "none"
+  },
+  "params": [
+    {
+      "name": "page",
+      "value": "1",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "limit",
+      "value": "10",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "sort",
+      "value": "desc",
+      "enabled": true,
+      "type": "query"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getQueryString()\", function() {\n  const queryString = req.getQueryString();\n  expect(queryString).to.equal(\"page=1&limit=10&sort=desc\");\n});"
+}

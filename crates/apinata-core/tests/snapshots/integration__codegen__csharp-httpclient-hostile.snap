@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+using System;
+using System.Net.Http;
+using System.Text;
+
+var client = new HttpClient(new SocketsHttpHandler { RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8 });
+var request = new HttpRequestMessage(new HttpMethod("POST"), "http://x.test/p?x=a%27b$c{d}&y=%C3%BC");
+request.Headers.TryAddWithoutValidation("X-H", "it's \"q\" \\ $HOME {x} ü");
+request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes("a'b\"c\\d $e {f}\tg\nü€\u2028end"));
+request.Content.Headers.TryAddWithoutValidation("content-type", "text/plain");
+
+var response = await client.SendAsync(request);
+Console.WriteLine((int)response.StatusCode);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

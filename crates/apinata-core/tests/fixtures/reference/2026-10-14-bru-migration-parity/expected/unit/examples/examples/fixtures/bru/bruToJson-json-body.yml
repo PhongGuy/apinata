@@ -1,0 +1,35 @@
+info:
+  name: Test API
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: JSON Example
+    description: An example with JSON body
+    request:
+      url: https://api.example.com/data
+      method: post
+      body:
+        type: json
+        data: |-
+          {
+            "name": "Test",
+            "value": 123
+          }
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""

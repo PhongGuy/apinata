@@ -1,0 +1,90 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth2"
+  },
+  "auth": {
+    "oauth2": {
+      "grantType": "authorization_code",
+      "callbackUrl": "",
+      "authorizationUrl": "",
+      "accessTokenUrl": "",
+      "refreshTokenUrl": "",
+      "clientId": "",
+      "clientSecret": "",
+      "scope": "",
+      "state": "",
+      "pkce": false,
+      "credentialsPlacement": "body",
+      "credentialsId": "credentials",
+      "tokenSource": "access_token",
+      "tokenPlacement": "header",
+      "tokenHeaderPrefix": "",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": true,
+      "autoRefreshToken": false
+    }
+  },
+  "oauth2_additional_parameters_auth_req_headers": [
+    {
+      "name": "x-auth-req",
+      "value": "1",
+      "enabled": true
+    },
+    {
+      "name": "x-auth-off",
+      "value": "2",
+      "enabled": false
+    }
+  ],
+  "oauth2_additional_parameters_auth_req_queryparams": [
+    {
+      "name": "audience",
+      "value": "api",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_access_token_req_headers": [
+    {
+      "name": "x-token-req",
+      "value": "3",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_access_token_req_queryparams": [
+    {
+      "name": "resource",
+      "value": "r",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_access_token_req_bodyvalues": [
+    {
+      "name": "extra",
+      "value": "body-value",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_refresh_token_req_headers": [
+    {
+      "name": "x-refresh",
+      "value": "4",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_refresh_token_req_queryparams": [
+    {
+      "name": "rq",
+      "value": "5",
+      "enabled": true
+    }
+  ],
+  "oauth2_additional_parameters_refresh_token_req_bodyvalues": [
+    {
+      "name": "rb",
+      "value": "6",
+      "enabled": true
+    }
+  ]
+}

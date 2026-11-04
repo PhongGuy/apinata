@@ -1,0 +1,33 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+
+runtime:
+  variables:
+    - name: huge
+      value:
+        type: object
+        data: |-
+          {
+            "a": null,
+            "neg": null,
+            "s": "\ud800x"
+          }
+    - name: lone-low
+      value:
+        type: object
+        data: |-
+          {
+            "k": "a\udc00b"
+          }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

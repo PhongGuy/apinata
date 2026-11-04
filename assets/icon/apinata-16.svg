@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 100 100">
+<title>Apinata (16 px)</title>
+<rect width="100" height="100" rx="20" fill="#1B1530"/>
+<rect x="38" y="22" width="24" height="19" fill="#E64980"/>
+<rect x="38" y="41" width="24" height="19" fill="#FD7E14"/>
+<rect x="38" y="60" width="24" height="19" fill="#FCC419"/>
+<path d="M28 18 C20 18 21 28 21 36 C21 44 18 48 13 50 C18 52 21 56 21 64 C21 72 20 82 28 82" stroke="#FFF4E6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M72 18 C80 18 79 28 79 36 C79 44 82 48 87 50 C82 52 79 56 79 64 C79 72 80 82 72 82" stroke="#FFF4E6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

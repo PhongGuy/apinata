@@ -1,0 +1,17 @@
+info:
+  name: list users
+  type: graphql
+  seq: 3
+
+graphql:
+  method: POST
+  url: "{{host}}/graphql"
+  body:
+    query: "{ users { id } }"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

@@ -1,0 +1,44 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: Mixed REST GQL Suite
+== Inherited/folder.yml
+info:
+  name: Inherited
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== REST echo.yml
+info:
+  name: REST echo
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Mixed REST GQL Suite
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped REST echo / testScript: scripts are not imported (REST echo.yml)
+Dropped Inherited / GQL nested in folder: GraphQL requests are not imported (-)
+Dropped GQL env templated header: GraphQL requests are not imported (-)

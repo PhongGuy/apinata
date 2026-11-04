@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "create-example",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://testbench-sanity.usebruno.com/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    }
+  ],
+  "body": {
+    "json": "{\n  \"message\": \"Hello World\",\n  \"timestamp\": \"{{$timestamp}}\"\n}"
+  }
+}

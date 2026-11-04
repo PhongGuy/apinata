@@ -1,0 +1,15 @@
+info:
+  name: Custom Method FETCH
+  type: http
+  seq: 1
+
+http:
+  method: FETCH
+  url: https://api.example.com/custom
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

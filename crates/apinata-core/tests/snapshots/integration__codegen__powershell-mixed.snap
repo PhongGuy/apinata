@@ -1,0 +1,20 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 713
+expression: "generate(&mixed(), Target::PowerShellRestMethod)"
+---
+#Requires -Version 7
+
+$url = 'http://x.test/x'
+$headers = [ordered]@{}
+$body = [System.Net.Http.MultipartFormDataContent]::new()
+$part1 = [System.Net.Http.StringContent]::new('{"a": 1}')
+$part1.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
+$body.Add($part1, 'j')
+$part2 = [System.Net.Http.StringContent]::new('plain')
+$part2.Headers.ContentType = $null
+$body.Add($part2, 'q%22x')
+$part3 = [System.Net.Http.StreamContent]::new([System.IO.File]::OpenRead('/data/up.bin'))
+$part3.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('text/plain')
+$body.Add($part3, 'up', 'up.bin')
+Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $body -SkipHeaderValidation

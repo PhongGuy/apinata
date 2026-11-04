@@ -1,0 +1,19 @@
+info:
+  name: edgegrid
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/edgegrid
+  auth:
+    type: wsse
+    username: ""
+    password: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

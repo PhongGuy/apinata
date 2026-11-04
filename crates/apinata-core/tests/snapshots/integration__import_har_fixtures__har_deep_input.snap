@@ -1,0 +1,55 @@
+---
+source: crates/apinata-core/tests/import_har_fixtures.rs
+expression: text
+---
+== environments/Capture.yml
+name: Capture
+variables:
+  - secret: true
+    name: insomnia_rest_cookie
+== insomnia.rest/POST -foo-bar.yml
+info:
+  name: POST /foo/bar
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://insomnia.rest/foo/bar
+  headers:
+    - name: cookie
+      value: "{{insomnia_rest_cookie}}"
+  body:
+    type: text
+    data: hello world!
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== insomnia.rest/folder.yml
+info:
+  name: insomnia.rest
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: HAR capture
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+converted insomnia.rest / POST /foo/bar / request.headers[1]: the captured `Cookie` value is not kept; the request uses the secret `insomnia_rest_cookie` of the Capture environment (insomnia.rest/POST -foo-bar.yml)
+dropped entries[0]: entry is not an http or https request (-)
+needs-input entries[1].request.headers[1]: the secret `insomnia_rest_cookie` has no value; enter it before sending (environments/Capture.yml)
+secrets_to_enter: [("Capture", "insomnia_rest_cookie")]

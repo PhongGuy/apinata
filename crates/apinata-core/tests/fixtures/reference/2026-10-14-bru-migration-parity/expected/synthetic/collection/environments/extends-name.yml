@@ -1,0 +1,4 @@
+extends: Base env
+variables:
+  - name: a
+    value: "1"

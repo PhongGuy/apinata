@@ -1,0 +1,266 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Estimates/Price Estimates.yml
+info:
+  name: Price Estimates
+  type: http
+  seq: 1
+  tags:
+    - Estimates
+
+http:
+  method: GET
+  url: "{{baseUrl}}/estimates/price?start_latitude=&start_longitude=&end_latitude=&end_longitude="
+  params:
+    - name: start_latitude
+      value: ""
+      type: query
+      description: Latitude component of start location.
+    - name: start_longitude
+      value: ""
+      type: query
+      description: Longitude component of start location.
+    - name: end_latitude
+      value: ""
+      type: query
+      description: Latitude component of end location.
+    - name: end_longitude
+      value: ""
+      type: query
+      description: Longitude component of end location.
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: The Price Estimates endpoint returns an estimated price range for each product offered at a given location. The price estimate is provided as a formatted string with the full price range and the localized currency symbol.<br><br>The response also includes low and high estimates, and the [ISO 4217](http://en.wikipedia.org/wiki/ISO_4217) currency code for situations requiring currency conversion. When surge is active for a particular product, its surge_multiplier will be greater than 1, but the price estimate already factors in this multiplier.
+
+=== Estimates/Time Estimates.yml
+info:
+  name: Time Estimates
+  type: http
+  seq: 2
+  tags:
+    - Estimates
+
+http:
+  method: GET
+  url: "{{baseUrl}}/estimates/time?start_latitude=&start_longitude="
+  params:
+    - name: start_latitude
+      value: ""
+      type: query
+      description: Latitude component of start location.
+    - name: start_longitude
+      value: ""
+      type: query
+      description: Longitude component of start location.
+    - name: customer_uuid
+      value: ""
+      type: query
+      description: Unique customer identifier to be used for experience customization.
+      disabled: true
+    - name: product_id
+      value: ""
+      type: query
+      description: Unique identifier representing a specific product for a given latitude & longitude.
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: The Time Estimates endpoint returns ETAs for all products offered at a given location, with the responses expressed as integers in seconds. We recommend that this endpoint be called every minute to provide the most accurate, up-to-date ETAs.
+
+=== Estimates/folder.yml
+info:
+  name: Estimates
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+
+=== Products/Product Types.yml
+info:
+  name: Product Types
+  type: http
+  seq: 1
+  tags:
+    - Products
+
+http:
+  method: GET
+  url: "{{baseUrl}}/products?latitude=&longitude="
+  params:
+    - name: latitude
+      value: ""
+      type: query
+      description: Latitude component of location.
+    - name: longitude
+      value: ""
+      type: query
+      description: Longitude component of location.
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: The Products endpoint returns information about the Uber products offered at a given location. The response includes the display name and other details about each product, and lists the products in the proper display order.
+
+=== Products/folder.yml
+info:
+  name: Products
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+=== User/User Activity.yml
+info:
+  name: User Activity
+  type: http
+  seq: 2
+  tags:
+    - User
+
+http:
+  method: GET
+  url: "{{baseUrl}}/history"
+  params:
+    - name: offset
+      value: ""
+      type: query
+      description: Offset the list of returned results by this amount. Default is zero.
+      disabled: true
+    - name: limit
+      value: ""
+      type: query
+      description: Number of items to retrieve. Default is 5, maximum is 100.
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: The User Activity endpoint returns data about a user's lifetime activity with Uber. The response will include pickup locations and times, dropoff locations and times, the distance of past requests, and information about which products were requested.<br><br>The history array in the response will have a maximum length based on the limit parameter. The response value count may exceed limit, therefore subsequent API requests may be necessary.
+
+=== User/User Profile.yml
+info:
+  name: User Profile
+  type: http
+  seq: 1
+  tags:
+    - User
+
+http:
+  method: GET
+  url: "{{baseUrl}}/me"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: The User Profile endpoint returns information about the Uber user that has authorized with the application.
+
+=== User/folder.yml
+info:
+  name: User
+  type: folder
+  seq: 3
+
+request:
+  auth: inherit
+
+=== environments/Environment.yml
+name: Environment
+variables:
+  - name: baseUrl
+    value: https://api.uber.com/v1
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Uber API
+
+docs:
+  content: Move your app forward with the Uber API
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /estimates/price:
+          target: 5755be73166f16fd
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 8c433271ccee54c0
+          tags: 98bebd4be016691f
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Estimates/Price Estimates.yml
+        GET /estimates/time:
+          target: 0c5c6838a6784543
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: ba3c1b92ff19c0dc
+          tags: 98bebd4be016691f
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Estimates/Time Estimates.yml
+        GET /history:
+          target: 0581517de068c64e
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 3d99d994e73eff91
+          tags: beb763378adcd76b
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: User/User Activity.yml
+        GET /me:
+          target: c5b4d1c699e7e97b
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 574e7b6c4c3c64ce
+          tags: beb763378adcd76b
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: User/User Profile.yml
+        GET /products:
+          target: 4c838057da2840d6
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 86cd590155f3d998
+          tags: 17168a6314a63f4e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Products/Product Types.yml

@@ -1,0 +1,131 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== environments/Environment.yml
+name: Environment
+variables:
+  - name: baseUrl
+    value: http://petstore.swagger.io/v1
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Swagger Petstore
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /pets:
+          target: ab7585ea4a989f90
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: e471b80291aa6e4e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: pets/List all pets.yml
+        GET /pets/{}:
+          target: 78b23447214a8b59
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: e471b80291aa6e4e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: pets/Info for a specific pet.yml
+        POST /pets:
+          target: 0e47e1edc3566744
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: e471b80291aa6e4e
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: pets/Create a pet.yml
+
+=== pets/Create a pet.yml
+info:
+  name: Create a pet
+  type: http
+  seq: 2
+  tags:
+    - pets
+
+http:
+  method: POST
+  url: "{{baseUrl}}/pets"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== pets/Info for a specific pet.yml
+info:
+  name: Info for a specific pet
+  type: http
+  seq: 3
+  tags:
+    - pets
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pets/:petId"
+  params:
+    - name: petId
+      value: ""
+      type: path
+      description: The id of the pet to retrieve
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== pets/List all pets.yml
+info:
+  name: List all pets
+  type: http
+  seq: 1
+  tags:
+    - pets
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pets"
+  params:
+    - name: limit
+      value: ""
+      type: query
+      description: How many items to return at one time (max 100)
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== pets/folder.yml
+info:
+  name: pets
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit

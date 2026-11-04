@@ -1,0 +1,10 @@
+get {
+  url: https://example.com
+}
+
+assert {
+  res.status: eq 200
+  res.body.tags: [
+    a
+  ]
+}

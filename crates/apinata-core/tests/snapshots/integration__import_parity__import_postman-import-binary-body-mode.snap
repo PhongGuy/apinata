@@ -1,0 +1,33 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Dropped Binary body mode / protocolProfileBehavior.disableBodyPruning [Binary body mode.yml]: this request behavior has no counterpart
+Dropped Binary body mode / response [Binary body mode.yml]: saved example responses are not imported
+== Binary body mode.yml
+info:
+  name: Binary body mode
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.com/users?X-API-KEY=12345
+  params:
+    - name: X-API-KEY
+      value: "12345"
+      type: query
+  body:
+    type: file
+    data:
+      - filePath: ./binary-payload.bin
+        contentType: application/octet-stream
+        selected: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

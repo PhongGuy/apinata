@@ -1,0 +1,7 @@
+info:
+  name: Bodies
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit

@@ -1,0 +1,12 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+from requests.auth import HTTPDigestAuth
+
+url = 'http://x.test/digest'
+
+response = requests.request('GET', url, auth=HTTPDigestAuth('alice', 'p\'w'))
+print(response.status_code)
+print(response.text)

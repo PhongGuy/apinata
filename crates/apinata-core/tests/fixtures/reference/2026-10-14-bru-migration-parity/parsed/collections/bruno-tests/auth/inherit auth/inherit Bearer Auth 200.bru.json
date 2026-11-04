@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "name": "inherit Bearer Auth 200",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/api/auth/bearer/protected",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.message",
+      "value": "Authentication successful",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "res": "bru.setEnvVar(\"foo\", \"bar\");"
+  }
+}

@@ -1,0 +1,391 @@
+---
+source: crates/apinata-core/tests/export_openapi_corpus.rs
+expression: rendered(&out)
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Apinata Demo",
+    "version": "1.0.0",
+    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\nSending a request needs network access."
+  },
+  "servers": [
+    {
+      "url": "{baseUrl}",
+      "variables": {
+        "baseUrl": {
+          "default": "https://jsonplaceholder.typicode.com"
+        }
+      }
+    },
+    {
+      "url": "https://jsonplaceholder.typicode.com",
+      "description": "JSONPlaceholder"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Posts"
+    },
+    {
+      "name": "Users"
+    },
+    {
+      "name": "Media",
+      "description": "## Media\n\nResponses that are not JSON:\n\n1. **Get XML** returns an XML document, shown re-indented and highlighted.\n2. **Get PNG** returns a PNG image, shown as a preview with its size and dimensions."
+    },
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "GraphQL"
+    }
+  ],
+  "paths": {
+    "/posts": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "List posts",
+        "operationId": "postsListPosts",
+        "parameters": [
+          {
+            "name": "_limit",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "5"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Create post",
+        "operationId": "postsCreatePost",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "userId": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "example": {
+                "title": "Hello from Apinata",
+                "body": "A demo post.",
+                "userId": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/posts/{id}": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Get post",
+        "description": "Fetches the post named by the `postId` collection variable and keeps its title as `postTitle`.",
+        "operationId": "postsGetPost",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "{{postId}}"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/posts/1": {
+      "put": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Replace post",
+        "operationId": "postsReplacePost",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "userId": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "example": {
+                "id": 1,
+                "title": "Replaced",
+                "body": "A replaced post.",
+                "userId": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Edit post title",
+        "operationId": "postsEditPostTitle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "title": "Edited"
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Delete post",
+        "operationId": "postsDeletePost",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List users",
+        "operationId": "usersListUsers",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/users/{userId}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get user",
+        "description": "Fetches the user named by `userId`. Run it with `examples/demo-data/users.csv` as the data file to fetch users 1 to 3, one per iteration.",
+        "operationId": "usersGetUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/xml": {
+      "get": {
+        "tags": [
+          "Media"
+        ],
+        "summary": "Get XML",
+        "operationId": "mediaGetXml",
+        "servers": [
+          {
+            "url": "https://httpbin.org"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/image/png": {
+      "get": {
+        "tags": [
+          "Media"
+        ],
+        "summary": "Get PNG",
+        "operationId": "mediaGetPng",
+        "servers": [
+          {
+            "url": "https://httpbin.org"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/digest-auth/auth/user/passwd": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Digest example",
+        "operationId": "authDigestExample",
+        "servers": [
+          {
+            "url": "https://httpbin.org"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        },
+        "security": [
+          {
+            "digestAuth": []
+          }
+        ]
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "SigV4 example",
+        "operationId": "authSigv4Example",
+        "servers": [
+          {
+            "url": "https://example.execute-api.us-east-1.amazonaws.com"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/get": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "OAuth 1.0 example",
+        "operationId": "authOauth10Example",
+        "servers": [
+          {
+            "url": "https://httpbin.org"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/api": {
+      "post": {
+        "tags": [
+          "GraphQL"
+        ],
+        "summary": "Get user",
+        "operationId": "graphqlGetUser",
+        "servers": [
+          {
+            "url": "https://graphqlzero.almansi.me"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "digestAuth": {
+        "type": "http",
+        "scheme": "digest"
+      }
+    }
+  }
+}
+--- notes
+Auth / SigV4 example / auth: the awsv4 authentication cannot be exported
+Auth / OAuth 1.0 example / auth: the oauth1 authentication cannot be exported
+Auth / NTLM example: GET /get has the same method and path as Auth / OAuth 1.0 example; this request was left out
+GraphQL / Get user / body: the GraphQL query and variables are not described; the operation has no request body
+collection / assertions: 11 items have assertions; OpenAPI has no place for them
+collection / variables: 1 item has variables; OpenAPI has no place for them

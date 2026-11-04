@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 709
+expression: "generate(&typed(), Target::PowerShellRestMethod)"
+---
+#Requires -Version 7
+
+$url = 'http://x.test/t'
+$headers = [ordered]@{}
+$body = [System.Net.Http.MultipartFormDataContent]::new()
+$part1 = [System.Net.Http.StringContent]::new('{"a": "x﻿y"}')
+$part1.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
+$body.Add($part1, 'j')
+$part2 = [System.Net.Http.StringContent]::new('plain')
+$part2.Headers.ContentType = $null
+$body.Add($part2, 't')
+Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $body -SkipHeaderValidation

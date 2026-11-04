@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "deleteHeader",
+    "type": "http",
+    "seq": "12"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.deleteHeader('bruno');"
+  },
+  "tests": "test(\"req.deleteHeader(name)\", function() {\n  const h = req.getHeader('bruno');\n  expect(h).to.be.undefined;\n});"
+}

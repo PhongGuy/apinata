@@ -1,0 +1,515 @@
+//! HAR 1.2 export of one sent request and its response.
+
+use apinata_core::export::{HarExchange, har};
+use apinata_core::import::{CollectionFormat, CollectionOptions, ImportedItem, parse_collections};
+use apinata_core::{Response, derived_secrets};
+use serde_json::{Value, json};
+use std::time::{Duration, SystemTime};
+
+fn exchange() -> HarExchange {
+    let mut x = HarExchange::new("POST", "https://api.test/items?page=2&q=a%20b");
+    x.started = SystemTime::UNIX_EPOCH + Duration::from_secs(1_760_000_000);
+    x.request_headers = vec![
+        ("content-type".into(), "application/json".into()),
+        ("cookie".into(), "a=1; b=2".into()),
+    ];
+    x.request_body = br#"{"n":1}"#.to_vec();
+    x.status = 201;
+    x.status_text = "Created".into();
+    x.response_headers = vec![
+        ("content-type".into(), "application/json".into()),
+        ("set-cookie".into(), "sid=xyz; Path=/".into()),
+        ("location".into(), "/items/9".into()),
+    ];
+    x.response_body = br#"{"id":9}"#.to_vec();
+    x.time = Duration::from_millis(42);
+    x
+}
+
+fn parsed(x: &HarExchange) -> Value {
+    serde_json::from_str(&har(x)).expect("valid JSON")
+}
+
+fn str_of<'a>(v: &'a Value, key: &str) -> &'a str {
+    v[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("{key} is a string"))
+}
+
+/// The members HAR 1.2 requires, checked by name and JSON type.
+fn assert_har_12(doc: &Value) {
+    let log = &doc["log"];
+    assert_eq!(log["version"], "1.2");
+    assert!(log["creator"]["name"].is_string() && log["creator"]["version"].is_string());
+    let entries = log["entries"].as_array().expect("entries");
+    assert_eq!(entries.len(), 1);
+    let e = &entries[0];
+    assert!(
+        e["startedDateTime"]
+            .as_str()
+            .is_some_and(|s| s.contains('T'))
+    );
+    assert!(e["time"].is_number() && e["cache"].is_object());
+    for key in ["method", "url", "httpVersion"] {
+        assert!(e["request"][key].is_string(), "request.{key}");
+    }
+    for key in ["cookies", "headers", "queryString"] {
+        assert!(e["request"][key].is_array(), "request.{key}");
+    }
+    assert!(e["request"]["headersSize"].is_number() && e["request"]["bodySize"].is_number());
+    assert!(e["response"]["status"].is_number());
+    for key in ["statusText", "httpVersion", "redirectURL"] {
+        assert!(e["response"][key].is_string(), "response.{key}");
+    }
+    for key in ["cookies", "headers"] {
+        assert!(e["response"][key].is_array(), "response.{key}");
+    }
+    assert!(e["response"]["content"]["size"].is_number());
+    assert!(e["response"]["content"]["mimeType"].is_string());
+    for key in ["send", "wait", "receive"] {
+        assert!(e["timings"][key].is_number(), "timings.{key}");
+    }
+}
+
+#[test]
+fn a_json_exchange_has_the_har_12_shape() {
+    let doc = parsed(&exchange());
+    assert_har_12(&doc);
+    let e = &doc["log"]["entries"][0];
+    assert_eq!(e["request"]["method"], "POST");
+    assert_eq!(
+        e["request"]["queryString"],
+        json!([{"name":"page","value":"2"},{"name":"q","value":"a b"}])
+    );
+    assert_eq!(
+        e["request"]["cookies"],
+        json!([{"name":"a","value":"1"},{"name":"b","value":"2"}])
+    );
+    assert_eq!(e["request"]["postData"]["mimeType"], "application/json");
+    assert_eq!(e["request"]["postData"]["text"], r#"{"n":1}"#);
+    assert_eq!(e["response"]["status"], 201);
+    assert_eq!(e["response"]["statusText"], "Created");
+    assert_eq!(e["response"]["redirectURL"], "/items/9");
+    assert_eq!(e["response"]["content"]["text"], r#"{"id":9}"#);
+    assert_eq!(e["response"]["content"]["size"], 8);
+    assert_eq!(e["response"]["content"]["mimeType"], "application/json");
+    assert!(e["response"]["content"].get("encoding").is_none());
+    assert_eq!(
+        e["response"]["cookies"],
+        json!([{"name":"sid","value":"xyz"}])
+    );
+    assert_eq!(e["startedDateTime"], "2025-10-09T08:53:20.000Z");
+}
+
+#[test]
+fn only_the_measured_total_is_a_timing() {
+    let e = &parsed(&exchange())["log"]["entries"][0];
+    assert_eq!(e["time"], 42.0);
+    for phase in [
+        "blocked", "dns", "connect", "send", "wait", "receive", "ssl",
+    ] {
+        assert_eq!(e["timings"][phase], -1, "{phase} is unknown");
+    }
+}
+
+#[test]
+fn a_binary_body_is_base64() {
+    let mut x = exchange();
+    x.response_headers = vec![("content-type".into(), "image/png".into())];
+    x.response_body = vec![0x89, b'P', b'N', b'G', 0, 0xff, 0xfe];
+    let doc = parsed(&x);
+    assert_har_12(&doc);
+    let content = &doc["log"]["entries"][0]["response"]["content"];
+    assert_eq!(content["encoding"], "base64");
+    assert_eq!(content["text"], "iVBORwD//g==");
+    assert_eq!(content["size"], 7);
+}
+
+#[test]
+fn a_truncated_body_says_so_in_the_comment() {
+    let mut x = exchange();
+    x.response_truncated = true;
+    let e = &parsed(&x)["log"]["entries"][0];
+    let comment = str_of(e, "comment");
+    assert!(comment.contains("truncated"), "{comment}");
+    assert_eq!(e["response"]["content"]["text"], r#"{"id":9}"#);
+    assert!(
+        parsed(&exchange())["log"]["entries"][0]
+            .get("comment")
+            .is_none()
+    );
+}
+
+#[test]
+fn secrets_are_replaced_in_every_field() {
+    let mut x = exchange();
+    x.url = "https://api.test/items?key=hunter2hunter2".into();
+    x.request_headers
+        .push(("authorization".into(), "Bearer hunter2hunter2".into()));
+    x.request_body = br#"{"pw":"hunter2hunter2"}"#.to_vec();
+    x.response_headers
+        .push(("x-echo".into(), "hunter2hunter2".into()));
+    x.response_body = br#"{"token":"hunter2hunter2"}"#.to_vec();
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    let text = har(&x.redacted(&secrets));
+    assert!(!text.contains("hunter2hunter2"), "{text}");
+    assert!(text.contains("api.test/items"));
+}
+
+#[test]
+fn server_issued_cookies_are_masked_even_when_no_secret_is_known() {
+    let mut x = exchange();
+    x.request_headers = vec![("cookie".into(), "sid=abc123".into())];
+    x.response_headers = vec![("set-cookie".into(), "sid=abc123; Path=/".into())];
+    let text = har(&x.redacted(&[]));
+    assert!(!text.contains("abc123"), "{text}");
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    let response = &doc["log"]["entries"][0]["response"];
+    assert_eq!(response["headers"][0]["value"], "sid=[redacted]");
+    assert_eq!(response["cookies"][0]["name"], "sid");
+    assert_eq!(response["cookies"][0]["value"], "[redacted]");
+    // The whole Cookie header is hidden, so the request keeps no cookie entries.
+    let request = &doc["log"]["entries"][0]["request"];
+    assert_eq!(request["headers"][0]["value"], "[redacted]");
+    assert_eq!(request["cookies"].as_array().unwrap().len(), 0, "{text}");
+}
+
+#[test]
+fn the_file_round_trips_through_the_importer() {
+    let text = har(&exchange());
+    let bundles = parse_collections(
+        Some(CollectionFormat::Har),
+        text.as_bytes(),
+        &CollectionOptions::default(),
+    )
+    .expect("our own importer reads it");
+    let [ImportedItem::Folder(folder)] = &bundles[0].collection.items[..] else {
+        panic!("one folder per host");
+    };
+    let [ImportedItem::Request(item)] = &folder.items[..] else {
+        panic!("one request");
+    };
+    assert_eq!(item.request.method, "POST");
+    assert!(item.request.url.starts_with("https://api.test/items"));
+}
+
+#[tokio::test]
+async fn a_sent_response_becomes_an_exchange() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("pong"))
+        .mount(&server)
+        .await;
+    let res: Response = {
+        let url = format!("{}/ping", server.uri());
+        crate::common::executor()
+            .send(&crate::common::resolved_one("POST", &url, "", ""))
+            .await
+            .expect("sent")
+    };
+    let doc = parsed(&HarExchange::from_response(&res, SystemTime::now()));
+    assert_har_12(&doc);
+    let e = &doc["log"]["entries"][0];
+    assert_eq!(e["request"]["method"], "POST");
+    assert!(str_of(&e["request"], "url").ends_with("/ping"));
+    assert_eq!(e["response"]["content"]["text"], "pong");
+}
+
+#[test]
+fn secrets_are_replaced_in_cookies_query_redirects_and_derived_shapes() {
+    let digest = r#"Digest username="bob", response="9f3a77c1d2e44b60""#;
+    let basic = "Basic dXNlcjpwYXNzd29yZDEyMw==";
+    let bearer = "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig-4242";
+    let mut x = exchange();
+    x.url = "https://api.test/x?sig=cookie-Secret-11".into();
+    x.request_headers = vec![
+        ("cookie".into(), "sid=cookie-Secret-11".into()),
+        ("authorization".into(), basic.into()),
+        ("proxy-authorization".into(), bearer.into()),
+        ("x-digest".into(), digest.into()),
+    ];
+    x.response_headers = vec![
+        ("set-cookie".into(), "sid=cookie-Secret-11; Path=/".into()),
+        ("location".into(), "/next?t=cookie-Secret-11".into()),
+    ];
+    let secrets = derived_secrets(&[
+        "cookie-Secret-11".into(),
+        basic.into(),
+        bearer.into(),
+        digest.into(),
+    ]);
+    let text = har(&x.redacted(&secrets));
+    for leak in [
+        "cookie-Secret-11",
+        "dXNlcjpwYXNzd29yZDEyMw",
+        "eyJhbGci",
+        "9f3a77c1d2e44b60",
+    ] {
+        assert!(!text.contains(leak), "{leak} leaked: {text}");
+    }
+}
+
+#[test]
+fn a_non_utf8_request_body_is_redacted_through_a_lossy_copy() {
+    let mut x = exchange();
+    x.request_body = [b"pw=hunter2hunter2&raw=".as_slice(), &[0xff, 0xfe]].concat();
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    assert!(!har(&x.redacted(&secrets)).contains("hunter2hunter2"));
+}
+
+#[test]
+fn a_binary_response_body_holding_a_secret_is_reported() {
+    let mut x = exchange();
+    x.response_body = [b"token=hunter2hunter2".as_slice(), &[0xff, 0x00]].concat();
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    assert!(x.binary_body_holds_secret(&secrets));
+    x.response_body = vec![0xff, 0x00, 1, 2];
+    assert!(!x.binary_body_holds_secret(&secrets));
+    assert!(
+        !exchange().binary_body_holds_secret(&secrets),
+        "text is redacted instead"
+    );
+}
+
+#[test]
+fn the_response_body_size_is_the_kept_length() {
+    let e = &parsed(&exchange())["log"]["entries"][0];
+    assert_eq!(e["response"]["bodySize"], 8);
+}
+
+#[test]
+fn bytes_hold_secret_reads_raw_bytes_through_a_lossy_copy() {
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    let holding = [b"\x00\xfftoken=hunter2hunter2\x01".as_slice()].concat();
+    assert!(apinata_core::bytes_hold_secret(&holding, &secrets));
+    assert!(apinata_core::bytes_hold_secret(b"hunter2hunter2", &secrets));
+    assert!(!apinata_core::bytes_hold_secret(
+        &[0xff, 0x00, 1, 2],
+        &secrets
+    ));
+    assert!(!apinata_core::bytes_hold_secret(b"", &secrets));
+}
+
+#[test]
+fn an_unknown_server_address_leaves_serveripaddress_out() {
+    let doc = parsed(&exchange());
+    assert!(doc["log"]["entries"][0].get("serverIPAddress").is_none());
+}
+
+#[test]
+fn a_server_address_is_written_as_the_ip_alone() {
+    let mut x = exchange();
+    x.server_ip = Some("::1".into());
+    let doc = parsed(&x);
+    assert_eq!(doc["log"]["entries"][0]["serverIPAddress"], "::1");
+}
+
+#[tokio::test]
+async fn a_direct_send_exports_the_servers_ip_without_its_port() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let url = format!("{}/ping", server.uri());
+    let res = crate::common::executor()
+        .send(&crate::common::resolved_one("GET", &url, "", ""))
+        .await
+        .expect("sent");
+    let doc = parsed(&HarExchange::from_response(&res, SystemTime::now()));
+    assert_eq!(doc["log"]["entries"][0]["serverIPAddress"], "127.0.0.1");
+}
+
+// Through a proxy the peer is the proxy, not the server HAR asks for, so the member is omitted.
+#[tokio::test]
+async fn a_send_through_a_proxy_exports_no_server_address() {
+    use crate::network_support::{custom_proxy, http_proxy, resolve_in, root_with};
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let origin = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&origin)
+        .await;
+    let proxy = http_proxy(None).await;
+    let r = resolve_in(
+        &root_with(&custom_proxy(
+            "http",
+            "127.0.0.1",
+            &proxy.port.to_string(),
+            None,
+            "",
+        )),
+        &format!("{}/ping", origin.uri()),
+        apinata_core::ContextOptions::new(),
+    );
+    let res = crate::common::executor()
+        .send(r.request())
+        .await
+        .expect("sent");
+    assert!(res.via_proxy());
+    let doc = parsed(&HarExchange::from_response(&res, SystemTime::now()));
+    assert!(doc["log"]["entries"][0].get("serverIPAddress").is_none());
+}
+
+#[tokio::test]
+async fn a_send_through_a_host_override_exports_the_mapped_address_and_names_it() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let root = "opencollection: \"1.0.0\"\ninfo:\n  name: t\nextensions:\n  apinata:\n    hostOverrides:\n      - host: fake.test\n        address: 127.0.0.1\n";
+    let url = format!("http://fake.test:{}/ping", server.address().port());
+    let req = crate::network_support::resolve_in(root, &url, apinata_core::ContextOptions::new());
+    let res = crate::common::executor()
+        .send(req.request())
+        .await
+        .expect("sent");
+    let doc = parsed(&HarExchange::from_response(&res, SystemTime::now()));
+    let entry = &doc["log"]["entries"][0];
+    assert_eq!(entry["serverIPAddress"], "127.0.0.1");
+    assert_eq!(entry["_hostOverride"], "fake.test -> 127.0.0.1");
+    // A send DNS answered carries no such member.
+    assert!(
+        parsed(&exchange())["log"]["entries"][0]
+            .get("_hostOverride")
+            .is_none()
+    );
+}
+
+#[test]
+fn a_retried_send_names_its_attempt_and_the_most_there_could_be() {
+    let mut x = exchange();
+    x.attempt = Some((2, 3));
+    let entry = &parsed(&x)["log"]["entries"][0];
+    assert_eq!(entry["_attempt"], 2, "{entry}");
+    assert_eq!(entry["_attempts"], 3, "{entry}");
+}
+
+#[test]
+fn a_send_that_was_not_retrying_writes_no_attempt_members() {
+    let doc = parsed(&exchange());
+    let entry = &doc["log"]["entries"][0];
+    assert!(entry.get("_attempt").is_none() && entry.get("_attempts").is_none());
+}
+
+#[test]
+fn an_attempt_member_does_not_stop_the_importer() {
+    let mut x = exchange();
+    x.attempt = Some((1, 2));
+    let bundles = parse_collections(
+        Some(CollectionFormat::Har),
+        har(&x).as_bytes(),
+        &CollectionOptions::default(),
+    )
+    .expect("the importer ignores custom members");
+    assert_eq!(bundles.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn logged_retries_export_their_attempt_numbers() {
+    use crate::script_support::{ROOT, on, write_tree};
+    use crate::session_log_support::entries;
+    use apinata_core::{
+        CancelHandle, Collection, ContextOptions, ExecOptions, Executor, SessionLog, VarContext,
+        run,
+    };
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let s = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&s)
+        .await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&s)
+        .await;
+    let req = format!(
+        "info:\n  name: r\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{}\"\n",
+        s.uri()
+    );
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &req)]);
+    let log = SessionLog::new();
+    let c = Collection::open(dir.path()).expect("opens");
+    let plan = c.plan(dir.path()).expect("plan");
+    let ctx = VarContext::new(&c, ContextOptions::new()).expect("context");
+    let exec = std::sync::Arc::new(
+        Executor::new(ExecOptions::new().session_log(log.clone())).expect("client"),
+    );
+    run(
+        plan,
+        ctx,
+        exec,
+        on().retries(1).retry_delay(Duration::from_millis(5)),
+        CancelHandle::new(),
+        Box::new(|_| {}),
+    )
+    .await;
+    let docs: Vec<Value> = entries(&log)
+        .iter()
+        .map(|e| parsed(&HarExchange::from_network_entry(e).expect("a hop")))
+        .collect();
+    let attempts: Vec<(Value, Value)> = docs
+        .iter()
+        .map(|d| {
+            let e = &d["log"]["entries"][0];
+            (e["_attempt"].clone(), e["_attempts"].clone())
+        })
+        .collect();
+    assert_eq!(attempts, [(json!(1), json!(2)), (json!(2), json!(2))]);
+}
+
+#[test]
+fn a_url_userinfo_password_is_dropped_even_when_no_secret_is_known() {
+    let x = HarExchange::new("GET", "http://user:pa55word-xyz@api.test/items");
+    let text = har(&x.redacted(&[]));
+    assert!(!text.contains("pa55word-xyz"), "{text}");
+    assert!(text.contains("api.test/items"), "{text}");
+}
+
+#[test]
+fn a_set_cookie_without_an_equals_sign_is_hidden_whole() {
+    let mut x = exchange();
+    x.response_headers = vec![("set-cookie".into(), "sekrit-token; Path=/".into())];
+    let text = har(&x.redacted(&[]));
+    assert!(!text.contains("sekrit"), "{text}");
+}
+
+#[test]
+fn a_redirect_location_with_userinfo_is_dropped_from_redirecturl_and_the_headers() {
+    let mut x = exchange();
+    x.status = 302;
+    x.response_headers = vec![(
+        "location".into(),
+        "http://joe:hop-pa55-xyz@127.0.0.1/next".into(),
+    )];
+    let text = har(&x.redacted(&[]));
+    assert!(!text.contains("hop-pa55-xyz"), "{text}");
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    let response = &doc["log"]["entries"][0]["response"];
+    assert_eq!(response["redirectURL"], "http://127.0.0.1/next", "{text}");
+    assert_eq!(
+        response["headers"][0]["value"], "http://127.0.0.1/next",
+        "{text}"
+    );
+}
+
+#[test]
+fn a_url_at_sign_in_the_path_is_not_userinfo() {
+    for url in [
+        "http://127.0.0.1:8080/r/joe:pw@127.0.0.1:8080/next",
+        "http://127.0.0.1:8080/a//b@c",
+    ] {
+        let doc = parsed(&HarExchange::new("GET", url).redacted(&[]));
+        assert_eq!(doc["log"]["entries"][0]["request"]["url"], url);
+    }
+}

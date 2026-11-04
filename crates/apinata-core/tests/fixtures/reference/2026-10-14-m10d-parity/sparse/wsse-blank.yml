@@ -1,0 +1,19 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: wsse
+    username: ""
+    extra: dropped
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

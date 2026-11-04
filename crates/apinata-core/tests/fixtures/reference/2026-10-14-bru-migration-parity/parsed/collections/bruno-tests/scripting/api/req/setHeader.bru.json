@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "setHeader",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.setHeader('bruno', 'is-the-future');"
+  },
+  "tests": "test(\"req.setHeader(name)\", function() {\n  const h = req.getHeader('bruno');\n  expect(h).to.equal(\"is-the-future\");\n});"
+}

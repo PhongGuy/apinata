@@ -1,0 +1,30 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  auth:
+    type: akamai-edgegrid
+    accessToken: at
+    clientToken: ct
+    clientSecret: cs
+    nonce: ""
+    timestamp: ""
+    baseURL: ""
+    headersToSign: ""
+    maxBodySize: 4096
+bundled: false
+extensions: {}

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "timers",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "test(\"setTimeout exists and is callable\", function() {\n  expect(setTimeout).to.be.a('function');\n  const id = setTimeout(() => {}, 1000);\n  expect(id).to.not.be.undefined;\n  clearTimeout(id);\n});\n\ntest(\"clearTimeout exists and works\", function() {\n  expect(clearTimeout).to.be.a('function');\n  let fired = false;\n  const id = setTimeout(() => { fired = true; }, 0);\n  clearTimeout(id);\n  // Can't fully verify without async, but clearTimeout should not throw\n  expect(fired).to.equal(false);\n});\n\ntest(\"setInterval exists and is callable\", function() {\n  expect(setInterval).to.be.a('function');\n  const id = setInterval(() => {}, 1000);\n  expect(id).to.not.be.undefined;\n  clearInterval(id);\n});\n\ntest(\"clearInterval exists\", function() {\n  expect(clearInterval).to.be.a('function');\n});\n\ntest(\"setImmediate exists and is callable\", function() {\n  expect(setImmediate).to.be.a('function');\n  const id = setImmediate(() => {});\n  expect(id).to.not.be.undefined;\n  clearImmediate(id);\n});\n\ntest(\"clearImmediate exists\", function() {\n  expect(clearImmediate).to.be.a('function');\n});\n\ntest(\"queueMicrotask exists\", function() {\n  expect(queueMicrotask).to.be.a('function');\n});"
+}

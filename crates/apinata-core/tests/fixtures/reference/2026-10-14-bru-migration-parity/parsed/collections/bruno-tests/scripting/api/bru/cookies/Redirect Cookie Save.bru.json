@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "name": "Redirect Cookie Save",
+    "type": "http",
+    "seq": "9"
+  },
+  "http": {
+    "method": "get",
+    "url": "http://localhost:8081/api/mix?s=302&c=foo:bar&r=http://127.0.0.1:8081/query",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "params": [
+    {
+      "name": "s",
+      "value": "302",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "c",
+      "value": "foo:bar",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "r",
+      "value": "http://127.0.0.1:8081/query",
+      "enabled": true,
+      "type": "query"
+    }
+  ],
+  "tests": "const jar = bru.cookies.jar()\n\nconst cookieData = await jar.getCookie(\n  \"http://localhost:8081\",\n  \"foo\"\n);\n\ntest(\"should store redirect cookie under initial request domain\", function () {\n  expect(cookieData).to.not.be.undefined;\n  expect(cookieData.key).to.equal(\"foo\");\n  expect(cookieData.value).to.equal(\"bar\");\n});\n\njar.clear();",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

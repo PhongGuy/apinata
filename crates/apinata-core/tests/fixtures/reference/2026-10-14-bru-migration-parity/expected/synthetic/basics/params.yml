@@ -1,0 +1,28 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com/users/:id?page=1&~size=2
+  params:
+    - name: page
+      value: "1"
+      type: query
+    - name: size
+      value: "2"
+      type: query
+      disabled: true
+    - name: id
+      value: "42"
+      type: path
+    - name: legacy
+      value: yes
+      type: query
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

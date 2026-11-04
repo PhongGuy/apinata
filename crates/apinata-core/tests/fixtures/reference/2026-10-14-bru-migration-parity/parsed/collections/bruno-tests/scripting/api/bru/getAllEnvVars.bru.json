@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "getAllEnvVars",
+    "type": "http",
+    "seq": "22"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"should return all env vars including host\", function() {\n  const vars = bru.getAllEnvVars();\n  expect(vars.host).to.be.a(\"string\");\n});\n\ntest(\"should not include __name__ in result\", function() {\n  const vars = bru.getAllEnvVars();\n  expect(vars.__name__).to.be.undefined;\n});"
+}

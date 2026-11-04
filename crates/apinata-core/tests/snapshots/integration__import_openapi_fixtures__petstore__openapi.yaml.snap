@@ -1,0 +1,983 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== environments/Environment 1.yml
+name: Environment 1
+variables:
+  - name: baseUrl
+    value: https://petstore3.swagger.io/api/v3
+  - name: clientId
+    value: ""
+  - secret: true
+    name: apiKey
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Swagger Petstore - OpenAPI 3.0
+
+docs:
+  content: |-
+    This is a sample Pet Store Server based on the OpenAPI 3.0 specification.  You can find out more about
+    Swagger at [https://swagger.io](https://swagger.io). In the third iteration of the pet store, we've switched to the design first approach!
+    You can now help us improve the API whether it's by making changes to the definition itself or to the code.
+    That way, with time, we can improve the API in general, and expose some of the new features in OAS3.
+
+    Some useful links:
+    - [The Pet Store repository](https://github.com/swagger-api/swagger-petstore)
+    - [The source API definition for the Pet Store](https://github.com/swagger-api/swagger-petstore/blob/master/src/main/resources/openapi.yaml)
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        DELETE /pet/{}:
+          target: b41630e1d612e19e
+          headers: 9fa39e40c26ae88a
+          body: 7ace431cb61584cb
+          docs: 67c930c7c22fe10e
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: d8ad8056c4645ee4
+          file: pet/Deletes a pet.yml
+        DELETE /store/order/{}:
+          target: 7c1dae09a3c2baa6
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: bcfe25b6b77e11ae
+          tags: ae792f1146394e0f
+          vars: 7ace431cb61584cb
+          method: d8ad8056c4645ee4
+          file: store/Delete purchase order by identifier.yml
+        DELETE /user/{}:
+          target: 248ec40b3acc2587
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: b4ab7b8214a36600
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: d8ad8056c4645ee4
+          file: user/Delete user resource.yml
+        GET /pet/findByStatus:
+          target: 6659d3e0fe3b7294
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 727d8d0477421a3d
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: pet/Finds Pets by status.yml
+        GET /pet/findByTags:
+          target: 4b353dc8c39d22e1
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: fbff9500adfe1287
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: pet/Finds Pets by tags.yml
+        GET /pet/{}:
+          target: 505b7dbb2e5ac824
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 8cc37102c6ab1d00
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: pet/Find pet by ID.yml
+        GET /store/inventory:
+          target: ee379feeff07d77b
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 12504b763067d1ed
+          tags: ae792f1146394e0f
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: store/Returns pet inventories by status.yml
+        GET /store/order/{}:
+          target: a1b5da84c13e0edb
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 1dd7540a4d62c4dc
+          tags: ae792f1146394e0f
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: store/Find purchase order by ID.yml
+        GET /user/login:
+          target: 7facc1680f53ceb5
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 42dd71ec0ec1df9a
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: user/Logs user into the system.yml
+        GET /user/logout:
+          target: 7a80e066e47bfe10
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 3954f1a094026a51
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: user/Logs out current logged in user session.yml
+        GET /user/{}:
+          target: 53c4b64a1967890f
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 3b2595b8bdb9a511
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: user/Get user by user name.yml
+        POST /pet:
+          target: 3561051dad38cdc1
+          headers: 7ace431cb61584cb
+          body: 9163be94eedac466
+          docs: 18d34234df309427
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: pet/Add a new pet to the store.yml
+        POST /pet/{}:
+          target: f461d3b4d3a1f6b3
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 1b53c959f09d9be3
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: pet/Updates a pet in the store with form data.yml
+        POST /pet/{}/uploadImage:
+          target: b9a87ecbd86feb79
+          headers: 7ace431cb61584cb
+          body: f4f8cbc203de8239
+          docs: d386d6605edf68fe
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: pet/Uploads an image.yml
+        POST /store/order:
+          target: 3826160129f0e11c
+          headers: 7ace431cb61584cb
+          body: 2c98ff58215066db
+          docs: a786edc1fe662933
+          tags: ae792f1146394e0f
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: store/Place an order for a pet.yml
+        POST /user:
+          target: 494ce4fc3702909f
+          headers: 7ace431cb61584cb
+          body: b956729a7183add1
+          docs: b4ab7b8214a36600
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: user/Create user.yml
+        POST /user/createWithList:
+          target: 6c4366ed414581d1
+          headers: 7ace431cb61584cb
+          body: 3e2ec333a4b94a18
+          docs: 1567dd78fb6cecbf
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: user/Creates list of users with given input array.yml
+        PUT /pet:
+          target: 3561051dad38cdc1
+          headers: 7ace431cb61584cb
+          body: 9163be94eedac466
+          docs: 14330434a4285b04
+          tags: 2f0b3efa4935e66e
+          vars: 7ace431cb61584cb
+          method: 651ba8f38be35d73
+          file: pet/Update an existing pet.yml
+        PUT /user/{}:
+          target: 64f411ba3ea33ac9
+          headers: 7ace431cb61584cb
+          body: b956729a7183add1
+          docs: b4ab7b8214a36600
+          tags: 84584fcbb36de5bd
+          vars: 7ace431cb61584cb
+          method: 651ba8f38be35d73
+          file: user/Update user resource.yml
+
+=== pet/Add a new pet to the store.yml
+info:
+  name: Add a new pet to the store
+  type: http
+  seq: 2
+  tags:
+    - pet
+
+http:
+  method: POST
+  url: "{{baseUrl}}/pet"
+  body:
+    type: json
+    data: |-
+      {
+        "id": 10,
+        "name": "doggie",
+        "category": {
+          "id": 1,
+          "name": "Dogs"
+        },
+        "photoUrls": [],
+        "tags": [
+          {
+            "id": 0,
+            "name": ""
+          }
+        ],
+        "status": "available"
+      }
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Add a new pet to the store.
+
+=== pet/Deletes a pet.yml
+info:
+  name: Deletes a pet
+  type: http
+  seq: 7
+  tags:
+    - pet
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/pet/:petId"
+  headers:
+    - name: api_key
+      value: ""
+      disabled: true
+  params:
+    - name: petId
+      value: ""
+      type: path
+      description: Pet id to delete
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Delete a pet.
+
+=== pet/Find pet by ID.yml
+info:
+  name: Find pet by ID
+  type: http
+  seq: 5
+  tags:
+    - pet
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pet/:petId"
+  params:
+    - name: petId
+      value: ""
+      type: path
+      description: ID of pet to return
+  auth:
+    type: apikey
+    key: api_key
+    value: "{{apiKey}}"
+    placement: header
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Returns a single pet.
+
+=== pet/Finds Pets by status.yml
+info:
+  name: Finds Pets by status
+  type: http
+  seq: 3
+  tags:
+    - pet
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pet/findByStatus?status=available"
+  params:
+    - name: status
+      value: available
+      type: query
+      description: Status values that need to be considered for filter
+    - name: status
+      value: pending
+      type: query
+      description: Status values that need to be considered for filter
+      disabled: true
+    - name: status
+      value: sold
+      type: query
+      description: Status values that need to be considered for filter
+      disabled: true
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Multiple status values can be provided with comma separated strings.
+
+=== pet/Finds Pets by tags.yml
+info:
+  name: Finds Pets by tags
+  type: http
+  seq: 4
+  tags:
+    - pet
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pet/findByTags?tags=[]"
+  params:
+    - name: tags
+      value: "[]"
+      type: query
+      description: Tags to filter by
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Multiple tags can be provided with comma separated strings. Use tag1, tag2, tag3 for testing.
+
+=== pet/Update an existing pet.yml
+info:
+  name: Update an existing pet
+  type: http
+  seq: 1
+  tags:
+    - pet
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/pet"
+  body:
+    type: json
+    data: |-
+      {
+        "id": 10,
+        "name": "doggie",
+        "category": {
+          "id": 1,
+          "name": "Dogs"
+        },
+        "photoUrls": [],
+        "tags": [
+          {
+            "id": 0,
+            "name": ""
+          }
+        ],
+        "status": "available"
+      }
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Update an existing pet by Id.
+
+=== pet/Updates a pet in the store with form data.yml
+info:
+  name: Updates a pet in the store with form data
+  type: http
+  seq: 6
+  tags:
+    - pet
+
+http:
+  method: POST
+  url: "{{baseUrl}}/pet/:petId"
+  params:
+    - name: petId
+      value: ""
+      type: path
+      description: ID of pet that needs to be updated
+    - name: name
+      value: ""
+      type: query
+      description: Name of pet that needs to be updated
+      disabled: true
+    - name: status
+      value: ""
+      type: query
+      description: Status of pet that needs to be updated
+      disabled: true
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Updates a pet resource based on the form data.
+
+=== pet/Uploads an image.yml
+info:
+  name: Uploads an image
+  type: http
+  seq: 8
+  tags:
+    - pet
+
+http:
+  method: POST
+  url: "{{baseUrl}}/pet/:petId/uploadImage"
+  params:
+    - name: petId
+      value: ""
+      type: path
+      description: ID of pet to update
+    - name: additionalMetadata
+      value: ""
+      type: query
+      description: Additional Metadata
+      disabled: true
+  body:
+    type: text
+    data: ""
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://petstore3.swagger.io/oauth/authorize
+    credentials:
+      clientId: "{{clientId}}"
+    scope: write:pets read:pets
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Upload image of the pet.
+
+=== pet/folder.yml
+info:
+  name: pet
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+docs:
+  content: Everything about your Pets
+  type: text/markdown
+
+=== store/Delete purchase order by identifier.yml
+info:
+  name: Delete purchase order by identifier
+  type: http
+  seq: 4
+  tags:
+    - store
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/store/order/:orderId"
+  params:
+    - name: orderId
+      value: ""
+      type: path
+      description: ID of the order that needs to be deleted
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: For valid response try integer IDs with value < 1000. Anything above 1000 or non-integers will generate API errors.
+
+=== store/Find purchase order by ID.yml
+info:
+  name: Find purchase order by ID
+  type: http
+  seq: 3
+  tags:
+    - store
+
+http:
+  method: GET
+  url: "{{baseUrl}}/store/order/:orderId"
+  params:
+    - name: orderId
+      value: ""
+      type: path
+      description: ID of order that needs to be fetched
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: For valid response try integer IDs with value <= 5 or > 10. Other values will generate exceptions.
+
+=== store/Place an order for a pet.yml
+info:
+  name: Place an order for a pet
+  type: http
+  seq: 2
+  tags:
+    - store
+
+http:
+  method: POST
+  url: "{{baseUrl}}/store/order"
+  body:
+    type: json
+    data: |-
+      {
+        "id": 10,
+        "petId": 198772,
+        "quantity": 7,
+        "shipDate": "",
+        "status": "approved",
+        "complete": false
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Place a new order in the store.
+
+=== store/Returns pet inventories by status.yml
+info:
+  name: Returns pet inventories by status
+  type: http
+  seq: 1
+  tags:
+    - store
+
+http:
+  method: GET
+  url: "{{baseUrl}}/store/inventory"
+  auth:
+    type: apikey
+    key: api_key
+    value: "{{apiKey}}"
+    placement: header
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Returns a map of status codes to quantities.
+
+=== store/folder.yml
+info:
+  name: store
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+
+docs:
+  content: Access to Petstore orders
+  type: text/markdown
+
+=== user/Create user.yml
+info:
+  name: Create user
+  type: http
+  seq: 1
+  tags:
+    - user
+
+http:
+  method: POST
+  url: "{{baseUrl}}/user"
+  body:
+    type: json
+    data: |-
+      {
+        "id": 10,
+        "username": "theUser",
+        "firstName": "John",
+        "lastName": "James",
+        "email": "john@email.com",
+        "password": "12345",
+        "phone": "12345",
+        "userStatus": 1
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: This can only be done by the logged in user.
+
+=== user/Creates list of users with given input array.yml
+info:
+  name: Creates list of users with given input array
+  type: http
+  seq: 2
+  tags:
+    - user
+
+http:
+  method: POST
+  url: "{{baseUrl}}/user/createWithList"
+  body:
+    type: json
+    data: |-
+      [
+        {
+          "id": 10,
+          "username": "theUser",
+          "firstName": "John",
+          "lastName": "James",
+          "email": "john@email.com",
+          "password": "12345",
+          "phone": "12345",
+          "userStatus": 1
+        }
+      ]
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Creates list of users with given input array.
+
+=== user/Delete user resource.yml
+info:
+  name: Delete user resource
+  type: http
+  seq: 7
+  tags:
+    - user
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/user/:username"
+  params:
+    - name: username
+      value: ""
+      type: path
+      description: The name that needs to be deleted
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: This can only be done by the logged in user.
+
+=== user/Get user by user name.yml
+info:
+  name: Get user by user name
+  type: http
+  seq: 5
+  tags:
+    - user
+
+http:
+  method: GET
+  url: "{{baseUrl}}/user/:username"
+  params:
+    - name: username
+      value: ""
+      type: path
+      description: The name that needs to be fetched. Use user1 for testing
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Get user detail based on username.
+
+=== user/Logs out current logged in user session.yml
+info:
+  name: Logs out current logged in user session
+  type: http
+  seq: 4
+  tags:
+    - user
+
+http:
+  method: GET
+  url: "{{baseUrl}}/user/logout"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Log user out of the system.
+
+=== user/Logs user into the system.yml
+info:
+  name: Logs user into the system
+  type: http
+  seq: 3
+  tags:
+    - user
+
+http:
+  method: GET
+  url: "{{baseUrl}}/user/login"
+  params:
+    - name: username
+      value: ""
+      type: query
+      description: The user name for login
+      disabled: true
+    - name: password
+      value: ""
+      type: query
+      description: The password for login in clear text
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Log into the system.
+
+=== user/Update user resource.yml
+info:
+  name: Update user resource
+  type: http
+  seq: 6
+  tags:
+    - user
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/user/:username"
+  params:
+    - name: username
+      value: ""
+      type: path
+      description: name that need to be deleted
+  body:
+    type: json
+    data: |-
+      {
+        "id": 10,
+        "username": "theUser",
+        "firstName": "John",
+        "lastName": "James",
+        "email": "john@email.com",
+        "password": "12345",
+        "phone": "12345",
+        "userStatus": 1
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: This can only be done by the logged in user.
+
+=== user/folder.yml
+info:
+  name: user
+  type: folder
+  seq: 3
+
+request:
+  auth: inherit
+
+docs:
+  content: Operations about user
+  type: text/markdown
+
+note Dropped pet/Update an existing pet.yml | paths./pet.put.requestBody.content | `application/xml` was not imported; only the first media type is
+note Dropped pet/Update an existing pet.yml | paths./pet.put.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
+note Converted pet/Update an existing pet.yml | paths./pet.put.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Dropped pet/Add a new pet to the store.yml | paths./pet.post.requestBody.content | `application/xml` was not imported; only the first media type is
+note Dropped pet/Add a new pet to the store.yml | paths./pet.post.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
+note Converted pet/Add a new pet to the store.yml | paths./pet.post.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Converted pet/Finds Pets by status.yml | paths./pet/findByStatus.get.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Converted pet/Finds Pets by tags.yml | paths./pet/findByTags.get.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Converted pet/Find pet by ID.yml | paths./pet/{petId}.get.security | only the first security requirement's first scheme, `api_key`, is used
+note Converted pet/Updates a pet in the store with form data.yml | paths./pet/{petId}.post.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Converted pet/Deletes a pet.yml | paths./pet/{petId}.delete.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Converted pet/Uploads an image.yml | paths./pet/{petId}/uploadImage.post.security | `petstore_auth` uses placeholder variables: set their values in the environment
+note Dropped store/Place an order for a pet.yml | paths./store/order.post.requestBody.content | `application/xml` was not imported; only the first media type is
+note Dropped store/Place an order for a pet.yml | paths./store/order.post.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
+note Dropped user/Create user.yml | paths./user.post.requestBody.content | `application/xml` was not imported; only the first media type is
+note Dropped user/Create user.yml | paths./user.post.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
+note Dropped user/Update user resource.yml | paths./user/{username}.put.requestBody.content | `application/xml` was not imported; only the first media type is
+note Dropped user/Update user resource.yml | paths./user/{username}.put.requestBody.content | `application/x-www-form-urlencoded` was not imported; only the first media type is
+note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `apiKey` has no value; enter it before sending
+secret Environment 1 apiKey

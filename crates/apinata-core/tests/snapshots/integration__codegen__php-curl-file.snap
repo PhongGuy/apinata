@@ -1,0 +1,21 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+<?php
+
+$curl = curl_init();
+curl_setopt_array($curl, [
+    CURLOPT_URL => "http://x.test/b",
+    CURLOPT_CUSTOMREQUEST => "PUT",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => [
+        "content-type: application/json",
+    ],
+    CURLOPT_POSTFIELDS => file_get_contents("/data/body.json"),
+]);
+
+$response = curl_exec($curl);
+echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE), "\n";
+echo $response, "\n";

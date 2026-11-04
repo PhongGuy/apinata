@@ -1,0 +1,9 @@
+outer:
+  inner: |-
+    x
+    y
+list:
+  - |-
+    p
+    q
+  - r

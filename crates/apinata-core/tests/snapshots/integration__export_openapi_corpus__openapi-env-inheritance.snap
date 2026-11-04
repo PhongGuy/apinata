@@ -1,0 +1,81 @@
+---
+source: crates/apinata-core/tests/export_openapi_corpus.rs
+expression: rendered(&out)
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Inheritance YML",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "{host}",
+      "variables": {
+        "host": {
+          "default": ""
+        }
+      }
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "base"
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "dev"
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "qa"
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "scripted"
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "staging"
+    }
+  ],
+  "paths": {
+    "/api/echo/everything": {
+      "post": {
+        "summary": "echo",
+        "operationId": "echo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "string"
+              },
+              "example": "{\n  \"api_url\": \"{{api_url}}\",\n  \"base_only\": \"{{base_only}}\",\n  \"dev_only\": \"{{dev_only}}\",\n  \"disabled_in_base\": \"{{disabled_in_base}}\",\n  \"shadowed_by_disabled\": \"{{shadowed_by_disabled}}\",\n  \"base_number\": {{base_number}},\n  \"base_boolean\": {{base_boolean}},\n  \"base_object\": {{base_object}},\n  \"typed_override\": \"{{typed_override}}\",\n  \"base_token\": \"{{base_token}}\",\n  \"api_key\": \"{{api_key}}\",\n  \"overridden_plain\": \"{{overridden_plain}}\",\n  \"overridden_secret\": \"{{overridden_secret}}\"\n}"
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/ping": {
+      "get": {
+        "summary": "set-env-var",
+        "operationId": "setEnvVar",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    }
+  }
+}
+--- notes
+echo / body: the JSON body does not parse; it was exported as text
+workspace-vars: POST /api/echo/everything has the same method and path as echo; this request was left out
+set-global-env-var: GET /ping has the same method and path as set-env-var; this request was left out
+collection / scripts: 2 items have scripts; OpenAPI has no place for them
+collection / tests: 2 items have tests; OpenAPI has no place for them

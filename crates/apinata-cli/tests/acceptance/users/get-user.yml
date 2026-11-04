@@ -1,0 +1,97 @@
+info:
+  name: Get user
+  type: http
+  seq: 1
+http:
+  method: GET
+  url: "{{baseUrl}}/users/:id?verbose=true"
+  params:
+    - name: id
+      value: "{{userId}}"
+      type: path
+  auth: inherit
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "{{expected}}"
+    - expression: res.statusText
+      operator: eq
+      value: OK
+    - expression: res.status
+      operator: neq
+      value: "404"
+    - expression: res.body.id
+      operator: gt
+      value: "6"
+    - expression: res.body.id
+      operator: gte
+      value: "{{userId}}"
+    - expression: res.body.score
+      operator: lt
+      value: "5"
+    - expression: res.body.score
+      operator: lte
+      value: "4.5"
+    - expression: res.body.name
+      operator: in
+      value: Bob, Ann Lee
+    - expression: res.body.id
+      operator: notIn
+      value: "[1, 2, 3]"
+    - expression: res.body.email
+      operator: contains
+      value: "@example"
+    - expression: res.body.tags
+      operator: notContains
+      value: guest
+    - expression: res.body.tags
+      operator: length
+      value: "2"
+    - expression: res.body.email
+      operator: matches
+      value: "/^[a-z]+@/"
+    - expression: res.body.name
+      operator: notMatches
+      value: "\\d"
+    - expression: res.body.email
+      operator: startsWith
+      value: ann
+    - expression: res.body.email
+      operator: endsWith
+      value: .test
+    - expression: res.body.score
+      operator: between
+      value: 4, 5
+    - expression: res.body.profile
+      operator: isEmpty
+    - expression: res.body.tags
+      operator: isNotEmpty
+    - expression: res.body.manager
+      operator: isNull
+    - expression: res.body.missing
+      operator: isUndefined
+    - expression: res.headers['x-request-id']
+      operator: isDefined
+    - expression: res.body.active
+      operator: isTruthy
+    - expression: res.body.archived
+      operator: isFalsy
+    - expression: res.body
+      operator: isJson
+    - expression: res.body.id
+      operator: isNumber
+    - expression: res.headers['x-request-id']
+      operator: isString
+    - expression: res.body.active
+      operator: isBoolean
+    - expression: res.body.tags
+      operator: isArray
+    - expression: res.body.tags[0]
+      operator: eq
+      value: admin
+    - expression: res.body['email']
+      operator: isNotEmpty
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"

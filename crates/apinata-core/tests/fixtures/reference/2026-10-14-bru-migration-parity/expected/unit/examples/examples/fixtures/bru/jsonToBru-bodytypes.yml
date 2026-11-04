@@ -1,0 +1,70 @@
+info:
+  name: Body Types API
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/test
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: JSON Body Example
+    description: An example with JSON body
+    request:
+      url: https://api.example.com/json
+      method: post
+      body:
+        type: json
+        data: |-
+          {
+            "name": "Test",
+            "value": 123
+          }
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: XML Body Example
+    description: An example with XML body
+    request:
+      url: https://api.example.com/xml
+      method: post
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0"?>
+          <data>
+            <name>Test</name>
+            <value>123</value>
+          </data>
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Text Body Example
+    description: An example with text body
+    request:
+      url: https://api.example.com/text
+      method: post
+      body:
+        type: text
+        data: |-
+          Plain text data
+          with multiple lines
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""

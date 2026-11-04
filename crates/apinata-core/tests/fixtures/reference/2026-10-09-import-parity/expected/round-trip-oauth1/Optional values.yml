@@ -1,0 +1,36 @@
+info:
+  name: Optional values
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: oauth1
+    consumerKey: key
+    consumerSecret: secret
+    accessToken: token
+    accessTokenSecret: tokensecret
+    callbackUrl: url
+    verifier: verifier
+    signatureMethod: RSA-SHA512
+    privateKey:
+      type: text
+      value: |-
+        -----BEGIN CERTIFICATE-----
+        Test Certificate
+        -----END CERTIFICATE-----
+        -----BEGIN PRIVATE KEY-----
+        Test Private key
+        -----END PRIVATE KEY-----
+    version: "1.0"
+    placement: header
+    includeBodyHash: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

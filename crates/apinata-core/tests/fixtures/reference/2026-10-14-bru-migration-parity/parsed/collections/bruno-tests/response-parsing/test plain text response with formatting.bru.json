@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test plain text response with formatting",
+    "type": "http",
+    "seq": "18"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"text/plain\" },\n  \"content\": \"hello\\n\\tworld\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "eq hello\\n\\tworld",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://x.test/i"))
+            .method("POST", HttpRequest.BodyPublishers.concat(
+                HttpRequest.BodyPublishers.ofString("--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n@x\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"k=v\"\r\n\r\n1\r\n--apinata-boundary-5f0c2e9a7d4b--\r\n")))
+            .header("X-E", "=v")
+            .header("Content-Type", "multipart/form-data; boundary=apinata-boundary-5f0c2e9a7d4b")
+            .build();
+        HttpResponse<String> response = HttpClient.newHttpClient()
+            .send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}

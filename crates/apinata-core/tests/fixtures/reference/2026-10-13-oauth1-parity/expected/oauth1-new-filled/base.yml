@@ -1,0 +1,33 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth1
+    consumerKey: ck
+    consumerSecret: "{{consumerSecret}}"
+    accessToken: tk
+    accessTokenSecret: ts
+    callbackUrl: ""
+    verifier: ""
+    signatureMethod: HMAC-SHA1
+    privateKey:
+      type: text
+      value: ""
+    timestamp: ""
+    nonce: ""
+    version: "1.0"
+    realm: ""
+    placement: header
+    includeBodyHash: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

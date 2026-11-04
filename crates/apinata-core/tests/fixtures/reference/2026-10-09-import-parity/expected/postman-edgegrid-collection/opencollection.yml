@@ -1,0 +1,22 @@
+opencollection: 1.0.0
+
+info:
+  name: EgdeGrid Auth
+
+request:
+  auth:
+    type: akamai-edgegrid
+    accessToken: akab-acc35t0k3nodujqunph3w7hzp7-gtm6ij
+    clientToken: akab-c113ntt0k3n4qtari252bfxxbsl-yvsdj
+    clientSecret: C113nt53KR3TN6N90yVuAgICxIRwsObLi0E67/N8eRN=
+    nonce: ec9d20ee-1e9b-4c1f-925a-f0017754f86c
+    timestamp: 20160804T07:00:00+0000
+    baseURL: https://akab-h05tnam3wl42son7nktnlnnx-kbob3i3v.luna.akamaiapis.net
+    headersToSign: ""
+    maxBodySize: 131072
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

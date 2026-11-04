@@ -1,0 +1,25 @@
+get {
+  url: https://example.com
+}
+
+headers {
+  @description('single quoted')
+  a: 1
+  @description("double \"quoted\"\twith\\escapes\nand \x")
+  b: 2
+  @description('''
+    first line
+      indented \'\'\' kept
+    last \\' line
+  ''')
+  c: 3
+  @description(unquoted text)
+  d: 4
+  @description
+  e: 5
+  @description()
+  f: 6
+  @other('x') 
+  @description('two')
+  g: 7
+}

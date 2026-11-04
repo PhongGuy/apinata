@@ -1,0 +1,246 @@
+[
+  {
+    "id": "apinata-edge-cases",
+    "kind": "collection",
+    "input": "collections/apinata-edge-cases.json"
+  },
+  {
+    "id": "postman-collection-vars-mixed-disabled",
+    "kind": "collection",
+    "input": "collections/postman-collection-vars-mixed-disabled.json"
+  },
+  {
+    "id": "postman-edgegrid-collection",
+    "kind": "collection",
+    "input": "collections/postman-edgegrid-collection.json"
+  },
+  {
+    "id": "postman-import-apikey-header-collection",
+    "kind": "collection",
+    "input": "collections/postman-import-apikey-header-collection.json"
+  },
+  {
+    "id": "postman-import-apikey-query-collection",
+    "kind": "collection",
+    "input": "collections/postman-import-apikey-query-collection.json"
+  },
+  {
+    "id": "postman-import-binary-body-mode",
+    "kind": "collection",
+    "input": "collections/postman-import-binary-body-mode.json"
+  },
+  {
+    "id": "postman-import-oauth2-implicit-grant-type",
+    "kind": "collection",
+    "input": "collections/postman-import-oauth2-implicit-grant-type.json"
+  },
+  {
+    "id": "postman-import-oauth2-token-placement-collection",
+    "kind": "collection",
+    "input": "collections/postman-import-oauth2-token-placement-collection.json"
+  },
+  {
+    "id": "postman-invalid-missing-info",
+    "kind": "collection",
+    "input": "collections/postman-invalid-missing-info.json",
+    "error": "Import collection failed: Unsupported Postman schema version. Only Postman Collection v2.0 and v2.1 are supported."
+  },
+  {
+    "id": "postman-invalid-schema",
+    "kind": "collection",
+    "input": "collections/postman-invalid-schema.json",
+    "error": "Import collection failed: Unsupported Postman schema version. Only Postman Collection v2.0 and v2.1 are supported."
+  },
+  {
+    "id": "postman-malformed",
+    "kind": "collection",
+    "input": "collections/postman-malformed.json",
+    "error": "Import collection failed: Unsupported Postman schema version. Only Postman Collection v2.0 and v2.1 are supported."
+  },
+  {
+    "id": "postman-v20",
+    "kind": "collection",
+    "input": "collections/postman-v20.json"
+  },
+  {
+    "id": "postman-v21-wrapped",
+    "kind": "collection",
+    "input": "collections/postman-v21-wrapped.json"
+  },
+  {
+    "id": "postman-v21",
+    "kind": "collection",
+    "input": "collections/postman-v21.json"
+  },
+  {
+    "id": "postman-with-examples",
+    "kind": "collection",
+    "input": "collections/postman-with-examples.json"
+  },
+  {
+    "id": "postman-with-import-issues",
+    "kind": "collection",
+    "input": "collections/postman-with-import-issues.json",
+    "issues": [
+      "error: Missing Method (null): Missing or invalid request method",
+      "error: Missing Method (absent): Missing or invalid request method",
+      "error: Empty String Method: Missing or invalid request method",
+      "error: Whitespace-Only Method: Missing or invalid request method",
+      "error: API Folder / Nested Missing Method: Missing or invalid request method",
+      "error: API Folder / Deep Subfolder / Deep Bad Method: Missing or invalid request method"
+    ]
+  },
+  {
+    "id": "postman-with-many-import-issues",
+    "kind": "collection",
+    "input": "collections/postman-with-many-import-issues.json",
+    "issues": [
+      "error: Bad Method 1: Missing or invalid request method",
+      "error: Bad Method 2: Missing or invalid request method",
+      "error: Bad Method 3: Missing or invalid request method",
+      "error: Bad Method 4: Missing or invalid request method",
+      "error: Bad Method 5: Missing or invalid request method",
+      "error: Bad Method 6: Missing or invalid request method",
+      "error: Bad Method 7: Missing or invalid request method",
+      "error: Bad Method 8: Missing or invalid request method",
+      "error: Bad Method 9: Missing or invalid request method",
+      "error: Bad Method 10: Missing or invalid request method",
+      "error: Empty Method 1: Missing or invalid request method",
+      "error: Empty Method 2: Missing or invalid request method",
+      "error: Empty Method 3: Missing or invalid request method",
+      "error: Empty Method 4: Missing or invalid request method",
+      "error: Empty Method 5: Missing or invalid request method",
+      "error: Whitespace Method 1: Missing or invalid request method",
+      "error: Whitespace Method 2: Missing or invalid request method",
+      "error: Whitespace Method 3: Missing or invalid request method",
+      "error: Whitespace Method 4: Missing or invalid request method",
+      "error: Whitespace Method 5: Missing or invalid request method",
+      "error: Missing Method 1: Missing or invalid request method",
+      "error: Missing Method 2: Missing or invalid request method",
+      "error: Missing Method 3: Missing or invalid request method",
+      "error: Missing Method 4: Missing or invalid request method",
+      "error: Missing Method 5: Missing or invalid request method",
+      "error: API Folder / Nested Bad 1: Missing or invalid request method",
+      "error: API Folder / Nested Bad 2: Missing or invalid request method",
+      "error: API Folder / Nested Bad 3: Missing or invalid request method",
+      "error: API Folder / Nested Bad 4: Missing or invalid request method",
+      "error: API Folder / Nested Bad 5: Missing or invalid request method"
+    ]
+  },
+  {
+    "id": "postman-with-max-redirects",
+    "kind": "collection",
+    "input": "collections/postman-with-max-redirects.json",
+    "issues": [
+      "warning: Null Limit: Invalid maxRedirects, ignored (must be a number of 0 or more)",
+      "warning: Negative Limit: Invalid maxRedirects, ignored (must be a number of 0 or more)",
+      "warning: Quoted Limit: Invalid maxRedirects, ignored (must be a number of 0 or more)",
+      "warning: Boolean Limit: Invalid maxRedirects, ignored (must be a number of 0 or more)"
+    ]
+  },
+  {
+    "id": "postman-with-scripts",
+    "kind": "collection",
+    "input": "collections/postman-with-scripts.json"
+  },
+  {
+    "id": "postman-with-settings",
+    "kind": "collection",
+    "input": "collections/postman-with-settings.json"
+  },
+  {
+    "id": "round-trip-akamai-edgegrid",
+    "kind": "collection",
+    "input": "collections/round-trip-akamai-edgegrid.json"
+  },
+  {
+    "id": "round-trip-api-key",
+    "kind": "collection",
+    "input": "collections/round-trip-api-key.json"
+  },
+  {
+    "id": "round-trip-aws",
+    "kind": "collection",
+    "input": "collections/round-trip-aws.json"
+  },
+  {
+    "id": "round-trip-basic-auth-folder",
+    "kind": "collection",
+    "input": "collections/round-trip-basic-auth-folder.json"
+  },
+  {
+    "id": "round-trip-basic-auth",
+    "kind": "collection",
+    "input": "collections/round-trip-basic-auth.json"
+  },
+  {
+    "id": "round-trip-bearer",
+    "kind": "collection",
+    "input": "collections/round-trip-bearer.json"
+  },
+  {
+    "id": "round-trip-digest",
+    "kind": "collection",
+    "input": "collections/round-trip-digest.json"
+  },
+  {
+    "id": "round-trip-ntlm",
+    "kind": "collection",
+    "input": "collections/round-trip-ntlm.json"
+  },
+  {
+    "id": "round-trip-oauth1",
+    "kind": "collection",
+    "input": "collections/round-trip-oauth1.json"
+  },
+  {
+    "id": "round-trip-oauth2",
+    "kind": "collection",
+    "input": "collections/round-trip-oauth2.json"
+  },
+  {
+    "id": "sample-postman",
+    "kind": "collection",
+    "input": "collections/sample-postman.json"
+  },
+  {
+    "id": "env-apinata-env-edge-cases",
+    "kind": "environment",
+    "input": "environments/apinata-env-edge-cases.json"
+  },
+  {
+    "id": "env-postman-collection-env",
+    "kind": "environment",
+    "input": "environments/postman-collection-env.json"
+  },
+  {
+    "id": "env-postman-env-2",
+    "kind": "environment",
+    "input": "environments/postman-env-2.json"
+  },
+  {
+    "id": "env-postman-env-duplicate-a",
+    "kind": "environment",
+    "input": "environments/postman-env-duplicate-a.json"
+  },
+  {
+    "id": "env-postman-env-duplicate-b",
+    "kind": "environment",
+    "input": "environments/postman-env-duplicate-b.json"
+  },
+  {
+    "id": "env-postman-env-mixed-enabled",
+    "kind": "environment",
+    "input": "environments/postman-env-mixed-enabled.json"
+  },
+  {
+    "id": "env-postman-env",
+    "kind": "environment",
+    "input": "environments/postman-env.json"
+  },
+  {
+    "id": "env-postman-global-env",
+    "kind": "environment",
+    "input": "environments/postman-global-env.json"
+  }
+]

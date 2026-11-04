@@ -1,0 +1,10 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth2"
+  },
+  "auth": {
+    "oauth2": {}
+  }
+}

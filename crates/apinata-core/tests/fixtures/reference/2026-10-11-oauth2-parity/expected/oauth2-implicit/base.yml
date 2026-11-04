@@ -1,0 +1,37 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: https://id.example.com/authorize
+    callbackUrl: https://app.example.com/cb
+    credentials:
+      clientId: web
+    scope: openid
+    state: abc
+    additionalParameters:
+      authorizationRequest:
+        - name: nonce
+          placement: query
+          value: n1
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: id_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

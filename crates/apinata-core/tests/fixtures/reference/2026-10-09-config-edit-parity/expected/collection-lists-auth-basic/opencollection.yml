@@ -1,0 +1,41 @@
+opencollection: 1.0.0
+
+info:
+  name: bruno-yml-testbench
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  auth:
+    type: basic
+    username: u
+    password: "{{pw}}"
+  variables:
+    - name: coll_str
+      value: collection_string
+    - name: coll_num
+      value:
+        type: number
+        data: "100"
+    - name: coll_bool
+      value:
+        type: boolean
+        data: "false"
+    - name: coll_obj
+      value:
+        type: object
+        data: |-
+          {
+            "scope": "collection"
+          }
+bundled: false
+extensions: {}

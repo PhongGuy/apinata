@@ -1,0 +1,67 @@
+[
+  {
+    "id": "omit-add-first",
+    "fixture": "none.yml",
+    "names": [
+      "User-Agent"
+    ]
+  },
+  {
+    "id": "omit-add-several",
+    "fixture": "none.yml",
+    "names": [
+      "User-Agent",
+      "Accept"
+    ]
+  },
+  {
+    "id": "omit-add-second",
+    "fixture": "one.yml",
+    "names": [
+      "User-Agent",
+      "Accept"
+    ]
+  },
+  {
+    "id": "omit-remove-one",
+    "fixture": "two.yml",
+    "names": [
+      "Accept"
+    ]
+  },
+  {
+    "id": "omit-remove-last",
+    "fixture": "one.yml",
+    "names": []
+  },
+  {
+    "id": "omit-names-trimmed",
+    "fixture": "none.yml",
+    "names": [
+      "  user-agent ",
+      "ACCEPT",
+      "   ",
+      ""
+    ]
+  },
+  {
+    "id": "omit-blank-only",
+    "fixture": "none.yml",
+    "names": [
+      " ",
+      ""
+    ]
+  },
+  {
+    "id": "omit-other-keys-add",
+    "fixture": "other-keys.yml",
+    "names": [
+      "User-Agent"
+    ]
+  },
+  {
+    "id": "omit-other-keys-remove-last",
+    "fixture": "other-keys-omitting.yml",
+    "names": []
+  }
+]

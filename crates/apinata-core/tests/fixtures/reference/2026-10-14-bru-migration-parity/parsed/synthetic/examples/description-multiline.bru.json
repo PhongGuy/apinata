@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "Multiline description",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items"
+  },
+  "examples": [
+    {
+      "name": "Documented",
+      "description": "First line of the description\n  indented second line\nthird line"
+    },
+    {
+      "name": "Typed description",
+      "description": "Body text\n @contentType(text/markdown)"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "info": {
+    "name": "Scripts subset",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": { "type": "text/javascript", "exec": ["pm.environment.set(\"root_pre\", \"1\");"] }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": ["pm.test(\"root ok\", function () {", "  pm.expect(1).to.equal(1);", "});"]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Group",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "type": "text/javascript", "exec": ["pm.environment.set(\"folder_pre\", \"1\");"] }
+        }
+      ],
+      "item": [
+        {
+          "name": "Checked",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "type": "text/javascript", "exec": ["pm.environment.set(\"token\", \"abc\");"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.test(\"has id\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "http://127.0.0.1:1/items/1" }
+        },
+        {
+          "name": "Unsupported",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.visualizer.set(\"<p>hi</p>\", {});"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "http://127.0.0.1:1/items/2" }
+        }
+      ]
+    }
+  ]
+}

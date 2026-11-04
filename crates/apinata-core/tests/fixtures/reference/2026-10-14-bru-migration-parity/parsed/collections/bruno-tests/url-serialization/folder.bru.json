@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "url-serialization",
+    "seq": "13",
+    "type": "collection"
+  },
+  "auth": {
+    "mode": "inherit"
+  }
+}

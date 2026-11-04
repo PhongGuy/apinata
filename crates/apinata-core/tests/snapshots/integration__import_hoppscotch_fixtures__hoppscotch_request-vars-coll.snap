@@ -1,0 +1,134 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: Request variables
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Request variables
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== request-variables-alongside-environment-variables.yml
+info:
+  name: request-variables-alongside-environment-variables
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{url}}/{{path}}?method={{method}}"
+  headers:
+    - name: test-header-key
+      value: "{{testHeaderValue}}"
+  params:
+    - name: method
+      value: "{{method}}"
+      type: query
+  body:
+    type: json
+    data: |-
+      {
+        "username": "{{username}}",
+        "password": "{{password}}"
+      }
+
+runtime:
+  variables:
+    - name: url
+      value: https://echo.hoppscotch.io
+    - name: username
+      value: "{{recursiveBasicAuthUsernameReqVar}}"
+    - name: recursiveBasicAuthUsernameReqVar
+      value: "{{secretBasicAuthUsernameEnvVar}}"
+    - name: password
+      value: "{{recursiveBasicAuthPasswordReqVar}}"
+    - name: recursiveBasicAuthPasswordReqVar
+      value: "{{secretBasicAuthPasswordEnvVar}}"
+    - name: method
+      value: post
+    - name: method
+      value: get
+    - name: method
+      value: put
+    - name: path
+      value: "{{username}}/{{password}}"
+    - name: testHeaderValue
+      value: ""
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== request-variables-basic-usage.yml
+info:
+  name: request-variables-basic-usage
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{url}}?<<queryParamKey>>={{queryParamValue}}&inactive-query-param-key={{inactiveQueryParamValue}}"
+  headers:
+    - name: <<customHeaderKey>>
+      value: "{{customHeaderValue}}"
+    - name: inactive-header-key
+      value: "{{inactiveHeaderValue}}"
+  params:
+    - name: <<queryParamKey>>
+      value: "{{queryParamValue}}"
+      type: query
+    - name: inactive-query-param-key
+      value: "{{inactiveQueryParamValue}}"
+      type: query
+  body:
+    type: json
+    data: |-
+      {
+        "{{httpBodyRawKey}}": "{{httpBodyRawValue}}"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: url
+      value: https://echo.hoppscotch.io
+    - name: method
+      value: POST
+    - name: httpBodyRawKey
+      value: http-body-raw-key
+    - name: httpBodyRawValue
+      value: http-body-raw-value
+    - name: customHeaderKey
+      value: custom-header-key
+    - name: customHeaderValue
+      value: custom-header-value
+    - name: queryParamKey
+      value: query-param-key
+    - name: queryParamValue
+      value: query-param-value
+    - name: inactiveQueryParamValue
+      value: inactive-query-param-value
+      disabled: true
+    - name: inactiveHeaderValue
+      value: inactive-header-value
+      disabled: true
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped request-variables-basic-usage / testScript: scripts are not imported (request-variables-basic-usage.yml)
+Dropped request-variables-alongside-environment-variables / auth.password: not imported (request-variables-alongside-environment-variables.yml)
+Dropped request-variables-alongside-environment-variables / auth.username: not imported (request-variables-alongside-environment-variables.yml)
+Dropped request-variables-alongside-environment-variables / testScript: scripts are not imported (request-variables-alongside-environment-variables.yml)

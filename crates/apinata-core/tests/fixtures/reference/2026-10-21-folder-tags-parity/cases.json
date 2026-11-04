@@ -1,0 +1,16 @@
+[
+  {
+    "id": "folder-tags-add",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-tags-normalised",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  }
+]

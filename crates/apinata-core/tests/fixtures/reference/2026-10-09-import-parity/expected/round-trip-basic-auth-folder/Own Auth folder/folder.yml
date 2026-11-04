@@ -1,0 +1,10 @@
+info:
+  name: Own Auth folder
+  type: folder
+  seq: 2
+
+request:
+  auth:
+    type: basic
+    username: Folder-user
+    password: folder-pass

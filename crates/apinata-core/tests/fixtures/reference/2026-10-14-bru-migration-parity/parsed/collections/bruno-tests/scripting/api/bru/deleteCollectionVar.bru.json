@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "name": "deleteCollectionVar",
+    "type": "http",
+    "seq": "27"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setCollectionVar(\"testDeleteCollectionVar\", \"to-be-deleted\");",
+    "res": "bru.deleteCollectionVar(\"testDeleteCollectionVar\");"
+  },
+  "tests": "test(\"should delete collection var\", function() {\n  const val = bru.getCollectionVar(\"testDeleteCollectionVar\");\n  expect(val).to.be.undefined;\n});\n\ntest(\"should not throw when deleting non-existent key\", function() {\n  expect(function() {\n    bru.deleteCollectionVar(\"non-existent-key\");\n  }).to.not.throw();\n});"
+}

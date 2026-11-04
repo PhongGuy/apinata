@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "name": "binary upload octet-stream",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{localhost}}/api/file-binary/binary-upload-octet-stream",
+    "body": "file",
+    "auth": "none"
+  },
+  "body": {
+    "file": [
+      {
+        "contentType": "application/octet-stream",
+        "filePath": "file.txt",
+        "selected": true
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.bytesReceived",
+      "value": "eq 23",
+      "enabled": true
+    },
+    {
+      "name": "res.body.sha256",
+      "value": "eq ddf1d7c7f9889618e0066558caa2ab5d0a691ce4cb73fcdd6543e0e1d386d61f",
+      "enabled": true
+    },
+    {
+      "name": "res.body.contentType",
+      "value": "eq application/octet-stream",
+      "enabled": true
+    },
+    {
+      "name": "res.body.looksLikeSerializedNodeStream",
+      "value": "eq false",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"non-json file body is uploaded byte-exact\", function() {\n  const body = res.getBody();\n  expect(body.bytesReceived).to.equal(23);\n  expect(body.sha256).to.equal(\"ddf1d7c7f9889618e0066558caa2ab5d0a691ce4cb73fcdd6543e0e1d386d61f\");\n  expect(body.looksLikeSerializedNodeStream).to.equal(false);\n});"
+}

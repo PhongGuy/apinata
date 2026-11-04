@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "search-methods",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"res.headerList.has(name)\", function() {\n  expect(res.headerList.has('x-powered-by')).to.be.true;\n  expect(res.headerList.has('nonexistent')).to.be.false;\n});\n\ntest(\"res.headerList.has(name, value)\", function() {\n  expect(res.headerList.has('x-powered-by', 'Express')).to.be.true;\n  expect(res.headerList.has('x-powered-by', 'wrong')).to.be.false;\n});\n\ntest(\"res.headerList.find(predicate)\", function() {\n  const found = res.headerList.find(h => h.key === 'x-powered-by');\n  expect(found).to.eql({ key: 'x-powered-by', value: 'Express' });\n  expect(res.headerList.find(h => h.key === 'nonexistent')).to.be.undefined;\n});\n\ntest(\"res.headerList.filter(predicate)\", function() {\n  const filtered = res.headerList.filter(h => h.key.startsWith('x-'));\n  expect(filtered).to.be.an('array');\n  expect(filtered.length).to.be.at.least(1);\n});\n\ntest(\"res.headerList.indexOf(item)\", function() {\n  const idx = res.headerList.indexOf({ key: 'x-powered-by', value: 'Express' });\n  expect(idx).to.be.at.least(0);\n  expect(res.headerList.indexOf({ key: 'nonexistent', value: 'nope' })).to.equal(-1);\n});"
+}

@@ -1,0 +1,74 @@
+info:
+  name: renamed
+  type: graphql
+  seq: 2
+  tags:
+    - smoke
+
+graphql:
+  method: POST
+  url: "{{host}}/graphql?trace=1"
+  headers:
+    - name: x-tenant
+      value: "{{tenant}}"
+    - name: x-off
+      value: "1"
+      disabled: true
+  params:
+    - name: trace
+      value: "1"
+      type: query
+  body:
+    query: |-
+      query Search($term: String!, $limit: Int) {
+        users(term: $term, limit: $limit) {
+          id
+          name
+        }
+      }
+    variables: |-
+      {
+        // the search term
+        "term": "{{term}}",
+        "limit": 10
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  variables:
+    - name: term
+      value: ada
+  scripts:
+    - type: before-request
+      code: req.setHeader("x-script", "1");
+    - type: tests
+      code: |-
+        test("ok", () => {
+          expect(res.status).to.equal(200);
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.data.users[0].id
+        method: jsonq
+      variable:
+        name: firstId
+        scope: runtime
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  # Search
+  Finds users by term.

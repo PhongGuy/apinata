@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "ws body",
+    "type": "ws",
+    "seq": 1
+  },
+  "body": {
+    "mode": "ws",
+    "ws": [
+      {
+        "name": "first",
+        "type": "json",
+        "content": "{\"hi\":true}",
+        "selected": true
+      },
+      {
+        "name": "second",
+        "type": "",
+        "content": "",
+        "selected": false
+      }
+    ]
+  }
+}

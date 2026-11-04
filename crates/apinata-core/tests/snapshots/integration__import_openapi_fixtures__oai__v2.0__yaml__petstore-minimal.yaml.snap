@@ -1,0 +1,57 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Returns all pets from the system that the user has access to.yml
+info:
+  name: Returns all pets from the system that the user has access to
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pets"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Returns all pets from the system that the user has access to
+
+=== environments/Environment.yml
+name: Environment
+variables:
+  - name: baseUrl
+    value: http://petstore.swagger.io/api
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Swagger Petstore
+
+docs:
+  content: A sample API that uses a petstore as an example to demonstrate features in the swagger-2.0 specification
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /pets:
+          target: 0e47e1edc3566744
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: b0eda1c29f95c657
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Returns all pets from the system that the user has access to.yml

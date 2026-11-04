@@ -1,0 +1,27 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Dropped collection / auth [opencollection.yml]: `realm` is not carried over: negotiated from the server challenge
+Dropped collection / auth [opencollection.yml]: `nonce` is not carried over: negotiated from the server challenge
+Dropped collection / auth [opencollection.yml]: `qop` is not carried over: negotiated from the server challenge
+Dropped collection / auth [opencollection.yml]: `opaque` is not carried over: negotiated from the server challenge
+Dropped collection / auth [opencollection.yml]: `nonceCount` is not carried over: negotiated from the server challenge
+Dropped collection / auth [opencollection.yml]: `clientNonce` is not carried over: negotiated from the server challenge
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Digest
+
+request:
+  auth:
+    type: digest
+    username: username
+    password: "{{password}}"
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

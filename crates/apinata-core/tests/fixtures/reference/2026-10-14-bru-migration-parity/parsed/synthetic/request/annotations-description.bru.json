@@ -1,0 +1,95 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "headers": [
+    {
+      "name": "a",
+      "value": "1",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "single quoted"
+        }
+      ],
+      "description": "single quoted"
+    },
+    {
+      "name": "b",
+      "value": "2",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "double \"quoted\"\twith\\escapes\nand \\x"
+        }
+      ],
+      "description": "double \"quoted\"\twith\\escapes\nand \\x"
+    },
+    {
+      "name": "c",
+      "value": "3",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "first line\n  indented \\'\\'\\' kept\nlast \\\\' line"
+        }
+      ],
+      "description": "first line\n  indented ''' kept\nlast \\' line"
+    },
+    {
+      "name": "d",
+      "value": "4",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "unquoted text"
+        }
+      ],
+      "description": "unquoted text"
+    },
+    {
+      "name": "e",
+      "value": "5",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description"
+        }
+      ],
+      "description": ""
+    },
+    {
+      "name": "f",
+      "value": "6",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": ""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "name": "g",
+      "value": "7",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "other",
+          "value": "x"
+        },
+        {
+          "name": "description",
+          "value": "two"
+        }
+      ],
+      "description": "two"
+    }
+  ]
+}

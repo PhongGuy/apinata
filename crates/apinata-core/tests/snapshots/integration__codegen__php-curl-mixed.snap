@@ -1,0 +1,23 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 793
+expression: "generate(&mixed(), Target::PhpCurl)"
+---
+<?php
+
+$curl = curl_init();
+curl_setopt_array($curl, [
+    CURLOPT_URL => "http://x.test/x",
+    CURLOPT_CUSTOMREQUEST => "POST",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => [
+        "Content-Type: multipart/form-data; boundary=apinata-boundary-5f0c2e9a7d4b",
+    ],
+    CURLOPT_POSTFIELDS => "--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"j\"\r\nContent-Type: application/json\r\n\r\n{\"a\": 1}\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"q%22x\"\r\n\r\nplain\r\n--apinata-boundary-5f0c2e9a7d4b\r\nContent-Disposition: form-data; name=\"up\"; filename=\"up.bin\"\r\nContent-Type: text/plain\r\n\r\n"
+        . file_get_contents("/data/up.bin")
+        . "\r\n--apinata-boundary-5f0c2e9a7d4b--\r\n",
+]);
+
+$response = curl_exec($curl);
+echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE), "\n";
+echo $response, "\n";

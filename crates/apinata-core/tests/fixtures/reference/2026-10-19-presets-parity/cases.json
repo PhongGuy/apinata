@@ -1,0 +1,58 @@
+[
+  {
+    "id": "presets-set-both",
+    "collection": "plain",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-set-url",
+    "collection": "plain",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-set-type",
+    "collection": "plain",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-set-unknown-type",
+    "collection": "plain",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-edit-keeps-neighbours",
+    "collection": "full",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-clear-keeps-environment",
+    "collection": "full",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-clear-all",
+    "collection": "request-only",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "presets-clear-last",
+    "collection": "only-presets",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

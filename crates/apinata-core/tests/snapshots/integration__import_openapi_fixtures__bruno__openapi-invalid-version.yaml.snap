@@ -1,0 +1,5 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+error: OpenAPI: unsupported openapi 2.0

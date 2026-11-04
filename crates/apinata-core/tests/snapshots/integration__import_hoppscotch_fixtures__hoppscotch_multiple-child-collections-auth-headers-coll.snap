@@ -1,0 +1,460 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: Multiple child collections with authorization, headers and variables set at each level
+== folder-1/folder-1-request.yml
+info:
+  name: folder-1-request
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-1/folder-11/folder-11-request.yml
+info:
+  name: folder-11-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-1/folder-11/folder.yml
+info:
+  name: folder-11
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: key
+      value: Set at folder-11
+  auth: inherit
+== folder-1/folder-12/folder-12-request.yml
+info:
+  name: folder-12-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-12-request
+    - name: key
+      value: Overriden at folder-12-request
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-1/folder-12/folder.yml
+info:
+  name: folder-12
+  type: folder
+  seq: 2
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-12
+    - name: key
+      value: Set at folder-12
+== folder-1/folder-13/folder-13-request.yml
+info:
+  name: folder-13-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header-Request-Level
+      value: New custom header added at the folder-13-request level
+    - name: key
+      value: Overriden at folder-13-request
+  auth:
+    type: basic
+    username: testuser
+    password: testpass
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-1/folder-13/folder.yml
+info:
+  name: folder-13
+  type: folder
+  seq: 3
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-13
+    - name: key
+      value: Set at folder-13
+  auth:
+    type: bearer
+    token: test-token
+== folder-1/folder.yml
+info:
+  name: folder-1
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-1
+  auth: inherit
+== folder-2/folder-2-request.yml
+info:
+  name: folder-2-request
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-2-request
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-2/folder-21/folder-21-request.yml
+info:
+  name: folder-21-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-2/folder-21/folder.yml
+info:
+  name: folder-21
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: key
+      value: Set at folder-21
+  auth: inherit
+== folder-2/folder-22/folder-22-request.yml
+info:
+  name: folder-22-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-22-request
+    - name: key
+      value: Overriden at folder-22-request
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-2/folder-22/folder.yml
+info:
+  name: folder-22
+  type: folder
+  seq: 2
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-22
+    - name: key
+      value: Set at folder-22
+== folder-2/folder-23/folder-23-request.yml
+info:
+  name: folder-23-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header-Request-Level
+      value: New custom header added at the folder-23-request level
+    - name: key
+      value: Overriden at folder-23-request
+  auth:
+    type: basic
+    username: testuser
+    password: testpass
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-2/folder-23/folder.yml
+info:
+  name: folder-23
+  type: folder
+  seq: 3
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-23
+    - name: key
+      value: Set at folder-23
+  auth:
+    type: bearer
+    token: test-token
+== folder-2/folder.yml
+info:
+  name: folder-2
+  type: folder
+  seq: 2
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-2
+== folder-3/folder-3-request.yml
+info:
+  name: folder-3-request
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header-Request-Level
+      value: New custom header added at the folder-3-request level
+    - name: key
+      value: Set at folder-3-request
+  auth:
+    type: basic
+    username: testuser
+    password: testpass
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-3/folder-31/folder-31-request.yml
+info:
+  name: folder-31-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-3/folder-31/folder.yml
+info:
+  name: folder-31
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: key
+      value: Set at folder-31
+  auth: inherit
+== folder-3/folder-32/folder-32-request.yml
+info:
+  name: folder-32-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-32-request
+    - name: key
+      value: Overriden at folder-32-request
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-3/folder-32/folder.yml
+info:
+  name: folder-32
+  type: folder
+  seq: 2
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-32
+    - name: key
+      value: Set at folder-32
+== folder-3/folder-33/folder-33-request.yml
+info:
+  name: folder-33-request
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Custom-Header-Request-Level
+      value: New custom header added at the folder-33-request level
+    - name: key
+      value: Overriden at folder-33-request
+  auth:
+    type: basic
+    username: testuser
+    password: testpass
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== folder-3/folder-33/folder.yml
+info:
+  name: folder-33
+  type: folder
+  seq: 3
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-33
+    - name: key
+      value: Set at folder-33
+  auth:
+    type: bearer
+    token: test-token
+== folder-3/folder.yml
+info:
+  name: folder-3
+  type: folder
+  seq: 3
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value overriden at folder-3
+  auth:
+    type: basic
+    username: testuser
+    password: testpass
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Multiple child collections with authorization, headers and variables set at each level
+
+request:
+  headers:
+    - name: Custom-Header
+      value: Custom header value set at the root collection
+    - name: Inherited-Header
+      value: Inherited header at all levels
+  auth:
+    type: basic
+    username: testuser
+    password: testpass
+  variables:
+    - name: collection-variable
+      value: collection-variable-value
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== root-collection-request.yml
+info:
+  name: root-collection-request
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped folder-1 / folder-11 / folder-11-request / testScript: scripts are not imported (folder-1/folder-11/folder-11-request.yml)
+Dropped folder-1 / folder-12 / folder-12-request / testScript: scripts are not imported (folder-1/folder-12/folder-12-request.yml)
+Dropped folder-1 / folder-13 / folder-13-request / testScript: scripts are not imported (folder-1/folder-13/folder-13-request.yml)
+Dropped folder-1 / folder-1-request / testScript: scripts are not imported (folder-1/folder-1-request.yml)
+Dropped folder-2 / folder-21 / folder-21-request / testScript: scripts are not imported (folder-2/folder-21/folder-21-request.yml)
+Dropped folder-2 / folder-22 / folder-22-request / testScript: scripts are not imported (folder-2/folder-22/folder-22-request.yml)
+Dropped folder-2 / folder-23 / folder-23-request / testScript: scripts are not imported (folder-2/folder-23/folder-23-request.yml)
+Dropped folder-2 / folder-2-request / testScript: scripts are not imported (folder-2/folder-2-request.yml)
+Dropped folder-3 / folder-31 / folder-31-request / testScript: scripts are not imported (folder-3/folder-31/folder-31-request.yml)
+Dropped folder-3 / folder-32 / folder-32-request / testScript: scripts are not imported (folder-3/folder-32/folder-32-request.yml)
+Dropped folder-3 / folder-33 / folder-33-request / testScript: scripts are not imported (folder-3/folder-33/folder-33-request.yml)
+Dropped folder-3 / folder-3-request / testScript: scripts are not imported (folder-3/folder-3-request.yml)
+Dropped root-collection-request / testScript: scripts are not imported (root-collection-request.yml)

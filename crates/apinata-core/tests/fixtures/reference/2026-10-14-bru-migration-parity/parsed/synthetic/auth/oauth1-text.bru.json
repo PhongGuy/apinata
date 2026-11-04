@@ -1,0 +1,26 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth1"
+  },
+  "auth": {
+    "oauth1": {
+      "consumerKey": "ck",
+      "consumerSecret": "cs",
+      "accessToken": "at",
+      "accessTokenSecret": "ts",
+      "callbackUrl": "https://example.com/cb",
+      "verifier": "v",
+      "signatureMethod": "HMAC-SHA1",
+      "privateKey": "plain-key",
+      "privateKeyType": "text",
+      "timestamp": "",
+      "nonce": "n",
+      "version": "1.0",
+      "realm": "r",
+      "placement": "header",
+      "includeBodyHash": false
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "name": "deleteCookies",
+    "type": "http",
+    "seq": "7"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\n// Set up test cookies before the request\ntry {\n  await jar.setCookies('https://testbench-sanity.usebruno.com', [\n    {\n      key: 'test_cookie_1',\n      value: 'value1',\n      path: '/',\n      httpOnly: false,\n      secure: true\n    },\n    {\n      key: 'test_cookie_2', \n      value: 'value2',\n      path: '/',\n      httpOnly: true,\n      secure: true\n    },\n    {\n      key: 'test_cookie_3',\n      value: 'value3',\n      path: '/api',\n      httpOnly: false,\n      secure: true\n    }\n  ]);\n  \n  console.log(\"Test cookies set up successfully in pre-request script\");\n  \n  // Verify cookies were set\n  const cookies = await jar.getCookies('https://testbench-sanity.usebruno.com');\n  console.log(`${cookies.length} cookies set for domain`);\n  \n} catch (error) {\n  console.error(\"Failed to set up test cookies:\", error);\n  throw new Error(`Pre-request cookie setup failed: ${error.message || error}`);\n}",
+    "res": "const jar = bru.cookies.jar()\n\n// Verify cookies exist before deletion\ntry {\n  const cookiesBeforeDeletion = await jar.getCookies('https://testbench-sanity.usebruno.com');\n\n  test(\"cookies should exist before clearing\", function() {\n  expect(cookiesBeforeDeletion).to.be.an('array');\n  expect(cookiesBeforeDeletion.length).to.be.greaterThan(0);\n});\n  \n  \n  if (cookiesBeforeDeletion.length === 0) {\n    throw new Error(\"No cookies found to delete - setup may have failed\");\n  }\n  \n  // Delete all cookies for the domain\n  await jar.deleteCookies('https://testbench-sanity.usebruno.com');\n  console.log(\"deleteCookies operation completed in post-response\");\n  \n  // Verify deletion worked\n  const cookiesAfterDeletion = await jar.getCookies('https://testbench-sanity.usebruno.com');\n  console.log(`Found ${cookiesAfterDeletion.length} cookies after deletion`);\n  \n} catch (error) {\n  console.error(\"Delete cookies error in post-response:\", error);\n  throw new Error(`Failed to delete cookies in post-response: ${error.message || error}`);\n}"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\njar.getCookies(\"https://testbench-sanity.usebruno.com\", function(error, remainingCookies) {\n  if(error) {\n    console.error(\"Error checking remaining cookies:\", error)\n    throw new Error(`Failed to get remaining cookies: ${error.message || error}`)\n  }\n  \n  test(\"should have no cookies remaining after deletion\", function() {\n    expect(remainingCookies).to.be.an('array');\n    expect(remainingCookies.length).to.equal(0);\n    console.log(\"✓ Confirmed: no cookies remain for domain after deleteCookies\");\n  });\n});\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

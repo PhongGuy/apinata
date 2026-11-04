@@ -1,0 +1,7 @@
+{
+  "apinata-edge-cases/Users/a-b.yml": "a/b and a-b sanitise alike; Bruno overwrites, Apinata suffixes (the renamed a-b 1.yml carries the note)",
+  "postman-import-oauth2-token-placement-collection/OAuth2 Token in Header.yml": "Apinata names the token (default `credentials`) and writes the fetch settings Bruno leaves out",
+  "postman-import-oauth2-token-placement-collection/OAuth2 Token in URL.yml": "Apinata names the token (default `credentials`) and writes the fetch settings Bruno leaves out",
+  "round-trip-oauth2/Auth Code.yml": "Apinata names the token (default `credentials`) and writes the fetch settings Bruno leaves out",
+  "postman-import-oauth2-implicit-grant-type/OAuth2 Implicit Grant Type.yml": "Apinata names the token (default `credentials`) and writes the fetch settings Bruno leaves out; with no addTokenTo it sends the token in the header (Postman's default), where Bruno picks the query"
+}

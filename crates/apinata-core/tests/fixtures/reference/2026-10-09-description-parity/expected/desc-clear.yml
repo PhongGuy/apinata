@@ -1,0 +1,32 @@
+info:
+  name: described
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/users/:id?q=1
+  headers:
+    - name: x-a
+      value: "1"
+    - name: x-b
+      value: "2"
+  params:
+    - name: q
+      value: "1"
+      type: query
+    - name: id
+      value: "7"
+      type: path
+  body:
+    type: form-urlencoded
+    data:
+      - name: f
+        value: v
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

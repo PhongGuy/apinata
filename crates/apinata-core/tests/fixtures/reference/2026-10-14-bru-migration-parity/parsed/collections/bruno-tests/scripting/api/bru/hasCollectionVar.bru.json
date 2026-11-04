@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "hasCollectionVar",
+    "type": "http",
+    "seq": "26"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"should return true for existing collection var\", function() {\n  const exists = bru.hasCollectionVar(\"collection-var\");\n  expect(exists).to.be.true;\n});\n\ntest(\"should return false for nonexistent collection var\", function() {\n  const exists = bru.hasCollectionVar(\"nonexistent-collection-var\");\n  expect(exists).to.be.false;\n});"
+}

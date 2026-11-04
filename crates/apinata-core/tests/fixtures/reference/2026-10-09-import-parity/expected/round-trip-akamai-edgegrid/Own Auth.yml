@@ -1,0 +1,24 @@
+info:
+  name: Own Auth
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: akamai-edgegrid
+    accessToken: accessToken
+    clientToken: clientToken
+    clientSecret: secret
+    nonce: ""
+    timestamp: ""
+    baseURL: ""
+    headersToSign: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

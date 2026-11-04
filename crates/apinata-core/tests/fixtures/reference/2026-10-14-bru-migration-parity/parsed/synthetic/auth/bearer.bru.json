@@ -1,0 +1,12 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "bearer"
+  },
+  "auth": {
+    "bearer": {
+      "token": "{{token}}"
+    }
+  }
+}

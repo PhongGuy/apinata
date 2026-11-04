@@ -1,0 +1,57 @@
+info:
+  name: User API Documentation
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/users
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Get User by ID
+    description: Example of getting a user by ID
+    request:
+      url: https://api.example.com/users/123
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "id": 123,
+            "name": "John Doe",
+            "email": "john@example.com"
+          }
+  - name: Create New User
+    description: Example of creating a new user
+    request:
+      url: https://api.example.com/users
+      method: post
+      body:
+        type: json
+        data: |-
+          {
+            "name": "New User",
+            "email": "newuser@example.com"
+          }
+    response:
+      status: 201
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "id": 456,
+            "name": "New User",
+            "email": "newuser@example.com",
+            "created_at": "2023-01-15T10:30:00Z"
+          }

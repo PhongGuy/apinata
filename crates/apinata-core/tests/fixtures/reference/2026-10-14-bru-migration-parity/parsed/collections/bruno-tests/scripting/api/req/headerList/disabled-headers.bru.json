@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "name": "disabled-headers",
+    "type": "http",
+    "seq": "10"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    },
+    {
+      "name": "x-disabled",
+      "value": "hidden-value",
+      "enabled": false
+    },
+    {
+      "name": "x-another-disabled",
+      "value": "another-hidden",
+      "enabled": false
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.headerList.all() includes disabled headers\", function() {\n  const all = req.headerList.all();\n  const keys = all.map(h => h.key);\n  expect(keys).to.include('x-disabled');\n  expect(keys).to.include('x-another-disabled');\n});\n\ntest(\"disabled headers have disabled: true\", function() {\n  const disabledHeader = req.headerList.find(h => h.key === 'x-disabled');\n  expect(disabledHeader).to.not.be.undefined;\n  expect(disabledHeader.disabled).to.be.true;\n  expect(disabledHeader.value).to.equal('hidden-value');\n});\n\ntest(\"enabled headers do not have disabled property\", function() {\n  const enabledHeader = req.headerList.find(h => h.key === 'bruno');\n  expect(enabledHeader).to.not.be.undefined;\n  expect(enabledHeader.disabled).to.be.undefined;\n});\n\ntest(\"req.headerList.count() includes disabled headers\", function() {\n  const count = req.headerList.count();\n  const all = req.headerList.all();\n  const brunoHeaders = all.filter(h => ['bruno', 'della', 'x-disabled', 'x-another-disabled', 'x-folder-only-disabled'].includes(h.key));\n  expect(brunoHeaders.length).to.equal(5);\n  expect(count).to.be.at.least(5);\n});\n\ntest(\"req.headerList.filter() can separate enabled from disabled\", function() {\n  const disabled = req.headerList.filter(h => h.disabled);\n  expect(disabled.length).to.equal(3);\n  const disabledKeys = disabled.map(h => h.key);\n  expect(disabledKeys).to.include('x-disabled');\n  expect(disabledKeys).to.include('x-another-disabled');\n  expect(disabledKeys).to.include('x-folder-only-disabled');\n});\n\ntest(\"req.headerList.has() finds disabled headers\", function() {\n  expect(req.headerList.has('x-disabled')).to.be.true;\n  expect(req.headerList.has('x-disabled', 'hidden-value')).to.be.true;\n});\n\ntest(\"req.headerList.get() returns disabled header value\", function() {\n  expect(req.headerList.get('x-disabled')).to.equal('hidden-value');\n});\n\ntest(\"disabled headers are not in req.headers (raw object)\", function() {\n  const rawHeaders = req.getHeaders();\n  expect(rawHeaders['x-disabled']).to.be.undefined;\n  expect(rawHeaders['x-another-disabled']).to.be.undefined;\n});\n\ntest(\"enabled headers are still in req.headers (raw object)\", function() {\n  const rawHeaders = req.getHeaders();\n  expect(rawHeaders['bruno']).to.equal('is-awesome');\n  expect(rawHeaders['della']).to.equal('is-beautiful');\n});\n\ntest(\"folder-level disabled headers are inherited\", function() {\n  expect(req.headerList.has('x-folder-only-disabled')).to.be.true;\n  const header = req.headerList.one('x-folder-only-disabled');\n  expect(header.disabled).to.be.true;\n  expect(header.value).to.equal('folder-only-hidden');\n});\n\ntest(\"request-level disabled header overrides folder-level (no duplicates)\", function() {\n  const all = req.headerList.all();\n  const matches = all.filter(h => h.key === 'x-disabled');\n  expect(matches.length).to.equal(1);\n  expect(matches[0].value).to.equal('hidden-value');\n  expect(matches[0].disabled).to.be.true;\n});"
+}

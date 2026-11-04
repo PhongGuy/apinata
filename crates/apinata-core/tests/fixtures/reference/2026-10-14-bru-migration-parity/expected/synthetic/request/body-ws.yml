@@ -1,0 +1,22 @@
+info:
+  name: ws body
+  type: websocket
+  seq: 1
+
+websocket:
+  url: ""
+  message:
+    - title: first
+      selected: true
+      message:
+        type: json
+        data: '{"hi":true}'
+    - title: second
+      selected: false
+      message:
+        type: text
+        data: ""
+
+settings:
+  timeout: 0
+  keepAliveInterval: 0

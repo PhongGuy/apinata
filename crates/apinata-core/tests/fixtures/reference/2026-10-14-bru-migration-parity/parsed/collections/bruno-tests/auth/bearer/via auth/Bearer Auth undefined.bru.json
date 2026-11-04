@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "name": "Bearer Auth undefined",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/api/auth/bearer/protected",
+    "body": "none",
+    "auth": "bearer"
+  },
+  "headers": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{bearer_auth_token}}",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.body.message",
+      "value": "eq Unauthorized",
+      "enabled": true
+    },
+    {
+      "name": "res.status",
+      "value": "eq 401",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"selected auth overrides Authorization header always\", function() {\n  const authHeader =  req.getHeader(\"Authorization\")\n  expect(authHeader).to.eql(\"Bearer \")\n})"
+}

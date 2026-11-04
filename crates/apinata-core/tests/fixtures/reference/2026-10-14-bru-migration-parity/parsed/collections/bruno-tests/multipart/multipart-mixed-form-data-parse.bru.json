@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "name": "multipart-mixed-form-data-parse",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "Content-Type",
+      "value": "multipart/mixed",
+      "enabled": true
+    }
+  ],
+  "body": {
+    "multipartForm": [
+      {
+        "name": "sample",
+        "value": "sample",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "matches ^[-]+[a-z0-9]+",
+      "enabled": true
+    }
+  ]
+}

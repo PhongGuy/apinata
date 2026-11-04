@@ -1,0 +1,35 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth2
+    flow: authorization_code
+    x-note: dropped on edit
+    authorizationUrl: https://id.example.com/authorize
+    accessTokenUrl: https://id.example.com/token
+    credentials:
+      clientId: app
+      placement: private_key_jwt
+    additionalParameters:
+      authorizationRequest:
+        - name: resource
+          value: https://api.example.com
+          placement: cookie
+    pkce:
+      method: plain
+    tokenConfig:
+      placement:
+        cookie: sid
+      source: refresh_token
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

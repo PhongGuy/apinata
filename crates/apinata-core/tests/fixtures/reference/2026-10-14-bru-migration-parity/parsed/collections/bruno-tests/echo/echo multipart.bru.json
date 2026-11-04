@@ -1,0 +1,79 @@
+{
+  "meta": {
+    "name": "echo multipart",
+    "type": "http",
+    "seq": "8"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "body": {
+    "multipartForm": [
+      {
+        "name": "foo",
+        "value": "{\"bar\":\"baz\"}",
+        "enabled": true,
+        "type": "text",
+        "contentType": "application/json--test"
+      },
+      {
+        "name": "multiline",
+        "value": "\"multiline-test\"",
+        "enabled": true,
+        "type": "text",
+        "contentType": "application/json--multiline--test"
+      },
+      {
+        "name": "form-data-key",
+        "value": "{{form-data-key}}",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "form-data-stringified-object",
+        "value": "{{form-data-stringified-object}}",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "file",
+        "value": [
+          "bruno.png"
+        ],
+        "enabled": true,
+        "type": "file",
+        "contentType": ""
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "contains form-data-value",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "contains {\"foo\":123}",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "contains Content-Type: application/json--test",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "contains Content-Type: application/json--multiline--test",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "let obj = JSON.stringify({foo:123});\nbru.setVar('form-data-key', 'form-data-value');\nbru.setVar('form-data-stringified-object', obj);"
+  }
+}

@@ -1,0 +1,22 @@
+opencollection: 1.0.0
+
+info:
+  name: Akamai EdgeGrid
+
+request:
+  auth:
+    type: akamai-edgegrid
+    accessToken: "{{accessToken}}"
+    clientToken: "{{client_token}}"
+    clientSecret: "{{secret}}"
+    nonce: Nonce
+    timestamp: 20260707T10:28:15+0000
+    baseURL: http://localhost:4000
+    headersToSign: Auth
+    maxBodySize: 70
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

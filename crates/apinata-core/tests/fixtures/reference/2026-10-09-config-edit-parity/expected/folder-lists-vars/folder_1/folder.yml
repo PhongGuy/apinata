@@ -1,0 +1,9 @@
+info:
+  name: folder_1
+  type: folder
+  seq: 1
+
+request:
+  variables:
+    - name: v
+      value: "1"

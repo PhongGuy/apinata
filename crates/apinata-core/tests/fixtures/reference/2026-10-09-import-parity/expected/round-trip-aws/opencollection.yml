@@ -1,0 +1,20 @@
+opencollection: 1.0.0
+
+info:
+  name: AWS
+
+request:
+  auth:
+    type: awsv4
+    accessKeyId: accessKey
+    secretAccessKey: secret
+    sessionToken: "{{token}}"
+    service: serviceName
+    region: us-west-1
+    profileName: ""
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

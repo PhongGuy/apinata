@@ -1,0 +1,22 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: POST
+  url: https://example.com/slice
+  headers:
+    - name: x-pair
+      value: "\udc9cx"
+    - name: x-after
+      value: tail
+  body:
+    type: json
+    data: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

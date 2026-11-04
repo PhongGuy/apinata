@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "name": "search-methods",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    },
+    {
+      "name": "x-custom",
+      "value": "test-value",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.headerList.has(name)\", function() {\n  expect(req.headerList.has('bruno')).to.be.true;\n  expect(req.headerList.has('nonexistent')).to.be.false;\n});\n\ntest(\"req.headerList.has(name, value)\", function() {\n  expect(req.headerList.has('bruno', 'is-awesome')).to.be.true;\n  expect(req.headerList.has('bruno', 'wrong-value')).to.be.false;\n});\n\ntest(\"req.headerList.find(predicate)\", function() {\n  const found = req.headerList.find(h => h.key === 'della');\n  expect(found).to.eql({ key: 'della', value: 'is-beautiful' });\n  expect(req.headerList.find(h => h.key === 'nonexistent')).to.be.undefined;\n});\n\ntest(\"req.headerList.filter(predicate)\", function() {\n  const filtered = req.headerList.filter(h => h.key.startsWith('x-') && !h.disabled);\n  expect(filtered).to.be.an('array');\n  expect(filtered.length).to.equal(1);\n  expect(filtered[0].key).to.equal('x-custom');\n});\n\ntest(\"req.headerList.indexOf(item)\", function() {\n  const idx = req.headerList.indexOf({ key: 'bruno', value: 'is-awesome' });\n  expect(idx).to.be.at.least(0);\n  const notFound = req.headerList.indexOf({ key: 'nonexistent', value: 'nope' });\n  expect(notFound).to.equal(-1);\n});"
+}

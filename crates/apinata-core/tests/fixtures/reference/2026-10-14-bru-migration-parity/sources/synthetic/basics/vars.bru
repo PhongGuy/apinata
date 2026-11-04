@@ -1,0 +1,15 @@
+get {
+  url: https://example.com/vars
+}
+
+vars:pre-request {
+  token: abc
+  @localToken: def
+  ~disabled: ghi
+  ~@disabledLocal: jkl
+}
+
+vars:post-response {
+  userId: res.body.id
+  @localId: res.body.local
+}

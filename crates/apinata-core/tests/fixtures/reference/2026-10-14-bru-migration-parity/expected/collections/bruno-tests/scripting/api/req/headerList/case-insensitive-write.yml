@@ -1,0 +1,46 @@
+info:
+  name: case-insensitive-write
+  type: http
+  seq: 12
+
+http:
+  method: GET
+  url: "{{host}}/ping"
+  headers:
+    - name: X-Custom
+      value: original
+    - name: X-Remove-Me
+      value: bye
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        req.headerList.upsert({ key: 'x-custom', value: 'updated' });
+        req.headerList.remove('x-remove-me');
+    - type: tests
+      code: |-
+        test("upsert() replaces header case-insensitively", function() {
+          expect(req.headerList.get('x-custom')).to.equal('updated');
+          expect(req.getHeader('X-Custom')).to.be.undefined;
+          expect(req.getHeader('x-custom')).to.equal('updated');
+        });
+
+        test("remove() deletes header case-insensitively", function() {
+          expect(req.headerList.has('X-Remove-Me')).to.be.false;
+          expect(req.headerList.has('x-remove-me')).to.be.false;
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body
+      operator: eq
+      value: pong
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

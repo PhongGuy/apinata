@@ -1,0 +1,13 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/graphql",
+    "body": "graphql"
+  },
+  "body": {
+    "graphql": {
+      "query": "query {\n  user(id: 1) { name }\n}",
+      "variables": "{\n  \"id\": 1\n}"
+    }
+  }
+}

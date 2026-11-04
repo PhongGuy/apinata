@@ -1,0 +1,19 @@
+post {
+  url: https://example.com/multi
+  body: multipartForm
+}
+
+headers {
+  x-plain: '''
+    line one
+    line two
+  '''
+  x-typed: '''
+    {"a": 1}
+  ''' @contentType(application/json)
+  x-list: [
+    one
+    two_2
+  ]
+  x-after: tail
+}

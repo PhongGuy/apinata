@@ -1,0 +1,96 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: JSONC Body Test Collection
+== Echo with inline comments.yml
+info:
+  name: Echo with inline comments
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "key1": "value1", // inline comment
+        "key2": "value2" // another comment
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Echo with multiline comments.yml
+info:
+  name: Echo with multiline comments
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        /* Multi-line comment
+           should also work */
+        "message": "test",
+        "nested": {
+          "field": "value" // another comment
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Echo with trailing commas.yml
+info:
+  name: Echo with trailing commas
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "key": "value",
+        "count": 42,
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: JSONC Body Test Collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped Echo with inline comments / testScript: scripts are not imported (Echo with inline comments.yml)
+Dropped Echo with multiline comments / testScript: scripts are not imported (Echo with multiline comments.yml)
+Dropped Echo with trailing commas / testScript: scripts are not imported (Echo with trailing commas.yml)

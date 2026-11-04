@@ -1,0 +1,119 @@
+info:
+  name: Form Data Complex
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/upload
+  headers:
+    - name: content-type
+      value: multipart/form-data
+    - name: x-upload-version
+      value: v2
+  auth:
+    type: bearer
+    token: upload-token-abc123xyz
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        const file = bru.readFile("/path/to/file.pdf");
+        bru.setVar("file_size", file.length);
+        bru.setVar("file_name", "document.pdf");
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: File Upload with Metadata
+    description: Upload a file with comprehensive metadata
+    request:
+      url: https://api.example.com/upload
+      method: post
+      headers:
+        - name: authorization
+          value: '"Bearer upload-token-abc123xyz",'
+        - name: x-upload-client
+          value: '"bruno"'
+      body:
+        type: multipart-form
+        data:
+          - name: document
+            type: file
+            value:
+              - examples/sample.pdf
+          - name: title
+            type: text
+            value: Sample Document
+          - name: description
+            type: text
+            value: This is a sample document for testing
+          - name: category
+            type: text
+            value: documents
+          - name: tags
+            type: text
+            value: sample,test,documents
+          - name: metadata
+            type: text
+            value: '{"author":"John Doe","version":"1.0","date":"2024-01-15"}'
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "id": "file-12345",
+            "filename": "sample.pdf",
+            "size": 245760,
+            "uploaded_at": "2024-01-15T14:30:00Z",
+            "status": "completed",
+            "url": "https://cdn.example.com/files/sample.pdf",
+            "metadata": {
+              "title": "Sample Document",
+              "description": "This is a sample document for testing",
+              "category": "documents",
+              "tags": ["sample", "test", "documents"]
+            }
+          }
+  - name: Form URL Encoded Data
+    description: Example with form-urlencoded body type
+    request:
+      url: https://api.example.com/submit
+      method: post
+      headers:
+        - name: content-type
+          value: '"application/x-www-form-urlencoded",'
+        - name: authorization
+          value: '"Basic dGVzdDp0ZXN0"'
+      body:
+        type: form-urlencoded
+        data:
+          - name: username
+            value: testuser
+          - name: password
+            value: testpass123
+          - name: remember
+            value: "true"
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "success": true,
+            "message": "Form submitted successfully",
+            "session_id": "sess-abc123def456",
+            "user": {
+              "username": "testuser",
+              "authenticated": true
+            }
+          }

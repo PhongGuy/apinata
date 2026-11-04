@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "name": "scheme",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "localhost:8081/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ]
+}

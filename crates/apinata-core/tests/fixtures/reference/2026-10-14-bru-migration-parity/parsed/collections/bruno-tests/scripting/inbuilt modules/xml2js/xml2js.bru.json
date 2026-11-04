@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "name": "xml2js",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "var parseString = require('xml2js').parseString;\nvar xml = \"<root>Hello xml2js - pre request!</root>\"\nparseString(xml, function (err, result) {\n   bru.setVar(\"xml2js-test-result-pre-request\", result); \n});",
+    "res": "var parseString = require('xml2js').parseString;\nvar xml = \"<root>Hello xml2js - post response!</root>\"\nparseString(xml, function (err, result) {\n   bru.setVar(\"xml2js-test-result-post-response\", result);\n});"
+  },
+  "tests": "var parseString = require('xml2js').parseString;\n\ntest(\"xml2js parseString in scripts - pre request\", function() {\n  const expected = {\n    root: 'Hello xml2js - pre request!'\n  };\n  const result = bru.getVar('xml2js-test-result-pre-request');\n  expect(result).to.eql(expected);\n});\n\ntest(\"xml2js parseString in scripts - post response\", function() {\n  const expected = {\n    root: 'Hello xml2js - post response!'\n  };\n  const result = bru.getVar('xml2js-test-result-post-response');\n  expect(result).to.eql(expected);\n});\n\ntest(\"xml2js parseString in tests\", async function() {\n  var xml = \"<root>Hello inside test!</root>\"\n  const expected = {\n    root: 'Hello inside test!'\n  };\n  parseString(xml, function (err, result) {\n    expect(result).to.eql(expected);\n  });\n});"
+}

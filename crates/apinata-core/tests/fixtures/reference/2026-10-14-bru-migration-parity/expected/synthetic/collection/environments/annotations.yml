@@ -1,0 +1,36 @@
+variables:
+  - name: host
+    value: example.com
+    description: the host
+  - name: port
+    value:
+      type: number
+      data: "8080"
+  - name: flag
+    value:
+      type: boolean
+      data: "true"
+  - name: config
+    value:
+      type: object
+      data: |-
+        {
+          "a": 1,
+          "b": [
+            1,
+            2
+          ]
+        }
+  - name: ""
+    value: ""
+    description: first
+  - name: twice
+    value:
+      type: number
+      data: "2"
+    description: second
+  - name: noted
+    value: n
+    description: |-
+      multi
+      line

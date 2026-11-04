@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "Folder A",
+    "seq": "2",
+    "type": "collection"
+  },
+  "headers": [
+    {
+      "name": "x-folder",
+      "value": "a",
+      "enabled": true
+    }
+  ]
+}

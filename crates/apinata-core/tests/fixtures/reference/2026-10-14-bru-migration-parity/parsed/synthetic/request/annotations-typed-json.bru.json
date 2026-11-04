@@ -1,0 +1,73 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "big",
+        "value": {
+          "big": 9007199254740992,
+          "ok": 9007199254740992,
+          "pair": "😀"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "list",
+        "value": [
+          18446744073709552000,
+          -9007199254740992,
+          1,
+          1
+        ],
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "dup",
+        "value": {
+          "a": 3,
+          "b": 2
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "proto",
+        "value": {
+          "__proto__": 1,
+          "x": 2
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      }
+    ]
+  }
+}

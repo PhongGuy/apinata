@@ -1,0 +1,10 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "settings": {
+    "encodeUrl": false,
+    "timeout": "inherit"
+  }
+}

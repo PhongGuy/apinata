@@ -1,0 +1,6 @@
+a: "bell\a"
+b: "nul\0"
+c: "esc\e"
+d: "nel"
+e: "del"
+f: ls x

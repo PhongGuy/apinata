@@ -1,0 +1,7 @@
+items:
+  - name: x
+    tags:
+      - t1
+      - t2
+    data:
+      k: v

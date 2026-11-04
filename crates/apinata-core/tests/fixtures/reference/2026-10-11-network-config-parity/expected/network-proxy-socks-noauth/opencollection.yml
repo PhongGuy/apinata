@@ -1,0 +1,18 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: false
+    config:
+      protocol: socks5
+      hostname: 10.0.0.5
+      port: "1080"
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+bundled: false
+extensions: {}

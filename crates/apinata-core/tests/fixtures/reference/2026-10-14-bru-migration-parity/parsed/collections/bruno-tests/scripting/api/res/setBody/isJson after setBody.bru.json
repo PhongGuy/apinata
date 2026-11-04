@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "name": "isJson after setBody",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "isJson",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "res": "res.setBody({ id: 1, name: \"updated\", nested: { key: \"value\" } });"
+  },
+  "tests": "test(\"res.body should be json after setBody with object\", function() {\n  const body = res.getBody();\n  expect(body).to.be.json;\n  expect(body.id).to.eql(1);\n  expect(body.name).to.eql(\"updated\");\n  expect(body.nested.key).to.eql(\"value\");\n});"
+}

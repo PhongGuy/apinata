@@ -1,0 +1,102 @@
+---
+source: crates/apinata-core/tests/export_snapshots.rs
+expression: rendered(&out)
+---
+{
+  "id": "619e0191-c486-5779-bb5b-62431adb8de4",
+  "name": "dev",
+  "values": [
+    {
+      "key": "api_key",
+      "value": "plain_api_key",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "api_url",
+      "value": "https://dev.example.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "base_boolean",
+      "value": "true",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "base_number",
+      "value": "42",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "base_object",
+      "value": "{\"region\":\"eu\"}",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "base_only",
+      "value": "base_only_value",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "base_secret_object",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "base_token",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "dev_only",
+      "value": "dev_only_value",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "host",
+      "value": "http://localhost:8081",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "overridden_plain",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "overridden_secret",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "session_id",
+      "value": "base_session",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "shadowed_by_disabled",
+      "value": "from_base",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "typed_override",
+      "value": "overridden_in_dev",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
+--- notes

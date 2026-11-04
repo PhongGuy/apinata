@@ -1,0 +1,240 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== getPullRequestsById.yml
+info:
+  name: getPullRequestsById
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: "{{baseUrl}}/2.0/repositories/:username/:slug/pullrequests/:pid"
+  params:
+    - name: username
+      value: ""
+      type: path
+    - name: slug
+      value: ""
+      type: path
+    - name: pid
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== getPullRequestsByRepository.yml
+info:
+  name: getPullRequestsByRepository
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: "{{baseUrl}}/2.0/repositories/:username/:slug/pullrequests"
+  params:
+    - name: username
+      value: ""
+      type: path
+    - name: slug
+      value: ""
+      type: path
+    - name: state
+      value: open
+      type: query
+      disabled: true
+    - name: state
+      value: merged
+      type: query
+      disabled: true
+    - name: state
+      value: declined
+      type: query
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== getRepositoriesByOwner.yml
+info:
+  name: getRepositoriesByOwner
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/2.0/repositories/:username"
+  params:
+    - name: username
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== getRepository.yml
+info:
+  name: getRepository
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/2.0/repositories/:username/:slug"
+  params:
+    - name: username
+      value: ""
+      type: path
+    - name: slug
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== getUserByName.yml
+info:
+  name: getUserByName
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/2.0/users/:username"
+  params:
+    - name: username
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== mergePullRequest.yml
+info:
+  name: mergePullRequest
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{baseUrl}}/2.0/repositories/:username/:slug/pullrequests/:pid/merge"
+  params:
+    - name: username
+      value: ""
+      type: path
+    - name: slug
+      value: ""
+      type: path
+    - name: pid
+      value: ""
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Link Example
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /2.0/repositories/{}:
+          target: 43216321d13fdd04
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: getRepositoriesByOwner.yml
+        GET /2.0/repositories/{}/{}:
+          target: ab77cd4749361ed2
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: getRepository.yml
+        GET /2.0/repositories/{}/{}/pullrequests:
+          target: f10519ecb4764da3
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: getPullRequestsByRepository.yml
+        GET /2.0/repositories/{}/{}/pullrequests/{}:
+          target: a68a76db4f86ff6a
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: getPullRequestsById.yml
+        GET /2.0/users/{}:
+          target: 22743641212fd2a9
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: getUserByName.yml
+        POST /2.0/repositories/{}/{}/pullrequests/{}/merge:
+          target: 14edf905db113073
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: mergePullRequest.yml
+
+note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
+note Dropped getUserByName.yml | paths./2.0/users/{username}.get.responses.200.links | response links are not imported
+note Dropped getRepositoriesByOwner.yml | paths./2.0/repositories/{username}.get.responses.200.links | response links are not imported
+note Dropped getRepository.yml | paths./2.0/repositories/{username}/{slug}.get.responses.200.links | response links are not imported
+note Dropped getPullRequestsById.yml | paths./2.0/repositories/{username}/{slug}/pullrequests/{pid}.get.responses.200.links | response links are not imported

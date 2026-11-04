@@ -1,0 +1,32 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+  auth:
+    type: oauth1
+    consumerKey: ck
+    consumerSecret: ""
+    accessToken: ""
+    accessTokenSecret: ""
+    callbackUrl: ""
+    verifier: ""
+    signatureMethod: RSA-SHA256
+    privateKey:
+      type: file
+      value: key.pem
+    timestamp: ""
+    nonce: ""
+    version: ""
+    realm: ""
+    placement: ""
+    includeBodyHash: true
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

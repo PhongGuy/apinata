@@ -1,0 +1,34 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Dropped Bad Method 1 [-]: the request has no method
+Dropped Bad Method 2 [-]: the request has no method
+Dropped Bad Method 3 [-]: the request has no method
+Dropped Bad Method 4 [-]: the request has no method
+Dropped Bad Method 5 [-]: the request has no method
+Dropped Bad Method 6 [-]: the request has no method
+Dropped Bad Method 7 [-]: the request has no method
+Dropped Bad Method 8 [-]: the request has no method
+Dropped Bad Method 9 [-]: the request has no method
+Dropped Bad Method 10 [-]: the request has no method
+Dropped Empty Method 1 [-]: the request has no method
+Dropped Empty Method 2 [-]: the request has no method
+Dropped Empty Method 3 [-]: the request has no method
+Dropped Empty Method 4 [-]: the request has no method
+Dropped Empty Method 5 [-]: the request has no method
+Dropped Whitespace Method 1 [-]: the request has no method
+Dropped Whitespace Method 2 [-]: the request has no method
+Dropped Whitespace Method 3 [-]: the request has no method
+Dropped Whitespace Method 4 [-]: the request has no method
+Dropped Whitespace Method 5 [-]: the request has no method
+Dropped Missing Method 1 [-]: the request has no method
+Dropped Missing Method 2 [-]: the request has no method
+Dropped Missing Method 3 [-]: the request has no method
+Dropped Missing Method 4 [-]: the request has no method
+Dropped Missing Method 5 [-]: the request has no method
+Dropped API Folder / Nested Bad 1 [-]: the request has no method
+Dropped API Folder / Nested Bad 2 [-]: the request has no method
+Dropped API Folder / Nested Bad 3 [-]: the request has no method
+Dropped API Folder / Nested Bad 4 [-]: the request has no method
+Dropped API Folder / Nested Bad 5 [-]: the request has no method

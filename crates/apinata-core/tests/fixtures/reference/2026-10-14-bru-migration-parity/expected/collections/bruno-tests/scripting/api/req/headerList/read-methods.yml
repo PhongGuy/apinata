@@ -1,0 +1,59 @@
+info:
+  name: read-methods
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{host}}/ping"
+  headers:
+    - name: bruno
+      value: is-awesome
+    - name: della
+      value: is-beautiful
+    - name: x-custom
+      value: test-value
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("req.headerList.get(name)", function() {
+          expect(req.headerList.get('bruno')).to.equal('is-awesome');
+          expect(req.headerList.get('della')).to.equal('is-beautiful');
+          expect(req.headerList.get('nonexistent')).to.be.undefined;
+        });
+
+        test("req.headerList.one(name)", function() {
+          const header = req.headerList.one('bruno');
+          expect(header).to.eql({ key: 'bruno', value: 'is-awesome' });
+          expect(req.headerList.one('nonexistent')).to.be.undefined;
+        });
+
+        test("req.headerList.all()", function() {
+          const all = req.headerList.all();
+          expect(all).to.be.an('array');
+          expect(all.length).to.be.at.least(3);
+          const keys = all.map(h => h.key);
+          expect(keys).to.include('bruno');
+          expect(keys).to.include('della');
+          expect(keys).to.include('x-custom');
+        });
+
+        test("req.headerList.count()", function() {
+          expect(req.headerList.count()).to.be.at.least(3);
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body
+      operator: eq
+      value: pong
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

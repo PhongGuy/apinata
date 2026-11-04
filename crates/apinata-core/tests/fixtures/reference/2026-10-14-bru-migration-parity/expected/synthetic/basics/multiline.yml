@@ -1,0 +1,31 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: POST
+  url: https://example.com/multi
+  headers:
+    - name: x-plain
+      value: |-
+        line one
+        line two
+    - name: x-typed
+      value: |-
+        {"a": 1}
+         @contentType(application/json)
+    - name: x-list
+      value:
+        - one
+        - two_2
+    - name: x-after
+      value: tail
+  body:
+    type: multipart-form
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

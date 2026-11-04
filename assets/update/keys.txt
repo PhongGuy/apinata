@@ -1,0 +1,2 @@
+# Trusted minisign public keys for update manifests, one base64 `.pub` line each.
+# An empty list disables update checks in the build.

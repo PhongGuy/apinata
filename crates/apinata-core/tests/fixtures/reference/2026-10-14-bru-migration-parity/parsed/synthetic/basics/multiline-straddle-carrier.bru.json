@@ -1,0 +1,19 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/slice",
+    "body": "json"
+  },
+  "headers": [
+    {
+      "name": "x-pair",
+      "value": "\udc9cx",
+      "enabled": true
+    },
+    {
+      "name": "x-after",
+      "value": "tail",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "name": "a grpc call",
+    "type": "grpc",
+    "seq": "2"
+  },
+  "grpc": {
+    "url": "grpc://localhost:50051",
+    "method": "/pkg.Service/Call",
+    "methodType": "unary",
+    "protoPath": "protos/a.proto"
+  },
+  "metadata": [
+    {
+      "name": "x-trace",
+      "value": "abc",
+      "enabled": true
+    },
+    {
+      "name": "x-off",
+      "value": "1",
+      "enabled": false
+    }
+  ],
+  "script": {
+    "beforeCallStart": "console.log('start');",
+    "beforeMessageSend": "console.log('send');",
+    "afterMessageReceive": "console.log('receive');",
+    "afterCallEnd": "console.log('end');"
+  }
+}

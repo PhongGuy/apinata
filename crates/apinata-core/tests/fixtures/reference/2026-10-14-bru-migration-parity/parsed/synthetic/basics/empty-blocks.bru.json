@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "seq": 1,
+    "type": "http"
+  },
+  "http": {
+    "method": "get"
+  },
+  "headers": [],
+  "params": [],
+  "vars": {
+    "req": []
+  },
+  "assertions": [],
+  "docs": "}\n\nbody:json {"
+}

@@ -1,0 +1,2042 @@
+[
+  {
+    "input": "collections/bruno-tests/asserts/test-assert-combinations.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/basic/via auth/Basic Auth 200.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/basic/via auth/Basic Auth 401.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/basic/via script/Basic Auth 200.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/basic/via script/Basic Auth 401.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/bearer/via auth/Bearer Auth 200.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/bearer/via auth/Bearer Auth undefined.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/bearer/via headers/Bearer Auth 200.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/cookie/Check.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/cookie/Login.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/digest/Digest Auth 200.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/digest/Digest Auth 401.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/digest/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/auth/inherit auth/inherit Bearer Auth 200.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/bruno.json",
+    "parser": "bruno_json",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/collection.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo bom json.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo default request headers.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo form-url-encoded.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo headers.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo json.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo multipart scripting.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo multipart.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo numbers.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo plaintext.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo xml parsed(self closing tags).bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo xml parsed.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/echo xml raw.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/multiline/echo binary.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/test echo any.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/echo/test echo-any json.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/environments/Local.bru",
+    "parser": "environment",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/environments/Prod.bru",
+    "parser": "environment",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/file-binary/binary-upload-json.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/file-binary/binary-upload-octet-stream.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/graphql/mutation.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/graphql/spacex.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/graphql/variable-interpolation.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/multipart/content-types-mixed-interpolation.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/multipart/multipart-mixed-form-data-file.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/multipart/multipart-mixed-form-data-parse.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/ping.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/preview/html/bruno.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/preview/image/bruno.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/redirects/Disable Redirect.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/redirects/Test Multipart Redirect Consumed FormData.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/redirects/Test Multipart Redirect Multiple Fields.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/redirects/Test Multipart Redirect.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/redirects/Test Redirect.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/request-setting/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/request-setting/follow-redirect.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/request-setting/max-redirect.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON false response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON null response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON number response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON string response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON string with quotes response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON true response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test JSON unsafe-int response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test binary response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test html response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test image response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test invalid JSON response with formatting.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test plain text response with formatting.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test plain text response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test plain text utf16 response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test plain text utf16-be with BOM response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test plain text utf16-le with BOM response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test plain text utf8 with BOM response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-parsing/test xml response.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-time/delayed-body.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/response-time/delayed-headers.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/Redirect Cookie Save.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/clear.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/clearScope.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/crossDomainIsolation.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/deleteCookie.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/deleteCookies.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/directGet.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/directIteration.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/directReadMethods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/directWrite.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/getCookie.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/getCookies.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/hasCookie.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/setCookie.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/setCookieHeader.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/cookies/setCookies.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/deleteAllCollectionVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/deleteAllEnvVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/deleteAllGlobalEnvVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/deleteCollectionVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/deleteEnvVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/deleteGlobalEnvVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getAllCollectionVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getAllEnvVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getAllGlobalEnvVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getAllVars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getCollectionName.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getCollectionVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getEnvName.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getEnvVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getFolderVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getProcessEnv.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getRequestVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/getVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/hasCollectionVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/interpolate.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/isSafeMode.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/runRequest-1.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/runRequest-2.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/runRequest.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/runner/1.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/runner/2.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/runner/3.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/send-request/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/send-request/get-url-string.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/send-request/usage-patterns.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/setCollectionVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/setEnvVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/setGlobalEnvVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/bru/setVar.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/deleteHeader.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/deleteHeaders.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getBody.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getHeader.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getHeaders.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getHost.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getMethod.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getName.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getPath.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getPathParams.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getQueryString.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getTags.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/getUrl.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/add.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/assimilate.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/case-insensitive-write.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/case-insensitive.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/clear.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/context-binding.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/disabled-headers.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/iteration-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/populate.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/read-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/remove.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/search-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/headerList/transform-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setBody.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setBody/form-urlencoded/array body.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setBody/form-urlencoded/content-type via setHeader.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setBody/form-urlencoded/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setBody/form-urlencoded/object body.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setBody/form-urlencoded/string body.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setHeader.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setHeaders.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setMethod.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/setUrl.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/tags/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/tags/nested/deep/dedupes-tag-shared-with-folder.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/tags/nested/deep/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/tags/nested/deep/inherits-folder-tags-without-own.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/req/tags/nested/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getBody.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getHeader.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getHeaders.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getResponseTime.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getSize.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getStatus.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getStatusText.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/getUrl.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/headerList/case-insensitive.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/headerList/iteration-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/headerList/read-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/headerList/search-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/headerList/transform-methods.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/jsonBody.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/jsonSchema.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/array.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/boolean.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/isJson after setBody.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/null.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/number.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/object.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/string.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/api/res/setBody/undefined.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/axios/axios-pre-req-script.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/cheerio/cheerio.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/crypto-js/crypto-js-pre-request-script.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/crypto-utils/getRandomValues.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/crypto-utils/randomBytes.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/nanoid/nanoid.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/tv4/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/tv4/tv4.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/uuid/uuid.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/inbuilt modules/xml2js/xml2js.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/js/data types - request vars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/js/data types.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/js/folder-collection script-tests pre.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/js/folder-collection script-tests.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/js/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/js/setTimeout.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/local modules/additional context root.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/local modules/invalid and valid module imports.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/local modules/sum (without js extn).bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/local modules/sum.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/buffer.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/encoding.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/events.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/fetch-api.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/intl.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/json.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-crypto.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-fs.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-os.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-path.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-querystring.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-stream.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-util.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/node-zlib.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/process.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/timers.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/url.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/node-builtins/web-crypto.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/npm modules/ajv.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/npm modules/external-lib-bru-req-res.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/npm modules/fakerjs.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/scripting/npm modules/jose.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/sse/sse finite stream.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/string interpolation/env vars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/string interpolation/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/string interpolation/missing values.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/string interpolation/objects-arrays interpolation.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/string interpolation/process env vars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/string interpolation/runtime vars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/url-serialization/Duplicate Keys.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/url-serialization/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/url-serialization/scheme.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/variable-datatypes/folder.bru",
+    "parser": "collection",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/variable-datatypes/form-urlencoded.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/variable-datatypes/multipart.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/bruno-tests/variable-datatypes/typed vars.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/response-examples/bruno.json",
+    "parser": "bruno_json",
+    "group": "collections"
+  },
+  {
+    "input": "collections/response-examples/create-example.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/response-examples/edit-example.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/response-examples/menu-operations.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "collections/response-examples/multipart-example.bru",
+    "parser": "request",
+    "group": "collections"
+  },
+  {
+    "input": "synthetic/auth/apikey.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/awsv4.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/basic.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/bearer.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/digest.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/edgegrid-blank.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/edgegrid-nan.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/edgegrid-number.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/malformed-auth-mode.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/malformed-auth-pair.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/malformed-oauth1-private-key-list.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/ntlm.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth1-file.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth1-list.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth1-private-key-list.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth1-text.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-additional-params.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-authorization-code.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-auto-flags.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-client-credentials.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-flag-json.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-implicit.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-password.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/oauth2-unknown-grant.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/auth/wsse.bru",
+    "parser": "request",
+    "group": "auth"
+  },
+  {
+    "input": "synthetic/basics/assert.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/bodies-text.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/empty-blocks.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/headers-repeated.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/headers.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/http-custom.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/http-no-method.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/list-bmp-letters.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-assert-list.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-indented-close.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-key-only.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-list-astral.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-list.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-no-colon.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-trailing-garbage.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-unknown-block.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/malformed-unterminated.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/meta-defaults.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/meta-duplicate-key.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/meta.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/multiline-straddle-carrier.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/multiline.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/params.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/proto-key-list.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/proto-key.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/scripts-tests-docs.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/vars.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-connect.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-delete.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-get.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-head.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-options.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-patch.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-post.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-put.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/verb-trace.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/basics/whitespace.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "synthetic/collection/bad-json/bruno.json",
+    "parser": "bruno_json",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/bruno-json-numbers/bruno.json",
+    "parser": "bruno_json",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/annotations.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/color.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/empty.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/extends-invalid.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/extends-list.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/extends-name.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/externalsecrets.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/malformed-secret.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/multiline.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/plain.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/proto-key.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/secret-empty.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/environments/secret.bru",
+    "parser": "environment",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/folder-a/folder.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/full/bruno.json",
+    "parser": "bruno_json",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/full/collection.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/malformed-brace-space/collection.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/malformed-collection/collection.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/malformed-oauth1-private-key-list/collection.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/collection/proto-key/folder.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "synthetic/examples/description-multiline.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/dictionary-multiline.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/empty-example.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/name-description.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/rejected-example.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/request-full.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/response-header-lists.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/response.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/two-examples.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/examples/two-response-sections.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "synthetic/request/annotations-description.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-headers-params.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-oauth2-additional-params.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-typed-json-carrier.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-typed-json.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-typed-number-list.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-typed-post.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/annotations-typed-pre.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/app.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/body-file.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/body-form-urlencoded.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/body-graphql.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/body-grpc.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/body-multipart.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/body-ws.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/grpc.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/malformed-annotation-before-close.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/malformed-annotation-paren.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/malformed-body-file-list.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/metadata.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-all.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-keepalive-infinity.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-keepalive-negative-infinity.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-keepalive.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-lists.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-omit-headers-twice.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-redirects-blank.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-redirects-exp.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-redirects-negative.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-redirects-zero.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-timeout-garbage.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/settings-timeout.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "synthetic/request/ws.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "unit/basics/custom-methods/fixtures/custom-method-with-special-chars.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "unit/basics/custom-methods/fixtures/custom-method-x-custom.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "unit/basics/custom-methods/fixtures/custom-method.bru",
+    "parser": "request",
+    "group": "basics"
+  },
+  {
+    "input": "unit/collection/fixtures/collection.bru",
+    "parser": "collection",
+    "group": "collection"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-empty-example.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-json-body.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-multiple-examples.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-no-examples.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-response-example.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-single-example.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-swapped-status.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-text-body.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/bruToJson-xml-body.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/complex-with-auth.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/examples-complex.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/examples-multiline-contenttype.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/examples-multiline-description.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/examples-simple.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/form-data-complex.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/jsonToBru-bodytypes.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/jsonToBru-multiple.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/jsonToBru-response.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/jsonToBru-simple.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/multiple-examples-variations.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/examples/examples/fixtures/bru/oauth2-examples.bru",
+    "parser": "request",
+    "group": "examples"
+  },
+  {
+    "input": "unit/request/fixtures/annotations.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "unit/request/fixtures/request.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "unit/request/settings/fixtures/settings-all-options.bru",
+    "parser": "request",
+    "group": "request"
+  },
+  {
+    "input": "unit/request/settings/fixtures/settings-minimal.bru",
+    "parser": "request",
+    "group": "request"
+  }
+]

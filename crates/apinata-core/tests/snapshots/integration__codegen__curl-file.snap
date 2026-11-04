@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'PUT' \
+  --url 'http://x.test/b' \
+  --header 'content-type: application/json' \
+  --data-binary '@/data/body.json'

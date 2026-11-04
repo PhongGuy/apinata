@@ -1,0 +1,10 @@
+get {
+  url: https://example.com/assert
+}
+
+assert {
+  res.status: eq 200
+  res.body.items length: gt 2
+  ~res.headers['content-type']: contains json
+  res.body.name with spaces  : neq   "x"  
+}

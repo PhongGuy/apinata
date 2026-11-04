@@ -1,0 +1,26 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== JWT Auth - environments.yml
+name: JWT Auth - environments
+variables:
+  - name: url
+    value: http://localhost:8888/auth/jwt
+  - name: algorithm
+    value: HS256
+  - name: secret
+    value: secret-1
+  - name: privateKey
+    value: ""
+  - name: payload
+    value: '{"user":"test","role":"admin"}'
+  - name: jwtHeaders
+    value: "{}"
+  - name: headerPrefix
+    value: "Bearer "
+  - name: paramName
+    value: token
+  - name: isSecretBase64Encoded
+    value: "false"
+== report

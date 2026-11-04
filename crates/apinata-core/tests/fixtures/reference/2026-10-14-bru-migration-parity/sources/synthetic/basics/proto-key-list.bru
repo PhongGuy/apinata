@@ -1,0 +1,54 @@
+meta {
+  name: Proto list
+  __proto__: [
+    first
+    second
+  ]
+  seq: 3
+}
+
+get {
+  url: https://example.com/proto
+}
+
+headers {
+  __proto__: [
+    one
+  ]
+  ~__proto__: off
+  @description('kept')
+  __proto__: x
+  "__proto__": quoted
+}
+
+assert {
+  __proto__: eq 1
+  res.status: eq 200
+}
+
+vars:pre-request {
+  __proto__: v
+  @number
+  __proto__: 5
+  @object
+  __proto__: {"a": 1}
+  @boolean
+  ~@__proto__: true
+  a: 1
+}
+
+params:query {
+  __proto__: q
+  n: 1
+}
+
+body:form-urlencoded {
+  __proto__: f
+  g: 2
+}
+
+vars:post-response {
+  @number
+  __proto__: 5
+  b: 2
+}

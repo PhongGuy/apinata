@@ -1,0 +1,19 @@
+info:
+  name: r
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{host}}"
+
+runtime: {}
+
+settings:
+  encodeUrl: true
+  timeout: 0
+
+examples: []
+
+docs: x
+app: {}

@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "cookies",
+    "seq": "17",
+    "type": "collection"
+  },
+  "auth": {
+    "mode": "inherit"
+  }
+}

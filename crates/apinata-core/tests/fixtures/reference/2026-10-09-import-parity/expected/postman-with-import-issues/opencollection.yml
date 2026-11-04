@@ -1,0 +1,21 @@
+opencollection: 1.0.0
+
+info:
+  name: Import Issues Test Collection
+
+request:
+  variables:
+    - name: baseUrl
+      value: https://api.example.com
+    - name: token
+      value: test-token-123
+
+docs:
+  content: A Postman collection designed to test partial import handling. Contains a mix of valid requests, requests with missing/invalid methods, and edge cases that should be gracefully handled.
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

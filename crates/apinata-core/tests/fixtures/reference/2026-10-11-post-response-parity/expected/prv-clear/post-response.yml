@@ -1,0 +1,15 @@
+info:
+  name: capture
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://example.com/login
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

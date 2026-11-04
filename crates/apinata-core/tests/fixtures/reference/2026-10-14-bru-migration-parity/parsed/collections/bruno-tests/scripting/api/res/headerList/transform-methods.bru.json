@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "transform-methods",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"res.headerList.toObject()\", function() {\n  const obj = res.headerList.toObject();\n  expect(obj).to.be.an('object');\n  expect(obj['x-powered-by']).to.equal('Express');\n});\n\ntest(\"res.headerList.toString()\", function() {\n  const str = res.headerList.toString();\n  expect(str).to.be.a('string');\n  expect(str).to.include('x-powered-by: Express');\n});\n\ntest(\"res.headerList.toJSON()\", function() {\n  const json = res.headerList.toJSON();\n  expect(json).to.be.an('array');\n  const header = json.find(h => h.key === 'x-powered-by');\n  expect(header).to.eql({ key: 'x-powered-by', value: 'Express' });\n});"
+}

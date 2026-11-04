@@ -1,0 +1,4 @@
+name: Test
+variables:
+  - name: api_url
+    value: http://localhost:3000

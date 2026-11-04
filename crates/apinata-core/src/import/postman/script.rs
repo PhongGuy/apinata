@@ -1,0 +1,1940 @@
+//! Translation of Postman `pm.*` script calls to the runtime's `bru`/`req`/`res`
+//! vocabulary. Follows `packages/bruno-converters/src/utils/postman-to-bruno-translator.js`
+//! (usebruno/bruno @1301ea17) without an AST: a token-aware scan leaves strings,
+//! comments and template text alone and rewrites member chains at identifier
+//! boundaries. Code the table cannot express passes through unchanged. Aliases
+//! (`const r = pm.response`) are resolved first, in `alias`; `pm.sendRequest` is rewritten
+//! in `send_request`, with `scope` telling it where `await` is legal. The `pm.response.to.*`
+//! status helpers are rewritten only as whole statements. Not ported: `pm.require`, the
+//! content-type helpers (`to.be.json`, `to.be.html`) and anything else reported as unsupported.
+
+use std::collections::HashSet;
+
+mod alias;
+mod scope;
+mod send_request;
+
+/// Result of translating one script. `unsupported` lists the distinct `pm.*` chains
+/// still present afterwards, `replaced` counts the rewrites made.
+pub(super) struct Translated {
+    pub code: String,
+    pub unsupported: Vec<String>,
+    pub replaced: usize,
+}
+
+/// Translate a script's code. Never fails: anything not recognised is kept as written.
+pub(super) fn translate(exec: &str) -> Translated {
+    let mut cx = Ctx::new(exec);
+    let resolved = alias::resolve(exec, &mut cx);
+    cx.tab = guess_tab_width(&resolved);
+    let resolved = send_request::hoist_declared_options(&resolved, &mut cx);
+    let code = translate_code(&resolved, &mut cx);
+    let mut unsupported = Vec::new();
+    collect_unsupported(&code, &mut unsupported, &mut HashSet::new());
+    Translated {
+        code,
+        unsupported,
+        replaced: cx.replaced,
+    }
+}
+
+/// Deepest nesting of argument and template rewrites; beyond it text passes through.
+const MAX_DEPTH: usize = 32;
+/// Longest member chain examined; the longest table key has far fewer segments.
+const MAX_SEGS: usize = 16;
+/// Longest regex literal recognised; a longer run is read as division.
+const MAX_REGEX: usize = 256;
+
+/// State shared across one translation: rewrite count, nesting depth, the legacy
+/// names the whole script declares (computed once) and a scan budget that keeps
+/// repeated unclosed calls from rescanning the rest of the script each time.
+struct Ctx {
+    replaced: usize,
+    depth: usize,
+    declared: [bool; 3],
+    budget: usize,
+    /// Whether `await` is legal where the scan currently is.
+    await_ok: bool,
+    /// Whether a statement may begin at the identifier being examined.
+    at_stmt: bool,
+    /// Indentation step the reference's printer would use for this script.
+    tab: usize,
+    /// The function the scan is in, the last id handed out, and the functions that got
+    /// an `await` inserted (a promise-chain handler holding one must become `async`).
+    fid: u32,
+    next_fid: u32,
+    awaited: HashSet<u32>,
+}
+
+/// Width in columns of the leading blanks of `line`; a tab reaches the next multiple of 4.
+fn columns(line: &[u8]) -> usize {
+    let mut col = 0;
+    for c in line {
+        match c {
+            b' ' => col += 1,
+            b'\t' => col = (col / 4 + 1) * 4,
+            _ => break,
+        }
+    }
+    col
+}
+
+/// The printer's indentation step: the commonest change of indent between consecutive
+/// lines, smallest first, 2 when the script has none.
+fn guess_tab_width(src: &str) -> usize {
+    let mut counts = [0usize; 65];
+    let mut last = 0usize;
+    for line in src.split('\n') {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent = columns(line.as_bytes());
+        let diff = indent.abs_diff(last);
+        if diff < counts.len() {
+            counts[diff] += 1;
+        }
+        last = indent;
+    }
+    let mut best = (0, 2);
+    for (width, n) in counts.iter().enumerate().skip(1) {
+        if *n > best.0 {
+            best = (*n, width);
+        }
+    }
+    best.1
+}
+
+const LEGACY: [&str; 3] = ["responseBody", "responseHeaders", "responseTime"];
+
+impl Ctx {
+    fn new(script: &str) -> Self {
+        Ctx {
+            replaced: 0,
+            depth: 0,
+            declared: LEGACY.map(|n| declares(script, n)),
+            budget: script.len().saturating_mul(8).saturating_add(1 << 16),
+            await_ok: true,
+            at_stmt: false,
+            tab: 2,
+            fid: 0,
+            next_fid: 0,
+            awaited: HashSet::new(),
+        }
+    }
+
+    fn declares(&self, name: &str) -> bool {
+        LEGACY
+            .iter()
+            .position(|n| *n == name)
+            .is_some_and(|i| self.declared[i])
+    }
+
+    /// `find_close` that charges the scanned length against the budget.
+    fn find_close(&mut self, src: &str, open: usize) -> Option<usize> {
+        if self.budget == 0 {
+            return None;
+        }
+        let close = find_close(src, open);
+        let spent = close.unwrap_or(src.len()) - open;
+        self.budget = self.budget.saturating_sub(spent);
+        close
+    }
+}
+
+/// One-to-one chain rewrites, keyed by the `pm.`-normalised chain (the reference's
+/// `simpleTranslations`). The longest matching prefix of a chain wins.
+const SIMPLE: &[(&str, &str)] = &[
+    ("pm.globals.get", "bru.getGlobalEnvVar"),
+    ("pm.globals.set", "bru.setGlobalEnvVar"),
+    ("pm.globals.has", "bru.hasGlobalEnvVar"),
+    ("pm.globals.replaceIn", "bru.interpolate"),
+    ("pm.globals.unset", "bru.deleteGlobalEnvVar"),
+    ("pm.globals.toObject", "bru.getAllGlobalEnvVars"),
+    ("pm.globals.clear", "bru.deleteAllGlobalEnvVars"),
+    ("pm.environment.get", "bru.getEnvVar"),
+    ("pm.environment.set", "bru.setEnvVar"),
+    ("pm.environment.name", "bru.getEnvName()"),
+    ("pm.environment.unset", "bru.deleteEnvVar"),
+    ("pm.environment.replaceIn", "bru.interpolate"),
+    ("pm.environment.toObject", "bru.getAllEnvVars"),
+    ("pm.environment.clear", "bru.deleteAllEnvVars"),
+    ("pm.variables.get", "bru.getVar"),
+    ("pm.variables.set", "bru.setVar"),
+    ("pm.variables.has", "bru.hasVar"),
+    ("pm.variables.toObject", "bru.getAllVars"),
+    ("pm.variables.replaceIn", "bru.interpolate"),
+    ("pm.collectionVariables.get", "bru.getCollectionVar"),
+    ("pm.collectionVariables.set", "bru.setCollectionVar"),
+    ("pm.collectionVariables.has", "bru.hasCollectionVar"),
+    ("pm.collectionVariables.unset", "bru.deleteCollectionVar"),
+    ("pm.collectionVariables.replaceIn", "bru.interpolate"),
+    (
+        "pm.collectionVariables.clear",
+        "bru.deleteAllCollectionVars",
+    ),
+    (
+        "pm.collectionVariables.toObject",
+        "bru.getAllCollectionVars",
+    ),
+    ("pm.test", "test"),
+    ("pm.expect", "expect"),
+    ("pm.expect.fail", "expect.fail"),
+    ("pm.info.requestName", "req.getName()"),
+    ("pm.request.headers.remove", "req.deleteHeader"),
+    ("pm.request.headers.get", "req.headerList.get"),
+    ("pm.request.headers.has", "req.headerList.has"),
+    ("pm.request.headers.one", "req.headerList.one"),
+    ("pm.request.headers.all", "req.headerList.all"),
+    ("pm.request.headers.count", "req.headerList.count"),
+    ("pm.request.headers.indexOf", "req.headerList.indexOf"),
+    ("pm.request.headers.find", "req.headerList.find"),
+    ("pm.request.headers.filter", "req.headerList.filter"),
+    ("pm.request.headers.each", "req.headerList.each"),
+    ("pm.request.headers.map", "req.headerList.map"),
+    ("pm.request.headers.reduce", "req.headerList.reduce"),
+    ("pm.request.headers.toObject", "req.headerList.toObject"),
+    ("pm.request.headers.toString", "req.headerList.toString"),
+    ("pm.request.headers.toJSON", "req.headerList.toJSON"),
+    ("pm.request.headers.clear", "req.headerList.clear"),
+    ("pm.response.headers.has", "res.headerList.has"),
+    ("pm.response.headers.one", "res.headerList.one"),
+    ("pm.response.headers.all", "res.headerList.all"),
+    ("pm.response.headers.count", "res.headerList.count"),
+    ("pm.response.headers.indexOf", "res.headerList.indexOf"),
+    ("pm.response.headers.find", "res.headerList.find"),
+    ("pm.response.headers.filter", "res.headerList.filter"),
+    ("pm.response.headers.each", "res.headerList.each"),
+    ("pm.response.headers.map", "res.headerList.map"),
+    ("pm.response.headers.reduce", "res.headerList.reduce"),
+    ("pm.response.headers.toObject", "res.headerList.toObject"),
+    ("pm.response.headers.toString", "res.headerList.toString"),
+    ("pm.response.headers.toJSON", "res.headerList.toJSON"),
+    ("pm.request.url.getHost", "req.getHost"),
+    ("pm.request.url.getPath", "req.getPath"),
+    ("pm.request.url.getQueryString", "req.getQueryString"),
+    ("pm.request.url.variables", "req.getPathParams()"),
+    ("pm.request.url", "req.getUrl()"),
+    ("pm.request.method", "req.getMethod()"),
+    ("pm.request.headers", "req.getHeaders()"),
+    ("pm.request.body", "req.getBody()"),
+    ("request.url", "req.getUrl()"),
+    ("request.method", "req.getMethod()"),
+    ("request.headers", "req.getHeaders()"),
+    ("request.body", "req.getBody()"),
+    ("request.name", "req.getName()"),
+    ("pm.response.json", "res.getBody"),
+    ("pm.response.code", "res.getStatus()"),
+    ("pm.response.status", "res.statusText"),
+    ("pm.response.responseTime", "res.getResponseTime()"),
+    ("pm.response.statusText", "res.statusText"),
+    ("pm.response.headers", "res.getHeaders()"),
+    ("pm.response.size", "res.getSize"),
+    ("pm.response.responseSize", "res.getSize().body"),
+    ("pm.response.size().body", "res.getSize().body"),
+    ("pm.response.size().header", "res.getSize().header"),
+    ("pm.response.size().total", "res.getSize().total"),
+    ("pm.cookies.jar", "bru.cookies.jar"),
+    ("pm.cookies.jar().get", "bru.cookies.jar().getCookie"),
+    ("pm.cookies.jar().getAll", "bru.cookies.jar().getCookies"),
+    ("pm.cookies.jar().set", "bru.cookies.jar().setCookie"),
+    ("pm.cookies.jar().unset", "bru.cookies.jar().deleteCookie"),
+    ("pm.cookies.jar().clear", "bru.cookies.jar().deleteCookies"),
+    ("pm.cookies.get", "bru.cookies.get"),
+    ("pm.cookies.has", "bru.cookies.has"),
+    ("pm.cookies.toObject", "bru.cookies.toObject"),
+    ("pm.cookies.toString", "bru.cookies.toString"),
+    ("pm.cookies.clear", "bru.cookies.clear"),
+    ("pm.cookies.remove", "bru.cookies.delete"),
+    ("pm.cookies.one", "bru.cookies.one"),
+    ("pm.cookies.all", "bru.cookies.all"),
+    ("pm.cookies.idx", "bru.cookies.idx"),
+    ("pm.cookies.count", "bru.cookies.count"),
+    ("pm.cookies.indexOf", "bru.cookies.indexOf"),
+    ("pm.cookies.find", "bru.cookies.find"),
+    ("pm.cookies.filter", "bru.cookies.filter"),
+    ("pm.cookies.each", "bru.cookies.each"),
+    ("pm.cookies.map", "bru.cookies.map"),
+    ("pm.cookies.reduce", "bru.cookies.reduce"),
+    ("pm.cookies.add", "bru.cookies.add"),
+    ("pm.cookies.upsert", "bru.cookies.upsert"),
+    ("pm.cookies.prepend", "bru.cookies.add"),
+    ("pm.cookies.insert", "bru.cookies.add"),
+    ("pm.cookies.insertAfter", "bru.cookies.add"),
+    ("pm.execution.skipRequest", "bru.runner.skipRequest"),
+    ("pm.setEnvironmentVariable", "bru.setEnvVar"),
+    ("pm.getEnvironmentVariable", "bru.getEnvVar"),
+    ("pm.clearEnvironmentVariable", "bru.deleteEnvVar"),
+    ("pm.clearEnvironmentVariables", "bru.deleteAllEnvVars"),
+    ("pm.setGlobalVariable", "bru.setGlobalEnvVar"),
+    ("pm.getGlobalVariable", "bru.getGlobalEnvVar"),
+    ("pm.clearGlobalVariable", "bru.deleteGlobalEnvVar"),
+    ("pm.clearGlobalVariables", "bru.deleteAllGlobalEnvVars"),
+    ("responseCode.code", "res.getStatus()"),
+    ("responseCode.name", "res.statusText"),
+];
+
+/// How a recognised chain is rewritten.
+enum Rule {
+    /// Replace the chain text; whatever follows stays.
+    Replace(String),
+    /// Replace the chain text, but only when it is called.
+    ReplaceCall(String),
+    /// Replace the chain text, but only when the chain is a whole expression statement.
+    Statement(String),
+    /// Rewrites that take the call's arguments apart.
+    Args(ArgsRule),
+}
+
+#[derive(Clone, Copy)]
+enum ArgsRule {
+    EnvHas,
+    ResponseText,
+    SetNextRequest,
+    SendRequest,
+    HeaderProperty { negated: bool },
+    SetHeader,
+    HeaderAddFirst,
+}
+
+fn rule_for(key: &str) -> Option<Rule> {
+    use ArgsRule::*;
+    let call = |s: &str| Some(Rule::ReplaceCall(s.to_string()));
+    match key {
+        "pm.environment.has" => return Some(Rule::Args(EnvHas)),
+        "pm.sendRequest" => return Some(Rule::Args(SendRequest)),
+        "pm.response.text" => return Some(Rule::Args(ResponseText)),
+        "pm.setNextRequest" | "pm.execution.setNextRequest" => {
+            return Some(Rule::Args(SetNextRequest));
+        }
+        "pm.response.to.have.header" => return Some(Rule::Args(HeaderProperty { negated: false })),
+        "pm.response.to.not.have.header" | "pm.response.to.have.not.header" => {
+            return Some(Rule::Args(HeaderProperty { negated: true }));
+        }
+        "pm.request.headers.add" | "pm.request.headers.upsert" => {
+            return Some(Rule::Args(SetHeader));
+        }
+        "pm.request.headers.prepend"
+        | "pm.request.headers.insert"
+        | "pm.request.headers.insertAfter" => return Some(Rule::Args(HeaderAddFirst)),
+        "pm.response.to.have.status" => return call("expect(res.getStatus()).to.equal"),
+        "pm.response.to.not.have.status" | "pm.response.to.have.not.status" => {
+            return call("expect(res.getStatus()).to.not.equal");
+        }
+        "pm.response.to.have.body" => return call("expect(res.getBody()).to.equal"),
+        "pm.response.to.not.have.body" | "pm.response.to.have.not.body" => {
+            return call("expect(res.getBody()).to.not.equal");
+        }
+        "pm.getResponseHeader" => return call("res.getHeader"),
+        "pm.response.headers.get" => return call("res.getHeader"),
+        "pm.request.headers.remove" => {}
+        "pm.response.to.be.withBody" => {
+            return Some(Rule::Statement(
+                "expect(res.getBody()).to.not.equal(undefined)".into(),
+            ));
+        }
+        "pm.response.to.not.be.withBody" | "pm.response.to.be.not.withBody" => {
+            return Some(Rule::Statement(
+                "expect(res.getBody()).to.equal(undefined)".into(),
+            ));
+        }
+        _ => {}
+    }
+    if let Some(text) = status_helper(key) {
+        return Some(Rule::Statement(text));
+    }
+    // jsonBody and jsonSchema keep their shape and gain the body subject.
+    if let Some(tail) = key.strip_prefix("pm.response.") {
+        const SHAPES: [&str; 8] = [
+            "to.have.jsonBody",
+            "to.not.have.jsonBody",
+            "not.to.have.jsonBody",
+            "to.have.not.jsonBody",
+            "to.have.jsonSchema",
+            "to.not.have.jsonSchema",
+            "not.to.have.jsonSchema",
+            "to.have.not.jsonSchema",
+        ];
+        if SHAPES.contains(&tail) {
+            return call(&format!("expect(res.getBody()).{tail}"));
+        }
+    }
+    SIMPLE
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| Rule::Replace((*v).to_string()))
+}
+
+/// Status helpers (`pm.response.to.be.ok`): name, chai chain and its arguments.
+const STATUS_HELPERS: &[(&str, &str, &str)] = &[
+    ("ok", "to.be.within", "200, 299"),
+    ("success", "to.be.within", "200, 299"),
+    ("info", "to.be.within", "100, 199"),
+    ("redirection", "to.be.within", "300, 399"),
+    ("clientError", "to.be.within", "400, 499"),
+    ("serverError", "to.be.within", "500, 599"),
+    ("error", "to.be.at.least", "400"),
+    ("accepted", "to.equal", "202"),
+    ("badRequest", "to.equal", "400"),
+    ("unauthorized", "to.equal", "401"),
+    ("forbidden", "to.equal", "403"),
+    ("notFound", "to.equal", "404"),
+    ("rateLimited", "to.equal", "429"),
+];
+
+/// The assertion for `pm.response.to.be.<name>` and its `to.not.be` / `to.be.not` negations.
+fn status_helper(key: &str) -> Option<String> {
+    let tail = key.strip_prefix("pm.response.to.")?;
+    let (negated, name) = if let Some(n) = tail.strip_prefix("not.be.") {
+        (true, n)
+    } else if let Some(n) = tail.strip_prefix("be.not.") {
+        (true, n)
+    } else {
+        (false, tail.strip_prefix("be.")?)
+    };
+    let (_, chain, args) = STATUS_HELPERS.iter().find(|(n, ..)| *n == name)?;
+    let chain = if negated {
+        chain.replacen("to.", "to.not.", 1)
+    } else {
+        (*chain).to_string()
+    };
+    Some(format!("expect(res.getStatus()).{chain}({args})"))
+}
+
+/// True when the code at `at` ends an expression statement: the end, `;`, `}`, a comment,
+/// or a line break not followed by a token that would continue the expression.
+fn ends_statement(b: &[u8], at: usize) -> bool {
+    let mut i = at;
+    while i < b.len() && matches!(b[i], b' ' | b'\t') {
+        i += 1;
+    }
+    match b.get(i) {
+        None | Some(b';' | b'}') => true,
+        Some(b'/') => matches!(b.get(i + 1), Some(b'/' | b'*')),
+        Some(b'\n' | b'\r') => {
+            let n = skip_ws(b, i);
+            match b.get(n) {
+                None => true,
+                Some(b'/') => matches!(b.get(n + 1), Some(b'/' | b'*')),
+                Some(c) => !b".([`?&|,=+-*%<>:".contains(c),
+            }
+        }
+        _ => false,
+    }
+}
+
+fn is_ident_byte(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80
+}
+
+fn ident_end(b: &[u8], mut i: usize) -> usize {
+    while i < b.len() && is_ident_byte(b[i]) {
+        i += 1;
+    }
+    i
+}
+
+fn skip_ws(b: &[u8], mut i: usize) -> usize {
+    while i < b.len() && b[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    i
+}
+
+/// The last non-whitespace byte before `i`, with its index.
+fn prev_significant(b: &[u8], i: usize) -> Option<(usize, u8)> {
+    let mut k = i;
+    while k > 0 {
+        k -= 1;
+        if !b[k].is_ascii_whitespace() {
+            return Some((k, b[k]));
+        }
+    }
+    None
+}
+
+/// True when the identifier at `i` is a property (`a.b`, not a spread `...b`).
+fn is_property_access(b: &[u8], i: usize) -> bool {
+    match prev_significant(b, i) {
+        Some((k, b'.')) => !(k >= 2 && b[k - 1] == b'.' && b[k - 2] == b'.'),
+        _ => false,
+    }
+}
+
+/// End of the string, comment, template or regex literal starting at `i`, if one does.
+fn skip_opaque(src: &str, i: usize) -> Option<usize> {
+    let b = src.as_bytes();
+    match b[i] {
+        q @ (b'\'' | b'"') => {
+            let mut k = i + 1;
+            while k < b.len() && b[k] != q {
+                k += if b[k] == b'\\' { 2 } else { 1 };
+            }
+            Some((k + 1).min(b.len()))
+        }
+        b'`' => Some(template_end(src, i)),
+        b'/' if b.get(i + 1) == Some(&b'/') => Some(src[i..].find('\n').map_or(b.len(), |n| i + n)),
+        b'/' if b.get(i + 1) == Some(&b'*') => {
+            Some(src[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2))
+        }
+        b'/' => regex_end(b, i),
+        _ => None,
+    }
+}
+
+/// A `/` starts a regex literal only where an expression may begin.
+fn regex_end(b: &[u8], i: usize) -> Option<usize> {
+    let starts_expr = match prev_significant(b, i) {
+        None => true,
+        Some((_, c)) => b"(,=:[!&|?{};+-*%<>~^".contains(&c),
+    };
+    if !starts_expr {
+        return None;
+    }
+    let mut k = i + 1;
+    let mut class = false;
+    while k < b.len() && b[k] != b'\n' && k - i <= MAX_REGEX {
+        match b[k] {
+            b'\\' => k += 1,
+            b'[' => class = true,
+            b']' => class = false,
+            b'/' if !class => {
+                k += 1;
+                while k < b.len() && b[k].is_ascii_alphabetic() {
+                    k += 1;
+                }
+                return Some(k);
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    None
+}
+
+/// End of the template literal starting at `i`, descending into `${}` holes.
+fn template_end(src: &str, i: usize) -> usize {
+    thread_local!(static NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
+    // Templates nested through `${}` recurse via find_close; past the cap the rest of
+    // the input is taken as one opaque template.
+    if NESTING.get() >= MAX_DEPTH {
+        return src.len();
+    }
+    NESTING.set(NESTING.get() + 1);
+    let end = template_scan(src, i);
+    NESTING.set(NESTING.get() - 1);
+    end
+}
+
+fn template_scan(src: &str, i: usize) -> usize {
+    let b = src.as_bytes();
+    let mut k = i + 1;
+    while k < b.len() {
+        match b[k] {
+            b'\\' => k += 2,
+            b'`' => return k + 1,
+            b'$' if b.get(k + 1) == Some(&b'{') => {
+                k = find_close(src, k + 1).map_or(b.len(), |c| c + 1);
+            }
+            _ => k += 1,
+        }
+    }
+    b.len()
+}
+
+/// Index of the bracket closing the one at `open`, skipping literals and comments.
+fn find_close(src: &str, open: usize) -> Option<usize> {
+    let b = src.as_bytes();
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < b.len() {
+        if let Some(end) = skip_opaque(src, i) {
+            i = end;
+            continue;
+        }
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Split call arguments at top-level commas, trimmed.
+fn split_top_level(s: &str, sep: u8) -> Vec<&str> {
+    let b = s.as_bytes();
+    let (mut parts, mut start, mut depth, mut i) = (Vec::new(), 0, 0usize, 0);
+    while i < b.len() {
+        if let Some(end) = skip_opaque(s, i) {
+            i = end;
+            continue;
+        }
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            c if c == sep && depth == 0 => {
+                parts.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let last = s[start..].trim();
+    if !last.is_empty() || !parts.is_empty() {
+        parts.push(last);
+    }
+    parts
+}
+
+fn translate_code(src: &str, cx: &mut Ctx) -> String {
+    if cx.depth >= MAX_DEPTH {
+        return src.to_string();
+    }
+    cx.depth += 1;
+    let out = translate_scan(src, cx);
+    cx.depth -= 1;
+    out
+}
+
+fn translate_scan(src: &str, cx: &mut Ctx) -> String {
+    let b = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    // Nested translations start from the await context of the position that spawned them.
+    let (base, base_fid) = (cx.await_ok, cx.fid);
+    let mut scope = scope::Scope::new(base, base_fid);
+    // The last token that is not a comment, so statement helpers know a statement starts
+    // here. A nested chunk is an expression, so it starts as if after `(`.
+    let mut last: Option<u8> = if cx.depth > 1 { Some(b'(') } else { None };
+    let mut after_kw = false;
+    while i < b.len() {
+        if b[i] == b'`' {
+            (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
+            i = copy_template(src, i, &mut out, cx);
+            (last, after_kw) = (Some(b'`'), false);
+        } else if let Some(end) = skip_opaque(src, i) {
+            out.push_str(&src[i..end]);
+            if !src[i..end].starts_with("//") && !src[i..end].starts_with("/*") {
+                (last, after_kw) = (Some(b'"'), false);
+            }
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
+            cx.at_stmt = after_kw || matches!(last, None | Some(b';' | b'{' | b'}' | b')'));
+            if !is_property_access(b, i)
+                && let Some((text, next)) = rewrite_at(src, i, end, &out, cx)
+            {
+                out.push_str(&text);
+                i = next;
+                (last, after_kw) = (Some(b')'), false);
+                continue;
+            }
+            out.push_str(&src[i..end]);
+            after_kw = matches!(&src[i..end], "else" | "do") && !is_property_access(b, i);
+            last = Some(b[end - 1]);
+            i = end;
+        } else {
+            scope.feed(b, i, &mut cx.next_fid);
+            out.push(b[i] as char);
+            if !b[i].is_ascii_whitespace() {
+                (last, after_kw) = (Some(b[i]), false);
+            }
+            i += 1;
+        }
+    }
+    (cx.await_ok, cx.fid) = (base, base_fid);
+    out
+}
+
+/// Copy a template literal, translating only its `${}` holes.
+fn copy_template(src: &str, start: usize, out: &mut String, cx: &mut Ctx) -> usize {
+    let b = src.as_bytes();
+    let end = template_end(src, start);
+    let mut i = start;
+    let mut text_from = start;
+    out.push('`');
+    i += 1;
+    text_from += 1;
+    while i < end {
+        match b[i] {
+            b'\\' => i += 2,
+            b'$' if b.get(i + 1) == Some(&b'{') => {
+                let Some(close) = cx.find_close(src, i + 1) else {
+                    break;
+                };
+                out.push_str(&src[text_from..i + 2]);
+                out.push_str(&translate_code(&src[i + 2..close], cx));
+                out.push('}');
+                i = close + 1;
+                text_from = i;
+            }
+            _ => i += 1,
+        }
+    }
+    out.push_str(&src[text_from.min(end)..end]);
+    end
+}
+
+/// Try the rewrites that start at the identifier `src[start..end]`.
+fn rewrite_at(
+    src: &str,
+    start: usize,
+    end: usize,
+    out: &str,
+    cx: &mut Ctx,
+) -> Option<(String, usize)> {
+    let rewritten = match &src[start..end] {
+        "pm" | "postman" | "request" | "responseCode" => rewrite_chain(src, start, end, out, cx),
+        "tests" => rewrite_tests_bracket(src, start, end, out, cx),
+        "JSON" => rewrite_json_parse(src, end, cx),
+        w @ ("responseBody" | "responseHeaders" | "responseTime") => {
+            legacy_global(src, start, end, w, cx).map(|t| (t.to_string(), end))
+        }
+        _ => None,
+    };
+    if rewritten.is_some() {
+        cx.replaced += 1;
+    }
+    rewritten
+}
+
+struct Seg {
+    name: (usize, usize),
+    has_parens: bool,
+}
+
+fn rewrite_chain(
+    src: &str,
+    start: usize,
+    head_end: usize,
+    out: &str,
+    cx: &mut Ctx,
+) -> Option<(String, usize)> {
+    let b = src.as_bytes();
+    let head = &src[start..head_end];
+    let key_head = if head == "postman" { "pm" } else { head };
+    let mut segs: Vec<Seg> = Vec::new();
+    let mut pos = head_end;
+    while segs.len() < MAX_SEGS
+        && b.get(pos) == Some(&b'.')
+        && b.get(pos + 1).is_some_and(|c| is_ident_byte(*c))
+    {
+        let e = ident_end(b, pos + 1);
+        let has_parens = src[e..].starts_with("()");
+        segs.push(Seg {
+            name: (pos + 1, e),
+            has_parens,
+        });
+        pos = if has_parens { e + 2 } else { e };
+        if has_parens && !(b.get(pos) == Some(&b'.')) {
+            break;
+        }
+    }
+    for take in (1..=segs.len()).rev() {
+        let key_of = |full: bool| {
+            let mut key = key_head.to_string();
+            for (j, s) in segs[..take].iter().enumerate() {
+                key.push('.');
+                key.push_str(&src[s.name.0..s.name.1]);
+                if full && j + 1 < take && s.has_parens {
+                    key.push_str("()");
+                }
+            }
+            key
+        };
+        let any_paren = segs[..take - 1].iter().any(|s| s.has_parens);
+        let mut keys = Vec::new();
+        if any_paren {
+            keys.push(key_of(true));
+        }
+        keys.push(key_of(false));
+        for key in keys {
+            let Some(rule) = rule_for(&key) else { continue };
+            let chain_end = segs[take - 1].name.1;
+            let call_at = skip_ws(b, chain_end);
+            let called = b.get(call_at) == Some(&b'(');
+            match rule {
+                Rule::Replace(text) => return Some((text, chain_end)),
+                Rule::Statement(text) if cx.at_stmt => {
+                    // `ok()` is read as the helper called with no arguments, as the reference does.
+                    let mut end = chain_end;
+                    let open = skip_ws(b, end);
+                    if b.get(open) == Some(&b'(') {
+                        let close = skip_ws(b, open + 1);
+                        if b.get(close) != Some(&b')') {
+                            continue;
+                        }
+                        end = close + 1;
+                    }
+                    if ends_statement(b, end) {
+                        return Some((text, end));
+                    }
+                }
+                Rule::Statement(_) => {}
+                Rule::ReplaceCall(text) if called => return Some((text, chain_end)),
+                Rule::ReplaceCall(_) => {}
+                Rule::Args(ArgsRule::SendRequest) if called => {
+                    if let Some(done) = send_request::rewrite(src, start, call_at, out, cx) {
+                        return Some(done);
+                    }
+                }
+                Rule::Args(kind) if called => {
+                    if let Some(done) = rewrite_args(src, kind, call_at, cx) {
+                        return Some(done);
+                    }
+                }
+                Rule::Args(_) => {}
+            }
+        }
+    }
+    None
+}
+
+/// Rewrites that need the call's parsed arguments. `open` is the `(` index.
+fn rewrite_args(src: &str, kind: ArgsRule, open: usize, cx: &mut Ctx) -> Option<(String, usize)> {
+    let close = cx.find_close(src, open)?;
+    let inner = &src[open + 1..close];
+    let args: Vec<String> = split_top_level(inner, b',')
+        .into_iter()
+        .map(|a| translate_code(a, cx))
+        .collect();
+    let joined = args.join(", ");
+    let done = |t: String| Some((t, close + 1));
+    match kind {
+        ArgsRule::SendRequest => None,
+        ArgsRule::EnvHas => {
+            let a = joined;
+            done(format!(
+                "bru.getEnvVar({a}) !== undefined && bru.getEnvVar({a}) !== null"
+            ))
+        }
+        ArgsRule::ResponseText => done("JSON.stringify(res.getBody())".to_string()),
+        ArgsRule::SetNextRequest => {
+            if args.first().is_some_and(|a| a == "null") {
+                done("bru.runner.stopExecution()".to_string())
+            } else {
+                done(format!("bru.runner.setNextRequest({joined})"))
+            }
+        }
+        ArgsRule::HeaderProperty { negated } => {
+            let mut parts = args;
+            if let Some(first) = parts.first_mut() {
+                first.push_str(".toLowerCase()");
+            }
+            let verb = if negated {
+                "to.not.have.property"
+            } else {
+                "to.have.property"
+            };
+            done(format!(
+                "expect(res.getHeaders()).{verb}({})",
+                parts.join(", ")
+            ))
+        }
+        ArgsRule::SetHeader => {
+            let pair = args.first().and_then(|a| key_value_of(a));
+            match pair {
+                Some((k, v)) => done(format!("req.setHeader({k}, {v})")),
+                None => done(format!("req.setHeader({joined})")),
+            }
+        }
+        ArgsRule::HeaderAddFirst => {
+            let first = args.first().cloned().unwrap_or_default();
+            done(format!("req.headerList.add({first})"))
+        }
+    }
+}
+
+/// The `key` and `value` expressions of an object literal like `{ key: a, value: b }`.
+fn key_value_of(obj: &str) -> Option<(String, String)> {
+    let inner = obj.trim().strip_prefix('{')?.strip_suffix('}')?;
+    let (mut key, mut value) = (None, None);
+    for prop in split_top_level(inner, b',') {
+        let colon = prop.find(':')?;
+        let value_text = prop[colon + 1..].trim().to_string();
+        match prop[..colon].trim().trim_matches(['\'', '"']) {
+            "key" => key = Some(value_text),
+            "value" => value = Some(value_text),
+            _ => {}
+        }
+    }
+    Some((key?, value?))
+}
+
+/// `JSON.parse(responseBody)` becomes `res.getBody()`.
+fn rewrite_json_parse(src: &str, end: usize, cx: &Ctx) -> Option<(String, usize)> {
+    let rest = src[end..].strip_prefix(".parse(")?;
+    let after_open = end + (src[end..].len() - rest.len());
+    let b = src.as_bytes();
+    let s = skip_ws(b, after_open);
+    let e = ident_end(b, s);
+    if &src[s..e] != "responseBody" || cx.declares("responseBody") {
+        return None;
+    }
+    let c = skip_ws(b, e);
+    (b.get(c) == Some(&b')')).then(|| ("res.getBody()".to_string(), c + 1))
+}
+
+/// Legacy globals are replaced as values only; a script's own variable of the
+/// same name, or a position that binds the name, is left alone.
+fn legacy_global(
+    src: &str,
+    start: usize,
+    end: usize,
+    name: &str,
+    cx: &Ctx,
+) -> Option<&'static str> {
+    let b = src.as_bytes();
+    if cx.declares(name) {
+        return None;
+    }
+    let next = skip_ws(b, end);
+    let assigned = b.get(next) == Some(&b'=') && !matches!(b.get(next + 1), Some(b'=' | b'>'));
+    let key_position =
+        b.get(next) == Some(&b':') && matches!(prev_significant(b, start), Some((_, b'{' | b',')));
+    if assigned || key_position {
+        return None;
+    }
+    Some(match name {
+        "responseBody" => "res.getBody()",
+        "responseHeaders" => "res.getHeaders()",
+        _ => "res.getResponseTime()",
+    })
+}
+
+/// True when `name` appears as a free identifier in code: outside strings, comments and
+/// regexes, not a property (`x.name`), with `${}` holes of templates read as code.
+pub(crate) fn uses_global(code: &str, name: &str) -> bool {
+    let b = code.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'`' {
+            let end = template_end(code, i);
+            let mut k = i + 1;
+            while k < end {
+                match b[k] {
+                    b'\\' => k += 2,
+                    b'$' if b.get(k + 1) == Some(&b'{') => {
+                        let Some(close) = find_close(code, k + 1) else {
+                            break;
+                        };
+                        if uses_global(&code[k + 2..close], name) {
+                            return true;
+                        }
+                        k = close + 1;
+                    }
+                    _ => k += 1,
+                }
+            }
+            i = end;
+        } else if let Some(end) = skip_opaque(code, i) {
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            if &code[i..end] == name && !is_property_access(b, i) && !is_object_key(b, i, end) {
+                return true;
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+/// True when the identifier at `i..end` is an object key (`{k: v}`, `, k: v`), not a use.
+fn is_object_key(b: &[u8], i: usize, end: usize) -> bool {
+    b.get(skip_ws(b, end)) == Some(&b':')
+        && matches!(prev_significant(b, i), Some((_, b'{' | b',')))
+}
+
+/// Whether a script needs `const CryptoJS = require('crypto-js');` put on top: it uses the
+/// global and neither declares it nor already requires the module.
+pub(crate) fn needs_cryptojs_require(code: &str) -> bool {
+    uses_global(code, "CryptoJS")
+        && !declares(&blank_opaque(code), "CryptoJS")
+        && !requires_module(code, "crypto-js")
+}
+
+/// Globals Postman scripts use that the app's scripts do not serve.
+pub(crate) const UNAVAILABLE_GLOBALS: [&str; 2] = ["cheerio", "xml2Json"];
+
+/// The unavailable globals the script uses as free identifiers without declaring them.
+pub(crate) fn unavailable_globals(code: &str) -> Vec<&'static str> {
+    UNAVAILABLE_GLOBALS
+        .into_iter()
+        .filter(|n| uses_global(code, n) && !declares(&blank_opaque(code), n))
+        .collect()
+}
+
+/// The code with strings, comments and regexes blanked, so a text search sees only code.
+fn blank_opaque(code: &str) -> String {
+    let (b, mut out, mut i) = (code.as_bytes(), String::new(), 0);
+    while i < b.len() {
+        match skip_opaque(code, i) {
+            Some(end) => {
+                out.push(' ');
+                i = end;
+            }
+            None => {
+                let n = code[i..].chars().next().map_or(1, char::len_utf8);
+                out.push_str(&code[i..i + n]);
+                i += n;
+            }
+        }
+    }
+    out
+}
+
+/// End of whitespace and comments starting at `i`.
+fn skip_trivia(src: &str, mut i: usize) -> usize {
+    let b = src.as_bytes();
+    loop {
+        i = skip_ws(b, i);
+        let comment = b.get(i) == Some(&b'/') && matches!(b.get(i + 1), Some(b'/' | b'*'));
+        match skip_opaque(src, i).filter(|_| comment) {
+            Some(end) => i = end,
+            None => return i,
+        }
+    }
+}
+
+/// Byte offset just after the last leading directive (`'use strict';`), or 0 without one.
+/// Only a string-literal statement ending at `;`, a newline or the end counts.
+pub(crate) fn directive_prologue_end(code: &str) -> usize {
+    let b = code.as_bytes();
+    let (mut end, mut i) = (0, skip_trivia(code, 0));
+    while matches!(b.get(i), Some(b'\'' | b'"')) {
+        let Some(lit) = skip_opaque(code, i) else {
+            break;
+        };
+        let next = skip_trivia(code, lit);
+        let stop = if b.get(next) == Some(&b';') {
+            next + 1
+        } else if next >= b.len()
+            || (code[lit..next].contains('\n') && !b"+-*/%.([,?:=<>&|^`".contains(&b[next]))
+        {
+            lit
+        } else {
+            break;
+        };
+        end = stop;
+        i = skip_trivia(code, stop);
+    }
+    end
+}
+
+/// True when the code calls `require("name")` outside comments and strings; spacing and
+/// quote style do not matter.
+pub(crate) fn requires_module(code: &str, name: &str) -> bool {
+    let b = code.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if let Some(end) = skip_opaque(code, i) {
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            if &code[i..end] == "require" && !is_property_access(b, i) {
+                let open = skip_trivia(code, end);
+                let arg = skip_trivia(code, open + 1);
+                if b.get(open) == Some(&b'(')
+                    && matches!(b.get(arg), Some(b'\'' | b'"'))
+                    && let Some(lit) = skip_opaque(code, arg)
+                    && code[arg + 1..lit.saturating_sub(1)] == *name
+                    && b.get(skip_trivia(code, lit)) == Some(&b')')
+                {
+                    return true;
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+/// True when the script binds `name` itself (`var`, `let`, `const`, `function`, `catch`).
+fn declares(src: &str, name: &str) -> bool {
+    let b = src.as_bytes();
+    let mut from = 0;
+    while let Some(off) = src[from..].find(name) {
+        let at = from + off;
+        from = at + name.len();
+        let bounded = (at == 0 || !is_ident_byte(b[at - 1]))
+            && !b.get(from).is_some_and(|c| is_ident_byte(*c));
+        if !bounded {
+            continue;
+        }
+        let before = src[..at].trim_end();
+        let word = before.rsplit(|c: char| !c.is_alphanumeric()).next();
+        if word.is_some_and(|w| ["var", "let", "const", "function"].contains(&w)) {
+            return true;
+        }
+    }
+    false
+}
+
+/// `tests['name'] = expr;` becomes a `test(...)` call asserting the expression.
+fn rewrite_tests_bracket(
+    src: &str,
+    start: usize,
+    end: usize,
+    out: &str,
+    cx: &mut Ctx,
+) -> Option<(String, usize)> {
+    let b = src.as_bytes();
+    let statement_start = matches!(
+        prev_significant(b, start),
+        None | Some((_, b';' | b'{' | b'}'))
+    );
+    let open = skip_ws(b, end);
+    if !statement_start || b.get(open) != Some(&b'[') {
+        return None;
+    }
+    let close = cx.find_close(src, open)?;
+    let name = src[open + 1..close].trim();
+    let name_end = skip_opaque(name, 0)?;
+    if name_end != name.len() || !matches!(name.as_bytes()[0], b'\'' | b'"' | b'`') {
+        return None;
+    }
+    let eq = skip_ws(b, close + 1);
+    if b.get(eq) != Some(&b'=') || matches!(b.get(eq + 1), Some(b'=')) {
+        return None;
+    }
+    let rhs_start = eq + 1;
+    let mut k = rhs_start;
+    let mut depth = 0usize;
+    while k < b.len() {
+        if let Some(e) = skip_opaque(src, k) {
+            k = e;
+            continue;
+        }
+        match b[k] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b';' | b'\n' if depth == 0 => break,
+            _ => {}
+        }
+        k += 1;
+    }
+    let rhs = translate_code(src[rhs_start..k].trim(), cx);
+    let next = if b.get(k) == Some(&b';') { k + 1 } else { k };
+    let indent: String = out
+        .rsplit('\n')
+        .next()
+        .unwrap_or("")
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+    // Single-quoted names are re-quoted the way the reference prints new literals.
+    let shown = match name.as_bytes()[0] {
+        b'\'' if !name.contains(['"', '\\']) => format!("\"{}\"", &name[1..name.len() - 1]),
+        _ => name.to_string(),
+    };
+    let text = format!(
+        "test({shown}, function() {{\n{indent}  expect(Boolean({rhs})).to.be.true;\n{indent}}});"
+    );
+    Some((text, next))
+}
+
+/// The first `pm.`/`postman.` member chain in `code`, as the run-time error names it.
+pub(crate) fn first_pm_chain(code: &str) -> Option<String> {
+    let mut found = Vec::new();
+    collect_unsupported(code, &mut found, &mut HashSet::new());
+    found.into_iter().next()
+}
+
+/// Collect the distinct `pm.`/`postman.` member chains that survive translation.
+fn collect_unsupported(code: &str, found: &mut Vec<String>, seen: &mut HashSet<String>) {
+    let b = code.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if let Some(end) = skip_opaque(code, i) {
+            if b[i] == b'`' {
+                collect_template_holes(code, i, end, found, seen);
+            }
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            let word = &code[i..end];
+            let mut next = end;
+            if (word == "pm" || word == "postman") && !is_property_access(b, i) {
+                let mut chain = word.to_string();
+                while b.get(next) == Some(&b'.')
+                    && b.get(next + 1).is_some_and(|c| is_ident_byte(*c))
+                {
+                    let e = ident_end(b, next + 1);
+                    chain.push_str(&code[next..e]);
+                    next = e;
+                }
+                if chain.contains('.') && seen.insert(chain.clone()) {
+                    found.push(chain);
+                }
+            }
+            i = next;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn collect_template_holes(
+    code: &str,
+    start: usize,
+    end: usize,
+    found: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+) {
+    let b = code.as_bytes();
+    let mut i = start + 1;
+    while i < end {
+        match b[i] {
+            b'\\' => i += 2,
+            b'$' if b.get(i + 1) == Some(&b'{') => {
+                let Some(close) = find_close(code, i + 1) else {
+                    return;
+                };
+                collect_unsupported(&code[i + 2..close], found, seen);
+                i = close + 1;
+            }
+            _ => i += 1,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn t(src: &str) -> String {
+        translate(src).code
+    }
+
+    /// Every scripted corpus fixture must reproduce the reference bytes.
+    #[test]
+    fn corpus_scripts_match_reference_output() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture = std::fs::read_to_string(
+            root.join("tests/fixtures/postman/collections/postman-with-scripts.json"),
+        )
+        .unwrap();
+        let expected = std::fs::read_to_string(root.join(
+            "tests/fixtures/reference/2026-10-09-import-parity/expected/postman-with-scripts/Login.yml",
+        ))
+        .unwrap();
+        let doc: serde_json::Value = serde_json::from_str(&fixture).unwrap();
+        let mut seen = 0;
+        let mut stack = vec![&doc];
+        while let Some(v) = stack.pop() {
+            match v {
+                serde_json::Value::Object(m) => {
+                    if let Some(lines) = m.get("exec").and_then(|e| e.as_array()) {
+                        let joined: Vec<&str> = lines.iter().filter_map(|l| l.as_str()).collect();
+                        let out = t(&joined.join("\n"));
+                        let block: String = out.lines().map(|l| format!("        {l}\n")).collect();
+                        assert!(expected.contains(&block), "missing in reference:\n{block}");
+                        seen += 1;
+                    }
+                    stack.extend(m.values());
+                }
+                serde_json::Value::Array(a) => stack.extend(a.iter()),
+                _ => {}
+            }
+        }
+        assert_eq!(seen, 2);
+    }
+
+    /// The reference emits invalid JS for these (`pm.response = ...`, `function f(pm.response)`);
+    /// Apinata leaves a reassigned or shadowed alias alone. Each entry is the output it gives.
+    const KNOWN_REFERENCE_DEFECTS: &[(&str, &str)] = &[
+        (
+            "alias-5",
+            "let r = pm.response;\nr = somethingElse();\nr.json();",
+        ),
+        (
+            "alias-6",
+            "const r = pm.response;\nfunction f(r) {\n  return r.json();\n}\nf(other);\nr.text();",
+        ),
+        // The reference also rewrites the property name `responseTime` after `res.`, which
+        // gives `res.res.getResponseTime()`; Apinata keeps property names alone.
+        (
+            "send_request-8",
+            "await bru.sendRequest(\n  {url: 'https://example.com', headers: 'X-A: 1'},\n  async function(err, res) {\n    expect(res.responseTime).to.be.below(100);\n  }\n);",
+        ),
+        // The reference drops a callback that is not a function literal, losing the call's
+        // result handling; Apinata keeps it.
+        ("send_request-39", "await bru.sendRequest('u', cb);"),
+        // The reference replaces the whole enclosing call when a status helper is its argument,
+        // dropping `pm.expect(`; Apinata leaves a helper that is not a statement alone.
+        (
+            "response_helpers-36",
+            "expect(pm.response.to.be.serverError).to.be.false;",
+        ),
+        (
+            "response_helpers-47",
+            "expect(pm.response.to.be.withBody).to.be.true;",
+        ),
+    ];
+
+    fn corpus() -> (Vec<serde_json::Value>, serde_json::Value) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/reference/2026-10-20-postman-script-translation");
+        let read = |f: &str| std::fs::read_to_string(dir.join(f)).unwrap();
+        let cases: Vec<serde_json::Value> = serde_json::from_str(&read("cases.json")).unwrap();
+        (cases, serde_json::from_str(&read("expected.json")).unwrap())
+    }
+
+    /// Every case must reproduce the reference output, or the pinned deviation.
+    #[test]
+    fn corpus_matches_reference() {
+        let (cases, expected) = corpus();
+        let (mut checked, mut wrong) = (0, Vec::new());
+        for c in &cases {
+            let id = c["id"].as_str().unwrap();
+            let want = match KNOWN_REFERENCE_DEFECTS.iter().find(|(d, _)| *d == id) {
+                Some((_, ours)) => ours,
+                None => expected[id]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("no expected output for {id}")),
+            };
+            let got = t(c["script"].as_str().unwrap());
+            if got != want {
+                wrong.push(format!("case {id}\n--- want\n{want}\n--- got\n{got}\n"));
+            }
+            checked += 1;
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+        assert!(checked >= 100, "only {checked} cases");
+    }
+
+    /// Every group keeps a meaningful number of cases and every case has an expected entry.
+    #[test]
+    fn corpus_groups_are_populated() {
+        let (cases, expected) = corpus();
+        let mut counts = std::collections::BTreeMap::new();
+        for c in &cases {
+            *counts.entry(c["group"].as_str().unwrap()).or_insert(0) += 1;
+            assert!(expected.get(c["id"].as_str().unwrap()).is_some());
+        }
+        for (g, n) in counts {
+            assert!(n >= 6, "group {g} has {n} cases");
+        }
+    }
+
+    /// Outputs below were produced by the reference on the same input.
+    #[test]
+    fn alias_declarations_leave_like_the_reference() {
+        let cases: &[(&str, &str)] = &[
+            (
+                "const r = pm.response;\n\nconst b = r.json();\n\nconsole.log(b);",
+                "const b = res.getBody();\n\nconsole.log(b);",
+            ),
+            (
+                "function f() {\n  const r = pm.response;\n  return r.json();\n}\nf();",
+                "function f() {\n  return res.getBody();\n}\nf();",
+            ),
+            (
+                "const a = pm.response, x = 5;\nconsole.log(a.code, x);",
+                "const x = 5;\nconsole.log(res.getStatus(), x);",
+            ),
+            (
+                "const x = 5, a = pm.response;\nconsole.log(a.code, x);",
+                "const x = 5;\nconsole.log(res.getStatus(), x);",
+            ),
+            (
+                "const x = 5, a = pm.response, y = 6;\nconsole.log(a.code, x, y);",
+                "const x = 5, y = 6;\nconsole.log(res.getStatus(), x, y);",
+            ),
+            (
+                "// head\nconst r = pm.response; // trailing\n// after\nr.json();",
+                "// after\nres.getBody();",
+            ),
+            (
+                "// lead\n\nconst r = pm.response;\n\nr.json();",
+                "res.getBody();",
+            ),
+            (
+                "foo(); // c1\n// c2\nconst r = pm.response;\nr.json();",
+                "foo(); // c1\nres.getBody();",
+            ),
+            (
+                "  const r = pm.response;   \n  r.json();\n",
+                "  res.getBody();\n",
+            ),
+            ("const r = pm.response;", ""),
+            ("const r = pm.response\n;\nr.json();", "res.getBody();"),
+            (
+                "const e = pm.environment;\nconsole.log(`${e.get('b')}`);",
+                "console.log(`${bru.getEnvVar('b')}`);",
+            ),
+            (
+                "const p = pm.environment;\nconst q = p;\nq.get('a');",
+                "bru.getEnvVar('a');",
+            ),
+            (
+                "const r = pm.response.code;\nr",
+                "const r = res.getStatus();\nr",
+            ),
+            (
+                "const t = pm.test;\nt('x', function(){});",
+                "test('x', function(){});",
+            ),
+            (
+                "const { response, environment: env } = pm;\nresponse.json();\nenv.get('a');",
+                "res.getBody();\nbru.getEnvVar('a');",
+            ),
+            (
+                "const r = pm.response;\nif (r.code === 200) {\n  console.log(r.json());\n}\n",
+                "if (res.getStatus() === 200) {\n  console.log(res.getBody());\n}\n",
+            ),
+        ];
+        for (src, want) in cases {
+            assert_eq!(t(src), *want, "input {src:?}");
+        }
+    }
+
+    /// Where the reference would emit invalid JavaScript, the alias is left as written.
+    #[test]
+    fn unsafe_aliases_are_left_alone() {
+        for src in [
+            "let r = pm.response;\nr++;\nr.json()",
+            "const r = pm.response;\nconst o = { r };\nr.json();",
+            "const r = pm.response;\nconst o = { r: 1 };\nr.json();",
+            "const r = pm.response;\nconst f = (r) => r.json();",
+            "const r = pm.response;\nconst f = r => r.json();",
+            "const r = pm.response;\ntry { x() } catch (r) { r.json() }",
+            "const r = pm.response;\n{ const r = 1; }\nr.json();",
+            "const r = pm.response;\nclass A { m(r) { return r.json(); } }",
+            "const p = pm;\np.environment.get('a');",
+            "for (const r = pm.response; r.code < 0; ) {}",
+        ] {
+            // The declaration survives untouched, so nothing was resolved.
+            assert_eq!(t(src).lines().next(), src.lines().next(), "{src:?}");
+        }
+        assert_eq!(
+            t("const r = pm.response;\nconst o = { r };\nr.json();"),
+            "const r = pm.response;\nconst o = { r };\nr.json();"
+        );
+        // A resolved alias is no longer reported; one left in place still is.
+        assert!(
+            translate("const r = pm.response;\nr.json();")
+                .unsupported
+                .is_empty()
+        );
+        assert_eq!(
+            translate("let r = pm.response;\nr = x();").unsupported,
+            ["pm.response"]
+        );
+        // A partly resolved destructuring keeps its statement so `sendRequest` stays bound.
+        assert_eq!(
+            t("const { response, sendRequest } = pm;\nresponse.json();"),
+            "const { response, sendRequest } = pm;\nres.getBody();"
+        );
+    }
+
+    #[test]
+    fn aliases_in_hostile_input_stay_linear() {
+        linear(50_000, |k| "const r = pm.response;\n".repeat(k));
+        linear(40_000, |k| {
+            (0..k)
+                .map(|i| format!("const a{i} = pm.response; a{i}.json();\n"))
+                .collect()
+        });
+        // A chain longer than the pass limit settles after five passes.
+        linear(2_000, |k| {
+            (0..k)
+                .map(|i| format!("const c{} = c{i};\n", i + 1))
+                .collect::<String>()
+                + "const c0 = pm.environment;\n"
+        });
+        linear(50_000, |k| "const a = 1 +\n".repeat(k));
+        linear(30_000, |k| "const f = (".repeat(k) + &") => 1".repeat(k));
+        linear(5_000, |k| "`${const r = pm.response; r".repeat(k));
+        linear(50_000, |k| "const {a, ".repeat(k));
+    }
+
+    #[test]
+    fn blank_scripts_stay_blank() {
+        assert_eq!(t(""), "");
+    }
+
+    #[test]
+    fn simple_table_rows() {
+        assert_eq!(t("pm.environment.get('a');"), "bru.getEnvVar('a');");
+        assert_eq!(t("pm.variables.set('a', 1);"), "bru.setVar('a', 1);");
+        assert_eq!(
+            t("pm.collectionVariables.unset('a')"),
+            "bru.deleteCollectionVar('a')"
+        );
+        assert_eq!(t("pm.globals.get('g')"), "bru.getGlobalEnvVar('g')");
+        assert_eq!(t("pm.expect(1).to.equal(1)"), "expect(1).to.equal(1)");
+        assert_eq!(t("pm.expect.fail('x')"), "expect.fail('x')");
+        assert_eq!(
+            t("const j = pm.response.json();"),
+            "const j = res.getBody();"
+        );
+        assert_eq!(t("pm.response.code"), "res.getStatus()");
+        assert_eq!(t("pm.response.responseTime"), "res.getResponseTime()");
+        assert_eq!(t("pm.response.headers.get('X')"), "res.getHeader('X')");
+        assert_eq!(t("pm.request.url"), "req.getUrl()");
+        assert_eq!(t("pm.request.url.getHost()"), "req.getHost()");
+        assert_eq!(t("pm.request.headers.get('a')"), "req.headerList.get('a')");
+        assert_eq!(t("pm.environment.name"), "bru.getEnvName()");
+        assert_eq!(t("pm.response.size().body"), "res.getSize().body");
+        assert_eq!(t("pm.response.size()"), "res.getSize()");
+        assert_eq!(
+            t("pm.cookies.jar().get(u, 'n')"),
+            "bru.cookies.jar().getCookie(u, 'n')"
+        );
+        assert_eq!(t("pm.cookies.remove('c')"), "bru.cookies.delete('c')");
+        assert_eq!(t("pm.execution.skipRequest()"), "bru.runner.skipRequest()");
+        assert_eq!(t("request.method"), "req.getMethod()");
+        assert_eq!(t("responseCode.code"), "res.getStatus()");
+    }
+
+    #[test]
+    fn postman_prefix_and_legacy_calls() {
+        assert_eq!(
+            t("postman.setEnvironmentVariable('a', 1)"),
+            "bru.setEnvVar('a', 1)"
+        );
+        assert_eq!(
+            t("postman.getEnvironmentVariable('a')"),
+            "bru.getEnvVar('a')"
+        );
+        assert_eq!(
+            t("postman.clearEnvironmentVariable('a')"),
+            "bru.deleteEnvVar('a')"
+        );
+        assert_eq!(t("postman.getResponseHeader('A')"), "res.getHeader('A')");
+    }
+
+    #[test]
+    fn complex_forms() {
+        assert_eq!(
+            t("pm.response.to.have.status(200);"),
+            "expect(res.getStatus()).to.equal(200);"
+        );
+        assert_eq!(
+            t("pm.response.to.not.have.status(404)"),
+            "expect(res.getStatus()).to.not.equal(404)"
+        );
+        assert_eq!(
+            t("pm.response.to.have.header('Content-Type')"),
+            "expect(res.getHeaders()).to.have.property('Content-Type'.toLowerCase())"
+        );
+        assert_eq!(
+            t("pm.response.to.have.body('x')"),
+            "expect(res.getBody()).to.equal('x')"
+        );
+        assert_eq!(
+            t("pm.response.to.have.jsonSchema(s)"),
+            "expect(res.getBody()).to.have.jsonSchema(s)"
+        );
+        assert_eq!(
+            t("pm.response.to.have.jsonBody('a')"),
+            "expect(res.getBody()).to.have.jsonBody('a')"
+        );
+        assert_eq!(
+            t("pm.response.to.be.withBody;"),
+            "expect(res.getBody()).to.not.equal(undefined);"
+        );
+        assert_eq!(t("pm.response.text()"), "JSON.stringify(res.getBody())");
+        assert_eq!(
+            t("if (pm.environment.has('k')) {}"),
+            "if (bru.getEnvVar('k') !== undefined && bru.getEnvVar('k') !== null) {}"
+        );
+        assert_eq!(t("pm.setNextRequest(null);"), "bru.runner.stopExecution();");
+        assert_eq!(
+            t("pm.setNextRequest('b');"),
+            "bru.runner.setNextRequest('b');"
+        );
+        assert_eq!(
+            t("pm.setNextRequest('null');"),
+            "bru.runner.setNextRequest('null');"
+        );
+        assert_eq!(
+            t("pm.execution.setNextRequest(null)"),
+            "bru.runner.stopExecution()"
+        );
+        assert_eq!(
+            t("pm.request.headers.add({ key: 'A', value: pm.variables.get('v') });"),
+            "req.setHeader('A', bru.getVar('v'));"
+        );
+        assert_eq!(
+            t("pm.request.headers.insert(h, before)"),
+            "req.headerList.add(h)"
+        );
+    }
+
+    #[test]
+    fn nested_calls_translate_inside_arguments() {
+        assert_eq!(
+            t("pm.test('t', () => { pm.expect(pm.response.json().id).to.be.ok; });"),
+            "test('t', () => { expect(res.getBody().id).to.be.ok; });"
+        );
+    }
+
+    #[test]
+    fn tests_bracket_and_legacy_globals() {
+        assert_eq!(
+            t("tests['ok'] = responseCode.code === 200;"),
+            "test(\"ok\", function() {\n  expect(Boolean(res.getStatus() === 200)).to.be.true;\n});"
+        );
+        assert_eq!(
+            t("var d = JSON.parse(responseBody);"),
+            "var d = res.getBody();"
+        );
+        assert_eq!(
+            t("console.log(responseBody, responseTime);"),
+            "console.log(res.getBody(), res.getResponseTime());"
+        );
+        assert_eq!(
+            t("const responseBody = 1; use(responseBody);"),
+            "const responseBody = 1; use(responseBody);"
+        );
+    }
+
+    #[test]
+    fn strings_comments_templates_and_names_are_untouched() {
+        let keep = "log('pm.environment.get(x)'); // pm.test(\n/* pm.expect( */ \"pm.test\";";
+        assert_eq!(t(keep), keep);
+        assert_eq!(t("`a pm.test ${pm.test}`"), "`a pm.test ${test}`");
+        for keep in [
+            "mypm.environment.get('a')",
+            "obj.pm.test('a')",
+            "pm_x.test",
+            "xrequest.url",
+            "other.request.url",
+        ] {
+            assert_eq!(t(keep), keep);
+        }
+    }
+
+    #[test]
+    fn unsupported_chains_are_listed_in_first_seen_order() {
+        let r = translate(
+            "pm.require('x'); pm.visualizer.set(t, d); pm.require(y);\npm.environment.set('a', 1); postman.setNextRequest('x'); log('pm.nope'); pm.sendRequest(x);",
+        );
+        assert_eq!(r.unsupported, ["pm.require", "pm.visualizer.set"]);
+        assert!(r.code.contains("bru.setEnvVar"));
+        assert!(r.replaced >= 2);
+    }
+
+    /// Run `f` on a thread with a small stack so unbounded recursion fails here.
+    fn bounded<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .expect("translator overflowed or panicked")
+    }
+
+    /// Smallest CPU time of three translations of `src`, each on the
+    /// small-stack thread. CPU time leaves out the time a busy machine keeps
+    /// the thread waiting, and interference only adds, so the minimum is the
+    /// least disturbed run.
+    fn best_time(src: &str) -> std::time::Duration {
+        (0..3)
+            .map(|_| {
+                let src = src.to_owned();
+                bounded(move || {
+                    let start = cpu_time::ThreadTime::now();
+                    let _ = translate(&src);
+                    start.elapsed()
+                })
+            })
+            .min()
+            .expect("three runs")
+    }
+
+    /// Asserts that translating `make(n)` costs about four times `make(n / 4)`,
+    /// not sixteen times. Both are measured back to back, so the ratio does
+    /// not depend on how busy the machine is, and the bound of ten sits
+    /// midway between linear (4) and quadratic (16), wide enough for stack and
+    /// allocator noise. The full-size run also proves the input does not
+    /// overflow the small stack. Inputs whose n/4 run is under 2 ms (deep
+    /// nesting) get only a loose bound, since their timing is noise.
+    fn linear(n: usize, make: impl Fn(usize) -> String) {
+        let small = best_time(&make(n / 4));
+        let full = best_time(&make(n));
+        // Below this a timing is mostly noise, so the ratio is not trusted.
+        let floor = std::time::Duration::from_millis(2);
+        assert!(
+            full < small.max(floor) * 10,
+            "size {n} took {full:?}, size {} took {small:?}: not linear",
+            n / 4
+        );
+    }
+
+    #[test]
+    fn many_legacy_globals_translate_in_linear_time() {
+        linear(20_000, |k| "x = responseBody;\n".repeat(k));
+    }
+
+    #[test]
+    fn deep_nesting_does_not_overflow_the_stack() {
+        linear(1000, |k| "pm.setNextRequest(".repeat(k) + &")".repeat(k));
+        linear(5000, |k| "tests['a'] = ".repeat(k));
+        linear(5000, |k| "`${".repeat(k));
+    }
+
+    #[test]
+    fn long_chains_and_regex_runs_are_bounded() {
+        linear(350_000, |k| "pm.".repeat(k));
+        linear(200_000, |k| "(/[/[".repeat(k));
+    }
+
+    #[test]
+    fn unclosed_calls_and_many_distinct_chains_are_bounded() {
+        linear(55_000, |k| "pm.setNextRequest(".repeat(k));
+        linear(60_000, |k| (0..k).map(|i| format!("pm.a{i} ")).collect());
+    }
+
+    #[test]
+    fn send_request_in_hostile_input_stays_bounded() {
+        linear(55_000, |k| "pm.sendRequest(".repeat(k));
+        linear(1000, |k| {
+            "pm.sendRequest('u', function (e, r) {".repeat(k) + &"});".repeat(k)
+        });
+        linear(20_000, |k| {
+            "pm.sendRequest('u')".to_string() + &".then(function (r) { return r; })".repeat(k)
+        });
+        linear(20_000, |k| {
+            "pm.sendRequest('u', function (e, r) { r.json(); });\n".repeat(k)
+        });
+        linear(40_000, |k| "pm.sendRequest('a'); ".repeat(k));
+        linear(30_000, |k| {
+            "pm.sendRequest({url: 'u', header: [".to_string()
+                + &"{key: 'a', value: 'b'}, ".repeat(k)
+                + "]}, function (e, r) {});"
+        });
+        linear(20_000, |k| {
+            (0..k)
+                .map(|i| format!("const o{i} = {{header: [{{key: 'a', value: 'b'}}]}};\n"))
+                .collect::<String>()
+                + &"pm.sendRequest(o0);\n".repeat(k / 2)
+        });
+        linear(5_000, |k| {
+            "const o = {header: [], body: {mode: 'urlencoded', urlencoded: []}, ".repeat(k)
+        });
+        linear(30_000, |k| {
+            "pm.sendRequest(x, function (e, r) { (".repeat(k)
+        });
+        linear(30_000, |k| "pm.sendRequest(x, (e, r) => ".repeat(k));
+        linear(5_000, |k| "pm.sendRequest(`${".repeat(k));
+    }
+
+    #[test]
+    fn send_request_tracks_where_await_is_legal() {
+        for (src, want) in [
+            (
+                "function f() { pm.sendRequest('u'); }",
+                "function f() { bru.sendRequest('u'); }",
+            ),
+            (
+                "async function f() { pm.sendRequest('u'); }",
+                "async function f() { await bru.sendRequest('u'); }",
+            ),
+            (
+                "const f = async () => pm.sendRequest('u');",
+                "const f = async () => await bru.sendRequest('u');",
+            ),
+            (
+                "const f = () => pm.sendRequest('u'), g = 1;\npm.sendRequest('v');",
+                "const f = () => bru.sendRequest('u'), g = 1;\nawait bru.sendRequest('v');",
+            ),
+            (
+                "x.forEach(n => { pm.sendRequest(n); });",
+                "x.forEach(n => { bru.sendRequest(n); });",
+            ),
+            (
+                "class A { async m() { pm.sendRequest('u'); } n() { pm.sendRequest('u'); } }",
+                "class A { async m() { await bru.sendRequest('u'); } n() { bru.sendRequest('u'); } }",
+            ),
+            (
+                "if (a) { pm.sendRequest('u'); } else { pm.sendRequest('v'); }",
+                "if (a) { await bru.sendRequest('u'); } else { await bru.sendRequest('v'); }",
+            ),
+        ] {
+            assert_eq!(t(src), want, "{src}");
+        }
+    }
+
+    #[test]
+    fn send_request_edge_shapes_keep_valid_output() {
+        // Nothing to translate, or a shape the translator will not guess at.
+        for keep in [
+            "pm.sendRequest();",
+            "pm.sendRequest({url: 'u', ...rest}, cb);",
+            "pm.sendRequest({url: 'u', header}, cb);",
+            "pm.sendRequest(",
+        ] {
+            assert!(t(keep).contains("pm.sendRequest"), "{keep}");
+        }
+        assert_eq!(
+            t("await pm.sendRequest('u');"),
+            "await bru.sendRequest('u');"
+        );
+        assert_eq!(
+            t("const r = pm.sendRequest('u').foo;"),
+            "const r = (await bru.sendRequest('u')).foo;"
+        );
+        assert!(
+            translate("pm.sendRequest('u', function (e, r) {});")
+                .unsupported
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn response_access_follows_nested_scopes() {
+        let wrap = |body: &str| format!("pm.sendRequest('u', function (e, res) {{ {body} }});");
+        for (body, want) in [
+            (
+                "[1].map((res) => res.code); res.code;",
+                "[1].map((res) => res.code); res.status;",
+            ),
+            (
+                "[1].map(res => res.code); res.code;",
+                "[1].map(res => res.code); res.status;",
+            ),
+            (
+                "try {} catch (res) { res.code } res.code",
+                "try {} catch (res) { res.code } res.status",
+            ),
+            (
+                "f(function(){var res=1;res.code}); res.code",
+                "f(function(){var res=1;res.code}); res.status",
+            ),
+            (
+                "f(function (x) { res.code; }); res.code;",
+                "f(function (x) { res.status; }); res.status;",
+            ),
+            ("if (res) { res.code; }", "if (res) { res.status; }"),
+            (
+                "`${[1].map(res => res.code)} ${res.code}`;",
+                "`${[1].map(res => res.code)} ${res.status}`;",
+            ),
+        ] {
+            // A long call wraps its arguments; fold that back to compare the body alone.
+            let got = t(&wrap(body))
+                .replace("(\n  ", "(")
+                .replace(",\n  ", ", ")
+                .replace("\n)", ")");
+            assert_eq!(
+                got,
+                format!("await bru.sendRequest('u', async function(e, res) {{ {want} }});"),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn scope_tracking_stays_linear() {
+        let inner = "[1].map(function (res) { return res.code; }); (res) => res.code; try {} catch (res) {}\n";
+        linear(20_000, |k| {
+            "pm.sendRequest('u', function (e, res) {".to_string() + &inner.repeat(k) + "});"
+        });
+        linear(30_000, |k| {
+            "pm.sendRequest('u', function (e, res) {".to_string() + &"f((res) => {".repeat(k)
+        });
+        linear(30_000, |k| {
+            "pm.sendRequest('u', function (e, res) { (res".to_string() + &", (res".repeat(k)
+        });
+        linear(5_000, |k| {
+            "pm.sendRequest('u', function (e, res) { `${".to_string() + &"`${".repeat(k)
+        });
+    }
+    #[test]
+    fn translated_helpers_are_not_reported_but_untranslated_ones_are() {
+        let r = translate(
+            "pm.response.to.be.ok;\npm.response.to.be.json;\npm.response.to.be.withBody;",
+        );
+        assert_eq!(r.unsupported, ["pm.response.to.be.json"]);
+        assert_eq!(r.replaced, 2);
+    }
+
+    #[test]
+    fn status_helpers_are_rewritten_only_as_whole_statements() {
+        assert_eq!(
+            t(
+                "const ok = pm.response.to.be.ok;\nfoo(pm.response.to.be.ok);\nx = pm.response.to.be.ok;"
+            ),
+            "const ok = pm.response.to.be.ok;\nfoo(pm.response.to.be.ok);\nx = pm.response.to.be.ok;"
+        );
+        assert_eq!(
+            t("`${pm.response.to.be.ok}`;"),
+            "`${pm.response.to.be.ok}`;"
+        );
+        assert_eq!(
+            t("a();\npm.response.to.be.ok;"),
+            "a();\nexpect(res.getStatus()).to.be.within(200, 299);"
+        );
+    }
+
+    #[test]
+    fn response_helpers_in_hostile_input_stay_bounded() {
+        linear(60_000, |k| "pm.response.to.be.ok;\n".repeat(k));
+        linear(60_000, |k| "pm.response.to.be.ok\n".repeat(k));
+        linear(55_000, |k| "pm.response.to.be.ok(".repeat(k));
+        linear(55_000, |k| "pm.response.to.be.not.".repeat(k));
+        linear(100_000, |k| "else ".repeat(k) + "pm.response.to.be.ok");
+        linear(40_000, |k| "pm.response.to.be.ok ".repeat(k) + "\n.x");
+        linear(5_000, |k| "`${".repeat(k) + "pm.response.to.be.ok");
+    }
+}
+
+#[cfg(test)]
+mod global_tests {
+    use super::*;
+
+    #[test]
+    fn uses_global_key_and_member_positions() {
+        let cases = [
+            ("var o = {G: 1};", false),
+            ("var o = {a: 1, G: 1};", false),
+            ("x.G", false),
+            ("var o = {G};", true),
+            ("a ? G : b", true),
+            ("G.x", true),
+        ];
+        for (code, want) in cases {
+            assert_eq!(uses_global(code, "G"), want, "{code}");
+        }
+    }
+
+    #[test]
+    fn prologue_end_offsets() {
+        let end = |s: &str| directive_prologue_end(s);
+        assert_eq!(end("var a;"), 0);
+        assert_eq!(end("'use strict';\nvar a;"), "'use strict';".len());
+        assert_eq!(end("\"use strict\"\nvar a;"), "\"use strict\"".len());
+        assert_eq!(
+            end("// c\n'a'; /* x */ 'b';\nx"),
+            "// c\n'a'; /* x */ 'b';".len()
+        );
+        assert_eq!(end("'a' + b;"), 0);
+        assert_eq!(end("'a'.length;"), 0);
+    }
+
+    #[test]
+    fn requires_crypto_js_by_token() {
+        assert!(requires_module("require ( \"crypto-js\" )", "crypto-js"));
+        assert!(!requires_module("// require('crypto-js')", "crypto-js"));
+        assert!(!requires_module(
+            "var s = \"require('crypto-js')\";",
+            "crypto-js"
+        ));
+    }
+}

@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "getCookies",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\nawait jar.clear();\n\nawait jar.setCookies(\"https://testbench-sanity.usebruno.com\", [\n  { key: \"session\", value: \"abc123\", path: \"/\", secure: true },\n  { key: \"token\", value: \"xyz789\", path: \"/\", secure: true }\n]);"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\njar.getCookies(\"https://testbench-sanity.usebruno.com\", function(error, data) {\n  if(error) {\n    console.error(\"Cookies retrieval error:\", error)\n    throw new Error(`Failed to get cookies: ${error.message || error}`)\n  }\n  \n  test(\"should successfully retrieve cookies array\", function() {\n    expect(error).to.be.null;\n    expect(data).to.not.be.null;\n    expect(data).to.be.an('array');\n    console.log(\"Retrieved cookies count:\", data.length);\n  });\n  \ntest(\"should have valid cookie structure in array\", function() {\n      data.forEach((cookie, index) => {\n        expect(cookie).to.have.property('key');\n        expect(cookie).to.have.property('value');\n        expect(cookie.key).to.be.a('string');\n        expect(cookie.value).to.be.a('string');\n        expect(cookie.domain).to.include('usebruno.com');\n        console.log(`Cookie ${index + 1}:`, cookie);\n      });\n    });\n    \n    test(\"should contain expected cookie properties\", function() {\n      const cookieKeys = data.map(cookie => cookie.key);\n      expect(cookieKeys).to.be.an('array');\n      console.log(\"Found cookie keys:\", cookieKeys);\n    });\n})\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

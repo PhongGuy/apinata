@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "test JSON unsafe-int response",
+    "type": "http",
+    "seq": "13"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"application/json\" },\n  \"content\": \"90071992547409919876\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body.toString()",
+      "value": "eq 90071992547409920000",
+      "enabled": true
+    }
+  ],
+  "docs": "Note: This test is not perfect, we should match the unparsed raw-response with the expected string version of the unsafe-integer"
+}

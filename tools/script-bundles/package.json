@@ -1,0 +1,11 @@
+{
+  "name": "apinata-js-bundles",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "2.1.1",
+    "buffer": "5.7.1",
+    "esbuild": "0.28.2"
+  }
+}

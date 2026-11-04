@@ -1,0 +1,29 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth2"
+  },
+  "auth": {
+    "oauth2": {
+      "grantType": "authorization_code",
+      "callbackUrl": "https://example.com/cb",
+      "authorizationUrl": "https://example.com/auth",
+      "accessTokenUrl": "https://example.com/token",
+      "refreshTokenUrl": "",
+      "clientId": "cid",
+      "clientSecret": "csecret",
+      "scope": "openid",
+      "state": "xyz",
+      "pkce": true,
+      "credentialsPlacement": "body",
+      "credentialsId": "credentials",
+      "tokenSource": "id_token",
+      "tokenPlacement": "header",
+      "tokenHeaderPrefix": "",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": true,
+      "autoRefreshToken": false
+    }
+  }
+}

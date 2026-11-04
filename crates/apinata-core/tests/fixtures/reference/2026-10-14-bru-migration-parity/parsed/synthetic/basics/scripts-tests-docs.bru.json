@@ -1,0 +1,12 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/scripts"
+  },
+  "script": {
+    "req": "const a = 1;\nif (a) {\n  bru.setVar(\"x\", a);\n}",
+    "res": "console.log(res.status);"
+  },
+  "tests": "test(\"ok\", function() {\n  expect(res.status).to.equal(200);\n});",
+  "docs": "# Title\n\nSome *docs*   with trailing spaces   \n  indented four"
+}

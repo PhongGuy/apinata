@@ -1,0 +1,25 @@
+opencollection: 1.0.0
+
+info:
+  name: My Collection
+
+docs:
+  content: |-
+    ### Welcome to Postman! This is your first collection. 
+
+    Collections are your starting point for building and testing APIs. You can use this one to:
+
+    • Group related requests
+    • Test your API in real-world scenarios
+    • Document and share your requests
+
+    Update the name and overview whenever you’re ready to make it yours.
+
+    [Learn more about Postman Collections.](https://learning.postman.com/docs/collections/collections-overview/)
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

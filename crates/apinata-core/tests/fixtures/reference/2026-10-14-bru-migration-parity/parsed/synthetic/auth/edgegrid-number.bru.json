@@ -1,0 +1,19 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "akamai-edgegrid"
+  },
+  "auth": {
+    "akamaiEdgegrid": {
+      "accessToken": "at",
+      "clientToken": "ct",
+      "clientSecret": "cs",
+      "nonce": "n",
+      "timestamp": "t",
+      "baseURL": "https://akab.example.com",
+      "headersToSign": "x-a,x-b",
+      "maxBodySize": 131072
+    }
+  }
+}

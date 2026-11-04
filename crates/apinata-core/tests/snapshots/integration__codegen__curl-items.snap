@@ -1,0 +1,9 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'POST' \
+  --url 'http://x.test/i' \
+  --header 'X-E: =v' \
+  --form 'a="@x"' \
+  --form 'x=1;headers="Content-Disposition: form-data; name=\"k=v\""'

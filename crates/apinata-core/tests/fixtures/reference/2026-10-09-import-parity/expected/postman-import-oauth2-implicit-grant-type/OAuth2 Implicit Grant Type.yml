@@ -1,0 +1,26 @@
+info:
+  name: OAuth2 Implicit Grant Type
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.com/users?X-API-KEY=12345
+  params:
+    - name: X-API-KEY
+      value: "12345"
+      type: query
+  auth:
+    type: oauth2
+    flow: implicit
+    tokenConfig:
+      placement:
+        query: access_token
+      source: access_token
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

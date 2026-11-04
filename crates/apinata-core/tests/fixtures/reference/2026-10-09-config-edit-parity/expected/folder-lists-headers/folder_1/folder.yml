@@ -1,0 +1,12 @@
+info:
+  name: folder_1
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: x-a
+      value: "1"
+    - name: x-b
+      value: "{{b}}"
+      disabled: true

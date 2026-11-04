@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "name": "BMP letter list item",
+    "tags": [
+      "été",
+      "中文"
+    ],
+    "seq": 1,
+    "type": "http"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://example.com/bmp"
+  }
+}

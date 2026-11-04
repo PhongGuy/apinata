@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'POST' \
+  --url 'http://x.test/p?x=a%27b$c{d}&y=%C3%BC' \
+  --globoff \
+  --header 'X-H: it'\''s "q" \ $HOME {x} ü' \
+  --header 'content-type: text/plain' \
+  --data-raw 'a'\''b"c\d $e {f}	g
+ü€ end'

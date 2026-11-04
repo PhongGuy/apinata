@@ -1,0 +1,32 @@
+info:
+  name: multipart-mixed-form-data-file
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{echo-host}}"
+  body:
+    type: multipart-form
+    data:
+      - name: sample
+        type: file
+        value:
+          - bruno.png
+        contentType: image/png
+
+runtime:
+  assertions:
+    - expression: res.body
+      operator: matches
+      value: ^[-]+[a-z0-9]+
+    - expression: res.body
+      operator: contains
+      value: "Content-Type: image/png"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "getAllCollectionVars",
+    "type": "http",
+    "seq": "29"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setCollectionVar(\"testCollectionA\", \"valueA\");\nbru.setCollectionVar(\"testCollectionB\", \"valueB\");"
+  },
+  "tests": "test(\"should return all collection vars\", function() {\n  const vars = bru.getAllCollectionVars();\n  expect(vars.testCollectionA).to.equal(\"valueA\");\n  expect(vars.testCollectionB).to.equal(\"valueB\");\n});\n\ntest(\"should return a shallow copy\", function() {\n  const vars = bru.getAllCollectionVars();\n  vars.testCollectionA = \"mutated\";\n  const vars2 = bru.getAllCollectionVars();\n  expect(vars2.testCollectionA).to.equal(\"valueA\");\n});"
+}

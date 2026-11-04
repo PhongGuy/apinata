@@ -1,0 +1,230 @@
+[
+  {
+    "id": "info-name-bruno-tests-response-time-delayed-body",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  },
+  {
+    "id": "info-name-bruno-tests-response-time-delayed-headers",
+    "fixture": "bruno-tests/response-time/delayed-headers.yml"
+  },
+  {
+    "id": "info-name-bruno-tests-variable-datatypes-form-urlencoded",
+    "fixture": "bruno-tests/variable-datatypes/form-urlencoded.yml"
+  },
+  {
+    "id": "info-name-bruno-tests-variable-datatypes-multipart",
+    "fixture": "bruno-tests/variable-datatypes/multipart.yml"
+  },
+  {
+    "id": "info-name-bruno-tests-variable-datatypes-typed-vars",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "info-name-cli-docs-folder-1-request-1",
+    "fixture": "cli-docs/folder_1/request_1.yml"
+  },
+  {
+    "id": "info-name-cli-docs-folder-2-request-1",
+    "fixture": "cli-docs/folder_2/request_1.yml"
+  },
+  {
+    "id": "info-name-cli-docs-request-1",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "info-name-cli-docs-request-2",
+    "fixture": "cli-docs/request_2.yml"
+  },
+  {
+    "id": "info-name-env-inheritance-echo",
+    "fixture": "env-inheritance/echo.yml"
+  },
+  {
+    "id": "info-name-env-inheritance-set-env-var",
+    "fixture": "env-inheritance/set-env-var.yml"
+  },
+  {
+    "id": "info-name-env-inheritance-set-global-env-var",
+    "fixture": "env-inheritance/set-global-env-var.yml"
+  },
+  {
+    "id": "info-name-env-inheritance-workspace-vars",
+    "fixture": "env-inheritance/workspace-vars.yml"
+  },
+  {
+    "id": "info-method",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "info-seq",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "info-url-plain",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "opaque-seq",
+    "fixture": "synthetic/graphql.yml"
+  },
+  {
+    "id": "headers-add",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "headers-edit-one",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "headers-disable-and-remove",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "headers-clear",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "tags-set",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "docs-set",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "vars-add",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "vars-edit-typed",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "vars-disable",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "vars-clear-keeps-scripts",
+    "fixture": "bruno-tests/variable-datatypes/typed-vars.yml"
+  },
+  {
+    "id": "assert-add",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "assert-edit",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  },
+  {
+    "id": "assert-clear",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  },
+  {
+    "id": "settings-timeout",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "settings-all",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "body-json-edit",
+    "fixture": "env-inheritance/echo.yml"
+  },
+  {
+    "id": "body-json-to-form",
+    "fixture": "env-inheritance/echo.yml"
+  },
+  {
+    "id": "body-json-to-none",
+    "fixture": "env-inheritance/echo.yml"
+  },
+  {
+    "id": "body-text",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "body-xml",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "body-form-empty",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "body-form-edit-one",
+    "fixture": "bruno-tests/variable-datatypes/form-urlencoded.yml"
+  },
+  {
+    "id": "body-multipart-new",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "body-multipart-disable",
+    "fixture": "bruno-tests/variable-datatypes/multipart.yml"
+  },
+  {
+    "id": "body-file",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "auth-basic",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "auth-bearer",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "auth-apikey-query",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "auth-inherit",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-adds-query",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-adds-path",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-drops-query",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  },
+  {
+    "id": "url-template-host-path",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-template-query",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-fragment",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-keeps-disabled-query",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  },
+  {
+    "id": "url-keeps-path-value",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "url-readds-disabled-path",
+    "fixture": "cli-docs/request_1.yml"
+  },
+  {
+    "id": "params-set-query",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  },
+  {
+    "id": "params-disable-all",
+    "fixture": "bruno-tests/response-time/delayed-body.yml"
+  }
+]

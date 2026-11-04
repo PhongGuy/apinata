@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "null",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "res": "res.setBody(null)"
+  },
+  "tests": "test(\"res.setBody(null)\", function() {\n  const body = res.getBody();\n  expect(body).to.be.null;\n});\n"
+}

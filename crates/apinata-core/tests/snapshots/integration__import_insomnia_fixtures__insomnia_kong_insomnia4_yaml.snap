@@ -1,0 +1,58 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Insomnia
+== Actions/Get Sleep.yml
+info:
+  name: Get Sleep
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{base_url}}/sleep"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Actions/folder.yml
+info:
+  name: Actions
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== environments/Base Environment.yml
+name: Base Environment
+variables:
+  - name: base_url
+    value: "{{scheme}}://{{host}}{{base_path}}"
+== environments/Insomnia Environment.yml
+name: Insomnia Environment
+variables:
+  - name: base_url
+    value: "{{scheme}}://{{host}}{{base_path}}"
+  - name: base_path
+    value: ""
+  - name: scheme
+    value: http
+  - name: host
+    value: 127.0.0.1:4010
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Insomnia
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "external-lib-bru-req-res",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"name\": \"Bruno User\",\n  \"age\": 25\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "const extLib = require('external-lib-with-bru-req-res-objects');\n\ntest(\"should provide bru object to npm modules\", function() {\n  extLib.setVar('ext-lib-test', 'hello');\n  expect(extLib.getVar('ext-lib-test')).to.equal('hello');\n});\n\ntest(\"should provide req object to npm modules\", function() {\n  const method = extLib.getReqMethod();\n  expect(method).to.equal('POST');\n\n  const headers = extLib.getReqHeaders();\n  // expect(headers).to.be.an('object');\n  expect(headers['content-type']).to.include('json');\n});\n\ntest(\"should provide res object to npm modules\", function() {\n  const status = extLib.getResStatus();\n  expect(status).to.equal(200);\n\n  const body = extLib.getResBody();\n  // expect(body).to.be.an('object');\n  expect(body.name).to.equal('Bruno User');\n  expect(body.age).to.equal(25);\n\n  const headers = extLib.getResHeaders();\n  // expect(headers).to.be.an('object');\n  expect(headers['content-type']).to.include('json');\n});"
+}

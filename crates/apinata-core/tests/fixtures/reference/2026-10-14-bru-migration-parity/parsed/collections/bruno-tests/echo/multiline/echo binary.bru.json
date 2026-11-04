@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "name": "echo binary",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "file",
+    "auth": "none"
+  },
+  "body": {
+    "file": [
+      {
+        "contentType": "image/png",
+        "filePath": "bruno.png",
+        "selected": true
+      }
+    ]
+  }
+}

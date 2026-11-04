@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// Digest auth is not included in this snippet.
+// Cargo.toml: reqwest = { version = "0.13", features = ["blocking", "multipart"] }
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let response = reqwest::blocking::Client::new()
+        .request(reqwest::Method::GET, "http://x.test/digest")
+        .send()?;
+    println!("{}", response.status());
+    println!("{}", response.text()?);
+    Ok(())
+}

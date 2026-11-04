@@ -1,0 +1,265 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Create data.yml
+info:
+  name: Create data
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/data"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "",
+        "description": ""
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Create new data item
+
+=== Delete data.yml
+info:
+  name: Delete data
+  type: http
+  seq: 7
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/data/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
+      description: ID of the data item
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Delete a data item
+
+=== Get data by ID.yml
+info:
+  name: Get data by ID
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: "{{baseUrl}}/data/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
+      description: ID of the data item
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve a specific data item by its ID
+
+=== Get data.yml
+info:
+  name: Get data
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/data?limit=10"
+  params:
+    - name: limit
+      value: "10"
+      type: query
+      description: Maximum number of items to return
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve data from the API
+
+=== Get public information.yml
+info:
+  name: Get public information
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/public/info"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve public information that doesn't require authentication
+
+=== Health check.yml
+info:
+  name: Health check
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/health"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Check if the API is healthy
+
+=== Update data.yml
+info:
+  name: Update data
+  type: http
+  seq: 6
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/data/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
+      description: ID of the data item
+  body:
+    type: json
+    data: |-
+      {
+        "name": "",
+        "description": ""
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Update an existing data item
+
+=== environments/Public API server.yml
+name: Public API server
+variables:
+  - name: baseUrl
+    value: https://api.public-example.com/v1
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: API without Security Schemes
+
+docs:
+  content: An API that has no security schemes defined - should use the getSecurity fallback logic
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        DELETE /data/{}:
+          target: a7644978d850c762
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 30d4031d3ed34ade
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: d8ad8056c4645ee4
+          file: Delete data.yml
+        GET /data:
+          target: 1ca73d8b63000013
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 4385a2fa4ae8e952
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get data.yml
+        GET /data/{}:
+          target: a7644978d850c762
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: c9c1d3ca158a6da8
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get data by ID.yml
+        GET /health:
+          target: b03f9aa0440c5f75
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 5ccdb0e5639ca977
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Health check.yml
+        GET /public/info:
+          target: cefd5d18ecd44723
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 8ed5a962e7d5d9e4
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get public information.yml
+        POST /data:
+          target: c1b9bbe53029b327
+          headers: 7ace431cb61584cb
+          body: d1a2f975c2df2fc9
+          docs: d1a0fb0a7df70f08
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Create data.yml
+        PUT /data/{}:
+          target: a7644978d850c762
+          headers: 7ace431cb61584cb
+          body: d1a2f975c2df2fc9
+          docs: 21efb43473b64152
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: 651ba8f38be35d73
+          file: Update data.yml

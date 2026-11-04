@@ -1,0 +1,16 @@
+info:
+  name: Custom verb
+  type: http
+  seq: 3
+
+http:
+  method: PROPFIND
+  url: https://example.com/dav
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

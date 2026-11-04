@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "getCollectionVar",
+    "type": "http",
+    "seq": "9"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"should get collection var in scripts\", function() {\n  const testVar = bru.getCollectionVar(\"collection-var\");\n  expect(testVar).to.equal(\"collection-var-value\");\n});"
+}

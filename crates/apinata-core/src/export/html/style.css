@@ -1,0 +1,69 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --line: #d1d9e0;
+  --panel: #f6f8fa;
+  --link: #0969da;
+  --get: #1a7f37;
+  --post: #9a6700;
+  --put: #0969da;
+  --patch: #8250df;
+  --delete: #cf222e;
+  --head: #1b7c83;
+  --other: #59636e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --line: #3d444d;
+    --panel: #151b23;
+    --link: #4493f8;
+    --get: #3fb950;
+    --post: #d29922;
+    --put: #4493f8;
+    --patch: #ab7df8;
+    --delete: #f85149;
+    --head: #39c5cf;
+    --other: #9198a1;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 24px 16px 48px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--link); }
+h1, h2, h3, h4 { line-height: 1.25; margin: 1.5em 0 0.5em; }
+header h1 { margin-top: 0; }
+nav { border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; background: var(--panel); }
+nav h2 { margin-top: 0.5em; font-size: 1em; }
+nav ul { padding-left: 1.25em; }
+section, article { margin-top: 1.5em; }
+article { border-top: 1px solid var(--line); padding-top: 0.5em; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 0.9em; }
+pre { overflow-x: auto; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.url { overflow-wrap: anywhere; }
+.docs { color: var(--fg); }
+.note, caption { color: var(--muted); }
+caption { text-align: left; font-weight: 600; padding: 4px 0; }
+table { display: block; overflow-x: auto; border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+tr.disabled td { opacity: 0.55; }
+.tag { margin-left: 6px; padding: 0 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8em; color: var(--muted); }
+.method { display: inline-block; min-width: 4.5em; padding: 1px 6px; border-radius: 4px; color: #ffffff; font: 600 0.8em ui-monospace, Menlo, Consolas, monospace; text-align: center; background: var(--other); }
+.m-get { background: var(--get); }
+.m-post { background: var(--post); }
+.m-put { background: var(--put); }
+.m-patch { background: var(--patch); }
+.m-delete { background: var(--delete); }
+.m-head, .m-options, .m-trace { background: var(--head); }
+.m-other { background: var(--other); }

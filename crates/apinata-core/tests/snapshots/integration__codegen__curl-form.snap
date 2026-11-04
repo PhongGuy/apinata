@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'POST' \
+  --url 'http://x.test/f' \
+  --header 'content-type: application/x-www-form-urlencoded' \
+  --data-raw 'a=1&b=x+y%26z'

@@ -1,0 +1,163 @@
+use crate::support;
+
+use apinata_app::sidebar::menu::{BulkEntry, bulk_entries, menu_entries};
+use apinata_app::sidebar::model::NodeKind;
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::{AppContext as _, TestAppContext};
+use support::*;
+
+fn keys(cx: &mut TestAppContext, h: &SidebarHarness) -> Vec<String> {
+    h.view.read_with(cx, |s, _| {
+        s.multi_keys()
+            .into_iter()
+            .map(|(_, p)| p.as_str().to_owned())
+            .collect()
+    })
+}
+
+fn right_click(cx: &mut TestAppContext, h: &SidebarHarness, path: &str) {
+    cx.update_window(h.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.right_click(row(path), cx)
+    })
+    .unwrap();
+    frame(cx, h.win);
+}
+
+#[test]
+fn bulk_labels_count_and_pluralise() {
+    assert_eq!(BulkEntry::Delete(3).label(), "Delete 3 items");
+    assert_eq!(BulkEntry::Delete(1).label(), "Delete 1 item");
+    assert_eq!(BulkEntry::Run(2).label(), "Run 2 requests");
+    assert_eq!(BulkEntry::Run(1).label(), "Run 1 request");
+    assert_eq!(
+        bulk_entries(3, None),
+        [BulkEntry::Copy(3), BulkEntry::Cut(3), BulkEntry::Delete(3)]
+    );
+    assert_eq!(
+        bulk_entries(3, Some(5)),
+        [
+            BulkEntry::Run(5),
+            BulkEntry::Copy(3),
+            BulkEntry::Cut(3),
+            BulkEntry::Delete(3)
+        ]
+    );
+}
+
+#[gpui_kit::test]
+fn right_click_inside_the_set_opens_the_bulk_menu_and_keeps_the_set(cx: &mut TestAppContext) {
+    let h = open_sidebar_with(cx, multi_files());
+    cx.update_window(h.win, |_, w, cx| w.click(row("a.yml"), cx))
+        .unwrap();
+    secondary_click(cx, h.win, row("c.yml"));
+    right_click(cx, &h, "a.yml");
+    assert_eq!(keys(cx, &h), ["a.yml", "c.yml"]);
+    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(3usize, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(
+        confirm_open(cx),
+        "entry 3 is Delete 2 items (entries 0 to 2 are Run, Copy, Cut)"
+    );
+    answer_confirm(cx, "confirm-delete");
+    frame(cx, h.win);
+    assert!(!h.root.join("a.yml").exists() && !h.root.join("c.yml").exists());
+    assert!(h.root.join("b.yml").exists());
+}
+
+#[gpui_kit::test]
+fn right_click_outside_the_set_clears_it_and_opens_the_row_menu(cx: &mut TestAppContext) {
+    let h = open_sidebar_with(cx, multi_files());
+    cx.update_window(h.win, |_, w, cx| w.click(row("a.yml"), cx))
+        .unwrap();
+    secondary_click(cx, h.win, row("c.yml"));
+    right_click(cx, &h, "b.yml");
+    assert!(keys(cx, &h).is_empty());
+    let delete = menu_entries(NodeKind::Request)
+        .iter()
+        .position(|e| *e == apinata_app::sidebar::menu::MenuEntry::Delete)
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(delete, cx))
+        .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-delete");
+    frame(cx, h.win);
+    assert!(
+        !h.root.join("b.yml").exists(),
+        "the single-row menu deleted b"
+    );
+    assert!(h.root.join("a.yml").exists() && h.root.join("c.yml").exists());
+}
+
+#[gpui_kit::test]
+fn closing_a_root_drops_the_batches_sent_to_it(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::batch::{Batch, Verb};
+    let h = open_sidebar_with(cx, multi_files());
+    let other = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("o.yml", &request("O", "http://x/o")),
+    ]);
+    let other_root = other.path().to_path_buf();
+    h.ws.update(cx, |w, cx| w.open(other_root.clone(), cx));
+    frame(cx, h.win);
+    h.view.update(cx, |s, _| {
+        s.push_batch(Batch::new(
+            Verb::Delete,
+            h.root.clone(),
+            0,
+            vec![(1, ip("a.yml"))],
+        ));
+        s.push_batch(Batch::new(
+            Verb::Delete,
+            other_root.clone(),
+            1,
+            vec![(1, ip("o.yml"))],
+        ));
+    });
+    assert_eq!(h.view.read_with(cx, |s, _| s.batch_roots()).len(), 2);
+    h.ws.update(cx, |w, cx| w.close(&other_root, cx));
+    frame(cx, h.win);
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.batch_roots()),
+        std::slice::from_ref(&h.root),
+        "the closed root's batch is gone"
+    );
+}
+
+/// At 1000x480 the two-entry bulk menu (Run, Delete) opens whole inside the window.
+#[gpui_kit::test]
+fn the_four_entry_bulk_menu_fits_a_1000x480_window(cx: &mut TestAppContext) {
+    use gpui_kit::{VisualTestContext, px, size};
+    let h = open_sidebar_with(cx, multi_files());
+    VisualTestContext::from_window(h.win, cx).simulate_resize(size(px(1000.), px(480.)));
+    frame(cx, h.win);
+    cx.update_window(h.win, |_, w, cx| w.click(row("a.yml"), cx))
+        .unwrap();
+    secondary_click(cx, h.win, row("c.yml"));
+    right_click(cx, &h, "a.yml");
+    let (labels, menu, window) = cx
+        .update_window(h.win, |_, w, _| {
+            let labels: Vec<String> = (0..4)
+                .filter_map(|ix| w.within("popup-menu").find(ix).label().map(str::to_owned))
+                .collect();
+            (labels, w.find("popup-menu").bounds(), w.viewport_size())
+        })
+        .unwrap();
+    assert_eq!(
+        labels,
+        [
+            "Run 2 requests",
+            "Copy 2 items",
+            "Cut 2 items",
+            "Delete 2 items"
+        ]
+    );
+    assert!(
+        menu.left() >= px(0.)
+            && menu.top() >= px(0.)
+            && menu.right() <= window.width
+            && menu.bottom() <= window.height,
+        "menu {menu:?} outside the window {window:?}"
+    );
+}

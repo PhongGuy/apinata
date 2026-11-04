@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "getName",
+    "type": "http",
+    "seq": "11"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "tests": "test(\"Check if request name is getName\", function () {\n    expect(req.getName()).to.eql(\"getName\");\n});"
+}

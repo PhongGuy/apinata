@@ -1,0 +1,36 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: collection-level-scripts-duplicate-import-coll
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: collection-level-scripts-duplicate-import-coll
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== request-with-duplicate-import-binding.yml
+info:
+  name: request-with-duplicate-import-binding
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped collection / preRequestScript: scripts are not imported (opencollection.yml)
+Dropped request-with-duplicate-import-binding / preRequestScript: scripts are not imported (request-with-duplicate-import-binding.yml)

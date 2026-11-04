@@ -1,0 +1,89 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Add pet.yml
+info:
+  name: Add pet
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/pets"
+  body:
+    type: json
+    data: |-
+      {
+        "nickname": "rex"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Get pet.yml
+info:
+  name: Get pet
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/pets/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
+      description: The pet to fetch
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== environments/Environment 1.yml
+name: Environment 1
+variables:
+  - name: baseUrl
+    value: https://siblings.example.test
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Siblings
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /pets/{}:
+          target: ae25c9b27af4bdfb
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get pet.yml
+        POST /pets:
+          target: 0e47e1edc3566744
+          headers: 7ace431cb61584cb
+          body: db8cf05883077144
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Add pet.yml

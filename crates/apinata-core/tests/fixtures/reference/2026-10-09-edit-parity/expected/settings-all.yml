@@ -1,0 +1,15 @@
+info:
+  name: request_1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/one
+
+settings:
+  encodeUrl: false
+  timeout: inherit
+  followRedirects: false
+  maxRedirects: 2
+  forwardAuthorizationHeader: false

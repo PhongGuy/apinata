@@ -1,0 +1,33 @@
+[package]
+name = "xtask"
+version.workspace = true
+description = "Repository automation for apinata: cross-checks, icon exports and packaging config"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# One integration binary: tests/main.rs declares every test file as a module.
+autotests = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+semver.workspace = true
+sha2.workspace = true
+# No text or raster images in the SVGs, so fonts and image decoders stay out.
+resvg = { version = "=0.48.1", default-features = false }
+ico = "=0.5.0"
+# PNG slots only; drops the JPEG 2000 codec.
+icns = { version = "=0.5.0", default-features = false, features = ["pngio"] }
+
+[dev-dependencies]
+apinata-core = { path = "../apinata-core", default-features = false, features = ["update"] }
+tempfile.workspace = true
+yaml_serde.workspace = true
+
+# A single test executable keeps the link count (and the target dir) small.
+[[test]]
+name = "integration"
+path = "tests/main.rs"

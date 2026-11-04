@@ -1,0 +1,8 @@
+variables:
+  - name: key
+    value: |-
+      -----BEGIN KEY-----
+        indented
+      -----END KEY-----
+  - name: after
+    value: x

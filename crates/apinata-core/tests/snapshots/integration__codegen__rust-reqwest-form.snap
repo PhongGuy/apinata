@@ -1,0 +1,16 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// Cargo.toml: reqwest = { version = "0.13", features = ["blocking", "multipart"] }
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let response = reqwest::blocking::Client::new()
+        .request(reqwest::Method::POST, "http://x.test/f")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body("a=1&b=x+y%26z")
+        .send()?;
+    println!("{}", response.status());
+    println!("{}", response.text()?);
+    Ok(())
+}

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "oauth2-new",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "oauth2-password",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "oauth2-implicit",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "oauth2-edit-fields",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/auth-code.yml",
+    "files": [
+      "auth-code.yml"
+    ]
+  },
+  {
+    "id": "oauth2-whitespace",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/auth-code.yml",
+    "files": [
+      "auth-code.yml"
+    ]
+  },
+  {
+    "id": "oauth2-pkce-off",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/auth-code.yml",
+    "files": [
+      "auth-code.yml"
+    ]
+  },
+  {
+    "id": "oauth2-params-clear",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/auth-code.yml",
+    "files": [
+      "auth-code.yml"
+    ]
+  },
+  {
+    "id": "oauth2-switch-to-cc",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/auth-code.yml",
+    "files": [
+      "auth-code.yml"
+    ]
+  },
+  {
+    "id": "oauth2-switch-to-implicit",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/client-credentials.yml",
+    "files": [
+      "client-credentials.yml"
+    ]
+  },
+  {
+    "id": "oauth2-placement-header",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/client-credentials.yml",
+    "files": [
+      "client-credentials.yml"
+    ]
+  },
+  {
+    "id": "oauth2-placement-unset",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/client-credentials.yml",
+    "files": [
+      "client-credentials.yml"
+    ]
+  },
+  {
+    "id": "oauth2-client-auth-body",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/client-credentials.yml",
+    "files": [
+      "client-credentials.yml"
+    ]
+  },
+  {
+    "id": "oauth2-param-add",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/client-credentials.yml",
+    "files": [
+      "client-credentials.yml"
+    ]
+  },
+  {
+    "id": "oauth2-to-bearer",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/normalized/synthetic/auth-code.yml",
+    "files": [
+      "auth-code.yml"
+    ]
+  },
+  {
+    "id": "oauth2-sparse-minimal",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/sparse/minimal.yml",
+    "files": [
+      "minimal.yml"
+    ]
+  },
+  {
+    "id": "oauth2-sparse-unknown",
+    "kind": "request",
+    "input": "2026-10-11-oauth2-parity/sparse/unknown.yml",
+    "files": [
+      "unknown.yml"
+    ]
+  },
+  {
+    "id": "folder-oauth2",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "collection-oauth2",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

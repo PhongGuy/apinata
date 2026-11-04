@@ -1,0 +1,63 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# unit-test.yaml
+== environments/Base Environment.yml
+name: Base Environment
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: unit-test.yaml
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== request A.yml
+info:
+  name: request A
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: localhost:4010
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+      	"test": 123
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== request B.yml
+info:
+  name: request B
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: localhost:4010/not-found
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+-- report
+Dropped collection / testSuites: test suites are not imported

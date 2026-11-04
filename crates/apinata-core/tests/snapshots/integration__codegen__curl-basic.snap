@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'GET' \
+  --url 'http://x.test/basic' \
+  --header 'Authorization: Basic dTpw'

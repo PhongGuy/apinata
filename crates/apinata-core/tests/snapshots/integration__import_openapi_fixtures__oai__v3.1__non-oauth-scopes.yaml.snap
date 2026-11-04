@@ -1,0 +1,57 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== environments/Environment.yml
+name: Environment
+variables:
+  - secret: true
+    name: token
+
+=== get -users.yml
+info:
+  name: get /users
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Non-oAuth Scopes example
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: get -users.yml
+
+note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
+note NeedsInput environments/Environment.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
+secret Environment token

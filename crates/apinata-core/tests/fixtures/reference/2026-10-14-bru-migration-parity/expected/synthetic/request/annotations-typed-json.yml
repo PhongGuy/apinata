@@ -1,0 +1,52 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+
+runtime:
+  variables:
+    - name: big
+      value:
+        type: object
+        data: |-
+          {
+            "big": 9007199254740992,
+            "ok": 9007199254740992,
+            "pair": "😀"
+          }
+    - name: list
+      value:
+        type: object
+        data: |-
+          [
+            18446744073709552000,
+            -9007199254740992,
+            1,
+            1
+          ]
+    - name: dup
+      value:
+        type: object
+        data: |-
+          {
+            "a": 3,
+            "b": 2
+          }
+    - name: proto
+      value:
+        type: object
+        data: |-
+          {
+            "__proto__": 1,
+            "x": 2
+          }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

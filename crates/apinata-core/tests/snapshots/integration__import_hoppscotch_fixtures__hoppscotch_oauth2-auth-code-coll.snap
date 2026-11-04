@@ -1,0 +1,53 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: OAuth2 Authorization Code Grant Type - Collection
+== oauth2-auth-code-sample-req-pass-by-headers.yml
+info:
+  name: oauth2-auth-code-sample-req-pass-by-headers
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== oauth2-auth-code-sample-req-pass-by-query-params.yml
+info:
+  name: oauth2-auth-code-sample-req-pass-by-query-params
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: OAuth2 Authorization Code Grant Type - Collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Converted oauth2-auth-code-sample-req-pass-by-headers / auth: `oauth-2` auth is not supported; imported as no auth (oauth2-auth-code-sample-req-pass-by-headers.yml)
+Dropped oauth2-auth-code-sample-req-pass-by-headers / testScript: scripts are not imported (oauth2-auth-code-sample-req-pass-by-headers.yml)
+Converted oauth2-auth-code-sample-req-pass-by-query-params / auth: `oauth-2` auth is not supported; imported as no auth (oauth2-auth-code-sample-req-pass-by-query-params.yml)
+Dropped oauth2-auth-code-sample-req-pass-by-query-params / testScript: scripts are not imported (oauth2-auth-code-sample-req-pass-by-query-params.yml)

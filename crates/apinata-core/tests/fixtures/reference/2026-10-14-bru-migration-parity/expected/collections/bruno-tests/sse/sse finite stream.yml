@@ -1,0 +1,40 @@
+info:
+  name: sse finite stream
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{localhost}}/api/sse/finite"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("sseBody", typeof body === "string" ? body : JSON.stringify(body));
+    - type: tests
+      code: |-
+        test("status is 200", function() {
+          expect(res.status).to.equal(200);
+        });
+
+        test("content-type is text/event-stream", function() {
+          expect(res.headers["content-type"]).to.include("text/event-stream");
+        });
+
+        test("res.getBody() contains all 3 SSE events in order", function() {
+          const body = res.getBody();
+          expect(body).to.include("data: Hello");
+          expect(body).to.include("data: from");
+          expect(body).to.include("data: SSE");
+          expect(body.indexOf("data: Hello")).to.be.lessThan(body.indexOf("data: from"));
+          expect(body.indexOf("data: from")).to.be.lessThan(body.indexOf("data: SSE"));
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

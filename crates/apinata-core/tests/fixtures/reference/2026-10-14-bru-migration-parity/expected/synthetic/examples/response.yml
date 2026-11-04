@@ -1,0 +1,57 @@
+info:
+  name: Example response
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://api.example.com/items/1
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Created
+    request:
+      url: ""
+      method: get
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: content-type
+          value: application/json
+        - name: x-trace
+          value: abc
+      body:
+        type: json
+        data: |-
+          {
+            "id": 1
+          }
+  - name: Untitled Example
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Content type on content
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: xml
+        data: |-
+          <ok/>
+            ''' @contentType(application/xml)

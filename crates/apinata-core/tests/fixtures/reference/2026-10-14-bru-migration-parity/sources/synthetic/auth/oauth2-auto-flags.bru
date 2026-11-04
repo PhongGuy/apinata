@@ -1,0 +1,11 @@
+get {
+  url: https://example.com
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: client_credentials
+  access_token_url: https://example.com/token
+  auto_fetch_token: false
+  auto_refresh_token: maybe
+}

@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "Proto key",
+    "seq": "3",
+    "type": "http"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://example.com/proto"
+  },
+  "headers": [
+    {
+      "enabled": true
+    },
+    {
+      "name": "x-real",
+      "value": "1",
+      "enabled": true
+    }
+  ]
+}

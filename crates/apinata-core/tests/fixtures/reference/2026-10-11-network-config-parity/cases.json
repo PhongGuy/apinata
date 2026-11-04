@@ -1,0 +1,30 @@
+[
+  {
+    "id": "network-proxy-custom",
+    "collection": "cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "network-proxy-socks-noauth",
+    "collection": "cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "network-proxy-off",
+    "collection": "bruno-tests",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "network-certs-add",
+    "collection": "cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

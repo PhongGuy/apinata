@@ -1,0 +1,42 @@
+meta {
+  name: Two examples
+  type: http
+  seq: 5
+}
+
+get {
+  url: https://api.example.com/items
+}
+
+example {
+  name: First
+  request: {
+    url: https://api.example.com/items?page=1
+    method: get
+  }
+  response: {
+    status: {
+      code: 200
+    }
+  }
+}
+
+docs {
+  between the examples
+}
+
+example {
+  name: Second
+  name: Second renamed
+  request: {
+    headers: {
+      a: 1
+      b: 2
+    }
+  }
+  request: {
+    headers: {
+      c: 3
+    }
+  }
+}

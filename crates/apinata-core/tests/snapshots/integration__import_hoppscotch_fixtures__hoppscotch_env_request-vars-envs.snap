@@ -1,0 +1,26 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== Request variables alongside environment variables.yml
+name: Request variables alongside environment variables
+variables:
+  - name: url
+    value: https://echo.hoppscotch.io
+  - secret: true
+    name: secretBasicAuthPasswordEnvVar
+  - secret: true
+    name: secretBasicAuthUsernameEnvVar
+  - secret: true
+    name: username
+  - secret: true
+    name: password
+  - name: testHeaderValue
+    value: test-header-value
+== report
+NeedsInput variables[1]: the secret `secretBasicAuthPasswordEnvVar` has no value; enter it before sending (environments/Request variables alongside environment variables.yml)
+NeedsInput variables[3]: the secret `username` has no value; enter it before sending (environments/Request variables alongside environment variables.yml)
+NeedsInput variables[4]: the secret `password` has no value; enter it before sending (environments/Request variables alongside environment variables.yml)
+secret to enter: Request variables alongside environment variables / secretBasicAuthPasswordEnvVar
+secret to enter: Request variables alongside environment variables / username
+secret to enter: Request variables alongside environment variables / password

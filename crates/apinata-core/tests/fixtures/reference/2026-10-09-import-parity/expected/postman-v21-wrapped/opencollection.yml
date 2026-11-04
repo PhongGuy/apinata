@@ -1,0 +1,19 @@
+opencollection: 1.0.0
+
+info:
+  name: Postman v2.1 Wrapped Collection
+
+request:
+  variables:
+    - name: baseUrl
+      value: https://api.example.com
+
+docs:
+  content: Test collection using newer Postman export format with collection envelope
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

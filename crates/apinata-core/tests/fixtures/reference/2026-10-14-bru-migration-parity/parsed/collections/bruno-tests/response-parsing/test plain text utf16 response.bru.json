@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test plain text utf16 response",
+    "type": "http",
+    "seq": "14"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"headers\": { \"content-type\": \"text/plain; charset=utf-16\" },\n  \"contentBase64\": \"dABoAGkAcwAgAGkAcwAgAGUAbgBjAG8AZABlAGQAIAB3AGkAdABoACAAdQB0AGYAMQA2AA==\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "eq \"this is encoded with utf16\"",
+      "enabled": true
+    }
+  ]
+}

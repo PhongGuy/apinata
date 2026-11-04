@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "tags",
+    "seq": "20",
+    "tags": [
+      "req-api"
+    ],
+    "type": "collection"
+  }
+}

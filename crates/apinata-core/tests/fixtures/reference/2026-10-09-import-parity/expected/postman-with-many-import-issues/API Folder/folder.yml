@@ -1,0 +1,7 @@
+info:
+  name: API Folder
+  type: folder
+  seq: 28
+
+request:
+  auth: inherit

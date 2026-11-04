@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "array",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "res": "const obj = {\n  hello : \"hello from post-res\"\n}\n// Safe mode, Dev mode behaves differently, null is getting converted to undefined, although both have null in the response, tests with undefined fails in safe mode, this needs to be investigated,, undefined is not a valid JSON\nres.setBody([\"hello\",1, null, undefined, true, obj])"
+  },
+  "tests": "test(\"res.setBody(array)\", function() {\n  const body = res.getBody();\n  expect(body.length).to.eql(6);\n  expect(body[0]).to.eql(\"hello\")\n  expect(body[1]).to.eql(1)\n  expect(body[2]).to.be.null\n// Safe mode, Dev mode behaves differently, null is getting converted to undefined, although both have null in the response, tests with undefined fails in safe mode, this needs to be investigated,, undefined is not a valid JSON\n  expect(body[3]).to.be.undefined;\n  expect(body[4]).to.eql(true)\n  expect(body[5].hello).to.eql(\"hello from post-res\")\n  \n});\n"
+}

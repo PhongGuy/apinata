@@ -1,0 +1,124 @@
+opencollection: 1.0.0
+
+info:
+  name: Full collection
+  version: "2"
+config:
+  proxy:
+    inherit: false
+    config:
+      protocol: http
+      hostname: proxy.local
+      port: 3128
+      auth:
+        username: u
+        password: p
+      bypassProxy: localhost
+
+request:
+  headers:
+    - name: x-trace
+      value: abc
+    - name: x-off
+      value: off
+      disabled: true
+    - name: x quoted
+      value: q
+    - name: x-multi
+      value: |-
+        first
+        second
+    - name: x-quotes
+      value: ""
+    - name: x-described
+      value: d
+      description: a header
+  auth:
+    type: oauth2
+    flow: authorization_code
+    authorizationUrl: https://example.com/auth
+    accessTokenUrl: https://example.com/token
+    refreshTokenUrl: https://example.com/refresh
+    callbackUrl: https://example.com/cb
+    credentials:
+      clientId: id
+      clientSecret: secret
+      placement: header
+    additionalParameters:
+      authorizationRequest:
+        - name: x-auth
+          placement: header
+          value: "1"
+      accessTokenRequest:
+        - name: aud
+          placement: query
+          value: api
+        - name: resource
+          placement: body
+          value: r
+      refreshTokenRequest:
+        - name: x-refresh
+          placement: header
+          value: "2"
+    scope: read
+    state: st
+    pkce: {}
+    tokenConfig:
+      id: credentials
+      placement:
+        query: access_token
+      source: access_token
+    settings:
+      autoFetchToken: false
+      autoRefreshToken: true
+  variables:
+    - name: host
+      value: example.com
+    - name: retries
+      value:
+        type: number
+        data: "3"
+    - name: local
+      value: yes
+    - name: off
+      value: "1"
+      disabled: true
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.token
+        method: jsonq
+      variable:
+        name: token
+        scope: runtime
+  scripts:
+    - type: before-request
+      code: |-
+        await bru.runRequest("a");
+        bru.setVar("x", 1);
+    - type: after-response
+      code: await bru.runRequest('folder/b');
+    - type: tests
+      code: |-
+        test("ok", function() {
+          expect(res.status).to.equal(200);
+        });
+
+docs:
+  content: |-
+    # Full collection
+
+    Some docs.
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+      - scratch
+    presets:
+      request:
+        type: http
+        url: https://example.com

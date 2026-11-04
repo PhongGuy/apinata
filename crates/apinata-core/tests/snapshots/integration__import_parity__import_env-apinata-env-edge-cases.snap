@@ -1,0 +1,27 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Dropped values[3] [environments/Staging- EU.yml]: the secret `token` is defined more than once; only one is kept
+Converted values[5].key [environments/Staging- EU.yml]: the variable `off key` was renamed to `off_key`
+== environments/Staging- EU.yml
+name: Staging- EU
+variables:
+  - name: host
+    value: eu.example.com
+  - name: port
+    value: "8443"
+  - name: obj
+    value: |-
+      {
+        "a": 1,
+        "b": [
+          true,
+          null
+        ]
+      }
+  - secret: true
+    name: token
+  - name: off_key
+    value: x
+    disabled: true

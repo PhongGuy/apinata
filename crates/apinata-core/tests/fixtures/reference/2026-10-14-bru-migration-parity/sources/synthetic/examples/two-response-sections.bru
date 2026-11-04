@@ -1,0 +1,36 @@
+meta {
+  name: Two response sections
+  type: http
+  seq: 8
+}
+
+get {
+  url: https://api.example.com/items/4
+}
+
+example {
+  name: Merged
+  response: {
+    headers: {
+      a: 1
+      b: 2
+    }
+    status: {
+      code: 200
+    }
+  }
+  response: {
+    headers: {
+      c: 3
+    }
+    status: {
+      text: OK
+    }
+    body: {
+      type: text
+      content: '''
+        hi
+      '''
+    }
+  }
+}

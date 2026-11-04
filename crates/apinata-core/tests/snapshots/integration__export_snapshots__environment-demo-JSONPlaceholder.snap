@@ -1,0 +1,18 @@
+---
+source: crates/apinata-core/tests/export_snapshots.rs
+expression: rendered(&out)
+---
+{
+  "id": "04864f25-108b-503c-9332-0f0b8b1db839",
+  "name": "JSONPlaceholder",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "https://jsonplaceholder.typicode.com",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
+--- notes

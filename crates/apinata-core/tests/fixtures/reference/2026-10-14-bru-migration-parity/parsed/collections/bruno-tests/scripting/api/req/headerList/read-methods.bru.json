@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "name": "read-methods",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    },
+    {
+      "name": "x-custom",
+      "value": "test-value",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.headerList.get(name)\", function() {\n  expect(req.headerList.get('bruno')).to.equal('is-awesome');\n  expect(req.headerList.get('della')).to.equal('is-beautiful');\n  expect(req.headerList.get('nonexistent')).to.be.undefined;\n});\n\ntest(\"req.headerList.one(name)\", function() {\n  const header = req.headerList.one('bruno');\n  expect(header).to.eql({ key: 'bruno', value: 'is-awesome' });\n  expect(req.headerList.one('nonexistent')).to.be.undefined;\n});\n\ntest(\"req.headerList.all()\", function() {\n  const all = req.headerList.all();\n  expect(all).to.be.an('array');\n  expect(all.length).to.be.at.least(3);\n  const keys = all.map(h => h.key);\n  expect(keys).to.include('bruno');\n  expect(keys).to.include('della');\n  expect(keys).to.include('x-custom');\n});\n\ntest(\"req.headerList.count()\", function() {\n  expect(req.headerList.count()).to.be.at.least(3);\n});"
+}

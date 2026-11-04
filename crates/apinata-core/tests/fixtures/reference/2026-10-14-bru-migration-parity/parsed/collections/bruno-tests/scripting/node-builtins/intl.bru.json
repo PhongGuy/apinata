@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "intl",
+    "type": "http",
+    "seq": "10"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "test(\"Intl.DateTimeFormat\", function() {\n  const formatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' });\n  expect(formatter.format(new Date('2024-06-15'))).to.equal('June 15, 2024');\n});\n\ntest(\"Intl.NumberFormat\", function() {\n  const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });\n  expect(currency.format(1234.56)).to.equal('$1,234.56');\n\n  const percent = new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: 1 });\n  expect(percent.format(0.456)).to.equal('45.6%');\n});\n\ntest(\"Intl.Collator\", function() {\n  const collator = new Intl.Collator('en', { sensitivity: 'base' });\n  expect(collator.compare('a', 'A')).to.equal(0);\n  expect(collator.compare('a', 'b')).to.be.lessThan(0);\n});\n\ntest(\"Intl.PluralRules\", function() {\n  const rules = new Intl.PluralRules('en-US');\n  expect(rules.select(1)).to.equal('one');\n  expect(rules.select(5)).to.equal('other');\n});\n\ntest(\"Intl.RelativeTimeFormat\", function() {\n  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });\n  expect(rtf.format(-1, 'day')).to.equal('yesterday');\n  expect(rtf.format(1, 'day')).to.equal('tomorrow');\n});\n\ntest(\"Intl.ListFormat\", function() {\n  const formatter = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });\n  expect(formatter.format(['Apple', 'Banana', 'Cherry'])).to.equal('Apple, Banana, and Cherry');\n});\n\ntest(\"Intl.DisplayNames\", function() {\n  const regions = new Intl.DisplayNames(['en'], { type: 'region' });\n  expect(regions.of('US')).to.equal('United States');\n\n  const languages = new Intl.DisplayNames(['en'], { type: 'language' });\n  expect(languages.of('fr')).to.equal('French');\n});"
+}

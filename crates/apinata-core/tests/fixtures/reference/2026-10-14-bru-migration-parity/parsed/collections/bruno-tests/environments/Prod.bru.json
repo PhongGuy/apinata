@@ -1,0 +1,108 @@
+{
+  "variables": [
+    {
+      "name": "host",
+      "value": "https://testbench-sanity.usebruno.com",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "localhost",
+      "value": "http://localhost:8081",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "httpfaker",
+      "value": "https://www.httpfaker.org",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "bearer_auth_token",
+      "value": "your_secret_token",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "basic_auth_password",
+      "value": "della",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "env.var1",
+      "value": "envVar1",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "env-var2",
+      "value": "envVar2",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "bark",
+      "value": "{{process.env.PROC_ENV_VAR}}",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "foo",
+      "value": "bar",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "testSetEnvVar",
+      "value": "bruno-29653",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "echo-host",
+      "value": "https://echo.usebruno.com",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "typed_env_num",
+      "value": 300,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "number"
+        }
+      ],
+      "dataType": "number",
+      "secret": false
+    },
+    {
+      "name": "typed_env_bool",
+      "value": true,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "boolean"
+        }
+      ],
+      "dataType": "boolean",
+      "secret": false
+    },
+    {
+      "name": "typed_env_obj",
+      "value": {
+        "scope": "env"
+      },
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "object"
+        }
+      ],
+      "dataType": "object",
+      "secret": false
+    }
+  ]
+}

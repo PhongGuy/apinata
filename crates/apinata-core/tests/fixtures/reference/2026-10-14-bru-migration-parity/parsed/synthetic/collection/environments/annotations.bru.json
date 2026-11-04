@@ -1,0 +1,102 @@
+{
+  "variables": [
+    {
+      "name": "host",
+      "value": "example.com",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "the host"
+        }
+      ],
+      "description": "the host",
+      "secret": false
+    },
+    {
+      "name": "port",
+      "value": 8080,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "number"
+        }
+      ],
+      "dataType": "number",
+      "secret": false
+    },
+    {
+      "name": "flag",
+      "value": true,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "boolean"
+        }
+      ],
+      "dataType": "boolean",
+      "secret": false
+    },
+    {
+      "name": "config",
+      "value": {
+        "a": 1,
+        "b": [
+          1,
+          2
+        ]
+      },
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "object"
+        }
+      ],
+      "dataType": "object",
+      "secret": false
+    },
+    {
+      "name": "",
+      "value": "",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "first"
+        }
+      ],
+      "description": "first",
+      "secret": false
+    },
+    {
+      "name": "twice",
+      "value": 2,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "number"
+        },
+        {
+          "name": "description",
+          "value": "second"
+        }
+      ],
+      "description": "second",
+      "dataType": "number",
+      "secret": false
+    },
+    {
+      "name": "noted",
+      "value": "n",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "multi\nline"
+        }
+      ],
+      "description": "multi\nline",
+      "secret": false
+    }
+  ]
+}

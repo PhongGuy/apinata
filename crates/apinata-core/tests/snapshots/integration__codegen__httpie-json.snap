@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin 'POST' 'http://x.test/j' \
+  'content-type:application/json' \
+  --raw '{"a": 1, "s": "x y"}'

@@ -1,0 +1,23 @@
+info:
+  name: Own Auth
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://localhost:3000/health
+  auth:
+    type: awsv4
+    accessKeyId: newAccessKey
+    secretAccessKey: newSecretKey
+    sessionToken: sessionToken
+    service: service_name
+    region: us-east1
+    profileName: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

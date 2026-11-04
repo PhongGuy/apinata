@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/b'
+headers = {
+    'content-type': 'application/json',
+}
+data = open('/data/body.json', 'rb')
+
+response = requests.request('PUT', url, headers=headers, data=data)
+print(response.status_code)
+print(response.text)

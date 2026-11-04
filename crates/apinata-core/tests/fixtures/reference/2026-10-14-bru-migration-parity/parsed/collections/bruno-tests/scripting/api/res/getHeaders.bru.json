@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "name": "getHeaders",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"res.getHeaders(name)\", function() {\n  const h = res.getHeaders();\n  expect(h['x-powered-by']).to.eql('Express');\n  expect(h['content-length']).to.eql('17');\n});\n"
+}

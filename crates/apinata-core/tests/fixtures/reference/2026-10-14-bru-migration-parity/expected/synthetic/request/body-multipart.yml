@@ -1,0 +1,46 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: POST
+  url: https://example.com/upload
+  body:
+    type: multipart-form
+    data:
+      - name: text
+        type: text
+        value: hello
+      - name: typed
+        type: text
+        value: '{"a":1}'
+        contentType: application/json
+      - name: files
+        type: file
+        value:
+          - a.txt
+          - b.txt
+      - name: one
+        type: file
+        value:
+          - c.png
+        contentType: image/png
+        disabled: true
+      - name: tags
+        type: text
+        value:
+          - x
+          - y
+      - name: multi
+        type: text
+        value: |-
+          first
+          second
+        contentType: text/plain
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

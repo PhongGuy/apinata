@@ -1,0 +1,11 @@
+name: Mixed Enabled Env
+variables:
+  - name: enabledVar
+    value: value1
+  - name: disabledVar
+    value: value2
+    disabled: true
+  - name: defaultEnabledVar
+    value: value3
+  - name: nullEnabledVar
+    value: value4

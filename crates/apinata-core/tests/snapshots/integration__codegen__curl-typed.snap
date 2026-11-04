@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, Target::Curl)"
+---
+curl --request 'POST' \
+  --url 'http://x.test/t' \
+  --form 'j={"a": "x﻿y"};type=application/json' \
+  --form 't=plain'

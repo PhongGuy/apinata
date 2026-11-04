@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "setCookie",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\n// Set cookie before the request\ntry {\n  await jar.setCookie(\"https://testbench-sanity.usebruno.com\", {\n    key: \"auth\",\n    value: \"1234\",\n    path: \"/path\"\n  });\n  \n  console.log(\"Cookie set successfully in pre-request script\");\n  \n} catch (error) {\n  console.error(\"Cookie setting error in pre-request:\", error);\n  throw new Error(`Pre-request setCookie failed: ${error.message || error}`);\n}"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\ntest(\"should have set cookie successfully\", function() {\n  console.log(\"Verifying cookie set in pre-request script\");\n});\n\n// Test: Verify the cookie was set by retrieving it\nconst cookieData = await jar.getCookie(\"https://testbench-sanity.usebruno.com/path\", \"auth\");\n\ntest(\"should retrieve the set cookie with correct properties\", function() {\n    expect(cookieData.key).to.equal(\"auth\");\n    expect(cookieData.value).to.equal(\"1234\");\n    expect(cookieData.path).to.equal(\"/path\");\n    expect(cookieData.domain).to.include('usebruno.com');\n    console.log(\"Retrieved and verified cookie:\", cookieData);\n});\n\n// Test: Additional verification - check all cookies for the domain\nconst allCookies = await jar.getCookies(\"https://testbench-sanity.usebruno.com/path\");\n\ntest(\"should find the cookie in domain cookie list\", function() {\n  expect(allCookies).to.be.an('array');\n  expect(allCookies.length).to.be.at.least(1);\n  \n  const authCookie = allCookies.find(c => c.key === 'auth');\n  expect(authCookie).to.not.be.undefined;\n  expect(authCookie.value).to.equal(\"1234\");\n  \n  console.log(\"All cookies for domain:\", allCookies.map(c => ({ key: c.key, value: c.value, path: c.path })));\n});\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

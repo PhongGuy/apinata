@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "name": "deleteHeaders",
+    "type": "http",
+    "seq": "13"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "X-Frame-Options",
+      "value": "1",
+      "enabled": true
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.deleteHeaders(['X-Frame-Options']);"
+  },
+  "tests": "test(\"req.deleteHeaders(names)\", function() {\n  const h = req.getHeaders();\n  expect(h[\"x-frame-options\"]).to.be.undefined;\n});"
+}

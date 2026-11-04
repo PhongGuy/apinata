@@ -1,0 +1,40 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: env-flag-tests
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: env-flag-tests
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== test1.yml
+info:
+  name: test1
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{URL}}"
+  body:
+    type: json
+    data: |-
+      {
+        "{{BODY_KEY}}":"{{BODY_VALUE}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped test1 / testScript: scripts are not imported (test1.yml)

@@ -1,0 +1,60 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+  auth:
+    type: oauth2
+    flow: authorization_code
+    credentials:
+      placement: body
+    additionalParameters:
+      authorizationRequest:
+        - name: x-auth-req
+          placement: header
+          value: "1"
+        - name: x-auth-off
+          placement: header
+          value: "2"
+        - name: audience
+          placement: query
+          value: api
+      accessTokenRequest:
+        - name: x-token-req
+          placement: header
+          value: "3"
+        - name: resource
+          placement: query
+          value: r
+        - name: extra
+          placement: body
+          value: body-value
+      refreshTokenRequest:
+        - name: x-refresh
+          placement: header
+          value: "4"
+        - name: rq
+          placement: query
+          value: "5"
+        - name: rb
+          placement: body
+          value: "6"
+    pkce:
+      disabled: true
+    tokenConfig:
+      id: credentials
+      placement:
+        header: ""
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

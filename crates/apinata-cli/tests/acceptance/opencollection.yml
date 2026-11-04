@@ -1,0 +1,15 @@
+opencollection: "1.0.0"
+info:
+  name: acceptance
+request:
+  headers:
+    - name: X-Suite
+      value: acceptance
+  auth:
+    type: bearer
+    token: "{{token}}"
+  variables:
+    - name: expected
+      value:
+        type: number
+        data: "200"

@@ -1,0 +1,32 @@
+info:
+  name: setGlobalEnvVar
+  type: http
+  seq: 31
+
+http:
+  method: GET
+  url: "{{host}}/ping"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.setGlobalEnvVar("testSetGlobalEnvVar", "global-test-value");
+    - type: tests
+      code: |-
+        test("should set global env var in scripts", function() {
+          const val = bru.getGlobalEnvVar("testSetGlobalEnvVar");
+          expect(val).to.equal("global-test-value");
+        });
+
+        test("should overwrite existing global env var", function() {
+          bru.setGlobalEnvVar("testSetGlobalEnvVar", "overwritten");
+          const val = bru.getGlobalEnvVar("testSetGlobalEnvVar");
+          expect(val).to.equal("overwritten");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

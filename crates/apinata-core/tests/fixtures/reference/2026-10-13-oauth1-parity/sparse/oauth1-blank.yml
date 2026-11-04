@@ -1,0 +1,27 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth1
+    consumerKey: ck
+    consumerSecret: ""
+    accessTokenSecret: "  "
+    signatureMethod: ""
+    privateKey:
+      type: file
+      value: ""
+    version: ""
+    realm: ""
+    extra: dropped
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

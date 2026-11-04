@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "name": "populate",
+    "type": "http",
+    "seq": "8"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.headerList.populate([\n  { key: 'bruno', value: 'overwritten' },\n  { key: 'x-new-one', value: 'one' },\n  { key: 'x-new-two', value: 'two' }\n]);"
+  },
+  "tests": "test(\"req.headerList.populate(items) - adds new headers, skips existing keys\", function() {\n  // existing headers are preserved (not overwritten)\n  expect(req.getHeader('bruno')).to.equal('is-awesome');\n  expect(req.getHeader('della')).to.equal('is-beautiful');\n  // new headers are added\n  expect(req.getHeader('x-new-one')).to.equal('one');\n  expect(req.getHeader('x-new-two')).to.equal('two');\n  expect(req.headerList.has('x-new-one')).to.be.true;\n  expect(req.headerList.has('x-new-two')).to.be.true;\n});"
+}

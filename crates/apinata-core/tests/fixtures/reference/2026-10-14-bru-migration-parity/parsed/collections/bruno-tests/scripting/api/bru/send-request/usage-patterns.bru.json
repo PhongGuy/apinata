@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "usage-patterns",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://echo.usebruno.com",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "tests": "// pattern 1: using async/await\nawait test(\"post request with async/await - success case\", async () => {\n  const res = await bru.sendRequest({\n    url: 'https://echo.usebruno.com',\n    method: 'POST',\n    data: 'ping'\n  });\n  expect(res.data).to.eql('ping');\n});\n\nawait test(\"post request with async/await - error case\", async () => {\n  try {\n    await bru.sendRequest({\n      url: 'https://echo.usebruno.com/invalid',\n      method: 'POST',\n      data: 'ping'\n    }); \n  }\n  catch(err) {\n    expect(err.status).to.eql(404);\n  }\n});\n\n// pattern 2: using promise (.then/.catch)\nawait test(\"post request with promise chain - success case\", async () => {\n  await bru.sendRequest({\n    url: 'https://echo.usebruno.com',\n    method: 'POST',\n    data: 'ping'\n  })\n  .then(res => {\n    expect(res.data).to.eql('ping');\n  });\n});\n\nawait test(\"post request with promise chain - error case\", async () => {\n  await bru.sendRequest({\n    url: 'https://echo.usebruno.com/invalid',\n    method: 'POST',\n    data: 'ping'\n  })\n  .catch(err => {\n    expect(err.status).to.eql(404);\n  });\n});\n\n// pattern 3: using callbacks\nawait test(\"post request with callback - success case\", async () => {\n  await bru.sendRequest({\n    url: 'https://echo.usebruno.com',\n    method: 'POST',\n    data: 'ping'\n  }, function(error, response) {\n    expect(response.data).to.eql('ping');\n  });\n});\n\nawait test(\"post request with callback - error case\", async () => {\n  await bru.sendRequest({\n    url: 'https://echo.usebruno.com/invalid',\n    method: 'POST',\n    data: 'ping'\n  }, function(error, response) {\n    expect(error.status).to.eql(404);\n  });\n});"
+}

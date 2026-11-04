@@ -1,0 +1,7 @@
+extends:
+  - base
+  - with, comma
+  - with [bracket]
+variables:
+  - name: a
+    value: "1"

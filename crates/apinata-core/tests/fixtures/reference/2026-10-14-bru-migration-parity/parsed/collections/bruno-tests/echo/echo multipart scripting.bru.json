@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "echo multipart via scripting",
+    "type": "http",
+    "seq": "10"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "contains form-data-value",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const FormData = require(\"form-data\");\nconst form = new FormData();\nform.append('form-data-key', 'form-data-value');\nreq.setBody(form);"
+  }
+}

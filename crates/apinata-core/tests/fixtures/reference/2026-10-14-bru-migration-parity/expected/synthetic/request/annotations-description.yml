@@ -1,0 +1,39 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+  headers:
+    - name: a
+      value: "1"
+      description: single quoted
+    - name: b
+      value: "2"
+      description: |-
+        double "quoted"	with\escapes
+        and \x
+    - name: c
+      value: "3"
+      description: |-
+        first line
+          indented ''' kept
+        last \' line
+    - name: d
+      value: "4"
+      description: unquoted text
+    - name: e
+      value: "5"
+    - name: f
+      value: "6"
+    - name: g
+      value: "7"
+      description: two
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

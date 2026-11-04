@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "name": "Tabbed",
+    "seq": "4",
+    "type": "http"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://example.com/ws",
+    "body": "none"
+  },
+  "headers": [
+    {
+      "name": "a",
+      "value": "1",
+      "enabled": true
+    },
+    {
+      "name": "b",
+      "value": "2",
+      "enabled": true
+    }
+  ],
+  "docs": "text with trailing   \n"
+}

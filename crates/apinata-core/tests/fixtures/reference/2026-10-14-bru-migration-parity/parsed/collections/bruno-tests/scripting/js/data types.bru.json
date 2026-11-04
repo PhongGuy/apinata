@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "name": "data types",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"boolean\": false,\n  \"number\": 1,\n  \"string\": \"bruno\",\n  \"array\": [1, 2, 3, 4, 5],\n  \"object\": {\n    \"hello\": \"bruno\"\n  },\n  \"null\": null\n}"
+  },
+  "script": {
+    "req": "const reqBody = req.getBody();\n\nbru.setVar(\"dataTypeVarTest\", {\n  ...reqBody,\n  \"undefined\": undefined\n});"
+  },
+  "tests": "test(\"data types check via bru var\", function() {\n  let v = bru.getVar(\"dataTypeVarTest\");\n  v = {\n    ...v,\n    \"undefined\": undefined\n  };\n  expect(v).to.eql({\n    \"boolean\": false,\n    \"number\": 1,\n    \"string\": \"bruno\",\n    \"array\": [1, 2, 3, 4, 5],\n    \"object\": {\n      \"hello\": \"bruno\"\n    },\n    \"null\": null,\n    \"undefined\": undefined\n  })\n});"
+}

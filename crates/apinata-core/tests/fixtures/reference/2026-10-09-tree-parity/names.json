@@ -1,0 +1,192 @@
+[
+  {
+    "input": "Get users",
+    "sanitized": "Get users",
+    "valid": true
+  },
+  {
+    "input": "  padded  ",
+    "sanitized": "padded",
+    "valid": true
+  },
+  {
+    "input": "a/b\\c",
+    "sanitized": "a-b-c",
+    "valid": true
+  },
+  {
+    "input": "what?",
+    "sanitized": "what-",
+    "valid": true
+  },
+  {
+    "input": "x:y*z",
+    "sanitized": "x-y-z",
+    "valid": true
+  },
+  {
+    "input": "<tag>",
+    "sanitized": "tag-",
+    "valid": true
+  },
+  {
+    "input": "quote\"d",
+    "sanitized": "quote-d",
+    "valid": true
+  },
+  {
+    "input": "pipe|d",
+    "sanitized": "pipe-d",
+    "valid": true
+  },
+  {
+    "input": "tab\there",
+    "sanitized": "tab-here",
+    "valid": true
+  },
+  {
+    "input": "nl\nhere",
+    "sanitized": "nl-here",
+    "valid": true
+  },
+  {
+    "input": "--lead",
+    "sanitized": "lead",
+    "valid": true
+  },
+  {
+    "input": "- -lead",
+    "sanitized": "lead",
+    "valid": true
+  },
+  {
+    "input": "trail...",
+    "sanitized": "trail",
+    "valid": true
+  },
+  {
+    "input": "trail. . ",
+    "sanitized": "trail",
+    "valid": true
+  },
+  {
+    "input": ".hidden",
+    "sanitized": ".hidden",
+    "valid": true
+  },
+  {
+    "input": "a.b",
+    "sanitized": "a.b",
+    "valid": true
+  },
+  {
+    "input": "CON",
+    "sanitized": "CON",
+    "valid": false
+  },
+  {
+    "input": "con",
+    "sanitized": "con",
+    "valid": false
+  },
+  {
+    "input": "COM1",
+    "sanitized": "COM1",
+    "valid": false
+  },
+  {
+    "input": "LPT9",
+    "sanitized": "LPT9",
+    "valid": false
+  },
+  {
+    "input": "CONSOLE",
+    "sanitized": "CONSOLE",
+    "valid": true
+  },
+  {
+    "input": "nul.txt",
+    "sanitized": "nul.txt",
+    "valid": true
+  },
+  {
+    "input": "",
+    "sanitized": "",
+    "valid": false
+  },
+  {
+    "input": "   ",
+    "sanitized": "",
+    "valid": false
+  },
+  {
+    "input": "---",
+    "sanitized": "",
+    "valid": false
+  },
+  {
+    "input": "...",
+    "sanitized": "",
+    "valid": false
+  },
+  {
+    "input": "ok-",
+    "sanitized": "ok-",
+    "valid": true
+  },
+  {
+    "input": " nbsp",
+    "sanitized": "nbsp",
+    "valid": true
+  },
+  {
+    "input": "nbsp ",
+    "sanitized": "nbsp",
+    "valid": true
+  },
+  {
+    "input": "﻿bom",
+    "sanitized": "bom",
+    "valid": true
+  },
+  {
+    "input": "nel",
+    "sanitized": "nel",
+    "valid": true
+  },
+  {
+    "input": "nel",
+    "sanitized": "nel",
+    "valid": true
+  },
+  {
+    "input": " em",
+    "sanitized": "em",
+    "valid": true
+  },
+  {
+    "input": "café",
+    "sanitized": "café",
+    "valid": true
+  },
+  {
+    "input": "😀 smile",
+    "sanitized": "😀 smile",
+    "valid": true
+  },
+  {
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "sanitized": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "valid": true
+  },
+  {
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "sanitized": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "valid": false
+  },
+  {
+    "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "sanitized": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "valid": false
+  }
+]

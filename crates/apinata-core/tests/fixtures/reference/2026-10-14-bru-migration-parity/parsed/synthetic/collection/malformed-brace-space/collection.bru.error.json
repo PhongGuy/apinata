@@ -1,0 +1,4 @@
+{
+  "line": 5,
+  "message": "Line 5, col 11:\n  4 | \n> 5 | headers { \n                ^\n  6 |   x: 1\nExpected \":\""
+}

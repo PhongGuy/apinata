@@ -1,0 +1,67 @@
+info:
+  name: Rejected example
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: https://api.example.com/items
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Untitled Example
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Untitled Example
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Untitled Example
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Untitled Example
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""
+  - name: Still fine after the rejections
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""

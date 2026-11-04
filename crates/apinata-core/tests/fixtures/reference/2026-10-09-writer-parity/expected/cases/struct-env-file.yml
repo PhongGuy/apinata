@@ -1,0 +1,12 @@
+name: dev
+extends: base
+color: "#ff0000"
+variables:
+  - name: a
+    value: "1"
+  - secret: true
+    name: s
+  - name: t
+    value:
+      type: number
+      data: "42"

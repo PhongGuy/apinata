@@ -1,0 +1,37 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth2
+    flow: authorization_code
+    authorizationUrl: https://id.example.com/authorize
+    accessTokenUrl: https://id.example.com/token
+    credentials:
+      clientId: app
+      placement: private_key_jwt
+    additionalParameters:
+      authorizationRequest:
+        - name: resource
+          placement: header
+          value: https://api.example.com
+    scope: read
+    pkce: {}
+    tokenConfig:
+      placement:
+        header: ""
+      source: refresh_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

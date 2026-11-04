@@ -1,0 +1,236 @@
+//! Which installs the updater may replace: a pure table.
+#![cfg(feature = "update")]
+
+use apinata_core::update::{InstallKind as K, Os, Product, Reason as R, install_kind};
+use std::path::{Path, PathBuf};
+
+/// Product, OS, executable, `$APPIMAGE`, sibling app, expected kind.
+type Row = (Product, Os, &'static str, Option<&'static str>, bool, K);
+
+#[test]
+fn the_classification_table() {
+    use Os::*;
+    use Product::*;
+    let p = PathBuf::from;
+    let rows: Vec<Row> = vec![
+        (
+            Cli,
+            Linux,
+            "/usr/bin/apinata",
+            None,
+            false,
+            K::NotOwned(R::SystemPackage),
+        ),
+        (
+            App,
+            Linux,
+            "/usr/bin/apinata-app",
+            None,
+            false,
+            K::NotOwned(R::SystemPackage),
+        ),
+        (
+            Cli,
+            Linux,
+            "/usr/local/bin/apinata",
+            None,
+            false,
+            K::Standalone(p("/usr/local/bin/apinata")),
+        ),
+        (
+            Cli,
+            Linux,
+            "/home/u/.local/bin/apinata",
+            None,
+            false,
+            K::Standalone(p("/home/u/.local/bin/apinata")),
+        ),
+        (
+            Cli,
+            Linux,
+            "/tmp/.mount_Apin/usr/bin/apinata",
+            Some("/home/u/Apinata.AppImage"),
+            false,
+            K::NotOwned(R::ShippedWithApp),
+        ),
+        (
+            Cli,
+            Macos,
+            "/Applications/Apinata.app/Contents/MacOS/apinata",
+            None,
+            false,
+            K::NotOwned(R::ShippedWithApp),
+        ),
+        (
+            Cli,
+            Windows,
+            r"C:\Program Files\Apinata\apinata.exe",
+            None,
+            true,
+            K::NotOwned(R::ShippedWithApp),
+        ),
+        (
+            Cli,
+            Windows,
+            r"C:\tools\apinata.exe",
+            None,
+            false,
+            K::Standalone(p(r"C:\tools\apinata.exe")),
+        ),
+        (
+            Cli,
+            Macos,
+            "/Volumes/Tools/apinata",
+            None,
+            false,
+            K::Standalone(p("/Volumes/Tools/apinata")),
+        ),
+        (
+            App,
+            Macos,
+            "/Volumes/Apinata/Apinata.app/Contents/MacOS/apinata-app",
+            None,
+            false,
+            K::NotOwned(R::ReadOnlyVolume),
+        ),
+        (
+            App,
+            Macos,
+            "/private/var/folders/x/T/AppTranslocation/AB12/d/Apinata.app/Contents/MacOS/apinata-app",
+            None,
+            false,
+            K::NotOwned(R::Translocated),
+        ),
+        (
+            App,
+            Linux,
+            "/tmp/.mount_Apin/usr/bin/apinata-app",
+            Some("/home/u/Apinata.AppImage"),
+            false,
+            K::AppImage(p("/home/u/Apinata.AppImage")),
+        ),
+        (
+            App,
+            Macos,
+            "/Applications/Apinata.app/Contents/MacOS/apinata-app",
+            None,
+            false,
+            K::MacApp(p("/Applications/Apinata.app")),
+        ),
+        (
+            App,
+            Windows,
+            r"C:\Users\u\AppData\Local\Apinata\apinata-app.exe",
+            None,
+            false,
+            K::WindowsNsis,
+        ),
+        (
+            App,
+            Linux,
+            "/home/u/apinata-1.0/apinata-app",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            App,
+            Macos,
+            "/Users/u/bin/apinata-app",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            Cli,
+            Linux,
+            "//usr/bin/apinata",
+            None,
+            false,
+            K::NotOwned(R::SystemPackage),
+        ),
+        (
+            Cli,
+            Linux,
+            "/usr/local/../bin/apinata",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            Cli,
+            Linux,
+            "/usr/./bin/apinata",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            Cli,
+            Linux,
+            "usr/bin/apinata",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            Cli,
+            Windows,
+            r"C:\tools\..\apinata.exe",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            Cli,
+            Windows,
+            r"tools\apinata.exe",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+        (
+            Cli,
+            Macos,
+            "/Applications/Apinata.app/Contents/Resources/apinata",
+            None,
+            false,
+            K::NotOwned(R::ShippedWithApp),
+        ),
+        (
+            Cli,
+            Macos,
+            "/Applications/Apinata.APP/Contents/MacOS/bin/apinata",
+            None,
+            false,
+            K::NotOwned(R::ShippedWithApp),
+        ),
+        (
+            App,
+            Macos,
+            "/Applications/Apinata.app/Contents/Resources/apinata-app",
+            None,
+            false,
+            K::NotOwned(R::Unrecognised),
+        ),
+    ];
+    for (product, os, exe, appimage, sibling, want) in rows {
+        let got = install_kind(
+            product,
+            os,
+            Path::new(exe),
+            appimage.map(Path::new),
+            sibling,
+        );
+        assert_eq!(got, want, "{product:?} {os:?} {exe}");
+    }
+}
+
+#[test]
+fn not_owned_names_its_reason() {
+    let e = apinata_core::update::UpdateError::NotOwned(R::ShippedWithApp);
+    assert_eq!(
+        e.to_string(),
+        "this copy cannot update itself: it ships with the Apinata app, so update the app instead"
+    );
+}

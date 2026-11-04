@@ -1,0 +1,28 @@
+info:
+  name: List posts
+  type: http
+  seq: 1
+  tags:
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/posts?_limit=5"
+  params:
+    - name: _limit
+      value: "5"
+      type: query
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

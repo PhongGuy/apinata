@@ -1,0 +1,20 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: GraphQL Only
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: GraphQL Only
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped Named query: GraphQL requests are not imported (-)
+Dropped Scripted auth header: GraphQL requests are not imported (-)
+Dropped Anonymous query: GraphQL requests are not imported (-)

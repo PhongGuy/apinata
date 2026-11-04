@@ -1,0 +1,7 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin 'GET' 'http://x.test/a?q=1&r=two' \
+  'X-A:2' \
+  'Cookie:b\=2'

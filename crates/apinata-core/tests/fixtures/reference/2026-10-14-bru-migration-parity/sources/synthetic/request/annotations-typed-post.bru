@@ -1,0 +1,15 @@
+get {
+  url: https://example.com
+}
+
+vars:post-response {
+  @number
+  count: res.body.count
+  @object
+  @description('an object')
+  obj: res.body
+  @boolean
+  @number
+  two: 1
+  plain: res.status
+}

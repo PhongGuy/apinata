@@ -1,0 +1,19 @@
+post {
+  url: https://example.com/upload
+  body: multipartForm
+}
+
+body:multipart-form {
+  text: hello
+  typed: {"a":1} @contentType(application/json)
+  files: @file(a.txt|b.txt||)
+  ~one: @file(c.png) @contentType(image/png)
+  tags: [
+    x
+    y
+  ]
+  multi: '''
+    first
+    second
+  ''' @contentType(text/plain)
+}

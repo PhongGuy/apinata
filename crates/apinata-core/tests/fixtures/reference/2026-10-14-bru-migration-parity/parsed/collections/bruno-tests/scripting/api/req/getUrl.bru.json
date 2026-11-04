@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "name": "getUrl",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getUrl()\", function() {\n  const url = req.getUrl();\n  expect(url).to.equal(\"https://testbench-sanity.usebruno.com/ping\");\n});"
+}

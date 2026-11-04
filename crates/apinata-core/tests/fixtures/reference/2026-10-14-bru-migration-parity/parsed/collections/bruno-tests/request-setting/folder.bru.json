@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "request-setting",
+    "seq": "14",
+    "type": "collection"
+  },
+  "auth": {
+    "mode": "inherit"
+  }
+}

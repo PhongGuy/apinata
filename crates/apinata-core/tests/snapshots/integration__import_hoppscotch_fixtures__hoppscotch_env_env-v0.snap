@@ -1,0 +1,10 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== env-v0.yml
+name: env-v0
+variables:
+  - name: baseURL
+    value: https://echo.hoppscotch.io
+== report

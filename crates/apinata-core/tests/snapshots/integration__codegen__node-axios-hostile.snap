@@ -1,0 +1,24 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import axios from 'axios';
+
+const url = 'http://x.test/p?x=a%27b$c{d}&y=%C3%BC';
+const headers = {
+  'X-H': Buffer.from('it\'s "q" \\ $HOME {x} ü').toString('latin1'),
+  'content-type': 'text/plain',
+};
+const data = 'a\'b"c\\d $e {f}\tg\nü€\u2028end';
+
+const response = await axios.request({
+  method: 'POST',
+  url,
+  headers,
+  data,
+  transformRequest: (d) => d,
+  transformResponse: (r) => r,
+  validateStatus: () => true,
+});
+console.log(response.status);
+console.log(response.data);

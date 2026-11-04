@@ -1,0 +1,102 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Environment Cascade
+== cascade request no folder.yml
+info:
+  name: cascade request no folder
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "cascadeVar": "{{cascadeVar}}"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== cascadeFolder/cascade request.yml
+info:
+  name: cascade request
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "cascadeVar": "{{cascadeVar}}",
+        "subOnlyVar": "{{subOnlyVar}}"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== cascadeFolder/folder.yml
+info:
+  name: cascadeFolder
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+  variables:
+    - name: cascadeVar
+      value: fromFolder
+== environments/Base Environment.yml
+name: Base Environment
+variables:
+  - name: cascadeVar
+    value: fromBase
+  - name: subOnlyVar
+    value: subOnly_base
+== environments/SubEnvA.yml
+name: SubEnvA
+variables:
+  - name: cascadeVar
+    value: fromSubA
+  - name: subOnlyVar
+    value: subOnly_A
+== environments/SubEnvB.yml
+name: SubEnvB
+variables:
+  - name: cascadeVar
+    value: fromSubB
+  - name: subOnlyVar
+    value: subOnly_B
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Environment Cascade
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

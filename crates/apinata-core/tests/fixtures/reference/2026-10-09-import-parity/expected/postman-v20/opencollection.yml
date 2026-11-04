@@ -1,0 +1,14 @@
+opencollection: 1.0.0
+
+info:
+  name: Postman v2.0 Collection
+
+docs:
+  content: Test collection using Postman Collection Format v2.0
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "name": "getHost",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getHost()\", function() {\n  const host = req.getHost();\n  expect(host).to.equal(\"testbench-sanity.usebruno.com\");\n});"
+}

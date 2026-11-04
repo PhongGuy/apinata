@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import requests
+
+url = 'http://x.test/a?q=1&r=two'
+headers = {
+    'X-A': '2',
+    'Cookie': 'b=2',
+}
+
+response = requests.request('GET', url, headers=headers)
+print(response.status_code)
+print(response.text)

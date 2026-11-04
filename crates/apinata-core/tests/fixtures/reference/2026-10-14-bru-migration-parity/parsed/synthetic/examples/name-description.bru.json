@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "Name and description",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items"
+  },
+  "examples": [
+    {
+      "name": "Spaced name with trailing blanks",
+      "description": "One line of description"
+    }
+  ]
+}

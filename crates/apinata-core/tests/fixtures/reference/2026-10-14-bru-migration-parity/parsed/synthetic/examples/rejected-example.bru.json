@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "name": "Rejected example",
+    "type": "http",
+    "seq": "7"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items"
+  },
+  "examples": [
+    {
+      "error": "Line 2, col 1:\n  1 | name: Unknown field\n> 2 | colour: blue\n      ^\nExpected end of input, \"response\", \"request\", \"description\", or \"name\""
+    },
+    {
+      "error": "Line 3, col 1:\n  2 |   a: 1\n> 3 | \n      ^\n  4 |   b: 2\nExpected \"}\" or \":\""
+    },
+    {
+      "error": "Line 3, col 1:\n  2 |   type: json\n> 3 | }\n      ^\nExpected \"\\n\""
+    },
+    {
+      "error": "Missing semantic action for 'list' in attribute 'ast'.\nAction stack (most recent call last):\n  ast > BruFile\n  ast > _iter\n  ast > example\n  ast > ExampleFile\n  ast > _iter\n  ast > request\n  ast > RequestFile\n  ast > _iter\n  ast > default action for 'requestcontent'\n  ast > default action for 'requestbodies'\n  ast > bodyfile\n  ast > dictionary\n  ast > _iter\n  ast > pairlist\n  ast > pair\n  ast > default action for 'value'\n  ast > list"
+    },
+    {
+      "name": "Still fine after the rejections"
+    }
+  ]
+}

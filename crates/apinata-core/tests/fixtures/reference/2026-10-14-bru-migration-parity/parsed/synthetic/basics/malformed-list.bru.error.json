@@ -1,0 +1,4 @@
+{
+  "line": 5,
+  "message": "Line 5, col 9:\n  4 |     good\n> 5 |     bad item!\n              ^\n  6 |   ]\nExpected \"\\n\""
+}

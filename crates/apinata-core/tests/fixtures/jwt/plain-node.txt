@@ -1,0 +1,465 @@
+sign RSA HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign RSA bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign RSA HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign RSA bytes HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign RSA HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign RSA bytes HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign RSA RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign RSA bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign RSA RS512: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+sign RSA bytes RS512: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+sign RSA PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA bytes PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA PS512: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA bytes PS512: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA ES384: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA bytes ES384: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA_PKCS1 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign RSA_PKCS1 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign RSA_PKCS1 HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign RSA_PKCS1 bytes HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign RSA_PKCS1 HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign RSA_PKCS1 bytes HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign RSA_PKCS1 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign RSA_PKCS1 bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign RSA_PKCS1 RS512: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+sign RSA_PKCS1 bytes RS512: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+sign RSA_PKCS1 PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA_PKCS1 bytes PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA_PKCS1 PS512: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA_PKCS1 bytes PS512: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+sign RSA_PKCS1 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA_PKCS1 bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA_PKCS1 ES384: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign RSA_PKCS1 bytes ES384: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign EC256 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign EC256 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign EC256 HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign EC256 bytes HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign EC256 HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign EC256 bytes HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign EC256 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 bytes RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 RS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 bytes RS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 bytes PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 PS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 bytes PS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC256 ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+sign EC256 bytes ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+sign EC256 ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+sign EC256 bytes ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+sign EC384 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign EC384 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign EC384 HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign EC384 bytes HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign EC384 HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign EC384 bytes HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign EC384 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 bytes RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 RS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 bytes RS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 bytes PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 PS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 bytes PS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC384 ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+sign EC384 bytes ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+sign EC384 ES384: ok eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 96
+sign EC384 bytes ES384: ok eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 96
+sign EC521 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign EC521 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign EC521 HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign EC521 bytes HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign EC521 HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign EC521 bytes HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign EC521 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 bytes RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 RS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 bytes RS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 bytes PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 PS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 bytes PS512: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign EC521 ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+sign EC521 bytes ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+sign EC521 ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+sign EC521 bytes ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+sign ED HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign ED bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign ED HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign ED bytes HS384: Error secretOrPrivateKey must be a symmetric key when using HS384
+sign ED HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign ED bytes HS512: Error secretOrPrivateKey must be a symmetric key when using HS512
+sign ED RS256: Error Unknown key type "ed25519".
+sign ED bytes RS256: Error Unknown key type "ed25519".
+sign ED RS512: Error Unknown key type "ed25519".
+sign ED bytes RS512: Error Unknown key type "ed25519".
+sign ED PS256: Error Unknown key type "ed25519".
+sign ED bytes PS256: Error Unknown key type "ed25519".
+sign ED PS512: Error Unknown key type "ed25519".
+sign ED bytes PS512: Error Unknown key type "ed25519".
+sign ED ES256: Error Unknown key type "ed25519".
+sign ED bytes ES256: Error Unknown key type "ed25519".
+sign ED ES384: Error Unknown key type "ed25519".
+sign ED bytes ES384: Error Unknown key type "ed25519".
+round RSA PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256 x
+round EC256 ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64 x
+round EC384 ES384: ok eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 96 x
+verify RSA_PUB HS256: JsonWebTokenError invalid algorithm
+verify RSA_PUB HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify RSA_PUB bytes HS256: JsonWebTokenError invalid algorithm
+verify RSA_PUB RS256: ok x
+verify RSA_PUB RS256 named: ok x
+verify RSA_PUB bytes RS256: ok x
+verify RSA_PUB PS256: ok x
+verify RSA_PUB PS256 named: ok x
+verify RSA_PUB bytes PS256: ok x
+verify RSA_PUB ES256: JsonWebTokenError invalid algorithm
+verify RSA_PUB ES256 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA_PUB bytes ES256: JsonWebTokenError invalid algorithm
+verify RSA_PUB ES384: JsonWebTokenError invalid algorithm
+verify RSA_PUB ES384 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA_PUB bytes ES384: JsonWebTokenError invalid algorithm
+verify RSA_CRT HS256: JsonWebTokenError invalid algorithm
+verify RSA_CRT HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify RSA_CRT bytes HS256: JsonWebTokenError invalid algorithm
+verify RSA_CRT RS256: ok x
+verify RSA_CRT RS256 named: ok x
+verify RSA_CRT bytes RS256: ok x
+verify RSA_CRT PS256: ok x
+verify RSA_CRT PS256 named: ok x
+verify RSA_CRT bytes PS256: ok x
+verify RSA_CRT ES256: JsonWebTokenError invalid algorithm
+verify RSA_CRT ES256 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA_CRT bytes ES256: JsonWebTokenError invalid algorithm
+verify RSA_CRT ES384: JsonWebTokenError invalid algorithm
+verify RSA_CRT ES384 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA_CRT bytes ES384: JsonWebTokenError invalid algorithm
+verify RSA HS256: JsonWebTokenError invalid algorithm
+verify RSA HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify RSA bytes HS256: JsonWebTokenError invalid algorithm
+verify RSA RS256: ok x
+verify RSA RS256 named: ok x
+verify RSA bytes RS256: ok x
+verify RSA PS256: ok x
+verify RSA PS256 named: ok x
+verify RSA bytes PS256: ok x
+verify RSA ES256: JsonWebTokenError invalid algorithm
+verify RSA ES256 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA bytes ES256: JsonWebTokenError invalid algorithm
+verify RSA ES384: JsonWebTokenError invalid algorithm
+verify RSA ES384 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA bytes ES384: JsonWebTokenError invalid algorithm
+verify RSA_PKCS1 HS256: JsonWebTokenError invalid algorithm
+verify RSA_PKCS1 HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify RSA_PKCS1 bytes HS256: JsonWebTokenError invalid algorithm
+verify RSA_PKCS1 RS256: ok x
+verify RSA_PKCS1 RS256 named: ok x
+verify RSA_PKCS1 bytes RS256: ok x
+verify RSA_PKCS1 PS256: ok x
+verify RSA_PKCS1 PS256 named: ok x
+verify RSA_PKCS1 bytes PS256: ok x
+verify RSA_PKCS1 ES256: JsonWebTokenError invalid algorithm
+verify RSA_PKCS1 ES256 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA_PKCS1 bytes ES256: JsonWebTokenError invalid algorithm
+verify RSA_PKCS1 ES384: JsonWebTokenError invalid algorithm
+verify RSA_PKCS1 ES384 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify RSA_PKCS1 bytes ES384: JsonWebTokenError invalid algorithm
+verify EC256_PUB HS256: JsonWebTokenError invalid algorithm
+verify EC256_PUB HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify EC256_PUB bytes HS256: JsonWebTokenError invalid algorithm
+verify EC256_PUB RS256: JsonWebTokenError invalid algorithm
+verify EC256_PUB RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC256_PUB bytes RS256: JsonWebTokenError invalid algorithm
+verify EC256_PUB PS256: JsonWebTokenError invalid algorithm
+verify EC256_PUB PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC256_PUB bytes PS256: JsonWebTokenError invalid algorithm
+verify EC256_PUB ES256: ok x
+verify EC256_PUB ES256 named: ok x
+verify EC256_PUB bytes ES256: ok x
+verify EC256_PUB ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC256_PUB ES384 named: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC256_PUB bytes ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC256 HS256: JsonWebTokenError invalid algorithm
+verify EC256 HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify EC256 bytes HS256: JsonWebTokenError invalid algorithm
+verify EC256 RS256: JsonWebTokenError invalid algorithm
+verify EC256 RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC256 bytes RS256: JsonWebTokenError invalid algorithm
+verify EC256 PS256: JsonWebTokenError invalid algorithm
+verify EC256 PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC256 bytes PS256: JsonWebTokenError invalid algorithm
+verify EC256 ES256: ok x
+verify EC256 ES256 named: ok x
+verify EC256 bytes ES256: ok x
+verify EC256 ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC256 ES384 named: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC256 bytes ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC384_PUB HS256: JsonWebTokenError invalid algorithm
+verify EC384_PUB HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify EC384_PUB bytes HS256: JsonWebTokenError invalid algorithm
+verify EC384_PUB RS256: JsonWebTokenError invalid algorithm
+verify EC384_PUB RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC384_PUB bytes RS256: JsonWebTokenError invalid algorithm
+verify EC384_PUB PS256: JsonWebTokenError invalid algorithm
+verify EC384_PUB PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC384_PUB bytes PS256: JsonWebTokenError invalid algorithm
+verify EC384_PUB ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC384_PUB ES256 named: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC384_PUB bytes ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC384_PUB ES384: ok x
+verify EC384_PUB ES384 named: ok x
+verify EC384_PUB bytes ES384: ok x
+verify EC384 HS256: JsonWebTokenError invalid algorithm
+verify EC384 HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify EC384 bytes HS256: JsonWebTokenError invalid algorithm
+verify EC384 RS256: JsonWebTokenError invalid algorithm
+verify EC384 RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC384 bytes RS256: JsonWebTokenError invalid algorithm
+verify EC384 PS256: JsonWebTokenError invalid algorithm
+verify EC384 PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC384 bytes PS256: JsonWebTokenError invalid algorithm
+verify EC384 ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC384 ES256 named: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC384 bytes ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC384 ES384: ok x
+verify EC384 ES384 named: ok x
+verify EC384 bytes ES384: ok x
+verify EC521_PUB HS256: JsonWebTokenError invalid algorithm
+verify EC521_PUB HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify EC521_PUB bytes HS256: JsonWebTokenError invalid algorithm
+verify EC521_PUB RS256: JsonWebTokenError invalid algorithm
+verify EC521_PUB RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC521_PUB bytes RS256: JsonWebTokenError invalid algorithm
+verify EC521_PUB PS256: JsonWebTokenError invalid algorithm
+verify EC521_PUB PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC521_PUB bytes PS256: JsonWebTokenError invalid algorithm
+verify EC521_PUB ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC521_PUB ES256 named: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC521_PUB bytes ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC521_PUB ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC521_PUB ES384 named: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC521_PUB bytes ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC521 HS256: JsonWebTokenError invalid algorithm
+verify EC521 HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify EC521 bytes HS256: JsonWebTokenError invalid algorithm
+verify EC521 RS256: JsonWebTokenError invalid algorithm
+verify EC521 RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC521 bytes RS256: JsonWebTokenError invalid algorithm
+verify EC521 PS256: JsonWebTokenError invalid algorithm
+verify EC521 PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify EC521 bytes PS256: JsonWebTokenError invalid algorithm
+verify EC521 ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC521 ES256 named: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC521 bytes ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+verify EC521 ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC521 ES384 named: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify EC521 bytes ES384: Error "alg" parameter "ES384" requires curve "secp384r1".
+verify ED_PUB HS256: JsonWebTokenError invalid algorithm
+verify ED_PUB HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify ED_PUB bytes HS256: JsonWebTokenError invalid algorithm
+verify ED_PUB RS256: Error Unknown key type "ed25519".
+verify ED_PUB RS256 named: Error Unknown key type "ed25519".
+verify ED_PUB bytes RS256: Error Unknown key type "ed25519".
+verify ED_PUB PS256: Error Unknown key type "ed25519".
+verify ED_PUB PS256 named: Error Unknown key type "ed25519".
+verify ED_PUB bytes PS256: Error Unknown key type "ed25519".
+verify ED_PUB ES256: JsonWebTokenError invalid algorithm
+verify ED_PUB ES256 named: Error Unknown key type "ed25519".
+verify ED_PUB bytes ES256: JsonWebTokenError invalid algorithm
+verify ED_PUB ES384: JsonWebTokenError invalid algorithm
+verify ED_PUB ES384 named: Error Unknown key type "ed25519".
+verify ED_PUB bytes ES384: JsonWebTokenError invalid algorithm
+verify ED HS256: JsonWebTokenError invalid algorithm
+verify ED HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+verify ED bytes HS256: JsonWebTokenError invalid algorithm
+verify ED RS256: Error Unknown key type "ed25519".
+verify ED RS256 named: Error Unknown key type "ed25519".
+verify ED bytes RS256: Error Unknown key type "ed25519".
+verify ED PS256: Error Unknown key type "ed25519".
+verify ED PS256 named: Error Unknown key type "ed25519".
+verify ED bytes PS256: Error Unknown key type "ed25519".
+verify ED ES256: JsonWebTokenError invalid algorithm
+verify ED ES256 named: Error Unknown key type "ed25519".
+verify ED bytes ES256: JsonWebTokenError invalid algorithm
+verify ED ES384: JsonWebTokenError invalid algorithm
+verify ED ES384 named: Error Unknown key type "ed25519".
+verify ED bytes ES384: JsonWebTokenError invalid algorithm
+secret plain HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.HTTEDbYoJJFNHCM6s80o1-CcoCkjfLBmVyTO2ecxlvY
+secret plain RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret plain ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret plain bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.HTTEDbYoJJFNHCM6s80o1-CcoCkjfLBmVyTO2ecxlvY
+secret plain verify: ok x
+secret plain verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret plain verify wrong: JsonWebTokenError invalid signature
+secret spaces HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.YNhRK7ttMA81YQXAX0phnq-6yBrNG9eWu6KrAnfTakM
+secret spaces RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret spaces ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret spaces bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.YNhRK7ttMA81YQXAX0phnq-6yBrNG9eWu6KrAnfTakM
+secret spaces verify: ok x
+secret spaces verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret spaces verify wrong: JsonWebTokenError invalid signature
+secret unicode HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Xe53KThvHuI1J-a0sKVYZ1m__tc__4T7qp35r1kj6d8
+secret unicode RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret unicode ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret unicode bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Xe53KThvHuI1J-a0sKVYZ1m__tc__4T7qp35r1kj6d8
+secret unicode verify: ok x
+secret unicode verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret unicode verify wrong: JsonWebTokenError invalid signature
+secret odd HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.PG_tDrEZVBo6fW9sj4fdSMESvZew_EPRNNjTeTs2RgE
+secret odd RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret odd ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret odd bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.PG_tDrEZVBo6fW9sj4fdSMESvZew_EPRNNjTeTs2RgE
+secret odd verify: ok x
+secret odd verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret odd verify wrong: JsonWebTokenError invalid signature
+secret broken HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.tIVT4q303adP2i30ZJ5ry8aYX6capXVpgHitEW8xTOs
+secret broken RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret broken ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret broken bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.tIVT4q303adP2i30ZJ5ry8aYX6capXVpgHitEW8xTOs
+secret broken verify: ok x
+secret broken verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret broken verify wrong: JsonWebTokenError invalid signature
+secret broken_pub HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.OYiCgybSbJSLckvr9pmCLdWYgQHPRCrHE7S4tIKEJJI
+secret broken_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret broken_pub ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret broken_pub bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.OYiCgybSbJSLckvr9pmCLdWYgQHPRCrHE7S4tIKEJJI
+secret broken_pub verify: ok x
+secret broken_pub verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret broken_pub verify wrong: JsonWebTokenError invalid signature
+secret truncated HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.7Ia16qEC0z-HaEocT8yUXsalXaz9-_7J4DIJInWr6UA
+secret truncated RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret truncated ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret truncated bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.7Ia16qEC0z-HaEocT8yUXsalXaz9-_7J4DIJInWr6UA
+secret truncated verify: ok x
+secret truncated verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret truncated verify wrong: JsonWebTokenError invalid signature
+secret no_end HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.CYKzhUHdEDoGXtTHxDRysd3PnbKVfBiLatsTQNbZfDk
+secret no_end RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret no_end ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret no_end bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.CYKzhUHdEDoGXtTHxDRysd3PnbKVfBiLatsTQNbZfDk
+secret no_end verify: ok x
+secret no_end verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret no_end verify wrong: JsonWebTokenError invalid signature
+secret bad_base64 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jED5BSZ1zN4fRqPjgvUJfsNokvvMpMJsttn-N21aac4
+secret bad_base64 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret bad_base64 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret bad_base64 bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jED5BSZ1zN4fRqPjgvUJfsNokvvMpMJsttn-N21aac4
+secret bad_base64 verify: ok x
+secret bad_base64 verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret bad_base64 verify wrong: JsonWebTokenError invalid signature
+secret unknown_label HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.3mMXSHn1oIQlrI2i7lZs-at75ITYkRjQ_wIfQ_2aSVc
+secret unknown_label RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret unknown_label ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret unknown_label bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.3mMXSHn1oIQlrI2i7lZs-at75ITYkRjQ_wIfQ_2aSVc
+secret unknown_label verify: ok x
+secret unknown_label verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret unknown_label verify wrong: JsonWebTokenError invalid signature
+secret encrypted HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jaJ1Aj49QAfAoODaCLD2c_x_A7YucvvlbLxMpM6sbiM
+secret encrypted RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret encrypted ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret encrypted bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jaJ1Aj49QAfAoODaCLD2c_x_A7YucvvlbLxMpM6sbiM
+secret encrypted verify: ok x
+secret encrypted verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret encrypted verify wrong: JsonWebTokenError invalid signature
+secret ssh HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Eb-duaf9RB6E1OAYetH-AHRsSW_Q3Hx1FRRrfyWI-Hw
+secret ssh RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+secret ssh ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret ssh bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Eb-duaf9RB6E1OAYetH-AHRsSW_Q3Hx1FRRrfyWI-Hw
+secret ssh verify: ok x
+secret ssh verify RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+secret ssh verify wrong: JsonWebTokenError invalid signature
+public RSA_PUB HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.n1lpOJApwaMY39C8ZY3JHZKlRB0Qaq3fMtLry_67OqE
+public RSA_PUB RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+public RSA_PUB PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+public RSA_PUB ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+public RSA_CRT HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ld5jNffHA5kmPJEyEX4Oy40JY7uSWoGuzZTXx_AUdJY
+public RSA_CRT RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+public RSA_CRT PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+public RSA_CRT ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+public EC256_PUB HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.q-Z-mp2rfNL7bf_Ao47yqyKejBEYLUU_vMHnEhyNa74
+public EC256_PUB RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+public EC256_PUB PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+public EC256_PUB ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+public ED_PUB HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.6H45m6oTVwLYZCk_V8Y7Sba1zeABDR-bfGP9pjVG-WM
+public ED_PUB RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+public ED_PUB PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+public ED_PUB ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+secret uint8array: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.dsUocA0oEArxBmL1vHUS3s0fCGpI3jSCUi5VzCZGZos
+secret arraybuffer: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.dsUocA0oEArxBmL1vHUS3s0fCGpI3jSCUi5VzCZGZos
+secret dataview: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.dsUocA0oEArxBmL1vHUS3s0fCGpI3jSCUi5VzCZGZos
+secret empty bytes: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hAvJTip8taolWjuBhzhtBLetHR5KoIVJdkUdc4FEo2w
+secret number: Error secretOrPrivateKey is not valid key material
+secret true: Error secretOrPrivateKey is not valid key material
+secret function: Error secretOrPrivateKey is not valid key material
+verify number: JsonWebTokenError secretOrPublicKey is not valid key material
+verify true: JsonWebTokenError secretOrPublicKey is not valid key material
+foreign PSS HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign PSS RS256: Error "alg" parameter for "rsa-pss" key type must be one of: PS256, PS384, PS512.
+foreign PSS PS256: Error Invalid key for this operation, its RSA-PSS parameters do not meet the requirements of "alg" PS256.
+foreign PSS ES256: Error "alg" parameter for "rsa-pss" key type must be one of: PS256, PS384, PS512.
+foreign PSS bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign PSS verify HS256: JsonWebTokenError invalid algorithm
+foreign PSS_SHA256 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign PSS_SHA256 RS256: Error "alg" parameter for "rsa-pss" key type must be one of: PS256, PS384, PS512.
+foreign PSS_SHA256 PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+foreign PSS_SHA256 ES256: Error "alg" parameter for "rsa-pss" key type must be one of: PS256, PS384, PS512.
+foreign PSS_SHA256 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign PSS_SHA256 verify HS256: JsonWebTokenError invalid algorithm
+foreign K256 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign K256 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign K256 PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign K256 ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+foreign K256 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign K256 verify HS256: JsonWebTokenError invalid algorithm
+foreign K256_SEC1 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign K256_SEC1 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign K256_SEC1 PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign K256_SEC1 ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+foreign K256_SEC1 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign K256_SEC1 verify HS256: JsonWebTokenError invalid algorithm
+foreign ED448 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign ED448 RS256: Error Unknown key type "ed448".
+foreign ED448 PS256: Error Unknown key type "ed448".
+foreign ED448 ES256: Error Unknown key type "ed448".
+foreign ED448 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign ED448 verify HS256: JsonWebTokenError invalid algorithm
+foreign X25519 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign X25519 RS256: Error Unknown key type "x25519".
+foreign X25519 PS256: Error Unknown key type "x25519".
+foreign X25519 ES256: Error Unknown key type "x25519".
+foreign X25519 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign X25519 verify HS256: JsonWebTokenError invalid algorithm
+foreign DSA HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign DSA RS256: Error Unknown key type "dsa".
+foreign DSA PS256: Error Unknown key type "dsa".
+foreign DSA ES256: Error Unknown key type "dsa".
+foreign DSA bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign DSA verify HS256: JsonWebTokenError invalid algorithm
+foreign RSA_INCONSISTENT HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign RSA_INCONSISTENT RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+foreign RSA_INCONSISTENT PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+foreign RSA_INCONSISTENT ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+foreign RSA_INCONSISTENT bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign RSA_INCONSISTENT verify HS256: JsonWebTokenError invalid algorithm
+foreign PSS_PUB sign HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Gh__b7_yOHfifQTbM39gLKRia72c2qQTTNyYI6rvwIc
+foreign PSS_PUB verify HS256: JsonWebTokenError invalid algorithm
+foreign PSS_PUB verify RS256: Error "alg" parameter for "rsa-pss" key type must be one of: PS256, PS384, PS512.
+foreign K256_PUB sign HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.wXhxqxqD3_bIrYgKZkWkonfCHz0HTD4mQvCgUuLpCPs
+foreign K256_PUB verify HS256: JsonWebTokenError invalid algorithm
+foreign K256_PUB verify RS256: JsonWebTokenError invalid algorithm
+foreign ED448_PUB sign HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.FVWmzZWOxZYDuVbUaQOnSb0tm1JEK3c-5uDiQQccwXQ
+foreign ED448_PUB verify HS256: JsonWebTokenError invalid algorithm
+foreign ED448_PUB verify RS256: Error Unknown key type "ed448".
+foreign X25519_PUB sign HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.KpT3ei-i_ospWVaFZ8LmDjiJ4U_OXPNFZ4em4tSfr98
+foreign X25519_PUB verify HS256: JsonWebTokenError invalid algorithm
+foreign X25519_PUB verify RS256: Error Unknown key type "x25519".
+foreign DSA_PUB sign HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.a7N6dUI0tokIFQ0oKrcHk80yh-on579NP5hlNppBm8g
+foreign DSA_PUB verify HS256: JsonWebTokenError invalid algorithm
+foreign DSA_PUB verify RS256: Error Unknown key type "dsa".
+sign callback: Error secretOrPrivateKey must be a symmetric key when using HS256
+callback: secretOrPrivateKey must be a symmetric key when using HS256 undefined

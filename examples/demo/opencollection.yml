@@ -1,0 +1,32 @@
+opencollection: 1.0.0
+
+info:
+  name: Apinata Demo
+
+request:
+  variables:
+    - name: baseUrl
+      value: https://jsonplaceholder.typicode.com
+    - name: postId
+      value: "1"
+    - name: userId
+      value: "1"
+
+docs:
+  content: |-
+    # Apinata Demo
+
+    A small tour of Apinata.
+
+    - **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.
+    - **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.
+    - **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.
+
+    Sending a request needs network access.
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

@@ -1,0 +1,30 @@
+info:
+  name: a grpc call
+  type: grpc
+  seq: 2
+
+grpc:
+  url: grpc://localhost:50051
+  method: /pkg.Service/Call
+  methodType: unary
+  protoFilePath: protos/a.proto
+  metadata:
+    - name: x-trace
+      value: abc
+    - name: x-off
+      value: "1"
+      disabled: true
+  message:
+    - title: message 1
+      message: "{}"
+
+runtime:
+  scripts:
+    - type: grpc:before-call-start
+      code: console.log('start');
+    - type: grpc:before-message-send
+      code: console.log('send');
+    - type: grpc:after-message-receive
+      code: console.log('receive');
+    - type: grpc:after-call-end
+      code: console.log('end');

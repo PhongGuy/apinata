@@ -1,0 +1,36 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Global env workspace with secret vault
+== environments/Base Environment.yml
+name: Base Environment
+variables:
+  - name: from
+    value: global env with secret vault
+== environments/global vault env with secret.yml
+name: global vault env with secret
+variables:
+  - name: from
+    value: global env with secret vault
+  - secret: true
+    name: vault.secret
+  - secret: true
+    name: vault.foo
+  - secret: true
+    name: vault.hello
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Global env workspace with secret vault
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report
+NeedsInput data.__insomnia_vault.secret: the secret `vault.secret` has no value; enter it before sending (environments/global vault env with secret.yml)
+NeedsInput data.__insomnia_vault.foo: the secret `vault.foo` has no value; enter it before sending (environments/global vault env with secret.yml)
+NeedsInput data.__insomnia_vault.hello: the secret `vault.hello` has no value; enter it before sending (environments/global vault env with secret.yml)

@@ -1,0 +1,18 @@
+info:
+  name: plain query
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{endpoint}}/sparql"
+  body:
+    type: text
+    data: SELECT * WHERE { ?s ?p ?o } LIMIT 1
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

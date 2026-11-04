@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "getRequestVar",
+    "type": "http",
+    "seq": "7"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "request-var",
+        "value": "request-var-value",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  },
+  "tests": "test(\"should get request var in scripts\", function() {\n  const testVar = bru.getRequestVar(\"request-var\");\n  expect(testVar).to.equal(\"request-var-value\");\n});"
+}

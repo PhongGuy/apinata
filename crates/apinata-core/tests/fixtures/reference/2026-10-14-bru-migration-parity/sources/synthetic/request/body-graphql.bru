@@ -1,0 +1,16 @@
+post {
+  url: https://example.com/graphql
+  body: graphql
+}
+
+body:graphql {
+  query {
+    user(id: 1) { name }
+  }
+}
+
+body:graphql:vars {
+  {
+    "id": 1
+  }
+}

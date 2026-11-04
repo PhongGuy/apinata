@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "name": "bru",
+    "type": "collection"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "folder-var",
+        "value": "folder-var-value",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "name": "multipart-mixed-form-data-file",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "body": {
+    "multipartForm": [
+      {
+        "name": "sample",
+        "value": [
+          "bruno.png"
+        ],
+        "enabled": true,
+        "type": "file",
+        "contentType": "image/png"
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "matches ^[-]+[a-z0-9]+",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "contains Content-Type: image/png",
+      "enabled": true
+    }
+  ]
+}

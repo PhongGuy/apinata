@@ -1,0 +1,234 @@
+{
+  "variables": [
+    {
+      "name": "host",
+      "value": "http://localhost:8080",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "localhost",
+      "value": "http://localhost:8081",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "httpfaker",
+      "value": "https://www.httpfaker.org",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "bearer_auth_token",
+      "value": "your_secret_token",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "basic_auth_password",
+      "value": "della",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "env.var1",
+      "value": "envVar1",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "env-var2",
+      "value": "envVar2",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "bark",
+      "value": "{{process.env.PROC_ENV_VAR}}",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "foo",
+      "value": "bar",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "testSetEnvVar",
+      "value": "bruno-29653",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "echo-host",
+      "value": "https://echo.usebruno.com",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "client_id",
+      "value": "client_id_1",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "client_secret",
+      "value": "client_secret_1",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "auth_url",
+      "value": "http://localhost:8080/api/auth/oauth2/authorization_code/authorize",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "callback_url",
+      "value": "http://localhost:8080/api/auth/oauth2/authorization_code/callback",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "access_token_url",
+      "value": "http://localhost:8080/api/auth/oauth2/authorization_code/token",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "passwordCredentials_username",
+      "value": "foo",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "passwordCredentials_password",
+      "value": "bar",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "github_authorize_url",
+      "value": "https://github.com/login/oauth/authorize",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "github_access_token_url",
+      "value": "https://github.com/login/oauth/access_token",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "google_auth_url",
+      "value": "https://accounts.google.com/o/oauth2/auth",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "google_access_token_url",
+      "value": "https://accounts.google.com/o/oauth2/token",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "google_scope",
+      "value": "https://www.googleapis.com/auth/userinfo.email",
+      "enabled": true,
+      "secret": false
+    },
+    {
+      "name": "typed_env_num",
+      "value": 300,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "number"
+        }
+      ],
+      "dataType": "number",
+      "secret": false
+    },
+    {
+      "name": "typed_env_bool",
+      "value": true,
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "boolean"
+        }
+      ],
+      "dataType": "boolean",
+      "secret": false
+    },
+    {
+      "name": "typed_env_obj",
+      "value": {
+        "scope": "env"
+      },
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "object"
+        }
+      ],
+      "dataType": "object",
+      "secret": false
+    },
+    {
+      "name": "github_client_secret",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "github_client_id",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "google_client_id",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "google_client_secret",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "github_authorization_code",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "passwordCredentials_access_token",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "client_credentials_access_token",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "authorization_code_access_token",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    },
+    {
+      "name": "github_access_token",
+      "value": "",
+      "enabled": true,
+      "secret": true
+    }
+  ]
+}

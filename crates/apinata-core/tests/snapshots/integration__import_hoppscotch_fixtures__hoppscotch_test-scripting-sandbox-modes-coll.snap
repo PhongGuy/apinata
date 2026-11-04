@@ -1,0 +1,36 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: test-scripting-sandbox-modes
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: test-scripting-sandbox-modes
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== sample-req.yml
+info:
+  name: sample-req
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped sample-req / preRequestScript: scripts are not imported (sample-req.yml)
+Dropped sample-req / testScript: scripts are not imported (sample-req.yml)

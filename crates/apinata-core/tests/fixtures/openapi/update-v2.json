@@ -1,0 +1,4 @@
+{"openapi":"3.0.3","info":{"title":"Shop","version":"2"},"paths":{
+ "/users/{id}":{"get":{"tags":["people"],"operationId":"getUser","description":"Fetch a user","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}},{"name":"include","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"ok"}}}},
+ "/users":{"get":{"tags":["people"],"operationId":"listUsers","responses":{"200":{"description":"ok"}}},
+           "post":{"tags":["people"],"operationId":"createUser","requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string"}}}}}},"responses":{"201":{"description":"made"}}}}}}

@@ -1,0 +1,50 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+
+runtime:
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.count
+        method: jsonq
+      variable:
+        name: count
+        scope: runtime
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body
+        method: jsonq
+      variable:
+        name: obj
+        scope: runtime
+      description: an object
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: "1"
+        method: jsonq
+      variable:
+        name: two
+        scope: runtime
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.status
+        method: jsonq
+      variable:
+        name: plain
+        scope: runtime
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

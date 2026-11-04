@@ -1,0 +1,86 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/:id"
+  },
+  "params": [
+    {
+      "name": "page",
+      "value": "1",
+      "enabled": true,
+      "type": "query",
+      "annotations": [
+        {
+          "name": "description",
+          "value": "the page"
+        }
+      ],
+      "description": "the page"
+    },
+    {
+      "name": "off",
+      "value": "0",
+      "enabled": true,
+      "type": "query"
+    },
+    {
+      "name": "id",
+      "value": "7",
+      "enabled": true,
+      "type": "path",
+      "annotations": [
+        {
+          "name": "description",
+          "value": "path id"
+        }
+      ],
+      "description": "path id"
+    }
+  ],
+  "headers": [
+    {
+      "name": "authorization",
+      "value": "Bearer x",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "deprecated"
+        },
+        {
+          "name": "description",
+          "value": "auth header"
+        }
+      ],
+      "description": "auth header"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "status ok"
+        }
+      ],
+      "description": "status ok"
+    }
+  ],
+  "body": {
+    "formUrlEncoded": [
+      {
+        "name": "field",
+        "value": "v",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "tag",
+            "value": "a b"
+          }
+        ]
+      }
+    ]
+  }
+}

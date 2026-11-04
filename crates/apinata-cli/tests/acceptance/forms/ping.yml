@@ -1,0 +1,18 @@
+info:
+  name: Ping
+  type: http
+  seq: 2
+http:
+  method: PUT
+  url: "{{baseUrl}}/ping"
+  body:
+    type: xml
+    data: "<ping>{{token}}</ping>"
+  auth: none
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+    - expression: res.body
+      operator: isEmpty

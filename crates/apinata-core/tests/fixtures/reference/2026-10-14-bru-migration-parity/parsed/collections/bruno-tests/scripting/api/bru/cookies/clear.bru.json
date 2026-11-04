@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "name": "clear",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\nawait jar.setCookies('https://testbench-sanity.usebruno.com', [\n  {\n    key: 'test_cookie_1',\n    value: 'value1',\n    path: '/',\n    secure: true\n  },\n  {\n    key: 'test_cookie_2', \n    value: 'value2',\n    path: '/',\n    secure: true\n  }\n]);\n\nconsole.log(\"Test cookies set up for clear test\");",
+    "res": "const jar = bru.cookies.jar()\n\nconst cookiesBeforeClear = await jar.getCookies('https://testbench-sanity.usebruno.com');\nconsole.log(`Found ${cookiesBeforeClear.length} cookies before clearing`);\n\ntest(\"cookies should exist before clearing\", function() {\n  expect(cookiesBeforeClear).to.be.an('array');\n  expect(cookiesBeforeClear.length).to.be.greaterThan(0);\n});\n\nawait jar.clear();\nconsole.log(\"Cookie jar cleared\");"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\ntest(\"should have no cookies after clearing\", async function() {\n  const cookiesAfterClear = await jar.getCookies('https://testbench-sanity.usebruno.com');\n  expect(cookiesAfterClear).to.be.an('array');\n  expect(cookiesAfterClear.length).to.equal(0);\n});\n\njar.clear(function(error) {\n  test(\"should successfully clear with callback\", function() {\n    expect(error).to.be.null;\n  });\n});",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

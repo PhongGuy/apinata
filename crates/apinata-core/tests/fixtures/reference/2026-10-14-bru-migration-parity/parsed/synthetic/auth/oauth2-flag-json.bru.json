@@ -1,0 +1,25 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth2"
+  },
+  "auth": {
+    "oauth2": {
+      "grantType": "client_credentials",
+      "accessTokenUrl": "https://example.com/token",
+      "refreshTokenUrl": "",
+      "clientId": "",
+      "clientSecret": "",
+      "scope": "",
+      "credentialsPlacement": "body",
+      "credentialsId": "credentials",
+      "tokenSource": "access_token",
+      "tokenPlacement": "header",
+      "tokenHeaderPrefix": "",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": "Infinity",
+      "autoRefreshToken": 9007199254740992
+    }
+  }
+}

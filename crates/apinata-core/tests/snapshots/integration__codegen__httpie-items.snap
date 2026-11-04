@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin --multipart 'POST' 'http://x.test/i' \
+  'X-E:\=v' \
+  'a=\@x' \
+  'k\=v=1'

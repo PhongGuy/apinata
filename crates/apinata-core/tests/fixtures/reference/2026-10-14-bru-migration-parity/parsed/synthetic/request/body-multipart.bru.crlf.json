@@ -1,0 +1,60 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/upload",
+    "body": "multipartForm"
+  },
+  "body": {
+    "multipartForm": [
+      {
+        "name": "text",
+        "value": "hello",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      },
+      {
+        "name": "typed",
+        "value": "{\"a\":1}",
+        "enabled": true,
+        "type": "text",
+        "contentType": "application/json"
+      },
+      {
+        "name": "files",
+        "value": [
+          "a.txt",
+          "b.txt"
+        ],
+        "enabled": true,
+        "type": "file",
+        "contentType": ""
+      },
+      {
+        "name": "one",
+        "value": [
+          "c.png"
+        ],
+        "enabled": false,
+        "type": "file",
+        "contentType": "image/png"
+      },
+      {
+        "name": "tags",
+        "value": [
+          "x",
+          "y"
+        ],
+        "enabled": true,
+        "type": "text"
+      },
+      {
+        "name": "multi",
+        "value": "first\r\nsecond",
+        "enabled": true,
+        "type": "text",
+        "contentType": "text/plain"
+      }
+    ]
+  }
+}

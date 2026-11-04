@@ -1,0 +1,404 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Authentication/User login.yml
+info:
+  name: User login
+  type: http
+  seq: 1
+  tags:
+    - Authentication
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/login"
+  body:
+    type: json
+    data: |-
+      {
+        "email": "",
+        "password": ""
+      }
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Authenticate user and get access token
+
+=== Authentication/folder.yml
+info:
+  name: Authentication
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+
+=== Posts/Create a new post.yml
+info:
+  name: Create a new post
+  type: http
+  seq: 2
+  tags:
+    - Posts
+
+http:
+  method: POST
+  url: "{{baseUrl}}/posts"
+  body:
+    type: json
+    data: |-
+      {
+        "title": "",
+        "content": "",
+        "category": ""
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Create a new blog post
+
+=== Posts/Get all posts.yml
+info:
+  name: Get all posts
+  type: http
+  seq: 1
+  tags:
+    - Posts
+
+http:
+  method: GET
+  url: "{{baseUrl}}/posts"
+  params:
+    - name: author
+      value: ""
+      type: query
+      description: Filter by author ID
+      disabled: true
+    - name: category
+      value: ""
+      type: query
+      description: Filter by category
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve all blog posts
+
+=== Posts/folder.yml
+info:
+  name: Posts
+  type: folder
+  seq: 3
+
+request:
+  auth: inherit
+
+=== Users/Create a new user.yml
+info:
+  name: Create a new user
+  type: http
+  seq: 2
+  tags:
+    - Users
+
+http:
+  method: POST
+  url: "{{baseUrl}}/users"
+  body:
+    type: json
+    data: |-
+      {
+        "email": "",
+        "name": "",
+        "password": "",
+        "avatar": ""
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Create a new user account
+
+=== Users/Delete user.yml
+info:
+  name: Delete user
+  type: http
+  seq: 5
+  tags:
+    - Users
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/users/:userId"
+  params:
+    - name: userId
+      value: ""
+      type: path
+      description: The user ID
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Delete a user account
+
+=== Users/Get all users.yml
+info:
+  name: Get all users
+  type: http
+  seq: 1
+  tags:
+    - Users
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users?page=1&limit=20"
+  params:
+    - name: page
+      value: "1"
+      type: query
+      description: Page number for pagination
+    - name: limit
+      value: "20"
+      type: query
+      description: Number of items per page
+    - name: filter
+      value: ""
+      type: query
+      description: Filter users by name or email
+      disabled: true
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve a paginated list of all users
+
+=== Users/Get user by ID.yml
+info:
+  name: Get user by ID
+  type: http
+  seq: 3
+  tags:
+    - Users
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users/:userId"
+  params:
+    - name: userId
+      value: ""
+      type: path
+      description: The user ID
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Retrieve a specific user by their ID
+
+=== Users/Update user.yml
+info:
+  name: Update user
+  type: http
+  seq: 4
+  tags:
+    - Users
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/users/:userId"
+  params:
+    - name: userId
+      value: ""
+      type: path
+      description: The user ID
+  body:
+    type: json
+    data: |-
+      {
+        "name": "",
+        "avatar": ""
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Update an existing user
+
+=== Users/folder.yml
+info:
+  name: Users
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+=== environments/Development server.yml
+name: Development server
+variables:
+  - name: baseUrl
+    value: http://localhost:3000/v1
+  - secret: true
+    name: token
+
+=== environments/Production server.yml
+name: Production server
+variables:
+  - name: baseUrl
+    value: https://api.example.com/v1
+  - secret: true
+    name: token
+
+=== environments/Staging server.yml
+name: Staging server
+variables:
+  - name: baseUrl
+    value: https://staging-api.example.com/v1
+  - secret: true
+    name: token
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Comprehensive API Test Collection
+
+request:
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs:
+  content: A comprehensive API for testing OpenAPI v3 imports with various features
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        DELETE /users/{}:
+          target: 74ccd207c9ff8418
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: b51b718087599462
+          tags: a816fc4ae59a17a4
+          vars: 7ace431cb61584cb
+          method: d8ad8056c4645ee4
+          file: Users/Delete user.yml
+        GET /posts:
+          target: 7d926d123aad74ae
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: a7b2ed9098721145
+          tags: 6649c5cc351bd044
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Posts/Get all posts.yml
+        GET /users:
+          target: 4d64ffe5c1e218a2
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: cb57b85802451d29
+          tags: a816fc4ae59a17a4
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Users/Get all users.yml
+        GET /users/{}:
+          target: 74ccd207c9ff8418
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 21a48d7b07eb726b
+          tags: a816fc4ae59a17a4
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Users/Get user by ID.yml
+        POST /auth/login:
+          target: b5f57b04027763f5
+          headers: 7ace431cb61584cb
+          body: 917f2a6c9879e59d
+          docs: 1d9cfd03b2e6fb90
+          tags: 0f2af95d5d699a4c
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Authentication/User login.yml
+        POST /posts:
+          target: daf230798a40e4d6
+          headers: 7ace431cb61584cb
+          body: 0cdf4759f4b9950e
+          docs: 4f6d954fb7be0278
+          tags: 6649c5cc351bd044
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Posts/Create a new post.yml
+        POST /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: e515d8c5a7aba65d
+          docs: 9fd879936d901043
+          tags: a816fc4ae59a17a4
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Users/Create a new user.yml
+        PUT /users/{}:
+          target: 74ccd207c9ff8418
+          headers: 7ace431cb61584cb
+          body: cde0756ed471f629
+          docs: 5b92fc9bbfc84093
+          tags: a816fc4ae59a17a4
+          vars: 7ace431cb61584cb
+          method: 651ba8f38be35d73
+          file: Users/Update user.yml
+
+note Converted opencollection.yml | security | only the first security requirement's first scheme, `bearerAuth`, is used
+note NeedsInput environments/Production server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
+note NeedsInput environments/Staging server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
+note NeedsInput environments/Development server.yml | components.securitySchemes | the secret `token` has no value; enter it before sending
+secret Production server token
+secret Staging server token
+secret Development server token

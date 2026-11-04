@@ -1,0 +1,34 @@
+info:
+  name: deleteEnvVar
+  type: http
+  seq: 30
+
+http:
+  method: GET
+  url: "{{host}}/ping"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: bru.setEnvVar("testDeleteEnvVar", "to-be-deleted");
+    - type: after-response
+      code: bru.deleteEnvVar("testDeleteEnvVar");
+    - type: tests
+      code: |-
+        test("should delete env var", function() {
+          const val = bru.getEnvVar("testDeleteEnvVar");
+          expect(val).to.be.undefined;
+        });
+
+        test("should not throw when deleting non-existent key", function() {
+          expect(function() {
+            bru.deleteEnvVar("non-existent-key");
+          }).to.not.throw();
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

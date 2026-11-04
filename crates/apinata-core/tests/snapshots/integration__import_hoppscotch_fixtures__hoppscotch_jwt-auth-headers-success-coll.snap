@@ -1,0 +1,35 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: JWT Auth (headers) - collection
+== jwt-auth-headers.yml
+info:
+  name: jwt-auth-headers
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{url}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: JWT Auth (headers) - collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Converted jwt-auth-headers / auth: `jwt` auth is not supported; imported as no auth (jwt-auth-headers.yml)
+Dropped jwt-auth-headers / testScript: scripts are not imported (jwt-auth-headers.yml)

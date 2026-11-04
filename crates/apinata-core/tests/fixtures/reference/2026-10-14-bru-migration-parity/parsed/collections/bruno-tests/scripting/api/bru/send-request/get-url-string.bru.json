@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "get-url-string",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://echo.usebruno.com",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "tests": "await test(\"send request with a get url string\", async () => {\n  const res = await bru.sendRequest(\"https://testbench-sanity.usebruno.com/ping\");\n  expect(res.data).to.eql('pong');\n});"
+}

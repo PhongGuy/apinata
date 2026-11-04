@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "test echo-any json",
+    "type": "http",
+    "seq": "12"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"type\": \"application/json\",\n  \"contentJSON\": {\"x\": 42}\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body.x",
+      "value": "eq 42",
+      "enabled": true
+    }
+  ]
+}

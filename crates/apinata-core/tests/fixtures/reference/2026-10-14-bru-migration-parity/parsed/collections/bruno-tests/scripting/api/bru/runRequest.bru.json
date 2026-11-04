@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "name": "runRequest",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "foo",
+      "value": "bar",
+      "enabled": true
+    }
+  ],
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "bru.setVar(\"runRequest-ping-res-1\", null);\nbru.setVar(\"runRequest-ping-res-2\", null);\nbru.setVar(\"runRequest-ping-res-3\", null);\n\nlet pingRes = await bru.runRequest('ping');\nbru.setVar('runRequest-ping-res-1', {\n  data: pingRes?.data,\n  statusText: pingRes?.statusText,\n  status: pingRes?.status\n});",
+    "res": "let pingRes = await bru.runRequest('ping');\nbru.setVar('runRequest-ping-res-2', {\n  data: pingRes?.data,\n  statusText: pingRes?.statusText,\n  status: pingRes?.status\n});"
+  },
+  "tests": "const pingRes = await bru.runRequest('ping');\nbru.setVar('runRequest-ping-res-3', {\n  data: pingRes?.data,\n  statusText: pingRes?.statusText,\n  status: pingRes?.status\n});\n\ntest(\"should run request and return valid response in pre-request script\", function() {\n  const expectedPingRes = {\n    data: \"pong\",\n    statusText: \"OK\",\n    status: 200\n  };\n  const pingRes = bru.getVar('runRequest-ping-res-1');\n  expect(pingRes).to.eql(expectedPingRes);\n});\n\ntest(\"should run request and return valid response in post-response script\", function() {\n  const expectedPingRes = {\n    data: \"pong\",\n    statusText: \"OK\",\n    status: 200\n  };\n  const pingRes = bru.getVar('runRequest-ping-res-2');\n  expect(pingRes).to.eql(expectedPingRes);\n});\n\ntest(\"should run request and return valid response in tests script\", function() {\n  const expectedPingRes = {\n    data: \"pong\",\n    statusText: \"OK\",\n    status: 200\n  };\n  const pingRes = bru.getVar('runRequest-ping-res-3');\n  expect(pingRes).to.eql(expectedPingRes);\n});\n"
+}

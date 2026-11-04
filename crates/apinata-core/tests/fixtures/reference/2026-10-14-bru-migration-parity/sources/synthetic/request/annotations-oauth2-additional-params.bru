@@ -1,0 +1,27 @@
+get {
+  url: https://example.com
+  auth: oauth2
+}
+
+auth:oauth2 {
+  grant_type: client_credentials
+}
+
+auth:oauth2:additional_params:auth_req:headers {
+  @description('auth header')
+  x-auth: 1
+}
+
+auth:oauth2:additional_params:access_token_req:queryparams {
+  @description("token query")
+  @extra
+  ~resource: r
+}
+
+auth:oauth2:additional_params:refresh_token_req:body {
+  @description('''
+    refresh
+    body
+  ''')
+  rb: 6
+}

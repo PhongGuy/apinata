@@ -1,0 +1,22 @@
+{
+ "info": {"_postman_id":"00000000-0000-0000-0000-000000000001","name":"Edge: cases/1","description":{"content":"Collection docs","type":"text/markdown"},"schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+ "item": [
+  {"name":"Users","description":"Folder docs","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{token}}","type":"string"}]}, "item": [
+   {"name":"Get user","request":{"method":"get","header":[{"key":"Accept","value":"application/json","description":"What we take"},{"key":"X-Off","value":"1","disabled":true,"description":"   "}],"url":{"raw":"https://{{host}}/users/:id?expand=true&debug=1#frag","protocol":"https","host":["{{host}}"],"path":["users",":id"],"query":[{"key":"expand","value":"true","description":"Expand relations"},{"key":"debug","value":"1","disabled":true}],"variable":[{"key":"id","value":"42","description":{"content":"User id"}}]},"description":"Fetches one user"}},
+   {"name":"Get user","request":{"method":"GET","url":"https://example.com/again"}},
+   {"name":"a/b","request":{"method":"GET","url":"https://example.com/slash"}},
+   {"name":"a-b","request":{"method":"GET","url":"https://example.com/dash"}}
+  ]},
+  {"name":"Bodies", "item": [
+   {"name":"Form","request":{"method":"POST","header":"Content-Type: application/x-www-form-urlencoded\nX-Trace: on","body":{"mode":"urlencoded","urlencoded":[{"key":"a","value":"1","description":"First"},{"key":"b","value":"2","disabled":true}]},"url":{"protocol":"https","host":["api","example","com"],"port":"8443","path":["form"],"query":[{"key":"q","value":"x"}]}}},
+   {"name":"Multipart","request":{"method":"POST","body":{"mode":"formdata","formdata":[{"key":"t","value":"text","type":"text","description":"Text part"},{"key":"f","src":["/tmp/a.png"],"type":"file","contentType":"image/png"},{"key":"d","type":"default","src":"/tmp/b.txt"}]},"url":"https://example.com/upload"}},
+   {"name":"Guess JSON","request":{"method":"PUT","header":[{"key":"content-type","value":"application/vnd.api+json"}],"body":{"mode":"raw","raw":"{\"a\": 1}"},"url":"https://example.com/json"}},
+   {"name":"Xml","request":{"method":"POST","body":{"mode":"raw","raw":"<a/>","options":{"raw":{"language":"xml"}}},"url":"https://example.com/xml"}},
+   {"name":"Binary","request":{"method":"POST","body":{"mode":"file","file":{"src":"/tmp/data.bin"}},"url":"https://example.com/bin"}}
+  ]},
+  {"name":"Settings","protocolProfileBehavior":{"followRedirects":false,"maxRedirects":3,"disableUrlEncoding":true,"followAuthorizationHeader":true},"request":{"method":"GET","auth":{"type":"basic","basic":{"username":"u","password":"p"}},"url":"https://example.com/settings"}},
+  {"name":"Api key","request":{"method":"GET","auth":{"type":"apikey","apikey":[{"key":"key","value":"X-Key"},{"key":"value","value":"{{k}}"},{"key":"in","value":"query"}]},"url":"https://example.com/key"}},
+  {"name":"No auth","request":{"method":"GET","auth":{"type":"noauth"},"url":"https://example.com/none"}}
+ ],
+ "variable": [{"key":"base url","value":"https://example.com"},{"key":"n","value":5},{"key":"off","value":"x","disabled":true}]
+}

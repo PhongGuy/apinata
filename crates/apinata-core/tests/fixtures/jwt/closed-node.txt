@@ -1,0 +1,974 @@
+closed blank_first public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.SvWa4bdhsNlQ9UC7ORttKUbz50_kzI-u8pc2IHCEEo8
+closed blank_first public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed blank_first public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed blank_first public string forged: JsonWebTokenError invalid algorithm
+closed blank_first public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first public string rs: ok x
+closed blank_first public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.SvWa4bdhsNlQ9UC7ORttKUbz50_kzI-u8pc2IHCEEo8
+closed blank_first public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed blank_first public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed blank_first public bytes forged: JsonWebTokenError invalid algorithm
+closed blank_first public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first public bytes rs: ok x
+closed blank_first public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.SvWa4bdhsNlQ9UC7ORttKUbz50_kzI-u8pc2IHCEEo8
+closed blank_first public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed blank_first public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed blank_first public uint8 forged: JsonWebTokenError invalid algorithm
+closed blank_first public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first public uint8 rs: ok x
+closed blank_first public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first public crypto: unreadable rsa
+closed blank_first public passphrase: Error secretOrPrivateKey is not valid key material
+closed blank_first cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.h5BWa4I_GCPZIkjfomv8A66Xdj7RmieZVPl-PnoGpd4
+closed blank_first cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed blank_first cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed blank_first cert string forged: JsonWebTokenError invalid algorithm
+closed blank_first cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first cert string rs: ok x
+closed blank_first cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.h5BWa4I_GCPZIkjfomv8A66Xdj7RmieZVPl-PnoGpd4
+closed blank_first cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed blank_first cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed blank_first cert bytes forged: JsonWebTokenError invalid algorithm
+closed blank_first cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first cert bytes rs: ok x
+closed blank_first cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.h5BWa4I_GCPZIkjfomv8A66Xdj7RmieZVPl-PnoGpd4
+closed blank_first cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed blank_first cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed blank_first cert uint8 forged: JsonWebTokenError invalid algorithm
+closed blank_first cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first cert uint8 rs: ok x
+closed blank_first cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first cert crypto: unreadable rsa
+closed blank_first cert passphrase: Error secretOrPrivateKey is not valid key material
+closed blank_first private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed blank_first private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed blank_first private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first private string forged: JsonWebTokenError invalid algorithm
+closed blank_first private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first private string rs: ok x
+closed blank_first private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed blank_first private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed blank_first private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first private bytes forged: JsonWebTokenError invalid algorithm
+closed blank_first private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first private bytes rs: ok x
+closed blank_first private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed blank_first private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed blank_first private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first private uint8 forged: JsonWebTokenError invalid algorithm
+closed blank_first private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed blank_first private uint8 rs: ok x
+closed blank_first private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed blank_first private crypto: rsa rsa
+closed blank_first private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed inner_space public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.68XW4r2omorvJUA_TsBq22amTyfqahKBOWSyrv157hQ
+closed inner_space public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed inner_space public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed inner_space public string forged: JsonWebTokenError invalid algorithm
+closed inner_space public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space public string rs: ok x
+closed inner_space public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.68XW4r2omorvJUA_TsBq22amTyfqahKBOWSyrv157hQ
+closed inner_space public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed inner_space public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed inner_space public bytes forged: JsonWebTokenError invalid algorithm
+closed inner_space public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space public bytes rs: ok x
+closed inner_space public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.68XW4r2omorvJUA_TsBq22amTyfqahKBOWSyrv157hQ
+closed inner_space public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed inner_space public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed inner_space public uint8 forged: JsonWebTokenError invalid algorithm
+closed inner_space public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space public uint8 rs: ok x
+closed inner_space public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space public crypto: unreadable rsa
+closed inner_space public passphrase: Error secretOrPrivateKey is not valid key material
+closed inner_space cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.1uvbyMHxiVjIA1qzIy8L1xqEqHHWmEOxCgMOtNo4IMg
+closed inner_space cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed inner_space cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed inner_space cert string forged: JsonWebTokenError invalid algorithm
+closed inner_space cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space cert string rs: ok x
+closed inner_space cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.1uvbyMHxiVjIA1qzIy8L1xqEqHHWmEOxCgMOtNo4IMg
+closed inner_space cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed inner_space cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed inner_space cert bytes forged: JsonWebTokenError invalid algorithm
+closed inner_space cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space cert bytes rs: ok x
+closed inner_space cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.1uvbyMHxiVjIA1qzIy8L1xqEqHHWmEOxCgMOtNo4IMg
+closed inner_space cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed inner_space cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed inner_space cert uint8 forged: JsonWebTokenError invalid algorithm
+closed inner_space cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space cert uint8 rs: ok x
+closed inner_space cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space cert crypto: unreadable rsa
+closed inner_space cert passphrase: Error secretOrPrivateKey is not valid key material
+closed inner_space private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed inner_space private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed inner_space private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space private string forged: JsonWebTokenError invalid algorithm
+closed inner_space private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space private string rs: ok x
+closed inner_space private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed inner_space private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed inner_space private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space private bytes forged: JsonWebTokenError invalid algorithm
+closed inner_space private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space private bytes rs: ok x
+closed inner_space private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed inner_space private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed inner_space private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space private uint8 forged: JsonWebTokenError invalid algorithm
+closed inner_space private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed inner_space private uint8 rs: ok x
+closed inner_space private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed inner_space private crypto: rsa rsa
+closed inner_space private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_vt public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.8IboHt5H7l_wBBfg0pDqh7QZDNm4k4UXkhi1cfQ1_sg
+closed marker_vt public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_vt public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_vt public string forged: JsonWebTokenError invalid algorithm
+closed marker_vt public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt public string rs: ok x
+closed marker_vt public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.8IboHt5H7l_wBBfg0pDqh7QZDNm4k4UXkhi1cfQ1_sg
+closed marker_vt public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_vt public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_vt public bytes forged: JsonWebTokenError invalid algorithm
+closed marker_vt public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt public bytes rs: ok x
+closed marker_vt public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.8IboHt5H7l_wBBfg0pDqh7QZDNm4k4UXkhi1cfQ1_sg
+closed marker_vt public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_vt public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_vt public uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_vt public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt public uint8 rs: ok x
+closed marker_vt public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt public crypto: unreadable rsa
+closed marker_vt public passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_vt cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.E2gQr9kmofvfj1kBC8b0vzeXqcgCKInQPm2TDotaz9U
+closed marker_vt cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_vt cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_vt cert string forged: JsonWebTokenError invalid algorithm
+closed marker_vt cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt cert string rs: ok x
+closed marker_vt cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.E2gQr9kmofvfj1kBC8b0vzeXqcgCKInQPm2TDotaz9U
+closed marker_vt cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_vt cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_vt cert bytes forged: JsonWebTokenError invalid algorithm
+closed marker_vt cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt cert bytes rs: ok x
+closed marker_vt cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.E2gQr9kmofvfj1kBC8b0vzeXqcgCKInQPm2TDotaz9U
+closed marker_vt cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_vt cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_vt cert uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_vt cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt cert uint8 rs: ok x
+closed marker_vt cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt cert crypto: unreadable rsa
+closed marker_vt cert passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_vt private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_vt private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_vt private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt private string forged: JsonWebTokenError invalid algorithm
+closed marker_vt private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt private string rs: ok x
+closed marker_vt private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_vt private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_vt private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt private bytes forged: JsonWebTokenError invalid algorithm
+closed marker_vt private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt private bytes rs: ok x
+closed marker_vt private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_vt private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_vt private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt private uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_vt private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_vt private uint8 rs: ok x
+closed marker_vt private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_vt private crypto: rsa rsa
+closed marker_vt private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_ctl public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.oy8Kjk0RFPf3V08NPb6ArUaqm-ViDUFGvNrVVaIABiE
+closed marker_ctl public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_ctl public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_ctl public string forged: JsonWebTokenError invalid algorithm
+closed marker_ctl public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl public string rs: ok x
+closed marker_ctl public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.oy8Kjk0RFPf3V08NPb6ArUaqm-ViDUFGvNrVVaIABiE
+closed marker_ctl public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_ctl public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_ctl public bytes forged: JsonWebTokenError invalid algorithm
+closed marker_ctl public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl public bytes rs: ok x
+closed marker_ctl public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.oy8Kjk0RFPf3V08NPb6ArUaqm-ViDUFGvNrVVaIABiE
+closed marker_ctl public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_ctl public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_ctl public uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_ctl public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl public uint8 rs: ok x
+closed marker_ctl public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl public crypto: unreadable rsa
+closed marker_ctl public passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_ctl cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.EmDqrzW1XXmYID3GcHrZWd-eyynsiRHBn4biPDEz57I
+closed marker_ctl cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_ctl cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_ctl cert string forged: JsonWebTokenError invalid algorithm
+closed marker_ctl cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl cert string rs: ok x
+closed marker_ctl cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.EmDqrzW1XXmYID3GcHrZWd-eyynsiRHBn4biPDEz57I
+closed marker_ctl cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_ctl cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_ctl cert bytes forged: JsonWebTokenError invalid algorithm
+closed marker_ctl cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl cert bytes rs: ok x
+closed marker_ctl cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.EmDqrzW1XXmYID3GcHrZWd-eyynsiRHBn4biPDEz57I
+closed marker_ctl cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_ctl cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_ctl cert uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_ctl cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl cert uint8 rs: ok x
+closed marker_ctl cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl cert crypto: unreadable rsa
+closed marker_ctl cert passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_ctl private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_ctl private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_ctl private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl private string forged: JsonWebTokenError invalid algorithm
+closed marker_ctl private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl private string rs: ok x
+closed marker_ctl private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_ctl private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_ctl private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl private bytes forged: JsonWebTokenError invalid algorithm
+closed marker_ctl private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl private bytes rs: ok x
+closed marker_ctl private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_ctl private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_ctl private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl private uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_ctl private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_ctl private uint8 rs: ok x
+closed marker_ctl private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_ctl private crypto: rsa rsa
+closed marker_ctl private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_nul public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.JjszVgnNuL74CBjYPG-60544LsvzMNpWFdn_qpLFFWU
+closed marker_nul public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_nul public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_nul public string forged: JsonWebTokenError invalid algorithm
+closed marker_nul public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul public string rs: ok x
+closed marker_nul public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.JjszVgnNuL74CBjYPG-60544LsvzMNpWFdn_qpLFFWU
+closed marker_nul public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_nul public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_nul public bytes forged: JsonWebTokenError invalid algorithm
+closed marker_nul public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul public bytes rs: ok x
+closed marker_nul public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.JjszVgnNuL74CBjYPG-60544LsvzMNpWFdn_qpLFFWU
+closed marker_nul public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_nul public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_nul public uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_nul public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul public uint8 rs: ok x
+closed marker_nul public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul public crypto: unreadable rsa
+closed marker_nul public passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_nul cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.TtKhRplCsqKJTQRBFa6Y-NXA2QWcjst6ZnAFqZkxbeQ
+closed marker_nul cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_nul cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_nul cert string forged: JsonWebTokenError invalid algorithm
+closed marker_nul cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul cert string rs: ok x
+closed marker_nul cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.TtKhRplCsqKJTQRBFa6Y-NXA2QWcjst6ZnAFqZkxbeQ
+closed marker_nul cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_nul cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_nul cert bytes forged: JsonWebTokenError invalid algorithm
+closed marker_nul cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul cert bytes rs: ok x
+closed marker_nul cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.TtKhRplCsqKJTQRBFa6Y-NXA2QWcjst6ZnAFqZkxbeQ
+closed marker_nul cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_nul cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_nul cert uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_nul cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul cert uint8 rs: ok x
+closed marker_nul cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul cert crypto: unreadable rsa
+closed marker_nul cert passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_nul private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_nul private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_nul private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul private string forged: JsonWebTokenError invalid algorithm
+closed marker_nul private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul private string rs: ok x
+closed marker_nul private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_nul private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_nul private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul private bytes forged: JsonWebTokenError invalid algorithm
+closed marker_nul private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul private bytes rs: ok x
+closed marker_nul private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed marker_nul private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_nul private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul private uint8 forged: JsonWebTokenError invalid algorithm
+closed marker_nul private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed marker_nul private uint8 rs: ok x
+closed marker_nul private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed marker_nul private crypto: rsa rsa
+closed marker_nul private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_254 public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.oKJdBSn2FZ6qJGKWwk5t0uN1UCAkrXT0vEa7jbLwvZU
+closed junk_254 public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_254 public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_254 public string forged: JsonWebTokenError invalid algorithm
+closed junk_254 public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 public string rs: ok x
+closed junk_254 public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.oKJdBSn2FZ6qJGKWwk5t0uN1UCAkrXT0vEa7jbLwvZU
+closed junk_254 public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_254 public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_254 public bytes forged: JsonWebTokenError invalid algorithm
+closed junk_254 public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 public bytes rs: ok x
+closed junk_254 public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.oKJdBSn2FZ6qJGKWwk5t0uN1UCAkrXT0vEa7jbLwvZU
+closed junk_254 public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_254 public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_254 public uint8 forged: JsonWebTokenError invalid algorithm
+closed junk_254 public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 public uint8 rs: ok x
+closed junk_254 public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 public crypto: unreadable rsa
+closed junk_254 public passphrase: Error secretOrPrivateKey is not valid key material
+closed junk_254 cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.XFot4lwF8IYu0m6vzniaz_ZdM4gko8Dw6KbiRhEVd4g
+closed junk_254 cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_254 cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_254 cert string forged: JsonWebTokenError invalid algorithm
+closed junk_254 cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 cert string rs: ok x
+closed junk_254 cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.XFot4lwF8IYu0m6vzniaz_ZdM4gko8Dw6KbiRhEVd4g
+closed junk_254 cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_254 cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_254 cert bytes forged: JsonWebTokenError invalid algorithm
+closed junk_254 cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 cert bytes rs: ok x
+closed junk_254 cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.XFot4lwF8IYu0m6vzniaz_ZdM4gko8Dw6KbiRhEVd4g
+closed junk_254 cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_254 cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_254 cert uint8 forged: JsonWebTokenError invalid algorithm
+closed junk_254 cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 cert uint8 rs: ok x
+closed junk_254 cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 cert crypto: unreadable rsa
+closed junk_254 cert passphrase: Error secretOrPrivateKey is not valid key material
+closed junk_254 private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed junk_254 private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_254 private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 private string forged: JsonWebTokenError invalid algorithm
+closed junk_254 private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 private string rs: ok x
+closed junk_254 private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed junk_254 private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_254 private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 private bytes forged: JsonWebTokenError invalid algorithm
+closed junk_254 private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 private bytes rs: ok x
+closed junk_254 private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed junk_254 private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_254 private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 private uint8 forged: JsonWebTokenError invalid algorithm
+closed junk_254 private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_254 private uint8 rs: ok x
+closed junk_254 private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_254 private crypto: rsa rsa
+closed junk_254 private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_508 public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.gmT6LP4rAh9SJRRtmS_ScGto-sWsv6d8bumG3HZ3X2w
+closed junk_508 public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_508 public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_508 public string forged: JsonWebTokenError invalid algorithm
+closed junk_508 public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 public string rs: ok x
+closed junk_508 public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.gmT6LP4rAh9SJRRtmS_ScGto-sWsv6d8bumG3HZ3X2w
+closed junk_508 public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_508 public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_508 public bytes forged: JsonWebTokenError invalid algorithm
+closed junk_508 public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 public bytes rs: ok x
+closed junk_508 public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.gmT6LP4rAh9SJRRtmS_ScGto-sWsv6d8bumG3HZ3X2w
+closed junk_508 public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_508 public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_508 public uint8 forged: JsonWebTokenError invalid algorithm
+closed junk_508 public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 public uint8 rs: ok x
+closed junk_508 public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 public crypto: unreadable rsa
+closed junk_508 public passphrase: Error secretOrPrivateKey is not valid key material
+closed junk_508 cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.0R_YBA0w7yLnmRCPK8thhtUWYMXcYVSl6PC7hFZQun0
+closed junk_508 cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_508 cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_508 cert string forged: JsonWebTokenError invalid algorithm
+closed junk_508 cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 cert string rs: ok x
+closed junk_508 cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.0R_YBA0w7yLnmRCPK8thhtUWYMXcYVSl6PC7hFZQun0
+closed junk_508 cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_508 cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_508 cert bytes forged: JsonWebTokenError invalid algorithm
+closed junk_508 cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 cert bytes rs: ok x
+closed junk_508 cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.0R_YBA0w7yLnmRCPK8thhtUWYMXcYVSl6PC7hFZQun0
+closed junk_508 cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed junk_508 cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed junk_508 cert uint8 forged: JsonWebTokenError invalid algorithm
+closed junk_508 cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 cert uint8 rs: ok x
+closed junk_508 cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 cert crypto: unreadable rsa
+closed junk_508 cert passphrase: Error secretOrPrivateKey is not valid key material
+closed junk_508 private string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed junk_508 private string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_508 private string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 private string forged: JsonWebTokenError invalid algorithm
+closed junk_508 private string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 private string rs: ok x
+closed junk_508 private string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 private bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed junk_508 private bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_508 private bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 private bytes forged: JsonWebTokenError invalid algorithm
+closed junk_508 private bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 private bytes rs: ok x
+closed junk_508 private bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 private uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed junk_508 private uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed junk_508 private uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 private uint8 forged: JsonWebTokenError invalid algorithm
+closed junk_508 private uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed junk_508 private uint8 rs: ok x
+closed junk_508 private uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed junk_508 private crypto: rsa rsa
+closed junk_508 private passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed cert_then_broken_public string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.G7h5xPKJAssg2AFom8tvaKJGqWQQgbx7HkPT_27zd9o
+closed cert_then_broken_public string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed cert_then_broken_public string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed cert_then_broken_public string forged: JsonWebTokenError invalid algorithm
+closed cert_then_broken_public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed cert_then_broken_public string rs: ok x
+closed cert_then_broken_public string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed cert_then_broken_public bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.G7h5xPKJAssg2AFom8tvaKJGqWQQgbx7HkPT_27zd9o
+closed cert_then_broken_public bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed cert_then_broken_public bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed cert_then_broken_public bytes forged: JsonWebTokenError invalid algorithm
+closed cert_then_broken_public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed cert_then_broken_public bytes rs: ok x
+closed cert_then_broken_public bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed cert_then_broken_public uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.G7h5xPKJAssg2AFom8tvaKJGqWQQgbx7HkPT_27zd9o
+closed cert_then_broken_public uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed cert_then_broken_public uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed cert_then_broken_public uint8 forged: JsonWebTokenError invalid algorithm
+closed cert_then_broken_public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed cert_then_broken_public uint8 rs: ok x
+closed cert_then_broken_public uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed cert_then_broken_public crypto: unreadable rsa
+closed cert_then_broken_public passphrase: Error secretOrPrivateKey is not valid key material
+closed broken_public_then_cert string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.sL8Y9ySByQILSWQexP4yNxZ1zyAgBl2cVONDDwL90QA
+closed broken_public_then_cert string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed broken_public_then_cert string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed broken_public_then_cert string forged: JsonWebTokenError invalid algorithm
+closed broken_public_then_cert string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed broken_public_then_cert string rs: ok x
+closed broken_public_then_cert string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_public_then_cert bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.sL8Y9ySByQILSWQexP4yNxZ1zyAgBl2cVONDDwL90QA
+closed broken_public_then_cert bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed broken_public_then_cert bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed broken_public_then_cert bytes forged: JsonWebTokenError invalid algorithm
+closed broken_public_then_cert bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed broken_public_then_cert bytes rs: ok x
+closed broken_public_then_cert bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_public_then_cert uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.sL8Y9ySByQILSWQexP4yNxZ1zyAgBl2cVONDDwL90QA
+closed broken_public_then_cert uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed broken_public_then_cert uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed broken_public_then_cert uint8 forged: JsonWebTokenError invalid algorithm
+closed broken_public_then_cert uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed broken_public_then_cert uint8 rs: ok x
+closed broken_public_then_cert uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_public_then_cert crypto: unreadable rsa
+closed broken_public_then_cert passphrase: Error secretOrPrivateKey is not valid key material
+closed legacy_ec_public_rsa string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.IG_h7LRiaZp-jMPzsCUAJtgL6CHglwuidLCmsjds4BQ
+closed legacy_ec_public_rsa string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_ec_public_rsa string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_ec_public_rsa string forged: JsonWebTokenError invalid algorithm
+closed legacy_ec_public_rsa string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed legacy_ec_public_rsa string rs: JsonWebTokenError invalid algorithm
+closed legacy_ec_public_rsa string es: ok x
+closed legacy_ec_public_rsa bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.IG_h7LRiaZp-jMPzsCUAJtgL6CHglwuidLCmsjds4BQ
+closed legacy_ec_public_rsa bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_ec_public_rsa bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_ec_public_rsa bytes forged: JsonWebTokenError invalid algorithm
+closed legacy_ec_public_rsa bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed legacy_ec_public_rsa bytes rs: JsonWebTokenError invalid algorithm
+closed legacy_ec_public_rsa bytes es: ok x
+closed legacy_ec_public_rsa uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.IG_h7LRiaZp-jMPzsCUAJtgL6CHglwuidLCmsjds4BQ
+closed legacy_ec_public_rsa uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_ec_public_rsa uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_ec_public_rsa uint8 forged: JsonWebTokenError invalid algorithm
+closed legacy_ec_public_rsa uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed legacy_ec_public_rsa uint8 rs: JsonWebTokenError invalid algorithm
+closed legacy_ec_public_rsa uint8 es: ok x
+closed legacy_ec_public_rsa crypto: unreadable ec
+closed legacy_ec_public_rsa passphrase: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+closed legacy_rsa_public_ec string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.OR4TAIeqpQVPHmWyF_S-H7AXks0cEFfWteMAFotxtU0
+closed legacy_rsa_public_ec string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_rsa_public_ec string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_rsa_public_ec string forged: JsonWebTokenError invalid algorithm
+closed legacy_rsa_public_ec string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed legacy_rsa_public_ec string rs: ok x
+closed legacy_rsa_public_ec string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed legacy_rsa_public_ec bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.OR4TAIeqpQVPHmWyF_S-H7AXks0cEFfWteMAFotxtU0
+closed legacy_rsa_public_ec bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_rsa_public_ec bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_rsa_public_ec bytes forged: JsonWebTokenError invalid algorithm
+closed legacy_rsa_public_ec bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed legacy_rsa_public_ec bytes rs: ok x
+closed legacy_rsa_public_ec bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed legacy_rsa_public_ec uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.OR4TAIeqpQVPHmWyF_S-H7AXks0cEFfWteMAFotxtU0
+closed legacy_rsa_public_ec uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_rsa_public_ec uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_rsa_public_ec uint8 forged: JsonWebTokenError invalid algorithm
+closed legacy_rsa_public_ec uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed legacy_rsa_public_ec uint8 rs: ok x
+closed legacy_rsa_public_ec uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed legacy_rsa_public_ec crypto: unreadable rsa
+closed legacy_rsa_public_ec passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed ec_legacy_public string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed ec_legacy_public string RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+closed ec_legacy_public string ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+closed ec_legacy_public string forged: JsonWebTokenError invalid algorithm
+closed ec_legacy_public string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed ec_legacy_public string rs: Error Unknown key type "ed25519".
+closed ec_legacy_public string es: Error Unknown key type "ed25519".
+closed ec_legacy_public bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed ec_legacy_public bytes RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+closed ec_legacy_public bytes ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+closed ec_legacy_public bytes forged: JsonWebTokenError invalid algorithm
+closed ec_legacy_public bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed ec_legacy_public bytes rs: Error Unknown key type "ed25519".
+closed ec_legacy_public bytes es: Error Unknown key type "ed25519".
+closed ec_legacy_public uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed ec_legacy_public uint8 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+closed ec_legacy_public uint8 ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+closed ec_legacy_public uint8 forged: JsonWebTokenError invalid algorithm
+closed ec_legacy_public uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed ec_legacy_public uint8 rs: Error Unknown key type "ed25519".
+closed ec_legacy_public uint8 es: Error Unknown key type "ed25519".
+closed ec_legacy_public crypto: ec ed25519
+closed ec_legacy_public passphrase: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+closed legacy_ec_then_rsa string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.HkJW8lX1wIVmYWmcbQcXqAo5Up5iNwbyUa_k5ICPXXU
+closed legacy_ec_then_rsa string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_ec_then_rsa string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_ec_then_rsa string forged: ok forged
+closed legacy_ec_then_rsa string forged hs: ok forged
+closed legacy_ec_then_rsa string rs: JsonWebTokenError invalid algorithm
+closed legacy_ec_then_rsa string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed legacy_ec_then_rsa bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.HkJW8lX1wIVmYWmcbQcXqAo5Up5iNwbyUa_k5ICPXXU
+closed legacy_ec_then_rsa bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_ec_then_rsa bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_ec_then_rsa bytes forged: ok forged
+closed legacy_ec_then_rsa bytes forged hs: ok forged
+closed legacy_ec_then_rsa bytes rs: JsonWebTokenError invalid algorithm
+closed legacy_ec_then_rsa bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed legacy_ec_then_rsa uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.HkJW8lX1wIVmYWmcbQcXqAo5Up5iNwbyUa_k5ICPXXU
+closed legacy_ec_then_rsa uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_ec_then_rsa uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_ec_then_rsa uint8 forged: ok forged
+closed legacy_ec_then_rsa uint8 forged hs: ok forged
+closed legacy_ec_then_rsa uint8 rs: JsonWebTokenError invalid algorithm
+closed legacy_ec_then_rsa uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed legacy_ec_then_rsa crypto: unreadable unreadable
+closed legacy_ec_then_rsa passphrase: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+closed legacy_alone string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MJKmRRgh2jGV9F1NkjDmDjkx5X2kRW3EWd8vIo70KQI
+closed legacy_alone string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_alone string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_alone string forged: ok forged
+closed legacy_alone string forged hs: ok forged
+closed legacy_alone string rs: JsonWebTokenError invalid algorithm
+closed legacy_alone string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed legacy_alone bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MJKmRRgh2jGV9F1NkjDmDjkx5X2kRW3EWd8vIo70KQI
+closed legacy_alone bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_alone bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_alone bytes forged: ok forged
+closed legacy_alone bytes forged hs: ok forged
+closed legacy_alone bytes rs: JsonWebTokenError invalid algorithm
+closed legacy_alone bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed legacy_alone uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MJKmRRgh2jGV9F1NkjDmDjkx5X2kRW3EWd8vIo70KQI
+closed legacy_alone uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed legacy_alone uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed legacy_alone uint8 forged: ok forged
+closed legacy_alone uint8 forged hs: ok forged
+closed legacy_alone uint8 rs: JsonWebTokenError invalid algorithm
+closed legacy_alone uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed legacy_alone crypto: unreadable unreadable
+closed legacy_alone passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed broken_enc_then_rsa string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed broken_enc_then_rsa string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed broken_enc_then_rsa string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_enc_then_rsa string forged: JsonWebTokenError invalid algorithm
+closed broken_enc_then_rsa string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed broken_enc_then_rsa string rs: ok x
+closed broken_enc_then_rsa string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_enc_then_rsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed broken_enc_then_rsa bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed broken_enc_then_rsa bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_enc_then_rsa bytes forged: JsonWebTokenError invalid algorithm
+closed broken_enc_then_rsa bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed broken_enc_then_rsa bytes rs: ok x
+closed broken_enc_then_rsa bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_enc_then_rsa uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed broken_enc_then_rsa uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed broken_enc_then_rsa uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_enc_then_rsa uint8 forged: JsonWebTokenError invalid algorithm
+closed broken_enc_then_rsa uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed broken_enc_then_rsa uint8 rs: ok x
+closed broken_enc_then_rsa uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed broken_enc_then_rsa crypto: rsa rsa
+closed broken_enc_then_rsa passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed truncated_then_pkcs1 string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.rUa4zrWf8OnR8i2LSUEZa3I2N-YF3bVGMzEWrSO_gbs
+closed truncated_then_pkcs1 string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed truncated_then_pkcs1 string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed truncated_then_pkcs1 string forged: ok forged
+closed truncated_then_pkcs1 string forged hs: ok forged
+closed truncated_then_pkcs1 string rs: JsonWebTokenError invalid algorithm
+closed truncated_then_pkcs1 string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed truncated_then_pkcs1 bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.rUa4zrWf8OnR8i2LSUEZa3I2N-YF3bVGMzEWrSO_gbs
+closed truncated_then_pkcs1 bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed truncated_then_pkcs1 bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed truncated_then_pkcs1 bytes forged: ok forged
+closed truncated_then_pkcs1 bytes forged hs: ok forged
+closed truncated_then_pkcs1 bytes rs: JsonWebTokenError invalid algorithm
+closed truncated_then_pkcs1 bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed truncated_then_pkcs1 uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.rUa4zrWf8OnR8i2LSUEZa3I2N-YF3bVGMzEWrSO_gbs
+closed truncated_then_pkcs1 uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed truncated_then_pkcs1 uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed truncated_then_pkcs1 uint8 forged: ok forged
+closed truncated_then_pkcs1 uint8 forged hs: ok forged
+closed truncated_then_pkcs1 uint8 rs: JsonWebTokenError invalid algorithm
+closed truncated_then_pkcs1 uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed truncated_then_pkcs1 crypto: unreadable unreadable
+closed truncated_then_pkcs1 passphrase: Error secretOrPrivateKey is not valid key material
+closed truncated_pkcs1_x25519 string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed truncated_pkcs1_x25519 string RS256: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 string ES256: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 string forged: JsonWebTokenError invalid algorithm
+closed truncated_pkcs1_x25519 string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed truncated_pkcs1_x25519 string rs: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 string es: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed truncated_pkcs1_x25519 bytes RS256: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 bytes ES256: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 bytes forged: JsonWebTokenError invalid algorithm
+closed truncated_pkcs1_x25519 bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed truncated_pkcs1_x25519 bytes rs: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 bytes es: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed truncated_pkcs1_x25519 uint8 RS256: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 uint8 ES256: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 uint8 forged: JsonWebTokenError invalid algorithm
+closed truncated_pkcs1_x25519 uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed truncated_pkcs1_x25519 uint8 rs: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 uint8 es: Error Unknown key type "x25519".
+closed truncated_pkcs1_x25519 crypto: x25519 x25519
+closed truncated_pkcs1_x25519 passphrase: Error Unknown key type "x25519".
+closed rsa_then_truncated string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed rsa_then_truncated string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed rsa_then_truncated string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed rsa_then_truncated string forged: JsonWebTokenError invalid algorithm
+closed rsa_then_truncated string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed rsa_then_truncated string rs: ok x
+closed rsa_then_truncated string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed rsa_then_truncated bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed rsa_then_truncated bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed rsa_then_truncated bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed rsa_then_truncated bytes forged: JsonWebTokenError invalid algorithm
+closed rsa_then_truncated bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed rsa_then_truncated bytes rs: ok x
+closed rsa_then_truncated bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed rsa_then_truncated uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed rsa_then_truncated uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed rsa_then_truncated uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed rsa_then_truncated uint8 forged: JsonWebTokenError invalid algorithm
+closed rsa_then_truncated uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed rsa_then_truncated uint8 rs: ok x
+closed rsa_then_truncated uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed rsa_then_truncated crypto: rsa rsa
+closed rsa_then_truncated passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed unknown_then_rsa string HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed unknown_then_rsa string RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed unknown_then_rsa string ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed unknown_then_rsa string forged: JsonWebTokenError invalid algorithm
+closed unknown_then_rsa string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed unknown_then_rsa string rs: ok x
+closed unknown_then_rsa string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed unknown_then_rsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed unknown_then_rsa bytes RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed unknown_then_rsa bytes ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed unknown_then_rsa bytes forged: JsonWebTokenError invalid algorithm
+closed unknown_then_rsa bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed unknown_then_rsa bytes rs: ok x
+closed unknown_then_rsa bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed unknown_then_rsa uint8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+closed unknown_then_rsa uint8 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed unknown_then_rsa uint8 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed unknown_then_rsa uint8 forged: JsonWebTokenError invalid algorithm
+closed unknown_then_rsa uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed unknown_then_rsa uint8 rs: ok x
+closed unknown_then_rsa uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed unknown_then_rsa crypto: rsa rsa
+closed unknown_then_rsa passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed marker_only string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.-4ME7iQBtechDGZ_qCOTca27SRlM4EJtg30YBEB5MPY
+closed marker_only string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_only string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_only string forged: ok forged
+closed marker_only string forged hs: ok forged
+closed marker_only string rs: JsonWebTokenError invalid algorithm
+closed marker_only string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_only bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.-4ME7iQBtechDGZ_qCOTca27SRlM4EJtg30YBEB5MPY
+closed marker_only bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_only bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_only bytes forged: ok forged
+closed marker_only bytes forged hs: ok forged
+closed marker_only bytes rs: JsonWebTokenError invalid algorithm
+closed marker_only bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_only uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.-4ME7iQBtechDGZ_qCOTca27SRlM4EJtg30YBEB5MPY
+closed marker_only uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_only uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_only uint8 forged: ok forged
+closed marker_only uint8 forged hs: ok forged
+closed marker_only uint8 rs: JsonWebTokenError invalid algorithm
+closed marker_only uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_only crypto: unreadable unreadable
+closed marker_only passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_label string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.PEXsEnF6pH-iweHPdcHTjG1EUN6EGRphNvGFoIwyt5E
+closed marker_label string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_label string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_label string forged: ok forged
+closed marker_label string forged hs: ok forged
+closed marker_label string rs: JsonWebTokenError invalid algorithm
+closed marker_label string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_label bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.PEXsEnF6pH-iweHPdcHTjG1EUN6EGRphNvGFoIwyt5E
+closed marker_label bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_label bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_label bytes forged: ok forged
+closed marker_label bytes forged hs: ok forged
+closed marker_label bytes rs: JsonWebTokenError invalid algorithm
+closed marker_label bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_label uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.PEXsEnF6pH-iweHPdcHTjG1EUN6EGRphNvGFoIwyt5E
+closed marker_label uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_label uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_label uint8 forged: ok forged
+closed marker_label uint8 forged hs: ok forged
+closed marker_label uint8 rs: JsonWebTokenError invalid algorithm
+closed marker_label uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_label crypto: unreadable unreadable
+closed marker_label passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_in_text string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Il5qGIsKwopFStsXTM310iff3W-HwdUI-pYy6kjeJ6M
+closed marker_in_text string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_in_text string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_in_text string forged: ok forged
+closed marker_in_text string forged hs: ok forged
+closed marker_in_text string rs: JsonWebTokenError invalid algorithm
+closed marker_in_text string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_in_text bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Il5qGIsKwopFStsXTM310iff3W-HwdUI-pYy6kjeJ6M
+closed marker_in_text bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_in_text bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_in_text bytes forged: ok forged
+closed marker_in_text bytes forged hs: ok forged
+closed marker_in_text bytes rs: JsonWebTokenError invalid algorithm
+closed marker_in_text bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_in_text uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Il5qGIsKwopFStsXTM310iff3W-HwdUI-pYy6kjeJ6M
+closed marker_in_text uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_in_text uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_in_text uint8 forged: ok forged
+closed marker_in_text uint8 forged hs: ok forged
+closed marker_in_text uint8 rs: JsonWebTokenError invalid algorithm
+closed marker_in_text uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_in_text crypto: unreadable unreadable
+closed marker_in_text passphrase: Error secretOrPrivateKey is not valid key material
+closed marker_end_only string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MGDgB-VmRBqWAdPAFaqElv5EMkuQAHDIdbdedIQMT1M
+closed marker_end_only string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_end_only string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_end_only string forged: ok forged
+closed marker_end_only string forged hs: ok forged
+closed marker_end_only string rs: JsonWebTokenError invalid algorithm
+closed marker_end_only string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_end_only bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MGDgB-VmRBqWAdPAFaqElv5EMkuQAHDIdbdedIQMT1M
+closed marker_end_only bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_end_only bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_end_only bytes forged: ok forged
+closed marker_end_only bytes forged hs: ok forged
+closed marker_end_only bytes rs: JsonWebTokenError invalid algorithm
+closed marker_end_only bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_end_only uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MGDgB-VmRBqWAdPAFaqElv5EMkuQAHDIdbdedIQMT1M
+closed marker_end_only uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed marker_end_only uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed marker_end_only uint8 forged: ok forged
+closed marker_end_only uint8 forged hs: ok forged
+closed marker_end_only uint8 rs: JsonWebTokenError invalid algorithm
+closed marker_end_only uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed marker_end_only crypto: unreadable unreadable
+closed marker_end_only passphrase: Error secretOrPrivateKey is not valid key material
+closed glued string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.xreeZj0s7Wq64j59uwN4jsX7I0FH6nsYdxPoPUzDuAc
+closed glued string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed glued string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed glued string forged: ok forged
+closed glued string forged hs: ok forged
+closed glued string rs: JsonWebTokenError invalid algorithm
+closed glued string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed glued bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.xreeZj0s7Wq64j59uwN4jsX7I0FH6nsYdxPoPUzDuAc
+closed glued bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed glued bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed glued bytes forged: ok forged
+closed glued bytes forged hs: ok forged
+closed glued bytes rs: JsonWebTokenError invalid algorithm
+closed glued bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed glued uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.xreeZj0s7Wq64j59uwN4jsX7I0FH6nsYdxPoPUzDuAc
+closed glued uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed glued uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed glued uint8 forged: ok forged
+closed glued uint8 forged hs: ok forged
+closed glued uint8 rs: JsonWebTokenError invalid algorithm
+closed glued uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed glued crypto: unreadable unreadable
+closed glued passphrase: Error secretOrPrivateKey is not valid key material
+closed public_text string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.n1lpOJApwaMY39C8ZY3JHZKlRB0Qaq3fMtLry_67OqE
+closed public_text string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed public_text string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed public_text string forged: JsonWebTokenError invalid algorithm
+closed public_text string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed public_text string rs: ok x
+closed public_text string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed public_text bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.n1lpOJApwaMY39C8ZY3JHZKlRB0Qaq3fMtLry_67OqE
+closed public_text bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed public_text bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed public_text bytes forged: JsonWebTokenError invalid algorithm
+closed public_text bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed public_text bytes rs: ok x
+closed public_text bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed public_text uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.n1lpOJApwaMY39C8ZY3JHZKlRB0Qaq3fMtLry_67OqE
+closed public_text uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed public_text uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed public_text uint8 forged: JsonWebTokenError invalid algorithm
+closed public_text uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed public_text uint8 rs: ok x
+closed public_text uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed public_text crypto: unreadable rsa
+closed public_text passphrase: Error secretOrPrivateKey is not valid key material
+closed certificate_text string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ld5jNffHA5kmPJEyEX4Oy40JY7uSWoGuzZTXx_AUdJY
+closed certificate_text string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed certificate_text string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed certificate_text string forged: JsonWebTokenError invalid algorithm
+closed certificate_text string forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed certificate_text string rs: ok x
+closed certificate_text string es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed certificate_text bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ld5jNffHA5kmPJEyEX4Oy40JY7uSWoGuzZTXx_AUdJY
+closed certificate_text bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed certificate_text bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed certificate_text bytes forged: JsonWebTokenError invalid algorithm
+closed certificate_text bytes forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed certificate_text bytes rs: ok x
+closed certificate_text bytes es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed certificate_text uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ld5jNffHA5kmPJEyEX4Oy40JY7uSWoGuzZTXx_AUdJY
+closed certificate_text uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed certificate_text uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed certificate_text uint8 forged: JsonWebTokenError invalid algorithm
+closed certificate_text uint8 forged hs: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+closed certificate_text uint8 rs: ok x
+closed certificate_text uint8 es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+closed certificate_text crypto: unreadable rsa
+closed certificate_text passphrase: Error secretOrPrivateKey is not valid key material
+closed encrypted_text string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jaJ1Aj49QAfAoODaCLD2c_x_A7YucvvlbLxMpM6sbiM
+closed encrypted_text string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed encrypted_text string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed encrypted_text string forged: ok forged
+closed encrypted_text string forged hs: ok forged
+closed encrypted_text string rs: JsonWebTokenError invalid algorithm
+closed encrypted_text string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed encrypted_text bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jaJ1Aj49QAfAoODaCLD2c_x_A7YucvvlbLxMpM6sbiM
+closed encrypted_text bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed encrypted_text bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed encrypted_text bytes forged: ok forged
+closed encrypted_text bytes forged hs: ok forged
+closed encrypted_text bytes rs: JsonWebTokenError invalid algorithm
+closed encrypted_text bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed encrypted_text uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.jaJ1Aj49QAfAoODaCLD2c_x_A7YucvvlbLxMpM6sbiM
+closed encrypted_text uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed encrypted_text uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed encrypted_text uint8 forged: ok forged
+closed encrypted_text uint8 forged hs: ok forged
+closed encrypted_text uint8 rs: JsonWebTokenError invalid algorithm
+closed encrypted_text uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed encrypted_text crypto: unreadable unreadable
+closed encrypted_text passphrase: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+closed ssh_text string HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Eb-duaf9RB6E1OAYetH-AHRsSW_Q3Hx1FRRrfyWI-Hw
+closed ssh_text string RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed ssh_text string ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed ssh_text string forged: ok forged
+closed ssh_text string forged hs: ok forged
+closed ssh_text string rs: JsonWebTokenError invalid algorithm
+closed ssh_text string es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed ssh_text bytes HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Eb-duaf9RB6E1OAYetH-AHRsSW_Q3Hx1FRRrfyWI-Hw
+closed ssh_text bytes RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed ssh_text bytes ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed ssh_text bytes forged: ok forged
+closed ssh_text bytes forged hs: ok forged
+closed ssh_text bytes rs: JsonWebTokenError invalid algorithm
+closed ssh_text bytes es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed ssh_text uint8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Eb-duaf9RB6E1OAYetH-AHRsSW_Q3Hx1FRRrfyWI-Hw
+closed ssh_text uint8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+closed ssh_text uint8 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+closed ssh_text uint8 forged: ok forged
+closed ssh_text uint8 forged hs: ok forged
+closed ssh_text uint8 rs: JsonWebTokenError invalid algorithm
+closed ssh_text uint8 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+closed ssh_text crypto: unreadable unreadable
+closed ssh_text passphrase: Error secretOrPrivateKey is not valid key material
+closed secret "a shared secret": ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.HTTEDbYoJJFNHCM6s80o1-CcoCkjfLBmVyTO2ecxlvY
+closed secret "a shared secret" verify: ok forged
+closed secret "-----BEGI": ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.TQcpeGJ6Eh3O0XVA17vCrzhKOWOckkjoS-NKzIaEQP8
+closed secret "-----BEGI" verify: ok forged
+closed secret "----BEGIN PRIVATE KEY-----": ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.yiybCH7_FNIRwSvxhqGfs5sJoRwEJJUtbOKCwOm1WoU
+closed secret "----BEGIN PRIVATE KEY-----" verify: ok forged
+closed secret "-----begin private key-----": ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.KBKr3U9nSdnFfF0ZjPD7c5mwsVKQahhAKUF4PyUIKhA
+closed secret "-----begin private key-----" verify: ok forged

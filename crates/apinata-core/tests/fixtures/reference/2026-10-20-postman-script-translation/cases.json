@@ -1,0 +1,707 @@
+[
+  {
+    "id": "existing-1",
+    "group": "existing",
+    "script": "pm.environment.set('token', 'abc');\nconsole.log('pre');"
+  },
+  {
+    "id": "existing-2",
+    "group": "existing",
+    "script": "pm.test('status is 200', function () {\n  pm.response.to.have.status(200);\n});"
+  },
+  {
+    "id": "existing-3",
+    "group": "existing",
+    "script": "const j = pm.response.json();\npm.expect(j.id).to.equal(1);\npm.variables.set('id', j.id);"
+  },
+  {
+    "id": "existing-4",
+    "group": "existing",
+    "script": "pm.collectionVariables.set('a', pm.globals.get('g'));\npm.globals.unset('g');"
+  },
+  {
+    "id": "existing-5",
+    "group": "existing",
+    "script": "pm.test('has header', () => {\n  pm.response.to.have.header('Content-Type');\n  pm.expect(pm.response.responseTime).to.be.below(500);\n});"
+  },
+  {
+    "id": "existing-6",
+    "group": "existing",
+    "script": "if (pm.environment.has('k')) {\n  pm.setNextRequest('next');\n} else {\n  pm.setNextRequest(null);\n}"
+  },
+  {
+    "id": "existing-7",
+    "group": "existing",
+    "script": "pm.request.headers.add({key: 'X-A', value: pm.variables.replaceIn('{{b}}')});\nconsole.log(pm.request.url.getHost());"
+  },
+  {
+    "id": "existing-8",
+    "group": "existing",
+    "script": "postman.setEnvironmentVariable('a', 1);\nconst h = postman.getResponseHeader('Content-Type');\ntests['ok'] = responseCode.code === 200;"
+  },
+  {
+    "id": "alias-1",
+    "group": "alias",
+    "script": "const r = pm.response;\nconst body = r.json();\npm.expect(body.ok).to.be.true;"
+  },
+  {
+    "id": "alias-2",
+    "group": "alias",
+    "script": "let res2 = pm.response;\npm.test('code', function () {\n  pm.expect(res2.code).to.equal(200);\n});"
+  },
+  {
+    "id": "alias-3",
+    "group": "alias",
+    "script": "var env = pm.environment;\nenv.set('a', 1);\nconst v = env.get('a');"
+  },
+  {
+    "id": "alias-4",
+    "group": "alias",
+    "script": "const vars = pm.variables;\nvars.set('x', 2);\nconsole.log(vars.get('x'));"
+  },
+  {
+    "id": "alias-5",
+    "group": "alias",
+    "script": "let r = pm.response;\nr = somethingElse();\nr.json();"
+  },
+  {
+    "id": "alias-6",
+    "group": "alias",
+    "script": "const r = pm.response;\nfunction f(r) {\n  return r.json();\n}\nf(other);\nr.text();"
+  },
+  {
+    "id": "alias-7",
+    "group": "alias",
+    "script": "const s = \"const r = pm.response; r.json()\";\n// let r = pm.environment; r.get('a')\npm.variables.get(s);"
+  },
+  {
+    "id": "alias-8",
+    "group": "alias",
+    "script": "const cv = pm.collectionVariables;\nconst g = pm.globals;\ncv.set('a', g.get('b'));"
+  },
+  {
+    "id": "send_request-1",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com/api', function (err, res) {\n  console.log(res.json());\n});"
+  },
+  {
+    "id": "send_request-2",
+    "group": "send_request",
+    "script": "pm.sendRequest({\n  url: 'https://example.com/login',\n  method: 'POST',\n  header: {'Content-Type': 'application/json'},\n  body: {mode: 'raw', raw: JSON.stringify({a: 1})}\n}, function (err, res) {\n  pm.environment.set('t', res.json().token);\n});"
+  },
+  {
+    "id": "send_request-3",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com', (err, res) => {\n  pm.test('ok', () => pm.expect(res.code).to.equal(200));\n});"
+  },
+  {
+    "id": "send_request-4",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'https://example.com', method: 'GET', header: [{key: 'X-A', value: '1'}, {key: 'X-B', value: '2'}]}, function (err, res) {\n  console.log(res.status, res.code);\n});"
+  },
+  {
+    "id": "send_request-5",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com/a');"
+  },
+  {
+    "id": "send_request-6",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'https://example.com', method: 'PUT', body: {mode: 'raw', raw: 'plain'}}, function (err, response) {\n  if (err) { console.error(err); }\n  console.log(response.text());\n});"
+  },
+  {
+    "id": "send_request-7",
+    "group": "send_request",
+    "script": "const url = pm.environment.get('base') + '/x';\npm.sendRequest(url, function (err, res) {\n  pm.variables.set('r', res.json().id);\n});"
+  },
+  {
+    "id": "send_request-8",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'https://example.com', header: 'X-A: 1'}, function (err, res) {\n  pm.expect(res.responseTime).to.be.below(100);\n});"
+  },
+  {
+    "id": "response_helpers-1",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.ok;"
+  },
+  {
+    "id": "response_helpers-2",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.success;"
+  },
+  {
+    "id": "response_helpers-3",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.error;"
+  },
+  {
+    "id": "response_helpers-4",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.clientError;"
+  },
+  {
+    "id": "response_helpers-5",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.serverError;"
+  },
+  {
+    "id": "response_helpers-6",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.withBody;"
+  },
+  {
+    "id": "response_helpers-7",
+    "group": "response_helpers",
+    "script": "pm.response.to.not.be.withBody;"
+  },
+  {
+    "id": "response_helpers-8",
+    "group": "response_helpers",
+    "script": "pm.test('json', function () {\n  pm.response.to.be.json;\n  pm.response.to.have.jsonBody('a');\n});"
+  },
+  {
+    "id": "response_helpers-9",
+    "group": "response_helpers",
+    "script": "pm.test('hdr', () => {\n  pm.response.to.have.header('X-A', 'b');\n  pm.response.to.have.body('hello');\n});"
+  },
+  {
+    "id": "response_helpers-10",
+    "group": "response_helpers",
+    "script": "pm.test('status', function () {\n  pm.response.to.have.status('OK');\n  pm.response.to.be.ok;\n  pm.response.to.be.html;\n});"
+  },
+  {
+    "id": "response_helpers-11",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.jsonBody({a: 1});\npm.response.to.have.status(201);"
+  },
+  {
+    "id": "send_request-9",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', (res) => { console.log(res.code) });"
+  },
+  {
+    "id": "send_request-10",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', async function (e, res) { console.log(res.json()) });"
+  },
+  {
+    "id": "send_request-11",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com/a/very/long/url/that/goes/on/and/on/and/on/and/on/forever/and/ever');"
+  },
+  {
+    "id": "send_request-12",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com/a/very/long/url/that/goes/on/and/on/and/on/and/on/forever', function(e,r){ x(); });"
+  },
+  {
+    "id": "send_request-13",
+    "group": "send_request",
+    "script": "pm.sendRequest({url:'u', ...rest}, function(e,r){});"
+  },
+  {
+    "id": "send_request-14",
+    "group": "send_request",
+    "script": "const opts = {\n  url: 'u',\n  header: [{key: 'A', value: 'b'}],\n  body: {mode: 'urlencoded', urlencoded: [{key: 'k', value: 'v'}]}\n};\npm.sendRequest(opts, function (e, r) {\n  console.log(r.code);\n});"
+  },
+  {
+    "id": "send_request-15",
+    "group": "send_request",
+    "script": "await pm.sendRequest('u', function (e, r) { });"
+  },
+  {
+    "id": "send_request-16",
+    "group": "send_request",
+    "script": "function g() { return pm.sendRequest('u'); }"
+  },
+  {
+    "id": "send_request-17",
+    "group": "send_request",
+    "script": "const f = () => pm.sendRequest('u');"
+  },
+  {
+    "id": "send_request-18",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (e, r) {\n  pm.sendRequest('v', function (e2, r2) {\n    console.log(r2.code, r.code);\n  });\n});"
+  },
+  {
+    "id": "send_request-19",
+    "group": "send_request",
+    "script": "pm.sendRequest('u').then(function (r) { return r.json(); }).then(function (d) { console.log(d.json); });"
+  },
+  {
+    "id": "send_request-20",
+    "group": "send_request",
+    "script": "pm.sendRequest('u').then(r => r).then(r2 => r2.code);"
+  },
+  {
+    "id": "send_request-21",
+    "group": "send_request",
+    "script": "pm.sendRequest('u').then(function(r){ console.log(r.code) }).catch(function(e){}).then(function(r){ r.code });"
+  },
+  {
+    "id": "send_request-22",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function(err, res) {\n  var res = 1;\n  console.log(res.code);\n});"
+  },
+  {
+    "id": "send_request-23",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function(err, res) {\n  [1].map(function(res){ return res.code; });\n  console.log(res.code);\n});"
+  },
+  {
+    "id": "send_request-24",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', method: 'POST', header: {'Content-Type': 'x'}, body: {mode: 'urlencoded', urlencoded: [{key:'a', value:'b'}]}}, function(e,r){});"
+  },
+  {
+    "id": "send_request-25",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', headers: {'content-type': 'x', Foo: 1}, body: {mode: 'urlencoded', urlencoded: [{key:'a', value:'b'}]}});"
+  },
+  {
+    "id": "send_request-26",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', body: {mode: 'raw'}});"
+  },
+  {
+    "id": "send_request-27",
+    "group": "send_request",
+    "script": "pm.sendRequest({\n    url: 'u',\n    header: [\n        {key: 'A', value: 'b', disabled: false},\n        {key: 'B', value: pm.environment.get('x')}\n    ]\n}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-28",
+    "group": "send_request",
+    "script": "if (x) {\n    pm.sendRequest({url:'u', header:[{key:'A', value:'b'}]}, function (e, r) {\n        pm.test('a', function () {\n            pm.expect(r.code).to.eql(200);\n        });\n    });\n}"
+  },
+  {
+    "id": "send_request-29",
+    "group": "send_request",
+    "script": "pm.sendRequest(pm.environment.get('u') + '/x', function (e, r) { pm.environment.set('a', r.json().a); });"
+  },
+  {
+    "id": "send_request-30",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (e, r) { pm.test(`code ${r.code}`, () => {}); });"
+  },
+  {
+    "id": "send_request-31",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function(e){ console.log(response.json()); });"
+  },
+  {
+    "id": "send_request-32",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (e, r) { return; }, extra);"
+  },
+  {
+    "id": "send_request-33",
+    "group": "send_request",
+    "script": "var a = pm.sendRequest('u') + 1;"
+  },
+  {
+    "id": "send_request-34",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (e, r) {\n  r.status; r['code']; r.json; r.text('x'); r.headers; r.stream;\n});"
+  },
+  {
+    "id": "send_request-35",
+    "group": "send_request",
+    "script": "pm.sendRequest({url:'u', method:'POST', body:{mode:'urlencoded', urlencoded:[{key:'k',value:'v'},{key:'j',value:'w'}]}}, function(e,r){});"
+  },
+  {
+    "id": "send_request-36",
+    "group": "send_request",
+    "script": "pm.sendRequest({\n  url: 'u',\n  method: 'POST',\n  body: {\n    mode: 'urlencoded',\n    urlencoded: [{key:'k',value:'v'}]\n  }\n}, function(e,r){\n  console.log(r.code);\n});"
+  },
+  {
+    "id": "send_request-37",
+    "group": "send_request",
+    "script": "pm.sendRequest({url:'u', body:{mode:'formdata', formdata:[{key:'k',value:'v'}]}, header:{a:'b'}}, function(e,r){});"
+  },
+  {
+    "id": "send_request-38",
+    "group": "send_request",
+    "script": "pm.sendRequest({url:'u', 'header':[{key:'a', value:'b'}], 'body':{mode:'raw', raw:'x'}});"
+  },
+  {
+    "id": "send_request-39",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', cb);"
+  },
+  {
+    "id": "send_request-40",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function* g (e, res) { });"
+  },
+  {
+    "id": "send_request-41",
+    "group": "send_request",
+    "script": "const x = pm.sendRequest('u').foo;"
+  },
+  {
+    "id": "send_request-42",
+    "group": "send_request",
+    "script": "function f() {\n  pm.sendRequest({\n    url: 'u',\n    header: [{key:'a', value:'b'}]\n  }, function (e, r) {\n    console.log(r.code);\n  });\n}"
+  },
+  {
+    "id": "send_request-43",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (e, r) {\n  r.json().items.forEach(function (it) {\n    pm.sendRequest(it.url, function (e2, r2) {\n      pm.collectionVariables.set(it.id, r2.json().v);\n    });\n  });\n});"
+  },
+  {
+    "id": "send_request-44",
+    "group": "send_request",
+    "script": "pm.sendRequest('u').then(function (r) {\n  pm.sendRequest('v', function (e, r2) {\n    console.log(r2.code);\n  });\n  return r;\n}).then(function (r) {\n  console.log(r.json());\n});"
+  },
+  {
+    "id": "send_request-45",
+    "group": "send_request",
+    "script": "var ok = !pm.sendRequest('u');\nvar t = x ? pm.sendRequest('u') : 1;"
+  },
+  {
+    "id": "send_request-46",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', header: [{key: 'A', value: 'b'}, {key: 'C'}]}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-47",
+    "group": "send_request",
+    "script": "const loginRequest = {\n    url: pm.environment.get('baseUrl') + '/auth/login',\n    method: 'POST',\n    header: {\n        'Content-Type': 'application/json'\n    },\n    body: {\n        mode: 'raw',\n        raw: JSON.stringify({\n            username: pm.environment.get('user'),\n            password: pm.environment.get('pass')\n        })\n    }\n};\n\npm.sendRequest(loginRequest, function (err, response) {\n    if (err) {\n        console.log(err);\n        return;\n    }\n    pm.environment.set('token', response.json().access_token);\n});"
+  },
+  {
+    "id": "send_request-48",
+    "group": "send_request",
+    "script": "pm.sendRequest({\n\turl: 'https://example.com',\n\tmethod: 'GET',\n\theader: [\n\t\t{ key: 'Authorization', value: 'Bearer ' + pm.environment.get('token') }\n\t]\n}, function (err, res) {\n\tpm.expect(res.code).to.equal(200);\n});"
+  },
+  {
+    "id": "send_request-49",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com', function (err, res) { pm.environment.set('x', res.text()) })\nconsole.log('done')"
+  },
+  {
+    "id": "send_request-50",
+    "group": "send_request",
+    "script": "pm.sendRequest('https://example.com', function (err, res) {\n  const data = res.json();\n  data.items.forEach(function (i) {\n    console.log(i, res.code);\n  });\n  pm.test('status', function () {\n    pm.expect(res).to.have.status(200);\n  });\n});"
+  },
+  {
+    "id": "send_request-51",
+    "group": "send_request",
+    "script": "for (let i = 0; i < 3; i++) {\n  pm.sendRequest('https://example.com/' + i, function (err, res) {\n    console.log(res.code);\n  });\n}"
+  },
+  {
+    "id": "send_request-52",
+    "group": "send_request",
+    "script": "async function go() {\n  pm.sendRequest('https://example.com', (e, r) => {});\n}\ngo();"
+  },
+  {
+    "id": "send_request-53",
+    "group": "send_request",
+    "script": "[1,2].forEach(function (n) {\n  pm.sendRequest('https://example.com/' + n, function (e, r) { console.log(r.code); });\n});"
+  },
+  {
+    "id": "send_request-54",
+    "group": "send_request",
+    "script": "[1,2].forEach(n => {\n  pm.sendRequest('https://example.com/' + n, function (e, r) { console.log(r.code); });\n});"
+  },
+  {
+    "id": "send_request-55",
+    "group": "send_request",
+    "script": "const p = new Promise(function (resolve) {\n  pm.sendRequest('u', function (e, r) { resolve(r.json()); });\n});"
+  },
+  {
+    "id": "send_request-56",
+    "group": "send_request",
+    "script": "// fetch the token\npm.sendRequest('u', function (err, res) {\n  // handle\n  console.log(res.json());\n}); // done"
+  },
+  {
+    "id": "send_request-57",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: {raw: 'https://x', host: ['x']}, method: 'GET'}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-58",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', method: 'POST', body: {mode: 'graphql', graphql: {query: 'q'}}}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-59",
+    "group": "send_request",
+    "script": "const h = [{key: 'a', value: 'b'}];\npm.sendRequest({url: 'u', header: h}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-60",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', method: 'POST', body: {mode: 'urlencoded', urlencoded: [{key: \"grant_type\", value: 'client_credentials'}, {key: 'client_id', value: pm.environment.get('id')}]}}, function (e, r) { pm.environment.set('t', r.json().access_token); });"
+  },
+  {
+    "id": "send_request-61",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (err, {status}) {});"
+  },
+  {
+    "id": "send_request-62",
+    "group": "send_request",
+    "script": "pm.sendRequest('u', function (err, res = {}) { res.json(); });"
+  },
+  {
+    "id": "send_request-63",
+    "group": "send_request",
+    "script": "pm.sendRequest ( 'u' , function ( e , r ) { r.json() } ) ;"
+  },
+  {
+    "id": "send_request-64",
+    "group": "send_request",
+    "script": "pm.sendRequest(`${pm.environment.get('base')}/x`, function (e, r) { console.log(`${r.code}`); });"
+  },
+  {
+    "id": "send_request-65",
+    "group": "send_request",
+    "script": "try {\n  pm.sendRequest('u', function (e, r) {});\n} catch (e) {\n  console.log(e);\n}"
+  },
+  {
+    "id": "send_request-66",
+    "group": "send_request",
+    "script": "pm.sendRequest({\n  url: 'u', // the url\n  method: 'GET'\n}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-67",
+    "group": "send_request",
+    "script": "pm.sendRequest({\n  url: 'u',\n  method: 'POST',\n  header: {'Content-Type': 'application/json'},\n  body: {\n    mode: 'raw',\n    raw: JSON.stringify({\n      a: 1,\n      b: 2\n    }),\n  },\n}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-68",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', header: [{key: 'a', value: 'b'},]}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-69",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', header: []}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-70",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', body: {mode: 'urlencoded', urlencoded: []}}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-71",
+    "group": "send_request",
+    "script": "pm.sendRequest({url: 'u', headers: hh, body: {mode: 'urlencoded', urlencoded: [{key: 'a', value: 'b'}]}}, function (e, r) {});"
+  },
+  {
+    "id": "send_request-72",
+    "group": "send_request",
+    "script": "pm.sendRequest('a', function (e, r) { console.log(r.code); });\npm.sendRequest('b', function (e, r) { console.log(r.status); });"
+  },
+  {
+    "id": "send_request-73",
+    "group": "send_request",
+    "script": "pm.test('t', function () {\n  pm.sendRequest('u', function (e, r) {\n    pm.expect(r.code).to.eql(200);\n  });\n});"
+  },
+  {
+    "id": "send_request-74",
+    "group": "send_request",
+    "script": "const r = pm.sendRequest('u');\nr.then(function (x) { console.log(x.json()) });"
+  },
+  {
+    "id": "response_helpers-12",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.info;"
+  },
+  {
+    "id": "response_helpers-13",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.redirection;"
+  },
+  {
+    "id": "response_helpers-14",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.accepted;\npm.response.to.be.badRequest;\npm.response.to.be.unauthorized;"
+  },
+  {
+    "id": "response_helpers-15",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.forbidden;\npm.response.to.be.notFound;\npm.response.to.be.rateLimited;"
+  },
+  {
+    "id": "response_helpers-16",
+    "group": "response_helpers",
+    "script": "pm.response.to.not.be.ok;"
+  },
+  {
+    "id": "response_helpers-17",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.not.ok;"
+  },
+  {
+    "id": "response_helpers-18",
+    "group": "response_helpers",
+    "script": "pm.response.to.not.be.success;\npm.response.to.be.not.error;"
+  },
+  {
+    "id": "response_helpers-19",
+    "group": "response_helpers",
+    "script": "pm.response.to.not.be.clientError;\npm.response.to.not.be.serverError;"
+  },
+  {
+    "id": "response_helpers-20",
+    "group": "response_helpers",
+    "script": "pm.response.to.not.be.notFound;\npm.response.to.be.not.rateLimited;"
+  },
+  {
+    "id": "response_helpers-21",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.not.withBody;"
+  },
+  {
+    "id": "response_helpers-22",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.status('Created');"
+  },
+  {
+    "id": "response_helpers-23",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.status(201, 'Created');"
+  },
+  {
+    "id": "response_helpers-24",
+    "group": "response_helpers",
+    "script": "pm.response.to.not.have.status(404);\npm.response.to.have.not.status(500);"
+  },
+  {
+    "id": "response_helpers-25",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.header('Content-Type');"
+  },
+  {
+    "id": "response_helpers-26",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.header('X-Id', 'abc');\npm.response.to.not.have.header('X-Gone');\npm.response.to.have.not.header('X-Gone2');"
+  },
+  {
+    "id": "response_helpers-27",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.body(/hello/i);"
+  },
+  {
+    "id": "response_helpers-28",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.body('hello');\npm.response.to.not.have.body('bye');\npm.response.to.have.not.body('bye2');"
+  },
+  {
+    "id": "response_helpers-29",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.jsonBody('a.b', 3);\npm.response.to.not.have.jsonBody('c');\npm.response.to.have.not.jsonBody('d');"
+  },
+  {
+    "id": "response_helpers-30",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.jsonSchema({type: 'object'});\npm.response.to.not.have.jsonSchema(s);\npm.response.not.to.have.jsonSchema(s);\npm.response.to.have.not.jsonSchema(s);"
+  },
+  {
+    "id": "response_helpers-31",
+    "group": "response_helpers",
+    "script": "pm.response.not.to.have.jsonBody('x');"
+  },
+  {
+    "id": "response_helpers-32",
+    "group": "response_helpers",
+    "script": "pm.test('all', function () {\n  pm.response.to.be.ok;\n  pm.response.to.be.json;\n  pm.response.to.be.withBody;\n});"
+  },
+  {
+    "id": "response_helpers-33",
+    "group": "response_helpers",
+    "script": "pm.test('arrow', () => pm.response.to.be.success);"
+  },
+  {
+    "id": "response_helpers-34",
+    "group": "response_helpers",
+    "script": "pm.test('expr', function () {\n  const ok = pm.response.to.be.ok;\n  pm.expect(ok).to.be.true;\n});"
+  },
+  {
+    "id": "response_helpers-35",
+    "group": "response_helpers",
+    "script": "if (pm.response.to.be.ok) {\n  console.log('fine');\n}"
+  },
+  {
+    "id": "response_helpers-36",
+    "group": "response_helpers",
+    "script": "pm.expect(pm.response.to.be.serverError).to.be.false;"
+  },
+  {
+    "id": "response_helpers-37",
+    "group": "response_helpers",
+    "script": "const r = pm.response;\nr.to.be.ok;\nr.to.have.status(200);"
+  },
+  {
+    "id": "response_helpers-38",
+    "group": "response_helpers",
+    "script": "const r = pm.response;\npm.test('alias', function () {\n  r.to.be.clientError;\n  r.to.have.header('X-A', 'b');\n  r.to.have.jsonBody('a');\n});"
+  },
+  {
+    "id": "response_helpers-39",
+    "group": "response_helpers",
+    "script": "const res2 = pm.response;\nres2.to.not.be.error;\nres2.to.be.not.withBody;"
+  },
+  {
+    "id": "response_helpers-40",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.ok\npm.response.to.be.success"
+  },
+  {
+    "id": "response_helpers-41",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.html;\npm.response.to.be.text;\npm.response.to.be.xml;\npm.response.to.be.rateLimited;"
+  },
+  {
+    "id": "response_helpers-42",
+    "group": "response_helpers",
+    "script": "pm.response.to.have.status(pm.environment.get('code'));\npm.response.to.have.header(pm.variables.get('h'), 'v');"
+  },
+  {
+    "id": "response_helpers-43",
+    "group": "response_helpers",
+    "script": "// pm.response.to.be.ok;\nconst s = 'pm.response.to.be.ok';\nconsole.log(`${s}`);"
+  },
+  {
+    "id": "response_helpers-44",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.ok; pm.response.to.be.error;"
+  },
+  {
+    "id": "response_helpers-45",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.ok();"
+  },
+  {
+    "id": "response_helpers-46",
+    "group": "response_helpers",
+    "script": "const b = pm.response.to.be.withBody;\nconsole.log(b);"
+  },
+  {
+    "id": "response_helpers-47",
+    "group": "response_helpers",
+    "script": "pm.expect(pm.response.to.be.withBody).to.be.true;"
+  },
+  {
+    "id": "response_helpers-48",
+    "group": "response_helpers",
+    "script": "if (x) pm.response.to.be.ok;\nelse pm.response.to.be.error;"
+  },
+  {
+    "id": "response_helpers-49",
+    "group": "response_helpers",
+    "script": "for (const k of ks) {\n  pm.response.to.have.header(k);\n}"
+  },
+  {
+    "id": "response_helpers-50",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.ok\n.foo;"
+  },
+  {
+    "id": "response_helpers-51",
+    "group": "response_helpers",
+    "script": "pm.response.to.be.ok /* trailing */\npm.response.to.be.withBody // end"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "uuid",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "const { v4 } = require(\"uuid\");\n \nbru.setVar(\"uuid-test-id\", v4());"
+  },
+  "tests": "test(\"uuid var\", function() {\n  const id = bru.getVar('uuid-test-id');\n  let isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);\n  bru.setVar('uuid-test-id', null);\n  expect(isValidUuid).to.eql(true);\n});"
+}

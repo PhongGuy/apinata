@@ -1,0 +1,51 @@
+info:
+  name: iteration-methods
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{host}}/api/echo/json"
+  body:
+    type: json
+    data: |-
+      {
+        "hello": "bruno"
+      }
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("res.headerList.each(fn)", function() {
+          const keys = [];
+          res.headerList.each((header) => {
+            keys.push(header.key);
+          });
+          expect(keys).to.include('x-powered-by');
+        });
+
+        test("res.headerList.map(fn)", function() {
+          const keys = res.headerList.map(h => h.key);
+          expect(keys).to.be.an('array');
+          expect(keys).to.include('x-powered-by');
+        });
+
+        test("res.headerList.reduce(fn, initial)", function() {
+          const obj = res.headerList.reduce((acc, h) => {
+            acc[h.key] = h.value;
+            return acc;
+          }, {});
+          expect(obj['x-powered-by']).to.equal('Express');
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

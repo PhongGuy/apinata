@@ -1,0 +1,22 @@
+info:
+  name: Guess JSON
+  type: http
+  seq: 3
+
+http:
+  method: PUT
+  url: https://example.com/json
+  headers:
+    - name: content-type
+      value: application/vnd.api+json
+  body:
+    type: text
+    data: '{"a": 1}'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

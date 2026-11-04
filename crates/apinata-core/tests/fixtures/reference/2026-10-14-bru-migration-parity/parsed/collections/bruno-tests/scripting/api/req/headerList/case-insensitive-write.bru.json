@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "name": "case-insensitive-write",
+    "type": "http",
+    "seq": "12"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "X-Custom",
+      "value": "original",
+      "enabled": true
+    },
+    {
+      "name": "X-Remove-Me",
+      "value": "bye",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.headerList.upsert({ key: 'x-custom', value: 'updated' });\nreq.headerList.remove('x-remove-me');"
+  },
+  "tests": "test(\"upsert() replaces header case-insensitively\", function() {\n  expect(req.headerList.get('x-custom')).to.equal('updated');\n  expect(req.getHeader('X-Custom')).to.be.undefined;\n  expect(req.getHeader('x-custom')).to.equal('updated');\n});\n\ntest(\"remove() deletes header case-insensitively\", function() {\n  expect(req.headerList.has('X-Remove-Me')).to.be.false;\n  expect(req.headerList.has('x-remove-me')).to.be.false;\n});"
+}

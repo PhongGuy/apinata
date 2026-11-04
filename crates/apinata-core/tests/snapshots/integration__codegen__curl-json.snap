@@ -1,0 +1,8 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+curl --request 'POST' \
+  --url 'http://x.test/j' \
+  --header 'content-type: application/json' \
+  --data-raw '{"a": 1, "s": "x y"}'

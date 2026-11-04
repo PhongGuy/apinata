@@ -1,0 +1,9 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin 'POST' 'http://x.test/p?x=a%27b$c{d}&y=%C3%BC' \
+  'X-H:it'\''s "q" \ $HOME {x} ü' \
+  'content-type:text/plain' \
+  --raw 'a'\''b"c\d $e {f}	g
+ü€ end'

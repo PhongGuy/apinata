@@ -1,0 +1,10 @@
+get {
+  url: https://example.com
+}
+
+vars:pre-request {
+  @object
+  huge: {"a": 1e400, "neg": -1e400, "s": "\ud800x"}
+  @object
+  lone-low: {"k": "a\udc00b"}
+}

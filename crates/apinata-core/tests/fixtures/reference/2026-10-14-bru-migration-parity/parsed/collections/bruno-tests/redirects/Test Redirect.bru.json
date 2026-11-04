@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "name": "Test Redirect",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/redirect-to-ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"should redirect to ping\", function() {\n  const data = res.getBody();\n  expect(data).to.equal('pong');\n});"
+}

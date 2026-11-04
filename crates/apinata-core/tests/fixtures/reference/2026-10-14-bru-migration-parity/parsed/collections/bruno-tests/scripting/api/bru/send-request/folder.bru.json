@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "send-request",
+    "seq": "16",
+    "type": "collection"
+  },
+  "auth": {
+    "mode": "inherit"
+  }
+}

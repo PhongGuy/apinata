@@ -1,0 +1,201 @@
+{
+  "meta": {
+    "name": "Full example request",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://api.example.com/users/:id"
+  },
+  "examples": [
+    {
+      "name": "Every request field",
+      "request": {
+        "url": "https://api.example.com/users/42?q=1",
+        "method": "post",
+        "body": {
+          "mode": "json",
+          "json": "{\n  \"name\": \"Ada\",\n  \"tags\": [\"a\", \"b\"]\n}"
+        },
+        "params": [
+          {
+            "name": "id",
+            "value": "42",
+            "enabled": true,
+            "type": "path"
+          },
+          {
+            "name": "unused",
+            "value": "7",
+            "enabled": false,
+            "type": "path"
+          },
+          {
+            "name": "q",
+            "value": "1",
+            "enabled": true,
+            "type": "query"
+          },
+          {
+            "name": "page",
+            "value": "2",
+            "enabled": false,
+            "type": "query"
+          }
+        ],
+        "headers": [
+          {
+            "name": "content-type",
+            "value": "application/json",
+            "enabled": true
+          },
+          {
+            "name": "x-debug",
+            "value": "true",
+            "enabled": false
+          },
+          {
+            "name": "quoted key",
+            "value": "quoted value",
+            "enabled": true
+          },
+          {
+            "name": "disabled quoted",
+            "value": "off",
+            "enabled": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "Text body",
+      "request": {
+        "body": {
+          "mode": "text",
+          "text": "plain text\n  indented"
+        }
+      }
+    },
+    {
+      "name": "Xml body",
+      "request": {
+        "body": {
+          "mode": "xml",
+          "xml": "<user><id>1</id></user>"
+        }
+      }
+    },
+    {
+      "name": "Sparql body",
+      "request": {
+        "body": {
+          "mode": "sparql",
+          "sparql": "SELECT ?s WHERE { ?s ?p ?o }"
+        }
+      }
+    },
+    {
+      "name": "Graphql body",
+      "request": {
+        "body": {
+          "mode": "graphql",
+          "graphql": {
+            "query": "query { user(id: 1) { name } }",
+            "variables": "{\n  \"id\": 1\n}"
+          }
+        }
+      }
+    },
+    {
+      "name": "Form body",
+      "request": {
+        "body": {
+          "mode": "formUrlEncoded",
+          "formUrlEncoded": [
+            {
+              "name": "a",
+              "value": "1",
+              "enabled": true
+            },
+            {
+              "name": "b",
+              "value": "2",
+              "enabled": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Multipart body",
+      "request": {
+        "body": {
+          "mode": "multipartForm",
+          "multipartForm": [
+            {
+              "name": "field",
+              "value": "value",
+              "enabled": true,
+              "type": "text",
+              "contentType": "text/plain"
+            },
+            {
+              "name": "upload",
+              "value": [
+                "a.txt",
+                "",
+                "b.txt"
+              ],
+              "enabled": true,
+              "type": "file",
+              "contentType": ""
+            },
+            {
+              "name": "skipped",
+              "value": "no",
+              "enabled": false,
+              "type": "text",
+              "contentType": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "File body",
+      "request": {
+        "body": {
+          "mode": "file",
+          "file": [
+            {
+              "contentType": "application/json",
+              "filePath": "data/body.json",
+              "selected": true
+            },
+            {
+              "contentType": "",
+              "filePath": "data/other.bin",
+              "selected": false
+            },
+            {
+              "name": "plain",
+              "value": "not a file",
+              "enabled": true,
+              "contentType": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Empty mode",
+      "request": {
+        "url": "https://api.example.com/none",
+        "body": {
+          "mode": "none"
+        }
+      }
+    }
+  ]
+}

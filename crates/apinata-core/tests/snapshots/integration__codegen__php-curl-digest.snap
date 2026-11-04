@@ -1,0 +1,19 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+<?php
+
+$curl = curl_init();
+curl_setopt_array($curl, [
+    CURLOPT_URL => "http://x.test/digest",
+    CURLOPT_CUSTOMREQUEST => "GET",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,
+    CURLOPT_USERPWD => "alice:p'w",
+]);
+
+$response = curl_exec($curl);
+echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE), "\n";
+echo $response, "\n";

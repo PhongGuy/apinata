@@ -1,0 +1,89 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Test API Collection v4
+== Authentication/Login User.yml
+info:
+  name: Login User
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/auth/login"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "username": "admin",
+        "password": "password123"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: User authentication endpoint
+== Authentication/folder.yml
+info:
+  name: Authentication
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+docs:
+  content: Authentication related endpoints
+  type: text/markdown
+== Get Users.yml
+info:
+  name: Get Users
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/users"
+  headers:
+    - name: Accept
+      value: application/json
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Fetch all users from the API
+== environments/Base Environment.yml
+name: Base Environment
+variables:
+  - name: baseUrl
+    value: https://api.example.com
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Test API Collection v4
+
+docs:
+  content: Test collection for Insomnia v4 format
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report

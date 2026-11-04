@@ -1,0 +1,20 @@
+info:
+  name: metadata
+  type: grpc
+  seq: 1
+
+grpc:
+  url: ""
+  method: ""
+  metadata:
+    - name: caller
+      value: me
+      description: who calls
+    - name: disabled
+      value: x
+      disabled: true
+    - name: extra
+      value: y
+  message:
+    - title: message 1
+      message: "{}"

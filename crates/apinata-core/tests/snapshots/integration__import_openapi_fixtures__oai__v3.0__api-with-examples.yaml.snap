@@ -1,0 +1,74 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== List API versions.yml
+info:
+  name: List API versions
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Show API version details.yml
+info:
+  name: Show API version details
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/v2"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Simple API overview
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /:
+          target: 3911b83606f6ea5c
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: List API versions.yml
+        GET /v2:
+          target: b0232563e699e0f3
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Show API version details.yml
+
+note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending

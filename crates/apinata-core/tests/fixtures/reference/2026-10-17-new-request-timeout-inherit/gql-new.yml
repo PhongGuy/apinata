@@ -1,0 +1,16 @@
+info:
+  name: New GraphQL
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: ""
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

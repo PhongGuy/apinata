@@ -1,0 +1,4 @@
+{
+  "line": 5,
+  "message": "Line 5, col 5:\n  4 |     ok\n> 5 |     𝒜\n          ^\n  6 |   ]\nExpected \"]\", \"-\", \"_\", or an alpha-numeric character"
+}

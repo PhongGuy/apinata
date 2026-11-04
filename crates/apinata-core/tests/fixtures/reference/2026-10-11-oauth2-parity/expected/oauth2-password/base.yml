@@ -1,0 +1,43 @@
+info:
+  name: items
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://api.example.com/items
+  auth:
+    type: oauth2
+    flow: resource_owner_password_credentials
+    accessTokenUrl: https://id.example.com/token
+    credentials:
+      clientId: cli
+      placement: basic_auth_header
+    resourceOwner:
+      username: ann
+      password: "{{pw}}"
+    scope: profile
+    additionalParameters:
+      accessTokenRequest:
+        - name: audience
+          placement: body
+          value: api
+      refreshTokenRequest:
+        - name: X-R
+          placement: header
+          value: "1"
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

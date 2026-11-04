@@ -1,0 +1,519 @@
+sign keyobject rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject rsa HS256: JsonWebTokenError invalid algorithm
+verify keyobject rsa HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+verify keyobject rsa RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+verify keyobject rsa RS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+sign keyobject rsa PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+verify keyobject rsa PS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+verify keyobject rsa PS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+sign keyobject rsa ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+verify keyobject rsa ES256: JsonWebTokenError invalid algorithm
+verify keyobject rsa ES256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+sign keyobject ec HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject ec HS256: JsonWebTokenError invalid algorithm
+verify keyobject ec HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject ec RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify keyobject ec RS256: JsonWebTokenError invalid algorithm
+verify keyobject ec RS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+sign keyobject ec PS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+verify keyobject ec PS256: JsonWebTokenError invalid algorithm
+verify keyobject ec PS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+sign keyobject ec ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+verify keyobject ec ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+verify keyobject ec ES256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+sign keyobject ed HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject ed HS256: JsonWebTokenError invalid algorithm
+verify keyobject ed HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject ed RS256: Error Unknown key type "ed25519".
+verify keyobject ed RS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+verify keyobject ed RS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+sign keyobject ed PS256: Error Unknown key type "ed25519".
+verify keyobject ed PS256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+verify keyobject ed PS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+sign keyobject ed ES256: Error Unknown key type "ed25519".
+verify keyobject ed ES256: JsonWebTokenError invalid algorithm
+verify keyobject ed ES256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+sign keyobject rsa_pub HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject rsa_pub HS256: JsonWebTokenError invalid algorithm
+verify keyobject rsa_pub HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject rsa_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+verify keyobject rsa_pub RS256: ok x
+verify keyobject rsa_pub RS256 named: ok x
+sign keyobject rsa_pub PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+verify keyobject rsa_pub PS256: ok x
+verify keyobject rsa_pub PS256 named: ok x
+sign keyobject rsa_pub ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+verify keyobject rsa_pub ES256: JsonWebTokenError invalid algorithm
+verify keyobject rsa_pub ES256 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign keyobject ec_pub HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject ec_pub HS256: JsonWebTokenError invalid algorithm
+verify keyobject ec_pub HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject ec_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+verify keyobject ec_pub RS256: JsonWebTokenError invalid algorithm
+verify keyobject ec_pub RS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign keyobject ec_pub PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+verify keyobject ec_pub PS256: JsonWebTokenError invalid algorithm
+verify keyobject ec_pub PS256 named: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+sign keyobject ec_pub ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+verify keyobject ec_pub ES256: ok x
+verify keyobject ec_pub ES256 named: ok x
+sign keyobject ed_pub HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject ed_pub HS256: JsonWebTokenError invalid algorithm
+verify keyobject ed_pub HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject ed_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+verify keyobject ed_pub RS256: Error Unknown key type "ed25519".
+verify keyobject ed_pub RS256 named: Error Unknown key type "ed25519".
+sign keyobject ed_pub PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+verify keyobject ed_pub PS256: Error Unknown key type "ed25519".
+verify keyobject ed_pub PS256 named: Error Unknown key type "ed25519".
+sign keyobject ed_pub ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+verify keyobject ed_pub ES256: JsonWebTokenError invalid algorithm
+verify keyobject ed_pub ES256 named: Error Unknown key type "ed25519".
+sign keyobject derived HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+verify keyobject derived HS256: JsonWebTokenError invalid algorithm
+verify keyobject derived HS256 named: JsonWebTokenError secretOrPublicKey must be a symmetric key when using HS256
+sign keyobject derived RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+verify keyobject derived RS256: ok x
+verify keyobject derived RS256 named: ok x
+sign keyobject derived PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+verify keyobject derived PS256: ok x
+verify keyobject derived PS256 named: ok x
+sign keyobject derived ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+verify keyobject derived ES256: JsonWebTokenError invalid algorithm
+verify keyobject derived ES256 named: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+sign keyobject secret HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hRKspIDOJVvPXRZAsFvdlcN2CNQDXniO4C0yjqAVALo
+verify keyobject secret HS256: ok x
+verify keyobject secret HS256 named: ok x
+sign keyobject secret RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+verify keyobject secret RS256: JsonWebTokenError invalid algorithm
+verify keyobject secret RS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+sign keyobject secret PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+verify keyobject secret PS256: JsonWebTokenError invalid algorithm
+verify keyobject secret PS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+sign keyobject secret ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+verify keyobject secret ES256: JsonWebTokenError invalid algorithm
+verify keyobject secret ES256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+sign keyobject secret_text HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hRKspIDOJVvPXRZAsFvdlcN2CNQDXniO4C0yjqAVALo
+verify keyobject secret_text HS256: ok x
+verify keyobject secret_text HS256 named: ok x
+sign keyobject secret_text RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+verify keyobject secret_text RS256: JsonWebTokenError invalid algorithm
+verify keyobject secret_text RS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using RS256
+sign keyobject secret_text PS256: Error secretOrPrivateKey must be an asymmetric key when using PS256
+verify keyobject secret_text PS256: JsonWebTokenError invalid algorithm
+verify keyobject secret_text PS256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using PS256
+sign keyobject secret_text ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+verify keyobject secret_text ES256: JsonWebTokenError invalid algorithm
+verify keyobject secret_text ES256 named: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+round keyobject rsa PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256 x
+round keyobject ec ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64 x
+sign form key_only: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form key_only hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form key_bytes: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form key_bytes hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form key_uint8: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form key_uint8 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form pem: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form pem hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form pem_type: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form pem_type hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form pem_pkcs1: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form pem_pkcs1 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form pem_ec: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+sign form pem_ec hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form pem_ed: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form pem_ed hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_pkcs8: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form der_pkcs8 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_pkcs1: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form der_pkcs1 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_ec: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+sign form der_ec hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_sec1: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+sign form der_sec1 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_ed: Error Unknown key type "ed25519".
+sign form der_ed hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_hex: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form der_hex hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form hex: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form hex hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form base64: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form base64 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form utf8: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form utf8 hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form buffer_encoding: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form buffer_encoding hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form jwk: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form jwk hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form jwk_ec: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+sign form jwk_ec hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form der_no_type: Error secretOrPrivateKey is not valid key material
+sign form der_no_type hs: Error secretOrPrivateKey is not valid key material
+sign form der_bad_type: Error secretOrPrivateKey is not valid key material
+sign form der_bad_type hs: Error secretOrPrivateKey is not valid key material
+sign form der_wrong_type: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+sign form der_wrong_type hs: Error secretOrPrivateKey must be a symmetric key when using HS256
+sign form bad_format: Error secretOrPrivateKey is not valid key material
+sign form bad_format hs: Error secretOrPrivateKey is not valid key material
+sign form bad_encoding: Error secretOrPrivateKey is not valid key material
+sign form bad_encoding hs: Error secretOrPrivateKey is not valid key material
+sign form jwk_text: Error secretOrPrivateKey is not valid key material
+sign form jwk_text hs: Error secretOrPrivateKey is not valid key material
+sign form secret_text: Error secretOrPrivateKey is not valid key material
+sign form secret_text hs: Error secretOrPrivateKey is not valid key material
+sign form secret_bytes: Error secretOrPrivateKey is not valid key material
+sign form secret_bytes hs: Error secretOrPrivateKey is not valid key material
+sign form broken_pem: Error secretOrPrivateKey is not valid key material
+sign form broken_pem hs: Error secretOrPrivateKey is not valid key material
+sign form public_pem: Error secretOrPrivateKey is not valid key material
+sign form public_pem hs: Error secretOrPrivateKey is not valid key material
+sign form public_pem_hs: Error secretOrPrivateKey is not valid key material
+sign form public_pem_hs hs: Error secretOrPrivateKey is not valid key material
+sign form keyobject: Error secretOrPrivateKey is not valid key material
+sign form keyobject hs: Error secretOrPrivateKey is not valid key material
+sign form public_keyobject: Error secretOrPrivateKey is not valid key material
+sign form public_keyobject hs: Error secretOrPrivateKey is not valid key material
+sign form no_key: Error secretOrPrivateKey is not valid key material
+sign form no_key hs: Error secretOrPrivateKey is not valid key material
+sign form undefined_key: Error secretOrPrivateKey is not valid key material
+sign form undefined_key hs: Error secretOrPrivateKey is not valid key material
+sign form null_key: Error secretOrPrivateKey is not valid key material
+sign form null_key hs: Error secretOrPrivateKey is not valid key material
+sign form array: Error secretOrPrivateKey is not valid key material
+sign form array hs: Error secretOrPrivateKey is not valid key material
+sign form date: Error secretOrPrivateKey is not valid key material
+sign form date hs: Error secretOrPrivateKey is not valid key material
+verify form key_only: ok x
+verify form key_only named: ok x
+verify form key_only hs: JsonWebTokenError invalid algorithm
+verify form key_bytes: ok x
+verify form key_bytes named: ok x
+verify form key_bytes hs: JsonWebTokenError invalid algorithm
+verify form private_pem: ok x
+verify form private_pem named: ok x
+verify form private_pem hs: JsonWebTokenError invalid algorithm
+verify form pem: ok x
+verify form pem named: ok x
+verify form pem hs: JsonWebTokenError invalid algorithm
+verify form pem_type: ok x
+verify form pem_type named: ok x
+verify form pem_type hs: JsonWebTokenError invalid algorithm
+verify form certificate: ok x
+verify form certificate named: ok x
+verify form certificate hs: JsonWebTokenError invalid algorithm
+verify form der_spki: ok x
+verify form der_spki named: ok x
+verify form der_spki hs: JsonWebTokenError invalid algorithm
+verify form der_pkcs1: ok x
+verify form der_pkcs1 named: ok x
+verify form der_pkcs1 hs: JsonWebTokenError invalid algorithm
+verify form der_private: ok x
+verify form der_private named: ok x
+verify form der_private hs: JsonWebTokenError invalid algorithm
+verify form der_ec: ok x
+verify form der_ec named: ok x
+verify form der_ec hs: JsonWebTokenError invalid algorithm
+verify form der_ed: Error Unknown key type "ed25519".
+verify form der_ed named: Error Unknown key type "ed25519".
+verify form der_ed hs: JsonWebTokenError invalid algorithm
+verify form hex: ok x
+verify form hex named: ok x
+verify form hex hs: JsonWebTokenError invalid algorithm
+verify form jwk: ok x
+verify form jwk named: ok x
+verify form jwk hs: JsonWebTokenError invalid algorithm
+verify form jwk_private: ok x
+verify form jwk_private named: ok x
+verify form jwk_private hs: JsonWebTokenError invalid algorithm
+verify form keyobject_private: ok x
+verify form keyobject_private named: ok x
+verify form keyobject_private hs: JsonWebTokenError invalid algorithm
+verify form keyobject_public: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form keyobject_public named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form keyobject_public hs: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form keyobject_secret: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form keyobject_secret named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form keyobject_secret hs: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form der_no_type: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form der_no_type named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form der_no_type hs: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form bad_format: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form bad_format named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form bad_format hs: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form secret_text: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form secret_text named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form secret_text hs: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form broken_pem: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form broken_pem named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form broken_pem hs: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form no_key: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form no_key named: JsonWebTokenError secretOrPublicKey is not valid key material
+verify form no_key hs: JsonWebTokenError secretOrPublicKey is not valid key material
+bundle cert_key HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+bundle cert_key verify HS256: JsonWebTokenError invalid algorithm
+bundle cert_key RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+bundle cert_key verify RS256: ok x
+bundle public_key HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+bundle public_key verify HS256: JsonWebTokenError invalid algorithm
+bundle public_key RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+bundle public_key verify RS256: ok x
+bundle key_cert HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+bundle key_cert verify HS256: JsonWebTokenError invalid algorithm
+bundle key_cert RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+bundle key_cert verify RS256: ok x
+bundle note_key HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+bundle note_key verify HS256: JsonWebTokenError invalid algorithm
+bundle note_key RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+bundle note_key verify RS256: ok x
+size 512 RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 512 RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 512 RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.s0YkXh8FY9wb9NoDtuMEBksAwyhBd1T8PrfX2M765WYSK-KNBpVwhF2NKKp3CcDfDLaVmWypYEJKNTFTAxDCkg
+size 512 RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 512 RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 512 RS384 allowed: Error error:02000070:rsa routines::digest too big for rsa key
+size 512 RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 512 RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 512 RS512 allowed: Error error:02000070:rsa routines::digest too big for rsa key
+size 512 PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 512 PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 512 PS256 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 512 PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 512 PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 512 PS384 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 512 PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 512 PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 512 PS512 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 512 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 512 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 1024 RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.R0gnHbQaYJxYBMcrmq4gk9or4cEDRk-HKu9x7zSZZAfXHShRjOvoBgnSg0URD46kJ9-lvJKQEw0bvFyYNHVVhTd0VT8SozES_kJeQ5vDg4wrWQMAr6YTDA-0TW9gU5JfaS6kk-R4TVRhgiWHACFG5GUTvq9MHO8KaJ5Ff2tkY2M
+size 1024 RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.qfF_XtAn14mpybkzKd9Z0493caWvtOHxAi8SJriTtbWiETK7P8_x6s7rbIx-yOgfntE1tKU6BrgU4-31dIGQCPwZH2r7UPMyzWpo5C5WuCHxeOZa6uNSAtVY7PjfnhnN8nPMcpCbaAKN_DqcZvCdyQCCHnIaWWkR7LasMmXkoAY
+size 1024 RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.B9jJi9gCjE5VeNe4w6c2OSv5kPHwYk18qqKZt4KCTiyCXek4tl72yhUQHhEPndSWy9Okatj4lxhbYVn139Ie_I-1bgHMbrFr1s5tJZwO2DRo8xI5zdmmhm4gFlxrZaE0WkN4EZq6Bh62FfWaurIxJ_jqUKSGX1akXEjotYHmOSA
+size 1024 PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 PS512 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 1024 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 1024 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 2047 RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 2047 RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 2047 RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.F3jpqXTlP7s3jV21_iRbOCq0BqoExoyjlU85Zc0trzTMklULd0zmsirKaNdm16ibrv5YZXJ1fU2OOgkvRT1LbfUYDA5qIOelHLfDk5_wy8vZJyZt8Vy1GHIqlz-94WmJY0l0EiHifFec1zubBYp6vlWDjc-XFWVwEXKns7Fyzytheq9ReY5GnqoPzbqQmjvFdH1uNN9k1yHoooaTYUh3Q7PPXgfXqjHHUm-hUbJyMizXm9ZpuXOg1bKHNJB5QwSFf0e4ah6hh3AJlvWITZmmgOBLUzUN3yV6HHFnZK9E3RzN3YyCXu5WLjlhGCvU8cc7jHh--eG2Mcf5LfcUbAOr9A
+size 2047 RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 2047 RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 2047 RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.IIGgaaFlLqVsRci5rnHUK38Zz-MI50w_qTt8fu7sGnsGeMi_4sCw6wvsJRPA2likKcBfVRKDrB50oj6RhxcifV6hD51PiK4CCvyR6mbVYmMnop6u8iuPfCqbO5rR6tvNXDWI23Tlb2Z80Cwab-9n8nEDBQ7UfLDb6SQlNieVnDvGkLK-Pw4AK86FKeuYG9ZV7FfxkynLUEhhGfF-z5nwYgYAmO0ysj-OLVAVXc7y3IOU_kJfZocvduIP1WmM9QtzGacRW5Gj3Cdtc5TIjeMbxhaCbZTcrvKDp3ISuXyi9XtJ2_ZC0hRA3Ss5fYsReQjrgEdJwXAUvPcPURy_HPFuIA
+size 2047 RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 2047 RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 2047 RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.N_DUQwTf2mS4ifQ13qeGgSzKbl3x802hafNEBHb0VKDUAHd-_XnS7_HNmQTw86_cRWNUWgYoWzuZv2pcX1OCu8Ku6fiv8btlr1YcVcgkAZTkvzyqlGbGFgjJyXxFkQ_NKndWPb6W6JC3DDmMvyOG-5cfiZFYzVtXeDphrPI6y4vDLT1cP_-zHq-1WkJELzcykKQez8aTc26cc5nTHAnbdrZINfkFpMSJf38yLew97qIMPoLcWZOJqcQnvb0rr5yZy5ctPDioL6445Tr-UaGdA4IvbUVKuN6tHvQrXX-_jUmKzjaOmXAhPdGpHvlE9pkeR9FW71OaPtbXDBbcsjkZHA
+size 2047 PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 2047 PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 2047 PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2047 PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 2047 PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 2047 PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2047 PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 2047 PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 2047 PS512 allowed: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2047 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 2047 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 2048 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+size 2048 RS256 false: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+size 2048 RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+size 2048 RS384: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hgdb9Ibsbabh5tXvi3QWyHuPal4RMlZW_yGLgIs9q3satbh831_KsTo3Q77qVA12pHlrZNmoAstCeu6keF9YtwsHEbqPKyCNM9blU6ZvZUbabmdFTtYmiy9tV2W0BkFZeYZBb8IdPG1vVdfilGqaiwqpZKuURorX9O9xN6GIMmOHMT1VErDcXWyl_tcig_k0Bva3BKly387Ug2AXEoImxCU_t7S4jGbdAyXtMgKRO5BPvDJEZRDJ51x8tA1fottLyRgwdinS6DQlY8h4owZiCPsJzDvDqFh87kKBy9O-3KUJRvcfWBWm5XrS01w6BGUJFXUSe1rbjisNh8YvUNUYCA
+size 2048 RS384 false: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hgdb9Ibsbabh5tXvi3QWyHuPal4RMlZW_yGLgIs9q3satbh831_KsTo3Q77qVA12pHlrZNmoAstCeu6keF9YtwsHEbqPKyCNM9blU6ZvZUbabmdFTtYmiy9tV2W0BkFZeYZBb8IdPG1vVdfilGqaiwqpZKuURorX9O9xN6GIMmOHMT1VErDcXWyl_tcig_k0Bva3BKly387Ug2AXEoImxCU_t7S4jGbdAyXtMgKRO5BPvDJEZRDJ51x8tA1fottLyRgwdinS6DQlY8h4owZiCPsJzDvDqFh87kKBy9O-3KUJRvcfWBWm5XrS01w6BGUJFXUSe1rbjisNh8YvUNUYCA
+size 2048 RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hgdb9Ibsbabh5tXvi3QWyHuPal4RMlZW_yGLgIs9q3satbh831_KsTo3Q77qVA12pHlrZNmoAstCeu6keF9YtwsHEbqPKyCNM9blU6ZvZUbabmdFTtYmiy9tV2W0BkFZeYZBb8IdPG1vVdfilGqaiwqpZKuURorX9O9xN6GIMmOHMT1VErDcXWyl_tcig_k0Bva3BKly387Ug2AXEoImxCU_t7S4jGbdAyXtMgKRO5BPvDJEZRDJ51x8tA1fottLyRgwdinS6DQlY8h4owZiCPsJzDvDqFh87kKBy9O-3KUJRvcfWBWm5XrS01w6BGUJFXUSe1rbjisNh8YvUNUYCA
+size 2048 RS512: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+size 2048 RS512 false: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+size 2048 RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.to_I9qi-fO7M9G3TtUyQwj0kLD3mDj7tLtW6ro_63ayUDAXOn1Ljn1jMbXodZ8Z3bgJhQR4LhOHWXg_Sjf-2QVQ8tMUQYWN0vfC4QgMWlp9_R08KTqlj3ioQ4BDcFHRcW_kfUDnsp1fBJBfCToD79TQtrV0mnobX87i1aqf52kGwF54vLkd87WXO1kcglOJ1JnJQ_YzrcJjozHHCVy1IhYyv239zFJtot4d1jFgw9urcOBC8fr7M3VX36zPGXTii8YNK-pEEmXBU3eKwMns8zYEqxo664bxJHHGQ-KREWzWkhU5oIAjpyiW913H5QDOZwvTAcvYZ22pSNO6C7Z0wXA
+size 2048 PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS256 false: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS384: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS384 false: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS512: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS512 false: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 PS512 allowed: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256
+size 2048 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 2048 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 1024 pkcs1 RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 pkcs1 RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 pkcs1 RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.R0gnHbQaYJxYBMcrmq4gk9or4cEDRk-HKu9x7zSZZAfXHShRjOvoBgnSg0URD46kJ9-lvJKQEw0bvFyYNHVVhTd0VT8SozES_kJeQ5vDg4wrWQMAr6YTDA-0TW9gU5JfaS6kk-R4TVRhgiWHACFG5GUTvq9MHO8KaJ5Ff2tkY2M
+size 1024 pkcs1 RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 pkcs1 RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 pkcs1 RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.qfF_XtAn14mpybkzKd9Z0493caWvtOHxAi8SJriTtbWiETK7P8_x6s7rbIx-yOgfntE1tKU6BrgU4-31dIGQCPwZH2r7UPMyzWpo5C5WuCHxeOZa6uNSAtVY7PjfnhnN8nPMcpCbaAKN_DqcZvCdyQCCHnIaWWkR7LasMmXkoAY
+size 1024 pkcs1 RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 pkcs1 RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 pkcs1 RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.B9jJi9gCjE5VeNe4w6c2OSv5kPHwYk18qqKZt4KCTiyCXek4tl72yhUQHhEPndSWy9Okatj4lxhbYVn139Ie_I-1bgHMbrFr1s5tJZwO2DRo8xI5zdmmhm4gFlxrZaE0WkN4EZq6Bh62FfWaurIxJ_jqUKSGX1akXEjotYHmOSA
+size 1024 pkcs1 PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 pkcs1 PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 pkcs1 PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 pkcs1 PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 pkcs1 PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 pkcs1 PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 pkcs1 PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 pkcs1 PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 pkcs1 PS512 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 1024 pkcs1 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 1024 pkcs1 ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 1024 keyobject RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 keyobject RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 keyobject RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.R0gnHbQaYJxYBMcrmq4gk9or4cEDRk-HKu9x7zSZZAfXHShRjOvoBgnSg0URD46kJ9-lvJKQEw0bvFyYNHVVhTd0VT8SozES_kJeQ5vDg4wrWQMAr6YTDA-0TW9gU5JfaS6kk-R4TVRhgiWHACFG5GUTvq9MHO8KaJ5Ff2tkY2M
+size 1024 keyobject RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 keyobject RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 keyobject RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.qfF_XtAn14mpybkzKd9Z0493caWvtOHxAi8SJriTtbWiETK7P8_x6s7rbIx-yOgfntE1tKU6BrgU4-31dIGQCPwZH2r7UPMyzWpo5C5WuCHxeOZa6uNSAtVY7PjfnhnN8nPMcpCbaAKN_DqcZvCdyQCCHnIaWWkR7LasMmXkoAY
+size 1024 keyobject RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 keyobject RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 keyobject RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.B9jJi9gCjE5VeNe4w6c2OSv5kPHwYk18qqKZt4KCTiyCXek4tl72yhUQHhEPndSWy9Okatj4lxhbYVn139Ie_I-1bgHMbrFr1s5tJZwO2DRo8xI5zdmmhm4gFlxrZaE0WkN4EZq6Bh62FfWaurIxJ_jqUKSGX1akXEjotYHmOSA
+size 1024 keyobject PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 keyobject PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 keyobject PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 keyobject PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 keyobject PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 keyobject PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 keyobject PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 keyobject PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 keyobject PS512 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 1024 keyobject HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 1024 keyobject ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 1024 object RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 object RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 object RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.R0gnHbQaYJxYBMcrmq4gk9or4cEDRk-HKu9x7zSZZAfXHShRjOvoBgnSg0URD46kJ9-lvJKQEw0bvFyYNHVVhTd0VT8SozES_kJeQ5vDg4wrWQMAr6YTDA-0TW9gU5JfaS6kk-R4TVRhgiWHACFG5GUTvq9MHO8KaJ5Ff2tkY2M
+size 1024 object RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 object RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 object RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.qfF_XtAn14mpybkzKd9Z0493caWvtOHxAi8SJriTtbWiETK7P8_x6s7rbIx-yOgfntE1tKU6BrgU4-31dIGQCPwZH2r7UPMyzWpo5C5WuCHxeOZa6uNSAtVY7PjfnhnN8nPMcpCbaAKN_DqcZvCdyQCCHnIaWWkR7LasMmXkoAY
+size 1024 object RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 object RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 object RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.B9jJi9gCjE5VeNe4w6c2OSv5kPHwYk18qqKZt4KCTiyCXek4tl72yhUQHhEPndSWy9Okatj4lxhbYVn139Ie_I-1bgHMbrFr1s5tJZwO2DRo8xI5zdmmhm4gFlxrZaE0WkN4EZq6Bh62FfWaurIxJ_jqUKSGX1akXEjotYHmOSA
+size 1024 object PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 object PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 object PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 object PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 object PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 object PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 object PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 object PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 object PS512 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 1024 object HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 1024 object ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+size 1024 der RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 der RS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size 1024 der RS256 allowed: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.R0gnHbQaYJxYBMcrmq4gk9or4cEDRk-HKu9x7zSZZAfXHShRjOvoBgnSg0URD46kJ9-lvJKQEw0bvFyYNHVVhTd0VT8SozES_kJeQ5vDg4wrWQMAr6YTDA-0TW9gU5JfaS6kk-R4TVRhgiWHACFG5GUTvq9MHO8KaJ5Ff2tkY2M
+size 1024 der RS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 der RS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS384
+size 1024 der RS384 allowed: ok eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.qfF_XtAn14mpybkzKd9Z0493caWvtOHxAi8SJriTtbWiETK7P8_x6s7rbIx-yOgfntE1tKU6BrgU4-31dIGQCPwZH2r7UPMyzWpo5C5WuCHxeOZa6uNSAtVY7PjfnhnN8nPMcpCbaAKN_DqcZvCdyQCCHnIaWWkR7LasMmXkoAY
+size 1024 der RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 der RS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+size 1024 der RS512 allowed: ok eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.B9jJi9gCjE5VeNe4w6c2OSv5kPHwYk18qqKZt4KCTiyCXek4tl72yhUQHhEPndSWy9Okatj4lxhbYVn139Ie_I-1bgHMbrFr1s5tJZwO2DRo8xI5zdmmhm4gFlxrZaE0WkN4EZq6Bh62FfWaurIxJ_jqUKSGX1akXEjotYHmOSA
+size 1024 der PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 der PS256 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+size 1024 der PS256 allowed: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 der PS384: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 der PS384 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS384
+size 1024 der PS384 allowed: ok eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128
+size 1024 der PS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 der PS512 false: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS512
+size 1024 der PS512 allowed: Error error:0200006E:rsa routines::data too large for key size
+size 1024 der HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+size 1024 der ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+round size 1024 PS256: ok eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 128 x
+round size 2047 PS512: ok eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 256 x
+size option number: Error "allowInsecureKeySizes" must be a boolean
+size option text: Error "allowInsecureKeySizes" must be a boolean
+size option on an EC key: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+size before payload: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size before options: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+size callback: secretOrPrivateKey has a minimum key size of 2048 bits for RS256 undefined
+size verify 0 RS256_1024: ok x
+size verify 0 RS256_1024 named: ok x
+size verify 1 RS512_1024: ok x
+size verify 1 RS512_1024 named: ok x
+size verify 2 PS256_1024: ok x
+size verify 2 PS256_1024 named: ok x
+size verify 3 RS256_2047: ok x
+size verify 3 RS256_2047 named: ok x
+size verify 4 RS256_512: ok x
+size verify 4 RS256_512 named: ok x
+size verify 5 RS256_1024: ok x
+size verify 5 RS256_1024 named: ok x
+size verify 6 RS256_1024: ok x
+size verify 6 RS256_1024 named: ok x
+size verify 7 RS256_1024: JsonWebTokenError invalid signature
+size verify 7 RS256_1024 named: JsonWebTokenError invalid signature
+size verify 8 RS256_1024: JsonWebTokenError invalid signature
+size verify 8 RS256_1024 named: JsonWebTokenError invalid signature
+loose RSA RS256: ok string
+loose RSA RS256 sized: ok string
+loose RSA RS512: ok string
+loose RSA RS512 sized: ok string
+loose RSA PS256: ok string
+loose RSA PS256 sized: ok string
+loose RSA ES256: Error Could not find expected "seq"
+loose RSA ES256 sized: Error Could not find expected "seq"
+loose RSA ES384: Error Could not find expected "seq"
+loose RSA ES384 sized: Error Could not find expected "seq"
+loose EC256 RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+loose EC256 RS256 sized: ok string
+loose EC256 RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+loose EC256 RS512 sized: ok string
+loose EC256 PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+loose EC256 PS256 sized: ok string
+loose EC256 ES256: ok string
+loose EC256 ES256 sized: ok string
+loose EC256 ES384: ok string
+loose EC256 ES384 sized: ok string
+loose EC384 RS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS256
+loose EC384 RS256 sized: ok string
+loose EC384 RS512: Error secretOrPrivateKey has a minimum key size of 2048 bits for RS512
+loose EC384 RS512 sized: ok string
+loose EC384 PS256: Error secretOrPrivateKey has a minimum key size of 2048 bits for PS256
+loose EC384 PS256 sized: ok string
+loose EC384 ES256: Error "r" specified length of "48", max of "33" is acceptable
+loose EC384 ES256 sized: Error "r" specified length of "49", max of "33" is acceptable
+loose EC384 ES384: ok string
+loose EC384 ES384 sized: ok string
+loose EC521 RS256: ok string
+loose EC521 RS256 sized: ok string
+loose EC521 RS512: ok string
+loose EC521 RS512 sized: ok string
+loose EC521 PS256: ok string
+loose EC521 PS256 sized: ok string
+loose EC521 ES256: Error "r" specified length of "66", max of "33" is acceptable
+loose EC521 ES256 sized: Error "r" specified length of "66", max of "33" is acceptable
+loose EC521 ES384: Error "r" specified length of "66", max of "49" is acceptable
+loose EC521 ES384 sized: Error "r" specified length of "66", max of "49" is acceptable
+loose ED RS256: Error Unsupported crypto operation
+loose ED RS256 sized: Error Unsupported crypto operation
+loose ED RS512: Error Unsupported crypto operation
+loose ED RS512 sized: Error Unsupported crypto operation
+loose ED PS256: Error Unsupported crypto operation
+loose ED PS256 sized: Error Unsupported crypto operation
+loose ED ES256: Error Unsupported crypto operation
+loose ED ES256 sized: Error Unsupported crypto operation
+loose ED ES384: Error Unsupported crypto operation
+loose ED ES384 sized: Error Unsupported crypto operation
+loose long payload: ok string
+loose round: ok x
+loose node token: ok x
+loose verify RSA_PUB RS256: ok x
+loose verify RSA_PUB PS256: ok x
+loose verify RSA_PUB ES256: JsonWebTokenError invalid signature
+loose verify RSA_PUB ES384: JsonWebTokenError invalid signature
+loose verify EC256_PUB RS256: JsonWebTokenError invalid signature
+loose verify EC256_PUB PS256: JsonWebTokenError invalid signature
+loose verify EC256_PUB ES256: ok x
+loose verify EC256_PUB ES384: JsonWebTokenError invalid signature
+loose verify ED_PUB RS256: Error Unsupported crypto operation
+loose verify ED_PUB PS256: Error Unsupported crypto operation
+loose verify ED_PUB ES256: Error Unsupported crypto operation
+loose verify ED_PUB ES384: Error Unsupported crypto operation

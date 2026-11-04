@@ -1,0 +1,12 @@
+opencollection: 1.0.0
+
+info:
+  name: x
+config: {}
+
+request:
+  headers: []
+
+docs: d
+bundled: false
+extensions: {}

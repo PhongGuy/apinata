@@ -1,0 +1,16 @@
+info:
+  name: Edgegrid Auth - inherit
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:6000/edgegrid/version
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

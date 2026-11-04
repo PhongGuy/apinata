@@ -1,0 +1,21 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Webhook Example
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops: {}
+
+note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
+note Dropped - | webhooks | webhooks are not imported

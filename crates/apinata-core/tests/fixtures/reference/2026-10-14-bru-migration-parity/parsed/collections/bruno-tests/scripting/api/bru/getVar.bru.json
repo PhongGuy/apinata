@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "getVar",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"should get var in scripts\", function() {\n  const testSetVar = bru.getVar(\"testSetVar\");\n  expect(testSetVar).to.equal(\"bruno-test-87267\");\n});"
+}

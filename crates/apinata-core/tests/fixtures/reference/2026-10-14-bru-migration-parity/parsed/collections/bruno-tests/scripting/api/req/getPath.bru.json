@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "getPath",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/api/users/123",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"req.getPath()\", function() {\n  const path = req.getPath();\n  expect(path).to.equal(\"/api/users/123\");\n});"
+}

@@ -1,0 +1,25 @@
+info:
+  name: Replace post
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/posts/1"
+  body:
+    type: json
+    data: |-
+      {
+        "id": 1,
+        "title": "Replaced",
+        "body": "A replaced post.",
+        "userId": 1
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

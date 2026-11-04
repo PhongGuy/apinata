@@ -1,0 +1,187 @@
+---
+source: crates/apinata-core/tests/import_har_fixtures.rs
+expression: rendered
+---
+== api.shop.test/GET -me.yml
+info:
+  name: GET /me
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.shop.test/me
+  headers:
+    - name: cookie
+      value: "{{api_shop_test_cookie}}"
+    - name: user-agent
+      value: Mozilla/5.0
+  auth:
+    type: basic
+    username: "{{api_shop_test_username}}"
+    password: "{{api_shop_test_password}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== api.shop.test/POST -orders.yml
+info:
+  name: POST /orders
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: https://api.shop.test/orders?src=web&access_token={{api_shop_test_access_token}}
+  headers:
+    - name: content-type
+      value: application/json
+  params:
+    - name: src
+      value: web
+      type: query
+    - name: access_token
+      value: "{{api_shop_test_access_token}}"
+      type: query
+  body:
+    type: json
+    data: '{"qty":1}'
+  auth:
+    type: bearer
+    token: "{{api_shop_test_token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== api.shop.test/POST -upload.yml
+info:
+  name: POST /upload
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: https://api.shop.test/upload
+  headers:
+    - name: authorization
+      value: "{{api_shop_test_authorization}}"
+    - name: proxy-authorization
+      value: "{{api_shop_test_proxy_authorization}}"
+    - name: content-type
+      value: multipart/form-data; boundary=B
+  body:
+    type: multipart-form
+    data:
+      - name: title
+        type: text
+        value: Hi
+      - name: file
+        type: file
+        value:
+          - ""
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== api.shop.test/folder.yml
+info:
+  name: api.shop.test
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== environments/Capture.yml
+name: Capture
+variables:
+  - secret: true
+    name: api_shop_test_username
+  - secret: true
+    name: api_shop_test_password
+  - secret: true
+    name: api_shop_test_cookie
+  - secret: true
+    name: api_shop_test_access_token
+  - secret: true
+    name: api_shop_test_token
+  - secret: true
+    name: api_shop_test_authorization
+  - secret: true
+    name: api_shop_test_proxy_authorization
+  - secret: true
+    name: static_shop_test_token
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: HAR capture
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== static.shop.test-8443/POST -form.yml
+info:
+  name: POST /form
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://static.shop.test:8443/form
+  body:
+    type: form-urlencoded
+    data:
+      - name: a
+        value: "1"
+      - name: b
+        value: x y
+  auth:
+    type: bearer
+    token: "{{static_shop_test_token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== static.shop.test-8443/folder.yml
+info:
+  name: static.shop.test:8443
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+== report
+converted api.shop.test / GET /me / request.headers[5]: the captured `Authorization` value is not kept; the request uses the secret `api_shop_test_username` of the Capture environment (api.shop.test/GET -me.yml)
+converted api.shop.test / GET /me / request.headers[5]: the captured `Authorization` value is not kept; the request uses the secret `api_shop_test_password` of the Capture environment (api.shop.test/GET -me.yml)
+converted api.shop.test / GET /me / request.headers[6]: the captured `Cookie` value is not kept; the request uses the secret `api_shop_test_cookie` of the Capture environment (api.shop.test/GET -me.yml)
+converted api.shop.test / POST /orders / request.url: the captured `access_token` value is not kept; the request uses the secret `api_shop_test_access_token` of the Capture environment (api.shop.test/POST -orders.yml)
+converted api.shop.test / POST /orders / request.headers[0]: the captured `Authorization` value is not kept; the request uses the secret `api_shop_test_token` of the Capture environment (api.shop.test/POST -orders.yml)
+converted api.shop.test / POST /upload / request.headers[0]: the captured `Authorization` value is not kept; the request uses the secret `api_shop_test_authorization` of the Capture environment (api.shop.test/POST -upload.yml)
+converted api.shop.test / POST /upload / request.headers[1]: the captured `Proxy-Authorization` value is not kept; the request uses the secret `api_shop_test_proxy_authorization` of the Capture environment (api.shop.test/POST -upload.yml)
+needs-input api.shop.test / POST /upload / request.postData.params[1]: file field needs a file chosen (api.shop.test/POST -upload.yml)
+converted static.shop.test:8443 / POST /form / request.headers[0]: the captured `Authorization` value is not kept; the request uses the secret `static_shop_test_token` of the Capture environment (static.shop.test-8443/POST -form.yml)
+dropped entries[4]: entry is not an http or https request (-)
+dropped entries[5]: entry is not an http or https request (-)
+needs-input entries[0].request.headers[5]: the secret `api_shop_test_username` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[0].request.headers[5]: the secret `api_shop_test_password` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[0].request.headers[6]: the secret `api_shop_test_cookie` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[1].request.url: the secret `api_shop_test_access_token` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[1].request.headers[0]: the secret `api_shop_test_token` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[2].request.headers[0]: the secret `api_shop_test_authorization` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[2].request.headers[1]: the secret `api_shop_test_proxy_authorization` has no value; enter it before sending (environments/Capture.yml)
+needs-input entries[3].request.headers[0]: the secret `static_shop_test_token` has no value; enter it before sending (environments/Capture.yml)
+secrets_to_enter: [("Capture", "api_shop_test_username"), ("Capture", "api_shop_test_password"), ("Capture", "api_shop_test_cookie"), ("Capture", "api_shop_test_access_token"), ("Capture", "api_shop_test_token"), ("Capture", "api_shop_test_authorization"), ("Capture", "api_shop_test_proxy_authorization"), ("Capture", "static_shop_test_token")]

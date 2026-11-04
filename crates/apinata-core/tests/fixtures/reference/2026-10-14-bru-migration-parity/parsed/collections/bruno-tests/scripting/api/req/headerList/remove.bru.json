@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "name": "remove",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    },
+    {
+      "name": "x-custom",
+      "value": "test-value",
+      "enabled": true
+    },
+    {
+      "name": "x-extra",
+      "value": "extra-value",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.headerList.remove('bruno');\nreq.headerList.remove(h => h.key === 'della');\nreq.headerList.remove({ key: 'x-custom', value: 'test-value' });"
+  },
+  "tests": "test(\"req.headerList.remove(name) - by string\", function() {\n  expect(req.getHeader('bruno')).to.be.undefined;\n});\n\ntest(\"req.headerList.remove(predicate) - by function\", function() {\n  expect(req.getHeader('della')).to.be.undefined;\n});\n\ntest(\"req.headerList.remove(object) - by object\", function() {\n  expect(req.getHeader('x-custom')).to.be.undefined;\n});\n\ntest(\"req.headerList.remove does not affect other headers\", function() {\n  expect(req.getHeader('x-extra')).to.equal('extra-value');\n});"
+}

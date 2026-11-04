@@ -1,0 +1,177 @@
+---
+source: crates/apinata-core/tests/export_openapi_corpus.rs
+expression: rendered(&out)
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "bruno-yml-testbench",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "{localhost}",
+      "variables": {
+        "localhost": {
+          "default": ""
+        }
+      }
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "Local"
+    },
+    {
+      "url": "http://localhost:8081",
+      "description": "Prod"
+    }
+  ],
+  "tags": [
+    {
+      "name": "response-time"
+    },
+    {
+      "name": "variable-datatypes"
+    }
+  ],
+  "paths": {
+    "/api/wait-for/headers": {
+      "get": {
+        "tags": [
+          "response-time"
+        ],
+        "summary": "delayed headers",
+        "operationId": "responseTimeDelayedHeaders",
+        "parameters": [
+          {
+            "name": "time",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1000"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/api/wait-for/body": {
+      "get": {
+        "tags": [
+          "response-time"
+        ],
+        "summary": "delayed body",
+        "operationId": "responseTimeDelayedBody",
+        "parameters": [
+          {
+            "name": "time",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1000"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/": {
+      "post": {
+        "tags": [
+          "variable-datatypes"
+        ],
+        "summary": "typed vars",
+        "operationId": "variableDatatypesTypedVars",
+        "servers": [
+          {
+            "url": "{echo-host}",
+            "variables": {
+              "echo-host": {
+                "default": ""
+              }
+            }
+          },
+          {
+            "url": "https://echo.usebruno.com",
+            "description": "Local"
+          },
+          {
+            "url": "https://echo.usebruno.com",
+            "description": "Prod"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-h-str",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "{{req_str}}"
+          },
+          {
+            "name": "x-h-num",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "{{req_num}}"
+          },
+          {
+            "name": "x-h-bool",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "{{req_bool}}"
+          },
+          {
+            "name": "x-h-obj",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "{{req_obj}}"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "string"
+              },
+              "example": "{\n  \"coll_num\": {{coll_num}},\n  \"coll_bool\": {{coll_bool}},\n  \"coll_obj\": {{coll_obj}},\n  \"fold_num\": {{fold_num}},\n  \"fold_bool\": {{fold_bool}},\n  \"fold_obj\": {{fold_obj}},\n  \"req_num\": {{req_num}},\n  \"req_bool\": {{req_bool}},\n  \"req_obj\": {{req_obj}},\n  \"req_obj_precision\": {{req_obj_precision}},\n  \"req_obj_empty\": {{req_obj_empty}},\n  \"typed_env_num\": {{typed_env_num}},\n  \"typed_env_bool\": {{typed_env_bool}},\n  \"typed_env_obj\": {{typed_env_obj}},\n  \"runtime_num\": {{runtime_num}},\n  \"runtime_bool\": {{runtime_bool}},\n  \"runtime_obj\": {{runtime_obj}},\n  \"inferred_env_num\": {{inferred_env_num}},\n  \"inferred_env_bool\": {{inferred_env_bool}},\n  \"inferred_env_obj\": {{inferred_env_obj}}\n}"
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    }
+  }
+}
+--- notes
+variable-datatypes / typed vars / body: the JSON body does not parse; it was exported as text
+variable-datatypes / form-urlencoded: POST / has the same method and path as variable-datatypes / typed vars; this request was left out
+variable-datatypes / multipart: POST / has the same method and path as variable-datatypes / typed vars; this request was left out
+collection / scripts: 1 item has scripts; OpenAPI has no place for them
+collection / tests: 5 items have tests; OpenAPI has no place for them
+collection / assertions: 2 items have assertions; OpenAPI has no place for them
+collection / variables: 4 items have variables; OpenAPI has no place for them

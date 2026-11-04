@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "name": "echo default request headers",
+    "type": "http",
+    "seq": "14"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "none",
+    "auth": "none"
+  },
+  "tests": "test(\"sends Accept header with application/json by default\", function() {\n  // The echo server reflects request headers back as response headers.\n  // Verifies that axios's default Accept header is not clobbered when\n  // setting User-Agent (regression for: defaults.headers.common object replacement).\n  const accept = res.getHeaders()[\"accept\"];\n  expect(accept).to.be.a(\"string\");\n  expect(accept).to.include(\"application/json\");\n});\n\ntest(\"sends User-Agent header with bruno-runtime prefix\", function() {\n  const userAgent = res.getHeaders()[\"user-agent\"];\n  expect(userAgent).to.be.a(\"string\");\n  expect(userAgent).to.match(/^bruno-runtime\\//);\n});"
+}

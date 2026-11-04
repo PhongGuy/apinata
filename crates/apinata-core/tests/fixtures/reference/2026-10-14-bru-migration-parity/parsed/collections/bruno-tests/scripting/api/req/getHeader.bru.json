@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "name": "getHeader",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getHeader(name)\", function() {\n  const h = req.getHeader('bruno');\n  expect(h).to.equal(\"is-awesome\");\n});"
+}

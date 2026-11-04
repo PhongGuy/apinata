@@ -1,0 +1,4 @@
+{
+  "line": null,
+  "message": "Unexpected token '﻿', \"﻿{\n  \"name\": \"x\",\n}\n\" is not valid JSON"
+}

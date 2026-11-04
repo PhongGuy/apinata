@@ -1,0 +1,15 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+import fs from 'node:fs';
+
+const url = 'http://x.test/b';
+const headers = {
+  'content-type': 'application/json',
+};
+const body = fs.readFileSync('/data/body.json');
+
+const response = await fetch(url, { method: 'PUT', headers, body });
+console.log(response.status);
+console.log(await response.text());

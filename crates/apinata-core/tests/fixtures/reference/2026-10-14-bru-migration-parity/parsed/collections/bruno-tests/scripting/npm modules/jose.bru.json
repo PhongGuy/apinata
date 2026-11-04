@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "jose",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const jose = require('jose');\n\n// Create a symmetric secret for HS256\nconst secret = new TextEncoder().encode('my-super-secret-key-for-testing');\n\n// Create a JWT with jose\nconst jwt = await new jose.SignJWT({ sub: 'bruno-user', name: 'Bruno' })\n  .setProtectedHeader({ alg: 'HS256' })\n  .setIssuedAt()\n  .setExpirationTime('1h')\n  .sign(secret);\n\n// Verify the JWT\nconst { payload, protectedHeader } = await jose.jwtVerify(jwt, secret);\n\nconst data = req.getBody();\ndata.jwt = jwt;\ndata.verified = {\n  alg: protectedHeader.alg,\n  sub: payload.sub,\n  name: payload.name\n};\n\nreq.setBody(data);"
+  },
+  "tests": "test(\"jose should create and verify JWT\", function() {\n  const data = res.getBody();\n\n  expect(data.hello).to.equal(\"bruno\");\n  expect(data.jwt).to.be.a('string');\n\n  // JWT should have 3 parts separated by dots\n  const parts = data.jwt.split('.');\n  expect(parts.length).to.equal(3);\n\n  // Verify the verification worked\n  expect(data.verified.alg).to.equal('HS256');\n  expect(data.verified.sub).to.equal('bruno-user');\n  expect(data.verified.name).to.equal('Bruno');\n});"
+}

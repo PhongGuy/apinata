@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ex-add",
+    "input": "2026-10-11-examples-parity/normalized/synthetic/users.yml",
+    "file": "users.yml"
+  },
+  {
+    "id": "ex-add-first",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "file": "request_1.yml"
+  },
+  {
+    "id": "ex-add-description",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "file": "request_1.yml"
+  },
+  {
+    "id": "ex-add-binary",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "file": "request_1.yml"
+  },
+  {
+    "id": "ex-add-quoted",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "file": "request_1.yml"
+  },
+  {
+    "id": "ex-add-empty",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "file": "request_1.yml"
+  },
+  {
+    "id": "ex-rename",
+    "input": "2026-10-11-examples-parity/normalized/synthetic/users.yml",
+    "file": "users.yml"
+  },
+  {
+    "id": "ex-delete-first",
+    "input": "2026-10-11-examples-parity/normalized/synthetic/users.yml",
+    "file": "users.yml"
+  },
+  {
+    "id": "ex-delete-only",
+    "input": "2026-10-11-examples-parity/normalized/synthetic/single.yml",
+    "file": "single.yml"
+  },
+  {
+    "id": "ex-untouched",
+    "input": "2026-10-11-examples-parity/normalized/synthetic/users.yml",
+    "file": "users.yml"
+  }
+]

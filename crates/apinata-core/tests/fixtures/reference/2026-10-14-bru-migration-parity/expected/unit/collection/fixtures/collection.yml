@@ -1,0 +1,41 @@
+opencollection: 1.0.0
+
+info:
+  name: corpus
+
+request:
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer 123
+    - name: transaction-id
+      value: "{{transactionId}}"
+      disabled: true
+  variables:
+    - name: departingDate
+      value: 2020-01-01
+    - name: returningDate
+      value: 2020-01-02
+      disabled: true
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: $res.body.transactionId
+        method: jsonq
+      variable:
+        name: transactionId
+        scope: runtime
+      disabled: true
+  scripts:
+    - type: before-request
+      code: console.log("In Collection pre Request Script");
+    - type: after-response
+      code: console.log("In Collection post Request Script");
+
+docs:
+  content: This request needs auth token to be set in the headers.
+  type: text/markdown
+bundled: false
+extensions: {}

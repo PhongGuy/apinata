@@ -1,0 +1,26 @@
+[
+  {
+    "id": "sparql-name",
+    "fixture": "synthetic/sparql.yml"
+  },
+  {
+    "id": "sparql-data-set",
+    "fixture": "synthetic/sparql.yml"
+  },
+  {
+    "id": "sparql-data-single",
+    "fixture": "synthetic/sparql.yml"
+  },
+  {
+    "id": "sparql-data-clear",
+    "fixture": "synthetic/sparql.yml"
+  },
+  {
+    "id": "sparql-from-text",
+    "fixture": "synthetic/text.yml"
+  },
+  {
+    "id": "sparql-to-text",
+    "fixture": "synthetic/sparql.yml"
+  }
+]

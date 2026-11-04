@@ -1,0 +1,410 @@
+---
+source: crates/apinata-core/tests/import_insomnia_fixtures.rs
+expression: text
+---
+# Template Tag Collection
+== Base Response.yml
+info:
+  name: Base Response
+  type: http
+  seq: 11
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: form-urlencoded
+    data:
+      - name: foo
+        value: bar
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Common Tag.yml
+info:
+  name: Common Tag
+  type: http
+  seq: 13
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: |
+      {% base64 'encode', 'normal', 'insomnia-test' %}
+      {% base64 'decode', 'normal', 'aW5zb21uaWEtdGVzdA==' %}
+      {% faker 'guid' %}
+      {% file '__TEMPLATE_TAG_FILE_PATH' %}
+      {% hash 'md5', 'hex', 'insomnia-test' %}
+      {% os 'arch', '' %}
+      {% jsonpath '{"foo":"bar"}', 'b64::JC5mb28=::46b' %}
+      {% now 'millis', '' %}
+      {% uuid 'v4' %}
+      {% cookie 'http://127.0.0.1/echo', 'from' %}
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Cookie Tag Error.yml
+info:
+  name: Cookie Tag Error
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% cookie 'http://127.0.0.1:4010/echo', 'does-not-exist' %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== External Vault Tag.yml
+info:
+  name: External Vault Tag
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: |
+      {% vault 'aws', '', '{}' %}
+      {% vault 'gcp', '', '{}' %}
+      {% vault 'hashicorp', '', '{}' %}
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== File Tag Error.yml
+info:
+  name: File Tag Error
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% file '/path/does/not/exist/nope.txt' %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== FolderWithRequest/Request Tag.yml
+info:
+  name: Request Tag
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo?foo=bar
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  params:
+    - name: foo
+      value: bar
+      type: query
+  body:
+    type: text
+    data: |+
+      {% request 'name', '', '' %}
+      {% request 'folder', '', '' %}
+      {% request 'url', '', '' %}
+      {% request 'parameter', 'foo', '' %}
+      {% request 'cookie', 'from', '' %}
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== FolderWithRequest/folder.yml
+info:
+  name: FolderWithRequest
+  type: folder
+  seq: 14
+
+request:
+  auth: inherit
+== Prompt Tag Masked.yml
+info:
+  name: Prompt Tag Masked
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% prompt 'masked prompt test', 'Enter secret', '', 'masked-prompt-key', true, false %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Prompt Tag.yml
+info:
+  name: Prompt Tag
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% prompt 'prompt test', '', 'test', 'insomnia-test', false, true %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Tag.yml
+info:
+  name: Response Tag
+  type: http
+  seq: 12
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: |-
+      {% response 'body', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::JC5tZXRob2Q=::46b', 'never', 60 %}
+      {% response 'header', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::Y29udGVudC10eXBl::46b', 'never', 60 %}
+      {% response 'url', 'req_60295920e8a9459fb32cacb739a261f5', '', 'never', 60 %}
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Trigger Always.yml
+info:
+  name: Response Trigger Always
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'always', 60 %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Trigger Base.yml
+info:
+  name: Response Trigger Base
+  type: http
+  seq: 10
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/pets/1
+  headers:
+    - name: User-Agent
+      value: insomnia/11.1.0
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Trigger Never.yml
+info:
+  name: Response Trigger Never
+  type: http
+  seq: 9
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'never', 60 %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Trigger No History.yml
+info:
+  name: Response Trigger No History
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'no-history', 60 %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Trigger When Expired.yml
+info:
+  name: Response Trigger When Expired
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: http://127.0.0.1:4010/echo
+  headers:
+    - name: Content-Type
+      value: text/plain
+    - name: User-Agent
+      value: insomnia/11.1.0
+  body:
+    type: text
+    data: "{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'when-expired', 0 %}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environments/Base Environment.yml
+name: Base Environment
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Template Tag Collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+-- report
+NeedsInput Cookie Tag Error / body.text: `{% cookie 'http://127.0.0.1:4010/echo', 'does-not-exist' %}` has no equivalent and is kept as written; replace it before sending (Cookie Tag Error.yml)
+NeedsInput File Tag Error / body.text: `{% file '/path/does/not/exist/nope.txt' %}` has no equivalent and is kept as written; replace it before sending (File Tag Error.yml)
+NeedsInput Prompt Tag Masked / body.text: `{% prompt 'masked prompt test', 'Enter secret', '', 'masked-prompt-key', true, false %}` has no equivalent and is kept as written; replace it before sending (Prompt Tag Masked.yml)
+NeedsInput External Vault Tag / body.text: `{% vault 'aws', '', '{}' %}`, `{% vault 'gcp', '', '{}' %}`, `{% vault 'hashicorp', '', '{}' %}` has no equivalent and is kept as written; replace it before sending (External Vault Tag.yml)
+NeedsInput Prompt Tag / body.text: `{% prompt 'prompt test', '', 'test', 'insomnia-test', false, true %}` has no equivalent and is kept as written; replace it before sending (Prompt Tag.yml)
+NeedsInput Response Trigger Always / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'always', 60 %}` has no equivalent and is kept as written; replace it before sending (Response Trigger Always.yml)
+NeedsInput Response Trigger When Expired / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'when-expired', 0 %}` has no equivalent and is kept as written; replace it before sending (Response Trigger When Expired.yml)
+NeedsInput Response Trigger No History / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'no-history', 60 %}` has no equivalent and is kept as written; replace it before sending (Response Trigger No History.yml)
+NeedsInput Response Trigger Never / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f6', 'b64::JC5pZA==::46b', 'never', 60 %}` has no equivalent and is kept as written; replace it before sending (Response Trigger Never.yml)
+NeedsInput Response Tag / body.text: `{% response 'body', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::JC5tZXRob2Q=::46b', 'never', 60 %}`, `{% response 'header', 'req_60295920e8a9459fb32cacb739a261f5', 'b64::Y29udGVudC10eXBl::46b', 'never', 60 %}`, `{% response 'url', 'req_60295920e8a9459fb32cacb739a261f5', '', 'never', 60 %}` has no equivalent and is kept as written; replace it before sending (Response Tag.yml)
+NeedsInput Common Tag / body.text: `{% base64 'encode', 'normal', 'insomnia-test' %}`, `{% base64 'decode', 'normal', 'aW5zb21uaWEtdGVzdA==' %}`, `{% faker 'guid' %}`, `{% file '__TEMPLATE_TAG_FILE_PATH' %}`, `{% hash 'md5', 'hex', 'insomnia-test' %}`, `{% os 'arch', '' %}`, `{% jsonpath '{"foo":"bar"}', 'b64::JC5mb28=::46b' %}`, `{% now 'millis', '' %}`, `{% uuid 'v4' %}`, `{% cookie 'http://127.0.0.1/echo', 'from' %}` has no equivalent and is kept as written; replace it before sending (Common Tag.yml)
+NeedsInput FolderWithRequest / Request Tag / body.text: `{% request 'name', '', '' %}`, `{% request 'folder', '', '' %}`, `{% request 'url', '', '' %}`, `{% request 'parameter', 'foo', '' %}`, `{% request 'cookie', 'from', '' %}` has no equivalent and is kept as written; replace it before sending (FolderWithRequest/Request Tag.yml)
+Converted FolderWithRequest / Request Tag / authentication: `oauth2` authentication is not supported; set to none (FolderWithRequest/Request Tag.yml)
+Dropped collection / cookieJar: cookies are not imported

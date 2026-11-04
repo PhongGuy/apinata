@@ -1,0 +1,120 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== Create a new user.yml
+info:
+  name: Create a new user
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/users"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "John Doe",
+        "email": "john@example.com"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Get all users.yml
+info:
+  name: Get all users
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== Get user by ID.yml
+info:
+  name: Get user by ID
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users/:id"
+  params:
+    - name: id
+      value: "123"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+=== environments/Production server.yml
+name: Production server
+variables:
+  - name: baseUrl
+    value: https://api.example.com
+
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: API with Examples
+
+docs:
+  content: A sample API with response examples
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        GET /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get all users.yml
+        GET /users/{}:
+          target: ee30cc74a44ebbd7
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: bb94048e39bc5ef4
+          file: Get user by ID.yml
+        POST /users:
+          target: fd5684d8ea61b64c
+          headers: 7ace431cb61584cb
+          body: b1b13a41b2263f31
+          docs: 7ace431cb61584cb
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: Create a new user.yml

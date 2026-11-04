@@ -1,0 +1,18 @@
+info:
+  name: renamed
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: http://localhost:8081/api/graphql
+  body:
+    variables: "{}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

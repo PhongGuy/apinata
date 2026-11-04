@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "sum",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"a\": 1,\n  \"b\": 2\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "const math = require(\"./lib/math.js\");  \nconst body = req.getBody();\nbody.sum = math.sum(body.a, body.b);\n\nreq.setBody(body);"
+  },
+  "tests": "test(\"should return json\", function() {\n  const data = res.getBody();\n  expect(res.getBody()).to.eql({\n    \"a\": 1,\n    \"b\": 2,\n    \"sum\": 3\n  });\n});\n\ntest(\"should return json\", function() {\n  const data = res.getBody();\n  expect(res.getBody()).to.eql({\n    \"a\": 1,\n    \"b\": 2,\n    \"sum\": 3\n  });\n});\n\ntest(\"should return json\", function() {\n  const data = res.getBody();\n  expect(res.getBody()).to.eql({\n    \"a\": 1,\n    \"b\": 2,\n    \"sum\": 3\n  });\n});"
+}

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "nanoid",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "const { nanoid } = require(\"nanoid\");\n \nbru.setVar(\"nanoid-test-id\", nanoid());"
+  },
+  "tests": "test(\"nanoid var\", function() {\n  const id = bru.getVar('nanoid-test-id');\n  let isValidNanoid = /^[a-zA-Z0-9_-]{21}$/.test(id)\n  bru.setVar('nanoid-test-id', null);\n  expect(isValidNanoid).to.eql(true);\n});"
+}

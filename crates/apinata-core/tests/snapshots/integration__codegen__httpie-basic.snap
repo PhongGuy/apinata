@@ -1,0 +1,6 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+http --ignore-stdin 'GET' 'http://x.test/basic' \
+  'Authorization:Basic dTpw'

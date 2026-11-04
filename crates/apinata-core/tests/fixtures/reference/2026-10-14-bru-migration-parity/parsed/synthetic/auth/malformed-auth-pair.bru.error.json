@@ -1,0 +1,4 @@
+{
+  "line": 8,
+  "message": "Line 8, col 7:\n  7 |   token: x\n> 8 |   not a pair\n            ^\n  9 | }\nExpected \":\""
+}

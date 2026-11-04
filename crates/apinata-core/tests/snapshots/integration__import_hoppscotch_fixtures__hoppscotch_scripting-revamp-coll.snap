@@ -1,0 +1,1460 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: scripting-revamp-coll
+== Async Patterns - Pre-Request.yml
+info:
+  name: Async Patterns - Pre-Request
+  type: http
+  seq: 58
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Async Patterns - Test Script.yml
+info:
+  name: Async Patterns - Test Script
+  type: http
+  seq: 59
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Dynamic URL Construction.yml
+info:
+  name: Dynamic URL Construction
+  type: http
+  seq: 67
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Error Handling & Edge Cases.yml
+info:
+  name: Error Handling & Edge Cases
+  type: http
+  seq: 61
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== GET Methods (Query, Headers, URL).yml
+info:
+  name: GET Methods (Query, Headers, URL)
+  type: http
+  seq: 63
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== HTTP Methods (PUT, PATCH, DELETE).yml
+info:
+  name: HTTP Methods (PUT, PATCH, DELETE)
+  type: http
+  seq: 65
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Large Payload & FormData.yml
+info:
+  name: Large Payload & FormData
+  type: http
+  seq: 62
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== POST Methods (JSON, URLEncoded, Binary).yml
+info:
+  name: POST Methods (JSON, URLEncoded, Binary)
+  type: http
+  seq: 64
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Response Parsing (Headers, Status, Body).yml
+info:
+  name: Response Parsing (Headers, Status, Body)
+  type: http
+  seq: 66
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Workflow Patterns (Sequential, Parallel, Auth).yml
+info:
+  name: Workflow Patterns (Sequential, Parallel, Auth)
+  type: http
+  seq: 60
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== advanced-chai-map-set-test.yml
+info:
+  name: advanced-chai-map-set-test
+  type: http
+  seq: 28
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== advanced-response-methods-test.yml
+info:
+  name: advanced-response-methods-test
+  type: http
+  seq: 27
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: '{"test": "data"}'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== bdd-response-assertions-test.yml
+info:
+  name: bdd-response-assertions-test
+  type: http
+  seq: 19
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "test": "BDD assertions",
+        "status": "success"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== chai-assertions-hopp-extended.yml
+info:
+  name: chai-assertions-hopp-extended
+  type: http
+  seq: 10
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "testData": {
+          "number": 42,
+          "string": "hello world",
+          "array": [1, 2, 3, 4, 5],
+          "object": { "nested": { "value": true } },
+          "bool": true,
+          "nullValue": null
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== chai-assertions-pm-parity.yml
+info:
+  name: chai-assertions-pm-parity
+  type: http
+  seq: 11
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "pmTest": {
+          "value": 42,
+          "text": "postman compatible"
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== charset-validation-test.yml
+info:
+  name: charset-validation-test
+  type: http
+  seq: 14
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== cookie-assertions-test.yml
+info:
+  name: cookie-assertions-test
+  type: http
+  seq: 12
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Cookie
+      value: session_id=abc123; user_token=xyz789; preferences=theme%3Ddark
+      description: Test cookies
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== crypto-module-test.yml
+info:
+  name: crypto-module-test
+  type: http
+  seq: 68
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environment-extensions-test.yml
+info:
+  name: environment-extensions-test
+  type: http
+  seq: 16
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environment-unset-clear-test.yml
+info:
+  name: environment-unset-clear-test
+  type: http
+  seq: 21
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== environment-variables-test.yml
+info:
+  name: environment-variables-test
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== execution-context-test.yml
+info:
+  name: execution-context-test
+  type: http
+  seq: 18
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== expectation-methods-test.yml
+info:
+  name: expectation-methods-test
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "message": "Test expectation methods",
+        "numbers": [1, 2, 3, 4, 5],
+        "metadata": {
+          "timestamp": "{{$timestamp}}",
+          "test": true
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - 404 error handling.yml
+info:
+  name: hopp.fetch() - 404 error handling
+  type: http
+  seq: 33
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Binary response (arrayBuffer).yml
+info:
+  name: hopp.fetch() - Binary response (arrayBuffer)
+  type: http
+  seq: 56
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/bytes/100
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Custom headers.yml
+info:
+  name: hopp.fetch() - Custom headers
+  type: http
+  seq: 34
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Environment variable URL.yml
+info:
+  name: hopp.fetch() - Environment variable URL
+  type: http
+  seq: 35
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - GET request basic.yml
+info:
+  name: hopp.fetch() - GET request basic
+  type: http
+  seq: 31
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - HTTP methods (PUT, DELETE, PATCH).yml
+info:
+  name: hopp.fetch() - HTTP methods (PUT, DELETE, PATCH)
+  type: http
+  seq: 37
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - JSON response parsing.yml
+info:
+  name: hopp.fetch() - JSON response parsing
+  type: http
+  seq: 47
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  headers:
+    - name: Accept
+      value: application/json
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Network error handling.yml
+info:
+  name: hopp.fetch() - Network error handling
+  type: http
+  seq: 52
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - POST with JSON body.yml
+info:
+  name: hopp.fetch() - POST with JSON body
+  type: http
+  seq: 32
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Response headers access.yml
+info:
+  name: hopp.fetch() - Response headers access
+  type: http
+  seq: 48
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/headers
+  headers:
+    - name: X-Custom-Test
+      value: test-value
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Response text parsing.yml
+info:
+  name: hopp.fetch() - Response text parsing
+  type: http
+  seq: 36
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() - Sequential requests chain.yml
+info:
+  name: hopp.fetch() - Sequential requests chain
+  type: http
+  seq: 54
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== hopp.fetch() and pm.sendRequest() - Interoperability.yml
+info:
+  name: hopp.fetch() and pm.sendRequest() - Interoperability
+  type: http
+  seq: 46
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== html-response-test.yml
+info:
+  name: html-response-test
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://hoppscotch.io
+  headers:
+    - name: Test-Header
+      value: test
+      description: Test header
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== include-contain-assertions-test.yml
+info:
+  name: include-contain-assertions-test
+  type: http
+  seq: 20
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "includeTest": "This text should be found",
+        "array": [1, 2, 3]
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== info-context-test.yml
+info:
+  name: info-context-test
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== json-response-test.yml
+info:
+  name: json-response-test
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Test-Header
+      value: test
+      description: test header
+  body:
+    type: json
+    data: |-
+      {
+        "name": "John Doe",
+        "age": 35
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== json-schema-validation-test.yml
+info:
+  name: json-schema-validation-test
+  type: http
+  seq: 13
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Alice Smith",
+        "age": 28,
+        "email": "alice@example.com"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== jsonpath-query-test.yml
+info:
+  name: jsonpath-query-test
+  type: http
+  seq: 15
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "users": [
+          { "name": "John", "active": true },
+          { "name": "Jane", "active": false }
+        ],
+        "metadata": {
+          "version": "1.0",
+          "timestamp": "2025-01-15"
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: scripting-revamp-coll
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== pm-namespace-additional-test.yml
+info:
+  name: pm-namespace-additional-test
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm-request-mutation-test.yml
+info:
+  name: pm-request-mutation-test
+  type: http
+  seq: 22
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/original?original_param=original
+  headers:
+    - name: Original-Header
+      value: original
+  params:
+    - name: original_param
+      value: original
+      type: query
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm-url-property-mutations-test.yml
+info:
+  name: pm-url-property-mutations-test
+  type: http
+  seq: 23
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/original?old=value
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Empty response body (204).yml
+info:
+  name: pm.sendRequest() - Empty response body (204)
+  type: http
+  seq: 57
+
+http:
+  method: DELETE
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Environment variable integration.yml
+info:
+  name: pm.sendRequest() - Environment variable integration
+  type: http
+  seq: 43
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - FormData body mode.yml
+info:
+  name: pm.sendRequest() - FormData body mode
+  type: http
+  seq: 49
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io/post
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - HTTP error status codes.yml
+info:
+  name: pm.sendRequest() - HTTP error status codes
+  type: http
+  seq: 42
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - JSON parsing method.yml
+info:
+  name: pm.sendRequest() - JSON parsing method
+  type: http
+  seq: 50
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io/post
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Nested requests.yml
+info:
+  name: pm.sendRequest() - Nested requests
+  type: http
+  seq: 55
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Network error callback.yml
+info:
+  name: pm.sendRequest() - Network error callback
+  type: http
+  seq: 53
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/status/200
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - RFC pattern with object headers.yml
+info:
+  name: pm.sendRequest() - RFC pattern with object headers
+  type: http
+  seq: 45
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Request object format.yml
+info:
+  name: pm.sendRequest() - Request object format
+  type: http
+  seq: 39
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Response format validation.yml
+info:
+  name: pm.sendRequest() - Response format validation
+  type: http
+  seq: 41
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Response headers extraction.yml
+info:
+  name: pm.sendRequest() - Response headers extraction
+  type: http
+  seq: 51
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/headers
+  headers:
+    - name: X-Test-Header
+      value: test-123
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - Store response in environment.yml
+info:
+  name: pm.sendRequest() - Store response in environment
+  type: http
+  seq: 44
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - String URL format.yml
+info:
+  name: pm.sendRequest() - String URL format
+  type: http
+  seq: 38
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== pm.sendRequest() - URL-encoded body.yml
+info:
+  name: pm.sendRequest() - URL-encoded body
+  type: http
+  seq: 40
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== propertylist-advanced-methods-test.yml
+info:
+  name: propertylist-advanced-methods-test
+  type: http
+  seq: 26
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io/propertylist?filter=active&sort=name&page=1
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: Bearer token123
+  params:
+    - name: filter
+      value: active
+      type: query
+    - name: sort
+      value: name
+      type: query
+    - name: page
+      value: "1"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== request-modification-test.yml
+info:
+  name: request-modification-test
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io?original_param=original-param
+  headers:
+    - name: Original-Header
+      value: original_value
+  params:
+    - name: original_param
+      value: original-param
+      type: query
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== request-variables-test.yml
+info:
+  name: request-variables-test
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+runtime:
+  variables:
+    - name: req_var_1
+      value: request_variable_value
+    - name: dynamic_var
+      value: dynamic_value
+    - name: calculated_var
+      value: timestamp_1757751657020
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== response-extensions-test.yml
+info:
+  name: response-extensions-test
+  type: http
+  seq: 17
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "message": "Testing response size calculation",
+        "data": {
+          "items": [1, 2, 3, 4, 5],
+          "metadata": {
+            "count": 5,
+            "type": "numeric"
+          }
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== response-parsing-test.yml
+info:
+  name: response-parsing-test
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "test": "response parsing",
+        "timestamp": "{{$timestamp}}",
+        "data": {
+          "nested": true,
+          "value": 42
+        }
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type-preservation-test.yml
+info:
+  name: type-preservation-test
+  type: http
+  seq: 29
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== type-preservation-ui-compatibility-test.yml
+info:
+  name: type-preservation-ui-compatibility-test
+  type: http
+  seq: 30
+
+http:
+  method: POST
+  url: https://echo.hoppscotch.io
+  body:
+    type: json
+    data: |-
+      {
+        "test": "type preservation validation"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== unsupported-features-test.yml
+info:
+  name: unsupported-features-test
+  type: http
+  seq: 24
+
+http:
+  method: GET
+  url: https://echo.hoppscotch.io
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== url-propertylist-helpers-test.yml
+info:
+  name: url-propertylist-helpers-test
+  type: http
+  seq: 25
+
+http:
+  method: GET
+  url: https://api.example.com:8080/v1/users?filter=active&sort=name&tag=js&tag=ts&filter=active&sort=name&tag=js&tag=ts#section1
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: Bearer test-token
+  params:
+    - name: filter
+      value: active
+      type: query
+    - name: sort
+      value: name
+      type: query
+    - name: tag
+      value: js
+      type: query
+    - name: tag
+      value: ts
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== report
+Dropped json-response-test / testScript: scripts are not imported (json-response-test.yml)
+Dropped html-response-test / testScript: scripts are not imported (html-response-test.yml)
+Dropped environment-variables-test / preRequestScript: scripts are not imported (environment-variables-test.yml)
+Dropped environment-variables-test / testScript: scripts are not imported (environment-variables-test.yml)
+Dropped request-modification-test / preRequestScript: scripts are not imported (request-modification-test.yml)
+Dropped request-modification-test / testScript: scripts are not imported (request-modification-test.yml)
+Dropped response-parsing-test / testScript: scripts are not imported (response-parsing-test.yml)
+Dropped request-variables-test / preRequestScript: scripts are not imported (request-variables-test.yml)
+Dropped request-variables-test / testScript: scripts are not imported (request-variables-test.yml)
+Dropped info-context-test / testScript: scripts are not imported (info-context-test.yml)
+Dropped pm-namespace-additional-test / preRequestScript: scripts are not imported (pm-namespace-additional-test.yml)
+Dropped pm-namespace-additional-test / testScript: scripts are not imported (pm-namespace-additional-test.yml)
+Dropped expectation-methods-test / testScript: scripts are not imported (expectation-methods-test.yml)
+Dropped chai-assertions-hopp-extended / testScript: scripts are not imported (chai-assertions-hopp-extended.yml)
+Dropped chai-assertions-pm-parity / testScript: scripts are not imported (chai-assertions-pm-parity.yml)
+Dropped cookie-assertions-test / testScript: scripts are not imported (cookie-assertions-test.yml)
+Dropped json-schema-validation-test / testScript: scripts are not imported (json-schema-validation-test.yml)
+Dropped charset-validation-test / testScript: scripts are not imported (charset-validation-test.yml)
+Dropped jsonpath-query-test / testScript: scripts are not imported (jsonpath-query-test.yml)
+Dropped environment-extensions-test / preRequestScript: scripts are not imported (environment-extensions-test.yml)
+Dropped environment-extensions-test / testScript: scripts are not imported (environment-extensions-test.yml)
+Dropped response-extensions-test / testScript: scripts are not imported (response-extensions-test.yml)
+Dropped execution-context-test / testScript: scripts are not imported (execution-context-test.yml)
+Dropped bdd-response-assertions-test / testScript: scripts are not imported (bdd-response-assertions-test.yml)
+Dropped include-contain-assertions-test / testScript: scripts are not imported (include-contain-assertions-test.yml)
+Dropped environment-unset-clear-test / preRequestScript: scripts are not imported (environment-unset-clear-test.yml)
+Dropped environment-unset-clear-test / testScript: scripts are not imported (environment-unset-clear-test.yml)
+Dropped pm-request-mutation-test / preRequestScript: scripts are not imported (pm-request-mutation-test.yml)
+Dropped pm-request-mutation-test / testScript: scripts are not imported (pm-request-mutation-test.yml)
+Dropped pm-url-property-mutations-test / preRequestScript: scripts are not imported (pm-url-property-mutations-test.yml)
+Dropped pm-url-property-mutations-test / testScript: scripts are not imported (pm-url-property-mutations-test.yml)
+Dropped unsupported-features-test / testScript: scripts are not imported (unsupported-features-test.yml)
+Dropped url-propertylist-helpers-test / preRequestScript: scripts are not imported (url-propertylist-helpers-test.yml)
+Dropped url-propertylist-helpers-test / testScript: scripts are not imported (url-propertylist-helpers-test.yml)
+Dropped propertylist-advanced-methods-test / preRequestScript: scripts are not imported (propertylist-advanced-methods-test.yml)
+Dropped propertylist-advanced-methods-test / testScript: scripts are not imported (propertylist-advanced-methods-test.yml)
+Dropped advanced-response-methods-test / testScript: scripts are not imported (advanced-response-methods-test.yml)
+Dropped advanced-chai-map-set-test / preRequestScript: scripts are not imported (advanced-chai-map-set-test.yml)
+Dropped advanced-chai-map-set-test / testScript: scripts are not imported (advanced-chai-map-set-test.yml)
+Dropped type-preservation-test / preRequestScript: scripts are not imported (type-preservation-test.yml)
+Dropped type-preservation-test / testScript: scripts are not imported (type-preservation-test.yml)
+Dropped type-preservation-ui-compatibility-test / preRequestScript: scripts are not imported (type-preservation-ui-compatibility-test.yml)
+Dropped type-preservation-ui-compatibility-test / testScript: scripts are not imported (type-preservation-ui-compatibility-test.yml)
+Dropped hopp.fetch() - GET request basic / testScript: scripts are not imported (hopp.fetch() - GET request basic.yml)
+Dropped hopp.fetch() - POST with JSON body / testScript: scripts are not imported (hopp.fetch() - POST with JSON body.yml)
+Dropped hopp.fetch() - 404 error handling / testScript: scripts are not imported (hopp.fetch() - 404 error handling.yml)
+Dropped hopp.fetch() - Custom headers / testScript: scripts are not imported (hopp.fetch() - Custom headers.yml)
+Dropped hopp.fetch() - Environment variable URL / preRequestScript: scripts are not imported (hopp.fetch() - Environment variable URL.yml)
+Dropped hopp.fetch() - Environment variable URL / testScript: scripts are not imported (hopp.fetch() - Environment variable URL.yml)
+Dropped hopp.fetch() - Response text parsing / testScript: scripts are not imported (hopp.fetch() - Response text parsing.yml)
+Dropped hopp.fetch() - HTTP methods (PUT, DELETE, PATCH) / testScript: scripts are not imported (hopp.fetch() - HTTP methods (PUT, DELETE, PATCH).yml)
+Dropped pm.sendRequest() - String URL format / testScript: scripts are not imported (pm.sendRequest() - String URL format.yml)
+Dropped pm.sendRequest() - Request object format / testScript: scripts are not imported (pm.sendRequest() - Request object format.yml)
+Dropped pm.sendRequest() - URL-encoded body / testScript: scripts are not imported (pm.sendRequest() - URL-encoded body.yml)
+Dropped pm.sendRequest() - Response format validation / testScript: scripts are not imported (pm.sendRequest() - Response format validation.yml)
+Dropped pm.sendRequest() - HTTP error status codes / testScript: scripts are not imported (pm.sendRequest() - HTTP error status codes.yml)
+Dropped pm.sendRequest() - Environment variable integration / preRequestScript: scripts are not imported (pm.sendRequest() - Environment variable integration.yml)
+Dropped pm.sendRequest() - Environment variable integration / testScript: scripts are not imported (pm.sendRequest() - Environment variable integration.yml)
+Dropped pm.sendRequest() - Store response in environment / testScript: scripts are not imported (pm.sendRequest() - Store response in environment.yml)
+Dropped pm.sendRequest() - RFC pattern with object headers / preRequestScript: scripts are not imported (pm.sendRequest() - RFC pattern with object headers.yml)
+Dropped pm.sendRequest() - RFC pattern with object headers / testScript: scripts are not imported (pm.sendRequest() - RFC pattern with object headers.yml)
+Dropped hopp.fetch() and pm.sendRequest() - Interoperability / testScript: scripts are not imported (hopp.fetch() and pm.sendRequest() - Interoperability.yml)
+Dropped hopp.fetch() - JSON response parsing / testScript: scripts are not imported (hopp.fetch() - JSON response parsing.yml)
+Dropped hopp.fetch() - Response headers access / testScript: scripts are not imported (hopp.fetch() - Response headers access.yml)
+Dropped pm.sendRequest() - FormData body mode / testScript: scripts are not imported (pm.sendRequest() - FormData body mode.yml)
+Dropped pm.sendRequest() - JSON parsing method / testScript: scripts are not imported (pm.sendRequest() - JSON parsing method.yml)
+Dropped pm.sendRequest() - Response headers extraction / testScript: scripts are not imported (pm.sendRequest() - Response headers extraction.yml)
+Dropped hopp.fetch() - Network error handling / testScript: scripts are not imported (hopp.fetch() - Network error handling.yml)
+Dropped pm.sendRequest() - Network error callback / testScript: scripts are not imported (pm.sendRequest() - Network error callback.yml)
+Dropped hopp.fetch() - Sequential requests chain / testScript: scripts are not imported (hopp.fetch() - Sequential requests chain.yml)
+Dropped pm.sendRequest() - Nested requests / testScript: scripts are not imported (pm.sendRequest() - Nested requests.yml)
+Dropped hopp.fetch() - Binary response (arrayBuffer) / testScript: scripts are not imported (hopp.fetch() - Binary response (arrayBuffer).yml)
+Dropped pm.sendRequest() - Empty response body (204) / testScript: scripts are not imported (pm.sendRequest() - Empty response body (204).yml)
+Dropped Async Patterns - Pre-Request / preRequestScript: scripts are not imported (Async Patterns - Pre-Request.yml)
+Dropped Async Patterns - Pre-Request / testScript: scripts are not imported (Async Patterns - Pre-Request.yml)
+Dropped Async Patterns - Test Script / preRequestScript: scripts are not imported (Async Patterns - Test Script.yml)
+Dropped Async Patterns - Test Script / testScript: scripts are not imported (Async Patterns - Test Script.yml)
+Dropped Workflow Patterns (Sequential, Parallel, Auth) / preRequestScript: scripts are not imported (Workflow Patterns (Sequential, Parallel, Auth).yml)
+Dropped Workflow Patterns (Sequential, Parallel, Auth) / testScript: scripts are not imported (Workflow Patterns (Sequential, Parallel, Auth).yml)
+Dropped Error Handling & Edge Cases / preRequestScript: scripts are not imported (Error Handling & Edge Cases.yml)
+Dropped Error Handling & Edge Cases / testScript: scripts are not imported (Error Handling & Edge Cases.yml)
+Dropped Large Payload & FormData / preRequestScript: scripts are not imported (Large Payload & FormData.yml)
+Dropped Large Payload & FormData / testScript: scripts are not imported (Large Payload & FormData.yml)
+Dropped GET Methods (Query, Headers, URL) / preRequestScript: scripts are not imported (GET Methods (Query, Headers, URL).yml)
+Dropped GET Methods (Query, Headers, URL) / testScript: scripts are not imported (GET Methods (Query, Headers, URL).yml)
+Dropped POST Methods (JSON, URLEncoded, Binary) / preRequestScript: scripts are not imported (POST Methods (JSON, URLEncoded, Binary).yml)
+Dropped POST Methods (JSON, URLEncoded, Binary) / testScript: scripts are not imported (POST Methods (JSON, URLEncoded, Binary).yml)
+Dropped HTTP Methods (PUT, PATCH, DELETE) / preRequestScript: scripts are not imported (HTTP Methods (PUT, PATCH, DELETE).yml)
+Dropped HTTP Methods (PUT, PATCH, DELETE) / testScript: scripts are not imported (HTTP Methods (PUT, PATCH, DELETE).yml)
+Dropped Response Parsing (Headers, Status, Body) / preRequestScript: scripts are not imported (Response Parsing (Headers, Status, Body).yml)
+Dropped Response Parsing (Headers, Status, Body) / testScript: scripts are not imported (Response Parsing (Headers, Status, Body).yml)
+Dropped Dynamic URL Construction / preRequestScript: scripts are not imported (Dynamic URL Construction.yml)
+Dropped Dynamic URL Construction / testScript: scripts are not imported (Dynamic URL Construction.yml)
+Dropped crypto-module-test / preRequestScript: scripts are not imported (crypto-module-test.yml)
+Dropped crypto-module-test / testScript: scripts are not imported (crypto-module-test.yml)

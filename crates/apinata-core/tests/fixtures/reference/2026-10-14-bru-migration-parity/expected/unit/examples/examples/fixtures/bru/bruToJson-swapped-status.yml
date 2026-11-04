@@ -1,0 +1,32 @@
+info:
+  name: Test API
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/test
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Swapped Status Example
+    description: Example with swapped status and statusText from pre-fix Postman import
+    request:
+      url: https://api.example.com/users/123
+      method: get
+    response:
+      status: 202
+      statusText: Accepted
+      body:
+        type: json
+        data: |-
+          {
+            "id": 123,
+            "name": "John Doe"
+          }

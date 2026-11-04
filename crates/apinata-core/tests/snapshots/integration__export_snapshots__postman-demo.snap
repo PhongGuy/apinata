@@ -1,0 +1,601 @@
+---
+source: crates/apinata-core/tests/export_snapshots.rs
+expression: rendered(&postman(&c))
+---
+{
+  "info": {
+    "name": "Apinata Demo",
+    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\nSending a request needs network access.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Posts",
+      "item": [
+        {
+          "name": "List posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/posts?_limit=5",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "_limit",
+                  "value": "5"
+                }
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Get post",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Fetches the post named by the `postId` collection variable and keeps its title as `postTitle`.",
+            "url": {
+              "raw": "{{baseUrl}}/posts/:id",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts",
+                ":id"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{postId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "description": "",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/posts",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hello from Apinata\",\n  \"body\": \"A demo post.\",\n  \"userId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Replace post",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/posts/1",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts",
+                "1"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 1,\n  \"title\": \"Replaced\",\n  \"body\": \"A replaced post.\",\n  \"userId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Edit post title",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/posts/1",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts",
+                "1"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Edited\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete post",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/posts/1",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts",
+                "1"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "description": "",
+                "disabled": false,
+                "type": "default"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Get user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Fetches the user named by `userId`. Run it with `examples/demo-data/users.csv` as the data file to fetch users 1 to 3, one per iteration.",
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "protocol": "",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{userId}}"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Media",
+      "description": "## Media\n\nResponses that are not JSON:\n\n1. **Get XML** returns an XML document, shown re-indented and highlighted.\n2. **Get PNG** returns a PNG image, shown as a preview with its size and dimensions.",
+      "item": [
+        {
+          "name": "Get XML",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "https://httpbin.org/xml",
+              "protocol": "https",
+              "host": [
+                "httpbin",
+                "org"
+              ],
+              "path": [
+                "xml"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Get PNG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "https://httpbin.org/image/png",
+              "protocol": "https",
+              "host": [
+                "httpbin",
+                "org"
+              ],
+              "path": [
+                "image",
+                "png"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Digest example",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "digest",
+              "digest": [
+                {
+                  "key": "password",
+                  "value": "passwd",
+                  "type": "string"
+                },
+                {
+                  "key": "username",
+                  "value": "user",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "",
+            "url": {
+              "raw": "https://httpbin.org/digest-auth/auth/user/passwd",
+              "protocol": "https",
+              "host": [
+                "httpbin",
+                "org"
+              ],
+              "path": [
+                "digest-auth",
+                "auth",
+                "user",
+                "passwd"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "SigV4 example",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "awsv4",
+              "awsv4": [
+                {
+                  "key": "sessionToken",
+                  "value": "",
+                  "type": "string"
+                },
+                {
+                  "key": "service",
+                  "value": "execute-api",
+                  "type": "string"
+                },
+                {
+                  "key": "region",
+                  "value": "us-east-1",
+                  "type": "string"
+                },
+                {
+                  "key": "secretKey",
+                  "value": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+                  "type": "string"
+                },
+                {
+                  "key": "accessKey",
+                  "value": "AKIDEXAMPLE",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "",
+            "url": {
+              "raw": "https://example.execute-api.us-east-1.amazonaws.com/",
+              "protocol": "https",
+              "host": [
+                "example",
+                "execute-api",
+                "us-east-1",
+                "amazonaws",
+                "com"
+              ],
+              "path": [],
+              "query": [],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "OAuth 1.0 example",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "oauth1",
+              "oauth1": [
+                {
+                  "key": "consumerKey",
+                  "value": "demo-consumer-key",
+                  "type": "string"
+                },
+                {
+                  "key": "consumerSecret",
+                  "value": "demo-consumer-secret",
+                  "type": "string"
+                },
+                {
+                  "key": "token",
+                  "value": "demo-token",
+                  "type": "string"
+                },
+                {
+                  "key": "tokenSecret",
+                  "value": "demo-token-secret",
+                  "type": "string"
+                },
+                {
+                  "key": "signatureMethod",
+                  "value": "HMAC-SHA1",
+                  "type": "string"
+                },
+                {
+                  "key": "callback",
+                  "value": "",
+                  "type": "string"
+                },
+                {
+                  "key": "verifier",
+                  "value": "",
+                  "type": "string"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "",
+                  "type": "string"
+                },
+                {
+                  "key": "nonce",
+                  "value": "",
+                  "type": "string"
+                },
+                {
+                  "key": "version",
+                  "value": "1.0",
+                  "type": "string"
+                },
+                {
+                  "key": "realm",
+                  "value": "",
+                  "type": "string"
+                },
+                {
+                  "key": "addParamsToHeader",
+                  "value": true,
+                  "type": "boolean"
+                },
+                {
+                  "key": "includeBodyHash",
+                  "value": false,
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "",
+            "url": {
+              "raw": "https://httpbin.org/get",
+              "protocol": "https",
+              "host": [
+                "httpbin",
+                "org"
+              ],
+              "path": [
+                "get"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "NTLM example",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "ntlm",
+              "ntlm": [
+                {
+                  "key": "domain",
+                  "value": "EXAMPLE",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "demo-password",
+                  "type": "string"
+                },
+                {
+                  "key": "username",
+                  "value": "demo",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "",
+            "url": {
+              "raw": "https://httpbin.org/get",
+              "protocol": "https",
+              "host": [
+                "httpbin",
+                "org"
+              ],
+              "path": [
+                "get"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GraphQL",
+      "item": [
+        {
+          "name": "Get user",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "description": "",
+            "url": {
+              "raw": "https://graphqlzero.almansi.me/api",
+              "protocol": "https",
+              "host": [
+                "graphqlzero",
+                "almansi",
+                "me"
+              ],
+              "path": [
+                "api"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($id: ID!) {\n  user(id: $id) {\n    id\n    name\n    email\n  }\n}",
+                "variables": "{\n  \"id\": 1\n}"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://jsonplaceholder.typicode.com",
+      "type": "default"
+    },
+    {
+      "key": "postId",
+      "value": "1",
+      "type": "default"
+    },
+    {
+      "key": "userId",
+      "value": "1",
+      "type": "default"
+    }
+  ]
+}
+--- notes
+Posts / List posts / assertions: assertions have no place in the exported file
+Posts / List posts / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Posts / List posts / tags: tags have no place in Postman and were left out: smoke
+Posts / Get post / post-response variables: post-response variables have no place in the exported file
+Posts / Get post / assertions: assertions have no place in the exported file
+Posts / Get post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Posts / Get post / tags: tags have no place in Postman and were left out: smoke
+Posts / Create post / assertions: assertions have no place in the exported file
+Posts / Create post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Posts / Replace post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Posts / Edit post title / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Posts / Delete post / assertions: assertions have no place in the exported file
+Posts / Delete post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Users / List users / assertions: assertions have no place in the exported file
+Users / List users / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Users / List users / tags: tags have no place in Postman and were left out: smoke
+Users / Get user / assertions: assertions have no place in the exported file
+Users / Get user / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Users / Get user / tags: tags have no place in Postman and were left out: smoke, data
+Media / Get XML / assertions: assertions have no place in the exported file
+Media / Get XML / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Media / Get PNG / assertions: assertions have no place in the exported file
+Media / Get PNG / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Auth / Digest example / assertions: assertions have no place in the exported file
+Auth / Digest example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Auth / SigV4 example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Auth / OAuth 1.0 example / assertions: assertions have no place in the exported file
+Auth / OAuth 1.0 example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+Auth / NTLM example / assertions: assertions have no place in the exported file
+Auth / NTLM example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
+GraphQL / Get user / timeout: the request has no timeout; when imported, the request will inherit the default timeout

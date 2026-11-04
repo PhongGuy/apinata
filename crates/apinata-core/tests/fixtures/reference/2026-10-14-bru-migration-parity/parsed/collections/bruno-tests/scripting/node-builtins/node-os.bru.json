@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-os",
+    "type": "http",
+    "seq": "14"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const os = require('node:os');\n\ntest(\"os.platform and os.arch\", function() {\n  expect(['darwin', 'linux', 'win32']).to.include(os.platform());\n  expect(['x64', 'arm64', 'arm', 'ia32']).to.include(os.arch());\n});\n\ntest(\"os.type and os.release\", function() {\n  expect(os.type()).to.be.a('string');\n  expect(os.release()).to.be.a('string');\n});\n\ntest(\"os.hostname, os.homedir, os.tmpdir\", function() {\n  expect(os.hostname()).to.be.a('string');\n  expect(os.homedir()).to.be.a('string').with.length.greaterThan(0);\n  expect(os.tmpdir()).to.be.a('string').with.length.greaterThan(0);\n});\n\ntest(\"os.cpus\", function() {\n  const cpus = os.cpus();\n  expect(cpus).to.be.an('array').with.length.greaterThan(0);\n  expect(cpus[0]).to.have.property('model');\n});\n\ntest(\"os.totalmem and os.freemem\", function() {\n  expect(os.totalmem()).to.be.a('number').greaterThan(0);\n  expect(os.freemem()).to.be.a('number').greaterThan(0);\n});\n\ntest(\"os.uptime\", function() {\n  expect(os.uptime()).to.be.a('number').greaterThan(0);\n});\n\ntest(\"os.loadavg\", function() {\n  const load = os.loadavg();\n  expect(load).to.be.an('array').with.lengthOf(3);\n});\n\ntest(\"os.networkInterfaces\", function() {\n  expect(os.networkInterfaces()).to.be.an('object');\n});\n\ntest(\"os.userInfo\", function() {\n  const info = os.userInfo();\n  expect(info.username).to.be.a('string');\n  expect(info.homedir).to.be.a('string');\n});\n\ntest(\"os.EOL and os.constants\", function() {\n  expect(['\\n', '\\r\\n']).to.include(os.EOL);\n  expect(os.constants).to.have.property('signals');\n});"
+}

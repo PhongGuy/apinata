@@ -1,0 +1,48 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com/vars"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "token",
+        "value": "abc",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "localToken",
+        "value": "def",
+        "enabled": true,
+        "local": true
+      },
+      {
+        "name": "disabled",
+        "value": "ghi",
+        "enabled": false,
+        "local": false
+      },
+      {
+        "name": "disabledLocal",
+        "value": "jkl",
+        "enabled": false,
+        "local": true
+      }
+    ],
+    "res": [
+      {
+        "name": "userId",
+        "value": "res.body.id",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "localId",
+        "value": "res.body.local",
+        "enabled": true,
+        "local": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// Digest auth is not included in this snippet.
+import axios from 'axios';
+
+const url = 'http://x.test/digest';
+const headers = {};
+
+const response = await axios.request({
+  method: 'GET',
+  url,
+  headers,
+  transformRequest: (d) => d,
+  transformResponse: (r) => r,
+  validateStatus: () => true,
+});
+console.log(response.status);
+console.log(response.data);

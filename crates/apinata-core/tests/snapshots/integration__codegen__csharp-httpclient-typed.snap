@@ -1,0 +1,22 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&typed(), Target::CSharpHttpClient)"
+---
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+
+var client = new HttpClient();
+var request = new HttpRequestMessage(new HttpMethod("POST"), "http://x.test/t");
+var form = new MultipartFormDataContent();
+var part1 = new StringContent("{\"a\": \"x﻿y\"}");
+part1.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json");
+form.Add(part1, "j");
+var part2 = new StringContent("plain");
+part2.Headers.ContentType = null;
+form.Add(part2, "t");
+request.Content = form;
+
+var response = await client.SendAsync(request);
+Console.WriteLine((int)response.StatusCode);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

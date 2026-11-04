@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "name": "invalid and valid module imports",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "invalid_module_error_thrown",
+      "value": "eq true",
+      "enabled": true
+    },
+    {
+      "name": "valid_module_no_error",
+      "value": "eq true",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "try {\n  bru.setVar('invalid_module_error_thrown', false);\n  // should throw an error\n  const invalid = require(\"./lib/invalid\");\n}\ncatch(error) {\n  bru.setVar('invalid_module_error_thrown', true);\n}\n\n\ntry {\n  bru.setVar('valid_module_no_error', true);\n  // should not throw an error\n  const math = require(\"./lib/math\");\n}\ncatch(error) {\n  bru.setVar('valid_module_no_error', false);\n}"
+  }
+}

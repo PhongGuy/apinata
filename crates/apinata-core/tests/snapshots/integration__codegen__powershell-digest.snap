@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+# Digest auth is not included in this snippet.
+#Requires -Version 7
+
+$url = 'http://x.test/digest'
+$headers = [ordered]@{}
+Invoke-RestMethod -Uri $url -Method Get -Headers $headers -SkipHeaderValidation

@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "name": "transform-methods",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.headerList.toObject()\", function() {\n  const obj = req.headerList.toObject();\n  expect(obj).to.be.an('object');\n  expect(obj.bruno).to.equal('is-awesome');\n  expect(obj.della).to.equal('is-beautiful');\n});\n\ntest(\"req.headerList.toString()\", function() {\n  const str = req.headerList.toString();\n  expect(str).to.be.a('string');\n  expect(str).to.include('bruno: is-awesome');\n  expect(str).to.include('della: is-beautiful');\n});\n\ntest(\"req.headerList.toJSON()\", function() {\n  const json = req.headerList.toJSON();\n  expect(json).to.be.an('array');\n  const brunoHeader = json.find(h => h.key === 'bruno');\n  expect(brunoHeader).to.eql({ key: 'bruno', value: 'is-awesome' });\n});"
+}

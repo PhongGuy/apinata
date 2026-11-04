@@ -1,0 +1,16 @@
+get {
+  url: https://example.com/users/:id?page=1&~size=2
+}
+
+params:query {
+  page: 1
+  ~size: 2
+}
+
+params:path {
+  id: 42
+}
+
+query {
+  legacy: yes
+}

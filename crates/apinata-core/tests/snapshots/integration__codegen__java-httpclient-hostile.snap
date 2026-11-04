@@ -1,0 +1,22 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+// Java's HttpClient sends header names and values as ASCII only; left out: X-H.
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://x.test/p?x=a%27b$c%7Bd%7D&y=%C3%BC"))
+            .method("POST", HttpRequest.BodyPublishers.ofString("a'b\"c\\d $e {f}\tg\nü€ end"))
+            .header("content-type", "text/plain")
+            .build();
+        HttpResponse<String> response = HttpClient.newHttpClient()
+            .send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}

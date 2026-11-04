@@ -1,0 +1,18 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+<?php
+// AWS Signature auth is not included in this snippet.
+
+$curl = curl_init();
+curl_setopt_array($curl, [
+    CURLOPT_URL => "http://x.test/aws",
+    CURLOPT_CUSTOMREQUEST => "GET",
+    CURLOPT_RETURNTRANSFER => true,
+]);
+
+$response = curl_exec($curl);
+echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE), "\n";
+echo $response, "\n";

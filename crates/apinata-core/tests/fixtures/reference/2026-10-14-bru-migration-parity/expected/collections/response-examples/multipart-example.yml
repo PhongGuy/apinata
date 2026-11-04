@@ -1,0 +1,46 @@
+info:
+  name: multipart-example
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: https://api.example.com/upload
+  body:
+    type: multipart-form
+    data:
+      - name: files
+        type: file
+        value:
+          - alpha.txt
+          - beta.txt
+          - gamma.txt
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Three Files Example
+    description: Example with three multipart file uploads
+    request:
+      url: https://api.example.com/upload
+      method: post
+      body:
+        type: multipart-form
+        data:
+          - name: files
+            type: file
+            value:
+              - alpha.txt
+              - beta.txt
+              - gamma.txt
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: ""

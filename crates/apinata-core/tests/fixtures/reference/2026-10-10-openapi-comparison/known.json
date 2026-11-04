@@ -1,0 +1,302 @@
+[
+  {
+    "id": "ref-cycles",
+    "path": "^apinata\\/cycles\\.yaml\\|POST \\{\\{baseUrl\\}\\}\\/nodes#0\\|body$",
+    "why": "a $ref cycle yields an empty object; the converter drops the recursive array item"
+  },
+  {
+    "id": "http-scheme-case",
+    "path": "^apinata\\/security\\.yaml\\|\\|auth$",
+    "why": "the scheme is not lower case; Apinata matches http schemes in any case"
+  },
+  {
+    "id": "secret-placeholders",
+    "path": "^apinata\\/security\\.yaml\\|\\|environments$",
+    "why": "Apinata adds the auth placeholders as secret variables"
+  },
+  {
+    "id": "security-empty",
+    "path": "^apinata\\/security\\.yaml\\|GET \\{\\{baseUrl\\}\\}\\/public#0\\|auth$",
+    "why": "`security: []` on the operation is no auth; the converter leaves it inheriting"
+  },
+  {
+    "id": "http-scheme-case",
+    "path": "^apinata\\/security\\.yaml\\|GET \\{\\{baseUrl\\}\\}\\/basic#0\\|auth$",
+    "why": "the scheme is not lower case; Apinata matches http schemes in any case"
+  },
+  {
+    "id": "apikey-auth-only",
+    "path": "^apinata\\/security\\.yaml\\|GET \\{\\{baseUrl\\}\\}\\/key#0\\|headers$",
+    "why": "an apiKey is set as auth only (a cookie key is dropped); the converter also adds it as a header"
+  },
+  {
+    "id": "apikey-auth-only",
+    "path": "^apinata\\/security\\.yaml\\|GET \\{\\{baseUrl\\}\\}\\/cookie#0\\|(headers|auth)$",
+    "why": "an apiKey is set as auth only (a cookie key is dropped); the converter also adds it as a header"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^apinata\\/security\\.yaml\\|GET \\{\\{baseUrl\\}\\}\\/oauth#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "ref-siblings",
+    "path": "^apinata\\/siblings-3\\.1\\.yaml\\|POST \\{\\{baseUrl\\}\\}\\/pets#0\\|body$",
+    "why": "3.1 schema siblings of a $ref are merged"
+  },
+  {
+    "id": "secret-placeholders",
+    "path": "^bruno\\/openapi-comprehensive\\.yaml\\|\\|environments$",
+    "why": "Apinata adds the auth placeholders as secret variables"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^bruno\\/openapi-comprehensive\\.yaml\\|folder:Users > GET \\{\\{baseUrl\\}\\}\\/users#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "security-empty",
+    "path": "^bruno\\/openapi-comprehensive\\.yaml\\|folder:Authentication > POST \\{\\{baseUrl\\}\\}\\/auth\\/login#0\\|auth$",
+    "why": "`security: []` on the operation is no auth; the converter leaves it inheriting"
+  },
+  {
+    "id": "versions",
+    "path": "^bruno\\/openapi-invalid-version\\.yaml\\|\\|result$",
+    "why": "the version is not 2.0 or 3.0 to 3.2; Apinata refuses it"
+  },
+  {
+    "id": "secret-placeholders",
+    "path": "^bruno\\/openapi-with-security-schemes\\.json\\|\\|environments$",
+    "why": "Apinata adds the auth placeholders as secret variables"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^bruno\\/openapi-with-security-schemes\\.json\\|GET \\{\\{baseUrl\\}\\}\\/admin\\/users#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "security-empty",
+    "path": "^bruno\\/openapi-with-security-schemes\\.json\\|GET \\{\\{baseUrl\\}\\}\\/public\\/data#0\\|auth$",
+    "why": "`security: []` on the operation is no auth; the converter leaves it inheriting"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^bruno\\/openapi-without-security-schemes\\.json\\|GET \\{\\{baseUrl\\}\\}\\/data#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "secret-placeholders",
+    "path": "^insomnia\\/openapi3\\.yaml\\|\\|environments$",
+    "why": "Apinata adds the auth placeholders as secret variables"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^oai\\/v2\\.0\\/json\\/uber\\.json\\|folder:Products > GET \\{\\{baseUrl\\}\\}\\/products#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^oai\\/v2\\.0\\/json\\/uber\\.json\\|folder:Estimates > GET \\{\\{baseUrl\\}\\}\\/estimates\\/price#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^oai\\/v2\\.0\\/json\\/uber\\.json\\|folder:Estimates > GET \\{\\{baseUrl\\}\\}\\/estimates\\/time#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^oai\\/v3\\.0\\/callback-example\\.yaml\\|POST \\{\\{baseUrl\\}\\}\\/streams#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "secret-placeholders",
+    "path": "^oai\\/v3\\.1\\/non-oauth-scopes\\.yaml\\|\\|environments$",
+    "why": "Apinata adds the auth placeholders as secret variables"
+  },
+  {
+    "id": "no-paths",
+    "path": "^oai\\/v3\\.1\\/webhook-example\\.yaml\\|\\|result$",
+    "why": "a 3.1 document without paths imports empty; the converter throws"
+  },
+  {
+    "id": "secret-placeholders",
+    "path": "^petstore\\/openapi\\.yaml\\|\\|environments$",
+    "why": "Apinata adds the auth placeholders as secret variables"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > PUT \\{\\{baseUrl\\}\\}\\/pet#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > POST \\{\\{baseUrl\\}\\}\\/pet#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > GET \\{\\{baseUrl\\}\\}\\/pet\\/findByStatus#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > GET \\{\\{baseUrl\\}\\}\\/pet\\/findByTags#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > POST \\{\\{baseUrl\\}\\}\\/pet\\/:petId#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > DELETE \\{\\{baseUrl\\}\\}\\/pet\\/:petId#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "unsupported-auth",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > POST \\{\\{baseUrl\\}\\}\\/pet\\/:petId\\/uploadImage#0\\|auth$",
+    "why": "oauth2 is not imported as auth; Apinata leaves no auth"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > GET \\{\\{baseUrl\\}\\}\\/pet\\/findByStatus#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "query-in-url",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > GET \\{\\{baseUrl\\}\\}\\/pet\\/findByTags#0\\|url$",
+    "why": "enabled query parameters are also written into the URL"
+  },
+  {
+    "id": "apikey-auth-only",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:pet > GET \\{\\{baseUrl\\}\\}\\/pet\\/:petId#0\\|headers$",
+    "why": "an apiKey is set as auth only (a cookie key is dropped); the converter also adds it as a header"
+  },
+  {
+    "id": "apikey-auth-only",
+    "path": "^petstore\\/openapi\\.yaml\\|folder:store > GET \\{\\{baseUrl\\}\\}\\/store\\/inventory#0\\|headers$",
+    "why": "an apiKey is set as auth only (a cookie key is dropped); the converter also adds it as a header"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-comprehensive\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-duplicate-operation-name\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-missing-info\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-newline-in-operation-name\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-path-grouping\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-simple\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-with-examples\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-with-security-schemes\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^bruno\\/openapi-without-security-schemes\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^insomnia\\/openapi3\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^insomnia\\/swagger2\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v2\\.0\\/json\\/api-with-examples\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v2\\.0\\/json\\/petstore-expanded\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v2\\.0\\/json\\/petstore\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v2\\.0\\/json\\/uber\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v2\\.0\\/yaml\\/petstore-minimal\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/api-with-examples\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/callback-example\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/link-example\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/petstore-expanded\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/petstore\\.json\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/petstore\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^oai\\/v3\\.0\\/uspto\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  },
+  {
+    "id": "responses",
+    "path": "^petstore\\/openapi\\.yaml\\|.*\\|examples$",
+    "why": "response examples are not imported, so Apinata always has none"
+  }
+]

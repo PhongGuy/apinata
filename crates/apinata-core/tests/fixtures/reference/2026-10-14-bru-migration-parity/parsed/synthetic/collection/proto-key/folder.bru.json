@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "name": "Proto folder",
+    "type": "collection"
+  },
+  "headers": [
+    {
+      "enabled": true
+    },
+    {
+      "name": "x",
+      "value": "1",
+      "enabled": true
+    }
+  ]
+}

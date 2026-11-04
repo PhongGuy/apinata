@@ -1,0 +1,64 @@
+---
+source: crates/apinata-cli/tests/cli_item_folder.rs
+expression: render(&tree)
+---
+== opencollection.yml
+opencollection: "1.0.0"
+info:
+  name: shop
+request:
+  headers:
+    - name: X-Root
+      value: r
+    - name: X-Old
+      value: o
+== plain/
+== plain/a.yml
+info:
+  name: a
+  type: http
+  seq: 1
+http:
+  method: GET
+  url: http://localhost/a
+== plain/folder.yml
+info:
+  name: plain
+  type: folder
+
+request:
+  headers:
+    - name: X-P
+      value: "1"
+  variables:
+    - name: v
+      value: "2"
+== users/
+== users/folder.yml
+info:
+  name: users
+  type: folder
+  seq: 1
+request:
+  headers:
+    - name: X-A
+      value: "1"
+  variables:
+    - name: host
+      value: localhost
+    - name: n
+      value:
+        type: number
+        data: "1"
+  auth:
+    type: bearer
+    token: t
+docs: notes
+== users/get.yml
+info:
+  name: get
+  type: http
+  seq: 1
+http:
+  method: GET
+  url: http://localhost/u

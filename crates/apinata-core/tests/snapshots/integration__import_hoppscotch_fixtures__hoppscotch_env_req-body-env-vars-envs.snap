@@ -1,0 +1,24 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== Response body sample.yml
+name: Response body sample
+variables:
+  - name: firstName
+    value: John
+  - name: lastName
+    value: Doe
+  - name: id
+    value: "7"
+  - name: fullName
+    value: "{{firstName}} {{lastName}}"
+  - name: recursiveVarX
+    value: "{{recursiveVarY}}"
+  - name: recursiveVarY
+    value: "{{salutation}}"
+  - name: salutation
+    value: Hello
+  - name: greetText
+    value: "{{salutation}} {{fullName}}"
+== report

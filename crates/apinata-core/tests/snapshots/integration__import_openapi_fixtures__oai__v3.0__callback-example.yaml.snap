@@ -1,0 +1,57 @@
+---
+source: crates/apinata-core/tests/import_openapi_fixtures.rs
+expression: rendered
+---
+=== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: Callback Example
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+  apinata:
+    openapi:
+      ops:
+        POST /streams:
+          target: 1666ad40e3633dfd
+          headers: 7ace431cb61584cb
+          body: 7ace431cb61584cb
+          docs: 5e486c6be25f728c
+          tags: 7ace431cb61584cb
+          vars: 7ace431cb61584cb
+          method: fde2a9b76b8de2ff
+          file: subscribes a client to receive out-of-band data.yml
+
+=== subscribes a client to receive out-of-band data.yml
+info:
+  name: subscribes a client to receive out-of-band data
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/streams?callbackUrl=https://tonys-server.com"
+  params:
+    - name: callbackUrl
+      value: https://tonys-server.com
+      type: query
+      description: |
+        the location where data will be sent.  Must be network accessible
+        by the source server
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: subscribes a client to receive out-of-band data
+
+note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending
+note Dropped subscribes a client to receive out-of-band data.yml | paths./streams.post.callbacks | callbacks are not imported

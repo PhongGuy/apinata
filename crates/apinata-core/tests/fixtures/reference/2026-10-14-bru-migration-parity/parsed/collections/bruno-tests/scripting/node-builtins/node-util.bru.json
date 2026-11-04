@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-util",
+    "type": "http",
+    "seq": "15"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const util = require('node:util');\n\ntest(\"util.format\", function() {\n  expect(util.format('Hello %s', 'Bruno')).to.equal('Hello Bruno');\n  expect(util.format('Count: %d', 42)).to.equal('Count: 42');\n  expect(util.format('Data: %j', { a: 1 })).to.equal('Data: {\"a\":1}');\n});\n\ntest(\"util.inspect\", function() {\n  const obj = { name: 'bruno', nested: { value: 42 } };\n  const str = util.inspect(obj);\n  expect(str).to.be.a('string').that.includes('bruno');\n\n  const deep = { a: { b: { c: { d: 'deep' } } } };\n  expect(util.inspect(deep, { depth: 1 })).to.include('[Object]');\n  expect(util.inspect(deep, { depth: null })).to.include('deep');\n});\n\ntest(\"util.promisify\", function() {\n  const promisified = util.promisify(setTimeout);\n  expect(promisified).to.be.a('function');\n  // Returns a promise when called\n  const result = promisified(1);\n  expect(result).to.be.a('promise');\n});\n\ntest(\"util.types\", function() {\n  expect(util.types.isDate(new Date())).to.equal(true);\n  expect(util.types.isMap(new Map())).to.equal(true);\n  expect(util.types.isSet(new Set())).to.equal(true);\n  expect(util.types.isRegExp(/test/)).to.equal(true);\n  expect(util.types.isPromise(Promise.resolve())).to.equal(true);\n});\n\ntest(\"util.isDeepStrictEqual\", function() {\n  expect(util.isDeepStrictEqual({ a: 1 }, { a: 1 })).to.equal(true);\n  expect(util.isDeepStrictEqual({ a: 1 }, { a: 2 })).to.equal(false);\n});\n\ntest(\"util.deprecate and util.callbackify\", function() {\n  expect(util.deprecate(() => {}, 'deprecated')).to.be.a('function');\n  expect(util.callbackify(async () => {})).to.be.a('function');\n});"
+}

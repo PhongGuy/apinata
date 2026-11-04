@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "setBody",
+    "type": "http",
+    "seq": "10"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.setBody({\n  \"bruno\": \"is awesome\"\n});"
+  },
+  "tests": "test(\"req.setBody()\", function() {\n  const data = res.getBody();\n  expect(data).to.eql({\n    \"bruno\": \"is awesome\"\n  });\n});\n"
+}

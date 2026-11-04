@@ -1,0 +1,4 @@
+name: Postman Env Two
+variables:
+  - name: base_url
+    value: https://postman-two.example.com

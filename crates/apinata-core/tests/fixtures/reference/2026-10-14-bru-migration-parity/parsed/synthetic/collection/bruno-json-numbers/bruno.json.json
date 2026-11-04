@@ -1,0 +1,12 @@
+{
+  "version": "1",
+  "name": "numbers \ud800 here",
+  "type": "collection",
+  "big": 9007199254740992,
+  "huge": "Infinity",
+  "neg": "-Infinity",
+  "tiny": 0,
+  "ignore": [
+    "node_modules"
+  ]
+}

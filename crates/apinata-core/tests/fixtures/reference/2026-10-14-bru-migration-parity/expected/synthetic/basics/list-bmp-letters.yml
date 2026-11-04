@@ -1,0 +1,18 @@
+info:
+  name: BMP letter list item
+  type: http
+  seq: 1
+  tags:
+    - été
+    - 中文
+
+http:
+  method: GET
+  url: https://example.com/bmp
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

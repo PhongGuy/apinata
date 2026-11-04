@@ -1,0 +1,23 @@
+info:
+  name: Header key
+  type: http
+  seq: 2
+http:
+  method: GET
+  url: "{{baseUrl}}/keys/header"
+  headers:
+    - name: X-From-Env
+      value: "{{process.env.APINATA_ACCEPTANCE}}"
+  auth:
+    type: apikey
+    key: X-Api-Key
+    value: "{{apiKey}}"
+    placement: header
+runtime:
+  scripts:
+    - type: tests
+      code: test("ignored", () => {});
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

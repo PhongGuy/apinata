@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "directReadMethods",
+    "type": "http",
+    "seq": "11"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\nconst host = bru.getEnvVar('localhost');\nawait jar.setCookies(host, [\n  {\n    key: 'alpha',\n    value: 'one',\n    path: '/'\n  },\n  {\n    key: 'beta',\n    value: 'two',\n    path: '/'\n  }\n]);"
+  },
+  "tests": "test(\"one() should return full cookie object by name\", function() {\n  const cookie = bru.cookies.one('alpha');\n  expect(cookie).to.have.property('key', 'alpha');\n  expect(cookie).to.have.property('value', 'one');\n});\n\ntest(\"one() should return undefined for nonexistent cookie\", function() {\n  expect(bru.cookies.one('nonexistent')).to.be.undefined;\n});\n\ntest(\"all() should return an array with at least 2 items\", function() {\n  const cookies = bru.cookies.all();\n  expect(cookies).to.be.an('array');\n  expect(cookies.length).to.be.at.least(2);\n});\n\ntest(\"count() should be at least 2\", function() {\n  expect(bru.cookies.count()).to.be.at.least(2);\n});\n\ntest(\"idx() should return a cookie object at index 0\", function() {\n  const cookie = bru.cookies.idx(0);\n  expect(cookie).to.have.property('key');\n  expect(cookie).to.have.property('value');\n});\n\ntest(\"toObject() should return object with cookie key-value pairs\", function() {\n  const obj = bru.cookies.toObject();\n  expect(obj).to.be.an('object');\n  expect(obj).to.have.property('alpha', 'one');\n  expect(obj).to.have.property('beta', 'two');\n});\n\ntest(\"toString() should return a string containing cookie pairs\", function() {\n  const str = bru.cookies.toString();\n  expect(str).to.be.a('string');\n  expect(str).to.contain('alpha=one');\n});\n\ntest(\"toJSON() should return cloned array of all cookies\", function() {\n  const json = bru.cookies.toJSON();\n  expect(json).to.be.an('array');\n  expect(json.length).to.be.at.least(2);\n  expect(json[0]).to.have.property('key');\n  expect(json[0]).to.have.property('value');\n});\n\nconst jar = bru.cookies.jar()\nawait jar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

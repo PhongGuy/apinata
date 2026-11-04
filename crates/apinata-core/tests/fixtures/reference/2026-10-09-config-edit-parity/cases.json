@@ -1,0 +1,201 @@
+[
+  {
+    "id": "folder-name",
+    "collection": "bruno-tests",
+    "files": [
+      "response-time/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-seq-edit",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-seq-add",
+    "collection": "bruno-tests",
+    "files": [
+      "response-time/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-docs",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-lists-headers",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-lists-vars",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-lists-auth-bearer",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-lists-auth-inherit",
+    "collection": "cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "collection-name",
+    "collection": "cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "collection-docs",
+    "collection": "cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "collection-lists-headers",
+    "collection": "bruno-tests",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "collection-lists-vars-edit",
+    "collection": "bruno-tests",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "collection-lists-auth-basic",
+    "collection": "bruno-tests",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "env-vars-edit",
+    "collection": "bruno-tests",
+    "files": [
+      "environments/Local.yml"
+    ]
+  },
+  {
+    "id": "env-vars-add-secret",
+    "collection": "bruno-tests",
+    "files": [
+      "environments/Local.yml"
+    ]
+  },
+  {
+    "id": "env-vars-disable-secret",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/staging.yml"
+    ]
+  },
+  {
+    "id": "env-vars-clear",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/qa.yml"
+    ]
+  },
+  {
+    "id": "env-color",
+    "collection": "bruno-tests",
+    "files": [
+      "environments/Local.yml"
+    ]
+  },
+  {
+    "id": "env-extends-set",
+    "collection": "bruno-tests",
+    "files": [
+      "environments/Local.yml"
+    ]
+  },
+  {
+    "id": "env-extends-clear",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/dev.yml"
+    ]
+  },
+  {
+    "id": "env-secret-on",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/dev.yml"
+    ]
+  },
+  {
+    "id": "env-secret-on-typed",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/base.yml"
+    ]
+  },
+  {
+    "id": "env-secret-off",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/staging.yml"
+    ]
+  },
+  {
+    "id": "env-secret-off-typed",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/base.yml"
+    ]
+  },
+  {
+    "id": "env-op-create",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/dev copy.yml"
+    ]
+  },
+  {
+    "id": "env-op-create-sanitized",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/a-b-.yml"
+    ]
+  },
+  {
+    "id": "env-op-create-fresh",
+    "collection": "cli-docs",
+    "files": [
+      "environments/local.yml"
+    ]
+  },
+  {
+    "id": "env-op-rename",
+    "collection": "env-inheritance",
+    "files": [
+      "environments/dev.yml",
+      "environments/root.yml",
+      "environments/scripted.yml",
+      "environments/staging.yml"
+    ]
+  }
+]

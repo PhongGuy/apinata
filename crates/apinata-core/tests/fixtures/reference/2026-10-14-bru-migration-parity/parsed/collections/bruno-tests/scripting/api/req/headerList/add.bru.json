@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "add",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.headerList.add({ key: 'x-added', value: 'via-add' });\nreq.headerList.upsert({ key: 'x-upserted', value: 'via-upsert' });\nreq.headerList.upsert({ key: 'bruno', value: 'is-the-best' });"
+  },
+  "tests": "test(\"req.headerList.add(item)\", function() {\n  expect(req.getHeader('x-added')).to.equal('via-add');\n});\n\ntest(\"req.headerList.upsert(item) - new header\", function() {\n  expect(req.getHeader('x-upserted')).to.equal('via-upsert');\n});\n\ntest(\"req.headerList.upsert(item) - overwrite existing\", function() {\n  expect(req.getHeader('bruno')).to.equal('is-the-best');\n});"
+}

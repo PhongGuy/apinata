@@ -1,0 +1,558 @@
+pem ec_then_enc HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem ec_then_enc RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+pem ec_then_enc verify HS256: JsonWebTokenError invalid algorithm
+pem ec_then_enc verify RS256: JsonWebTokenError invalid algorithm
+pem ec_then_enc verify ES256: ok x
+pem ec_then_enc crypto: ec ec
+pem enc_then_ec HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.8jUZuVWiLLUmo-QdYpSeG1k_lILAtBfU6mmgcARt5Ug
+pem enc_then_ec RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem enc_then_ec verify HS256: JsonWebTokenError invalid signature
+pem enc_then_ec verify RS256: JsonWebTokenError invalid algorithm
+pem enc_then_ec verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem enc_then_ec crypto: unreadable unreadable
+pem cert_then_enc HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.cMcdD_MuNVQ8LloPH8II2-UsMyN0h9njlR-atFZ_v78
+pem cert_then_enc RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem cert_then_enc verify HS256: JsonWebTokenError invalid algorithm
+pem cert_then_enc verify RS256: ok x
+pem cert_then_enc verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem cert_then_enc crypto: unreadable rsa
+pem pub_then_enc HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.F_f6iCp-1ioJNmaVcttDilAdFGxoqvcXjaLHu6xWKNs
+pem pub_then_enc RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem pub_then_enc verify HS256: JsonWebTokenError invalid algorithm
+pem pub_then_enc verify RS256: ok x
+pem pub_then_enc verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem pub_then_enc crypto: unreadable rsa
+pem enc_then_enc HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.R8eVWXSSDXSP5RY0P2rqYgcwn3VL30M5Jp-e2rN2vt0
+pem enc_then_enc RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem enc_then_enc verify HS256: JsonWebTokenError invalid signature
+pem enc_then_enc verify RS256: JsonWebTokenError invalid algorithm
+pem enc_then_enc verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem enc_then_enc crypto: unreadable unreadable
+pem pkcs8_under_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem pkcs8_under_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem pkcs8_under_rsa verify HS256: JsonWebTokenError invalid algorithm
+pem pkcs8_under_rsa verify RS256: ok x
+pem pkcs8_under_rsa verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem pkcs8_under_rsa crypto: rsa rsa
+pem pkcs8_under_ec HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem pkcs8_under_ec RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+pem pkcs8_under_ec verify HS256: JsonWebTokenError invalid algorithm
+pem pkcs8_under_ec verify RS256: JsonWebTokenError invalid algorithm
+pem pkcs8_under_ec verify ES256: Error "alg" parameter "ES256" requires curve "prime256v1".
+pem pkcs8_under_ec crypto: ec ec
+pem pkcs8_under_enc HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem pkcs8_under_enc RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem pkcs8_under_enc verify HS256: JsonWebTokenError invalid algorithm
+pem pkcs8_under_enc verify RS256: ok x
+pem pkcs8_under_enc verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem pkcs8_under_enc crypto: rsa rsa
+pem sec1_under_pkcs8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.1aIXWkSyBq4asmb-cfz0JMLpipRtMcmmX0NfO_sY204
+pem sec1_under_pkcs8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem sec1_under_pkcs8 verify HS256: JsonWebTokenError invalid signature
+pem sec1_under_pkcs8 verify RS256: JsonWebTokenError invalid algorithm
+pem sec1_under_pkcs8 verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem sec1_under_pkcs8 crypto: unreadable unreadable
+pem pkcs1_under_pkcs8 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.BbRcXNwtfw23RdCWD85CrAO5W8RCHiwwJs8q8n4RDr0
+pem pkcs1_under_pkcs8 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem pkcs1_under_pkcs8 verify HS256: JsonWebTokenError invalid signature
+pem pkcs1_under_pkcs8 verify RS256: JsonWebTokenError invalid algorithm
+pem pkcs1_under_pkcs8 verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem pkcs1_under_pkcs8 crypto: unreadable unreadable
+pem sec1_under_rsa HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ezhv2rSSwCM6CSdoigOaWHV8IpjmlKX5m4mTbHWmtl8
+pem sec1_under_rsa RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem sec1_under_rsa verify HS256: JsonWebTokenError invalid signature
+pem sec1_under_rsa verify RS256: JsonWebTokenError invalid algorithm
+pem sec1_under_rsa verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem sec1_under_rsa crypto: unreadable unreadable
+pem pkcs1_under_ec HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.wvhVFKd6D8i0jT7t3lsIX1u3xerTSAAeDJ3ny3bSE2s
+pem pkcs1_under_ec RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem pkcs1_under_ec verify HS256: JsonWebTokenError invalid signature
+pem pkcs1_under_ec verify RS256: JsonWebTokenError invalid algorithm
+pem pkcs1_under_ec verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem pkcs1_under_ec crypto: unreadable unreadable
+pem pkcs8_rsa_under_ec HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.dKYTyTNUBzTwaEunQl99dgWK1B7Is0SLzVLMm6RWuUc
+pem pkcs8_rsa_under_ec RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem pkcs8_rsa_under_ec verify HS256: JsonWebTokenError invalid signature
+pem pkcs8_rsa_under_ec verify RS256: JsonWebTokenError invalid algorithm
+pem pkcs8_rsa_under_ec verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem pkcs8_rsa_under_ec crypto: unreadable unreadable
+pem broken_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem broken_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem broken_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+pem broken_then_rsa verify RS256: ok x
+pem broken_then_rsa verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem broken_then_rsa crypto: rsa rsa
+pem rsa_then_broken HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem rsa_then_broken RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem rsa_then_broken verify HS256: JsonWebTokenError invalid algorithm
+pem rsa_then_broken verify RS256: ok x
+pem rsa_then_broken verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem rsa_then_broken crypto: rsa rsa
+pem brokenpub_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem brokenpub_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem brokenpub_then_rsa verify HS256: JsonWebTokenError invalid signature
+pem brokenpub_then_rsa verify RS256: JsonWebTokenError invalid algorithm
+pem brokenpub_then_rsa verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem brokenpub_then_rsa crypto: rsa unreadable
+pem rsa_then_brokenpub HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem rsa_then_brokenpub RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem rsa_then_brokenpub verify HS256: JsonWebTokenError invalid signature
+pem rsa_then_brokenpub verify RS256: JsonWebTokenError invalid algorithm
+pem rsa_then_brokenpub verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem rsa_then_brokenpub crypto: rsa unreadable
+pem foo_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem foo_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem foo_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+pem foo_then_rsa verify RS256: ok x
+pem foo_then_rsa verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem foo_then_rsa crypto: rsa rsa
+pem bad64_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem bad64_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem bad64_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+pem bad64_then_rsa verify RS256: ok x
+pem bad64_then_rsa verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem bad64_then_rsa crypto: rsa rsa
+pem bad64pub_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem bad64pub_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem bad64pub_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+pem bad64pub_then_rsa verify RS256: ok x
+pem bad64pub_then_rsa verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem bad64pub_then_rsa crypto: rsa rsa
+pem bad64_then_pub HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.3hzH2yjqWIShkS22SHl_gESz5Qru5JzXAkEV_WBwNJI
+pem bad64_then_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem bad64_then_pub verify HS256: JsonWebTokenError invalid signature
+pem bad64_then_pub verify RS256: JsonWebTokenError invalid algorithm
+pem bad64_then_pub verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem bad64_then_pub crypto: unreadable unreadable
+pem rsa_then_bad64 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem rsa_then_bad64 RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem rsa_then_bad64 verify HS256: JsonWebTokenError invalid algorithm
+pem rsa_then_bad64 verify RS256: ok x
+pem rsa_then_bad64 verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem rsa_then_bad64 crypto: rsa rsa
+pem mismatch_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem mismatch_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem mismatch_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+pem mismatch_then_rsa verify RS256: ok x
+pem mismatch_then_rsa verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem mismatch_then_rsa crypto: rsa rsa
+pem rsa_then_mismatch HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem rsa_then_mismatch RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem rsa_then_mismatch verify HS256: JsonWebTokenError invalid algorithm
+pem rsa_then_mismatch verify RS256: ok x
+pem rsa_then_mismatch verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem rsa_then_mismatch crypto: rsa rsa
+pem truncated_then_rsa HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.qG0jcLdpnn7YsmmgTk8mtv_W-sWqTTN_71T4N0D3Az4
+pem truncated_then_rsa RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem truncated_then_rsa verify HS256: JsonWebTokenError invalid signature
+pem truncated_then_rsa verify RS256: JsonWebTokenError invalid algorithm
+pem truncated_then_rsa verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem truncated_then_rsa crypto: unreadable unreadable
+pem broken_then_pub HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.1QG81IMlya1CRMrTBLtAt5qWg47_iOU5IcEsQ7VY_lM
+pem broken_then_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem broken_then_pub verify HS256: JsonWebTokenError invalid signature
+pem broken_then_pub verify RS256: JsonWebTokenError invalid algorithm
+pem broken_then_pub verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem broken_then_pub crypto: unreadable unreadable
+pem brokenpriv_then_pub HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.YyPc7lovfP0h6YdSDfd0l0bdWMeQ7FQW66i9Q2GdZF4
+pem brokenpriv_then_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem brokenpriv_then_pub verify HS256: JsonWebTokenError invalid algorithm
+pem brokenpriv_then_pub verify RS256: ok x
+pem brokenpriv_then_pub verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem brokenpriv_then_pub crypto: unreadable rsa
+pem brokencert_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem brokencert_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem brokencert_then_rsa verify HS256: JsonWebTokenError invalid signature
+pem brokencert_then_rsa verify RS256: JsonWebTokenError invalid algorithm
+pem brokencert_then_rsa verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem brokencert_then_rsa crypto: rsa unreadable
+pem nested_begin HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem nested_begin RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+pem nested_begin verify HS256: JsonWebTokenError invalid algorithm
+pem nested_begin verify RS256: JsonWebTokenError invalid algorithm
+pem nested_begin verify ES256: ok x
+pem nested_begin crypto: ec ec
+pem indented HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ne6cFYlAvPO89q-DbxvGO7apjNNMlUabepew5Cqsh0M
+pem indented RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem indented verify HS256: JsonWebTokenError invalid signature
+pem indented verify RS256: JsonWebTokenError invalid algorithm
+pem indented verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem indented crypto: unreadable unreadable
+pem indented_ec HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ilq52fXaWDSMaWigFvy6wSZrIrOjNTD3VVvC15VuWQ8
+pem indented_ec RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem indented_ec verify HS256: JsonWebTokenError invalid signature
+pem indented_ec verify RS256: JsonWebTokenError invalid algorithm
+pem indented_ec verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem indented_ec crypto: unreadable unreadable
+pem indented_pub HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.WN3FO1C2BSejnUT3OrCnMPT1jG7Fg0tJVxuHjzXfvqU
+pem indented_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem indented_pub verify HS256: JsonWebTokenError invalid signature
+pem indented_pub verify RS256: JsonWebTokenError invalid algorithm
+pem indented_pub verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem indented_pub crypto: unreadable unreadable
+pem mid_line HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Bb2zRfQNvq7zc_UuA9q-82jxCvmIUuJz4dtc-DNeio4
+pem mid_line RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem mid_line verify HS256: JsonWebTokenError invalid signature
+pem mid_line verify RS256: JsonWebTokenError invalid algorithm
+pem mid_line verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem mid_line crypto: unreadable unreadable
+pem note_line HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem note_line RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem note_line verify HS256: JsonWebTokenError invalid algorithm
+pem note_line verify RS256: ok x
+pem note_line verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem note_line crypto: rsa rsa
+pem crlf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem crlf RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem crlf verify HS256: JsonWebTokenError invalid algorithm
+pem crlf verify RS256: ok x
+pem crlf verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem crlf crypto: rsa rsa
+pem cr_only HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.drpTJ9xiW89l5cC0gvvPEuR08XtpqaNkVgtGxmB_izw
+pem cr_only RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem cr_only verify HS256: JsonWebTokenError invalid signature
+pem cr_only verify RS256: JsonWebTokenError invalid algorithm
+pem cr_only verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem cr_only crypto: unreadable unreadable
+pem trailing_junk HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem trailing_junk RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem trailing_junk verify HS256: JsonWebTokenError invalid algorithm
+pem trailing_junk verify RS256: ok x
+pem trailing_junk verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem trailing_junk crypto: rsa rsa
+pem no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem no_final_newline RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem no_final_newline verify HS256: JsonWebTokenError invalid algorithm
+pem no_final_newline verify RS256: ok x
+pem no_final_newline verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem no_final_newline crypto: rsa rsa
+pem space_after_begin HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem space_after_begin RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem space_after_begin verify HS256: JsonWebTokenError invalid algorithm
+pem space_after_begin verify RS256: ok x
+pem space_after_begin verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem space_after_begin crypto: rsa rsa
+pem text_after_begin HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.iHD5Mqq7Vuaztp1DsI4GGj4LDyiXWboSUO5hu-2dbZw
+pem text_after_begin RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem text_after_begin verify HS256: JsonWebTokenError invalid signature
+pem text_after_begin verify RS256: JsonWebTokenError invalid algorithm
+pem text_after_begin verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem text_after_begin crypto: unreadable unreadable
+pem body_indented HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem body_indented RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem body_indented verify HS256: JsonWebTokenError invalid algorithm
+pem body_indented verify RS256: ok x
+pem body_indented verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem body_indented crypto: rsa rsa
+pem one_line_body HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem one_line_body RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem one_line_body verify HS256: JsonWebTokenError invalid algorithm
+pem one_line_body verify RS256: ok x
+pem one_line_body verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem one_line_body crypto: rsa rsa
+pem no_newlines HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.zmfKsaU5gZAMdZED2HLhXPllnFVx8n6aghSzArXDJzI
+pem no_newlines RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem no_newlines verify HS256: JsonWebTokenError invalid signature
+pem no_newlines verify RS256: JsonWebTokenError invalid algorithm
+pem no_newlines verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem no_newlines crypto: unreadable unreadable
+pem blank_body_line HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.E08YfUt6gMOTUjmfsLyEt48GoxXtgnl6F1a7MwOxI9k
+pem blank_body_line RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem blank_body_line verify HS256: JsonWebTokenError invalid signature
+pem blank_body_line verify RS256: JsonWebTokenError invalid algorithm
+pem blank_body_line verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem blank_body_line crypto: unreadable unreadable
+pem space_before_end HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.DWeQOhmH6P4nLBAqD1RHFGo2sR7oW5kKUMKj6C2ov3I
+pem space_before_end RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem space_before_end verify HS256: JsonWebTokenError invalid signature
+pem space_before_end verify RS256: JsonWebTokenError invalid algorithm
+pem space_before_end verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem space_before_end crypto: unreadable unreadable
+pem lower_label HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.f_YSojlIFwprKkzrLcZYRSlnIszpeyI7BRj3t2_gOI8
+pem lower_label RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem lower_label verify HS256: JsonWebTokenError invalid signature
+pem lower_label verify RS256: JsonWebTokenError invalid algorithm
+pem lower_label verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem lower_label crypto: unreadable unreadable
+pem extra_der HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem extra_der RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem extra_der verify HS256: JsonWebTokenError invalid algorithm
+pem extra_der verify RS256: ok x
+pem extra_der verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem extra_der crypto: rsa rsa
+pem bytes_before HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem bytes_before RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem bytes_before verify HS256: JsonWebTokenError invalid algorithm
+pem bytes_before verify RS256: ok x
+pem bytes_before verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem bytes_before crypto: rsa rsa
+pem bytes_after HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem bytes_after RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem bytes_after verify HS256: JsonWebTokenError invalid algorithm
+pem bytes_after verify RS256: ok x
+pem bytes_after verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem bytes_after crypto: rsa rsa
+pem bytes_touching HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.LE9DLyMtdtBFWf1blEtdIpyE37fbDQRtb5z_NPiheNo
+pem bytes_touching RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem bytes_touching verify HS256: JsonWebTokenError invalid signature
+pem bytes_touching verify RS256: JsonWebTokenError invalid algorithm
+pem bytes_touching verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem bytes_touching crypto: unreadable unreadable
+pem byte_order_mark HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem byte_order_mark RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem byte_order_mark verify HS256: JsonWebTokenError invalid algorithm
+pem byte_order_mark verify RS256: ok x
+pem byte_order_mark verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem byte_order_mark crypto: rsa rsa
+pem ec_parameters HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem ec_parameters RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+pem ec_parameters verify HS256: JsonWebTokenError invalid algorithm
+pem ec_parameters verify RS256: JsonWebTokenError invalid algorithm
+pem ec_parameters verify ES256: ok x
+pem ec_parameters crypto: ec ec
+pem cert_then_pub HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.9HBxYskTAadTN9lANUxRI8knwuljL4rmCVxQG7kFUoQ
+pem cert_then_pub RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem cert_then_pub verify HS256: JsonWebTokenError invalid algorithm
+pem cert_then_pub verify RS256: JsonWebTokenError invalid algorithm
+pem cert_then_pub verify ES256: ok x
+pem cert_then_pub crypto: unreadable ec
+pem pub_then_cert HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.2FIn2dCm7AvBQGYMyNBMDotJKhx0R3vEEijcpMLf_BQ
+pem pub_then_cert RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem pub_then_cert verify HS256: JsonWebTokenError invalid algorithm
+pem pub_then_cert verify RS256: JsonWebTokenError invalid algorithm
+pem pub_then_cert verify ES256: ok x
+pem pub_then_cert crypto: unreadable ec
+pem private_then_pub HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem private_then_pub RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem private_then_pub verify HS256: JsonWebTokenError invalid algorithm
+pem private_then_pub verify RS256: JsonWebTokenError invalid algorithm
+pem private_then_pub verify ES256: ok x
+pem private_then_pub crypto: rsa ec
+pem pub_then_private HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem pub_then_private RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem pub_then_private verify HS256: JsonWebTokenError invalid algorithm
+pem pub_then_private verify RS256: JsonWebTokenError invalid algorithm
+pem pub_then_private verify ES256: ok x
+pem pub_then_private crypto: rsa ec
+pem cert_then_private HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem cert_then_private RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+pem cert_then_private verify HS256: JsonWebTokenError invalid algorithm
+pem cert_then_private verify RS256: ok x
+pem cert_then_private verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem cert_then_private crypto: ec rsa
+pem private_then_cert HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+pem private_then_cert RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+pem private_then_cert verify HS256: JsonWebTokenError invalid algorithm
+pem private_then_cert verify RS256: ok x
+pem private_then_cert verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem private_then_cert crypto: ec rsa
+pem x509_label HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.mikei7yzCclW0s0hPwl3hD5urStnZ1ppca6FdPjvHvA
+pem x509_label RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem x509_label verify HS256: JsonWebTokenError invalid algorithm
+pem x509_label verify RS256: ok x
+pem x509_label verify ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+pem x509_label crypto: unreadable rsa
+pem trusted_label HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.a6-KAZPA00pqF_xiKWpdBs8Hrg4z9JcUaroFdOQREQo
+pem trusted_label RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+pem trusted_label verify HS256: JsonWebTokenError invalid signature
+pem trusted_label verify RS256: JsonWebTokenError invalid algorithm
+pem trusted_label verify ES256: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+pem trusted_label crypto: unreadable unreadable
+passphrase ec_then_enc RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+passphrase ec_then_enc HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+passphrase ec_then_enc crypto: ec ec
+passphrase enc_then_ec RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+passphrase enc_then_ec HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+passphrase enc_then_ec crypto: rsa rsa
+passphrase cert_then_enc RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+passphrase cert_then_enc HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+passphrase cert_then_enc crypto: rsa rsa
+passphrase enc_then_enc RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+passphrase enc_then_enc HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+passphrase enc_then_enc crypto: rsa rsa
+passphrase wrong enc_then_enc: Error secretOrPrivateKey is not valid key material
+passphrase wrong ec_then_enc: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+foreign pem dsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem dsa RS256: Error Unknown key type "dsa".
+foreign pem dsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem dsa verify HS256: JsonWebTokenError invalid algorithm
+foreign pem dsa verify RS256: Error Unknown key type "dsa".
+foreign pem three_prime HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem three_prime RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.blTw5kIrzdVAidkx34BZ0YxesKlfTtQrGCD6NEnTruB5vE0hUduFBZ5PG8pGdNSL6e4PdQDggg2TnFWEMRRXBxuVgCWaMQ8UdXM6AlBwe6rPkG5X2p0LJfHg2DrKgZnKcl2IojVlHIeCxZDPd_5RMaOMYPO0xxH8Zxzug40pFkglcD7kYFZzmgliQN-DtOQl3EUN4x2PqnCMBolGvCZpWGS-7UZpi6CwduUyCP0gnf0jZzsQypBioTqJYnCWGxfnxjpAi_E4cSG_Rkp8vCR6Argvb_Y9OSU2aBQ_tGjmghHrTukb0tOKXtcSlBkxuEAtSkFdPp5olShQk-NtVwzZBQ
+foreign pem three_prime bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem three_prime verify HS256: JsonWebTokenError invalid algorithm
+foreign pem three_prime verify RS256: JsonWebTokenError invalid signature
+foreign pem ec_mismatch_sec1 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ec_mismatch_sec1 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign pem ec_mismatch_sec1 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ec_mismatch_sec1 verify HS256: JsonWebTokenError invalid algorithm
+foreign pem ec_mismatch_sec1 verify RS256: JsonWebTokenError invalid algorithm
+foreign pem ec_mismatch_pkcs8 HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ec_mismatch_pkcs8 RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign pem ec_mismatch_pkcs8 bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ec_mismatch_pkcs8 verify HS256: JsonWebTokenError invalid algorithm
+foreign pem ec_mismatch_pkcs8 verify RS256: JsonWebTokenError invalid algorithm
+foreign pem ec_zero HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ec_zero RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+foreign pem ec_zero bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ec_zero verify HS256: JsonWebTokenError invalid algorithm
+foreign pem ec_zero verify RS256: JsonWebTokenError invalid algorithm
+foreign pem dsa_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem dsa_then_rsa RS256: Error Unknown key type "dsa".
+foreign pem dsa_then_rsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem dsa_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+foreign pem dsa_then_rsa verify RS256: Error Unknown key type "dsa".
+foreign pem dsa8_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem dsa8_then_rsa RS256: Error Unknown key type "dsa".
+foreign pem dsa8_then_rsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem dsa8_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+foreign pem dsa8_then_rsa verify RS256: Error Unknown key type "dsa".
+foreign pem ed448_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ed448_then_rsa RS256: Error Unknown key type "ed448".
+foreign pem ed448_then_rsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem ed448_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+foreign pem ed448_then_rsa verify RS256: Error Unknown key type "ed448".
+foreign pem three_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem three_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.blTw5kIrzdVAidkx34BZ0YxesKlfTtQrGCD6NEnTruB5vE0hUduFBZ5PG8pGdNSL6e4PdQDggg2TnFWEMRRXBxuVgCWaMQ8UdXM6AlBwe6rPkG5X2p0LJfHg2DrKgZnKcl2IojVlHIeCxZDPd_5RMaOMYPO0xxH8Zxzug40pFkglcD7kYFZzmgliQN-DtOQl3EUN4x2PqnCMBolGvCZpWGS-7UZpi6CwduUyCP0gnf0jZzsQypBioTqJYnCWGxfnxjpAi_E4cSG_Rkp8vCR6Argvb_Y9OSU2aBQ_tGjmghHrTukb0tOKXtcSlBkxuEAtSkFdPp5olShQk-NtVwzZBQ
+foreign pem three_then_rsa bytes HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+foreign pem three_then_rsa verify HS256: JsonWebTokenError invalid algorithm
+foreign pem three_then_rsa verify RS256: JsonWebTokenError invalid signature
+foreign pem ed448pub_then_rsapub verify HS256: JsonWebTokenError invalid algorithm
+foreign pem ed448pub_then_rsapub verify RS256: Error Unknown key type "ed448".
+pem rsa_then_dsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+pem rsa_then_dsa verify RS256: ok x
+tamper RS256 intact: ok x
+tamper RS256 empty last bit: ok x
+tamper RS256 flipped: JsonWebTokenError invalid signature
+tamper RS256 short: JsonWebTokenError invalid signature
+tamper RS256 leading zero: JsonWebTokenError invalid signature
+tamper RS256 appended: JsonWebTokenError invalid signature
+tamper RS256 zero: JsonWebTokenError invalid signature
+tamper RS256 plus n: JsonWebTokenError invalid signature
+tamper RS256 n: JsonWebTokenError invalid signature
+tamper RS256 one: JsonWebTokenError invalid signature
+tamper RS256 n minus one: JsonWebTokenError invalid signature
+tamper RS384 intact: ok x
+tamper RS384 empty last bit: ok x
+tamper RS384 flipped: JsonWebTokenError invalid signature
+tamper RS384 short: JsonWebTokenError invalid signature
+tamper RS384 leading zero: JsonWebTokenError invalid signature
+tamper RS384 appended: JsonWebTokenError invalid signature
+tamper RS384 zero: JsonWebTokenError invalid signature
+tamper RS384 plus n: JsonWebTokenError invalid signature
+tamper RS384 n: JsonWebTokenError invalid signature
+tamper RS384 one: JsonWebTokenError invalid signature
+tamper RS384 n minus one: JsonWebTokenError invalid signature
+tamper PS256 intact: ok x
+tamper PS256 empty last bit: ok x
+tamper PS256 flipped: JsonWebTokenError invalid signature
+tamper PS256 short: JsonWebTokenError invalid signature
+tamper PS256 leading zero: JsonWebTokenError invalid signature
+tamper PS256 appended: JsonWebTokenError invalid signature
+tamper PS256 zero: JsonWebTokenError invalid signature
+tamper PS256 plus n: JsonWebTokenError invalid signature
+tamper PS256 n: JsonWebTokenError invalid signature
+tamper PS256 one: JsonWebTokenError invalid signature
+tamper PS256 n minus one: JsonWebTokenError invalid signature
+tamper PS512 intact: ok x
+tamper PS512 empty last bit: ok x
+tamper PS512 flipped: JsonWebTokenError invalid signature
+tamper PS512 short: JsonWebTokenError invalid signature
+tamper PS512 leading zero: JsonWebTokenError invalid signature
+tamper PS512 appended: JsonWebTokenError invalid signature
+tamper PS512 zero: JsonWebTokenError invalid signature
+tamper PS512 plus n: JsonWebTokenError invalid signature
+tamper PS512 n: JsonWebTokenError invalid signature
+tamper PS512 one: JsonWebTokenError invalid signature
+tamper PS512 n minus one: JsonWebTokenError invalid signature
+tamper RS256_1024 intact: ok x
+tamper RS256_1024 empty last bit: ok x
+tamper RS256_1024 flipped: JsonWebTokenError invalid signature
+tamper RS256_1024 short: JsonWebTokenError invalid signature
+tamper RS256_1024 leading zero: JsonWebTokenError invalid signature
+tamper RS256_1024 appended: JsonWebTokenError invalid signature
+tamper RS256_1024 zero: JsonWebTokenError invalid signature
+tamper RS256_1024 plus n: JsonWebTokenError invalid signature
+tamper RS256_1024 n: JsonWebTokenError invalid signature
+tamper RS256_1024 one: JsonWebTokenError invalid signature
+tamper RS256_1024 n minus one: JsonWebTokenError invalid signature
+tamper RS384_1024 intact: ok x
+tamper RS384_1024 empty last bit: ok x
+tamper RS384_1024 flipped: JsonWebTokenError invalid signature
+tamper RS384_1024 short: JsonWebTokenError invalid signature
+tamper RS384_1024 leading zero: JsonWebTokenError invalid signature
+tamper RS384_1024 appended: JsonWebTokenError invalid signature
+tamper RS384_1024 zero: JsonWebTokenError invalid signature
+tamper RS384_1024 plus n: JsonWebTokenError invalid signature
+tamper RS384_1024 n: JsonWebTokenError invalid signature
+tamper RS384_1024 one: JsonWebTokenError invalid signature
+tamper RS384_1024 n minus one: JsonWebTokenError invalid signature
+tamper PS256_1024 intact: ok x
+tamper PS256_1024 empty last bit: ok x
+tamper PS256_1024 flipped: JsonWebTokenError invalid signature
+tamper PS256_1024 short: JsonWebTokenError invalid signature
+tamper PS256_1024 leading zero: JsonWebTokenError invalid signature
+tamper PS256_1024 appended: JsonWebTokenError invalid signature
+tamper PS256_1024 zero: JsonWebTokenError invalid signature
+tamper PS256_1024 plus n: JsonWebTokenError invalid signature
+tamper PS256_1024 n: JsonWebTokenError invalid signature
+tamper PS256_1024 one: JsonWebTokenError invalid signature
+tamper PS256_1024 n minus one: JsonWebTokenError invalid signature
+tamper RS256_2047 intact: ok x
+tamper RS256_2047 empty last bit: ok x
+tamper RS256_2047 flipped: JsonWebTokenError invalid signature
+tamper RS256_2047 short: JsonWebTokenError invalid signature
+tamper RS256_2047 leading zero: JsonWebTokenError invalid signature
+tamper RS256_2047 appended: JsonWebTokenError invalid signature
+tamper RS256_2047 zero: JsonWebTokenError invalid signature
+tamper RS256_2047 plus n: JsonWebTokenError invalid signature
+tamper RS256_2047 n: JsonWebTokenError invalid signature
+tamper RS256_2047 one: JsonWebTokenError invalid signature
+tamper RS256_2047 n minus one: JsonWebTokenError invalid signature
+tamper PS256_2047 intact: ok x
+tamper PS256_2047 empty last bit: ok x
+tamper PS256_2047 flipped: JsonWebTokenError invalid signature
+tamper PS256_2047 short: JsonWebTokenError invalid signature
+tamper PS256_2047 leading zero: JsonWebTokenError invalid signature
+tamper PS256_2047 appended: JsonWebTokenError invalid signature
+tamper PS256_2047 zero: JsonWebTokenError invalid signature
+tamper PS256_2047 plus n: JsonWebTokenError invalid signature
+tamper PS256_2047 n: JsonWebTokenError invalid signature
+tamper PS256_2047 one: JsonWebTokenError invalid signature
+tamper PS256_2047 n minus one: JsonWebTokenError invalid signature
+tamper ES256 intact: ok x
+tamper ES256 empty last bit: ok x
+tamper ES256 flipped: JsonWebTokenError invalid signature
+tamper ES256 short: TypeError "ES256" signatures must be "64" bytes, saw "63"
+tamper ES256 leading zero: TypeError "ES256" signatures must be "64" bytes, saw "65"
+tamper ES256 appended: TypeError "ES256" signatures must be "64" bytes, saw "65"
+tamper ES256 zero: JsonWebTokenError invalid signature
+tamper ES256 negated s: ok x
+tamper ES256 r order: JsonWebTokenError invalid signature
+tamper ES256 s order: JsonWebTokenError invalid signature
+tamper ES256 r zero: JsonWebTokenError invalid signature
+tamper ES256 s zero: JsonWebTokenError invalid signature
+tamper ES256 all ones: JsonWebTokenError invalid signature
+tamper ES384 intact: ok x
+tamper ES384 empty last bit: JsonWebTokenError invalid signature
+tamper ES384 flipped: JsonWebTokenError invalid signature
+tamper ES384 short: TypeError "ES384" signatures must be "96" bytes, saw "95"
+tamper ES384 leading zero: TypeError "ES384" signatures must be "96" bytes, saw "97"
+tamper ES384 appended: TypeError "ES384" signatures must be "96" bytes, saw "97"
+tamper ES384 zero: JsonWebTokenError invalid signature
+tamper ES384 negated s: ok x
+tamper ES384 r order: JsonWebTokenError invalid signature
+tamper ES384 s order: JsonWebTokenError invalid signature
+tamper ES384 r zero: JsonWebTokenError invalid signature
+tamper ES384 s zero: JsonWebTokenError invalid signature
+tamper ES384 all ones: JsonWebTokenError invalid signature
+tamper crypto PS256 plus n auto: ok false
+tamper crypto PS256 plus n digest: ok false
+tamper crypto PS256_1024 plus n auto: ok false
+tamper crypto PS256_1024 plus n digest: ok false
+tamper crypto PS256_2047 plus n auto: ok false
+tamper crypto PS256_2047 plus n digest: ok false
+tamper crypto PS256 intact auto: ok true
+tamper crypto PS256 intact digest: ok true
+tamper crypto PS256_1024 intact auto: ok true
+tamper crypto PS256_1024 intact digest: ok true

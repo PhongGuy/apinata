@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "name": "Basic Auth 200",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/auth/basic/protected",
+    "body": "json",
+    "auth": "basic"
+  },
+  "auth": {
+    "basic": {
+      "username": "bruno",
+      "password": "{{basic_auth_password}}"
+    }
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "200",
+      "enabled": true
+    },
+    {
+      "name": "res.body.message",
+      "value": "Authentication successful",
+      "enabled": true
+    }
+  ]
+}

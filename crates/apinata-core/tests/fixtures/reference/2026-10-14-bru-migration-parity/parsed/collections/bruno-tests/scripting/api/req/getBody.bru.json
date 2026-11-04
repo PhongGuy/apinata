@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "name": "getBody",
+    "type": "http",
+    "seq": "9"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"req.getBody()\", function() {\n  const data = res.getBody();\n  expect(data).to.eql({\n    \"hello\": \"bruno\"\n  });\n});\n"
+}

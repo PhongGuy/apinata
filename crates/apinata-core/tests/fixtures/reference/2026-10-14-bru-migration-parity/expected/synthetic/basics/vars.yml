@@ -1,0 +1,44 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com/vars
+
+runtime:
+  variables:
+    - name: token
+      value: abc
+    - name: localToken
+      value: def
+    - name: disabled
+      value: ghi
+      disabled: true
+    - name: disabledLocal
+      value: jkl
+      disabled: true
+  actions:
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.id
+        method: jsonq
+      variable:
+        name: userId
+        scope: runtime
+    - type: set-variable
+      phase: after-response
+      selector:
+        expression: res.body.local
+        method: jsonq
+      variable:
+        name: localId
+        scope: request
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

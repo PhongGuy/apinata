@@ -1,0 +1,32 @@
+info:
+  name: Two response sections
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: https://api.example.com/items/4
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Merged
+    request:
+      url: ""
+      method: get
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: c
+          value: "3"
+        - name: b
+          value: "2"
+      body:
+        type: text
+        data: hi

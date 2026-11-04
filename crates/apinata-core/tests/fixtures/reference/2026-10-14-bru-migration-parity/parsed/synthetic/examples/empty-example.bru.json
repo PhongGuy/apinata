@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "name": "Empty example",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items"
+  },
+  "examples": [
+    {
+      "error": "Line 1, col 1:\n> 1 | }\n      ^\n  2 | \nExpected end of input"
+    }
+  ]
+}

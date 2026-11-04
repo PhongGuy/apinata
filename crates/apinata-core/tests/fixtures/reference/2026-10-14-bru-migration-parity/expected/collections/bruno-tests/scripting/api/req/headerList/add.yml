@@ -1,0 +1,46 @@
+info:
+  name: add
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: "{{host}}/ping"
+  headers:
+    - name: bruno
+      value: is-awesome
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        req.headerList.add({ key: 'x-added', value: 'via-add' });
+        req.headerList.upsert({ key: 'x-upserted', value: 'via-upsert' });
+        req.headerList.upsert({ key: 'bruno', value: 'is-the-best' });
+    - type: tests
+      code: |-
+        test("req.headerList.add(item)", function() {
+          expect(req.getHeader('x-added')).to.equal('via-add');
+        });
+
+        test("req.headerList.upsert(item) - new header", function() {
+          expect(req.getHeader('x-upserted')).to.equal('via-upsert');
+        });
+
+        test("req.headerList.upsert(item) - overwrite existing", function() {
+          expect(req.getHeader('bruno')).to.equal('is-the-best');
+        });
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body
+      operator: eq
+      value: pong
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

@@ -1,0 +1,11 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+assertion_line: 88
+expression: "generate(&req, target)"
+---
+#Requires -Version 7
+
+$url = 'http://x.test/f'
+$headers = [ordered]@{}
+$body = [System.Text.Encoding]::UTF8.GetBytes('a=1&b=x+y%26z')
+Invoke-RestMethod -Uri $url -Method Post -Headers $headers -ContentType 'application/x-www-form-urlencoded' -Body $body -SkipHeaderValidation

@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "content-types-mixed-interpolation",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "text",
+    "auth": "inherit"
+  },
+  "body": {
+    "text": "------MyCustomBoundaryString\nContent-Disposition: form-data; name=\"metadata\"\nContent-Type: application/json\n\n{{version}}\n\n------MyCustomBoundaryString--"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "version",
+        "value": "0.0.1",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.body",
+      "value": "contains 0.0.1",
+      "enabled": true
+    }
+  ],
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

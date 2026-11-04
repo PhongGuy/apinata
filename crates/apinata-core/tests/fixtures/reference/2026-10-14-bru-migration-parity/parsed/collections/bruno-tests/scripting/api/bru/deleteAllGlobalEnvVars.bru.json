@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "deleteAllGlobalEnvVars",
+    "type": "http",
+    "seq": "21"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "bru.setGlobalEnvVar(\"testDelAllGlobalA\", \"a\");\nbru.setGlobalEnvVar(\"testDelAllGlobalB\", \"b\");"
+  },
+  "tests": "const savedGlobalEnvVars = bru.getAllGlobalEnvVars();\nbru.deleteAllGlobalEnvVars();\n\ntest(\"should delete all global env vars\", function() {\n  const valA = bru.getGlobalEnvVar(\"testDelAllGlobalA\");\n  const valB = bru.getGlobalEnvVar(\"testDelAllGlobalB\");\n  expect(valA).to.be.undefined;\n  expect(valB).to.be.undefined;\n});\n\ntest(\"should not throw when called on empty scope\", function() {\n  expect(function() {\n    bru.deleteAllGlobalEnvVars();\n  }).to.not.throw();\n});\n\n// Restore global env vars for subsequent requests\nfor (const [key, value] of Object.entries(savedGlobalEnvVars)) {\n  bru.setGlobalEnvVar(key, value);\n}"
+}

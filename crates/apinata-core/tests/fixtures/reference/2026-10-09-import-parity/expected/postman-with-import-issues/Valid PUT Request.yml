@@ -1,0 +1,28 @@
+info:
+  name: Valid PUT Request
+  type: http
+  seq: 8
+
+http:
+  method: PUT
+  url: https://api.example.com/users/{{userId}}
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{token}}
+  params:
+    - name: userId
+      value: "123"
+      type: path
+  body:
+    type: json
+    data: '{"name": "updated"}'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

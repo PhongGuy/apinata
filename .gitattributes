@@ -1,0 +1,19 @@
+# Writer parity, snapshots and scripts are compared byte for byte, so every
+# checkout keeps LF, including Windows with core.autocrlf.
+* text=auto eol=lf
+
+# Pin corpus types explicitly: git sniffs some as binary (scalar-control.yml
+# holds DEL and NEL bytes), and text=auto alone would leave those unpinned.
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.snap text eol=lf
+*.tsv  text eol=lf
+*.out  text eol=lf
+*.bru  text eol=lf
+
+# Generated icon exports are compared byte for byte by `xtask icons --check`.
+*.png  binary
+*.ico  binary
+*.icns binary
+*.ttf  binary

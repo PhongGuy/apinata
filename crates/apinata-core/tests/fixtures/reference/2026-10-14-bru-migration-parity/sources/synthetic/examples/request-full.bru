@@ -1,0 +1,127 @@
+meta {
+  name: Full example request
+  type: http
+  seq: 3
+}
+
+post {
+  url: https://api.example.com/users/:id
+}
+
+example {
+  name: Every request field
+  request: {
+    url: https://api.example.com/users/42?q=1
+    method: post
+    mode: json
+    params:path: {
+      id: 42
+      ~unused: 7
+    }
+    params:query: {
+      q: 1
+      ~page: 2
+    }
+    headers: {
+      content-type: application/json
+      ~x-debug: true
+      "quoted key": quoted value
+      ~"disabled quoted": off
+    }
+    body:json: {
+      {
+        "name": "Ada",
+        "tags": ["a", "b"]
+      }
+    }
+  }
+}
+
+example {
+  name: Text body
+  request: {
+    mode: text
+    body:text: {
+      plain text
+        indented
+    }
+  }
+}
+
+example {
+  name: Xml body
+  request: {
+    mode: xml
+    body:xml: {
+      <user><id>1</id></user>
+    }
+  }
+}
+
+example {
+  name: Sparql body
+  request: {
+    mode: sparql
+    body:sparql: {
+      SELECT ?s WHERE { ?s ?p ?o }
+    }
+  }
+}
+
+example {
+  name: Graphql body
+  request: {
+    mode: graphql
+    body:graphql: {
+      query { user(id: 1) { name } }
+    }
+    body:graphql:vars: {
+      {
+        "id": 1
+      }
+    }
+  }
+}
+
+example {
+  name: Form body
+  request: {
+    mode: formUrlEncoded
+    body:form-urlencoded: {
+      a: 1
+      ~b: 2
+    }
+  }
+}
+
+example {
+  name: Multipart body
+  request: {
+    mode: multipartForm
+    body:multipart-form: {
+      field: value @contentType(text/plain)
+      upload: @file(a.txt||b.txt)
+      ~skipped: no
+    }
+  }
+}
+
+example {
+  name: File body
+  request: {
+    mode: file
+    body:file: {
+      file: @file(data/body.json) @contentType( application/json )
+      ~file: @file(data/other.bin)
+      plain: not a file
+    }
+  }
+}
+
+example {
+  name: Empty mode
+  request: {
+    url: https://api.example.com/none
+    mode:
+  }
+}

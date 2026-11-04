@@ -1,0 +1,27 @@
+post {
+  url: https://example.com/bodies
+  body: text
+}
+
+body {
+  {"legacy": true}
+}
+
+body:json {
+  {
+    "a": [1, 2]
+  }
+}
+
+body:text {
+  plain text
+   three spaces
+}
+
+body:xml {
+  <root><a>1</a></root>
+}
+
+body:sparql {
+  SELECT * WHERE { ?s ?p ?o }
+}

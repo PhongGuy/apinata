@@ -1,0 +1,19 @@
+info:
+  name: d
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/d
+  auth:
+    type: digest
+    username: alice
+    password: old
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

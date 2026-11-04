@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-stream",
+    "type": "http",
+    "seq": "18"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const stream = require('node:stream');\nconst { Readable, Writable, Transform, Duplex, pipeline } = stream;\n\ntest(\"stream module exports\", function() {\n  expect(stream.Readable).to.be.a('function');\n  expect(stream.Writable).to.be.a('function');\n  expect(stream.Transform).to.be.a('function');\n  expect(stream.Duplex).to.be.a('function');\n  expect(stream.pipeline).to.be.a('function');\n});\n\ntest(\"Readable.from creates readable stream\", function() {\n  const readable = Readable.from(['hello', ' ', 'bruno']);\n  expect(readable).to.be.an('object');\n  expect(readable.read).to.be.a('function');\n  expect(readable.on).to.be.a('function');\n});\n\ntest(\"Writable stream can be created\", function() {\n  const chunks = [];\n  const writable = new Writable({\n    write(chunk, enc, cb) { chunks.push(chunk); cb(); }\n  });\n  expect(writable).to.be.an('object');\n  expect(writable.write).to.be.a('function');\n  expect(writable.end).to.be.a('function');\n});\n\ntest(\"Transform stream can be created\", function() {\n  const transform = new Transform({\n    transform(chunk, enc, cb) { cb(null, chunk.toString().toUpperCase()); }\n  });\n  expect(transform).to.be.an('object');\n  expect(transform.write).to.be.a('function');\n  expect(transform.read).to.be.a('function');\n});\n\ntest(\"Duplex stream can be created\", function() {\n  const duplex = new Duplex({\n    read() {},\n    write(chunk, enc, cb) { cb(); }\n  });\n  expect(duplex).to.be.an('object');\n  expect(duplex.read).to.be.a('function');\n  expect(duplex.write).to.be.a('function');\n});\n\ntest(\"pipeline is a function\", function() {\n  expect(pipeline).to.be.a('function');\n});"
+}

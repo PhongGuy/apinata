@@ -1,0 +1,60 @@
+info:
+  name: users
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: https://{{host}}/users/:id?page=2
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+    - name: X-Debug
+      value: "1"
+      disabled: true
+  params:
+    - name: page
+      value: "2"
+      type: query
+    - name: id
+      value: "{{userId}}"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "name": "{{name}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: created
+    description: a new user
+    request:
+      url: https://{{host}}/users/:id?page=2
+      method: POST
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 7
+          }
+  - name: bad request
+    request:
+      url: https://{{host}}/users/:id?page=2
+      method: POST
+    response:
+      status: 400
+      statusText: Bad Request

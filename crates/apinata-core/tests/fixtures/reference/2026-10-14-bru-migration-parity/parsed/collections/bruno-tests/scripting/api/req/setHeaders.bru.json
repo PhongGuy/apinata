@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "name": "setHeaders",
+    "type": "http",
+    "seq": "8"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "headers": [
+    {
+      "name": "bruno",
+      "value": "is-awesome",
+      "enabled": true
+    },
+    {
+      "name": "della",
+      "value": "is-beautiful",
+      "enabled": true
+    }
+  ],
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.setHeaders({\n  \"content-type\": \"application/text\",\n  \"transaction-id\": \"foobar\"\n});"
+  },
+  "tests": "test(\"req.setHeaders()\", function() {\n  const h = req.getHeaders();\n  expect(h['content-type']).to.equal(\"application/text\");\n  expect(h['transaction-id']).to.equal(\"foobar\");\n});"
+}

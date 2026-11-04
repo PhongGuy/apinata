@@ -1,0 +1,31 @@
+info:
+  name: spacex
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: "{{localhost}}/api/graphql"
+  body:
+    query: |
+      {
+        company {
+          ceo
+        }
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.data.company.ceo
+      operator: eq
+      value: Elon Musk
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

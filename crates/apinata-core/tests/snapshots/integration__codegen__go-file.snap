@@ -1,0 +1,38 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+func main() {
+	url := "http://x.test/b"
+	body, err := os.Open("/data/body.json")
+	if err != nil {
+		panic(err)
+	}
+	defer body.Close()
+	req, err := http.NewRequest("PUT", url, body)
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Add("content-type", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
+	out, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res.Status)
+	fmt.Println(string(out))
+}

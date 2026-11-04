@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "name": "Test Multipart Redirect",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{localhost}}/api/redirect/multipart-redirect-source",
+    "body": "multipartForm",
+    "auth": "none"
+  },
+  "body": {
+    "multipartForm": [
+      {
+        "name": "test-field",
+        "value": "test-value",
+        "enabled": true,
+        "type": "text",
+        "contentType": ""
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"should successfully redirect multipart form data with 308\", function() {\n  const data = res.getBody();\n  expect(data).to.be.an('object');\n  expect(data.status).to.equal('success');\n  expect(data.method).to.equal('POST');\n  expect(data.body).to.be.an('object');\n  expect(data.body['test-field']).to.equal('test-value');\n});\n\ntest(\"should preserve POST method during redirect\", function() {\n  const data = res.getBody();\n  expect(data.method).to.equal('POST');\n});\n\ntest(\"should receive form data at target endpoint\", function() {\n  const data = res.getBody();\n  expect(data.body).to.have.property('test-field');\n  expect(data.body['test-field']).to.equal('test-value');\n});"
+}

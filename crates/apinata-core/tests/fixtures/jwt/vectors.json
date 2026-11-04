@@ -1,0 +1,111 @@
+{
+ "HS256": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.57eqIZdY3ohCx20fCdJTtl4GecHS21nTzHygjOKqeJ0",
+ "HS384": "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.qTZAfp0vMhYxpHv6WwQy70RDAMLQ7bHWlSOTnsFolSqLzuEfythV7OwjLcnaziAI",
+ "HS512": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.pwyjRULtGsZ2AguC5DJCB5jOgnCeM0hubYqz7ANPui7NGcxzKiwmxoBwY3Oa7hIfNo-CkqKbQC_87MViCBMbdQ",
+ "HS256_buffer": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.Jitda-WVVFgOiWjegakuHHdXWH08xLbMuLBOKfJhXXE",
+ "HS256_options": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImsxIiwieDV0IjoiYWJjIn0.eyJzY29wZSI6InJlYWQiLCJpYXQiOjE3MDAwMDAwMDAsIm5iZiI6MTcwMDAwMDA2MCwiZXhwIjoxNzAwMDAzNjAwLCJhdWQiOlsiYSIsImIiXSwiaXNzIjoiYXBpbmF0YSIsInN1YiI6InUxIiwianRpIjoiajEifQ.aH_HVC08acbu5Nwyj9IH9yQidjKcDflzNjfSzbGTWbE",
+ "HS256_noTimestamp": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhIjoxfQ.UC7cvJYdkKMf1F74k5Degq9YE9UWKeT3SmAMIyFbd1o",
+ "HS256_string": "eyJhbGciOiJIUzI1NiJ9.aGVsbG8.T2IADWhys8eP1WJqU-a-aUbCJieLmzFMNWTTp1d9MLA",
+ "RS256": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.f5cnnEfeqCIYGJpj3xGWoyxTqzTj8_pS2Z3QgELNqWMZaVHGovnY6xQLAJsx3cjTQTk7ChIcE8ozLYYFq7af9LelFHxwSwzaYc3Hjc_aLXmOceXiKnREj1m-dpnx8KBZoOPJqoCqxzOYkwxa64__YORwSNZwlraWu9_9CracFZrfRx-a-Il4QzxwgnTeNlMNDEClSmfK-Dds66OCTKM7wvxDIZvgeaqYUS-WXcufNQxgrzM8f5dMlk5bs5J4PFN0m8iYiCqFW7Ku9b7ONKp6cOAG5BJlqPMHr0qoSqjbLFWAE5CFGZgYf3TUY9itdOOWUe31CLbVFQgVBAQuT9bXFA",
+ "RS384": "eyJhbGciOiJSUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.QF0EaDxt22JDWHZBzaQEss1EsogOj9Q_RZTAAbI1cOVn9pPK-348O5ANMGI0hHqhLHV_Sn-yLKSdc4tSXlZVSt40Q5-GomUR3fUlt7xwZzZfvnILQMh-XqhCgBl1BNzhuSNHW8JFB9sJodOmTLnLsLMHRWrRORLFrKWqWkhKayi_6vdkw9E87R_8ub8Fn9qnRGRd9U1MnRfT1gGZjm50v_2Z7iNhkjzslWnRnn4bZo6Zp9AfNoajNFq2mMLXS0YfI46E1UuKKdKv2DrmMSv7culCIkfvx_JfiMTcu-ICD8mfUXR7xBlIhJTgt69GBnv6Frlh1V6ZiT6B7wV57S4lHg",
+ "RS512": "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.T-youO9GesPeV5FwIb2E02SRK-Mz4VgGHPeyoblpjNK6TKjIuenkzPZ5OFAgv6xgAcGQRux1xogyTOOtx6rRi_eUtRnMY-_VTEijVgWkLQUNOGa4L12DhuCOZwcpwwv7gciMn0LVDv1S1G2AAugJT8zjoqsc5CAuAgFzSVo50lmSoWFlqIpf8gQQei75ix2mayTaJLNnUyeIxJSVWjqeMzgCq_enJxs_EPnYigbsMSLTcdZeBT3PvlNNw43eJzkb3tPBgt1db0577NP_95YNFpLpHK6apwI7gCUXhebg-ZIBgiEVQvM4NYWfv7x9zxN_DLwf3Ha1NUhuMjpIX6GTIw",
+ "RS256_pkcs1": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.f5cnnEfeqCIYGJpj3xGWoyxTqzTj8_pS2Z3QgELNqWMZaVHGovnY6xQLAJsx3cjTQTk7ChIcE8ozLYYFq7af9LelFHxwSwzaYc3Hjc_aLXmOceXiKnREj1m-dpnx8KBZoOPJqoCqxzOYkwxa64__YORwSNZwlraWu9_9CracFZrfRx-a-Il4QzxwgnTeNlMNDEClSmfK-Dds66OCTKM7wvxDIZvgeaqYUS-WXcufNQxgrzM8f5dMlk5bs5J4PFN0m8iYiCqFW7Ku9b7ONKp6cOAG5BJlqPMHr0qoSqjbLFWAE5CFGZgYf3TUY9itdOOWUe31CLbVFQgVBAQuT9bXFA",
+ "PS256": "eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.RZ4NbrJuYCzN5fCfRJAMBMKwQYa0YiegnxqApqT87SSQZE327BaXy8jxgSH7Ll2TTVksu_nACtVEdgu3YPNi_6iVX-47n3k6vF1h0NuQwuW44kNzTYa4QXHcZ2n_pD8HUpvbl2XgkozkjJDkJ0SvBUMyJAuPie8Rubl4o-OTGofL27v0nzGJPgbfOlc18iaO-STrUAbMwzypuuHCenFnCGXAWIL__oxV1sNst3zs5V4B2GyYIZVPNipoYzG-MV_aMk-SvQB_oUIezFZQIVjFu6hSDn1g5mW422qQpECAFyxo3ojT2dFr8eckfri4q_Xe1iJKXH7FAMZVbTlT8EoPAg",
+ "PS384": "eyJhbGciOiJQUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.u7bbGdBSST8NuurD2h6APjeu1PJpCSdINpSpgta__GaAml9izkYCjutHhIsEZWpaGRuzpvHHeR4ZCVCdAIYjB5pfa9_0tMvmqlNQ--ofJ2DiSB9mSoK38v9nzAG0VvvQSbCnzpfn9aiDlMySGCPwOOgCMYvh5STYwgMk7sQ8XvwujoB31RHl1GUfZgkksrCHkF5TLFpr632M1-ekvN-RLicVcNG_kBq0sw8FgR8LsJVMralvRP3qTUst1OVPOiUta4J5uOP_e4aIA8scq0g6I41LsrDvGhgg6LoHBYlzTyGl5M3a_VGp74hATWX3ZE6u_AYxEM7ym6r7P0sqrpxZkg",
+ "PS512": "eyJhbGciOiJQUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.ttM3x-zxgkhZez2hML5jImv4vrF9YOaKrTAaTLyEK7U-hg7LAHV4k2a21nD_g6JdVWBrmYOj7hW8rtCXYz6d__xc_L6zz7LXKkhqxh5fUJ1JBV8GJ3yfA-iR8omNKRWgC-gUOnYXio4qRSweqY1ul6fRnu2x-l-aH7p7M9kJlPFKvKBSFnhpkwMQuKba3G-c1ogsVdcYoLzl3nAVJPUBUH53ZTMH--8Y0pPwFLnI7buT32CPbICvbIqzMOuMMm8R83MgJzXrS29SoiGgw940D_Kzkh4BIjoy1YeNRtfimcZ7xLn0PFAHXo65DzQFBRtK-JVc1Mwffm0gU5W-KPGuZA",
+ "ES256": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.aSsSAQ_ovm21f49rZI2r-KXk6EwRAfU6c-HhpIndqCnSNL2W0m3SPfevgd2bFX47hcdQcGQS4pNmDsOsK7z0Hw",
+ "ES384": "eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkrDtnJnIOKckyIsImFkbWluIjp0cnVlLCJpYXQiOjE3MDAwMDAwMDB9.0pSY6pRzFnaP_vRfGvAAyR2Af7Izqc0xr7UGRJi9gJxQgkAbf_-_0uQWJHOOZmr598wK0vyyeBtNZUWC_nxcyhbcSh9K-0XwtUcftuAjLOi93qKvCpZrs6KMMtAw-6vf",
+ "exp": {
+  "120": 1700000120,
+  "\"1h\"": 1700003600,
+  "\"7d\"": 1700604800,
+  "\"2 days\"": 1700172800,
+  "\"1.5h\"": 1700005400,
+  "\"90s\"": 1700000090,
+  "\"60\"": 1700000000,
+  "\"1y\"": 1731557600,
+  "\"-1h\"": 1699996400,
+  "\"100ms\"": 1700000000
+ },
+ "signErrors": {
+  "bad_timespan": [
+   "Error",
+   "\"expiresIn\" should be a number of seconds or string representing a timespan eg: \"1d\", \"20h\", 60",
+   null
+  ],
+  "claim_on_string": [
+   "Error",
+   "invalid expiresIn option for string payload",
+   null
+  ],
+  "hs_with_rsa": [
+   "Error",
+   "secretOrPrivateKey must be a symmetric key when using HS256",
+   null
+  ],
+  "rs_with_secret": [
+   "Error",
+   "secretOrPrivateKey must be an asymmetric key when using RS256",
+   null
+  ],
+  "no_key": [
+   "Error",
+   "secretOrPrivateKey must have a value",
+   null
+  ],
+  "bad_alg": [
+   "Error",
+   "\"algorithm\" must be a valid string enum value",
+   null
+  ],
+  "exp_conflict": [
+   "Error",
+   "Bad \"options.expiresIn\" option the payload already has an \"exp\" property.",
+   null
+  ]
+ },
+ "verifyErrors": {
+  "malformed": [
+   "JsonWebTokenError",
+   "jwt malformed",
+   null
+  ],
+  "bad_signature": [
+   "JsonWebTokenError",
+   "invalid signature",
+   null
+  ],
+  "expired": [
+   "TokenExpiredError",
+   "jwt expired",
+   "2023-11-14T23:13:20.000Z"
+  ],
+  "not_before": [
+   "NotBeforeError",
+   "jwt not active",
+   "2100-01-01T00:00:00.000Z"
+  ],
+  "audience": [
+   "JsonWebTokenError",
+   "jwt audience invalid. expected: c",
+   null
+  ],
+  "issuer": [
+   "JsonWebTokenError",
+   "jwt issuer invalid. expected: x",
+   null
+  ],
+  "algorithm": [
+   "JsonWebTokenError",
+   "invalid algorithm",
+   null
+  ],
+  "rs_with_secret": [
+   "JsonWebTokenError",
+   "invalid algorithm",
+   null
+  ]
+ },
+ "expiredToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMzYwMH0.F7J16QQJ7KbsW8o-qqKD6ayTl5lyajvnU7A361VzXjE",
+ "futureToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MTk2NDYzOH0.csMbRXs08Wr0HoBttbIg5XCmnVxLMeQQy_hNU0N4Tis"
+}

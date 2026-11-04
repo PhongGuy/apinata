@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "name": "Verb options",
+    "type": "http",
+    "seq": "2"
+  },
+  "http": {
+    "method": "options",
+    "url": "https://example.com/options?x=1",
+    "body": "none",
+    "auth": "none"
+  }
+}

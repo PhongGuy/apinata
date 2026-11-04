@@ -1,0 +1,65 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+### collection 0: AWS Signature Auth - collection
+== aws-signature-auth-headers.yml
+info:
+  name: aws-signature-auth-headers
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{url}}"
+
+runtime:
+  variables:
+    - name: secretVarKey
+      value: "{{secretKey}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== aws-signature-auth-query-params.yml
+info:
+  name: aws-signature-auth-query-params
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{url}}"
+
+runtime:
+  variables:
+    - name: awsRegion
+      value: eu-west-1
+    - name: secretKey
+      value: test-secret-key-overriden
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: AWS Signature Auth - collection
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Converted aws-signature-auth-headers / auth: `aws-signature` auth is not supported; imported as no auth (aws-signature-auth-headers.yml)
+Dropped aws-signature-auth-headers / testScript: scripts are not imported (aws-signature-auth-headers.yml)
+Converted aws-signature-auth-query-params / auth: `aws-signature` auth is not supported; imported as no auth (aws-signature-auth-query-params.yml)
+Dropped aws-signature-auth-query-params / testScript: scripts are not imported (aws-signature-auth-query-params.yml)

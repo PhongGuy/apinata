@@ -1,0 +1,75 @@
+[package]
+name = "apinata-app"
+version.workspace = true
+description = "The apinata desktop app: GPUI shell over apinata-core"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# One integration binary: tests/main.rs declares every test file as a module.
+autotests = false
+
+[dependencies]
+apinata-core = { path = "../apinata-core", features = ["update"] }
+ryu-js.workspace = true
+gpui-kit.workspace = true
+async-channel.workspace = true
+tree-sitter-c-sharp.workspace = true
+tree-sitter-graphql.workspace = true
+lsp-types.workspace = true
+chrono.workspace = true
+notify-debouncer-full.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+serde.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
+gethostname.workspace = true
+tempfile.workspace = true
+base64.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
+# Already in the lock through gpui; pinned to that version so only one copy builds.
+quick-xml = "=0.41.0"
+# Same version gpui links, so `RgbaImage` is the type `WindowOptions.icon` takes.
+image = { version = "=0.25.10", default-features = false, features = ["png", "gif", "jpeg", "webp", "bmp"] }
+# Unused directly: turns on `debug-embed` for the kit's icon set, so debug builds carry
+# their SVGs instead of reading them from the cargo registry at runtime.
+rust-embed = { version = "=8.13.0", features = ["debug-embed"] }
+
+# Plain build dependency: build.rs checks the target OS, which a cfg table cannot.
+[build-dependencies]
+winresource = "=0.1.31"
+
+[dev-dependencies]
+aes-gcm.workspace = true
+socket2 = { workspace = true }
+gpui-kit = { workspace = true, features = ["test-support"] }
+wiremock.workspace = true
+tokio = { workspace = true, features = ["net", "io-util"] }
+
+# Packaging config without secrets; `cargo xtask packager-config` completes it per build.
+[package.metadata.packager]
+productName = "Apinata"
+identifier = "dev.apinata.app"
+description = "A native, local-first API client"
+longDescription = "Apinata sends HTTP requests stored as plain OpenCollection YAML files, one per request, ready for git."
+authors = ["The Apinata authors"]
+category = "DeveloperTool"
+binaries = [{ path = "apinata-app", main = true }, { path = "apinata", main = false }]
+icons = [
+    "../../assets/icon/generated/png/*.png",
+    "../../assets/icon/generated/apinata.icns",
+    "../../assets/icon/generated/apinata.ico",
+]
+# Third-party licence texts for the bundled fonts and icons, installed flat beside the binary.
+resources = ["../../licenses/*.txt"]
+
+[package.metadata.packager.deb]
+depends = ["libxcb1", "libxkbcommon0", "libxkbcommon-x11-0", "libvulkan1", "libwayland-client0", "libwayland-egl1", "libegl1"]
+section = "devel"
+# cargo-packager's default template plus StartupWMClass, so the shell matches the window to it.
+desktopTemplate = "packaging/apinata-app.desktop"
+
+# A single test executable keeps the link count (and the target dir) small.
+[[test]]
+name = "integration"
+path = "tests/main.rs"

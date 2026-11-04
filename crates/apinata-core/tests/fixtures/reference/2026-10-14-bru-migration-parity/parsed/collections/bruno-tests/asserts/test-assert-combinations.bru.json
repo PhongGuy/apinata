@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "name": "test-assert-combinations",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{httpfaker}}/api/echo/custom",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"type\": \"application/json\",\n  \"contentJSON\": {\n    \"string\": \"foo\",\n    \"stringWithSQuotes\": \"'foo'\",\n    \"stringWithDQuotes\": \"\\\"foo\\\"\",\n    \"number\": 123,\n    \"numberAsString\": \"123\",\n    \"numberAsStringWithSQuotes\": \"'123'\",\n    \"numberAsStringWithDQuotes\": \"\\\"123\\\"\",\n    \"numberAsStringWithLeadingZero\": \"0123\",\n    \"numberBig\": 9007199254740992000,\n    \"numberBigAsString\": \"9007199254740991999\",\n    \"null\": null,\n    \"nullAsString\": \"null\",\n    \"nullAsStringWithSQuotes\": \"'null'\",\n    \"nullAsStringWithDQuotes\": \"\\\"null\\\"\",\n    \"true\": true,\n    \"trueAsString\": \"true\",\n    \"trueAsStringWithSQuotes\": \"'true'\",\n    \"trueAsStringWithDQuotes\": \"\\\"true\\\"\",\n    \"false\": false,\n    \"falseAsString\": \"false\",\n    \"falseAsStringWithSQuotes\": \"'false'\",\n    \"falseAsStringWithDQuotes\": \"\\\"false\\\"\",\n    \"stringWithCurlyBraces\": \"{foo}\",\n    \"stringWithDoubleCurlyBraces\": \"{{foobar}}\"\n  }\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.body.string",
+      "value": "eq foo",
+      "enabled": true
+    },
+    {
+      "name": "res.body.string",
+      "value": "eq 'foo'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.string",
+      "value": "eq \"foo\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.stringWithSQuotes",
+      "value": "eq \"'foo'\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.stringWithDQuotes",
+      "value": "eq '\"foo\"'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.number",
+      "value": "eq 123",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberAsString",
+      "value": "eq '123'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberAsString",
+      "value": "eq \"123\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberAsStringWithSQuotes",
+      "value": "eq \"'123'\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberAsStringWithDQuotes",
+      "value": "eq '\"123\"'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberAsStringWithLeadingZero",
+      "value": "eq \"0123\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberBig.toString()",
+      "value": "eq '9007199254740992000'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.numberBigAsString",
+      "value": "eq \"9007199254740991999\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.null",
+      "value": "eq null",
+      "enabled": true
+    },
+    {
+      "name": "res.body.nullAsString",
+      "value": "eq \"null\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.nullAsStringWithSQuotes",
+      "value": "eq \"'null'\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.nullAsStringWithDQuotes",
+      "value": "eq '\"null\"'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.true",
+      "value": "eq true",
+      "enabled": true
+    },
+    {
+      "name": "res.body.trueAsString",
+      "value": "eq \"true\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.trueAsStringWithSQuotes",
+      "value": "eq \"'true'\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.trueAsStringWithDQuotes",
+      "value": "eq '\"true\"'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.false",
+      "value": "eq false",
+      "enabled": true
+    },
+    {
+      "name": "res.body.falseAsString",
+      "value": "eq \"false\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.falseAsStringWithSQuotes",
+      "value": "eq \"'false'\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.falseAsStringWithDQuotes",
+      "value": "eq '\"false\"'",
+      "enabled": true
+    },
+    {
+      "name": "res.body.nonexistent",
+      "value": "eq undefined",
+      "enabled": true
+    },
+    {
+      "name": "res.body.stringWithCurlyBraces",
+      "value": "eq \"{foo}\"",
+      "enabled": true
+    },
+    {
+      "name": "res.body.stringWithDoubleCurlyBraces",
+      "value": "eq \"{{foobar}}\"",
+      "enabled": true
+    }
+  ]
+}

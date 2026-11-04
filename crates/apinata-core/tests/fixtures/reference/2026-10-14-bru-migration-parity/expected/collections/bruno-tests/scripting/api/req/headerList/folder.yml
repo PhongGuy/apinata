@@ -1,0 +1,12 @@
+info:
+  name: Untitled Folder
+  type: folder
+
+request:
+  headers:
+    - name: x-disabled
+      value: folder-hidden-value
+      disabled: true
+    - name: x-folder-only-disabled
+      value: folder-only-hidden
+      disabled: true

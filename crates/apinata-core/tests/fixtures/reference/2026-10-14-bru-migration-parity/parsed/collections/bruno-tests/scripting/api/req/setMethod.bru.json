@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "name": "setMethod",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    },
+    {
+      "name": "res.body",
+      "value": "eq pong",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "req": "req.setMethod(\"GET\");"
+  },
+  "tests": "test(\"req.setMethod()()\", function() {\n  const method = req.getMethod();\n  expect(method).to.equal(\"GET\");\n});"
+}

@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-fs",
+    "type": "http",
+    "seq": "13"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const fs = require('node:fs');\nconst path = require('node:path');\nconst os = require('node:os');\n\n// Setup - create test directory and file\nconst testDir = path.join(os.tmpdir(), 'bruno-fs-test-' + Date.now());\nconst testFile = path.join(testDir, 'test.txt');\nfs.mkdirSync(testDir, { recursive: true });\nfs.writeFileSync(testFile, 'Hello Bruno!');\n\ntest(\"fs.existsSync\", function() {\n  expect(fs.existsSync(testDir)).to.equal(true);\n  expect(fs.existsSync(testFile)).to.equal(true);\n  expect(fs.existsSync('/nonexistent')).to.equal(false);\n});\n\ntest(\"fs.readFileSync\", function() {\n  expect(fs.readFileSync(testFile, 'utf8')).to.equal('Hello Bruno!');\n  expect(Buffer.isBuffer(fs.readFileSync(testFile))).to.equal(true);\n});\n\ntest(\"fs.appendFileSync\", function() {\n  fs.appendFileSync(testFile, ' Appended.');\n  expect(fs.readFileSync(testFile, 'utf8')).to.equal('Hello Bruno! Appended.');\n});\n\ntest(\"fs.statSync\", function() {\n  const fileStat = fs.statSync(testFile);\n  expect(fileStat.isFile()).to.equal(true);\n  expect(fileStat.isDirectory()).to.equal(false);\n\n  const dirStat = fs.statSync(testDir);\n  expect(dirStat.isDirectory()).to.equal(true);\n});\n\ntest(\"fs.readdirSync\", function() {\n  const files = fs.readdirSync(testDir);\n  expect(files).to.include('test.txt');\n});\n\ntest(\"fs.copyFileSync and fs.renameSync\", function() {\n  const copyPath = path.join(testDir, 'copy.txt');\n  const renamePath = path.join(testDir, 'renamed.txt');\n\n  fs.copyFileSync(testFile, copyPath);\n  expect(fs.existsSync(copyPath)).to.equal(true);\n\n  fs.renameSync(copyPath, renamePath);\n  expect(fs.existsSync(copyPath)).to.equal(false);\n  expect(fs.existsSync(renamePath)).to.equal(true);\n\n  // Cleanup\n  fs.unlinkSync(renamePath);\n});\n\n// Cleanup\nfs.unlinkSync(testFile);\nfs.rmdirSync(testDir);"
+}

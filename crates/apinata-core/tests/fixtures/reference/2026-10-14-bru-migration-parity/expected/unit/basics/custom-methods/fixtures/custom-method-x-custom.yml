@@ -1,0 +1,15 @@
+info:
+  name: Custom Method X-CUSTOM
+  type: http
+  seq: 2
+
+http:
+  method: X-CUSTOM
+  url: https://api.example.com/x-custom
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

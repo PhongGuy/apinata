@@ -1,0 +1,18 @@
+info:
+  name: request_1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/one
+  auth:
+    type: bearer
+    token: t0k
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

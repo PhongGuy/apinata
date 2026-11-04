@@ -1,0 +1,239 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "count",
+        "value": 42,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "ratio",
+        "value": 1.5,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "hex",
+        "value": 31,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "bad",
+        "value": "forty",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "blank",
+        "value": "",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "huge",
+        "value": "Infinity",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "flag",
+        "value": true,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "off",
+        "value": false,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "maybe",
+        "value": "TRUE",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "obj",
+        "value": {
+          "a": 1,
+          "b": [
+            1,
+            2.5
+          ],
+          "c": null
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "arr",
+        "value": [
+          1,
+          2
+        ],
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "notjson",
+        "value": "{a}",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "scalar",
+        "value": "5",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      },
+      {
+        "name": "str",
+        "value": "12",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "string"
+          }
+        ],
+        "local": false
+      },
+      {
+        "name": "last-string",
+        "value": "7",
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          },
+          {
+            "name": "string"
+          }
+        ],
+        "local": false
+      },
+      {
+        "name": "last-number",
+        "value": 7,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "string"
+          },
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "local-flag",
+        "value": true,
+        "enabled": false,
+        "annotations": [
+          {
+            "name": "description",
+            "value": "typed and described"
+          },
+          {
+            "name": "boolean"
+          }
+        ],
+        "description": "typed and described",
+        "dataType": "boolean",
+        "local": true
+      },
+      {
+        "name": "plain",
+        "value": "text",
+        "enabled": true,
+        "local": false
+      }
+    ]
+  }
+}

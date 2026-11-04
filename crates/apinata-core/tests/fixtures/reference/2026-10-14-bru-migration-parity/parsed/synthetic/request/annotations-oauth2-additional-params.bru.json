@@ -1,0 +1,70 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "oauth2"
+  },
+  "auth": {
+    "oauth2": {
+      "grantType": "client_credentials",
+      "accessTokenUrl": "",
+      "refreshTokenUrl": "",
+      "clientId": "",
+      "clientSecret": "",
+      "scope": "",
+      "credentialsPlacement": "body",
+      "credentialsId": "credentials",
+      "tokenSource": "access_token",
+      "tokenPlacement": "header",
+      "tokenHeaderPrefix": "",
+      "tokenQueryKey": "access_token",
+      "autoFetchToken": true,
+      "autoRefreshToken": false
+    }
+  },
+  "oauth2_additional_parameters_auth_req_headers": [
+    {
+      "name": "x-auth",
+      "value": "1",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "auth header"
+        }
+      ],
+      "description": "auth header"
+    }
+  ],
+  "oauth2_additional_parameters_access_token_req_queryparams": [
+    {
+      "name": "resource",
+      "value": "r",
+      "enabled": false,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "token query"
+        },
+        {
+          "name": "extra"
+        }
+      ],
+      "description": "token query"
+    }
+  ],
+  "oauth2_additional_parameters_refresh_token_req_bodyvalues": [
+    {
+      "name": "rb",
+      "value": "6",
+      "enabled": true,
+      "annotations": [
+        {
+          "name": "description",
+          "value": "refresh\nbody"
+        }
+      ],
+      "description": "refresh\nbody"
+    }
+  ]
+}

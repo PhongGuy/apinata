@@ -1,0 +1,24 @@
+info:
+  name: folder_1
+  type: folder
+  seq: 1
+
+request:
+  auth:
+    type: oauth1
+    consumerKey: fk
+    consumerSecret: ""
+    accessToken: ""
+    accessTokenSecret: ""
+    callbackUrl: ""
+    verifier: ""
+    signatureMethod: HMAC-SHA1
+    privateKey:
+      type: text
+      value: ""
+    timestamp: ""
+    nonce: ""
+    version: "1.0"
+    realm: ""
+    placement: body
+    includeBodyHash: false

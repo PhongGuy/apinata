@@ -1,0 +1,13 @@
+{
+  "http": {
+    "method": "post",
+    "url": "https://example.com/bodies",
+    "body": "json"
+  },
+  "body": {
+    "json": "{\n  \"a\": [1, 2]\n}",
+    "text": "plain text\n three spaces",
+    "xml": "<root><a>1</a></root>",
+    "sparql": "SELECT * WHERE { ?s ?p ?o }"
+  }
+}

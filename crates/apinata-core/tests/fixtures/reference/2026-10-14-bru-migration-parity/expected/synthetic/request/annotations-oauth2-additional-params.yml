@@ -1,0 +1,36 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+  auth:
+    type: oauth2
+    flow: client_credentials
+    credentials:
+      placement: body
+    additionalParameters:
+      accessTokenRequest:
+        - name: resource
+          placement: query
+          value: r
+      refreshTokenRequest:
+        - name: rb
+          placement: body
+          value: "6"
+    tokenConfig:
+      id: credentials
+      placement:
+        header: ""
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

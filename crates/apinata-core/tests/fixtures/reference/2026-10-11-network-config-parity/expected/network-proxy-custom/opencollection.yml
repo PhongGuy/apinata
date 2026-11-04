@@ -1,0 +1,18 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: false
+    config:
+      protocol: http
+      hostname: proxy.test
+      port: "3128"
+      auth:
+        username: u
+        password: "{{process.env.APINATA_PROXY_PASSWORD}}"
+      bypassProxy: localhost,.internal
+bundled: false
+extensions: {}

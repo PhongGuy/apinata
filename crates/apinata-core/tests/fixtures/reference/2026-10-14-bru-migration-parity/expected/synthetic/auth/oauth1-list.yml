@@ -1,0 +1,30 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+  auth:
+    type: oauth1
+    consumerSecret: ""
+    accessToken: ""
+    accessTokenSecret: ""
+    callbackUrl: ""
+    verifier: ""
+    signatureMethod: ""
+    privateKey:
+      type: text
+      value: k
+    timestamp: ""
+    nonce: ""
+    version: ""
+    placement: ""
+    includeBodyHash: false
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

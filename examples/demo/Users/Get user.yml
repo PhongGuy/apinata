@@ -1,0 +1,27 @@
+info:
+  name: Get user
+  type: http
+  seq: 2
+  tags:
+    - smoke
+    - data
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users/{{userId}}"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Fetches the user named by `userId`. Run it with `examples/demo-data/users.csv` as the data file to fetch users 1 to 3, one per iteration.

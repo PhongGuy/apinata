@@ -1,0 +1,9 @@
+info:
+  name: folder_1
+  type: folder
+  seq: 1
+
+request:
+  scripts:
+    - type: before-request
+      code: bru.setVar("f", 1);

@@ -1,0 +1,14 @@
+opencollection: 1.0.0
+
+info:
+  name: Sample Postman Collection
+
+docs:
+  content: A simple collection for testing imports
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git

@@ -1,0 +1,12 @@
+---
+source: crates/apinata-core/tests/codegen.rs
+expression: "generate(&req, target)"
+---
+# AWS Signature auth is not included in this snippet.
+import requests
+
+url = 'http://x.test/aws'
+
+response = requests.request('GET', url)
+print(response.status_code)
+print(response.text)

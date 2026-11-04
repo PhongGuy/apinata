@@ -1,0 +1,16 @@
+info:
+  name: Request with Auth Forwarding
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://echo.usebruno.com/api/get
+  auth: inherit
+
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 10
+  forwardAuthorizationHeader: true

@@ -1,0 +1,162 @@
+# Builds release artifacts on a v* tag and drafts a GitHub release that a human publishes.
+# A manual run builds a chosen set of platforms; with dry_run it drafts nothing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build without drafting a release
+        type: boolean
+        default: true
+      platforms:
+        description: Comma-separated subset of linux,windows,macos,macos-arm64 (macOS bills 10x)
+        type: string
+        default: linux,windows,macos
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  LINUX_BUILD_DEPS: pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libvulkan1 libegl1
+
+jobs:
+  guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.guard.outputs.version }}
+      matrix: ${{ steps.guard.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: guard
+        env:
+          DRY_RUN: ${{ inputs.dry_run || false }}
+          PLATFORMS: ${{ inputs.platforms }}
+        run: scripts/release.sh guard "$GITHUB_REF_TYPE" "$GITHUB_REF_NAME" "$DRY_RUN" "$PLATFORMS" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: guard
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.guard.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $LINUX_BUILD_DEPS xvfb
+      - name: Install make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make --version=4.4.1 --no-progress -y
+      - name: Install cargo-packager
+        run: cargo install --locked cargo-packager --version 0.11.8
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        env:
+          APINATA_UPDATE_MANIFEST_URL: ${{ vars.APINATA_UPDATE_MANIFEST_URL }}
+          APINATA_DOWNLOAD_PAGE_URL: ${{ vars.APINATA_DOWNLOAD_PAGE_URL }}
+        run: make package
+      - name: Package (macOS, Windows)
+        if: runner.os != 'Linux'
+        env:
+          APINATA_UPDATE_MANIFEST_URL: ${{ vars.APINATA_UPDATE_MANIFEST_URL }}
+          APINATA_DOWNLOAD_PAGE_URL: ${{ vars.APINATA_DOWNLOAD_PAGE_URL }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: make package-release
+      - name: Drop per-runner checksums
+        run: rm -f target/dist/*/SHA256SUMS
+      # Rooted at the platform directory, so the merged download in checksums is flat.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: target/dist/${{ runner.os == 'Linux' && 'linux' || runner.os == 'macOS' && 'macos' || 'windows' }}/
+          if-no-files-found: error
+
+  checksums:
+    needs: [guard, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS
+        run: scripts/release.sh sums dist
+      # The manifest is built and signed only on tag runs with an update base URL configured.
+      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: Install cargo-packager
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        run: cargo install --locked cargo-packager --version 0.11.8
+      - name: Write the update manifest
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          UPDATE_BASE_URL: ${{ vars.APINATA_UPDATE_BASE_URL }}
+        run: scripts/release.sh manifest dist "$VERSION" "$UPDATE_BASE_URL" "$GITHUB_REF_NAME" update
+      - name: Sign the update manifest
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+        run: cargo packager signer sign update/latest.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ needs.guard.outputs.version }}
+          path: |
+            dist/*
+            update/*
+          if-no-files-found: error
+      - name: Draft the release
+        if: github.ref_type == 'tag' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Apinata $VERSION" --generate-notes dist/*
+          if [ -f update/latest.json.sig ]; then
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              update/latest.json
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              update/latest.json.sig
+          fi
+          # Version-free copies for releases/latest/download links; kept out of dist/ so
+          # SHA256SUMS and the manifest never list them.
+          scripts/release.sh stable dist stable
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" stable/*

@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "directIteration",
+    "type": "http",
+    "seq": "12"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\nconst host = bru.getEnvVar('localhost');\nawait jar.setCookies(host, [\n  {\n    key: 'x',\n    value: '10',\n    path: '/'\n  },\n  {\n    key: 'y',\n    value: '20',\n    path: '/'\n  }\n]);"
+  },
+  "tests": "test(\"each() should iterate over all cookies\", function() {\n  const keys = [];\n  bru.cookies.each(function(cookie) {\n    keys.push(cookie.key);\n  });\n  expect(keys).to.include('x');\n  expect(keys).to.include('y');\n});\n\ntest(\"find() should return matching cookie\", function() {\n  const cookie = bru.cookies.find(function(c) { return c.key === 'x'; });\n  expect(cookie).to.have.property('value', '10');\n});\n\ntest(\"find() should return undefined when no match\", function() {\n  const cookie = bru.cookies.find(function(c) { return c.key === 'zzz'; });\n  expect(cookie).to.be.undefined;\n});\n\ntest(\"filter() should return array of matching cookies\", function() {\n  const result = bru.cookies.filter(function(c) { return c.key === 'y'; });\n  expect(result).to.be.an('array');\n  expect(result.length).to.equal(1);\n  expect(result[0]).to.have.property('value', '20');\n});\n\ntest(\"map() should transform cookies\", function() {\n  const keys = bru.cookies.map(function(c) { return c.key; });\n  expect(keys).to.be.an('array');\n  expect(keys).to.include('x');\n  expect(keys).to.include('y');\n});\n\ntest(\"reduce() should accumulate over cookies\", function() {\n  const result = bru.cookies.reduce(function(acc, c) { return acc + c.key + ','; }, '');\n  expect(result).to.be.a('string');\n  expect(result).to.contain('x,');\n  expect(result).to.contain('y,');\n});\n\ntest(\"indexOf() should find a cookie by structural equality\", function() {\n  const cookie = bru.cookies.one('x');\n  const idx = bru.cookies.indexOf(cookie);\n  expect(idx).to.be.at.least(0);\n});\n\ntest(\"indexOf() should return -1 for non-existent cookie\", function() {\n  const idx = bru.cookies.indexOf({ key: 'nonexistent', value: 'nope' });\n  expect(idx).to.equal(-1);\n});\n\ntest(\"idx() out-of-bounds should return undefined\", function() {\n  const result = bru.cookies.idx(999);\n  expect(result).to.be.undefined;\n});\n\nconst jar = bru.cookies.jar()\nawait jar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

@@ -1,0 +1,48 @@
+---
+source: crates/apinata-core/tests/export_snapshots.rs
+expression: rendered(&out)
+---
+{
+  "id": "4e49ba52-6ed7-567c-9084-30fba43dcc3a",
+  "name": "Local",
+  "values": [
+    {
+      "key": "echo-host",
+      "value": "https://echo.usebruno.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "host",
+      "value": "http://localhost:8080",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "localhost",
+      "value": "http://localhost:8081",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "typed_env_bool",
+      "value": "true",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "typed_env_num",
+      "value": "300",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "typed_env_obj",
+      "value": "{\"scope\":\"env\"}",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
+--- notes

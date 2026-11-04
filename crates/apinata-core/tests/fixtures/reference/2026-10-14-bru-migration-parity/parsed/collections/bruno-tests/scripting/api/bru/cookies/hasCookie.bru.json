@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "hasCookie",
+    "type": "http",
+    "seq": "10"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\njar.setCookie(\"https://testbench-sanity.usebruno.com\", \"existing_cookie\", \"some_value\")"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\ntest(\"should return true for a cookie that exists\", async function() {\n  const exists = await jar.hasCookie('https://testbench-sanity.usebruno.com', 'existing_cookie');\n  expect(exists).to.be.true;\n});\n\ntest(\"should return false for a cookie that does not exist\", async function() {\n  const exists = await jar.hasCookie('https://testbench-sanity.usebruno.com', 'nonexistent_cookie');\n  expect(exists).to.be.false;\n});\n\njar.hasCookie(\"https://testbench-sanity.usebruno.com\", \"existing_cookie\", function(error, exists) {\n  test(\"should work with callback pattern\", function() {\n    expect(error).to.be.null;\n    expect(exists).to.be.true;\n  });\n});\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

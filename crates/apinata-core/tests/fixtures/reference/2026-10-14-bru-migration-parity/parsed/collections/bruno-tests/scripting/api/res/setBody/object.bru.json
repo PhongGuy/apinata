@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "object",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "body": {
+    "json": "{\n  \"hello\": \"bruno\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "script": {
+    "res": "res.setBody({\n  hello : \"hello from post-res\"\n})"
+  },
+  "tests": "test(\"res.setBody(object)\", function() {\n  const body = res.getBody();\n  expect(body.hello).to.eql(\"hello from post-res\");\n});\n"
+}

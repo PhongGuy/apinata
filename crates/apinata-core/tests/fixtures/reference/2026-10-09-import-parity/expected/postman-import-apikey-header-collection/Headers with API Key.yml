@@ -1,0 +1,24 @@
+info:
+  name: Headers with API Key
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.com/users?X-API-KEY=12345
+  params:
+    - name: X-API-KEY
+      value: "12345"
+      type: query
+  auth:
+    type: apikey
+    key: hii
+    value: hello
+    placement: header
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

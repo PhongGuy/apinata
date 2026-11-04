@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "name": "3",
+    "type": "http",
+    "seq": "3"
+  },
+  "http": {
+    "method": "post",
+    "url": "https://echo.usebruno.com",
+    "body": "none",
+    "auth": "none"
+  }
+}

@@ -1,0 +1,16 @@
+get {
+  url: https://example.com
+}
+
+settings {
+  encodeUrl: true
+  timeout: 5000
+  followRedirects: false
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+  keepAliveInterval: 30
+  omitHeaders: [
+    User-Agent
+    accept_encoding
+  ]
+}

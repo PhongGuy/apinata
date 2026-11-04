@@ -1,0 +1,30 @@
+meta {
+  name: Example multiline pair
+  type: http
+  seq: 7
+}
+
+get {
+  url: https://api.example.com/items/3
+}
+
+example {
+  name: Multiline
+  request: {
+    headers: {
+      x-multi: '''
+        first
+        second
+      '''
+      x-after: tail
+    }
+  }
+  response: {
+    headers: {
+      x-multi: '''
+        alpha
+        beta
+      '''
+    }
+  }
+}

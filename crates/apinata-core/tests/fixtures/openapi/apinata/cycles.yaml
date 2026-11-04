@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info: {title: Cycles, version: "1"}
+servers: [{url: https://cycles.example.test}]
+paths:
+  /nodes:
+    post:
+      summary: Create node
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Node'}
+  /loop:
+    $ref: '#/paths/~1loop'
+  /pair:
+    get:
+      summary: Pair
+      parameters:
+        - $ref: '#/components/parameters/A'
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        name: {type: string}
+        children: {type: array, items: {$ref: '#/components/schemas/Node'}}
+  parameters:
+    A: {$ref: '#/components/parameters/B'}
+    B: {$ref: '#/components/parameters/A'}

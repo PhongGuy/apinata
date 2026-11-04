@@ -1,0 +1,9 @@
+info:
+  name: Folder A
+  type: folder
+  seq: 2
+
+request:
+  headers:
+    - name: x-folder
+      value: a

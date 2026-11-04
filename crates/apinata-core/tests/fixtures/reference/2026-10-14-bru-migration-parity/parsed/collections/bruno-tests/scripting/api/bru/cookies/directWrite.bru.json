@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "directWrite",
+    "type": "http",
+    "seq": "13"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\nawait jar.clear();"
+  },
+  "tests": "const jar = bru.cookies.jar()\n\nawait bru.cookies.add({ key: 'a', value: '1' });\ntest(\"add() should add a new cookie\", function() {\n  expect(bru.cookies.get('a')).to.equal('1');\n});\n\nawait bru.cookies.upsert({ key: 'a', value: '2' });\ntest(\"upsert() should update an existing cookie\", function() {\n  expect(bru.cookies.get('a')).to.equal('2');\n});\n\nawait bru.cookies.upsert({ key: 'newCookie', value: 'inserted' });\ntest(\"upsert() should insert a cookie that does not exist\", function() {\n  expect(bru.cookies.has('newCookie')).to.be.true;\n  expect(bru.cookies.get('newCookie')).to.equal('inserted');\n});\nawait bru.cookies.remove('newCookie');\n\nawait bru.cookies.remove('a');\ntest(\"remove() should remove a cookie\", function() {\n  expect(bru.cookies.has('a')).to.be.false;\n});\n\nawait bru.cookies.add({ key: 'b', value: '3' });\nawait bru.cookies.delete('b');\ntest(\"delete() should delete a cookie\", function() {\n  expect(bru.cookies.has('b')).to.be.false;\n});\n\nawait bru.cookies.add({ key: 'c', value: '4' });\ntest(\"clear() should remove all cookies after add\", function() {\n  expect(bru.cookies.count()).to.be.at.least(1);\n});\nawait bru.cookies.clear();\ntest(\"clear() should leave zero cookies\", function() {\n  expect(bru.cookies.count()).to.equal(0);\n});\n\nawait jar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

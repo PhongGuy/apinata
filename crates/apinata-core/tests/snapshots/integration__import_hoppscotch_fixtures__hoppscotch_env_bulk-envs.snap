@@ -1,0 +1,21 @@
+---
+source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
+expression: text
+---
+== Env-I.yml
+name: Env-I
+variables:
+  - name: firstName
+    value: John
+  - name: lastName
+    value: Doe
+== Env-II.yml
+name: Env-II
+variables:
+  - name: baseUrl
+    value: https://echo.hoppscotch.io
+  - secret: true
+    name: secretVar
+== report
+NeedsInput [1].variables[1]: the secret `secretVar` has no value; enter it before sending (environments/Env-II.yml)
+secret to enter: Env-II / secretVar

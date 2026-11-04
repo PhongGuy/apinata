@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "folder-collection script-tests",
+    "type": "http",
+    "seq": "5"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// do not delete - the collection/folder scripts/tests run during this request execution"
+  },
+  "tests": "const collectionHeader = req.getHeader(\"collection-header\");\nconst folderHeader = req.getHeader(\"folder-header\");\n\ntest(\"should get the header value set at collection level\", function() {\n  expect(collectionHeader).to.equal(\"collection-header-value\");\n});\n\ntest(\"should get the header value set at folder level\", function() {\n  expect(folderHeader).to.equal(\"folder-header-value\");\n});"
+}

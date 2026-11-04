@@ -1,0 +1,30 @@
+info:
+  name: request_1
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.example.com/one
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: happy
+    description: |-
+      the happy path
+      with two lines
+    request:
+      url: https://api.example.com/one
+      method: GET
+    response:
+      status: 201
+      statusText: Created
+      body:
+        type: json
+        data: "{}"

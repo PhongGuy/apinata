@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "getCookie",
+    "type": "http",
+    "seq": "1"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\n\njar.setCookie(\"https://testbench-sanity.usebruno.com\", \"name\", \"value\")"
+  },
+  "tests": "const jar = bru.cookies.jar()\n// Await so the callback runs before jar.clear() below; otherwise the test script can finish\n// before the callback registers/runs the test, causing a flaky failure (e.g. in CI).\nawait jar.getCookie(\"https://testbench-sanity.usebruno.com\", \"name\", function(error, data) {\n  if(error) {\n    console.error(\"Cookie retrieval error:\", error)\n    throw new Error(`Failed to get cookie: ${error.message || error}`)\n  }\n  \n  test(\"should successfully retrieve cookie data\", function() {\n    expect(data).to.have.property('key');\n    expect(data).to.have.property('value');\n    expect(data.key).to.equal(\"name\");\n    expect(data.value).to.be.a('string');\n    expect(data.value).to.not.be.empty;\n    expect(data.domain).to.include('usebruno.com');\n    console.log(\"Retrieved cookie:\", data);\n  });\n})\n\njar.clear()",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

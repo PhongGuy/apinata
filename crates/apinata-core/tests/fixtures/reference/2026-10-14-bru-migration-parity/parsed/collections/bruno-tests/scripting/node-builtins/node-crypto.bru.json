@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "name": "node-crypto",
+    "type": "http",
+    "seq": "12"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{host}}/ping",
+    "body": "none",
+    "auth": "none"
+  },
+  "script": {
+    "req": "// Skip in safe mode - these tests require developer sandbox\nif (bru.isSafeMode()) {\n  bru.runner.skipRequest();\n  return;\n}"
+  },
+  "tests": "const crypto = require('node:crypto');\n\ntest(\"crypto.randomBytes\", function() {\n  const bytes = crypto.randomBytes(16);\n  expect(Buffer.isBuffer(bytes)).to.equal(true);\n  expect(bytes.length).to.equal(16);\n});\n\ntest(\"crypto.randomUUID\", function() {\n  const uuid = crypto.randomUUID();\n  expect(uuid).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);\n});\n\ntest(\"crypto.createHash\", function() {\n  const md5 = crypto.createHash('md5').update('hello').digest('hex');\n  expect(md5).to.have.lengthOf(32);\n\n  const sha256 = crypto.createHash('sha256').update('hello').digest('hex');\n  expect(sha256).to.have.lengthOf(64);\n\n  const sha512 = crypto.createHash('sha512').update('hello').digest('hex');\n  expect(sha512).to.have.lengthOf(128);\n});\n\ntest(\"crypto.createHmac\", function() {\n  const hmac = crypto.createHmac('sha256', 'secret').update('hello').digest('hex');\n  expect(hmac).to.have.lengthOf(64);\n});\n\ntest(\"crypto.getHashes and crypto.getCiphers\", function() {\n  const hashes = crypto.getHashes();\n  expect(hashes).to.be.an('array').that.includes('sha256');\n\n  const ciphers = crypto.getCiphers();\n  expect(ciphers).to.be.an('array');\n  expect(ciphers.some(c => c.includes('aes'))).to.equal(true);\n});\n\ntest(\"crypto.pbkdf2Sync\", function() {\n  const key = crypto.pbkdf2Sync('password', 'salt', 1000, 32, 'sha256');\n  expect(key.length).to.equal(32);\n});\n\ntest(\"crypto.scryptSync\", function() {\n  const key = crypto.scryptSync('password', 'salt', 32);\n  expect(key.length).to.equal(32);\n});\n\ntest(\"crypto.timingSafeEqual\", function() {\n  const a = Buffer.from('hello');\n  const b = Buffer.from('hello');\n  const c = Buffer.from('world');\n  expect(crypto.timingSafeEqual(a, b)).to.equal(true);\n  expect(crypto.timingSafeEqual(a, c)).to.equal(false);\n});\n\ntest(\"AES encryption/decryption\", function() {\n  const key = crypto.randomBytes(32);\n  const iv = crypto.randomBytes(16);\n  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);\n  let encrypted = cipher.update('secret message', 'utf8', 'hex');\n  encrypted += cipher.final('hex');\n\n  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);\n  let decrypted = decipher.update(encrypted, 'hex', 'utf8');\n  decrypted += decipher.final('utf8');\n\n  expect(decrypted).to.equal('secret message');\n});"
+}

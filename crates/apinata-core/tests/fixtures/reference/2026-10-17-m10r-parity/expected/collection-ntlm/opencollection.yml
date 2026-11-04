@@ -1,0 +1,25 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  auth:
+    type: ntlm
+    username: cu
+    password: "{{pw}}"
+    domain: CORP
+bundled: false
+extensions: {}

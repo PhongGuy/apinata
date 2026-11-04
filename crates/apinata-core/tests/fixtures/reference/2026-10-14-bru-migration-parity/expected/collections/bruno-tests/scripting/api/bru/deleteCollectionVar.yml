@@ -1,0 +1,34 @@
+info:
+  name: deleteCollectionVar
+  type: http
+  seq: 27
+
+http:
+  method: GET
+  url: "{{host}}/ping"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: bru.setCollectionVar("testDeleteCollectionVar", "to-be-deleted");
+    - type: after-response
+      code: bru.deleteCollectionVar("testDeleteCollectionVar");
+    - type: tests
+      code: |-
+        test("should delete collection var", function() {
+          const val = bru.getCollectionVar("testDeleteCollectionVar");
+          expect(val).to.be.undefined;
+        });
+
+        test("should not throw when deleting non-existent key", function() {
+          expect(function() {
+            bru.deleteCollectionVar("non-existent-key");
+          }).to.not.throw();
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

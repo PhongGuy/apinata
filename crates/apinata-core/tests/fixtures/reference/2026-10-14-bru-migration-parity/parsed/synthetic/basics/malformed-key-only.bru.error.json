@@ -1,0 +1,4 @@
+{
+  "line": 7,
+  "message": "Line 7, col 10:\n  6 |   a: 1\n> 7 |   novalue\n               ^\n  8 |   b: 2\nExpected \":\""
+}

@@ -1,0 +1,242 @@
+[
+  {
+    "id": "wsse-new",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "wsse-new-filled",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "wsse-edit",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/wsse.yml",
+    "files": [
+      "wsse.yml"
+    ]
+  },
+  {
+    "id": "wsse-edit-blank",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/wsse.yml",
+    "files": [
+      "wsse.yml"
+    ]
+  },
+  {
+    "id": "wsse-sparse",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/wsse-blank.yml",
+    "files": [
+      "wsse-blank.yml"
+    ]
+  },
+  {
+    "id": "wsse-sparse-untouched",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/wsse-blank.yml",
+    "files": [
+      "wsse-blank.yml"
+    ]
+  },
+  {
+    "id": "wsse-to-inherit",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/wsse.yml",
+    "files": [
+      "wsse.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-new",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-new-filled",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/base.yml",
+    "files": [
+      "base.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-edit",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-edit-blank",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-set",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-clear",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-invalid",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-typed-zero",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-sparse",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/edgegrid-blank.yml",
+    "files": [
+      "edgegrid-blank.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-string",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/edgegrid-max-string.yml",
+    "files": [
+      "edgegrid-max-string.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-zero",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/edgegrid-max-zero.yml",
+    "files": [
+      "edgegrid-max-zero.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-max-fraction",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/edgegrid-max-fraction.yml",
+    "files": [
+      "edgegrid-max-fraction.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-sparse-untouched",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/sparse/edgegrid-blank.yml",
+    "files": [
+      "edgegrid-blank.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-to-wsse",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "edgegrid-to-inherit",
+    "kind": "request",
+    "input": "2026-10-14-m10d-parity/normalized/synthetic/edgegrid.yml",
+    "files": [
+      "edgegrid.yml"
+    ]
+  },
+  {
+    "id": "folder-wsse",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-wsse-mode-only",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-edgegrid",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-edgegrid-mode-only",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "folder-inherit",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "collection-wsse",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "collection-edgegrid",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  },
+  {
+    "id": "collection-edgegrid-mode-only",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

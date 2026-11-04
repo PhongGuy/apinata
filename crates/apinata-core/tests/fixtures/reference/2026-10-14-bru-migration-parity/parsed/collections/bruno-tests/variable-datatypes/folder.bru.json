@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "name": "variable-datatypes",
+    "type": "collection"
+  },
+  "vars": {
+    "req": [
+      {
+        "name": "fold_str",
+        "value": "folder_string",
+        "enabled": true,
+        "local": false
+      },
+      {
+        "name": "fold_num",
+        "value": 200,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "number"
+          }
+        ],
+        "dataType": "number",
+        "local": false
+      },
+      {
+        "name": "fold_bool",
+        "value": true,
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "boolean"
+          }
+        ],
+        "dataType": "boolean",
+        "local": false
+      },
+      {
+        "name": "fold_obj",
+        "value": {
+          "scope": "folder"
+        },
+        "enabled": true,
+        "annotations": [
+          {
+            "name": "object"
+          }
+        ],
+        "dataType": "object",
+        "local": false
+      }
+    ]
+  }
+}

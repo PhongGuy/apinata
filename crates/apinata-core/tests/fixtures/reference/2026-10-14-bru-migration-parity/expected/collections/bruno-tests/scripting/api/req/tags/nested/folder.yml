@@ -1,0 +1,8 @@
+info:
+  name: nested
+  type: folder
+  seq: 1
+  tags:
+    - nested
+
+request: {}

@@ -1,0 +1,59 @@
+info:
+  name: Untitled Request
+  type: http
+
+http:
+  method: GET
+  url: https://example.com
+
+runtime:
+  variables:
+    - name: one
+      value:
+        type: number
+        data: "5"
+    - name: two
+      value:
+        type: number
+        data: |-
+          [
+            "1",
+            "2"
+          ]
+    - name: hexed
+      value:
+        type: number
+        data: "31"
+    - name: dashed
+      value:
+        type: number
+        data: "-3"
+    - name: flag
+      value:
+        type: boolean
+        data: |-
+          [
+            "true"
+          ]
+    - name: obj
+      value:
+        type: object
+        data: |-
+          [
+            "a",
+            "b"
+          ]
+    - name: word
+      value:
+        type: number
+        data: |-
+          [
+            "five"
+          ]
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

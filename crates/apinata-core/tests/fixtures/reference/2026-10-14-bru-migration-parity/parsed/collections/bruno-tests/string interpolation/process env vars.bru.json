@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "name": "process env vars",
+    "type": "http",
+    "seq": "4"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{host}}/api/echo/json",
+    "body": "json",
+    "auth": "none"
+  },
+  "auth": {
+    "basic": {
+      "username": "asd",
+      "password": "j"
+    },
+    "bearer": {
+      "token": ""
+    }
+  },
+  "body": {
+    "json": "{\n  \"bark\": \"{{bark}}\",\n  \"bark2\": \"{{process.env.PROC_ENV_VAR}}\"\n}"
+  },
+  "assertions": [
+    {
+      "name": "res.status",
+      "value": "eq 200",
+      "enabled": true
+    }
+  ],
+  "tests": "test(\"should return json\", function() {\n  expect(res.getBody()).to.eql({\n    \"bark\": \"woof\",\n    \"bark2\": \"woof\"\n  });\n});\n"
+}

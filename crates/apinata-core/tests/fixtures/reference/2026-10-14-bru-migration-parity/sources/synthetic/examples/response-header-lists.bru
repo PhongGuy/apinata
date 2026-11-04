@@ -1,0 +1,25 @@
+meta {
+  name: Example header lists
+  type: http
+  seq: 6
+}
+
+get {
+  url: https://api.example.com/items/2
+}
+
+example {
+  name: Lists
+  response: {
+    headers: {
+      x-list: [
+        one
+        two
+      ]
+      ~x-off: [
+        three
+      ]
+      x-plain: v
+    }
+  }
+}

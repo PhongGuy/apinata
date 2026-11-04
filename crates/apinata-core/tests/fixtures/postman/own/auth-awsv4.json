@@ -1,0 +1,29 @@
+{
+  "info": {
+    "_postman_id": "8e0b7a44-6a0c-4c53-8e1f-2c9b5e7d1b02",
+    "name": "AWS Signature auth",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Signed request",
+      "request": {
+        "auth": {
+          "type": "awsv4",
+          "awsv4": [
+            { "key": "accessKey", "value": "AKIDEXAMPLE", "type": "string" },
+            { "key": "secretKey", "value": "wJalrXUtnFEMI-K7MDENG-bPxRfiCYEXAMPLEKEY", "type": "string" },
+            { "key": "sessionToken", "value": "session-token-value", "type": "string" },
+            { "key": "region", "value": "eu-west-1", "type": "string" },
+            { "key": "service", "value": "execute-api", "type": "string" },
+            { "key": "addAuthDataToQuery", "value": false, "type": "boolean" }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "http://HOST/signed", "protocol": "http", "host": ["HOST"], "path": ["signed"] }
+      },
+      "response": []
+    }
+  ]
+}

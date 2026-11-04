@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "name": "Example header lists",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "get",
+    "url": "https://api.example.com/items/2"
+  },
+  "examples": [
+    {
+      "error": "Missing semantic action for 'list' in attribute 'ast'.\nAction stack (most recent call last):\n  ast > BruFile\n  ast > _iter\n  ast > example\n  ast > ExampleFile\n  ast > _iter\n  ast > response\n  ast > ResponseFile\n  ast > _iter\n  ast > responsecontent\n  ast > responseheaders\n  ast > dictionary\n  ast > _iter\n  ast > pairlist\n  ast > pair\n  ast > default action for 'value'\n  ast > list"
+    }
+  ]
+}

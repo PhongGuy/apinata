@@ -1,0 +1,158 @@
+meta {
+  name: Full collection
+  seq: 3
+  type: http
+}
+
+query {
+  page: 1
+  ~limit: 10
+}
+
+headers {
+  x-trace: abc
+  ~x-off: off
+  "x quoted": q
+  x-multi: '''
+    first
+    second
+  '''
+  x-quotes: ''''
+  @description('a header')
+  x-described: d
+}
+
+auth {
+  mode: oauth2
+}
+
+auth:awsv4 {
+  accessKeyId: AKID
+  secretAccessKey: secret
+  sessionToken: token
+  service: s3
+  region: eu-west-1
+  profileName: default
+}
+
+auth:basic {
+  username: john
+  password: secret
+}
+
+auth:bearer {
+  token: 123
+}
+
+auth:digest {
+  username: john
+  password: secret
+}
+
+auth:ntlm {
+  username: john
+  password: secret
+  domain: corp
+}
+
+auth:oauth1 {
+  consumer_key: ck
+  consumer_secret: cs
+  access_token: at
+  token_secret: ts
+  callback_url: https://example.com/cb
+  verifier: v
+  signature_method: RSA-SHA1
+  private_key: @file(keys/private.pem)
+  timestamp: 1
+  nonce: n
+  version: 1.0
+  realm: r
+  placement: header
+  include_body_hash: true
+}
+
+auth:oauth2 {
+  grant_type: authorization_code
+  callback_url: https://example.com/cb
+  authorization_url: https://example.com/auth
+  access_token_url: https://example.com/token
+  refresh_token_url: https://example.com/refresh
+  client_id: id
+  client_secret: secret
+  scope: read
+  state: st
+  pkce: true
+  credentials_placement: header
+  token_placement: url
+  auto_fetch_token: false
+  auto_refresh_token: true
+}
+
+auth:wsse {
+  username: john
+  password: secret
+}
+
+auth:apikey {
+  key: x-api-key
+  value: k
+  placement: header
+}
+
+auth:akamai-edgegrid {
+  accessToken: a
+  clientToken: c
+  clientSecret: s
+  maxBodySize: 2048
+}
+
+auth:oauth2:additional_params:auth_req:headers {
+  x-auth: 1
+}
+
+auth:oauth2:additional_params:access_token_req:queryparams {
+  ~aud: api
+}
+
+auth:oauth2:additional_params:access_token_req:body {
+  resource: r
+}
+
+auth:oauth2:additional_params:refresh_token_req:headers {
+  x-refresh: 2
+}
+
+vars:pre-request {
+  host: example.com
+  @number
+  retries: 3
+  @local: yes
+  ~off: 1
+}
+
+vars:post-response {
+  @number
+  token: res.body.token
+}
+
+script:pre-request {
+  await bru.runRequest("a.bru");
+  bru.setVar("x", 1);
+}
+
+script:post-response {
+  await bru.runRequest('folder/b.bru');
+}
+
+tests {
+  test("ok", function() {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  # Full collection
+  
+  Some docs.
+}

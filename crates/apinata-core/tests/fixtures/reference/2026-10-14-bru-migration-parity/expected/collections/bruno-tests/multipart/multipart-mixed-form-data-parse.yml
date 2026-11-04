@@ -1,0 +1,30 @@
+info:
+  name: multipart-mixed-form-data-parse
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{echo-host}}"
+  headers:
+    - name: Content-Type
+      value: multipart/mixed
+  body:
+    type: multipart-form
+    data:
+      - name: sample
+        type: text
+        value: sample
+
+runtime:
+  assertions:
+    - expression: res.body
+      operator: matches
+      value: ^[-]+[a-z0-9]+
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

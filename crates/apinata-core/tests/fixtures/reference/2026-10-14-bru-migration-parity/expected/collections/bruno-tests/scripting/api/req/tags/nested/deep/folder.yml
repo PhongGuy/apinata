@@ -1,0 +1,8 @@
+info:
+  name: deep
+  type: folder
+  seq: 1
+  tags:
+    - deep
+
+request: {}

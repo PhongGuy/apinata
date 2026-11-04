@@ -1,0 +1,14 @@
+get {
+  url: https://example.com/headers
+}
+
+headers {
+  content-type: application/json
+  ~x-disabled: off
+  "x-quoted:key \"inner\"": quoted value
+  ~"x-disabled-quoted": dq
+  x-empty:
+  : no key
+  x-colon-value: a: b: c
+  x-spaced   :   padded value   
+}

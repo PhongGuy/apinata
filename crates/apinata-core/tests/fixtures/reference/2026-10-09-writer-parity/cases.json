@@ -1,0 +1,558 @@
+[
+  {
+    "id": "scalar-plain",
+    "value": {
+      "v": "hello world"
+    }
+  },
+  {
+    "id": "scalar-empty",
+    "value": {
+      "v": ""
+    }
+  },
+  {
+    "id": "scalar-leading-space",
+    "value": {
+      "v": " lead"
+    }
+  },
+  {
+    "id": "scalar-trailing-space",
+    "value": {
+      "v": "trail "
+    }
+  },
+  {
+    "id": "scalar-colon-space",
+    "value": {
+      "v": "a: b"
+    }
+  },
+  {
+    "id": "scalar-colon-end",
+    "value": {
+      "v": "a:"
+    }
+  },
+  {
+    "id": "scalar-url-with-port",
+    "value": {
+      "v": "http://x:8080/a?b=c#d"
+    }
+  },
+  {
+    "id": "scalar-space-hash",
+    "value": {
+      "v": "a #b"
+    }
+  },
+  {
+    "id": "scalar-hash-inside",
+    "value": {
+      "v": "a#b"
+    }
+  },
+  {
+    "id": "scalar-leading-hash",
+    "value": {
+      "v": "#x"
+    }
+  },
+  {
+    "id": "scalar-dash-space",
+    "value": {
+      "v": "- x"
+    }
+  },
+  {
+    "id": "scalar-dash",
+    "value": {
+      "v": "-"
+    }
+  },
+  {
+    "id": "scalar-question",
+    "value": {
+      "v": "?"
+    }
+  },
+  {
+    "id": "scalar-template",
+    "value": {
+      "v": "{{host}}/api"
+    }
+  },
+  {
+    "id": "scalar-template-inside",
+    "value": {
+      "v": "Bearer {{token}}"
+    }
+  },
+  {
+    "id": "scalar-brackets",
+    "value": {
+      "v": "[x]"
+    }
+  },
+  {
+    "id": "scalar-indicators",
+    "value": {
+      "a": "*star",
+      "b": "&amp",
+      "c": "!bang",
+      "d": "|pipe",
+      "e": ">gt",
+      "f": "%pct",
+      "g": "@at",
+      "h": "`tick",
+      "i": ",comma",
+      "j": "'q",
+      "k": "\"dq"
+    }
+  },
+  {
+    "id": "scalar-bool-like",
+    "value": {
+      "a": "true",
+      "b": "True",
+      "c": "FALSE",
+      "d": "yes",
+      "e": "on"
+    }
+  },
+  {
+    "id": "scalar-null-like",
+    "value": {
+      "a": "null",
+      "b": "~",
+      "c": "Null"
+    }
+  },
+  {
+    "id": "scalar-number-like",
+    "value": {
+      "a": "123",
+      "b": "-1.5",
+      "c": "1e3",
+      "d": "0x1F",
+      "e": "0o17",
+      "f": "0b11",
+      "g": "017",
+      "h": ".inf",
+      "i": ".NaN",
+      "j": "+1",
+      "k": "1_000"
+    }
+  },
+  {
+    "id": "scalar-double-quote-inside",
+    "value": {
+      "v": "say \"hi\""
+    }
+  },
+  {
+    "id": "scalar-single-quote-inside",
+    "value": {
+      "v": "it's"
+    }
+  },
+  {
+    "id": "scalar-both-quotes",
+    "value": {
+      "v": "both ' and \""
+    }
+  },
+  {
+    "id": "scalar-colon-and-quote",
+    "value": {
+      "v": "a: \"b\""
+    }
+  },
+  {
+    "id": "scalar-unicode",
+    "value": {
+      "a": "café ünïcode",
+      "b": "emoji 😀",
+      "c": "nbsp x"
+    }
+  },
+  {
+    "id": "scalar-tab",
+    "value": {
+      "a": "tab\there",
+      "b": "\tlead",
+      "c": "trail\t"
+    }
+  },
+  {
+    "id": "scalar-control",
+    "value": {
+      "a": "bell\u0007",
+      "b": "nul\u0000",
+      "c": "esc\u001b",
+      "d": "nel",
+      "e": "del",
+      "f": "ls x"
+    }
+  },
+  {
+    "id": "scalar-crlf",
+    "value": {
+      "v": "line1\r\nline2"
+    }
+  },
+  {
+    "id": "scalar-cr-only",
+    "value": {
+      "v": "a\rb"
+    }
+  },
+  {
+    "id": "scalar-long-crlf",
+    "value": {
+      "v": "a long string over forty characters, with\r\na carriage return inside"
+    }
+  },
+  {
+    "id": "block-strip",
+    "value": {
+      "v": "multi\nline"
+    }
+  },
+  {
+    "id": "block-clip",
+    "value": {
+      "v": "multi\nline\n"
+    }
+  },
+  {
+    "id": "block-keep",
+    "value": {
+      "v": "multi\nline\n\n"
+    }
+  },
+  {
+    "id": "block-only-newlines",
+    "value": {
+      "v": "\n\n"
+    }
+  },
+  {
+    "id": "block-leading-space",
+    "value": {
+      "v": " lead\nline"
+    }
+  },
+  {
+    "id": "block-indented-line",
+    "value": {
+      "v": "line\n  indented\n"
+    }
+  },
+  {
+    "id": "block-blank-lines",
+    "value": {
+      "v": "a\n\n\nb"
+    }
+  },
+  {
+    "id": "block-trailing-space-line",
+    "value": {
+      "v": "trail \nnext"
+    }
+  },
+  {
+    "id": "block-ends-newline-space",
+    "value": {
+      "v": "a\n "
+    }
+  },
+  {
+    "id": "block-doc-marker",
+    "value": {
+      "v": "a\n---\nb"
+    }
+  },
+  {
+    "id": "block-hash-line",
+    "value": {
+      "v": "x\n# not a comment"
+    }
+  },
+  {
+    "id": "key-number-like",
+    "value": {
+      "200": "ok"
+    }
+  },
+  {
+    "id": "key-spaces",
+    "value": {
+      "my key": 1
+    }
+  },
+  {
+    "id": "key-colon",
+    "value": {
+      "a: b": 1
+    }
+  },
+  {
+    "id": "key-multiline",
+    "value": {
+      "a\nb": 1
+    }
+  },
+  {
+    "id": "key-empty",
+    "value": {
+      "": 1
+    }
+  },
+  {
+    "id": "key-quote",
+    "value": {
+      "it's": 1
+    }
+  },
+  {
+    "id": "key-dashes",
+    "value": {
+      "-x": 1,
+      "- y": 2
+    }
+  },
+  {
+    "id": "key-long",
+    "value": {
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1
+    }
+  },
+  {
+    "id": "number-ints",
+    "value": {
+      "a": 0,
+      "b": 1,
+      "c": -1,
+      "d": 1234567890
+    }
+  },
+  {
+    "id": "number-floats",
+    "value": {
+      "a": 1.5,
+      "b": -0.25,
+      "c": 0.30000000000000004,
+      "d": 1e+21,
+      "e": 1e-7,
+      "f": 123456789.123
+    }
+  },
+  {
+    "id": "literal-bool-null",
+    "value": {
+      "a": true,
+      "b": false,
+      "c": null
+    }
+  },
+  {
+    "id": "struct-empty",
+    "value": {
+      "a": {},
+      "b": []
+    }
+  },
+  {
+    "id": "struct-nested-map",
+    "value": {
+      "a": {
+        "b": {
+          "c": "d"
+        }
+      }
+    }
+  },
+  {
+    "id": "struct-seq-scalars",
+    "value": {
+      "list": [
+        "a",
+        "b",
+        1,
+        true,
+        null
+      ]
+    }
+  },
+  {
+    "id": "struct-seq-maps",
+    "value": {
+      "headers": [
+        {
+          "name": "a",
+          "value": "1"
+        },
+        {
+          "name": "b",
+          "value": "2",
+          "disabled": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "struct-seq-seq",
+    "value": {
+      "m": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c"
+        ]
+      ]
+    }
+  },
+  {
+    "id": "struct-seq-empty-items",
+    "value": {
+      "m": [
+        {},
+        [],
+        ""
+      ]
+    }
+  },
+  {
+    "id": "struct-deep",
+    "value": {
+      "items": [
+        {
+          "name": "x",
+          "tags": [
+            "t1",
+            "t2"
+          ],
+          "data": {
+            "k": "v"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "struct-block-in-map-and-seq",
+    "value": {
+      "outer": {
+        "inner": "x\ny"
+      },
+      "list": [
+        "p\nq",
+        "r"
+      ]
+    }
+  },
+  {
+    "id": "struct-script",
+    "value": {
+      "runtime": {
+        "scripts": [
+          {
+            "type": "tests",
+            "code": "test(\"ok\", function() {\n  expect(res.status).to.equal(200);\n});"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "struct-collection-root",
+    "value": {
+      "opencollection": "1.0.0",
+      "info": {
+        "name": "x"
+      },
+      "config": {},
+      "request": {
+        "headers": []
+      },
+      "docs": "d",
+      "bundled": false,
+      "extensions": {}
+    }
+  },
+  {
+    "id": "struct-request-root",
+    "value": {
+      "info": {
+        "name": "r",
+        "type": "http",
+        "seq": 1
+      },
+      "http": {
+        "method": "GET",
+        "url": "{{host}}"
+      },
+      "runtime": {},
+      "settings": {
+        "encodeUrl": true,
+        "timeout": 0
+      },
+      "examples": [],
+      "docs": "x",
+      "app": {}
+    }
+  },
+  {
+    "id": "struct-env-file",
+    "value": {
+      "name": "dev",
+      "extends": "base",
+      "color": "#ff0000",
+      "variables": [
+        {
+          "name": "a",
+          "value": "1"
+        },
+        {
+          "secret": true,
+          "name": "s"
+        },
+        {
+          "name": "t",
+          "value": {
+            "type": "number",
+            "data": "42"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "struct-blockkey-nested-only",
+    "value": {
+      "name": "x",
+      "nested": {
+        "info": "y",
+        "http": "z"
+      }
+    }
+  },
+  {
+    "id": "struct-blockkey-prefix",
+    "value": {
+      "name": "a",
+      "settings:x": 2
+    }
+  },
+  {
+    "id": "struct-blockkey-after-blank",
+    "value": {
+      "v": "a\n\n",
+      "info": "x"
+    }
+  }
+]

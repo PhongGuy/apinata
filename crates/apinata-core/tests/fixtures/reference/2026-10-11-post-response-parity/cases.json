@@ -1,0 +1,98 @@
+[
+  {
+    "id": "prv-add",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "files": [
+      "request_1.yml"
+    ]
+  },
+  {
+    "id": "prv-add-ambiguous",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs/request_1.yml",
+    "files": [
+      "request_1.yml"
+    ]
+  },
+  {
+    "id": "prv-add-typed",
+    "kind": "request",
+    "input": "2026-10-09-edit-parity/normalized/bruno-tests/variable-datatypes/typed-vars.yml",
+    "files": [
+      "typed-vars.yml"
+    ]
+  },
+  {
+    "id": "prv-edit-expression",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "prv-rename",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "prv-disable",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "prv-enable",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "prv-remove-first",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "prv-clear",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "prv-untouched",
+    "kind": "request",
+    "input": "2026-10-11-post-response-parity/normalized/synthetic/post-response.yml",
+    "files": [
+      "post-response.yml"
+    ]
+  },
+  {
+    "id": "folder-prv-add",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "folder_1/folder.yml"
+    ]
+  },
+  {
+    "id": "collection-prv-add",
+    "kind": "config",
+    "input": "2026-10-09-edit-parity/normalized/cli-docs",
+    "files": [
+      "opencollection.yml"
+    ]
+  }
+]

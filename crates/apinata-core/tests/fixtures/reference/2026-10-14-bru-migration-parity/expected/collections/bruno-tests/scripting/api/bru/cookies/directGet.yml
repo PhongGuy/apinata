@@ -1,0 +1,57 @@
+info:
+  name: directGet
+  type: http
+  seq: 10
+
+http:
+  method: GET
+  url: "{{localhost}}/ping"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        const jar = bru.cookies.jar()
+
+        const host = bru.getEnvVar('localhost');
+        await jar.setCookie(host, {
+          key: 'session',
+          value: 'abc123',
+          path: '/'
+        });
+    - type: tests
+      code: |-
+        test("get() should return value for existing cookie", function() {
+          expect(bru.cookies.get('session')).to.equal('abc123');
+        });
+
+        test("get() should return undefined for nonexistent cookie", function() {
+          expect(bru.cookies.get('nonexistent')).to.be.undefined;
+        });
+
+        test("has() should return true for existing cookie", function() {
+          expect(bru.cookies.has('session')).to.be.true;
+        });
+
+        test("has() should return false for nonexistent cookie", function() {
+          expect(bru.cookies.has('nonexistent')).to.be.false;
+        });
+
+        test("has() with value should return true when value matches", function() {
+          expect(bru.cookies.has('session', 'abc123')).to.be.true;
+        });
+
+        test("has() with value should return false when value does not match", function() {
+          expect(bru.cookies.has('session', 'wrong')).to.be.false;
+        });
+
+        const jar = bru.cookies.jar()
+        await jar.clear()
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

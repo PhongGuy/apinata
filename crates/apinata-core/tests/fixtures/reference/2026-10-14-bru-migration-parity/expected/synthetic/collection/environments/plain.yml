@@ -1,0 +1,12 @@
+variables:
+  - name: host
+    value: https://example.com
+  - name: token
+    value: abc
+    disabled: true
+  - name: empty
+    value: ""
+  - name: port
+    value: "8080"
+  - name: spaced
+    value: a b c

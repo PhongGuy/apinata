@@ -1,0 +1,17 @@
+---
+source: crates/apinata-core/tests/import_har_fixtures.rs
+expression: text
+---
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: HAR capture
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+secrets_to_enter: []

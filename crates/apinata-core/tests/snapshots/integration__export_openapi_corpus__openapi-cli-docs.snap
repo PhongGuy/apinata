@@ -1,0 +1,77 @@
+---
+source: crates/apinata-core/tests/export_openapi_corpus.rs
+expression: rendered(&out)
+---
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ymlcollection",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com"
+    }
+  ],
+  "tags": [
+    {
+      "name": "folder_1"
+    },
+    {
+      "name": "folder_2"
+    }
+  ],
+  "paths": {
+    "/folder-1/one": {
+      "get": {
+        "tags": [
+          "folder_1"
+        ],
+        "summary": "request_1",
+        "operationId": "folder1Request1",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/folder-2/one": {
+      "get": {
+        "tags": [
+          "folder_2"
+        ],
+        "summary": "request_1",
+        "operationId": "folder2Request1",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/one": {
+      "get": {
+        "summary": "request_1",
+        "operationId": "request1",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    },
+    "/two": {
+      "get": {
+        "summary": "request_2",
+        "operationId": "request2",
+        "responses": {
+          "default": {
+            "description": "Default response"
+          }
+        }
+      }
+    }
+  }
+}
+--- notes

@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "setCookie header inclusion",
+    "type": "http",
+    "seq": "6"
+  },
+  "http": {
+    "method": "post",
+    "url": "{{echo-host}}",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar();\n\n// Set a cookie that should be sent with the upcoming request\nawait jar.setCookie('https://echo.usebruno.com', {\n  key: 'auth',\n  value: 'token123',\n  path: '/',\n  secure: false\n});"
+  },
+  "tests": "const cookieHeader = res.getHeader('cookie');\n\ntest('should attach auth cookie in request headers', function () {\n  expect(cookieHeader).to.be.a('string');\n  expect(cookieHeader).to.include('auth=token123');\n});\n\n// Clean up the jar so other tests are not affected\nconst jar = bru.cookies.jar();\nawait jar.clear();",
+  "settings": {
+    "encodeUrl": false,
+    "timeout": 0
+  }
+}

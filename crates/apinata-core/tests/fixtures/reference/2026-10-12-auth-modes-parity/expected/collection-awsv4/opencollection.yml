@@ -1,0 +1,28 @@
+opencollection: 1.0.0
+
+info:
+  name: ymlcollection
+  version: 3.4.0
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  auth:
+    type: awsv4
+    accessKeyId: ""
+    secretAccessKey: ""
+    sessionToken: ""
+    service: execute-api
+    region: eu-west-1
+    profileName: dev
+bundled: false
+extensions: {}

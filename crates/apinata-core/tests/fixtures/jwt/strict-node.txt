@@ -1,0 +1,399 @@
+strict body_vt_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Koa5F6Pjp3s-IdG6vMZq5NcqGl-9_B77XfzIAtmjYpY
+strict body_vt_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict body_vt_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict body_vt_public forged: ok forged
+strict body_vt_public rs: JsonWebTokenError invalid algorithm
+strict body_vt_public es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict body_vt_public crypto: unreadable unreadable
+strict body_ff_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.rJX4CUjlLHlWM4s-3BK-6qfjn3B7t2eIcgm60KcwG8A
+strict body_ff_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict body_ff_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict body_ff_public forged: ok forged
+strict body_ff_public rs: JsonWebTokenError invalid algorithm
+strict body_ff_public es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict body_ff_public crypto: unreadable unreadable
+strict body_vt_private HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.j_bgWE9ZYfco4_1t21bZfJCvceVpZdM3A1umGlBZDgY
+strict body_vt_private RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict body_vt_private ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict body_vt_private forged: ok forged
+strict body_vt_private rs: JsonWebTokenError invalid algorithm
+strict body_vt_private es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict body_vt_private crypto: unreadable unreadable
+strict body_space_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.68XW4r2omorvJUA_TsBq22amTyfqahKBOWSyrv157hQ
+strict body_space_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict body_space_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict body_space_public forged: JsonWebTokenError invalid algorithm
+strict body_space_public rs: ok x
+strict body_space_public es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict body_space_public crypto: unreadable rsa
+strict body_tab_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.QOKcrLNXmkPNRSkg5coX5dFZhInOMG9Wb7KrW7c8VvQ
+strict body_tab_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict body_tab_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict body_tab_public forged: JsonWebTokenError invalid algorithm
+strict body_tab_public rs: ok x
+strict body_tab_public es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict body_tab_public crypto: unreadable rsa
+strict blank_one_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.SvWa4bdhsNlQ9UC7ORttKUbz50_kzI-u8pc2IHCEEo8
+strict blank_one_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict blank_one_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict blank_one_public forged: JsonWebTokenError invalid algorithm
+strict blank_one_public rs: ok x
+strict blank_one_public es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict blank_one_public crypto: unreadable rsa
+strict blank_two_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.r9EkQTOwDEDxqkjdptKLUJpGF1vO1KnMH43TYJQp7mw
+strict blank_two_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict blank_two_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict blank_two_public forged: ok forged
+strict blank_two_public rs: JsonWebTokenError invalid algorithm
+strict blank_two_public es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict blank_two_public crypto: unreadable unreadable
+strict blank_two_private HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.zW_Z9VRxwPaD-zPJ91Hkc1SWN0yzdjnjyKwVdgCIoAw
+strict blank_two_private RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict blank_two_private ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict blank_two_private forged: ok forged
+strict blank_two_private rs: JsonWebTokenError invalid algorithm
+strict blank_two_private es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict blank_two_private crypto: unreadable unreadable
+strict blank_two_cert HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.XM-QRcCUTObp1aEo8TY2ZrNwaL1ECtuipdZ0M-amSPI
+strict blank_two_cert RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict blank_two_cert ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict blank_two_cert forged: ok forged
+strict blank_two_cert rs: JsonWebTokenError invalid algorithm
+strict blank_two_cert es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict blank_two_cert crypto: unreadable unreadable
+strict blank_three_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MSxzJFU0tQaq_sIC8F9dLrf-QzCccCK5Y_WS2n0A8cM
+strict blank_three_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict blank_three_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict blank_three_public forged: ok forged
+strict blank_three_public rs: JsonWebTokenError invalid algorithm
+strict blank_three_public es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict blank_three_public crypto: unreadable unreadable
+strict trailing_space_body HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict trailing_space_body RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict trailing_space_body ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict trailing_space_body forged: JsonWebTokenError invalid algorithm
+strict trailing_space_body rs: ok x
+strict trailing_space_body es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict trailing_space_body crypto: rsa rsa
+strict space_on_marker HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict space_on_marker RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict space_on_marker ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict space_on_marker forged: JsonWebTokenError invalid algorithm
+strict space_on_marker rs: ok x
+strict space_on_marker es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict space_on_marker crypto: rsa rsa
+strict high_marker_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict high_marker_then_rsa RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict high_marker_then_rsa ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict high_marker_then_rsa forged: JsonWebTokenError invalid algorithm
+strict high_marker_then_rsa rs: JsonWebTokenError invalid algorithm
+strict high_marker_then_rsa es: ok x
+strict high_marker_then_rsa crypto: ec ec
+strict high_public_then_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.MJHxBd8KvFiCfprIj-JI85LfrluODHoCwaOA3lgPKy0
+strict high_public_then_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict high_public_then_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict high_public_then_public forged: JsonWebTokenError invalid algorithm
+strict high_public_then_public rs: JsonWebTokenError invalid algorithm
+strict high_public_then_public es: ok x
+strict high_public_then_public crypto: unreadable ec
+strict junk_ec_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict junk_ec_then_rsa RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict junk_ec_then_rsa ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict junk_ec_then_rsa forged: JsonWebTokenError invalid algorithm
+strict junk_ec_then_rsa rs: JsonWebTokenError invalid algorithm
+strict junk_ec_then_rsa es: ok x
+strict junk_ec_then_rsa crypto: ec ec
+strict junk_rsa_then_ec HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict junk_rsa_then_ec RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict junk_rsa_then_ec ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict junk_rsa_then_ec forged: JsonWebTokenError invalid algorithm
+strict junk_rsa_then_ec rs: ok x
+strict junk_rsa_then_ec es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict junk_rsa_then_ec crypto: rsa rsa
+strict junk_public_then_public HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.AgdS-_oLec0U7UyJvFANZaVATXQfaVtP-8z19MkyDrA
+strict junk_public_then_public RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict junk_public_then_public ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict junk_public_then_public forged: JsonWebTokenError invalid algorithm
+strict junk_public_then_public rs: JsonWebTokenError invalid algorithm
+strict junk_public_then_public es: ok x
+strict junk_public_then_public crypto: unreadable ec
+strict bom_later_block HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict bom_later_block RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict bom_later_block ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict bom_later_block forged: JsonWebTokenError invalid algorithm
+strict bom_later_block rs: ok x
+strict bom_later_block es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict bom_later_block crypto: rsa rsa
+strict bom_on_second HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict bom_on_second RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict bom_on_second ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict bom_on_second forged: JsonWebTokenError invalid algorithm
+strict bom_on_second rs: JsonWebTokenError invalid algorithm
+strict bom_on_second es: ok x
+strict bom_on_second crypto: ec ec
+strict label_bytes_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict label_bytes_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict label_bytes_then_rsa ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict label_bytes_then_rsa forged: JsonWebTokenError invalid algorithm
+strict label_bytes_then_rsa rs: ok x
+strict label_bytes_then_rsa es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict label_bytes_then_rsa crypto: rsa rsa
+strict label_bytes_open_then_pkcs1 HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Nw8ctNqD783YAhLb44s_5-qVIRxvSfDSASvUOLcXBdQ
+strict label_bytes_open_then_pkcs1 RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict label_bytes_open_then_pkcs1 ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict label_bytes_open_then_pkcs1 forged: ok forged
+strict label_bytes_open_then_pkcs1 rs: JsonWebTokenError invalid algorithm
+strict label_bytes_open_then_pkcs1 es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict label_bytes_open_then_pkcs1 crypto: unreadable unreadable
+strict mid_text_marker_then_rsa HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict mid_text_marker_then_rsa RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict mid_text_marker_then_rsa ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict mid_text_marker_then_rsa forged: JsonWebTokenError invalid algorithm
+strict mid_text_marker_then_rsa rs: ok x
+strict mid_text_marker_then_rsa es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict mid_text_marker_then_rsa crypto: rsa rsa
+strict x509_ec_then_rsa_cert HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.l26wlUOYDz1E4cxMdtDIR0KRBjBEKHdoT8v8VZ9DRuM
+strict x509_ec_then_rsa_cert RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict x509_ec_then_rsa_cert ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict x509_ec_then_rsa_cert forged: JsonWebTokenError invalid algorithm
+strict x509_ec_then_rsa_cert rs: JsonWebTokenError invalid algorithm
+strict x509_ec_then_rsa_cert es: ok x
+strict x509_ec_then_rsa_cert crypto: unreadable ec
+strict ec_then_x509_rsa_cert HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.RnvfM8UYUikshV7CdzyMRGQpeDFqAnaUMmaC4ag3unw
+strict ec_then_x509_rsa_cert RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict ec_then_x509_rsa_cert ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ec_then_x509_rsa_cert forged: JsonWebTokenError invalid algorithm
+strict ec_then_x509_rsa_cert rs: JsonWebTokenError invalid algorithm
+strict ec_then_x509_rsa_cert es: ok x
+strict ec_then_x509_rsa_cert crypto: unreadable ec
+strict ordinary rsa lf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa lf RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa lf ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa lf forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa lf rs: ok x
+strict ordinary rsa lf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa lf crypto: rsa rsa
+strict ordinary rsa crlf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa crlf RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa crlf ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa crlf rs: ok x
+strict ordinary rsa crlf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa crlf crypto: rsa rsa
+strict ordinary rsa no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa no_final_newline RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa no_final_newline ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa no_final_newline rs: ok x
+strict ordinary rsa no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa no_final_newline crypto: rsa rsa
+strict ordinary rsa crlf_no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa crlf_no_final_newline RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa crlf_no_final_newline ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa crlf_no_final_newline rs: ok x
+strict ordinary rsa crlf_no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa crlf_no_final_newline crypto: rsa rsa
+strict ordinary rsa_pkcs1 lf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa_pkcs1 lf RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa_pkcs1 lf ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 lf forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa_pkcs1 lf rs: ok x
+strict ordinary rsa_pkcs1 lf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 lf crypto: rsa rsa
+strict ordinary rsa_pkcs1 crlf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa_pkcs1 crlf RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa_pkcs1 crlf ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa_pkcs1 crlf rs: ok x
+strict ordinary rsa_pkcs1 crlf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 crlf crypto: rsa rsa
+strict ordinary rsa_pkcs1 no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa_pkcs1 no_final_newline RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa_pkcs1 no_final_newline ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa_pkcs1 no_final_newline rs: ok x
+strict ordinary rsa_pkcs1 no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 no_final_newline crypto: rsa rsa
+strict ordinary rsa_pkcs1 crlf_no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary rsa_pkcs1 crlf_no_final_newline RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary rsa_pkcs1 crlf_no_final_newline ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary rsa_pkcs1 crlf_no_final_newline rs: ok x
+strict ordinary rsa_pkcs1 crlf_no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary rsa_pkcs1 crlf_no_final_newline crypto: rsa rsa
+strict ordinary ec lf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ec lf RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict ordinary ec lf ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict ordinary ec lf forged: JsonWebTokenError invalid algorithm
+strict ordinary ec lf rs: JsonWebTokenError invalid algorithm
+strict ordinary ec lf es: ok x
+strict ordinary ec lf crypto: ec ec
+strict ordinary ec crlf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ec crlf RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict ordinary ec crlf ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict ordinary ec crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary ec crlf rs: JsonWebTokenError invalid algorithm
+strict ordinary ec crlf es: ok x
+strict ordinary ec crlf crypto: ec ec
+strict ordinary ec no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ec no_final_newline RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict ordinary ec no_final_newline ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict ordinary ec no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary ec no_final_newline rs: JsonWebTokenError invalid algorithm
+strict ordinary ec no_final_newline es: ok x
+strict ordinary ec no_final_newline crypto: ec ec
+strict ordinary ec crlf_no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ec crlf_no_final_newline RS256: Error "alg" parameter for "ec" key type must be one of: ES256, ES384, ES512.
+strict ordinary ec crlf_no_final_newline ES256: ok eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ signature 64
+strict ordinary ec crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary ec crlf_no_final_newline rs: JsonWebTokenError invalid algorithm
+strict ordinary ec crlf_no_final_newline es: ok x
+strict ordinary ec crlf_no_final_newline crypto: ec ec
+strict ordinary ed lf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ed lf RS256: Error Unknown key type "ed25519".
+strict ordinary ed lf ES256: Error Unknown key type "ed25519".
+strict ordinary ed lf forged: JsonWebTokenError invalid algorithm
+strict ordinary ed lf rs: Error Unknown key type "ed25519".
+strict ordinary ed lf es: Error Unknown key type "ed25519".
+strict ordinary ed lf crypto: ed25519 ed25519
+strict ordinary ed crlf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ed crlf RS256: Error Unknown key type "ed25519".
+strict ordinary ed crlf ES256: Error Unknown key type "ed25519".
+strict ordinary ed crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary ed crlf rs: Error Unknown key type "ed25519".
+strict ordinary ed crlf es: Error Unknown key type "ed25519".
+strict ordinary ed crlf crypto: ed25519 ed25519
+strict ordinary ed no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ed no_final_newline RS256: Error Unknown key type "ed25519".
+strict ordinary ed no_final_newline ES256: Error Unknown key type "ed25519".
+strict ordinary ed no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary ed no_final_newline rs: Error Unknown key type "ed25519".
+strict ordinary ed no_final_newline es: Error Unknown key type "ed25519".
+strict ordinary ed no_final_newline crypto: ed25519 ed25519
+strict ordinary ed crlf_no_final_newline HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary ed crlf_no_final_newline RS256: Error Unknown key type "ed25519".
+strict ordinary ed crlf_no_final_newline ES256: Error Unknown key type "ed25519".
+strict ordinary ed crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary ed crlf_no_final_newline rs: Error Unknown key type "ed25519".
+strict ordinary ed crlf_no_final_newline es: Error Unknown key type "ed25519".
+strict ordinary ed crlf_no_final_newline crypto: ed25519 ed25519
+strict public_on_sign public lf HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.n1lpOJApwaMY39C8ZY3JHZKlRB0Qaq3fMtLry_67OqE
+strict public_on_sign public lf RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign public lf ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary public lf forged: JsonWebTokenError invalid algorithm
+strict ordinary public lf rs: ok x
+strict ordinary public lf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary public lf crypto: unreadable rsa
+strict public_on_sign public crlf HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.thwq9RiFw5iPfquG7mqs17O8xgw_s8tkVMCyp8nzkvs
+strict public_on_sign public crlf RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign public crlf ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary public crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary public crlf rs: ok x
+strict ordinary public crlf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary public crlf crypto: unreadable rsa
+strict public_on_sign public no_final_newline HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.lJ4F2pofQnR_JnfAoR5aa5DQ94Zib9vQMlgR_lgvKQU
+strict public_on_sign public no_final_newline RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign public no_final_newline ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary public no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary public no_final_newline rs: ok x
+strict ordinary public no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary public no_final_newline crypto: unreadable rsa
+strict public_on_sign public crlf_no_final_newline HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.UazLIsYzSoSqCsh7ZjB6EH1xKF2bxplEx46CU9YBBIQ
+strict public_on_sign public crlf_no_final_newline RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign public crlf_no_final_newline ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary public crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary public crlf_no_final_newline rs: ok x
+strict ordinary public crlf_no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary public crlf_no_final_newline crypto: unreadable rsa
+strict public_on_sign ec_public lf HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.q-Z-mp2rfNL7bf_Ao47yqyKejBEYLUU_vMHnEhyNa74
+strict public_on_sign ec_public lf RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign ec_public lf ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary ec_public lf forged: JsonWebTokenError invalid algorithm
+strict ordinary ec_public lf rs: JsonWebTokenError invalid algorithm
+strict ordinary ec_public lf es: ok x
+strict ordinary ec_public lf crypto: unreadable ec
+strict public_on_sign ec_public crlf HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.vfXSiwyLb6Ww55kDeNGfx4suTNA2rkTIVE8DHrGcVsY
+strict public_on_sign ec_public crlf RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign ec_public crlf ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary ec_public crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary ec_public crlf rs: JsonWebTokenError invalid algorithm
+strict ordinary ec_public crlf es: ok x
+strict ordinary ec_public crlf crypto: unreadable ec
+strict public_on_sign ec_public no_final_newline HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.3je8WaOjOmU0H5b9AnizIoIH-nRWaM7aQi_DvMVPSLo
+strict public_on_sign ec_public no_final_newline RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign ec_public no_final_newline ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary ec_public no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary ec_public no_final_newline rs: JsonWebTokenError invalid algorithm
+strict ordinary ec_public no_final_newline es: ok x
+strict ordinary ec_public no_final_newline crypto: unreadable ec
+strict public_on_sign ec_public crlf_no_final_newline HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.hb7xgjGzwAOnU0k9gmZO76BsojwFeImlGOQWaHSmphs
+strict public_on_sign ec_public crlf_no_final_newline RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign ec_public crlf_no_final_newline ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary ec_public crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary ec_public crlf_no_final_newline rs: JsonWebTokenError invalid algorithm
+strict ordinary ec_public crlf_no_final_newline es: ok x
+strict ordinary ec_public crlf_no_final_newline crypto: unreadable ec
+strict public_on_sign cert lf HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Ld5jNffHA5kmPJEyEX4Oy40JY7uSWoGuzZTXx_AUdJY
+strict public_on_sign cert lf RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign cert lf ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary cert lf forged: JsonWebTokenError invalid algorithm
+strict ordinary cert lf rs: ok x
+strict ordinary cert lf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary cert lf crypto: unreadable rsa
+strict public_on_sign cert crlf HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.BtzSCgG5DapFWWQSqNK2Ac5jvypKVdg2QhEt6K86emY
+strict public_on_sign cert crlf RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign cert crlf ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary cert crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary cert crlf rs: ok x
+strict ordinary cert crlf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary cert crlf crypto: unreadable rsa
+strict public_on_sign cert no_final_newline HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.6wBJ0NhzLJctMIFE0bxUz6ruJFQn5kwAjLgFL2S2guk
+strict public_on_sign cert no_final_newline RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign cert no_final_newline ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary cert no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary cert no_final_newline rs: ok x
+strict ordinary cert no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary cert no_final_newline crypto: unreadable rsa
+strict public_on_sign cert crlf_no_final_newline HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.C5eH1l-hkD7rx47dEvac3tPUriWO8csi-WgM7o1xZFQ
+strict public_on_sign cert crlf_no_final_newline RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict public_on_sign cert crlf_no_final_newline ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary cert crlf_no_final_newline forged: JsonWebTokenError invalid algorithm
+strict ordinary cert crlf_no_final_newline rs: ok x
+strict ordinary cert crlf_no_final_newline es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary cert crlf_no_final_newline crypto: unreadable rsa
+strict ordinary cert_then_key HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary cert_then_key RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary cert_then_key ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary cert_then_key forged: JsonWebTokenError invalid algorithm
+strict ordinary cert_then_key rs: ok x
+strict ordinary cert_then_key es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary cert_then_key crypto: rsa rsa
+strict ordinary key_then_cert HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary key_then_cert RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary key_then_cert ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary key_then_cert forged: JsonWebTokenError invalid algorithm
+strict ordinary key_then_cert rs: ok x
+strict ordinary key_then_cert es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary key_then_cert crypto: rsa rsa
+strict ordinary prose HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary prose RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary prose ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary prose forged: JsonWebTokenError invalid algorithm
+strict ordinary prose rs: ok x
+strict ordinary prose es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary prose crypto: rsa rsa
+strict ordinary prose crlf HS256: Error secretOrPrivateKey must be a symmetric key when using HS256
+strict ordinary prose crlf RS256: ok eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.Cu8mZ2xdtGCmB3mV3Vjqnf09neqApWJHM72vnAjl66nkomis28yk4giz9oWDXADG2h0QjiY4w3DPBYIXMRVM7rjlA6yqEFn7BSJJSWuubGfnhjXWnr2ye-NUGaA88A6Fbka7Q01cRowgM8eIx0HI1DIBOGrwN-dtTdO9T-yE3cq1PlAds3m31ExJyewzjy2y82g2eKh_v4mxxkuSd9QkfJTKyxdo8e7sJRbzxcLXJuCdxtSx5wbfJjZ9TXV_bLtYi-PnGm0Py09thlq4-O0wVhEb9f0K6Bc58YFSBQ87IIInWJIWiLZ0cfTt56umbfuzUXcRDJtgn40B7Qr7qhyb-Q
+strict ordinary prose crlf ES256: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary prose crlf forged: JsonWebTokenError invalid algorithm
+strict ordinary prose crlf rs: ok x
+strict ordinary prose crlf es: Error "alg" parameter for "rsa" key type must be one of: RS256, PS256, RS384, PS384, RS512, PS512.
+strict ordinary prose crlf crypto: rsa rsa
+strict ordinary secret HS256: ok eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.51-YXVQmJQkhDgl6pgAw5ld8VTAf_HGUKGuhZjwB4mw
+strict ordinary secret RS256: Error secretOrPrivateKey must be an asymmetric key when using RS256
+strict ordinary secret ES256: Error secretOrPrivateKey must be an asymmetric key when using ES256
+strict ordinary secret forged: ok forged
+strict ordinary secret rs: JsonWebTokenError invalid algorithm
+strict ordinary secret es: JsonWebTokenError secretOrPublicKey must be an asymmetric key when using ES256
+strict ordinary secret crypto: unreadable unreadable

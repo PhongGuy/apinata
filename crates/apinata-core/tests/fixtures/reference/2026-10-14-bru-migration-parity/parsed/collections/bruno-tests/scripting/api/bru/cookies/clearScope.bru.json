@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "clearScope",
+    "type": "http",
+    "seq": "14"
+  },
+  "http": {
+    "method": "get",
+    "url": "{{localhost}}/ping",
+    "body": "none",
+    "auth": "inherit"
+  },
+  "script": {
+    "req": "const jar = bru.cookies.jar()\nawait jar.clear();\n\n// Set cookies on two different domains:\n// - localhost matches the request URL, so bru.cookies.clear() targets it\n// - other.example.com should be left untouched by bru.cookies.clear()\nconst host = bru.getEnvVar('localhost');\nawait jar.setCookies(host, [\n  { key: \"a\", value: \"1\", path: \"/\" },\n  { key: \"b\", value: \"2\", path: \"/\" }\n]);\n\nawait jar.setCookie(\"https://other.example.com\", {\n  key: \"c\",\n  value: \"3\",\n  path: \"/\",\n  secure: true\n});"
+  },
+  "tests": "const jar = bru.cookies.jar()\nconst host = bru.getEnvVar('localhost');\n\n// bru.cookies sees only the current request URL's cookies\nawait test(\"bru.cookies.clear() only clears cookies for current URL\", async function() {\n  // Verify cookies exist before clear\n  const before = await jar.getCookies(host);\n  expect(before.length).to.be.at.least(1);\n\n  // bru.cookies.clear() clears only current request URL cookies\n  await bru.cookies.clear();\n\n  // Current URL's cookies should be gone\n  const after = await jar.getCookies(host);\n  expect(after.length).to.equal(0);\n\n  // Other domain cookies should still exist\n  const otherDomain = await jar.getCookies(\"https://other.example.com\");\n  expect(otherDomain.length).to.be.at.least(1);\n  expect(otherDomain[0].key).to.equal(\"c\");\n});\n\nawait test(\"jar.clear() clears ALL cookies globally\", async function() {\n  // Re-add a cookie on main domain\n  await jar.setCookie(host, {\n    key: \"d\",\n    value: \"4\",\n    path: \"/\"\n  });\n\n  // jar.clear() clears everything\n  await jar.clear();\n\n  const main = await jar.getCookies(host);\n  const other = await jar.getCookies(\"https://other.example.com\");\n  expect(main.length).to.equal(0);\n  expect(other.length).to.equal(0);\n});",
+  "settings": {
+    "encodeUrl": true,
+    "timeout": 0
+  }
+}

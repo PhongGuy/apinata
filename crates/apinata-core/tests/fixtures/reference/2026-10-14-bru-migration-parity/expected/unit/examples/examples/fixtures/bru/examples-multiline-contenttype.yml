@@ -1,0 +1,71 @@
+info:
+  name: Multiline ContentType Test
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{host}}/test"
+  body:
+    type: multipart-form
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+examples:
+  - name: Example with multiline strings and contentType
+    request:
+      url: "{{host}}/test"
+      method: POST
+      body:
+        type: multipart-form
+        data:
+          - name: test
+            type: text
+            value: |-
+              {
+              "hello" : "there"
+              }
+            contentType: application/json
+          - name: simple
+            type: text
+            value: cat and mouse
+            contentType: text/plain
+          - name: array
+            type: text
+            value: |-
+              [
+              "coolade", 
+              "blast"
+              ]
+          - name: jsonValue
+            type: text
+            value: |-
+              {
+                "key": "value",
+                "nested": {
+                  "data": 123
+                }
+              }
+            contentType: application/json
+          - name: textValue
+            type: text
+            value: |-
+              This is a
+              multiline text
+              value
+            contentType: text/plain
+    response:
+      status: 200
+      statusText: OK
+      body:
+        type: json
+        data: |-
+          {
+            "status": "success",
+            "message": "Data received"
+          }

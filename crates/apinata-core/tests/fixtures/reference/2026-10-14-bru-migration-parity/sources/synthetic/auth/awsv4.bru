@@ -1,0 +1,18 @@
+meta {
+  name: awsv4
+}
+
+get {
+  url: https://example.com
+  auth: awsv4
+}
+
+auth:awsv4 {
+  accessKeyId: AKIA123
+  secretAccessKey: {{secret}}
+  sessionToken: 
+  service: execute-api
+  region: eu-west-1
+  profileName: default
+  region: us-east-1
+}

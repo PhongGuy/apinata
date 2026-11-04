@@ -1,0 +1,16 @@
+info:
+  name: Fractional Limit
+  type: http
+  seq: 10
+
+http:
+  method: GET
+  url: https://api.acme.test/fractional
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 3
+  forwardAuthorizationHeader: false

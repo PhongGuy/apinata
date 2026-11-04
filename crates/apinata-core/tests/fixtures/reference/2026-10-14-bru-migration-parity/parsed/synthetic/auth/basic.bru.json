@@ -1,0 +1,13 @@
+{
+  "http": {
+    "method": "get",
+    "url": "https://example.com",
+    "auth": "basic"
+  },
+  "auth": {
+    "basic": {
+      "username": "alice",
+      "password": "p:a:ss word"
+    }
+  }
+}

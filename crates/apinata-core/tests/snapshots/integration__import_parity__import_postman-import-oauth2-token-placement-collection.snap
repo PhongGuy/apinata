@@ -1,0 +1,38 @@
+---
+source: crates/apinata-core/tests/import_parity.rs
+expression: snapshot
+---
+Converted OAuth2 Token in Header / request.auth [OAuth2 Token in Header.yml]: `oauth2` authentication is not supported; set to none
+Converted OAuth2 Token in URL / request.auth [OAuth2 Token in URL.yml]: `oauth2` authentication is not supported; set to none
+== OAuth2 Token in Header.yml
+info:
+  name: OAuth2 Token in Header
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: https://api.com/header
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== OAuth2 Token in URL.yml
+info:
+  name: OAuth2 Token in URL
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: https://api.com/url
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
