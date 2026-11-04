@@ -977,6 +977,96 @@ fn a_failed_read_stops_a_create(cx: &mut TestAppContext) {
 }
 
 impl Fix {
+    /// A click on the other environment in the editor's list.
+    fn click_other(&self, cx: &mut TestAppContext) {
+        frame(cx, self.win);
+        cx.update_window(self.win, |_, w, cx| w.click(("env-item", 1usize), cx))
+            .unwrap();
+        cx.run_until_parked();
+    }
+
+    /// Add to environment aimed at the other environment, as the response pane sends it.
+    fn add_to_other(&self, cx: &mut TestAppContext) {
+        let (ws, root) = self.outside.clone().expect("a collection");
+        ws.update(cx, |w, cx| {
+            w.select_environment(&root, Some("prod".into()), cx)
+        });
+        cx.run_until_parked();
+        ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+        cx.run_until_parked();
+    }
+}
+
+// A switch leaves a new row's typing behind as Create does, so it asks as Create does.
+#[gpui_kit::test]
+fn a_switch_asks_before_dropping_a_new_rows_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    f.click_other(cx);
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?"),
+        "the switch asks"
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(
+        f.selected(cx).as_deref(),
+        Some("dev"),
+        "the selection stays"
+    );
+    assert!(f.typing(cx), "the typing stays");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    assert_eq!(f.bytes(), before);
+    f.click_other(cx);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("prod"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
+#[gpui_kit::test]
+fn add_to_environment_asks_before_dropping_a_new_rows_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    f.add_to_other(cx);
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?"),
+        "the switch asks"
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(
+        f.selected(cx).as_deref(),
+        Some("dev"),
+        "the selection stays"
+    );
+    assert!(f.typing(cx), "the typing stays");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    assert_eq!(f.bytes(), before);
+    f.add_to_other(cx);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("prod"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(f.bytes().contains("old"), "{}", f.bytes());
+}
+
+// With nothing stored there is nothing to replace: the switch goes ahead and saves nothing.
+#[gpui_kit::test]
+fn a_switch_with_nothing_stored_asks_nothing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.store.delete(&f.key).unwrap();
+    let before = f.bytes();
+    f.draft(cx, 1, "old", "typed");
+    f.click_other(cx);
+    assert!(!confirm_open(cx));
+    assert_eq!(f.selected(cx).as_deref(), Some("prod"));
+    assert_eq!(f.bytes(), before);
+    assert_eq!(f.held(), None);
+}
+
+impl Fix {
     fn step(&self, cx: &mut TestAppContext, undo: bool) {
         let Ed::Collection(ed) = self.ed.clone() else {
             unreachable!()
@@ -1266,15 +1356,21 @@ both!(
     enter_names_only_the_row_it_releases_in_a_global
 );
 
+// A switch drops a draft row's typing as Create does, so the draft row is named in its prompt.
 #[gpui_kit::test]
-fn a_switch_leaves_a_draft_row_out_of_its_prompt(cx: &mut TestAppContext) {
+fn a_switch_names_a_draft_row_in_its_prompt(cx: &mut TestAppContext) {
     let f = fix(cx, Kind::Collection, HOST);
     f.store.delete(&f.key).unwrap();
     f.store.set(&f.two, "second").unwrap();
     f.hold(cx);
     f.draft(cx, 2, "two", "other");
     f.choose_other(cx);
-    assert!(!confirm_open(cx), "this switch replaces nothing");
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"two\"?")
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
     assert_eq!(f.store.get(&f.two).unwrap().as_deref(), Some("second"));
 }
 

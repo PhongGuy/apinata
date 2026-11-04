@@ -314,14 +314,15 @@ impl EnvEditor {
         self.load(true, window, cx);
     }
 
-    /// A person's selection of `name`: [`Self::select`], then a list of its orphans. Paths the
-    /// editor takes by itself use `select`, so nothing unattended reaches the keychain.
+    /// A person's selection of `name`: [`Self::select`], then a list of its orphans. A switch
+    /// that would drop a new row's typing over a stored value asks first, as Create does. Paths
+    /// the editor takes by itself use `select`, so nothing unattended reaches the keychain.
     pub fn choose(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.selected.as_deref() == Some(name) {
             return self.select_chosen(name, window, cx);
         }
         let name = name.to_owned();
-        self.after_held(window, cx, move |e, window, cx| {
+        self.after_save_check(window, cx, move |e, window, cx| {
             e.select_chosen(&name, window, cx)
         });
     }
@@ -1281,13 +1282,14 @@ impl EnvEditor {
                 self.start_naming(Naming::Create, window, cx);
             }
         } else {
-            // Reselecting the shown environment would reload it and drop typing in progress.
+            // Reselecting the shown environment would reload it and drop typing in progress; a
+            // real switch asks as a chosen one does.
             let add_var = intent.add_var;
             match intent
                 .select
                 .filter(|env| self.selected.as_ref() != Some(env))
             {
-                Some(env) => self.after_held(window, cx, move |e, window, cx| {
+                Some(env) => self.after_save_check(window, cx, move |e, window, cx| {
                     e.select(&env, window, cx);
                     e.table.update(cx, |t, cx| t.add_row(&add_var, window, cx));
                 }),
