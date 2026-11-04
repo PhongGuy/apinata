@@ -78,6 +78,10 @@ pub(crate) fn installer() -> Installer {
             Function::new(ctx.clone(), key_details_host)?,
         )?;
         g.set("__jwkParts", Function::new(ctx.clone(), jwk_parts_host)?)?;
+        g.set(
+            "__encryptKey",
+            Function::new(ctx.clone(), encrypt_key_host)?,
+        )?;
         ctx.eval::<(), _>(CRYPTO_JS)
     })
 }
@@ -1123,6 +1127,18 @@ fn key_object_host<'js>(
     key_object(&KeyInput::Bytes(key), public, passphrase.as_deref())
         .map(|(kind, der)| List((kind.to_string(), der)))
         .map_err(|e| throw(&ctx, &e))
+}
+
+/// A held PKCS#8 key as encrypted PKCS#8 DER; behind an export with `cipher` and `passphrase`.
+fn encrypt_key_host<'js>(
+    ctx: Ctx<'js>,
+    der: Vec<u8>,
+    cipher: String,
+    passphrase: Vec<u8>,
+) -> rquickjs::Result<Vec<u8>> {
+    use pkcs8::der::zeroize::Zeroizing;
+    let (der, passphrase) = (Zeroizing::new(der), Zeroizing::new(passphrase));
+    super::crypto_keys::encrypted_der(&der, &cipher, &passphrase).map_err(|e| throw(&ctx, &e))
 }
 
 /// The curve OID inside the algorithm identifier of a PKCS#8 (`private`) or SPKI key.

@@ -165,9 +165,7 @@ for (const n of ["rsa_sha1", "rsa_des3", "rsa_camellia", "rsa_pbes1", "rsa_legac
 show("legacy none", () => crypto.createPrivateKey(K.rsa_legacy));
 show("legacy public", () => crypto.createPublicKey({ key: K.rsa_legacy, passphrase: PW }));
 show("legacy sign", () => crypto.sign("sha256", Buffer.from("m"), K.rsa_legacy));
-show("pbes1 none", () => crypto.createPrivateKey(K.rsa_pbes1));
-show("export cipher", () => crypto.createPrivateKey(RSA).export({ type: "pkcs8", format: "pem", cipher: "aes-256-cbc", passphrase: "p" }));
-show("export der cipher", () => crypto.createPrivateKey(RSA).export({ type: "pkcs8", format: "der", cipher: "aes-128-cbc", passphrase: "p" }).length > 0);"#;
+show("pbes1 none", () => crypto.createPrivateKey(K.rsa_pbes1));"#;
     assert_eq!(
         run_keys(code).await,
         [
@@ -182,10 +180,175 @@ show("export der cipher", () => crypto.createPrivateKey(RSA).export({ type: "pkc
             "log:legacy public Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
             "log:legacy sign Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
             "log:pbes1 none Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC or AES-GCM)",
-            "log:export cipher Error KeyObject export not supported: an encrypted export (cipher and passphrase)",
-            "log:export der cipher Error KeyObject export not supported: an encrypted export (cipher and passphrase)",
         ]
     );
+}
+
+/// `fixtures/crypto-keys/exports.json`: `node_*` are Node 24 `export({ cipher, passphrase })`
+/// outputs; `ours_*` are this shim's, which Node 24 and `openssl pkcs8 -passin` (openssl 3.6)
+/// decrypted to the original keys when they were recorded.
+const EXPORTS: &str = include_str!("fixtures/crypto-keys/exports.json");
+
+/// The DER shape Node writes: PBES2, PBKDF2 with a 16-byte salt, 2048 iterations and
+/// HMAC-SHA-256, then the AES-CBC OID with a 16-byte IV. `X` is the cipher OID's last byte.
+const PBES2_SHAPE: &str = r#"const shape = (der, x) => new RegExp(`^30(81..|82....)305f06092a864886f70d01050d3052303106092a864886f70d01050c30240410[0-9a-f]{32}02020800300c06082a864886f70d02090500301d060960864801650304${x}0410[0-9a-f]{32}04`).test(Buffer.from(der).toString("hex"));
+const OID = { "aes-128-cbc": "0102", "aes-192-cbc": "0116", "aes-256-cbc": "012a" };"#;
+
+/// Each AES-CBC name and alias Node takes exports PEM and DER that open again with the
+/// passphrase, in Node's PBES2 shape, with a fresh salt and IV each time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn encrypted_pkcs8_export_round_trips() {
+    let code = format!(
+        r#"{PBES2_SHAPE}
+const keys = {{ RSA, EC256_SEC1, EC384, ED_PRIV }};
+const plain = (key) => crypto.createPrivateKey(key).export({{ type: "pkcs8", format: "pem" }});
+const names = [["aes-128-cbc", "aes-128-cbc"], ["aes-192-cbc", "aes-192-cbc"], ["aes-256-cbc", "aes-256-cbc"], ["AES-256-CBC", "aes-256-cbc"], ["aes128", "aes-128-cbc"], ["Aes192", "aes-192-cbc"], ["aes256", "aes-256-cbc"]];
+for (const [cipher, canonical] of names) {{
+  const row = [cipher];
+  for (const pem of Object.values(keys)) {{
+    const k = crypto.createPrivateKey(pem);
+    const o = {{ type: "pkcs8", format: "pem", cipher, passphrase: PW }};
+    const enc = k.export(o), der = k.export({{ ...o, format: "der" }});
+    const opens = plain({{ key: enc, passphrase: PW }}) === plain(pem) && plain({{ key: der, format: "der", type: "pkcs8", passphrase: PW }}) === plain(pem);
+    const header = enc.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----\n") && enc.endsWith("\n-----END ENCRYPTED PRIVATE KEY-----\n");
+    const pemDer = Buffer.from(enc.split("\n").slice(1, -2).join(""), "base64");
+    const fresh = enc !== k.export(o) && !der.equals(k.export({{ ...o, format: "der" }}));
+    row.push(Buffer.isBuffer(der), opens, header, shape(der, OID[canonical]), shape(pemDer, OID[canonical]), fresh);
+  }}
+  console.log(row.join(" "));
+}}
+const k = crypto.createPrivateKey(EC256_SEC1), o = {{ type: "pkcs8", format: "pem", cipher: "aes-256-cbc" }};
+console.log(plain({{ key: k.export({{ ...o, passphrase: Buffer.from(PW) }}), passphrase: PW }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: new Uint8Array([0xff, 0]) }}), passphrase: Buffer.from([0xff, 0]) }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "" }}), passphrase: "" }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "70", encoding: "hex" }}), passphrase: Buffer.from([0x70]) }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "x".repeat(1024) }}), passphrase: "x".repeat(1024) }}) === plain(EC256_SEC1));"#
+    );
+    let row = "true true true true true true";
+    let line = |name: &str| format!("log:{name} {row} {row} {row} {row}");
+    assert_eq!(
+        run_keys(&code).await,
+        [
+            line("aes-128-cbc"),
+            line("aes-192-cbc"),
+            line("aes-256-cbc"),
+            line("AES-256-CBC"),
+            line("aes128"),
+            line("Aes192"),
+            line("aes256"),
+            "log:true true true true true".to_string(),
+        ]
+    );
+}
+
+/// Node's exports open here, ours were opened by Node and openssl when recorded and open here,
+/// and both have the same shape.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recorded_encrypted_exports_open_in_both_directions() {
+    let code = format!(
+        r#"{PBES2_SHAPE}
+const X = {EXPORTS};
+const PW = "correct horse";
+const plain = (key) => crypto.createPrivateKey(key).export({{ type: "pkcs8", format: "pem" }});
+const cases = [["rsa_aes128", RSA, "aes-128-cbc"], ["ec256_aes192", EC256_SEC1, "aes-192-cbc"], ["ed_aes256", ED_PRIV, "aes-256-cbc"]];
+for (const who of ["node", "ours"]) {{
+  for (const [n, original, cipher] of cases) {{
+    const pem = X[`${{who}}_${{n}}`];
+    const der = Buffer.from(pem.split("\n").slice(1, -2).join(""), "base64");
+    console.log(who, n, plain({{ key: pem, passphrase: PW }}) === plain(original), shape(der, OID[cipher]));
+  }}
+  const der = Buffer.from(X[`${{who}}_ec384_der_aes256`], "base64");
+  console.log(who, "ec384_der", plain({{ key: der, format: "der", type: "pkcs8", passphrase: PW }}) === plain(EC384), shape(der, OID["aes-256-cbc"]));
+}}"#
+    );
+    assert_eq!(
+        run_crypto(&code).await,
+        [
+            "log:node rsa_aes128 true true",
+            "log:node ec256_aes192 true true",
+            "log:node ed_aes256 true true",
+            "log:node ec384_der true true",
+            "log:ours rsa_aes128 true true",
+            "log:ours ec256_aes192 true true",
+            "log:ours ed_aes256 true true",
+            "log:ours ec384_der true true",
+        ]
+    );
+}
+
+/// Node's errors for encrypted export options, OpenSSL codes dropped and passphrases not echoed;
+/// ciphers Node writes and the shim does not are named refusals. A passphrase over 1024 bytes,
+/// which Node writes but cannot read back, is refused with the error reading it would give.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn encrypted_export_failures_keep_node_errors() {
+    let code = r#"const show = (tag, f) => { try { const r = f(); console.log(tag, "ok", Buffer.isBuffer(r) ? r.length : typeof r === "string" ? r.split("\n")[0] : JSON.stringify(r)); } catch (e) { console.log(tag, e.name, e.message); } };
+const k = crypto.createPrivateKey(EC256_SEC1), x = (o) => () => k.export({ type: "pkcs8", format: "pem", ...o });
+show("no passphrase", x({ cipher: "aes-256-cbc" }));
+show("no cipher", x({ passphrase: "p" }));
+show("cipher null", x({ cipher: null, passphrase: "p" }));
+show("cipher number", x({ cipher: 1, passphrase: "p" }));
+show("passphrase number", x({ cipher: "aes-256-cbc", passphrase: 1 }));
+show("unknown", x({ cipher: "nope", passphrase: "p" }));
+show("unknown aes", x({ cipher: "aes-999-cbc", passphrase: "p" }));
+show("unknown design", x({ cipher: "design", passphrase: "p" }));
+show("unknown aes mode", x({ cipher: "aes-128-nope", passphrase: "p" }));
+show("passphrase 1025", x({ cipher: "aes-256-cbc", passphrase: "x".repeat(1025) }));
+show("passphrase 1025 der", () => k.export({ type: "pkcs8", format: "der", cipher: "aes-256-cbc", passphrase: Buffer.alloc(1025, 1) }));
+for (const cipher of ["aes-256-gcm", "aes-128-ctr", "aes-256-ecb", "des-ede3-cbc", "DES-EDE3-CBC", "des-ede", "camellia-256-cbc", "chacha20", "id-aes256-wrap"]) show(cipher, x({ cipher, passphrase: "p" }));
+show("der unknown", () => k.export({ type: "pkcs8", format: "der", cipher: "nope", passphrase: "p" }));
+show("sec1", () => k.export({ type: "sec1", format: "pem", cipher: "aes-256-cbc", passphrase: "p" }));
+show("jwk", () => k.export({ format: "jwk", cipher: "aes-256-cbc", passphrase: "p" }));
+show("public", () => crypto.createPublicKey(k).export({ type: "spki", format: "pem", cipher: "aes-256-cbc", passphrase: "p" }));
+const enc = k.export({ type: "pkcs8", format: "pem", cipher: "aes-128-cbc", passphrase: "p" });
+show("open none", () => crypto.createPrivateKey(enc));
+show("open wrong", () => crypto.createPrivateKey({ key: enc, passphrase: "q" }));
+const der = k.export({ type: "pkcs8", format: "der", cipher: "aes-128-cbc", passphrase: "p" });
+show("open der none", () => crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8" }));
+show("open der wrong", () => crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8", passphrase: "q" }));"#;
+    let refused = |cipher: &str| {
+        format!(
+            "log:{cipher} Error KeyObject export not supported: cipher \"{cipher}\" (supported: aes-128-cbc, aes-192-cbc and aes-256-cbc)"
+        )
+    };
+    let mut expected: Vec<String> = [
+        "log:no passphrase TypeError The property 'options.passphrase' is invalid.",
+        "log:no cipher TypeError The property 'options.cipher' is invalid. Received undefined",
+        "log:cipher null TypeError The property 'options.cipher' is invalid. Received null",
+        "log:cipher number TypeError The property 'options.cipher' is invalid. Received 1",
+        "log:passphrase number TypeError The property 'options.passphrase' is invalid.",
+        "log:unknown Error Unknown cipher",
+        "log:unknown aes Error Unknown cipher",
+        "log:unknown design Error Unknown cipher",
+        "log:unknown aes mode Error Unknown cipher",
+        "log:passphrase 1025 Error interrupted or cancelled",
+        "log:passphrase 1025 der Error interrupted or cancelled",
+    ]
+    .map(String::from)
+    .to_vec();
+    expected.extend(
+        [
+            "aes-256-gcm",
+            "aes-128-ctr",
+            "aes-256-ecb",
+            "des-ede3-cbc",
+            "DES-EDE3-CBC",
+            "des-ede",
+            "camellia-256-cbc",
+            "chacha20",
+            "id-aes256-wrap",
+        ]
+        .map(refused),
+    );
+    expected.extend(
+        [
+            "log:der unknown Error Unknown cipher",
+            "log:sec1 Error KeyObject export not supported: type \"sec1\" with format \"pem\" (supported: pkcs8 for private keys and spki for public keys, as pem or der, or jwk)",
+            "log:jwk Error The selected key encoding jwk does not support encryption.",
+            "log:public ok -----BEGIN PUBLIC KEY-----",
+            "log:open none Error interrupted or cancelled",
+            "log:open wrong Error bad decrypt",
+            "log:open der none TypeError Passphrase required for encrypted key",
+            "log:open der wrong Error bad decrypt",
+        ]
+        .map(String::from),
+    );
+    assert_eq!(run_crypto(code).await, expected);
 }
 
 /// A key file's KDF parameters are untrusted: each is held to the script work caps before any derivation, so none of these takes time or memory.

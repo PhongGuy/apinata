@@ -4,8 +4,8 @@
 // calls, and KeyObjects keep their bytes here. Node's `Received` text is kept for values that
 // cannot be secret; a passphrase or a JWK member is described by its type alone.
 (() => {
-  const NAMES = ["__timingSafeEqual", "__pbkdf2", "__scrypt", "__cipher", "__sign", "__verify", "__keyObject", "__jwkKey", "__jwkParts", "__keyDetails"];
-  const [equal, pbkdf2, scrypt, cipher, sign, verify, keyObject, jwkKey, jwkParts, keyDetails] = NAMES.map((n) => globalThis[n]);
+  const NAMES = ["__timingSafeEqual", "__pbkdf2", "__scrypt", "__cipher", "__sign", "__verify", "__keyObject", "__jwkKey", "__jwkParts", "__keyDetails", "__encryptKey"];
+  const [equal, pbkdf2, scrypt, cipher, sign, verify, keyObject, jwkKey, jwkParts, keyDetails, encryptKey] = NAMES.map((n) => globalThis[n]);
   for (const n of NAMES) delete globalThis[n];
   const crypto = globalThis.crypto;
   const Buf = () => globalThis.Buffer;
@@ -144,7 +144,11 @@
       if (form !== (type === "private" ? "pkcs8" : "spki")) {
         throw new Error(`KeyObject export not supported: type "${form}" with format "${format}" (supported: pkcs8 for private keys and spki for public keys, as pem or der, or jwk)`);
       }
-      if (type === "private") refuseEncryption(options);
+      const encryption = type === "private" ? encryptionOf(options) : null;
+      if (encryption !== null) {
+        const der = Buf().from(encryptKey(bytes, ...encryption));
+        return format === "der" ? der : pemOf(der, "ENCRYPTED PRIVATE KEY");
+      }
       return format === "der" ? Buf().from(bytes) : pemOf(bytes, type === "private" ? "PRIVATE KEY" : "PUBLIC KEY");
     }
   }
@@ -222,15 +226,21 @@
     if (isBytes(value)) return list(value);
     throw new TypeError("The property 'options.passphrase' is invalid.");
   };
-  // Public keys ignore both options. On a private key either one rules out a clear export: half
-  // a pair is Node's error, and a whole pair is the refusal, since encrypted export is not built.
-  const refuseEncryption = ({ cipher, passphrase }) => {
-    const absent = cipher === undefined || cipher === null;
-    if (absent && passphrase === undefined) return;
-    if (typeof cipher !== "string") throw invalidOption("options.cipher", cipher);
-    passphraseOf(passphrase);
-    throw new Error("KeyObject export not supported: an encrypted export (cipher and passphrase)");
+  // Public keys ignore both options. On a private key either one asks for encryption, and half a
+  // pair is Node's error. Returns null or `[cipher, passphrase bytes]` for the host.
+  const encryptionOf = ({ cipher: name, passphrase, encoding }) => {
+    if ((name === undefined || name === null) && passphrase === undefined) return null;
+    if (typeof name !== "string") throw invalidOption("options.cipher", name);
+    const bytes = passphraseOf(passphrase, keyEncoding(encoding));
+    const lower = name.toLowerCase(), alias = /^aes(128|192|256)$/.exec(lower);
+    const canonical = alias === null ? lower : `aes-${alias[1]}-cbc`;
+    if (EXPORT_CIPHERS.includes(canonical)) return [canonical, bytes];
+    if (!NODE_CIPHERS.has(lower)) throw new Error("Unknown cipher");
+    throw new Error(`KeyObject export not supported: cipher "${name}" (supported: aes-128-cbc, aes-192-cbc and aes-256-cbc)`);
   };
+  const EXPORT_CIPHERS = ["aes-128-cbc", "aes-192-cbc", "aes-256-cbc"];
+  // Node 24's getCiphers(), lowercased; other names are unknown there.
+  const NODE_CIPHERS = new Set("aes-128-cbc aes-128-cbc-hmac-sha1 aes-128-cbc-hmac-sha256 aes-128-ccm aes-128-cfb aes-128-cfb1 aes-128-cfb8 aes-128-ctr aes-128-ecb aes-128-gcm aes-128-ocb aes-128-ofb aes-128-xts aes-192-cbc aes-192-ccm aes-192-cfb aes-192-cfb1 aes-192-cfb8 aes-192-ctr aes-192-ecb aes-192-gcm aes-192-ocb aes-192-ofb aes-256-cbc aes-256-cbc-hmac-sha1 aes-256-cbc-hmac-sha256 aes-256-ccm aes-256-cfb aes-256-cfb1 aes-256-cfb8 aes-256-ctr aes-256-ecb aes-256-gcm aes-256-ocb aes-256-ofb aes-256-xts aes128 aes128-wrap aes128-wrap-pad aes192 aes192-wrap aes192-wrap-pad aes256 aes256-wrap aes256-wrap-pad aria-128-cbc aria-128-ccm aria-128-cfb aria-128-cfb1 aria-128-cfb8 aria-128-ctr aria-128-ecb aria-128-gcm aria-128-ofb aria-192-cbc aria-192-ccm aria-192-cfb aria-192-cfb1 aria-192-cfb8 aria-192-ctr aria-192-ecb aria-192-gcm aria-192-ofb aria-256-cbc aria-256-ccm aria-256-cfb aria-256-cfb1 aria-256-cfb8 aria-256-ctr aria-256-ecb aria-256-gcm aria-256-ofb aria128 aria192 aria256 camellia-128-cbc camellia-128-cfb camellia-128-cfb1 camellia-128-cfb8 camellia-128-ctr camellia-128-ecb camellia-128-ofb camellia-192-cbc camellia-192-cfb camellia-192-cfb1 camellia-192-cfb8 camellia-192-ctr camellia-192-ecb camellia-192-ofb camellia-256-cbc camellia-256-cfb camellia-256-cfb1 camellia-256-cfb8 camellia-256-ctr camellia-256-ecb camellia-256-ofb camellia128 camellia192 camellia256 chacha20 chacha20-poly1305 des-ede des-ede-cbc des-ede-cfb des-ede-ecb des-ede-ofb des-ede3 des-ede3-cbc des-ede3-cfb des-ede3-cfb1 des-ede3-cfb8 des-ede3-ecb des-ede3-ofb des3 des3-wrap id-aes128-ccm id-aes128-gcm id-aes128-wrap id-aes128-wrap-pad id-aes192-ccm id-aes192-gcm id-aes192-wrap id-aes192-wrap-pad id-aes256-ccm id-aes256-gcm id-aes256-wrap id-aes256-wrap-pad id-smime-alg-cms3deswrap sm4 sm4-cbc sm4-cfb sm4-ctr sm4-ecb sm4-ofb".split(" "));
   // Node's `encoding` for a string key or passphrase, where "buffer" means utf8.
   const keyEncoding = (encoding) => (encoding === "buffer" ? "utf8" : encoding);
   // PKCS#1 DER holds either half; a private key opens with the integer version 0, which is no modulus.
