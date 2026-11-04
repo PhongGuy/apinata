@@ -5,7 +5,7 @@ use super::check::ShownNetwork;
 use super::model::{CertificateKind, CollectionNetwork, CollectionProxy, read_network};
 use crate::collection::ROOT_FILE;
 use crate::context::VarContext;
-use crate::document::Document;
+use crate::document::{Document, read_regular, read_regular_text};
 use crate::dynamic::Generator;
 use crate::error::FileError;
 use crate::interpolate::interpolate_tracked;
@@ -397,7 +397,7 @@ pub(crate) type ContentHash<'a> = &'a dyn Fn(usize, &Expanded) -> String;
 
 /// SHA-256 hex of the file at `path`, or the unreadable marker.
 pub(crate) fn file_hash(path: &Path) -> String {
-    fs::read(path).map_or_else(|_| UNREADABLE.to_owned(), |bytes| content_hash(&bytes))
+    read_regular(path).map_or_else(|_| UNREADABLE.to_owned(), |bytes| content_hash(&bytes))
 }
 
 /// SHA-256 hex of `bytes`.
@@ -801,7 +801,8 @@ impl NetworkAck {
     /// changed.
     pub fn load(path: impl Into<PathBuf>) -> Result<NetworkAck, TrustError> {
         let path = path.into();
-        let text = match fs::read_to_string(&path) {
+        // A pipe reads as no record, which the next save replaces.
+        let text = match read_regular_text(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::empty(path)),
             Err(e) => {

@@ -13,13 +13,66 @@ pub(crate) fn is_special_file(path: &Path) -> bool {
     std::fs::metadata(path).is_ok_and(|meta| !meta.is_file() && !meta.is_dir())
 }
 
-/// The bytes at `path`; an [`is_special_file`] is `NotFound`, without being opened.
-pub(crate) fn read_regular(path: &Path) -> std::io::Result<Vec<u8>> {
-    if is_special_file(path) {
-        let kind = std::io::ErrorKind::NotFound;
-        return Err(std::io::Error::new(kind, "not a regular file"));
+fn not_regular() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::NotFound, "not a regular file")
+}
+
+/// Options that open for reading without waiting on a pipe or device.
+fn nonblocking_read() -> std::fs::OpenOptions {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    options
+}
+
+/// `path` opened for reading, following links. The type is taken from the opened handle, so a
+/// pipe, socket or device (even one swapped in after an earlier check) is `NotFound`; reading a
+/// directory fails as it always does.
+pub(crate) fn open_regular(path: &Path) -> std::io::Result<std::fs::File> {
+    let file = match nonblocking_read().open(path) {
+        Ok(file) => file,
+        // A socket refuses the open itself.
+        Err(_) if is_special_file(path) => return Err(not_regular()),
+        Err(e) => return Err(e),
+    };
+    let kind = file.metadata()?.file_type();
+    if !kind.is_file() && !kind.is_dir() {
+        return Err(not_regular());
     }
-    std::fs::read(path)
+    Ok(file)
+}
+
+/// [`open_regular`] for async callers.
+pub(crate) async fn open_regular_async(path: &Path) -> std::io::Result<tokio::fs::File> {
+    let file = match tokio::fs::OpenOptions::from(nonblocking_read())
+        .open(path)
+        .await
+    {
+        Ok(file) => file,
+        Err(_) if is_special_file(path) => return Err(not_regular()),
+        Err(e) => return Err(e),
+    };
+    let kind = file.metadata().await?.file_type();
+    if !kind.is_file() && !kind.is_dir() {
+        return Err(not_regular());
+    }
+    Ok(file)
+}
+
+/// The bytes at `path`, read through [`open_regular`].
+pub(crate) fn read_regular(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut open_regular(path)?, &mut bytes)?;
+    Ok(bytes)
+}
+
+/// The bytes at `path`, read through [`open_regular_async`].
+pub(crate) async fn read_regular_async(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut file = open_regular_async(path).await?;
+    tokio::io::AsyncReadExt::read_to_end(&mut file, &mut bytes).await?;
+    Ok(bytes)
 }
 
 /// [`read_regular`] as UTF-8 text; other bytes are `InvalidData`.
@@ -773,6 +826,32 @@ mod tests {
         std::fs::write(&path, text).expect("write");
         let doc = Document::load(&path).expect("loads");
         (dir, doc)
+    }
+
+    // The pipe is opened without waiting and refused from the opened handle, never a stat.
+    #[cfg(unix)]
+    #[test]
+    fn an_opened_pipe_is_refused_without_waiting() {
+        let dir = TempDir::new().expect("tempdir");
+        let pipe = dir.path().join("p");
+        crate::hang_guard::mkfifo(&pipe);
+        let path = pipe.clone();
+        let opened = crate::hang_guard::off_the_pipe(&pipe, move || open_regular(&path).map(drop));
+        let error = opened.expect_err("a pipe is no regular file");
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(error.to_string(), "not a regular file");
+    }
+
+    #[test]
+    fn a_regular_file_opens_and_reads() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("f");
+        std::fs::write(&path, "text").expect("write");
+        assert_eq!(read_regular(&path).expect("reads"), b"text");
+        assert!(
+            read_regular(dir.path()).is_err(),
+            "a directory has no bytes"
+        );
     }
 
     fn keys(map: &Mapping) -> Vec<&str> {

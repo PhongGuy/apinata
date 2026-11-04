@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use pkcs8::der::pem::LineEnding;
 
+use crate::document::{read_regular, read_regular_async};
 use crate::execute::ExecError;
 
 use super::{CertPath, CertificateFiles, Preloaded, ResolvedCertificate};
@@ -64,7 +65,7 @@ pub(crate) async fn load_identity(
 
 /// The CA file's certificates; an unreadable file or one with none is `ExecError::Certificate`.
 pub(crate) fn read_ca(path: &Path) -> Result<Vec<reqwest::Certificate>, ExecError> {
-    let bytes = std::fs::read(path).map_err(|e| failure(path, e.to_string()))?;
+    let bytes = read_regular(path).map_err(|e| failure(path, e.to_string()))?;
     match reqwest::Certificate::from_pem_bundle(&bytes) {
         Ok(certs) if !certs.is_empty() => Ok(certs),
         Ok(_) => Err(failure(path, NO_CERTIFICATE)),
@@ -87,7 +88,7 @@ async fn read_given(
 }
 
 async fn read(file: &CertPath) -> Result<String, ExecError> {
-    let bytes = tokio::fs::read(&file.read)
+    let bytes = read_regular_async(&file.read)
         .await
         .map_err(|e| failure(&file.written, e.to_string()))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())

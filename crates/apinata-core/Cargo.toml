@@ -65,6 +65,10 @@ semver = { workspace = true, optional = true }
 tar = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
 
+[target.'cfg(unix)'.dependencies]
+# `O_NONBLOCK`, so a file is opened without waiting on a pipe and refused from its handle.
+libc = "0.2"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { workspace = true, optional = true }
 

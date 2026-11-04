@@ -1,6 +1,5 @@
 //! The script modules layer: the POSIX `path` module and `require` of collection files.
 
-use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -10,7 +9,7 @@ use serde_json::json;
 
 use super::engine::Installer;
 use super::host::HostState;
-use crate::document::is_special_file;
+use crate::document::open_regular;
 
 const MODULES_JS: &str = include_str!("modules.js");
 
@@ -52,13 +51,10 @@ fn load(ctx: &Ctx<'_>, root: &Path, name: &str) -> rquickjs::Result<String> {
     }
     let unreadable =
         || Exception::throw_message(ctx, &format!("Error loading local module {name}"));
-    if is_special_file(&canonical) {
-        return Err(unreadable());
-    }
     // Read one byte past the cap, so a file that grows after any size check still fails here.
     let mut bytes = Vec::new();
     let read =
-        File::open(&canonical).and_then(|f| f.take(MAX_MODULE_BYTES + 1).read_to_end(&mut bytes));
+        open_regular(&canonical).and_then(|f| f.take(MAX_MODULE_BYTES + 1).read_to_end(&mut bytes));
     if read.is_err() || bytes.len() as u64 > MAX_MODULE_BYTES {
         return Err(unreadable());
     }

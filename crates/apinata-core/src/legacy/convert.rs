@@ -4,6 +4,7 @@
 use super::error::ConvertError;
 use super::plan::ConversionPlan;
 use crate::Collection;
+use crate::document::read_regular;
 use crate::naming::sanitize_name;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -97,7 +98,7 @@ pub(crate) fn convert_with(
 /// Re-read every hashed source; a different digest or an unreadable file is `SourceChanged`.
 fn check_sources(plan: &ConversionPlan) -> Result<(), ConvertError> {
     for (rel, digest) in &plan.hashes {
-        let same = fs::read(plan.root.join(rel))
+        let same = read_regular(&plan.root.join(rel))
             .is_ok_and(|bytes| Sha256::digest(&bytes).as_slice() == digest.as_slice());
         if !same {
             return Err(ConvertError::SourceChanged { path: rel.clone() });
@@ -211,7 +212,7 @@ fn source_changed(plan: &ConversionPlan, rel: &Path) -> bool {
     let Some((_, digest)) = plan.hashes.iter().find(|(p, _)| p == rel) else {
         return false;
     };
-    fs::read(plan.root.join(rel))
+    read_regular(&plan.root.join(rel))
         .map(|bytes| Sha256::digest(&bytes).as_slice() != digest.as_slice())
         .unwrap_or(true)
 }
@@ -291,7 +292,8 @@ pub(super) fn open_regular(path: &Path) -> io::Result<File> {
     if !before.file_type().is_file() {
         return Err(io::Error::new(ErrorKind::InvalidData, "not a regular file"));
     }
-    let file = File::open(path)?;
+    // Opened without waiting, so a pipe swapped in after the check is refused, not waited on.
+    let file = crate::document::open_regular(path)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
