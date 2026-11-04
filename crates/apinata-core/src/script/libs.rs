@@ -19,15 +19,20 @@ pub(crate) fn installer() -> Installer {
 }
 
 /// The target behind a Proxy, read without running a trap: `undefined` for anything else and `null`
-/// for a revoked proxy, so the inspect text can show what Node shows.
-fn proxy_target<'js>(value: Value<'js>) -> Value<'js> {
-    let ctx = value.ctx().clone();
-    match value.into_proxy() {
-        None => Value::new_undefined(ctx),
-        Some(proxy) => match proxy.target() {
-            Ok(target) if !target.as_value().is_null() => target.into_value(),
-            _ => Value::new_null(ctx),
-        },
+/// for a revoked proxy (`false` for a callable one, whose target cannot be read), so the inspect text can show what Node shows.
+pub(super) fn proxy_target<'js>(ctx: Ctx<'js>, value: Value<'js>) -> Value<'js> {
+    // The engine types a callable proxy as a function, so it cannot be read as a proxy; say only that it is one.
+    let callable = value.is_proxy();
+    let Some(proxy) = value.into_proxy() else {
+        return if callable { Value::new_bool(ctx, false) } else { Value::new_undefined(ctx) };
+    };
+    match proxy.target() {
+        Ok(target) if !target.as_value().is_null() => target.into_value(),
+        _ => {
+            // A revoked proxy leaves its exception pending; clear it so the script sees none.
+            let _ = ctx.catch();
+            Value::new_null(ctx)
+        }
     }
 }
 

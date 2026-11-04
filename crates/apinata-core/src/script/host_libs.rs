@@ -26,6 +26,8 @@ pub(crate) fn installer() -> Installer {
             .set("__random", Function::new(ctx.clone(), random)?)?;
         ctx.globals()
             .set("__hash", Function::new(ctx.clone(), hash)?)?;
+        ctx.globals()
+            .set("__proxyTarget", Function::new(ctx.clone(), super::libs::proxy_target)?)?;
         ctx.eval::<(), _>(HOST_LIBS_JS)
     })
 }

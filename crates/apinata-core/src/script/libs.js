@@ -15,6 +15,23 @@
   const globals = { moment: modules.moment, _: modules.lodash, tv4: modules.tv4, Buffer: () => get("buffer").Buffer,
     Ajv: modules.ajv, addFormats: modules["ajv-formats"] };
 
+  // Reflection and brand checks the inspect text uses, captured now so a script cannot swap one for a
+  // function that receives a value the formatter unwrapped from a proxy.
+  const uncurry = Function.prototype.bind.bind(Function.prototype.call);
+  const { getOwnPropertyDescriptor: gopd, getPrototypeOf: gpo, keys: okeys, hasOwn, is: oIs } = Object;
+  const ownKeys = Reflect.ownKeys, isArray = Array.isArray, isNaNum = Number.isNaN, toObject = Object, toStr = String;
+  const pie = uncurry(Object.prototype.propertyIsEnumerable), objTag = uncurry(Object.prototype.toString);
+  const dateTime = uncurry(Date.prototype.getTime), dateISO = uncurry(Date.prototype.toISOString);
+  const datePrim = Date.prototype[Symbol.toPrimitive];
+  const getterOf = (proto, k) => uncurry(gopd(proto, k).get);
+  const reSource = getterOf(RegExp.prototype, "source");
+  const reFlags = Object.entries({ hasIndices: "d", global: "g", ignoreCase: "i", multiline: "m", dotAll: "s", unicode: "u", unicodeSets: "v", sticky: "y" })
+    .map(([k, c]) => [c, getterOf(RegExp.prototype, k)]);
+  const mapHas = uncurry(Map.prototype.has), setHas = uncurry(Set.prototype.has);
+  const mapSize = getterOf(Map.prototype, "size"), setSize = getterOf(Set.prototype, "size");
+  const mapEntries = uncurry(Map.prototype.entries), setValues = uncurry(Set.prototype.values);
+  const mapNext = uncurry(gopd(gpo(new Map().entries()), "next").value), setNext = uncurry(gopd(gpo(new Set().values()), "next").value);
+
   // The vendored Buffer predates Node's base64url. Decoding goes through base64, whose decoder already
   // reads `-_` and missing padding; encoding maps base64's `+/` to `-_` and strips the padding. Its
   // UTF-8 decoder replaces each bad byte, so utf8 decodes the clamped byte range itself with the WHATWG
@@ -56,29 +73,29 @@
     };
     // The formatter runs on an error path, so it reads properties through descriptors and never runs a getter.
     const find = (o, k) => {
-      for (; o !== null; o = Object.getPrototypeOf(o)) {
-        const d = Object.getOwnPropertyDescriptor(o, k);
+      for (; o !== null; o = gpo(o)) {
+        const d = gopd(o, k);
         if (d) return { d, holder: o };
       }
       return null;
     };
     const fnName = (f) => {
-      const d = Object.getOwnPropertyDescriptor(f, "name");
+      const d = gopd(f, "name");
       return d && typeof d.value === "string" ? d.value : "";
     };
     const GLOBALS = () => Object.getOwnPropertyNames(globalThis).filter((n) => /^[A-Z][a-zA-Z0-9]+$/.test(n));
     const builtinCtor = (holder) => {
-      const c = Object.getOwnPropertyDescriptor(holder, "constructor");
+      const c = gopd(holder, "constructor");
       return c !== undefined && typeof c.value === "function" && GLOBALS().includes(fnName(c.value));
     };
     // Builtins are told apart by brand, never by a Symbol.toStringTag a script can set.
     const brandOf = (v) => {
-      if (Array.isArray(v)) return "Array";
+      if (isArray(v)) return "Array";
       const probes = {
-        Date: () => Date.prototype.getTime.call(v),
-        RegExp: () => Object.getOwnPropertyDescriptor(RegExp.prototype, "source").get.call(v),
-        Map: () => Map.prototype.has.call(v),
-        Set: () => Set.prototype.has.call(v),
+        Date: () => dateTime(v),
+        RegExp: () => reSource(v),
+        Map: () => mapHas(v),
+        Set: () => setHas(v),
       };
       for (const [name, probe] of Object.entries(probes)) {
         try { probe(); return name; } catch { /* not this brand */ }
@@ -89,11 +106,11 @@
     const tagOf = (v) => {
       const t = find(v, Symbol.toStringTag);
       if (t && (!("value" in t.d) || !builtinCtor(t.holder))) return "Object";
-      return Object.prototype.toString.call(v).slice(8, -1);
+      return objTag(v).slice(8, -1);
     };
     const ctorName = (v) => {
-      for (let o = v; o !== null; o = Object.getPrototypeOf(o)) {
-        const d = Object.getOwnPropertyDescriptor(o, "constructor");
+      for (let o = v; o !== null; o = gpo(o)) {
+        const d = gopd(o, "constructor");
         if (d && typeof d.value === "function" && fnName(d.value) !== "") return fnName(d.value);
       }
       return null;
@@ -101,7 +118,7 @@
     // Node treats a toString found on a builtin's prototype as builtin, so a class instance still gets inspected.
     const builtinToString = (e) => {
       const prim = find(e, Symbol.toPrimitive);
-      if (prim && (!("value" in prim.d) || (typeof prim.d.value === "function" && prim.d.value !== Date.prototype[Symbol.toPrimitive]))) return false;
+      if (prim && (!("value" in prim.d) || (typeof prim.d.value === "function" && prim.d.value !== datePrim && !(prim.holder !== e && builtinCtor(prim.holder))))) return false;
       const t = find(e, "toString");
       if (!t) return true;
       if (!("value" in t.d)) return false;
@@ -131,7 +148,7 @@
         widths.push(w + 2);
       }
       const typeAt = (i) => {
-        const d = Object.getOwnPropertyDescriptor(value, i);
+        const d = gopd(value, i);
         return d && "value" in d ? typeof d.value : "accessor";
       };
       const numeric = Array.from({ length: output.length }, (_, i) => i).every((i) => typeAt(i) === "number" || typeAt(i) === "bigint");
@@ -160,11 +177,11 @@
     const MAX_ITEMS = 100;
     const more = (n) => `... ${n} more item${n > 1 ? "s" : ""}`;
     const sizeOf = {
-      Map: Object.getOwnPropertyDescriptor(Map.prototype, "size").get,
-      Set: Object.getOwnPropertyDescriptor(Set.prototype, "size").get,
+      Map: mapSize,
+      Set: setSize,
     };
     const prop = (v, k) => {
-      const d = Object.getOwnPropertyDescriptor(v, k);
+      const d = gopd(v, k);
       if (!d) return "undefined";
       if (!("value" in d)) return d.get ? (d.set ? "[Getter/Setter]" : "[Getter]") : "[Setter]";
       return shown(d.value);
@@ -174,14 +191,14 @@
       const output = [], max = Math.min(MAX_ITEMS, size);
       let i = 0;
       for (; i < max; i++) {
-        if (!Object.hasOwn(v, i)) break;
+        if (!hasOwn(v, i)) break;
         output.push(prop(v, i));
       }
       if (i === max) {
         if (size > max) output.push(more(size - max));
         return output;
       }
-      const keys = Object.keys(v);
+      const keys = okeys(v);
       let index = i;
       for (; i < keys.length && output.length < max; i++) {
         const key = keys[i];
@@ -204,28 +221,26 @@
     // Node formats a proxy from its target and never runs a trap; a revoked one shows as such.
     const REVOKED = {};
     const unwrap = (v) => {
-      if (Object(v) !== v) return v;
+      if (toObject(v) !== v) return v;
       const t = proxyTarget(v);
-      return t === undefined ? v : t === null ? REVOKED : t;
+      return t === undefined || t === false ? v : t === null ? REVOKED : t;
     };
     // The one own string tag a null-prototype value can carry, since it inherits none.
     const ownTag = (v) => {
-      const d = Object.getOwnPropertyDescriptor(v, Symbol.toStringTag);
+      const d = gopd(v, Symbol.toStringTag);
       return d && typeof d.value === "string" && d.value !== "" ? d : null;
     };
     const keyText = (k) => (typeof k === "symbol" ? String(k) : /^[A-Za-z_$][\w$]*$/.test(k) ? k : quote(k));
     // The flags come from each brand-checked getter, since `flags` itself reads properties a null prototype lacks.
-    const regexpPart = (v, k) => Object.getOwnPropertyDescriptor(RegExp.prototype, k).get.call(v);
-    const FLAGS = { hasIndices: "d", global: "g", ignoreCase: "i", multiline: "m", dotAll: "s", unicode: "u", unicodeSets: "v", sticky: "y" };
-    const flagsOf = (v) => Object.entries(FLAGS).map(([k, c]) => (regexpPart(v, k) ? c : "")).join("");
+    const flagsOf = (v) => reFlags.map(([c, get]) => (get(v) ? c : "")).join("");
     const inspect = (v, top) => {
       const brand = brandOf(v);
       const array = brand === "Array", map = brand === "Map", set = brand === "Set", text = brand === "Date" || brand === "RegExp";
       const name = ctorName(v);
       if (!brand && tagOf(v) !== "Object") return `[${name ?? tagOf(v)}]`;
-      const size = array ? v.length : map || set ? sizeOf[brand].call(v) : 0;
+      const size = array ? v.length : map || set ? sizeOf[brand](v) : 0;
       // A nested container with items prints as its name alone, so its keys need not be listed.
-      const keys = !top && size > 0 ? [] : Reflect.ownKeys(v).filter((k) => !(array && isIndex(k)) && Object.prototype.propertyIsEnumerable.call(v, k));
+      const keys = !top && size > 0 ? [] : ownKeys(v).filter((k) => !(array && isIndex(k)) && pie(v, k));
       // Node's getPrefix: a null prototype names the kind, a shown tag renames a plain object and a hidden one follows it.
       const own = name === null ? ownTag(v) : null;
       const kind = brand ?? (own?.enumerable ? own.value : "Object");
@@ -235,8 +250,8 @@
       const cut = () => (name === null ? prefix("").trimEnd() : `[${prefix("").trimEnd()}]`);
       if (text) {
         const base = brand === "Date"
-          ? (Number.isNaN(Date.prototype.getTime.call(v)) ? "Invalid Date" : Date.prototype.toISOString.call(v))
-          : `/${regexpPart(v, "source")}/${flagsOf(v)}`;
+          ? (isNaNum(dateTime(v)) ? "Invalid Date" : dateISO(v))
+          : `/${reSource(v)}/${flagsOf(v)}`;
         const lead = prefix("");
         const body = lead === `${brand} ` ? base : lead + base;
         if (keys.length === 0) return body;
@@ -252,10 +267,10 @@
       let output = [];
       if (array) output = arrayItems(v, size);
       else if (map || set) {
-        const it = (map ? Map : Set).prototype[map ? "entries" : "values"].call(v);
+        const it = map ? mapEntries(v) : setValues(v);
         const max = Math.min(MAX_ITEMS, size);
         for (let n = 0; n < max; n++) {
-          const { value } = it.next();
+          const { value } = map ? mapNext(it) : setNext(it);
           output.push(map ? `${shown(value[0])} => ${shown(value[1])}` : shown(value));
         }
         if (size > max) output.push(more(size - max));
@@ -265,20 +280,24 @@
     };
     const shown = (v) => {
       if (typeof v === "string") return quote(v);
-      if (Object(v) === v && (v = unwrap(v)) === REVOKED) return "<Revoked Proxy>";
+      if (toObject(v) === v && (v = unwrap(v)) === REVOKED) return "<Revoked Proxy>";
       if (typeof v === "function") return fnName(v) ? `[Function: ${fnName(v)}]` : "[Function (anonymous)]";
-      return Object(v) === v ? inspect(v, false) : nameOf(v);
+      return toObject(v) === v ? inspect(v, false) : nameOf(v);
     };
     const nameOf = (e) => {
-      if (Object(e) === e && (e = unwrap(e)) === REVOKED) return "<Revoked Proxy>";
+      // Node inspects a proxy's target but converts the proxy itself with String(), so keep both.
+      const original = e;
+      if (toObject(e) === e && (e = unwrap(e)) === REVOKED) return "<Revoked Proxy>";
       if (typeof e === "bigint") return `${e}n`;
-      if (Object.is(e, -0)) return "-0";
-      if (Object(e) !== e || typeof e === "function") return String(e);
+      if (oIs(e, -0)) return "-0";
+      // A proxied function has no source to show, so the engine's own text for it would differ from Node's.
+      if (typeof e === "function" && proxyTarget(original) !== undefined) return "function () { [native code] }";
+      if (toObject(e) !== e || typeof e === "function") return toStr(original);
       // A proxy trap or a hostile prototype can still throw; the error text must not.
       try {
         const brand = brandOf(e);
         const inspectable = builtinToString(e) && (brand !== null || tagOf(e) === "Object");
-        return inspectable ? inspect(e, true) : String(e);
+        return inspectable ? inspect(e, true) : toStr(original);
       } catch {
         return "[Object]";
       }

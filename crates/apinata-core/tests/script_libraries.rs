@@ -502,6 +502,86 @@ for (const e of [new MyDate(0), new MyRe("x"), new MyMap([[1, 2]]), new Foo([[1,
     );
 }
 
+/// Pinned from Node 24.16: a proxy is formatted from its target, and a script that patches the reflection
+/// and brand functions (every one the formatter could call) never receives that target. Node's own
+/// internals do see some of these patched getters, so only the formatted text is taken from Node.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_to_string_keeps_a_proxy_target_from_patched_builtins() {
+    let code = r#"const b = Buffer.from("hi");
+const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message); } };
+const targets = [{ a: 1 }, new Date(0), new Map([[1, 2]]), new Set([3]), /x/g, [1, 2], new Map(), np()];
+function np() { return Object.setPrototypeOf(new Map(), null); }
+const leaked = [];
+const watch = (owner, key, label) => {
+  const d = Object.getOwnPropertyDescriptor(owner, key);
+  const wrap = (f) => function (...args) { if (targets.some((t) => this === t || args[0] === t)) leaked.push(label); return f.apply(this, args); };
+  Object.defineProperty(owner, key, "value" in d ? { ...d, value: wrap(d.value) } : { ...d, get: wrap(d.get) });
+};
+for (const k of ["getOwnPropertyDescriptor", "getPrototypeOf", "keys", "hasOwn", "entries"]) watch(Object, k, "Object." + k);
+watch(Reflect, "ownKeys", "Reflect.ownKeys");
+watch(Object.prototype, "propertyIsEnumerable", "propertyIsEnumerable");
+watch(Object.prototype, "toString", "Object.prototype.toString");
+for (const k of ["getTime", "toISOString"]) watch(Date.prototype, k, "Date." + k);
+for (const k of ["has", "entries", "size"]) watch(Map.prototype, k, "Map." + k);
+for (const k of ["has", "values", "size"]) watch(Set.prototype, k, "Set." + k);
+for (const k of ["source", "global"]) watch(RegExp.prototype, k, "RegExp." + k);
+watch(Array, "isArray", "Array.isArray");
+const iter = Object.getPrototypeOf(new Map().entries());
+const nextOf = iter.next; iter.next = function () { return nextOf.call(this); };
+Object.prototype[Symbol.toPrimitive] = function () { if (targets.includes(this)) leaked.push("toPrimitive"); return "x"; };
+const out = [];
+for (const t of targets.slice(0, 7)) { const p = new Proxy(t, {}); out.push(tryIt(() => b.toString({ k: p })), t instanceof Date ? "skipped" : tryIt(() => b.toString(p))); }
+delete Object.prototype[Symbol.toPrimitive];
+for (const o of out) console.log(o);
+console.log("leaked", JSON.stringify([...new Set(leaked)]));"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(
+        console(&result),
+        [
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { a: 1 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: 1970-01-01T00:00:00.000Z }""#,
+            r#"log:skipped"#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Map] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Map(1) { 1 => 2 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Set] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Set(1) { 3 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: /x/g }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: /x/g""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Array] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [ 1, 2 ]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: Map(0) {} }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Map(0) {}""#,
+            r#"log:leaked []"#,
+        ]
+    );
+}
+
+/// Pinned from Node 24.16: the string conversion of a proxy runs its own traps and methods.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_to_string_converts_a_proxy_with_string() {
+    let code = r#"const b = Buffer.from("hi");
+const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message); } };
+console.log(tryIt(() => b.toString(new Proxy({ toString() { return "P"; } }, {}))));
+console.log(tryIt(() => b.toString({ k: new Proxy({ toString() { return "P"; } }, {}) })));
+console.log(tryIt(() => b.toString(new Proxy(() => {}, {}))));
+console.log(tryIt(() => b.toString(new Proxy(function foo() {}, {}))));
+console.log(tryIt(() => b.toString(new Proxy([1, 2], {}))));"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(
+        console(&result),
+        [
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: P""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Object] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: function () { [native code] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: function () { [native code] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [ 1, 2 ]""#,
+        ]
+    );
+}
+
 /// Pinned from Node 24.16: joining a sparse array of 2^32 - 1 holes fails at once, not after a walk.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn buffer_to_string_rejects_a_huge_sparse_array_at_once() {

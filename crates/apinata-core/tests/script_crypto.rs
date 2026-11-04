@@ -1200,3 +1200,19 @@ for (const e of cases) console.log(tryIt(() => crypto.hash("sha1", e)));"#;
         ]
     );
 }
+
+/// Pinned from Node 24.16: the received text of a proxy around a null-prototype value reads the target.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn received_text_reads_a_proxy_target() {
+    let code = r#"const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message).slice(-60); } };
+const np = (o) => Object.setPrototypeOf(o, null);
+for (const e of [new Proxy(np(new Map()), {}), new Proxy(np([1]), {}), new Proxy(np({ a: 1 }), {})]) console.log(tryIt(() => crypto.hash("sha1", e)));"#;
+    assert_eq!(
+        run_crypto(code).await,
+        [
+            r#"log:TypeError ERR_INVALID_ARG_TYPE pedArray, or DataView. Received [Map(0): null prototype] {}""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE , TypedArray, or DataView. Received [Array: null prototype]""#,
+            r#"log:TypeError ERR_INVALID_ARG_TYPE  TypedArray, or DataView. Received [Object: null prototype]""#,
+        ]
+    );
+}
