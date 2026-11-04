@@ -147,6 +147,10 @@ pub(super) fn encrypted_der(
 ) -> Result<Vec<u8>, String> {
     use aws_lc_rs::rand::{SecureRandom, SystemRandom};
     use pkcs8::pkcs5::pbes2::{EncryptionScheme, Parameters, Pbkdf2Params};
+    // A longer passphrase could never open the key again, here or in Node.
+    if passphrase.len() > MAX_PASSPHRASE {
+        return Err(NO_PASSPHRASE_PEM.into());
+    }
     let (mut salt, mut iv) = ([0u8; 16], [0u8; 16]);
     let random = SystemRandom::new();
     random

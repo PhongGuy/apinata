@@ -218,7 +218,7 @@ for (const [cipher, canonical] of names) {{
   console.log(row.join(" "));
 }}
 const k = crypto.createPrivateKey(EC256_SEC1), o = {{ type: "pkcs8", format: "pem", cipher: "aes-256-cbc" }};
-console.log(plain({{ key: k.export({{ ...o, passphrase: Buffer.from(PW) }}), passphrase: PW }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: new Uint8Array([0xff, 0]) }}), passphrase: Buffer.from([0xff, 0]) }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "" }}), passphrase: "" }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "70", encoding: "hex" }}), passphrase: Buffer.from([0x70]) }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "x".repeat(1024) }}), passphrase: "x".repeat(1024) }}) === plain(EC256_SEC1), k.export({{ ...o, passphrase: "x".repeat(2000) }}).length > 0);"#
+console.log(plain({{ key: k.export({{ ...o, passphrase: Buffer.from(PW) }}), passphrase: PW }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: new Uint8Array([0xff, 0]) }}), passphrase: Buffer.from([0xff, 0]) }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "" }}), passphrase: "" }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "70", encoding: "hex" }}), passphrase: Buffer.from([0x70]) }}) === plain(EC256_SEC1), plain({{ key: k.export({{ ...o, passphrase: "x".repeat(1024) }}), passphrase: "x".repeat(1024) }}) === plain(EC256_SEC1));"#
     );
     let row = "true true true true true true";
     let line = |name: &str| format!("log:{name} {row} {row} {row} {row}");
@@ -232,7 +232,7 @@ console.log(plain({{ key: k.export({{ ...o, passphrase: Buffer.from(PW) }}), pas
             line("aes128"),
             line("Aes192"),
             line("aes256"),
-            "log:true true true true true true".to_string(),
+            "log:true true true true true".to_string(),
         ]
     );
 }
@@ -273,7 +273,8 @@ for (const who of ["node", "ours"]) {{
 }
 
 /// Node's errors for encrypted export options, OpenSSL codes dropped and passphrases not echoed;
-/// ciphers Node writes and the shim does not are named refusals.
+/// ciphers Node writes and the shim does not are named refusals. A passphrase over 1024 bytes,
+/// which Node writes but cannot read back, is refused with the error reading it would give.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn encrypted_export_failures_keep_node_errors() {
     let code = r#"const show = (tag, f) => { try { const r = f(); console.log(tag, "ok", Buffer.isBuffer(r) ? r.length : typeof r === "string" ? r.split("\n")[0] : JSON.stringify(r)); } catch (e) { console.log(tag, e.name, e.message); } };
@@ -285,7 +286,11 @@ show("cipher number", x({ cipher: 1, passphrase: "p" }));
 show("passphrase number", x({ cipher: "aes-256-cbc", passphrase: 1 }));
 show("unknown", x({ cipher: "nope", passphrase: "p" }));
 show("unknown aes", x({ cipher: "aes-999-cbc", passphrase: "p" }));
-for (const cipher of ["aes-256-gcm", "aes-128-ctr", "aes-256-ecb", "des-ede3-cbc", "camellia-256-cbc", "chacha20", "id-aes256-wrap"]) show(cipher, x({ cipher, passphrase: "p" }));
+show("unknown design", x({ cipher: "design", passphrase: "p" }));
+show("unknown aes mode", x({ cipher: "aes-128-nope", passphrase: "p" }));
+show("passphrase 1025", x({ cipher: "aes-256-cbc", passphrase: "x".repeat(1025) }));
+show("passphrase 1025 der", () => k.export({ type: "pkcs8", format: "der", cipher: "aes-256-cbc", passphrase: Buffer.alloc(1025, 1) }));
+for (const cipher of ["aes-256-gcm", "aes-128-ctr", "aes-256-ecb", "des-ede3-cbc", "DES-EDE3-CBC", "des-ede", "camellia-256-cbc", "chacha20", "id-aes256-wrap"]) show(cipher, x({ cipher, passphrase: "p" }));
 show("der unknown", () => k.export({ type: "pkcs8", format: "der", cipher: "nope", passphrase: "p" }));
 show("sec1", () => k.export({ type: "sec1", format: "pem", cipher: "aes-256-cbc", passphrase: "p" }));
 show("jwk", () => k.export({ format: "jwk", cipher: "aes-256-cbc", passphrase: "p" }));
@@ -309,6 +314,10 @@ show("open der wrong", () => crypto.createPrivateKey({ key: der, format: "der", 
         "log:passphrase number TypeError The property 'options.passphrase' is invalid.",
         "log:unknown Error Unknown cipher",
         "log:unknown aes Error Unknown cipher",
+        "log:unknown design Error Unknown cipher",
+        "log:unknown aes mode Error Unknown cipher",
+        "log:passphrase 1025 Error interrupted or cancelled",
+        "log:passphrase 1025 der Error interrupted or cancelled",
     ]
     .map(String::from)
     .to_vec();
@@ -318,6 +327,8 @@ show("open der wrong", () => crypto.createPrivateKey({ key: der, format: "der", 
             "aes-128-ctr",
             "aes-256-ecb",
             "des-ede3-cbc",
+            "DES-EDE3-CBC",
+            "des-ede",
             "camellia-256-cbc",
             "chacha20",
             "id-aes256-wrap",

@@ -1136,6 +1136,8 @@ fn encrypt_key_host<'js>(
     cipher: String,
     passphrase: Vec<u8>,
 ) -> rquickjs::Result<Vec<u8>> {
+    use pkcs8::der::zeroize::Zeroizing;
+    let (der, passphrase) = (Zeroizing::new(der), Zeroizing::new(passphrase));
     super::crypto_keys::encrypted_der(&der, &cipher, &passphrase).map_err(|e| throw(&ctx, &e))
 }
 
