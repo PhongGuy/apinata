@@ -1701,3 +1701,206 @@ mod tabs {
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
     }
 }
+
+mod oauth {
+    use super::*;
+    use apinata_app::config_editor::ConfigSection;
+    use apinata_app::oauth2_editor::OAuth2Field;
+    use apinata_app::request_editor::Section;
+    use apinata_app::shell::CloseCollection;
+    use apinata_app::tabs::TabKind;
+    use apinata_core::{AuthSpec, OAuth2Flow, OAuth2Spec};
+
+    const REQUEST: &str = "info:\n  name: a\n  type: http\n  seq: 1\n\nhttp:\n  method: GET\n  url: http://x\n  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: http://id/token\n    credentials:\n      clientId: svc\n";
+    const MOVED: &str = "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}";
+
+    #[derive(Clone, Copy)]
+    enum Tab {
+        Request,
+        Settings,
+    }
+
+    #[derive(Clone, Copy)]
+    enum Close {
+        Window,
+        Collection,
+    }
+
+    // The running app with nothing unsaved but a client secret typed in `tab`'s OAuth 2.0 form,
+    // which still has focus.
+    fn app(cx: &mut TestAppContext, tab: Tab) -> (tempfile::TempDir, Started) {
+        let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", REQUEST)]);
+        let s = started(cx, &col);
+        let root = s.root.clone();
+        let scope = match tab {
+            Tab::Request => {
+                s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx))
+                    .expect("a request");
+                cx.run_until_parked();
+                frame(cx, s.win);
+                cx.update_window(s.win, |_, w, cx| {
+                    w.click(("section", Section::Auth as usize), cx)
+                })
+                .unwrap();
+                "auth"
+            }
+            Tab::Settings => {
+                let mut o = OAuth2Spec::new(OAuth2Flow::ClientCredentials);
+                o.access_token_url = "http://id/token".into();
+                o.client_id = "svc".into();
+                let edit = Command::Edit {
+                    target: Target::Collection,
+                    edit: apinata_app::command::Edit::Auth(AuthSpec::OAuth2(o)),
+                };
+                s.ws.update(cx, |w, cx| w.send(&root, edit, cx));
+                let save = Command::Save(Target::Collection);
+                s.ws.update(cx, |w, cx| w.send(&root, save, cx));
+                cx.run_until_parked();
+                let tab =
+                    s.ws.update(cx, |w, cx| w.open_settings(&root, TabKind::Collection, cx))
+                        .unwrap();
+                frame(cx, s.win);
+                let ed = s
+                    .shell
+                    .read_with(cx, |v, cx| {
+                        v.tab_area().read(cx).config_editor(tab).cloned()
+                    })
+                    .unwrap();
+                ed.update(cx, |e, cx| e.set_section(ConfigSection::Auth, cx));
+                "config-auth"
+            }
+        };
+        cx.update_window(s.win, |_, w, _| w.activate_window())
+            .unwrap();
+        cx.run_until_parked();
+        frame(cx, s.win);
+        type_at_end(
+            cx,
+            s.win,
+            Some(scope),
+            OAuth2Field::ClientSecret.id(),
+            "typed-s3cret",
+        );
+        frame(cx, s.win);
+        (col, s)
+    }
+
+    fn read(col: &tempfile::TempDir, rel: &str) -> String {
+        std::fs::read_to_string(col.path().join(rel)).unwrap_or_default()
+    }
+
+    fn file_of(tab: Tab) -> &'static str {
+        match tab {
+            Tab::Request => "a.yml",
+            Tab::Settings => "opencollection.yml",
+        }
+    }
+
+    fn start_close(cx: &mut TestAppContext, s: &Started, close: Close) {
+        match close {
+            Close::Window => {
+                assert!(!gpui_kit::VisualTestContext::from_window(s.win, cx).simulate_close())
+            }
+            Close::Collection => cx.dispatch_action(s.win, CloseCollection),
+        }
+        cx.run_until_parked();
+        assert_eq!(title(cx).as_deref(), Some("Save changes before closing?"));
+    }
+
+    fn closed(cx: &mut TestAppContext, s: &Started, close: Close) -> bool {
+        match close {
+            Close::Window => cx.update(|cx| cx.windows().is_empty()),
+            Close::Collection => s.ws.read_with(cx, |w, _| w.collections().is_empty()),
+        }
+    }
+
+    fn save_all_keeps_the_secret(cx: &mut TestAppContext, tab: Tab, close: Close) {
+        let (col, s) = app(cx, tab);
+        start_close(cx, &s, close);
+        answer_confirm(cx, "confirm-save");
+        cx.run_until_parked();
+        let saved = read(&col, file_of(tab));
+        assert!(
+            saved.contains(MOVED) && !saved.contains("typed-s3cret"),
+            "{saved}"
+        );
+        let env = read(&col, ".env");
+        assert!(
+            env.contains("APINATA_OAUTH2_CLIENT_SECRET='typed-s3cret'"),
+            "{env}"
+        );
+        assert!(closed(cx, &s, close));
+    }
+
+    // The prompt moved the secret to `.env` as a blur does; Cancel leaves the file unwritten,
+    // the edit unsaved and the scope open.
+    fn cancel_keeps_the_typing(cx: &mut TestAppContext, tab: Tab, close: Close) {
+        let (col, s) = app(cx, tab);
+        let before = read(&col, file_of(tab));
+        start_close(cx, &s, close);
+        answer_confirm(cx, CANCEL);
+        cx.run_until_parked();
+        assert!(!closed(cx, &s, close));
+        assert_eq!(read(&col, file_of(tab)), before);
+        let env = read(&col, ".env");
+        assert!(
+            env.contains("APINATA_OAUTH2_CLIENT_SECRET='typed-s3cret'"),
+            "{env}"
+        );
+        let unsaved = cx.update(|cx| s.ws.read(cx).unsaved(None, cx));
+        assert_eq!(unsaved.len(), 1, "the edit stays unsaved");
+        let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
+        let id = s.ws.read_with(cx, |w, _| w.tabs().active().unwrap().id);
+        let shown = cx.update(|cx| {
+            let a = area.read(cx);
+            let auth = match tab {
+                Tab::Request => a.editor(id).unwrap().read(cx).auth().clone(),
+                Tab::Settings => a.config_editor(id).unwrap().read(cx).auth().clone(),
+            };
+            let oauth2 = auth.read(cx).oauth2().clone();
+            let input = oauth2.read(cx).input(OAuth2Field::ClientSecret).clone();
+            input.read(cx).value().to_string()
+        });
+        assert_eq!(shown, MOVED);
+    }
+
+    #[gpui_kit::test]
+    fn a_window_close_saves_a_request_tabs_typed_secret(cx: &mut TestAppContext) {
+        save_all_keeps_the_secret(cx, Tab::Request, Close::Window);
+    }
+
+    #[gpui_kit::test]
+    fn a_window_close_saves_a_settings_tabs_typed_secret(cx: &mut TestAppContext) {
+        save_all_keeps_the_secret(cx, Tab::Settings, Close::Window);
+    }
+
+    #[gpui_kit::test]
+    fn a_collection_close_saves_a_request_tabs_typed_secret(cx: &mut TestAppContext) {
+        save_all_keeps_the_secret(cx, Tab::Request, Close::Collection);
+    }
+
+    #[gpui_kit::test]
+    fn a_collection_close_saves_a_settings_tabs_typed_secret(cx: &mut TestAppContext) {
+        save_all_keeps_the_secret(cx, Tab::Settings, Close::Collection);
+    }
+
+    #[gpui_kit::test]
+    fn a_cancelled_window_close_keeps_a_request_tabs_typing(cx: &mut TestAppContext) {
+        cancel_keeps_the_typing(cx, Tab::Request, Close::Window);
+    }
+
+    #[gpui_kit::test]
+    fn a_cancelled_window_close_keeps_a_settings_tabs_typing(cx: &mut TestAppContext) {
+        cancel_keeps_the_typing(cx, Tab::Settings, Close::Window);
+    }
+
+    #[gpui_kit::test]
+    fn a_cancelled_collection_close_keeps_a_request_tabs_typing(cx: &mut TestAppContext) {
+        cancel_keeps_the_typing(cx, Tab::Request, Close::Collection);
+    }
+
+    #[gpui_kit::test]
+    fn a_cancelled_collection_close_keeps_a_settings_tabs_typing(cx: &mut TestAppContext) {
+        cancel_keeps_the_typing(cx, Tab::Settings, Close::Collection);
+    }
+}

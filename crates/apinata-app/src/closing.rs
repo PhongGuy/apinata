@@ -110,6 +110,7 @@ fn request_window_close(workspace: &Entity<Workspace>, window: &mut Window, cx: 
         ask_for_dialog(guard, workspace, window, cx);
         return false;
     }
+    send_typed_secrets(&CloseScope::Window, window, cx);
     if actor_behind(workspace, None, cx) || holding(&CloseScope::Window, window, cx).is_some() {
         confirm_close(workspace.clone(), CloseScope::Window, window, cx);
         return false;
@@ -324,7 +325,11 @@ pub fn confirm_close_or_keep(
     cx: &mut App,
     kept: impl FnOnce(&mut App) + 'static,
 ) {
-    if !prompting(window, cx) && actor_behind(&workspace, only(&scope), cx) {
+    let asking = prompting(window, cx);
+    if !asking {
+        send_typed_secrets(&scope, window, cx);
+    }
+    if !asking && actor_behind(&workspace, only(&scope), cx) {
         let (w, s) = (workspace.clone(), scope.clone());
         settle_then(workspace, scope, window, cx, move |window, cx| {
             ask_to_close(w, s, window, cx, kept)
@@ -535,6 +540,14 @@ fn tab_area(window: &Window, cx: &App) -> Option<Entity<TabArea>> {
 // The tab area when `scope` has variable typing only the table holds.
 fn holding(scope: &CloseScope, window: &Window, cx: &App) -> Option<Entity<TabArea>> {
     tab_area(window, cx).filter(|a| a.read(cx).holds_typing_in(only(scope), cx))
+}
+
+// An OAuth secret still focused in scope becomes an edit first, as the prompt's blur would make
+// it, so a close with nothing else unsaved still asks rather than dropping the typing.
+fn send_typed_secrets(scope: &CloseScope, window: &Window, cx: &mut App) {
+    if let Some(area) = tab_area(window, cx) {
+        area.update(cx, |a, cx| a.send_pending_secrets(only(scope), cx));
+    }
 }
 
 // Each window's tab area, for the run check at close.
