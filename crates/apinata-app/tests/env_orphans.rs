@@ -1052,6 +1052,67 @@ fn a_lock_on_a_new_row_just_named_like_a_saved_secret_is_refused(cx: &mut TestAp
     assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
 }
 
+/// Locks a new row `start` at row 2, then presses `clear` on its name and types `old` in one
+/// update, as an automation host does: the name stays and the note names `old`.
+fn one_input_onto_old_is_refused(
+    cx: &mut TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    ed: &Entity<EnvEditor>,
+    start: &str,
+    clear: &[&str],
+) {
+    let ix = 2;
+    type_at_end(cx, win, None, ("env-name", ix), start);
+    cx.run_until_parked();
+    click_lock(cx, win, ix);
+    assert!(draft_flag(cx, ed, ix));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("env-name", ix), cx);
+        for keys in clear {
+            w.press(keys, cx);
+        }
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let kept = draft_name(cx, ed, ix);
+    frame(cx, win);
+    // Every key lands before any Change is handled, so each handler reads the whole name.
+    cx.update_window(win, |_, w, cx| {
+        for c in "old".chars() {
+            let mut key = gpui_kit::Keystroke::parse(&c.to_string()).unwrap();
+            key.key_char = Some(c.to_string());
+            w.dispatch_keystroke(key, cx);
+        }
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(draft_name(cx, ed, ix), kept, "the name is refused");
+    assert!(present(cx, win, "env-name-refused"), "the row says why");
+    let note = note_text(cx, ed);
+    assert!(note.is_some_and(|n| n.contains("\"old\" is a saved secret")));
+}
+
+#[gpui_kit::test]
+fn a_saved_secrets_name_replacing_a_selected_name_in_one_input_shows_the_note(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _state, store, skey, win, ed) = saved_secret(cx);
+    one_input_onto_old_is_refused(cx, win, &ed, "olx", &["ctrl-a"]);
+    type_blur_and_save_store_nothing(cx, win, &store, &skey, 2);
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
+}
+
+#[gpui_kit::test]
+fn a_saved_secrets_name_entered_in_one_input_into_an_emptied_name_shows_the_note(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _state, store, skey, win, ed) = saved_secret(cx);
+    one_input_onto_old_is_refused(cx, win, &ed, "olx", &["ctrl-a", "backspace"]);
+    type_blur_and_save_store_nothing(cx, win, &store, &skey, 2);
+    assert_eq!(store.get(&skey).unwrap().as_deref(), Some("s3cret"));
+}
+
 const TWO_SECRETS: &str = "name: dev\nvariables:\n  - name: host\n    value: x\n  - name: old\n    secret: true\n  - name: tok\n    secret: true\n";
 
 fn note_text(cx: &mut TestAppContext, ed: &Entity<EnvEditor>) -> Option<String> {
