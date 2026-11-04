@@ -265,8 +265,8 @@ const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.
 class Named { toString() { return "named"; } }
 const own = { toString() { return "own"; } };
 function foo() { return 1; }
-const six = [0, 1, 2, 3, 4, 5], eight = [0, 1, 2, 3, 4, 5, 6, 7];
-for (const e of [{}, [], [1, 2], { a: 1 }, { "a-b": "x" }, { a: { b: 1 } }, [[1]], ["s"], 1, true, -0, 1n, "bogus", "raw", foo, own, new Named(), six, eight, { [Symbol("x")]: 1 }, { a: 1, [Symbol("x")]: "s" }]) console.log(tryIt(() => b.toString(e)));
+const six = [0, 1, 2, 3, 4, 5];
+for (const e of [{}, [], [1, 2], { a: 1 }, { "a-b": "x" }, { a: { b: 1 } }, [[1]], ["s"], 1, true, -0, 1n, "bogus", "raw", foo, own, new Named(), six, { [Symbol("x")]: 1 }, { a: 1, [Symbol("x")]: "s" }]) console.log(tryIt(() => b.toString(e)));
 console.log(tryIt(() => b.toLocaleString({})));
 console.log(tryIt(() => Buffer.alloc(0).toString({})), tryIt(() => Buffer.from("a").toString("bogus", 5)), tryIt(() => Buffer.from("a").toString("bogus", 0, 0)));
 console.log(tryIt(() => Buffer.alloc(0).toString(Symbol())), tryIt(() => Buffer.from("a").toString(Object.create(null), 5)), tryIt(() => Buffer.from("a").toString(Object.create(null), 0, 0)));
@@ -295,8 +295,6 @@ console.log(tryIt(() => b.toString(new String("hex"))), tryIt(() => b.toString("
         "own",
         "named",
         "[ 0, 1, 2, 3, 4, 5 ]",
-        // Node groups an array over six entries across lines; Apinata keeps one line (followup).
-        "[ 0, 1, 2, 3, 4, 5, 6, 7 ]",
         "{ Symbol(x): 1 }",
         "{ a: 1, Symbol(x): 's' }",
         "{}",
@@ -310,6 +308,66 @@ console.log(tryIt(() => b.toString(new String("hex"))), tryIt(() => b.toString("
         "log:\"6869\" \"hi\"".to_owned(),
     ]);
     assert_eq!(console(&result), expected);
+}
+
+/// Pinned from Node 24.16 (recorded by running Node itself): an unknown encoding that is a builtin, a
+/// class instance or a long array is named as util.format's `%s` inspects it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_to_string_inspects_builtins_in_an_unknown_encoding() {
+    let code = r#"const b = Buffer.from("hi");
+const tryIt = (f) => { try { return JSON.stringify(f()); } catch (e) { return e.name + " " + e.code + " " + JSON.stringify(e.message); } };
+class C {}
+class D { constructor() { this.a = 1; } }
+class Named { toString() { return "named"; } }
+const sparse = [1, , 3];
+const tagged = Object.assign([1], { x: 1 });
+const inherited = Object.create({ a: 1 });
+const both = Object.create({ a: 1 });
+both.b = 2;
+const cases = [
+  new Date(0), new Date(NaN), new Map(), new Map([[1, "a"], ["k", { z: 1 }]]), new Set(), new Set([1, "s"]), /x/gi,
+  [0, 1, 2, 3, 4, 5, 6, 7], ["a", "b", "c", "d", "e", "f", "g", "h"], Array.from({ length: 30 }, (_, i) => i),
+  [1.5, 22, 333, 4444, 55555, 666666, 7777777, 88888888], ["aa", "bb", "cc", "dd", "ee", "ff", "gg"],
+  [1, "a", 2, "b", 3, "c", 4], Array.from({ length: 101 }, (_, i) => i),
+  new C(), new D(), inherited, both, { get k() { return 5; } }, { get a() { return 1; }, set a(v) {} }, { set s(v) {} },
+  sparse, tagged, { a: new Date(0), b: /x/, c: new Map(), d: new Set(), e: new C(), f: [1] }, [new Map(), new D(), new Date(0)],
+  { a: "x".repeat(60), b: "y".repeat(60) }, new Named(),
+];
+for (const e of cases) console.log(tryIt(() => b.toString(e)));"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(
+        console(&result),
+        [
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: 1970-01-01T00:00:00.000Z""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Invalid Date""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Map(0) {}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Map(2) { 1 => 'a', 'k' => [Object] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Set(0) {}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: Set(2) { 1, 's' }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: /x/gi""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n  0, 1, 2, 3,\n  4, 5, 6, 7\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n  'a', 'b', 'c',\n  'd', 'e', 'f',\n  'g', 'h'\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n   0,  1,  2,  3,  4,  5,  6,  7,  8,\n   9, 10, 11, 12, 13, 14, 15, 16, 17,\n  18, 19, 20, 21, 22, 23, 24, 25, 26,\n  27, 28, 29\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n      1.5,       22,\n      333,     4444,\n    55555,   666666,\n  7777777, 88888888\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n  'aa', 'bb',\n  'cc', 'dd',\n  'ee', 'ff',\n  'gg'\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n  1, 'a', 2, 'b',\n  3, 'c', 4\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [\n   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,\n  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,\n  24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,\n  36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,\n  48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,\n  60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,\n  72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,\n  84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,\n  96, 97, 98, 99,\n  ... 1 more item\n]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: C {}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: D { a: 1 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: {}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { b: 2 }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { k: [Getter] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { a: [Getter/Setter] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: { s: [Setter] }""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [ 1, <1 empty item>, 3 ]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [ 1, x: 1 ]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: {\n  a: 1970-01-01T00:00:00.000Z,\n  b: /x/,\n  c: Map(0) {},\n  d: Set(0) {},\n  e: C {},\n  f: [Array]\n}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: [ Map(0) {}, [D], 1970-01-01T00:00:00.000Z ]""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: {\n  a: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',\n  b: 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'\n}""#,
+            r#"log:TypeError ERR_UNKNOWN_ENCODING "Unknown encoding: named""#,
+        ]
+    );
 }
 
 /// Pinned from Node 24.16: each maximal invalid UTF-8 subpart becomes one U+FFFD, not each byte.
