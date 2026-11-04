@@ -1617,7 +1617,10 @@ mod tabs {
         assert_eq!(file(&col), before);
         cx.dispatch_action(s.win, act);
         cx.run_until_parked();
-        answer_confirm(cx, REPLACE);
+        // Two dialogs share the id the helper looks for, so the button is clicked directly.
+        cx.update_window(s.win, |_, w, cx| w.click(REPLACE, cx))
+            .unwrap();
+        cx.run_until_parked();
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
         assert!(file(&col).contains("old"), "{}", file(&col));
     }
@@ -1647,7 +1650,10 @@ mod tabs {
         cx.dispatch_action(s.win, CloseTab);
         cx.run_until_parked();
         answer_confirm(cx, "confirm-save");
-        answer_confirm(cx, REPLACE);
+        // Two dialogs share the id the helper looks for, so the button is clicked directly.
+        cx.update_window(s.win, |_, w, cx| w.click(REPLACE, cx))
+            .unwrap();
+        cx.run_until_parked();
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
     }
 
@@ -1805,7 +1811,10 @@ mod tabs {
         assert_eq!(file(&col), outside);
         // The prompt comes again only while the typing is still there.
         overwrite_from_compare(cx, s.win);
-        answer_confirm(cx, REPLACE);
+        // Two dialogs share the id the helper looks for, so the button is clicked directly.
+        cx.update_window(s.win, |_, w, cx| w.click(REPLACE, cx))
+            .unwrap();
+        cx.run_until_parked();
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
         assert!(file(&col).contains("old"), "{}", file(&col));
     }
@@ -1838,7 +1847,7 @@ mod oauth {
     use apinata_app::oauth2_editor::OAuth2Field;
     use apinata_app::request_editor::Section;
     use apinata_app::shell::CloseCollection;
-    use apinata_app::tab_area::{CloseAllTabs, CloseTab};
+    use apinata_app::tab_area::{CloseAllTabs, CloseOtherTabs, CloseTab};
     use apinata_app::tabs::TabKind;
     use apinata_core::{AuthSpec, OAuth2Flow, OAuth2Spec};
 
@@ -2172,5 +2181,137 @@ mod oauth {
         a_discarded_tab_close_stores_no_settings_secret => (Tab::Settings, false);
         a_discarded_tab_close_stores_no_request_secret_with_another_edit => (Tab::Request, true);
         a_discarded_tab_close_stores_no_settings_secret_with_another_edit => (Tab::Settings, true);
+    }
+
+    // The hold a cancelled tab close set is released, so a plain blur stores the secret.
+    fn blur_after_tab_cancel_stores(cx: &mut TestAppContext, tab: Tab) {
+        let (col, s) = app_with(cx, tab, false, false);
+        start_tab_close(cx, &s, false);
+        answer_confirm(cx, CANCEL);
+        cx.run_until_parked();
+        assert!(!read(&col, ".env").contains("typed-s3cret"));
+        cx.update_window(s.win, |_, w, cx| w.blur(cx)).unwrap();
+        cx.run_until_parked();
+        let env = read(&col, ".env");
+        assert!(env.contains(STORED), "{env}");
+        assert_eq!(tabs_open(cx, &s), 1);
+    }
+
+    cases! { blur_after_tab_cancel_stores:
+        a_blur_after_a_cancelled_tab_close_stores_a_request_tabs_secret => (Tab::Request);
+        a_blur_after_a_cancelled_tab_close_stores_a_settings_tabs_secret => (Tab::Settings);
+    }
+
+    // Closing the other tabs by keyboard saves them and leaves the focused tab's typing in its
+    // field, unstored until its own Save or blur; a blur then stores it once.
+    #[gpui_kit::test]
+    fn closing_other_tabs_leaves_the_focused_tabs_typing(cx: &mut TestAppContext) {
+        let (col, s) = app_with(cx, Tab::Request, true, true);
+        cx.dispatch_action(s.win, CloseOtherTabs);
+        cx.run_until_parked();
+        let asked = title(cx).unwrap_or_default();
+        assert!(asked.starts_with("Save changes to"), "{asked}");
+        answer_confirm(cx, "confirm-save");
+        cx.run_until_parked();
+        assert!(read(&col, "b.yml").contains(OTHER_URL));
+        assert_eq!(tabs_open(cx, &s), 1);
+        assert!(!read(&col, ".env").contains("typed-s3cret"));
+        assert_eq!(shown(cx, &s, Tab::Request), "typed-s3cret");
+        cx.update_window(s.win, |_, w, cx| w.blur(cx)).unwrap();
+        cx.run_until_parked();
+        let env = read(&col, ".env");
+        assert_eq!(env.matches("typed-s3cret").count(), 1, "{env}");
+        assert!(env.contains(STORED), "{env}");
+    }
+
+    // The label of the confirm dialog stacked at `ix`; both exist when this is called.
+    fn label_at(cx: &mut TestAppContext, s: &Started, ix: usize) -> Option<String> {
+        let scope: &'static str = ["dialog-0", "dialog-1"][ix];
+        cx.update_window(s.win, |_, w, _| {
+            w.within(scope)
+                .try_find("confirm-dialog")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap()
+    }
+
+    // A tab close whose Save also owes the environment Replace check, with a window close asked
+    // while the tab prompt shows. The window prompt opens under the Replace prompt, so no prompt
+    // is skipped; the secret is stored once and the window prompt then finishes the close.
+    #[gpui_kit::test]
+    fn a_queued_window_close_stacks_under_the_tab_saves_replace_check(cx: &mut TestAppContext) {
+        const DEV: &str = "name: dev\nvariables:\n  - name: host\n    value: a\n";
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            ("a.yml", REQUEST),
+            ("environments/dev.yml", DEV),
+        ]);
+        let (store, key) = crate::env_orphans::seeded(&col);
+        let s = started_with_store(cx, &col, store.clone());
+        let root = s.root.clone();
+        s.ws.update(cx, |w, cx| {
+            w.open_settings(&root, TabKind::Environments, cx)
+        })
+        .unwrap();
+        frame(cx, s.win);
+        cx.update_window(s.win, |_, w, _| w.activate_window())
+            .unwrap();
+        type_at_end(cx, s.win, None, ("env-name", 1usize), "old");
+        cx.run_until_parked();
+        crate::env_orphans::click_lock(cx, s.win, 1);
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-value", 1usize), "typed");
+        cx.run_until_parked();
+        s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx))
+            .expect("a request");
+        cx.run_until_parked();
+        frame(cx, s.win);
+        cx.update_window(s.win, |_, w, cx| {
+            w.click(("section", Section::Auth as usize), cx)
+        })
+        .unwrap();
+        frame(cx, s.win);
+        type_at_end(
+            cx,
+            s.win,
+            Some("auth"),
+            OAuth2Field::ClientSecret.id(),
+            "typed-s3cret",
+        );
+        frame(cx, s.win);
+
+        cx.dispatch_action(s.win, CloseAllTabs);
+        cx.run_until_parked();
+        assert_eq!(title(cx).as_deref(), Some("Save changes to 2 tabs?"));
+        assert!(!gpui_kit::VisualTestContext::from_window(s.win, cx).simulate_close());
+        frame(cx, s.win);
+        assert_eq!(title(cx).as_deref(), Some("Save changes to 2 tabs?"));
+        answer_confirm(cx, "confirm-save");
+        frame(cx, s.win);
+        assert_eq!(
+            label_at(cx, &s, 0).as_deref(),
+            Some("Save changes before closing?")
+        );
+        assert_eq!(
+            label_at(cx, &s, 1).as_deref(),
+            Some("Replace the stored value of \"old\"?")
+        );
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+        assert!(!read(&col, ".env").contains("typed-s3cret"));
+
+        // Replace answers the top prompt, stores both secrets once and leaves the window prompt.
+        // Two dialogs share the id the helper looks for, so the button is clicked directly.
+        cx.update_window(s.win, |_, w, cx| w.click(REPLACE, cx))
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
+        let env = read(&col, ".env");
+        assert_eq!(env.matches("typed-s3cret").count(), 1, "{env}");
+        assert!(read(&col, "a.yml").contains(MOVED));
+        assert_eq!(tabs_open(cx, &s), 0);
+        assert_eq!(title(cx).as_deref(), Some("Save changes before closing?"));
+        answer_confirm(cx, "confirm-save");
+        assert!(cx.update(|cx| cx.windows().is_empty()));
+        assert_eq!(read(&col, ".env").matches("typed-s3cret").count(), 1);
     }
 }
