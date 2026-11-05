@@ -206,3 +206,59 @@ fn an_export_round_trips_requests_headers_and_examples_through_the_importer() {
         json!({"id": 7})
     );
 }
+
+#[test]
+fn an_inherited_literal_credential_is_noted_once_at_the_layer_holding_it() {
+    let root = format!("{ROOT}request:\n  headers:\n    - name: X-Api-Key\n      value: abc123\n");
+    let folder = folder_yml("f", 1, "  headers:\n    - name: Api-Key\n      value: k1\n");
+    let own = "  headers:\n    - name: X-Api-Key\n      value: own1\n  auth: inherit\n";
+    let (_d, c) = open(&[
+        ("opencollection.yml", &root),
+        ("f/folder.yml", &folder),
+        ("f/r3.yml", &http("r3", "GET", "https://x.test/3", INHERIT)),
+        (
+            "f/r4.yml",
+            &http_at("r4", 2, "GET", "https://x.test/4", INHERIT),
+        ),
+        ("r1.yml", &http_at("r1", 1, "GET", "https://x.test/1", own)),
+        (
+            "r2.yml",
+            &http_at("r2", 2, "GET", "https://x.test/2", INHERIT),
+        ),
+    ]);
+    let tail = "holds a literal credential, written into the document as a parameter example";
+    assert_eq!(
+        openapi_notes(&c),
+        pairs(&[
+            ("collection / headers", &format!("header X-Api-Key {tail}")),
+            ("f / headers", &format!("header Api-Key {tail}")),
+            ("r1 / headers", &format!("header X-Api-Key {tail}")),
+        ])
+    );
+}
+
+#[test]
+fn example_response_credentials_are_noted_and_blank_names_skipped() {
+    let examples = "examples:\n  - name: ok\n    response:\n      status: 200\n      headers:\n        - name: Set-Cookie\n          value: sid=abc\n        - name: Authorization\n          value: Bearer xyz\n        - name: X-Api-Key\n          value: \"{{k}}\"\n        - name: \" \"\n          value: blank\n        - name: X-Plain\n          value: \"1\"\n";
+    let file = http("r", "GET", "https://x.test/r", INHERIT) + examples;
+    let (_d, c) = open(&[("opencollection.yml", ROOT), ("r.yml", &file)]);
+    let v = openapi_doc(&c);
+    assert_eq!(
+        keys(&v["paths"]["/r"]["get"]["responses"]["200"]["headers"]),
+        ["Set-Cookie", "Authorization", "X-Api-Key", "X-Plain"]
+    );
+    let tail = "holds a literal credential, written into the document as a header example";
+    assert_eq!(
+        openapi_notes(&c),
+        pairs(&[
+            (
+                "r / examples",
+                &format!("header Set-Cookie of example ok {tail}")
+            ),
+            (
+                "r / examples",
+                &format!("header Authorization of example ok {tail}")
+            ),
+        ])
+    );
+}

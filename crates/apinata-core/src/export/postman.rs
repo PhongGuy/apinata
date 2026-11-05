@@ -263,7 +263,7 @@ fn insert_events(out: &mut Map<String, Value>, events: Vec<Value>, scripted: &mu
 }
 
 /// The headers `req` inherits and does not override, outermost first, as enabled rows.
-pub(super) fn inherited_rows(collection: &Collection, req: &RequestFile) -> Vec<KeyValue> {
+fn inherited_rows(collection: &Collection, req: &RequestFile) -> Vec<KeyValue> {
     let Some(path) = collection.item_path(req.path()) else {
         return Vec::new();
     };

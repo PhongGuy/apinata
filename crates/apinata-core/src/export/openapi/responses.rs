@@ -1,7 +1,8 @@
 //! An operation's responses, built from the request's saved examples.
 
 use super::schemas::{Schemas, infer_schema};
-use crate::export::ExportNote;
+use crate::edit::KeyValue;
+use crate::export::{ExportNote, literal_credential};
 use crate::{Example, ExampleBodyKind};
 use serde_json::{Map, Value, json};
 
@@ -51,7 +52,14 @@ pub(super) fn responses(
         // OpenAPI ignores a Content-Type response header; the media type key carries it.
         for (key, value) in res.into_iter().flat_map(|r| &r.headers) {
             let taken = group.headers.keys().any(|k| k.eq_ignore_ascii_case(key));
-            if !taken && !key.eq_ignore_ascii_case("content-type") {
+            if !taken && !key.trim().is_empty() && !key.eq_ignore_ascii_case("content-type") {
+                if literal_credential(&KeyValue::new(key, value)) {
+                    let detail = format!(
+                        "header {key} of example {} holds a literal credential, written into the document as a header example",
+                        example.name
+                    );
+                    notes.push(ExportNote::new(format!("{source} / examples"), detail));
+                }
                 let header = json!({"schema": {"type": "string"}, "example": value});
                 group.headers.insert(key.clone(), header);
             }

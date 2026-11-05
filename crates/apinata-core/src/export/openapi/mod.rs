@@ -8,13 +8,15 @@ mod security;
 mod servers;
 mod url;
 
-use super::postman::{inherited_rows, insert_description};
+use super::postman::insert_description;
 use super::{ExportNote, OpenApiExport};
 use crate::AuthSpec;
 use crate::Collection;
 use crate::collection::Folder;
+use crate::edit::KeyValue;
 use crate::js::script_code;
 use crate::request::RequestFile;
+use crate::resolve::HeaderSource;
 use crate::script::ScriptPhase;
 use crate::sequence::sort_by_name_then_seq;
 use schemas::Schemas;
@@ -52,6 +54,8 @@ pub fn openapi(collection: &Collection) -> OpenApiExport {
         first_origin: None,
         schemes: Schemes::default(),
         schemas: Schemas::default(),
+        layers: HashMap::new(),
+        noted: HashSet::new(),
         top: None,
         counts: [0; KINDS.len()],
     };
@@ -136,6 +140,10 @@ struct Walker<'a> {
     schemes: Schemes,
     /// Schemas inferred from JSON bodies, referenced from the operations.
     schemas: Schemas,
+    /// Folder item path to its note source, the folder names joined by ` / `.
+    layers: HashMap<String, String>,
+    /// Inherited credential headers already noted, as (layer source, lower-case name).
+    noted: HashSet<(String, String)>,
     /// The collection auth's requirement object, when it maps to a scheme.
     top: Option<Value>,
     /// Per `KINDS` entry, how many items carry that member.
@@ -158,6 +166,10 @@ impl Walker<'_> {
     /// Sub-folders in display order, then requests, then a note per non-HTTP item. `tag` is
     /// the enclosing top-level folder, whose tag is added once an operation uses it.
     fn folder(&mut self, folder: &Folder, trail: &[&str], tag: Option<&Folder>) {
+        if let Some(item) = self.collection.item_path(folder.path()) {
+            self.layers
+                .insert(item.as_str().to_owned(), trail.join(" / "));
+        }
         if let Some(file) = folder.file().filter(|_| !trail.is_empty()) {
             let source = format!("{} / auth", trail.join(" / "));
             for detail in security::credential_url_notes(&file.auth()) {
@@ -261,10 +273,11 @@ impl Walker<'_> {
         if *first != split.origin {
             op.insert("servers".into(), servers.into());
         }
-        let inherited = inherited_rows(self.collection, req);
+        let inherited = self.inherited_rows(req);
         let parameters = content::parameters(
             req,
             &inherited,
+            &mut self.noted,
             &path_key,
             &split.path,
             &source,
@@ -333,6 +346,25 @@ impl Walker<'_> {
             Mapped::None => return self.top.as_ref().map(|_| json!([])),
         };
         (self.top.as_ref() != Some(&requirement)).then(|| json!([requirement]))
+    }
+
+    /// The headers `req` inherits and does not override, outermost first, each with the note
+    /// source of the collection or folder holding it.
+    fn inherited_rows(&self, req: &RequestFile) -> Vec<(KeyValue, String)> {
+        let Some(path) = self.collection.item_path(req.path()) else {
+            return Vec::new();
+        };
+        let own = req.headers();
+        let layer = |source: &HeaderSource| match source {
+            HeaderSource::Folder(p) => self.layers.get(p.as_str()).cloned().unwrap_or_default(),
+            _ => "collection".to_owned(),
+        };
+        self.collection
+            .inherited_headers(&path)
+            .iter()
+            .filter(|h| !h.overridden(&own))
+            .map(|h| (KeyValue::new(h.name(), h.value()), layer(h.source())))
+            .collect()
     }
 
     /// The server list for `origin`, built on first use.
