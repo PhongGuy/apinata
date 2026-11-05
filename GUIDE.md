@@ -59,9 +59,9 @@ no collection is found, the error says which forms that command takes.
 | `ls` | `[COLLECTION] [PATH]` | `--collection <DIR>` |
 | `search` | `[COLLECTION] <QUERY>` | `--collection <DIR>` |
 | `replace` | `[COLLECTION] <PATTERN> <REPLACEMENT>` | `--collection <DIR>` |
-| `env`, `trust`, `git switch` | none | `--collection <DIR>` |
+| `env`, `trust`, `git switch`, `git commit` | none | `--collection <DIR>` |
 
-`env`, `trust` and `git switch` take their own arguments first, so a leading
+`env`, `trust`, `git switch` and `git commit` take their own arguments first, so a leading
 collection would be ambiguous and only the flag exists. In `ls`, one argument
 is the folder to list, unless it is a directory holding
 `opencollection.yml` that the working directory's collection has no folder of;
@@ -85,7 +85,20 @@ apinata git diff users/get-user.yml
 Without git, or outside a repository, both print a short note and exit 0 (see
 the [exit codes](#exit-codes)). `apinata git clone` clones a repository into a
 new folder, `apinata git branches` lists the remote branches and
-`apinata git switch` checks one out. The desktop app marks changed requests in
+`apinata git switch` checks one out.
+
+`apinata git commit -m <MESSAGE>` commits locally and prints the new short id
+and subject (`--json` prints `{"short_id", "subject"}`). Name files or folders
+relative to the working directory to stage them first, or pass `--all` for the
+whole collection; with neither, it commits what is already staged. The
+repository's git hooks run, and nothing is pushed.
+
+```sh
+apinata git commit -m "Fix the users URL" users/get-user.yml
+apinata git commit -m "Update everything" --all
+```
+
+The desktop app marks changed requests in
 the sidebar and tabs, and lists the changes with their diffs in a Changes
 dialog.
 
@@ -304,7 +317,7 @@ the command never exits with that code.
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
 | `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors) | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, or the file could not be written |
-| `git` | printed, or no git or no repository (a note on stderr) | - | - | git failed, the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
+| `git` | printed, or no git or no repository (a note on stderr) | `commit`: git or a hook refused, nothing is staged, or no git or repository | - | git failed, the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
 | `import` | imported (notes go to stderr) | - | - | the import failed |
 | `export` | exported (notes go to stderr) | - | - | the export failed |
 | `convert` | converted, planned (`--dry-run`) or declined | - | - | the conversion failed |
@@ -715,7 +728,8 @@ A client config looks like this:
 The agent can read, search, create, edit, move and delete requests, folders and
 environments, import a request, send a request, run a folder, list and clear
 cookies, list the trusted hosts, and read the git status and one file's
-diff since the last commit. It can also find and replace text across the
+diff since the last commit, and commit collection changes locally with
+`git_commit` (the repository's hooks run; nothing is pushed). It can also find and replace text across the
 requests with `replace`, which only previews the hits until `dry_run` is set
 to false.
 

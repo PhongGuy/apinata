@@ -1,6 +1,6 @@
-//! `apinata git status`, `diff`, `clone`, `branches` and `switch`: print what core reports about
-//! a collection's changes and branches, and clone repositories with progress. Nothing here runs
-//! git itself.
+//! `apinata git status`, `diff`, `clone`, `branches`, `switch` and `commit`: print what core
+//! reports about a collection's changes and branches, clone repositories with progress, and
+//! commit. Nothing here runs git itself.
 
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
@@ -32,6 +32,13 @@ pub fn run(args: &GitArgs) -> ExitCode {
             json,
         } => branches(path.as_deref(), collection.as_deref(), *fetch, *json),
         GitAction::Switch { branch, collection } => switch(branch, collection.as_deref()),
+        GitAction::Commit {
+            message,
+            all,
+            paths,
+            collection,
+            json,
+        } => commit(message, *all, paths, collection.as_deref(), *json),
     }
 }
 
@@ -360,6 +367,95 @@ fn switch(wanted: &str, collection: Option<&Path>) -> ExitCode {
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::from(EXIT_USAGE)
+        }
+    }
+}
+
+/// Exit code of a commit git or a hook refused, or that had nothing to record.
+const EXIT_GIT_FAILED: u8 = 1;
+
+fn commit(
+    message: &str,
+    all: bool,
+    paths: &[PathBuf],
+    collection: Option<&Path>,
+    json: bool,
+) -> ExitCode {
+    if message.trim().is_empty() {
+        eprintln!("error: the commit message is empty");
+        return ExitCode::from(EXIT_USAGE);
+    }
+    let root = match collection_arg::with_hint(
+        trust::collection_root(collection),
+        "pass the collection with --collection <DIR>",
+    ) {
+        Ok(root) => root,
+        Err(e) => return usage(&e),
+    };
+    let cwd = match std::env::current_dir()
+        .and_then(std::fs::canonicalize)
+        .context("cannot read the working directory")
+    {
+        Ok(cwd) => cwd,
+        Err(e) => return usage(&e),
+    };
+    // Paths are placed inside the collection lexically, as `diff` does, so `..` or a path
+    // elsewhere is refused before git runs.
+    let mut specs = Vec::new();
+    for path in paths {
+        let Some(rel) = inside(&root, &cwd.join(path)) else {
+            eprintln!(
+                "error: {} is outside the collection {}",
+                path.display(),
+                root.display()
+            );
+            return ExitCode::from(EXIT_USAGE);
+        };
+        specs.push(if rel.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            rel
+        });
+    }
+    if all {
+        specs.push(PathBuf::from("."));
+    }
+    let options = GitOptions::new();
+    match apinata_core::collection_status_with(&root, &options) {
+        Ok(GitState::Repo(_)) => {}
+        Ok(GitState::Unavailable) => {
+            eprintln!("error: git was not found on PATH, so nothing can be committed.");
+            return ExitCode::from(EXIT_GIT_FAILED);
+        }
+        Ok(_) => {
+            eprintln!("error: {} is not in a git repository.", root.display());
+            return ExitCode::from(EXIT_GIT_FAILED);
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(EXIT_GIT_FAILED);
+        }
+    }
+    if let Err(e) = apinata_core::stage(&root, &specs, &options) {
+        eprintln!("error: {e}");
+        return ExitCode::from(match e {
+            apinata_core::GitError::Malformed(_) => EXIT_USAGE,
+            _ => EXIT_GIT_FAILED,
+        });
+    }
+    match apinata_core::commit(&root, message, &options) {
+        Ok(done) if json => print_json(&done),
+        Ok(done) => {
+            outln!("{} {}", done.short_id, done.subject);
+            ExitCode::SUCCESS
+        }
+        Err(apinata_core::CommitError::EmptyMessage) => {
+            eprintln!("error: the commit message is empty");
+            ExitCode::from(EXIT_USAGE)
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::from(EXIT_GIT_FAILED)
         }
     }
 }
