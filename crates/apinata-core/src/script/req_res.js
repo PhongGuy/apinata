@@ -15,10 +15,12 @@
   // Objects go over the wire as JSON text whatever the content type, primitives as their text.
   // Like the reference, an absent body (undefined or null) is sent as no body at all.
   const bodyText = (data) => (data == null ? "" : typeof data === "object" ? JSON.stringify(data) : str(data));
+  // A GraphQL body comes as `data`, a value rather than text, and only text parses as JSON.
   const getBody = (options = {}) => {
-    const { text, json } = reqHost("getBody");
-    if (options.raw || !json) return text;
-    try { return JSON.parse(text); } catch (e) { return text; }
+    const answer = reqHost("getBody");
+    const value = "data" in answer ? answer.data : answer.text;
+    if (options.raw || !answer.json || typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch (e) { return value; }
   };
   const snapshotBody = () => {
     try { return getBody(); } catch (e) { return undefined; }
@@ -58,7 +60,11 @@
       reqHost("setHeaders", out);
     },
     getBody,
-    setBody: (data, options = {}) => reqHost("setBody", options.raw && typeof data === "string" ? data : bodyText(data)),
+    // The text serves a text body; a GraphQL body takes the value itself and the raw flag.
+    setBody: (data, options = {}) => {
+      const text = options.raw && typeof data === "string" ? data : bodyText(data);
+      reqHost("setBody", text, data === undefined ? null : data, !!options.raw);
+    },
     getTimeout: () => reqHost("getTimeout"),
     setTimeout: (ms) => reqHost("setTimeout", Number(ms) || 0),
     setMaxRedirects: (max) => reqHost("setMaxRedirects", Number(max) || 0),

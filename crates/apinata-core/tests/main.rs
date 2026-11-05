@@ -355,6 +355,7 @@ mod script_off;
 mod script_phases;
 mod script_query_cookies;
 mod script_redaction;
+mod script_req_graphql;
 mod script_req_res;
 mod script_run_request;
 mod script_run_request_paths;
