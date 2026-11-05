@@ -224,6 +224,22 @@ fn a_symlink_to_a_waiting_root_queues_no_second_offer(cx: &mut TestAppContext) {
     assert!(!confirm_open(cx), "a second offer through the symlink");
 }
 
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_root_opened_through_a_symlink_is_converted_and_reopened_under_that_path(
+    cx: &mut TestAppContext,
+) {
+    let (_files, _win, view) = shell(cx);
+    let src = legacy();
+    let links = tempfile::tempdir().unwrap();
+    let link = links.path().join("link");
+    std::os::unix::fs::symlink(src.path(), &link).unwrap();
+    open_root(cx, &view, link.clone());
+    answer_confirm(cx, "legacy-in-place");
+    answer_confirm(cx, "legacy-convert");
+    assert_eq!(opened(cx, &view), [link]);
+}
+
 #[gpui_kit::test]
 fn the_next_offer_waits_for_a_failure_alert_to_close(cx: &mut TestAppContext) {
     let (_files, win, view) = shell(cx);
