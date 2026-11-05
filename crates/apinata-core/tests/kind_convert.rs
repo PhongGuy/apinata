@@ -269,3 +269,75 @@ fn a_missing_request_is_not_found() {
         .unwrap_err();
     assert!(matches!(err, ConvertError::NotFound { .. }), "{err:?}");
 }
+
+#[test]
+fn a_raw_graphql_content_type_goes_when_the_body_turns_into_json() {
+    let body = "  body:\n    type: text\n    data: \"{ me }\"\n";
+    let http = http_with_body(body).replace(
+        "    - name: X-Trace\n      value: \"1\"\n",
+        "    - name: X-Trace\n      value: \"1\"\n    - name: Content-Type\n      value: application/graphql\n",
+    );
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
+    let done = c
+        .convert_request(&ip("u.yml"), RequestKind::Graphql)
+        .unwrap();
+    assert!(done.dropped().is_empty());
+    let r = c.request(&ip("u.yml")).unwrap();
+    let names: Vec<String> = r.headers().into_iter().map(|h| h.name).collect();
+    assert_eq!(names, ["X-Trace"]);
+    let query = match r.body() {
+        BodySpec::Graphql { query, .. } => query,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(query, "{ me }");
+    let text = fs::read_to_string(dir.path().join("u.yml")).unwrap();
+    assert!(!text.contains("application/graphql"), "{text}");
+}
+
+#[test]
+fn a_preview_names_the_losses_and_changes_nothing() {
+    let http = http_with_body("  body:\n    type: text\n    data: hello\n");
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
+    let preview = c
+        .conversion_preview(&ip("u.yml"), RequestKind::Graphql)
+        .unwrap();
+    assert_eq!(preview.dropped().len(), 1);
+    assert!(preview.dropped()[0].contains("body"));
+    assert_eq!(fs::read_to_string(dir.path().join("u.yml")).unwrap(), http);
+    let r = c.request(&ip("u.yml")).unwrap();
+    assert_eq!(r.kind(), RequestKind::Http);
+    assert!(!r.is_dirty());
+    let done = c
+        .convert_request(&ip("u.yml"), RequestKind::Graphql)
+        .unwrap();
+    assert_eq!(done.dropped(), preview.dropped());
+}
+
+#[test]
+fn a_preview_refuses_as_the_conversion_would() {
+    let (_dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
+    c.request_mut(&ip("u.yml")).unwrap().set_name("Renamed");
+    let err = c
+        .conversion_preview(&ip("u.yml"), RequestKind::Http)
+        .unwrap_err();
+    assert!(matches!(err, ConvertError::Unsaved { .. }), "{err:?}");
+}
+
+#[test]
+fn a_graphql_get_keeps_its_method_and_says_so() {
+    let get = GRAPHQL.replace("  method: POST\n", "  method: GET\n");
+    let (_dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &get)]);
+    let preview = c
+        .conversion_preview(&ip("u.yml"), RequestKind::Http)
+        .unwrap();
+    assert!(preview.dropped().is_empty());
+    assert_eq!(preview.notes().len(), 1);
+    assert!(preview.notes()[0].contains("GET"), "{:?}", preview.notes());
+    let done = c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    assert_eq!(done.notes(), preview.notes());
+    assert_eq!(c.request(&ip("u.yml")).unwrap().method(), "GET");
+    // A POST says nothing.
+    let (_dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
+    let done = c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    assert!(done.notes().is_empty());
+}

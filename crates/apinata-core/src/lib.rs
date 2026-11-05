@@ -211,7 +211,7 @@ pub use json_syntax::{JsonSyntaxError, json_syntax_error};
 pub use jwt::{DecodedJwt, Expiry, JwtError, decode_jwt};
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainStore;
-pub use kind_convert::{ConvertError, KindConversion};
+pub use kind_convert::{ConversionPreview, ConvertError, KindConversion};
 #[cfg(feature = "keychain")]
 pub use lazy_keychain::{KEYCHAIN_TIMEOUT, LazyKeychain, TimeoutStore};
 pub use list_items::{ItemList, ItemPage, ListItemsError, ListOptions, ListedItem, ListedKind};

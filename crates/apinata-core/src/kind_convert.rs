@@ -21,6 +21,7 @@ const PAYLOAD_KEYS: [&str; 4] = ["query", "variables", "operationName", "extensi
 pub struct KindConversion {
     to: RequestKind,
     dropped: Vec<String>,
+    notes: Vec<String>,
     before: Mapping,
     after: Mapping,
 }
@@ -35,6 +36,31 @@ impl KindConversion {
     pub fn dropped(&self) -> &[String] {
         &self.dropped
     }
+
+    /// One sentence per change worth knowing about that loses nothing.
+    pub fn notes(&self) -> &[String] {
+        &self.notes
+    }
+}
+
+/// What a conversion would do, worked out without touching the request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ConversionPreview {
+    dropped: Vec<String>,
+    notes: Vec<String>,
+}
+
+impl ConversionPreview {
+    /// What the conversion would lose, as [`KindConversion::dropped`] will say it.
+    pub fn dropped(&self) -> &[String] {
+        &self.dropped
+    }
+
+    /// What else is worth knowing, as [`KindConversion::notes`] will say it.
+    pub fn notes(&self) -> &[String] {
+        &self.notes
+    }
 }
 
 /// Shows the kind and what was dropped, never the file, since bodies carry credentials.
@@ -43,6 +69,7 @@ impl fmt::Debug for KindConversion {
         f.debug_struct("KindConversion")
             .field("to", &self.to)
             .field("dropped", &self.dropped)
+            .field("notes", &self.notes)
             .finish_non_exhaustive()
     }
 }
@@ -90,6 +117,21 @@ fn kind_name(kind: RequestKind) -> &'static str {
 }
 
 impl Collection {
+    /// What [`Collection::convert_request`] would drop and note, refusing as it would; the
+    /// request and its file stay as they are.
+    pub fn conversion_preview(
+        &self,
+        item: &ItemPath,
+        to: RequestKind,
+    ) -> Result<ConversionPreview, ConvertError> {
+        let r = self
+            .request(item)
+            .ok_or_else(|| ConvertError::NotFound { item: item.clone() })?;
+        refuse(item, r, to)?;
+        let (dropped, notes) = rewrite(&mut r.clone(), to);
+        Ok(ConversionPreview { dropped, notes })
+    }
+
     /// Rewrite the saved request at `item` as a request of kind `to`, in place. Everything both
     /// kinds hold is kept as written; the body is translated where it can be and otherwise
     /// dropped, and [`KindConversion::dropped`] says so. Unsaved edits refuse the conversion.
@@ -101,16 +143,9 @@ impl Collection {
         let r = self
             .request_mut(item)
             .ok_or_else(|| ConvertError::NotFound { item: item.clone() })?;
-        if r.kind() == to {
-            let item = item.clone();
-            return Err(ConvertError::SameKind { item, kind: to });
-        }
-        if r.is_dirty() {
-            let item = item.clone();
-            return Err(ConvertError::Unsaved { item });
-        }
+        refuse(item, r, to)?;
         let before = r.document().mapping().clone();
-        let dropped = rewrite(r, to);
+        let (dropped, notes) = rewrite(r, to);
         if let Err(e) = r.save() {
             r.document_mut().set_mapping(before);
             return Err(e.into());
@@ -119,6 +154,7 @@ impl Collection {
         Ok(KindConversion {
             to,
             dropped,
+            notes,
             before,
             after,
         })
@@ -147,9 +183,21 @@ impl Collection {
     }
 }
 
+// A conversion to the kind the request already is, or over unsaved edits, is refused.
+fn refuse(item: &ItemPath, r: &RequestFile, to: RequestKind) -> Result<(), ConvertError> {
+    let item = item.clone();
+    if r.kind() == to {
+        return Err(ConvertError::SameKind { item, kind: to });
+    }
+    if r.is_dirty() {
+        return Err(ConvertError::Unsaved { item });
+    }
+    Ok(())
+}
+
 // Moves the protocol root under its new key, retypes `info` and translates the body, in
-// memory; returns what could not come along.
-fn rewrite(r: &mut RequestFile, to: RequestKind) -> Vec<String> {
+// memory; returns what could not come along, then what else changed worth saying.
+fn rewrite(r: &mut RequestFile, to: RequestKind) -> (Vec<String>, Vec<String>) {
     let body = r.body();
     let content_type = content_type(&r.headers()).map(str::to_owned);
     let from_key = r.root_key();
@@ -164,6 +212,10 @@ fn rewrite(r: &mut RequestFile, to: RequestKind) -> Vec<String> {
         .unwrap_or(Value::Mapping(Mapping::new()));
     if let Value::Mapping(map) = &mut root {
         map.shift_remove("body");
+        // A raw query turns into a JSON body, so its content type would mislabel it.
+        if to == RequestKind::Graphql && is_graphql_type(content_type.as_deref()) {
+            drop_content_type(map);
+        }
     }
     doc.remove(&[from_key]);
     doc.set(&[to_key], root, &[order::TOP]);
@@ -173,7 +225,7 @@ fn rewrite(r: &mut RequestFile, to: RequestKind) -> Vec<String> {
         &[order::TOP, order::INFO],
     );
 
-    let mut dropped = Vec::new();
+    let (mut dropped, mut notes) = (Vec::new(), Vec::new());
     match to {
         RequestKind::Graphql => {
             match graphql_payload(&body, content_type.as_deref()) {
@@ -208,9 +260,15 @@ fn rewrite(r: &mut RequestFile, to: RequestKind) -> Vec<String> {
             {
                 r.set_body(BodySpec::Json(payload_json(&query, &variables)));
             }
+            if r.method().eq_ignore_ascii_case("GET") {
+                notes.push(
+                    "It keeps the GET method; most servers expect a JSON body with POST."
+                        .to_owned(),
+                );
+            }
         }
     }
-    dropped
+    (dropped, notes)
 }
 
 /// The JSON body a GraphQL request sends: the query, and the variables re-indented when they
@@ -236,6 +294,21 @@ pub(crate) fn content_type(headers: &[KeyValue]) -> Option<&str> {
         .rev()
         .find(|h| h.enabled && h.name.eq_ignore_ascii_case("content-type"))
         .map(|h| h.value.as_str())
+}
+
+// Removes every Content-Type entry of the root's `headers`, and the key once it is empty.
+fn drop_content_type(root: &mut Mapping) {
+    let Some(Value::Sequence(headers)) = root.get_mut("headers") else {
+        return;
+    };
+    headers.retain(|h| {
+        !h.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n.eq_ignore_ascii_case("content-type"))
+    });
+    if headers.is_empty() {
+        root.shift_remove("headers");
+    }
 }
 
 /// Whether `content_type` names a raw GraphQL query body.
@@ -266,10 +339,33 @@ pub(crate) fn graphql_payload(
     let serde_json::Value::String(query) = payload.get("query")? else {
         return None;
     };
+    if !reads_as_graphql(query) {
+        return None;
+    }
     let variables = match payload.get("variables") {
         None | Some(serde_json::Value::Null) => String::new(),
         Some(serde_json::Value::String(v)) => v.clone(),
         Some(other) => js::stringify_pretty(other),
     };
     Some((query.clone(), variables))
+}
+
+/// Whether `query` opens like a GraphQL document, past blank and `#` comment lines: a selection
+/// set, or an operation or fragment keyword standing alone. A search term such as `shoes` does not.
+fn reads_as_graphql(query: &str) -> bool {
+    let start = query
+        .lines()
+        .map(str::trim_start)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .unwrap_or("");
+    if start.starts_with('{') {
+        return true;
+    }
+    ["query", "mutation", "subscription", "fragment"]
+        .iter()
+        .any(|keyword| {
+            start.strip_prefix(keyword).is_some_and(|rest| {
+                !rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            })
+        })
 }

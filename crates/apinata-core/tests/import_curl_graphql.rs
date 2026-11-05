@@ -54,6 +54,10 @@ fn an_application_graphql_body_is_the_query_itself() {
 fn other_json_bodies_stay_http() {
     for data in [
         r#"{"query":"shoes","page":2}"#,
+        r#"{"query":"shoes"}"#,
+        r#"{"query":"shoes","variables":{}}"#,
+        r#"{"query":"queryable things"}"#,
+        r#"{"query":"  # note\n  shoes"}"#,
         r#"{"a":1}"#,
         r#"{"query":7}"#,
         r#"[{"query":"{ me }"}]"#,
@@ -68,4 +72,23 @@ fn other_json_bodies_stay_http() {
             .as_graphql()
             .is_none()
     );
+}
+
+#[test]
+fn every_graphql_operation_form_is_recognised() {
+    for query in [
+        "{ me }",
+        "query Me { me }",
+        "query{ me }",
+        "mutation M { m }",
+        "subscription S { s }",
+        "fragment F on T { f }",
+        "  # a comment\n\n  query { me }",
+    ] {
+        let data = serde_json::json!({ "query": query }).to_string();
+        let r = request(&format!(
+            "curl https://x.test -H 'Content-Type: application/json' --data-raw '{data}'"
+        ));
+        assert!(r.as_graphql().is_some(), "{query:?}");
+    }
 }
