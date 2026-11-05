@@ -12,6 +12,7 @@ use apinata_core::{
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Enter, Input, InputEvent, InputState, MoveDown, MoveUp};
+use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -119,6 +120,25 @@ pub fn replace_notes(report: &ReplaceReport) -> Vec<String> {
     notes
 }
 
+// A replace toast, an error one when the replace could not run. Its text also labels a
+// marker, `search-replace-note` with its place in the replace's toasts, so it can be read back.
+fn replace_toast(ix: usize, note: String, failed: bool) -> Notification {
+    let label = SharedString::from(note.clone());
+    let toast = if failed {
+        Notification::error(note)
+    } else {
+        crate::ui::info_toast(note)
+    };
+    toast.content(move |_, _, _| {
+        div()
+            .id(("search-replace-note", ix))
+            .test_support()
+            .aria_label(label.clone())
+            .when(failed, |d| d.child(div().id("toast-error").test_support()))
+            .into_any_element()
+    })
+}
+
 // What a hit is in, from its structured field and key.
 fn hit_what(hit: &SearchHit) -> String {
     let key = hit.key.as_deref().unwrap_or("");
@@ -218,7 +238,8 @@ impl SearchForm {
         cx.notify();
     }
 
-    // A text toggle in the style of the body find bar's case button.
+    // A text toggle styled like the body find bar's case button, which is an icon: ghost,
+    // compact, and the ghost selected look while on.
     fn option_button(
         &self,
         id: &'static str,
@@ -282,12 +303,12 @@ impl SearchForm {
                 .await
                 .unwrap_or_else(|_| Err("The collection is not open".to_owned()));
             this.update_in(cx, |form, window, cx| {
-                let notes = match done {
-                    Ok(report) => replace_notes(&report),
-                    Err(text) => vec![text],
+                let (notes, failed) = match done {
+                    Ok(report) => (replace_notes(&report), false),
+                    Err(text) => (vec![text], true),
                 };
-                for note in notes {
-                    window.push_notification(crate::ui::info_toast(note), cx);
+                for (ix, note) in notes.into_iter().enumerate() {
+                    window.push_notification(replace_toast(ix, note, failed), cx);
                 }
                 form.run(cx);
             })

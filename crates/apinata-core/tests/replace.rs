@@ -387,3 +387,172 @@ fn changed_paths_follow_tree_order_and_exclude_skipped_and_failed() {
     assert!(paths[1].ends_with("a.yml"), "{paths:?}");
     assert!(paths[2].ends_with("z.yml"), "{paths:?}");
 }
+
+/// The file's text from its `params:` line to the end, which every request below ends with.
+fn params_block(text: &str) -> &str {
+    &text[text.find("  params:").expect("params block")..]
+}
+
+#[test]
+fn a_url_replace_keeps_an_untouched_params_block_byte_identical() {
+    // Path param first and a described query param: re-deriving would reorder and drop both.
+    let params = "  params:\n    - name: id\n      value: \"7\"\n      type: path\n    - name: q\n      value: \"1\"\n      type: query\n      description: the page\n";
+    let a = request("a", "https://old.test/u/:id?q=1", params);
+    let (d, mut c) = open(&[("a.yml", &a)]);
+    let r = c
+        .replace("old", "new", &lit(), ReplaceScope::all())
+        .unwrap();
+    assert_eq!(r.replaced, 1);
+    let text = disk(&d, "a.yml");
+    assert!(text.contains("url: https://new.test/u/:id?q=1"), "{text}");
+    assert_eq!(params_block(&text), params, "{text}");
+}
+
+#[test]
+fn a_url_replace_adds_no_params_block_to_a_file_without_one() {
+    let (d, mut c) = open(&[("a.yml", &request("a", "https://old.test/?q=1", ""))]);
+    c.replace("old", "new", &lit(), ReplaceScope::all())
+        .unwrap();
+    let text = disk(&d, "a.yml");
+    assert!(text.contains("url: https://new.test/?q=1"), "{text}");
+    assert!(!text.contains("params:"), "{text}");
+}
+
+#[test]
+fn a_replace_inside_the_query_updates_the_params_block_to_match() {
+    let params = "  params:\n    - name: q\n      value: old\n      type: query\n";
+    let a = request("a", "https://x.test/?q=old", params);
+    let (d, mut c) = open(&[("a.yml", &a)]);
+    c.replace("old", "new", &lit(), ReplaceScope::all())
+        .unwrap();
+    let text = disk(&d, "a.yml");
+    assert!(text.contains("url: https://x.test/?q=new"), "{text}");
+    assert_eq!(
+        params_block(&text),
+        "  params:\n    - name: q\n      value: new\n      type: query\n",
+        "{text}"
+    );
+}
+
+/// A small deterministic generator, so the property cases below are the same on every run.
+struct Lcg(u64);
+
+impl Lcg {
+    fn below(&mut self, n: usize) -> usize {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((self.0 >> 33) % n as u64) as usize
+    }
+
+    /// A name from a tiny alphabet so repeats are common, holding the needle in some case
+    /// about half the time.
+    fn name(&mut self) -> String {
+        let mut s: String = (0..1 + self.below(2))
+            .map(|_| ['a', '-'][self.below(2)])
+            .collect();
+        if self.below(2) == 0 {
+            let at = self.below(s.len() + 1);
+            s.insert_str(at, ["zq", "Zq", "zQ", "ZQ"][self.below(4)]);
+        }
+        s
+    }
+}
+
+/// The header names and form field names of the request at `path`, in file order.
+fn names_of(c: &Collection, path: &apinata_core::ItemPath) -> (Vec<String>, Vec<String>) {
+    let r = c.request(path).expect("request");
+    let fields = match r.body() {
+        apinata_core::BodySpec::FormUrlEncoded(f) => f.into_iter().map(|f| f.name).collect(),
+        other => panic!("{other:?}"),
+    };
+    (r.headers().into_iter().map(|h| h.name).collect(), fields)
+}
+
+/// `name` with its first needle, in any case, swapped for `R`.
+fn swap_first(name: &str) -> String {
+    let at = name.to_lowercase().find("zq").expect("needle");
+    format!("{}R{}", &name[..at], &name[at + 2..])
+}
+
+#[test]
+fn hits_on_header_and_form_field_names_are_found_and_replaced_one_by_one() {
+    let (mut total, mut repeated) = (0, 0);
+    for seed in 0..32u64 {
+        let mut g = Lcg(seed);
+        let headers: Vec<String> = (0..1 + g.below(4)).map(|_| g.name()).collect();
+        let fields: Vec<String> = (0..1 + g.below(4)).map(|_| g.name()).collect();
+        let mut rest = String::from("  headers:\n");
+        for h in &headers {
+            rest.push_str(&format!("    - name: \"{h}\"\n      value: v\n"));
+        }
+        rest.push_str("  body:\n    type: form-urlencoded\n    data:\n");
+        for f in &fields {
+            rest.push_str(&format!("      - name: \"{f}\"\n        value: v\n"));
+        }
+        let text = request("r", "https://x.test/", &rest);
+        let has = |n: &&String| n.to_lowercase().contains("zq");
+        let expected: Vec<(SearchField, String)> = headers
+            .iter()
+            .filter(has)
+            .map(|h| (SearchField::HeaderName, h.clone()))
+            .chain(
+                fields
+                    .iter()
+                    .filter(has)
+                    .map(|f| (SearchField::Body, f.clone())),
+            )
+            .collect();
+
+        let (_d, c) = open(&[("a.yml", &text)]);
+        let hits = c.search("zq").hits;
+        let found: Vec<(SearchField, String)> = hits
+            .iter()
+            .map(|h| (h.field, h.key.clone().unwrap_or_default()))
+            .collect();
+        assert_eq!(found, expected, "seed {seed}");
+        total += expected.len();
+        repeated += (1..expected.len())
+            .filter(|&i| expected[..i].contains(&expected[i]))
+            .count();
+
+        // Each hit, replaced alone in a fresh copy, changes exactly its own name.
+        for (j, hit) in hits.into_iter().enumerate() {
+            let path = hit.path.clone();
+            let (d, mut c) = open(&[("a.yml", &text)]);
+            let r = c
+                .replace("zq", "R", &lit(), ReplaceScope::hit(hit))
+                .unwrap();
+            assert_eq!(r.replaced, 1, "seed {seed} hit {j}");
+            let (mut want_h, mut want_f) = (headers.clone(), fields.clone());
+            let nth = |names: &[String], k: usize| {
+                names
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, n)| n.to_lowercase().contains("zq"))
+                    .nth(k)
+                    .map(|(i, _)| i)
+            };
+            let in_headers = headers.iter().filter(has).count();
+            if j < in_headers {
+                let i = nth(&headers, j).unwrap();
+                want_h[i] = swap_first(&headers[i]);
+            } else {
+                let i = nth(&fields, j - in_headers).unwrap();
+                want_f[i] = swap_first(&fields[i]);
+            }
+            let saved = Collection::open(d.path()).expect("reopens");
+            assert_eq!(
+                names_of(&saved, &path),
+                (want_h, want_f),
+                "seed {seed} hit {j}"
+            );
+        }
+    }
+    // The seeds must exercise many hits, some on repeated names.
+    assert!(
+        total >= 20 && repeated >= 2,
+        "{total} hits, {repeated} repeats"
+    );
+}

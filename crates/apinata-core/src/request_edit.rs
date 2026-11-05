@@ -330,6 +330,23 @@ impl RequestFile {
         self.write_url(url);
     }
 
+    /// Set the root's `url` for a text replace, with the least churn: the `params` block is
+    /// re-derived only when the new URL implies other params than the old one did, and a file
+    /// without one gets none, since an absent block reads the same before and after.
+    pub(crate) fn replace_url(&mut self, url: String) {
+        if url == self.url() {
+            return;
+        }
+        if self.document().get(&[self.root_key(), "params"]).is_some() {
+            let current = self.params();
+            let derived = derive_params(&url, &current);
+            if derived != derive_params(self.url(), &current) {
+                self.write_params(&derived);
+            }
+        }
+        self.write_url(url);
+    }
+
     /// Where the URL's query and the file's enabled query params disagree, or `None` when they
     /// carry the same pairs in any order or the file has no `params` key. Nothing is expanded.
     pub fn query_mismatch(&self) -> Option<QueryMismatch> {
