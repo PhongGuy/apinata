@@ -49,6 +49,8 @@ pub struct GlobalEnvEditor {
     orphans: Orphans,
     /// Stored secrets of global environments with no file, listed with the orphans.
     fileless: Fileless,
+    /// The number of the newest fileless list sent; an older answer arriving late is dropped.
+    fileless_asked: u64,
     // Set while a lock or Save check is reading the store or asking; a further one is dropped,
     // and a blur stores nothing, since a dialog taking focus must not commit the typing.
     checking: bool,
@@ -124,6 +126,7 @@ impl GlobalEnvEditor {
             error: None,
             orphans: Orphans::default(),
             fileless: Fileless::default(),
+            fileless_asked: 0,
             checking: false,
             name_input,
             naming: None,
@@ -193,10 +196,14 @@ impl GlobalEnvEditor {
     pub fn list_orphans(&mut self, cx: &mut Context<Self>) {
         let env = self.selected.clone();
         let listing = (self.workspace.read(cx)).global_secrets_to_tidy(env.as_deref(), cx);
+        self.fileless_asked += 1;
+        let asked = self.fileless_asked;
         cx.spawn(async move |this, cx| {
             let (orphans, fileless) = listing.await;
             this.update(cx, |e, cx| {
-                e.fileless = fileless.map_or_else(Fileless::Failed, Fileless::Groups);
+                if e.fileless_asked == asked {
+                    e.fileless = fileless.map_or_else(Fileless::Failed, Fileless::Groups);
+                }
                 if let Some(answer) = orphans
                     && e.selected == env
                 {

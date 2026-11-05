@@ -173,6 +173,8 @@ pub struct EnvEditor {
     orphans: Orphans,
     /// Stored secrets of environments with no file, listed with the orphans.
     fileless: Fileless,
+    /// The number of the newest fileless list sent; an older answer arriving late is dropped.
+    fileless_asked: u64,
     /// Set while a lock or Save check is reading the store or asking; a further one is dropped,
     /// and a blur stores nothing, since a dialog taking focus must not commit the typing.
     checking: bool,
@@ -281,6 +283,7 @@ impl EnvEditor {
             pending_add: None,
             orphans: Orphans::default(),
             fileless: Fileless::default(),
+            fileless_asked: 0,
             checking: false,
             checked: Vec::new(),
             focus: cx.focus_handle(),
@@ -398,11 +401,15 @@ impl EnvEditor {
         answer: async_channel::Receiver<Result<Vec<orphan_section::FilelessGroup>, String>>,
         cx: &mut Context<Self>,
     ) {
+        self.fileless_asked += 1;
+        let asked = self.fileless_asked;
         cx.spawn(async move |this, cx| {
             let answer = answer.recv().await.unwrap_or_else(|e| Err(e.to_string()));
             this.update(cx, |e, cx| {
-                e.fileless = answer.map_or_else(Fileless::Failed, Fileless::Groups);
-                cx.notify();
+                if e.fileless_asked == asked {
+                    e.fileless = answer.map_or_else(Fileless::Failed, Fileless::Groups);
+                    cx.notify();
+                }
             })
             .ok();
         })

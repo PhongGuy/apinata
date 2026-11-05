@@ -206,7 +206,8 @@ pub fn ask_remove_fileless<E: 'static>(
 
 /// The fileless part, or nothing when there is nothing to say; `on_remove` gets the environment
 /// and variable. Ids: `env-fileless`, `("env-fileless-env", gx)` labelled with the environment,
-/// `("env-fileless-remove", ix)` numbered across groups, `env-fileless-failed`.
+/// `("env-fileless-row", ix)` and `("env-fileless-remove", ix)` numbered across groups,
+/// `env-fileless-failed`.
 pub fn fileless_section(
     state: &Fileless,
     follow: &FocusFollow,
@@ -241,6 +242,8 @@ pub fn fileless_section(
             let (env, var) = (group.environment.clone(), name.clone());
             ix += 1;
             h_flex()
+                .id(("env-fileless-row", ix - 1))
+                .test_support()
                 .w_full()
                 .gap_2()
                 .child(Followed::new(

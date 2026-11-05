@@ -195,3 +195,67 @@ fn a_global_fileless_secret_shows_warns_and_goes(cx: &mut TestAppContext) {
     let want = Fileless::Groups(vec![group("gone", &["b"]), group("lost", &["c"])]);
     assert_eq!(ed.read_with(cx, |e, _| e.fileless().clone()), want);
 }
+
+#[gpui_kit::test]
+fn a_file_that_comes_back_during_the_prompt_keeps_the_value(cx: &mut TestAppContext) {
+    let col = write_tree(&[("opencollection.yml", ROOT), ("environments/dev.yml", DEV)]);
+    let (store, keys) = seeded(col.path());
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    assert!(present(cx, win, ("env-fileless-row", 0usize)));
+    click(cx, win, ("env-fileless-remove", 0usize));
+    std::fs::write(col.path().join("environments/gone.yml"), "name: gone\n").unwrap();
+    answer_confirm(cx, "confirm-delete");
+    cx.run_until_parked();
+    assert!(store.get(&keys[0]).unwrap().is_some(), "the value is kept");
+    let error = ed.read_with(cx, |e, _| e.error()).unwrap_or_default();
+    assert!(error.contains("has a file"), "{error}");
+    assert!(present(cx, win, "env-error"));
+}
+
+#[gpui_kit::test]
+fn a_global_file_that_comes_back_during_the_prompt_keeps_the_value(cx: &mut TestAppContext) {
+    let store = Arc::new(Listing::default());
+    let g = "name: g\nvariables:\n  - name: host\n    value: a\n";
+    let (_c, globals, _s, win, ed, _old, ws) = global_editor_with_ws(cx, store.clone(), g);
+    let key = GlobalEnvironments::open(globals.path())
+        .unwrap()
+        .secret_key("gone", "a");
+    store.set(&key, "s3cret").unwrap();
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.choose("h", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(present(cx, win, ("env-fileless-row", 0usize)));
+    click(cx, win, ("env-fileless-remove", 0usize));
+    std::fs::write(globals.path().join("gone.yml"), "name: gone\n").unwrap();
+    answer_confirm(cx, "confirm-delete");
+    cx.run_until_parked();
+    assert!(store.get(&key).unwrap().is_some(), "the value is kept");
+    let error = ws.read_with(cx, |w, _| w.global_error().map(str::to_owned));
+    let error = error.unwrap_or_default();
+    assert!(error.contains("has a file"), "{error}");
+    assert!(present(cx, win, "global-env-error"));
+}
+
+#[gpui_kit::test]
+fn the_empty_editor_lists_the_store_once(cx: &mut TestAppContext) {
+    let col = write_tree(&[("opencollection.yml", ROOT)]);
+    let (store, _keys) = seeded(col.path());
+    let (_state, ws, root) = open_dir_with(cx, &col, store.clone());
+    let (_win, _ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    assert_eq!(store.lists.load(Ordering::SeqCst), 1);
+}
+
+#[gpui_kit::test]
+fn a_global_selection_lists_the_store_once(cx: &mut TestAppContext) {
+    let store = Arc::new(Listing::default());
+    let g = "name: g\n";
+    let (_c, _g, _s, win, ed, _old, _ws) = global_editor_with_ws(cx, store.clone(), g);
+    let before = store.lists.load(Ordering::SeqCst);
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.choose("h", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(store.lists.load(Ordering::SeqCst), before + 1);
+}
