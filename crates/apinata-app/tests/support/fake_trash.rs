@@ -14,6 +14,7 @@ pub struct FakeTrash {
     dir: TempDir,
     count: Mutex<u32>,
     usable: bool,
+    restores: bool,
 }
 
 impl FakeTrash {
@@ -22,6 +23,15 @@ impl FakeTrash {
             dir: tempfile::tempdir().expect("tempdir"),
             count: Mutex::new(0),
             usable: true,
+            restores: true,
+        }
+    }
+
+    /// A trash that takes items but, like a platform without restore, never gives one back.
+    pub fn no_restore() -> FakeTrash {
+        FakeTrash {
+            restores: false,
+            ..FakeTrash::new()
         }
     }
 
@@ -62,6 +72,9 @@ impl Trash for FakeTrash {
     }
 
     fn restore(&self, handle: &TrashHandle) -> Result<(), TrashError> {
+        if !self.restores {
+            return Err(TrashError::RestoreUnsupported);
+        }
         let stash = self.dir.path().join(handle.id());
         if !stash.exists() {
             return Err(TrashError::Missing);

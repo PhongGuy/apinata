@@ -14,7 +14,8 @@ pub trait Trash: Send + Sync + Debug {
     /// Fails with [`TrashError::Unavailable`] when there is no trash, leaving `path` in place.
     fn trash(&self, path: &Path) -> Result<TrashHandle, TrashError>;
 
-    /// Move the item behind `handle` back to its original path. It must not overwrite an
+    /// Move the item behind `handle` back to its original path, or fail with
+    /// [`TrashError::RestoreUnsupported`] where the platform cannot. It must not overwrite an
     /// existing file; [`Collection::restore_trashed`](crate::Collection::restore_trashed)
     /// checks the path first.
     fn restore(&self, handle: &TrashHandle) -> Result<(), TrashError>;
@@ -30,6 +31,9 @@ pub enum TrashError {
     /// The item to restore is no longer in the trash: emptied, or restored elsewhere.
     #[error("it is no longer in the trash")]
     Missing,
+    /// This platform's trash cannot give items back; the item stays in the system trash.
+    #[error("it is in the system trash, but cannot be restored on this platform")]
+    RestoreUnsupported,
     /// The trash exists but the operation failed.
     #[error("{0}")]
     Failed(String),

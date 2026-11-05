@@ -651,6 +651,26 @@ fn the_newest_gone_from_the_bin_is_the_error_itself_and_its_entry_is_dropped() {
 }
 
 #[test]
+fn a_bin_that_cannot_restore_stops_the_batch_and_drops_that_entry() {
+    let (_dir, mut c) = folders(&["a", "b", "c"], &[]);
+    let logs = TempDir::new().unwrap();
+    let (bin, log) = (FakeBin::new(true), TrashLog::new(logs.path()));
+    delete(&mut c, &bin, &log, &["f/a.yml", "f/b.yml"]);
+    in_batch(&log, &c, "run", &[0, 1]);
+    let unsupported = Hooked {
+        bin: &bin,
+        hook: Box::new(|_| Err(TrashError::RestoreUnsupported)),
+    };
+    let err = item_ops::restore_prune(&mut c, &unsupported, &log, "run").unwrap_err();
+    assert!(
+        matches!(&err, apinata_core::ItemError::RestoreUnsupported { item } if item == "f/b.yml"),
+        "{err:?}"
+    );
+    assert_eq!(entries(&log, &c).len(), 1);
+    assert!(!c.root().join("f/b.yml").exists());
+}
+
+#[test]
 fn a_bin_failure_stops_the_batch_and_keeps_its_entry() {
     let (_dir, mut c) = folders(&["a", "b", "c", "d"], &[]);
     let logs = TempDir::new().unwrap();
