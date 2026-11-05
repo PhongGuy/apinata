@@ -279,7 +279,7 @@ pub struct BodyView {
     task: Option<Task<()>>,
     // Raised when a newer prepare replaces the running one, so its filter stops early.
     job_cancel: Arc<AtomicBool>,
-    // At most one parsed copy of the body; a new response or an edit drops it.
+    // At most one parsed copy of the body; a new response or a closed or empty filter drops it.
     json_cache: Option<JsonCache>,
     // For tests: bodies parsed for the filter, and jobs that stopped on a cancel.
     filter_parses: Arc<AtomicUsize>,
@@ -429,10 +429,6 @@ impl BodyView {
         });
         // An edit moves text under the editor-mode hits, so they are found again in place.
         let editor_edits = cx.subscribe(&editor, |this, _, event: &InputEvent, cx| {
-            // An edited body no longer matches the parse kept for the filter.
-            if matches!(event, InputEvent::Change) {
-                this.json_cache = None;
-            }
             if matches!(event, InputEvent::Change) && this.own_editor_find() && this.find_open {
                 // A scan already running read the old text, so its offsets must not land.
                 this.void_find_scan();
@@ -1238,6 +1234,11 @@ impl BodyView {
     /// How many times a body has been parsed for the JSON filter.
     pub fn filter_parses(&self) -> usize {
         self.filter_parses.load(Ordering::Relaxed)
+    }
+
+    /// Whether a parsed copy of the body is kept for the filter.
+    pub fn holds_parsed_body(&self) -> bool {
+        self.json_cache.is_some()
     }
 
     /// How many filter or find jobs stopped early because a newer one replaced them.
@@ -2338,7 +2339,13 @@ impl BodyView {
         let basis = self.wrap_basis(window, cx);
         let pretty = self.mode == BodyMode::Pretty;
         let binary_mode = self.binary_mode;
-        let filter = (self.filter_expression(cx)).map(|expr| (expr, self.parsed_slot()));
+        // With no filter to run, the parsed copy is freed rather than kept for a later one.
+        let filter = self
+            .filter_expression(cx)
+            .map(|expr| (expr, self.parsed_slot()));
+        if filter.is_none() {
+            self.json_cache = None;
+        }
         let stop = self.stop_signal(&self.job_cancel);
         let parses = self.filter_parses.clone();
         let (mask, reveal) = (self.mask.clone(), self.reveal);

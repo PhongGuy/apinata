@@ -1,5 +1,7 @@
 //! JSONPath filtering of response bodies, behind an apinata-owned API.
 
+use std::cell::Cell;
+
 use serde::ser::{Error as _, Serialize, SerializeMap as _, SerializeSeq as _, Serializer};
 use serde_json::Value;
 use serde_json_path::JsonPath;
@@ -40,6 +42,12 @@ pub enum FilterError {
     /// A newer filter replaced this one before it finished.
     #[error("The filter was replaced by a newer one")]
     Cancelled,
+    /// The matches could not be written out.
+    #[error("The matches could not be written: {message}")]
+    Output {
+        /// The writer's complaint.
+        message: String,
+    },
 }
 
 /// Runs the RFC 9535 JSONPath `expression` over the JSON `body` and returns the matched values as a
@@ -117,12 +125,25 @@ impl JsonFilter {
         if cancelled() {
             return Err(FilterError::Cancelled);
         }
+        // The write learns of a cancel only as an error, so the answer is noted where it is given.
+        let stopped = Cell::new(false);
+        let check = || {
+            let stop = cancelled();
+            stopped.set(stopped.get() || stop);
+            stop
+        };
         let matches = self.path.query(&body.value).all();
-        let checked: Vec<_> = matches
-            .into_iter()
-            .map(|v| Checked(v, &cancelled))
-            .collect();
-        crate::js::write_pretty(&checked).map_err(|_| FilterError::Cancelled)
+        let checked: Vec<_> = matches.into_iter().map(|v| Checked(v, &check)).collect();
+        // Only a write the cancel stopped is a cancel; any other failure keeps its own message.
+        crate::js::write_pretty(&checked).map_err(|e| {
+            if stopped.get() {
+                FilterError::Cancelled
+            } else {
+                FilterError::Output {
+                    message: e.to_string(),
+                }
+            }
+        })
     }
 }
 

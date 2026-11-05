@@ -588,8 +588,13 @@ mod parsed_once {
         assert_eq!(parses(cx, &view), 2);
     }
 
+    fn holds(cx: &mut TestAppContext, view: &Entity<BodyView>) -> bool {
+        view.read_with(cx, |v, _| v.holds_parsed_body())
+    }
+
     #[gpui_kit::test]
-    fn an_edit_to_the_body_drops_the_parse(cx: &mut TestAppContext) {
+    fn an_edit_to_the_body_keeps_the_parse(cx: &mut TestAppContext) {
+        // The filter reads the response, never the editor, so an edit changes nothing it parsed.
         let (win, view) = shown_with(cx, JSON.into(), "application/json");
         filter(cx, win, &view, "$.data[0].id");
         assert_eq!(parses(cx, &view), 1);
@@ -604,8 +609,33 @@ mod parsed_once {
         })
         .unwrap();
         cx.run_until_parked();
+        assert!(
+            ed.read_with(cx, |e, _| e.value().contains('x')),
+            "the edit took"
+        );
         filter(cx, win, &view, "$.data[1].id");
+        assert_eq!(text(cx, &view), "[\n  8\n]");
+        assert_eq!(parses(cx, &view), 1);
+    }
+
+    #[gpui_kit::test]
+    fn closing_or_clearing_the_filter_frees_the_parse(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, JSON.into(), "application/json");
+        filter(cx, win, &view, "$.data[0].id");
+        assert!(holds(cx, &view));
+        filter(cx, win, &view, "");
+        assert!(!holds(cx, &view), "an empty expression frees it");
+
+        filter(cx, win, &view, "$.data[0].id");
         assert_eq!(parses(cx, &view), 2);
+        assert!(holds(cx, &view));
+        cx.update_window(win, |_, w, cx| {
+            view.update(cx, |v, cx| v.toggle_filter(w, cx))
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert!(!view.read_with(cx, |v, _| v.filter_open()));
+        assert!(!holds(cx, &view), "closing the bar frees it");
     }
 
     #[gpui_kit::test]
