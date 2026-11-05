@@ -1,7 +1,9 @@
 //! The title bar's environment selector for the current collection, whose dropdown also
 //! imports environment files into it.
 
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use apinata_core::import::{ImportReport, ImportedEnvironment, parse_environments};
 use gpui_kit::base::actions::SelectDown;
@@ -12,11 +14,11 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
     ParentElement as _, PathPromptOptions, Render, SharedString, Styled as _, Subscription,
-    TestSupportExt as _, Window, div,
+    TestSupportExt as _, Window, canvas, div,
 };
 
 use crate::command::Command;
-use crate::style::ENV_CONTROL_WIDTH;
+use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, resolve};
 use crate::tabs::TabKind;
 use crate::ui::ring_overlay;
 use crate::workspace::Workspace;
@@ -77,6 +79,8 @@ pub struct EnvSelector {
     listed: Vec<SharedString>,
     shown: Option<SharedString>,
     last_import: Option<ImportReport>,
+    // Whether the control's last laid-out room was too small to show the select.
+    squeezed: Rc<Cell<bool>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -106,6 +110,7 @@ impl EnvSelector {
             listed: Vec::new(),
             shown: None,
             last_import: None,
+            squeezed: Rc::default(),
             _subscriptions: subscriptions,
         };
         selector.sync(window, cx);
@@ -133,6 +138,12 @@ impl EnvSelector {
     /// The kit select state behind `#env-select`.
     pub fn select(&self) -> &Entity<SelectState<Vec<EnvItem>>> {
         &self.select
+    }
+
+    /// Whether the bar squeezed the control too narrow to show its select, which is then
+    /// hidden and no Tab stop.
+    pub fn squeezed(&self) -> bool {
+        self.squeezed.get()
     }
 
     /// Opens the dropdown and puts focus in its list, as the Down key does on the trigger.
@@ -287,6 +298,23 @@ impl Render for EnvSelector {
         let none = self.shown.as_deref().is_none_or(|s| s == NO_ENVIRONMENT);
         let focused =
             self.select.focus_handle(cx).is_focused(window) && crate::focus_mode::is_keyboard(cx);
+        // The control's room comes from the bar, never from the select, so hiding the select
+        // cannot change the measurement that hid it. A change redraws once the frame is done.
+        let squeezed = self.squeezed.get();
+        let (cell, me) = (self.squeezed.clone(), cx.entity().downgrade());
+        let measure = canvas(
+            move |bounds, window, cx| {
+                let now = bounds.size.width < resolve(ENV_CONTROL_SHOWN_FROM, window);
+                if cell.replace(now) != now {
+                    window.defer(cx, move |_, cx| {
+                        me.update(cx, |_, cx| cx.notify()).ok();
+                    });
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
         h_flex()
             .id("env-control")
             .test_support()
@@ -297,14 +325,21 @@ impl Render for EnvSelector {
             // The select fills its parent's full width, so a shrinking wrapper sizes it to the
             // control's room and its own ellipsis shows instead of the control clipping.
             .child(
-                div().flex_1().min_w_0().child(
-                    Select::new(&self.select)
-                        .id("env-select")
-                        .appearance(false)
-                        .small()
-                        .when(none, |s| s.text_color(muted)),
-                ),
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .when(squeezed, |d| d.invisible())
+                    .child(
+                        Select::new(&self.select)
+                            .id("env-select")
+                            .appearance(false)
+                            .small()
+                            // A disabled select tracks no focus, so Tab passes it.
+                            .disabled(squeezed)
+                            .when(none, |s| s.text_color(muted)),
+                    ),
             )
+            .child(measure)
             .when(focused, |d| d.child(ring_overlay("env-select-ring", cx)))
     }
 }

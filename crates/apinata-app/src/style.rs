@@ -192,6 +192,9 @@ pub const DOT: Rems = ui(6.);
 pub const ENV_CONTROL_WIDTH: Rems = ui(180.);
 /// The narrowest a title-bar environment select shrinks to, so 800 px at 200% fits.
 pub const ENV_CONTROL_MIN: Rems = ui(96.);
+/// Squeezed narrower than this, a title-bar environment select is too small to read, so it
+/// hides and leaves the Tab order.
+pub const ENV_CONTROL_SHOWN_FROM: Rems = ui(40.);
 /// Below this window width the title bar's environment selects shrink past their minimum.
 pub const TITLE_BAR_CRAMPED_BELOW: Rems = ui(320.);
 /// Below this window width the global select has no usable room left, so the title bar shows
@@ -313,9 +316,6 @@ pub const ENV_EDITOR_LIST_WIDTH: Rems = ui(200.);
 pub const ENV_EDITOR_LIST_MIN: Rems = ui(77.);
 /// The global environment editor dialog's width.
 pub const GLOBAL_ENV_DIALOG_WIDTH: Rems = ui(720.);
-/// The least width of the global environment editor's content, which scrolls sideways under
-/// it: the list, its gap and the pane's minimum.
-pub const GLOBAL_ENV_CONTENT_MIN: Rems = ui(498.);
 /// The least height of the global environment editor's two-pane row.
 pub const GLOBAL_ENV_BODY_MIN: Rems = ui(200.);
 /// The Changes dialog's width: the file list beside the diff pane.
