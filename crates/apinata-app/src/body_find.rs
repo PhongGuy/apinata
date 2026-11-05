@@ -21,6 +21,10 @@ actions!(
         FindPreviousInResponse,
         /// Closes the response body's find bar; with no bar open the key passes on.
         CloseFindInResponse,
+        /// Switches the open find bar between literal and regular-expression queries.
+        ToggleFindRegex,
+        /// Switches the open find bar's whole-word matching.
+        ToggleFindWholeWord,
         /// Moves the rows list's current row up one.
         RowUp,
         /// Moves the rows list's current row down one.
@@ -57,7 +61,10 @@ pub struct Finder(Search);
 
 #[derive(Debug)]
 enum Search {
-    Literal { needle: String, case_sensitive: bool },
+    Literal {
+        needle: String,
+        case_sensitive: bool,
+    },
     Pattern(regress::Regex),
 }
 
@@ -75,7 +82,10 @@ impl Finder {
         let pattern = if options.regex {
             query.to_owned()
         } else if options.whole_word {
-            format!("{NOT_WORD_BEFORE}{}{NOT_WORD_AFTER}", regress::escape(query))
+            format!(
+                "{NOT_WORD_BEFORE}{}{NOT_WORD_AFTER}",
+                regress::escape(query)
+            )
         } else {
             return Ok(Some(Finder(Search::Literal {
                 needle: fold(query, options.case_sensitive),

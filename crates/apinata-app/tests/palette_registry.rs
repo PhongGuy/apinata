@@ -34,6 +34,8 @@ const NOT_LISTED: &[&str] = &[
     "apinata::FindNextInResponse",
     "apinata::FindPreviousInResponse",
     "apinata::CloseFindInResponse",
+    "apinata::ToggleFindRegex",
+    "apinata::ToggleFindWholeWord",
     "apinata::ClearPreferencesSearch",
     "apinata::FocusNextControl",
     "apinata::FocusPreviousControl",

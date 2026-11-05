@@ -390,6 +390,7 @@ mod response_cookies;
 mod response_filter;
 mod response_find;
 mod response_find_keys;
+mod response_find_options;
 mod response_header;
 mod response_header_row;
 mod response_header_tools;

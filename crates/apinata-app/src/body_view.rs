@@ -27,9 +27,9 @@ use gpui_kit::*;
 
 use crate::app::AppState;
 use crate::body_find::{
-    CloseFindInResponse, FindInResponse, FindNextInResponse, FindPreviousInResponse, KEY_CONTEXT,
-    RowDown, RowFirst, RowLast, RowPageDown, RowPageUp, RowUp, find_in_chunked, find_selection,
-    match_colours,
+    CloseFindInResponse, FindInResponse, FindNextInResponse, FindOptions, FindPreviousInResponse,
+    Finder, KEY_CONTEXT, RowDown, RowFirst, RowLast, RowPageDown, RowPageUp, RowUp,
+    ToggleFindRegex, ToggleFindWholeWord, find_in_chunked_with, find_selection, match_colours,
 };
 use crate::body_node::{
     ASSERT_VALUE, AssertJsonValue, CopyJsonPath, CopyJsonValue, NodeCopy, SET_VARIABLE,
@@ -47,6 +47,9 @@ use crate::theme::{SelectedStyle, selected_look};
 use crate::ui::{ChooseButton as _, LockButton as _};
 use crate::zoom::{self, ZoomStep, ZoomTarget::Response};
 use crate::{confirm, open_external, style, ui};
+use gpui_kit::component::input::{
+    RangeDecoration, RangeDecorationCollection, RangeDecorationStyle,
+};
 
 // The shown result's body with its secrets redacted, built once per result on the first
 // prepare of a text body and reused by every later one. `None` inside means redaction changed
@@ -197,6 +200,17 @@ pub struct BodyView {
     find_input: Entity<InputState>,
     find_open: bool,
     find_case_sensitive: bool,
+    find_regex: bool,
+    find_whole_word: bool,
+    // The query is a pattern that does not compile, so it matches nothing.
+    find_invalid: bool,
+    // Editor-mode hits while regex or whole-word is on: the kit's search is literal only, so
+    // these are found here and painted as range fills, all hits under the current one.
+    editor_hits: Vec<Range<usize>>,
+    editor_hit: Option<usize>,
+    hit_marks: Option<(RangeDecorationCollection, RangeDecorationCollection)>,
+    // A hit for the next paint to centre, with how many more frames it may wait to be laid out.
+    centre_hit: Rc<RefCell<Option<PendingCentre>>>,
     // Rows-mode find: the matches in row order and the current one. The editor keeps its own,
     // and a scan lands only if no newer query, case switch or text has started since.
     row_matches: Vec<(usize, Range<usize>)>,
@@ -270,6 +284,17 @@ pub struct BodyView {
     value_menu_open: Rc<Cell<bool>>,
     // Redraws when the editor's caret moves, so the value-actions button follows its line.
     _editor_changes: Subscription,
+    _editor_edits: Subscription,
+}
+
+// A hit waiting to be centred, and how many more frames it may wait to be laid out.
+type PendingCentre = (Range<usize>, u8);
+
+// A filled find highlight over `range`.
+fn fill(range: Range<usize>, colour: Hsla) -> RangeDecoration {
+    RangeDecoration::new(range)
+        .with_style(RangeDecorationStyle::Fill)
+        .with_color(colour)
 }
 
 /// The id of the button that opens the value actions without a right-click.
@@ -357,6 +382,12 @@ impl BodyView {
                 })
             });
         let editor_changes = cx.observe(&editor, |_, _, cx| cx.notify());
+        // An edit moves text under the editor-mode hits, so they are found again in place.
+        let editor_edits = cx.subscribe(&editor, |this, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) && this.own_editor_find() && this.find_open {
+                this.find_editor_hits(false, cx);
+            }
+        });
         BodyView {
             editor,
             chunked: Arc::default(),
@@ -378,6 +409,13 @@ impl BodyView {
             find_input,
             find_open: false,
             find_case_sensitive: false,
+            find_regex: false,
+            find_whole_word: false,
+            find_invalid: false,
+            editor_hits: Vec::new(),
+            editor_hit: None,
+            hit_marks: None,
+            centre_hit: Rc::default(),
             row_matches: Vec::new(),
             row_tails: Vec::new(),
             find_anchor: None,
@@ -421,6 +459,7 @@ impl BodyView {
             current_row: None,
             value_menu_open: Rc::default(),
             _editor_changes: editor_changes,
+            _editor_edits: editor_edits,
         }
     }
 
@@ -703,6 +742,9 @@ impl BodyView {
         self.reshape(true, window, cx);
         // The match sits elsewhere in the new layout; the marker re-reveals it once that exists.
         self.reveal_editor.set(true);
+        if let Some(hit) = self.editor_hit.and_then(|ix| self.editor_hits.get(ix)) {
+            *self.centre_hit.borrow_mut() = Some((hit.clone(), 1));
+        }
         cx.notify();
     }
 
@@ -778,6 +820,7 @@ impl BodyView {
         self.find_open = false;
         self.find_settle = None;
         self.editor.update(cx, |e, cx| e.close_search(cx));
+        self.clear_editor_hits(cx);
         self.clear_row_matches();
         if self.shown == Shown::Editor {
             self.editor.read(cx).focus_handle(cx).focus(window, cx);
@@ -804,13 +847,19 @@ impl BodyView {
         self.run_find(cx);
     }
 
-    /// "" for an empty query, "No matches", else "{current} of {total}" counting from 1.
+    /// "" for an empty query, "Invalid pattern", "No matches", else "{current} of {total}"
+    /// counting from 1.
     pub fn find_label(&self, cx: &App) -> String {
         if self.find_input.read(cx).value().is_empty() {
             return String::new();
         }
+        if self.find_invalid {
+            return "Invalid pattern".into();
+        }
         let (current, total) = if self.in_rows() {
             (self.row_current, self.row_matches.len())
+        } else if self.own_editor_find() {
+            (self.editor_hit, self.editor_hits.len())
         } else {
             let matcher = &self.editor.read(cx).search_session().matcher;
             (matcher.current(), matcher.len())
@@ -829,6 +878,10 @@ impl BodyView {
     pub fn find_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.in_rows() {
             self.step_row_match(1);
+        } else if self.own_editor_find() {
+            if let Some(ix) = self.editor_hit {
+                self.select_hit((ix + 1) % self.editor_hits.len(), cx);
+            }
         } else {
             self.centred_step(window, cx, |e, cx| e.next_search_match(cx));
         }
@@ -856,11 +909,41 @@ impl BodyView {
         self.find_input.update(cx, |i, cx| i.focus(window, cx));
     }
 
+    // One of the bar's on/off toggles: a ghost icon button drawn selected while `on`, whose
+    // click runs `flip` and hands focus back to the field. `ids` are (wrapper, button).
+    fn find_toggle(
+        &self,
+        ids: (&'static str, &'static str),
+        icon: IconName,
+        tooltip: String,
+        on: bool,
+        flip: fn(&mut Self, &mut Context<Self>),
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .id(ids.0)
+            .test_support()
+            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                flip(this, cx);
+                this.refocus_find(window, cx);
+            }))
+            .child(ui::icon_button(ids.1, icon, &tooltip, None).choose(
+                on,
+                SelectedStyle::Ghost,
+                cx,
+            ))
+    }
+
     /// Moves to the previous match, wrapping, and scrolls it into view.
     pub fn find_previous(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.in_rows() {
             let back = self.row_matches.len().saturating_sub(1);
             self.step_row_match(back);
+        } else if self.own_editor_find() {
+            if let Some(ix) = self.editor_hit {
+                let len = self.editor_hits.len();
+                self.select_hit((ix + len - 1) % len, cx);
+            }
         } else {
             self.centred_step(window, cx, |e, cx| e.previous_search_match(cx));
         }
@@ -873,6 +956,7 @@ impl BodyView {
     fn find_colour_marker(&self) -> impl IntoElement {
         let (editor, painted) = (self.editor.clone(), self.editor.clone());
         let (laid, reveal) = (self.selection_laid.clone(), self.reveal_editor.clone());
+        let centre = self.centre_hit.clone();
         canvas(
             move |_, _, cx| {
                 let style = editor_style(cx);
@@ -883,6 +967,21 @@ impl BodyView {
             // match and back then scrolls it to mid-view.
             move |_, _, window, cx| {
                 painted.update(cx, |e, cx| {
+                    // A laid-out hit is centred; one off screen is first selected, which
+                    // scrolls it into view, and centred on a later frame.
+                    let pending = centre.borrow_mut().take();
+                    if let Some((hit, tries)) = pending {
+                        let laid = (e.range_to_bounds(&hit), e.text_bounds(), e.line_height());
+                        if let (Some(at), Some(view), Some(line)) = laid {
+                            let top = (view.size.height - line) / 2. - (at.top() - view.top());
+                            let x = e.scroll_offset().x;
+                            e.set_scroll_offset(point(x, top.min(Pixels::ZERO)), cx);
+                        } else if tries > 0 {
+                            e.set_selected_range(hit.clone(), cx);
+                            *centre.borrow_mut() = Some((hit, tries - 1));
+                            window.refresh();
+                        }
+                    }
                     if reveal.take() && e.search_session().matcher.current().is_some() {
                         e.set_cursor_surrounding_lines(Some(usize::MAX), window, cx);
                         e.previous_search_match(cx);
@@ -1016,6 +1115,127 @@ impl BodyView {
         self.run_find(cx);
     }
 
+    /// Whether the query is a regular expression; false by default.
+    pub fn find_regex(&self) -> bool {
+        self.find_regex
+    }
+
+    /// Switches regular-expression queries and re-runs the query.
+    pub fn set_find_regex(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.find_regex = on;
+        self.run_find(cx);
+    }
+
+    /// Whether find counts only whole words; false by default.
+    pub fn find_whole_word(&self) -> bool {
+        self.find_whole_word
+    }
+
+    /// Switches whole-word matching and re-runs the query.
+    pub fn set_find_whole_word(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.find_whole_word = on;
+        self.run_find(cx);
+    }
+
+    /// Whether the query is a regular expression that does not compile.
+    pub fn find_invalid(&self) -> bool {
+        self.find_invalid
+    }
+
+    /// The editor ranges painted as find hits while regex or whole-word is on.
+    pub fn find_marks(&self, cx: &App) -> Vec<Range<usize>> {
+        self.hit_marks
+            .as_ref()
+            .map_or_else(Vec::new, |(all, _)| all.get_ranges(cx))
+    }
+
+    fn find_options(&self) -> FindOptions {
+        FindOptions {
+            case_sensitive: self.find_case_sensitive,
+            regex: self.find_regex,
+            whole_word: self.find_whole_word,
+        }
+    }
+
+    // The kit's search matches literal text only, so the editor's hits are found here while
+    // either toggle is on.
+    fn own_editor_find(&self) -> bool {
+        self.find_regex || self.find_whole_word
+    }
+
+    // Finds the editor-mode hits for the bar's query. With `reveal` the first becomes current
+    // and is centred; without, the current index stays where it was, clamped.
+    fn find_editor_hits(&mut self, reveal: bool, cx: &mut Context<Self>) {
+        let query = self.find_input.read(cx).value();
+        let found = Finder::new(&query, self.find_options());
+        self.find_invalid = found.is_err();
+        let text = self.editor.read(cx).value();
+        self.editor_hits = found
+            .ok()
+            .flatten()
+            .map_or_else(Vec::new, |f| f.find_in_text(&text));
+        let last = self.editor_hits.len().checked_sub(1);
+        let current = if reveal { Some(0) } else { self.editor_hit };
+        self.editor_hit = last.map(|last| current.unwrap_or(0).min(last));
+        let other = Hsla {
+            s: 0.1,
+            ..find_selection(cx)
+        };
+        let fills = self
+            .editor_hits
+            .iter()
+            .map(|r| fill(r.clone(), other))
+            .collect();
+        match &self.hit_marks {
+            Some((all, _)) => all.set(fills, cx),
+            None => {
+                let marks = self.editor.update(cx, |e, cx| {
+                    (
+                        e.create_range_decorations_collection(fills, cx),
+                        e.create_range_decorations_collection(Vec::new(), cx),
+                    )
+                });
+                self.hit_marks = Some(marks);
+            }
+        }
+        match self.editor_hit.filter(|_| reveal) {
+            Some(ix) => self.select_hit(ix, cx),
+            None => self.mark_current_hit(cx),
+        }
+        cx.notify();
+    }
+
+    // Makes hit `ix` current: it is painted over the others, selected and centred.
+    fn select_hit(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let Some(hit) = self.editor_hits.get(ix).cloned() else {
+            return;
+        };
+        self.editor_hit = Some(ix);
+        self.mark_current_hit(cx);
+        self.editor
+            .update(cx, |e, cx| e.set_selected_range(hit.clone(), cx));
+        *self.centre_hit.borrow_mut() = Some((hit, 1));
+        cx.notify();
+    }
+
+    fn mark_current_hit(&self, cx: &mut Context<Self>) {
+        if let Some((_, current)) = &self.hit_marks {
+            let hit = self.editor_hit.and_then(|ix| self.editor_hits.get(ix));
+            let fills = hit.map(|r| fill(r.clone(), find_selection(cx)));
+            current.set(fills.into_iter().collect(), cx);
+        }
+    }
+
+    fn clear_editor_hits(&mut self, cx: &mut Context<Self>) {
+        self.editor_hits.clear();
+        self.editor_hit = None;
+        self.centre_hit.borrow_mut().take();
+        if let Some((all, current)) = &self.hit_marks {
+            all.clear(cx);
+            current.clear(cx);
+        }
+    }
+
     // Runs the open bar's query over the editor's text. A new query starts at the first
     // match; stepping back then forward lands on it again and scrolls it into view, which
     // the kit offers no other public way to do. An empty query ends the highlights.
@@ -1029,10 +1249,20 @@ impl BodyView {
         if self.in_rows() {
             // Rows have no editor behind them, so its leftover session must not count.
             self.editor.update(cx, |e, cx| e.close_search(cx));
-            self.find_in_rows(query, cx);
+            self.clear_editor_hits(cx);
+            let found = Finder::new(&query, self.find_options());
+            self.find_invalid = found.is_err();
+            self.find_in_rows(found.ok().flatten(), cx);
             return;
         }
         self.clear_row_matches();
+        if self.own_editor_find() {
+            self.editor.update(cx, |e, cx| e.close_search(cx));
+            self.find_editor_hits(true, cx);
+            return;
+        }
+        self.find_invalid = false;
+        self.clear_editor_hits(cx);
         let case_insensitive = !self.find_case_sensitive;
         self.editor.update(cx, |e, cx| {
             if query.is_empty() {
@@ -1058,6 +1288,7 @@ impl BodyView {
         self.find_anchor = None;
         self.find_generation += 1;
         self.find_task = None;
+        self.find_invalid = false;
         let timer = cx.background_executor().timer(SETTLE);
         self.find_settle = Some(cx.spawn(async move |this, cx| {
             timer.await;
@@ -1068,20 +1299,18 @@ impl BodyView {
 
     // Scans the rows off the main thread, since a capped body can hold many of them. The
     // old highlights stay until the result lands, but no current match, so the label never
-    // pairs the new query with the old count; an empty query clears at once.
-    fn find_in_rows(&mut self, query: String, cx: &mut Context<Self>) {
-        if query.is_empty() {
+    // pairs the new query with the old count; an empty or invalid query clears at once.
+    fn find_in_rows(&mut self, finder: Option<Finder>, cx: &mut Context<Self>) {
+        let Some(finder) = finder else {
             self.clear_row_matches();
             cx.notify();
             return;
-        }
+        };
         self.row_current = None;
         self.find_generation += 1;
         let generation = self.find_generation;
         let chunked = self.chunked.clone();
-        let case_sensitive = self.find_case_sensitive;
-        let job =
-            cx.background_spawn(async move { find_in_chunked(&chunked, &query, case_sensitive) });
+        let job = cx.background_spawn(async move { find_in_chunked_with(&chunked, &finder) });
         self.find_task = Some(cx.spawn(async move |this, cx| {
             let found = job.await;
             let _ = this.update(cx, |this, cx| {
@@ -2112,10 +2341,12 @@ impl BodyView {
         let editor = self.editor.read(cx);
         let text = editor.value();
         let matcher = &editor.search_session().matcher;
-        let at = matcher
-            .current()
-            .and_then(|ix| matcher.matched_ranges().get(ix).map(|r| r.start))
-            .filter(|_| keep_place && self.find_open);
+        let at = if self.own_editor_find() {
+            (self.editor_hit.and_then(|ix| self.editor_hits.get(ix))).map(|r| r.start)
+        } else {
+            (matcher.current()).and_then(|ix| matcher.matched_ranges().get(ix).map(|r| r.start))
+        }
+        .filter(|_| keep_place && self.find_open);
         let top = editor.visible_row_range().map(|r| r.start as u32 + 1);
         self.install_rows(chunk_lines(&text, ROW_WIDTH), ROW_WIDTH);
         self.shown = Shown::Lines(self.chunked.len());
@@ -2152,9 +2383,20 @@ impl BodyView {
         self.chunked = Arc::default();
         self.shown = Shown::Editor;
         self.run_find(cx);
+        // The own hits keep their place by index; without a place the view keeps its line.
+        if self.own_editor_find() {
+            match at {
+                Some(at) => {
+                    let ix = self.editor_hits.partition_point(|r| r.start < at);
+                    self.select_hit(ix.min(self.editor_hits.len().saturating_sub(1)), cx);
+                }
+                None => drop(self.centre_hit.borrow_mut().take()),
+            }
+        }
+        let kit_at = at.filter(|_| !self.own_editor_find());
         self.editor.update(cx, |e, cx| {
             let ranges = e.search_session().matcher.matched_ranges();
-            for _ in 0..at.map_or(0, |at| ranges.partition_point(|r| r.start < at)) {
+            for _ in 0..kit_at.map_or(0, |at| ranges.partition_point(|r| r.start < at)) {
                 e.next_search_match(cx);
             }
             let height = e.line_height().filter(|_| at.is_none());
@@ -2163,7 +2405,7 @@ impl BodyView {
                 e.set_scroll_offset(point(Pixels::ZERO, -y), cx);
             }
         });
-        self.reveal_editor.set(at.is_some());
+        self.reveal_editor.set(kit_at.is_some());
         cx.notify();
     }
 
@@ -2172,6 +2414,7 @@ impl BodyView {
         if self.find_open && !matches!(self.shown, Shown::Editor | Shown::Lines(_)) {
             self.find_open = false;
             self.editor.update(cx, |e, cx| e.close_search(cx));
+            self.clear_editor_hits(cx);
             self.clear_row_matches();
             if self.find_input.read(cx).focus_handle(cx).is_focused(window) {
                 self.focus.focus(window, cx);
@@ -2898,39 +3141,53 @@ impl Render for BodyView {
                 .w_full()
                 .gap(style::SPACE_2)
                 .on_action(cx.listener(|this, _: &Escape, window, cx| this.close_find(window, cx)))
-                .child(div().flex_1().child(ui::padded_input(
+                .child(ui::invalid_input(
                     Input::new(&self.find_input).bg(ui::field_fill(false, cx)),
+                    div().flex_1(),
                     &self.find_input,
-                )))
+                    self.find_invalid,
+                    (
+                        "body-find-invalid-ring".into(),
+                        "body-find-invalid-icon".into(),
+                    ),
+                    window,
+                    cx,
+                ))
                 .child(
                     div()
                         .id("body-find-count")
                         .test_support()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(if self.find_invalid {
+                            cx.theme().danger
+                        } else {
+                            cx.theme().muted_foreground
+                        })
                         .child(self.find_label(cx)),
                 )
-                .child(
-                    div()
-                        .id("body-find-case")
-                        .test_support()
-                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                            this.set_find_case_sensitive(!this.find_case_sensitive, cx);
-                            this.refocus_find(window, cx);
-                        }))
-                        .child(
-                            ui::icon_button(
-                                "body-find-case-button",
-                                IconName::CaseSensitive,
-                                "Match case",
-                                None,
-                            )
-                            .choose(
-                                self.find_case_sensitive,
-                                SelectedStyle::Ghost,
-                                cx,
-                            ),
-                        ),
-                )
+                .child(self.find_toggle(
+                    ("body-find-case", "body-find-case-button"),
+                    IconName::CaseSensitive,
+                    "Match case".into(),
+                    self.find_case_sensitive,
+                    |this, cx| this.set_find_case_sensitive(!this.find_case_sensitive, cx),
+                    cx,
+                ))
+                .child(self.find_toggle(
+                    ("body-find-word", "body-find-word-button"),
+                    IconName::WholeWord,
+                    ui::label_with_key("Match whole word", &ToggleFindWholeWord, cx),
+                    self.find_whole_word,
+                    |this, cx| this.set_find_whole_word(!this.find_whole_word, cx),
+                    cx,
+                ))
+                .child(self.find_toggle(
+                    ("body-find-regex", "body-find-regex-button"),
+                    IconName::Regex,
+                    ui::label_with_key("Use regular expression", &ToggleFindRegex, cx),
+                    self.find_regex,
+                    |this, cx| this.set_find_regex(!this.find_regex, cx),
+                    cx,
+                ))
                 .child(
                     div()
                         .id("body-find-prev")
@@ -3207,6 +3464,21 @@ impl Render for BodyView {
             .on_action(cx.listener(|this, _: &CloseFindInResponse, window, cx| {
                 if this.find_open {
                     this.close_find(window, cx);
+                } else {
+                    cx.propagate();
+                }
+            }))
+            // The toggle chords act on an open bar only; otherwise the key passes on.
+            .on_action(cx.listener(|this, _: &ToggleFindRegex, _, cx| {
+                if this.find_open {
+                    this.set_find_regex(!this.find_regex, cx);
+                } else {
+                    cx.propagate();
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ToggleFindWholeWord, _, cx| {
+                if this.find_open {
+                    this.set_find_whole_word(!this.find_whole_word, cx);
                 } else {
                     cx.propagate();
                 }
