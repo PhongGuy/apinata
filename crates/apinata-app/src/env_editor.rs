@@ -28,7 +28,7 @@ use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, SecretRecord, env_rows, env_vars_from,
     secret_records, secrets_collide,
 };
-use crate::orphan_section::{self, Orphans};
+use crate::orphan_section::{self, Fileless, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep, ReplaceAnswer};
@@ -171,6 +171,10 @@ pub struct EnvEditor {
     /// A variable to add once the environment being created is selected.
     pending_add: Option<String>,
     orphans: Orphans,
+    /// Stored secrets of environments with no file, listed with the orphans.
+    fileless: Fileless,
+    /// The number of the newest fileless list sent; an older answer arriving late is dropped.
+    fileless_asked: u64,
     /// Set while a lock or Save check is reading the store or asking; a further one is dropped,
     /// and a blur stores nothing, since a dialog taking focus must not commit the typing.
     checking: bool,
@@ -278,6 +282,8 @@ impl EnvEditor {
             error: None,
             pending_add: None,
             orphans: Orphans::default(),
+            fileless: Fileless::default(),
+            fileless_asked: 0,
             checking: false,
             checked: Vec::new(),
             focus: cx.focus_handle(),
@@ -355,20 +361,27 @@ impl EnvEditor {
         self.list_orphans(cx);
     }
 
-    /// Lists the selected environment's orphans; an answer for an environment no longer
-    /// selected is dropped.
+    /// Lists the selected environment's orphans, and with them the stored secrets of
+    /// environments with no file; an orphan answer for an environment no longer selected is
+    /// dropped.
     pub fn list_orphans(&mut self, cx: &mut Context<Self>) {
+        let (fileless, fileless_answer) = async_channel::bounded(1);
+        let root = self.root.clone();
         let Some(env) = self.selected.clone() else {
-            return;
+            let command = Command::FilelessSecrets { reply: fileless };
+            self.workspace
+                .update(cx, |w, cx| w.send(&root, command, cx));
+            return self.take_fileless(fileless_answer, cx);
         };
         let (reply, answer) = async_channel::bounded(1);
         let command = Command::OrphanedSecrets {
             env: env.clone(),
             reply,
+            fileless: Some(fileless),
         };
-        let root = self.root.clone();
         self.workspace
             .update(cx, |w, cx| w.send(&root, command, cx));
+        self.take_fileless(fileless_answer, cx);
         cx.spawn(async move |this, cx| {
             // A closed channel is a list the collection never took, which is no answer either.
             let answer = answer.recv().await.unwrap_or_else(|e| Err(e.to_string()));
@@ -377,6 +390,70 @@ impl EnvEditor {
                     e.orphans = answer.map_or_else(Orphans::Failed, Orphans::Names);
                     cx.notify();
                 }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn take_fileless(
+        &mut self,
+        answer: async_channel::Receiver<Result<Vec<orphan_section::FilelessGroup>, String>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.fileless_asked += 1;
+        let asked = self.fileless_asked;
+        cx.spawn(async move |this, cx| {
+            let answer = answer.recv().await.unwrap_or_else(|e| Err(e.to_string()));
+            this.update(cx, |e, cx| {
+                if e.fileless_asked == asked {
+                    e.fileless = answer.map_or_else(Fileless::Failed, Fileless::Groups);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The stored secrets of environments with no file, as last listed.
+    pub fn fileless(&self) -> &Fileless {
+        &self.fileless
+    }
+
+    /// Asks to remove the stored value of `name` in `env`, which has no file, warning that the
+    /// file may only be elsewhere; removes it on "Delete".
+    pub fn ask_remove_fileless(
+        &mut self,
+        env: &str,
+        name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        orphan_section::ask_remove_fileless(env, name, window, cx, Self::remove_fileless);
+    }
+
+    // The reply's warnings or refusal show on the error line, then both sections list again.
+    fn remove_fileless(&mut self, env: String, name: String, cx: &mut Context<Self>) {
+        let (reply, answer) = async_channel::bounded(1);
+        let names = vec![name];
+        let command = Command::RemoveFilelessSecrets { env, names, reply };
+        let root = self.root.clone();
+        self.workspace
+            .update(cx, |w, cx| w.send(&root, command, cx));
+        self.error = None;
+        cx.spawn(async move |this, cx| {
+            let Ok(answer) = answer.recv().await else {
+                return;
+            };
+            this.update(cx, |e, cx| {
+                match answer {
+                    Ok(warnings) if warnings.is_empty() => {}
+                    Ok(warnings) => e.error = Some(warnings.join("; ")),
+                    Err(message) => e.error = Some(message),
+                }
+                e.list_orphans(cx);
+                cx.notify();
             })
             .ok();
         })
@@ -1987,6 +2064,14 @@ impl Render for EnvEditor {
                 .min_w_0()
                 .child(message)
         });
+        let editor = cx.entity().downgrade();
+        let on_remove = move |env: &str, name: &str, window: &mut Window, cx: &mut App| {
+            editor
+                .update(cx, |e, cx| e.ask_remove_fileless(env, name, window, cx))
+                .ok();
+        };
+        let fileless =
+            orphan_section::fileless_section(&self.fileless, &self.follow, on_remove, cx);
         if self.selected.is_none() {
             // The label and its action hug their content as one group, centred in the pane.
             let empty = v_flex()
@@ -2020,6 +2105,7 @@ impl Render for EnvEditor {
                         .gap_2()
                         .child(empty)
                         .children(naming)
+                        .children(fileless.map(|f| div().w_full().child(f)))
                         .children(error),
                 )
                 // The list's controls report even with nothing selected, so the watch stays.
@@ -2093,6 +2179,7 @@ impl Render for EnvEditor {
                     ))
                     .child(self.table.clone())
                     .children(orphans)
+                    .children(fileless)
                     .children(notice)
                     .children(error),
             )

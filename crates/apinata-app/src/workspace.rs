@@ -162,6 +162,14 @@ pub enum GlobalOp {
         /// The orphans to remove.
         names: Vec<String>,
     },
+    /// Remove named stored secrets of an environment with no file. Warnings become the error
+    /// text; refused if the environment has a file again.
+    RemoveFileless {
+        /// The environment.
+        name: String,
+        /// The variables to remove.
+        names: Vec<String>,
+    },
 }
 
 // Save's secret values are plaintext, so only their variable names are printed.
@@ -197,6 +205,10 @@ impl std::fmt::Debug for GlobalOp {
                     .finish_non_exhaustive()
             }
             GlobalOp::RemoveOrphans { name, names } => (f.debug_struct("RemoveOrphans"))
+                .field("name", name)
+                .field("names", names)
+                .finish(),
+            GlobalOp::RemoveFileless { name, names } => (f.debug_struct("RemoveFileless"))
                 .field("name", name)
                 .field("names", names)
                 .finish(),
@@ -254,10 +266,14 @@ impl GlobalOp {
                     store.set(&key, value).map_err(text)?;
                 }
             }
-            GlobalOp::RemoveOrphans { name, names } => {
-                let warnings = globals
-                    .remove_orphaned_secrets(name, names, store)
-                    .map_err(text)?;
+            GlobalOp::RemoveOrphans { name, names } | GlobalOp::RemoveFileless { name, names } => {
+                let warnings = match self {
+                    GlobalOp::RemoveOrphans { .. } => {
+                        globals.remove_orphaned_secrets(name, names, store)
+                    }
+                    _ => globals.remove_fileless_secrets(name, names, store),
+                }
+                .map_err(text)?;
                 if !warnings.is_empty() {
                     let warnings: Vec<String> = warnings.iter().map(text).collect();
                     return Err(warnings.join("; "));
@@ -267,6 +283,13 @@ impl GlobalOp {
         GlobalEnvironments::open(dir).map_err(text)
     }
 }
+
+/// The answer of [`Workspace::global_secrets_to_tidy`]: the orphans, when an environment was
+/// named, and the fileless groups.
+pub type GlobalTidy = (
+    Option<Result<Vec<String>, String>>,
+    Result<Vec<crate::orphan_section::FilelessGroup>, String>,
+);
 
 /// One collection the workspace holds open.
 pub struct CollectionEntry {
@@ -1433,6 +1456,32 @@ impl Workspace {
             globals
                 .orphaned_secrets(&name, &*store)
                 .map_err(|e| e.to_string())
+        })
+    }
+
+    /// The orphans of global `name`, when one is given, and the stored secrets of global
+    /// environments with no file, off the main thread and from one look at the store.
+    pub fn global_secrets_to_tidy(&self, name: Option<&str>, cx: &App) -> Task<GlobalTidy> {
+        let Some(globals) = self.globals.clone() else {
+            let unloaded = "Global environments are not loaded.";
+            return Task::ready((
+                name.map(|_| Err(unloaded.to_owned())),
+                Err(unloaded.to_owned()),
+            ));
+        };
+        let (store, name) = (self.store.clone(), name.map(str::to_owned));
+        cx.background_spawn(async move {
+            let once = crate::orphan_section::ListOnce::new(&*store);
+            let orphans = name.map(|name| {
+                globals
+                    .orphaned_secrets(&name, &once)
+                    .map_err(|e| e.to_string())
+            });
+            let fileless = globals
+                .all_orphaned_secrets(&once)
+                .map(|r| crate::orphan_section::fileless_groups(&r))
+                .map_err(|e| e.to_string());
+            (orphans, fileless)
         })
     }
 

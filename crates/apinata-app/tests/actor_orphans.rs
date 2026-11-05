@@ -28,6 +28,7 @@ fn list(
         Command::OrphanedSecrets {
             env: env.into(),
             reply,
+            fileless: None,
         },
     );
     cx.run_until_parked();

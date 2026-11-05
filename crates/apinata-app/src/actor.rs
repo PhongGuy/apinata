@@ -27,6 +27,7 @@ use crate::context_cache::ContextCache;
 use crate::env_table;
 use crate::model::OPEN_PANIC_MESSAGE;
 use crate::network_secrets;
+use crate::orphan_section::{FilelessGroup, ListOnce, fileless_groups};
 use crate::snapshot::{CollectionSnapshot, SnapshotCache};
 use crate::stale::{Reloaded, StaleLedger, is_within, moved};
 
@@ -508,12 +509,33 @@ impl Actor {
                 let _ = reply.try_send(value);
                 Ok(())
             }
-            Command::OrphanedSecrets { env, reply } => {
+            Command::OrphanedSecrets {
+                env,
+                reply,
+                fileless,
+            } => {
+                let once = ListOnce::new(&*self.store);
                 let names = self
                     .collection
-                    .orphaned_secrets(&env, &*self.store)
+                    .orphaned_secrets(&env, &once)
                     .map_err(|e| e.to_string());
                 let _ = reply.try_send(names);
+                if let Some(fileless) = fileless {
+                    let _ = fileless.try_send(self.fileless_groups(&once));
+                }
+                Ok(())
+            }
+            Command::FilelessSecrets { reply } => {
+                let _ = reply.try_send(self.fileless_groups(&*self.store));
+                Ok(())
+            }
+            Command::RemoveFilelessSecrets { env, names, reply } => {
+                let warnings = self
+                    .collection
+                    .remove_fileless_secrets(&env, &names, &*self.store)
+                    .map(|warnings| warnings.iter().map(ToString::to_string).collect())
+                    .map_err(|e| e.to_string());
+                let _ = reply.try_send(warnings);
                 Ok(())
             }
             Command::RemoveOrphanedSecrets { env, names, reply } => {
@@ -759,9 +781,15 @@ impl Actor {
                 var,
                 reply,
             },
-            Command::OrphanedSecrets { env, reply } => {
-                Command::OrphanedSecrets { env: e(env), reply }
-            }
+            Command::OrphanedSecrets {
+                env,
+                reply,
+                fileless,
+            } => Command::OrphanedSecrets {
+                env: e(env),
+                reply,
+                fileless,
+            },
             Command::RemoveOrphanedSecrets { env, names, reply } => {
                 Command::RemoveOrphanedSecrets {
                     env: e(env),
@@ -1587,6 +1615,14 @@ impl Actor {
         }
     }
 
+    // The stored secrets of environments with no file, grouped by environment.
+    fn fileless_groups(&self, store: &dyn SecretStore) -> Result<Vec<FilelessGroup>, String> {
+        let report = self.collection.all_orphaned_secrets(store);
+        report
+            .map(|r| fileless_groups(&r))
+            .map_err(|e| e.to_string())
+    }
+
     /// After a successful save, delete the stored values of names that were secret on disk
     /// before it and are not after it, as Bruno's save does; a save that wrote nothing, or a
     /// file that cannot be read back, deletes nothing. Failed deletes are one `Warnings`
@@ -1773,6 +1809,8 @@ fn shapes_context(command: &Command) -> bool {
         | Command::StoredSecret { .. }
         | Command::OrphanedSecrets { .. }
         | Command::RemoveOrphanedSecrets { .. }
+        | Command::FilelessSecrets { .. }
+        | Command::RemoveFilelessSecrets { .. }
         | Command::Network(_)
         | Command::ApplyImport { .. } => false,
         _ => true,
