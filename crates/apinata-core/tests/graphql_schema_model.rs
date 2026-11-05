@@ -174,11 +174,10 @@ fn the_bare_form_parses_to_the_same_schema() {
 }
 
 #[test]
-fn answers_without_a_schema_are_no_data_or_not_json() {
+fn answers_without_a_schema_are_no_data_graphql_errors_or_not_json() {
     for text in [
         "{\"data\": null}",
         "{\"data\": {}}",
-        "{\"errors\": [{\"message\": \"no\"}]}",
         "[]",
         "{\"data\": {\"__schema\": null}}",
     ] {
@@ -187,6 +186,14 @@ fn answers_without_a_schema_are_no_data_or_not_json() {
             "{text}"
         );
     }
+    assert!(matches!(
+        Schema::from_json("{\"errors\": [{\"message\": \"no\"}, {\"locations\": []}]}"),
+        Err(SchemaError::Graphql { messages }) if messages == ["no", "an error without a message"]
+    ));
+    assert!(matches!(
+        Schema::from_json("{\"errors\": []}"),
+        Err(SchemaError::NoData)
+    ));
     assert!(matches!(
         Schema::from_json("<html></html>"),
         Err(SchemaError::NotJson { .. })

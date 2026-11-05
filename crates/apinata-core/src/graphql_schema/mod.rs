@@ -3,17 +3,19 @@
 
 mod complete;
 mod model;
+mod print;
 mod sdl;
 
 pub use complete::{Completion, CompletionKind};
 pub use model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::execute::SendTag;
 use crate::{
-    CancelHandle, ExecError, Executor, RequestFile, RequestKind, ResolveError, ResolvedRequest,
-    SendSource, VarContext,
+    AuthorizeOptions, CancelHandle, ExecError, Executor, OAuth2Error, RequestFile, RequestKind,
+    ResolveError, ResolvedRequest, SendSource, VarContext,
 };
 
 const MIB: u64 = 1024 * 1024;
@@ -54,6 +56,108 @@ pub async fn fetch_schema(
     req: &ResolvedRequest,
     cancel: &CancelHandle,
 ) -> Result<Schema, SchemaError> {
+    fetch_introspection(executor, req, cancel)
+        .await
+        .map(Introspection::into_schema)
+}
+
+/// A checked introspection answer: the JSON text as received and the schema parsed from it.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Introspection {
+    text: String,
+    schema: Schema,
+}
+
+impl Introspection {
+    /// The answer's JSON text, exactly as the server sent it.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// The schema the answer describes.
+    pub fn schema(&self) -> &Schema {
+        &self.schema
+    }
+
+    /// The schema, dropping the text.
+    pub fn into_schema(self) -> Schema {
+        self.schema
+    }
+}
+
+/// The guard [`introspect`] asks before sending; `Some` refuses with that message.
+pub type IntrospectGuard = Arc<dyn Fn(&ResolvedRequest) -> Option<String> + Send + Sync>;
+
+/// How [`introspect`] obtains a token and whether a guard may refuse the send.
+#[derive(Clone, Default)]
+#[non_exhaustive]
+pub struct IntrospectOptions {
+    authorize: AuthorizeOptions,
+    guard: Option<IntrospectGuard>,
+}
+
+impl IntrospectOptions {
+    /// Default token handling and no guard.
+    pub fn new() -> IntrospectOptions {
+        IntrospectOptions::default()
+    }
+
+    /// How an OAuth 2.0 token is obtained, as for a send.
+    pub fn authorize(mut self, how: AuthorizeOptions) -> IntrospectOptions {
+        self.authorize = how;
+        self
+    }
+
+    /// Ask `guard` about the resolved request; a message it returns refuses the send.
+    pub fn guard(mut self, guard: IntrospectGuard) -> IntrospectOptions {
+        self.guard = Some(guard);
+        self
+    }
+}
+
+impl std::fmt::Debug for IntrospectOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntrospectOptions")
+            .field("guard", &self.guard.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Fetches the schema of the GraphQL request `req` as Send would send it: its OAuth 2.0 token
+/// prepared first, then [`introspection_request`], the guard, and [`fetch_introspection`].
+///
+/// Fails with [`SchemaError::NotGraphql`] before anything else, [`SchemaError::Auth`] when the
+/// token cannot be had, [`SchemaError::Refused`] when the guard refuses, then as the two steps do.
+pub async fn introspect(
+    executor: &Executor,
+    req: &RequestFile,
+    ctx: &VarContext,
+    options: &IntrospectOptions,
+    cancel: &CancelHandle,
+) -> Result<Introspection, SchemaError> {
+    if req.kind() != RequestKind::Graphql {
+        return Err(SchemaError::NotGraphql);
+    }
+    executor
+        .prepare_auth(req, ctx, &options.authorize, cancel)
+        .await
+        .map_err(SchemaError::Auth)?;
+    let resolved = introspection_request(req, ctx)?;
+    if let Some(message) = options.guard.as_ref().and_then(|guard| guard(&resolved)) {
+        return Err(SchemaError::Refused { message });
+    }
+    fetch_introspection(executor, &resolved, cancel).await
+}
+
+/// Sends `req` with `executor` and checks the answer, keeping its text beside the [`Schema`].
+///
+/// Fails as [`fetch_schema`] does.
+pub async fn fetch_introspection(
+    executor: &Executor,
+    req: &ResolvedRequest,
+    cancel: &CancelHandle,
+) -> Result<Introspection, SchemaError> {
     let tag = SendTag {
         source: SendSource::GraphqlSchema,
         ..SendTag::default()
@@ -73,7 +177,9 @@ pub async fn fetch_schema(
             limit: SCHEMA_BODY_LIMIT,
         });
     }
-    Schema::from_json(response.text())
+    let text = response.text().to_owned();
+    let schema = Schema::from_json(&text)?;
+    Ok(Introspection { text, schema })
 }
 
 impl Schema {
@@ -83,6 +189,13 @@ impl Schema {
     /// the built-in scalars are present even when undeclared. Fails with [`SchemaError::Sdl`].
     pub fn from_sdl(text: &str) -> Result<Schema, SchemaError> {
         sdl::parse(text)
+    }
+
+    /// Writes the schema as an SDL document that [`Schema::from_sdl`] reads back to the same
+    /// types. Introspection types and the built-in scalars are left out, and directive
+    /// definitions are not part of the model, so only `@deprecated` is written.
+    pub fn to_sdl(&self) -> String {
+        print::print(self)
     }
 
     /// Parses a schema file: introspection JSON when the text starts with `{`, SDL otherwise.
@@ -132,6 +245,21 @@ pub enum SchemaError {
     /// The JSON holds no `__schema` object.
     #[error("no schema in the response")]
     NoData,
+    /// The JSON holds no `__schema` object but a non-empty `errors` list.
+    #[error("the server answered with GraphQL errors: {}", messages.join("; "))]
+    Graphql {
+        /// Each error's message, in order.
+        messages: Vec<String>,
+    },
+    /// The OAuth 2.0 token the request needs could not be had.
+    #[error(transparent)]
+    Auth(OAuth2Error),
+    /// The caller's guard refused the resolved request, so nothing was sent.
+    #[error("{message}")]
+    Refused {
+        /// Why the guard refused it.
+        message: String,
+    },
     /// The text is not a valid SDL schema document.
     #[error("the schema is not valid SDL at line {line}, column {column}: {detail}")]
     Sdl {

@@ -97,7 +97,7 @@ impl Schema {
             _ => &value,
         };
         let Some(schema) = root.get("__schema").and_then(Value::as_object) else {
-            return Err(SchemaError::NoData);
+            return Err(graphql_errors(&value).unwrap_or(SchemaError::NoData));
         };
         let Some(types) = schema.get("types").and_then(Value::as_array) else {
             return Err(invalid("types is not a list"));
@@ -254,6 +254,21 @@ impl TypeRef {
     pub fn display(&self) -> &str {
         &self.display
     }
+}
+
+/// The answer's non-empty `errors` list as an error, each entry by its message.
+fn graphql_errors(value: &Value) -> Option<SchemaError> {
+    let errors = value.get("errors")?.as_array().filter(|e| !e.is_empty())?;
+    let messages = errors
+        .iter()
+        .map(|e| {
+            e.get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("an error without a message")
+                .to_owned()
+        })
+        .collect();
+    Some(SchemaError::Graphql { messages })
 }
 
 fn invalid(detail: impl Into<String>) -> SchemaError {
