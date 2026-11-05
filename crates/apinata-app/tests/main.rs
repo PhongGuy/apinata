@@ -423,6 +423,7 @@ mod runtime_vars;
 mod runtime_vars_dialog;
 mod save_ends_typing;
 mod save_example;
+mod schema_cache;
 mod schema_test_button;
 mod schema_test_edit;
 mod scratch;

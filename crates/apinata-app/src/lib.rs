@@ -121,6 +121,7 @@ pub mod runner_view;
 pub mod runtime_vars;
 pub mod save_draft;
 pub mod save_example;
+pub mod schema_cache;
 pub mod schema_load;
 pub mod scratch;
 pub mod script_approve;
