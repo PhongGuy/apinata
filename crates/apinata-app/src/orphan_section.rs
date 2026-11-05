@@ -341,8 +341,9 @@ impl SecretStore for ListOnce<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use apinata_core::MemoryStore;
+    use super::ListOnce;
+    use apinata_core::{MemoryStore, SecretKey, SecretStore};
+    use std::path::PathBuf;
 
     #[test]
     fn list_roots_is_passed_through() {
