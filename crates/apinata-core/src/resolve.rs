@@ -1968,7 +1968,7 @@ fn render_graphql(
     let content_type = ContentType::Default("application/json");
     let mut object = match data {
         serde_json::Value::Object(object) => object,
-        // Unlike the reference, which sends script-set text unexpanded, so no `{{x}}` is sent.
+        // Expanded, unlike the reference, so a literal `{{x}}` is never sent.
         serde_json::Value::String(text) => {
             return Ok((Body::Text(scope.expand(&text)?), content_type));
         }
