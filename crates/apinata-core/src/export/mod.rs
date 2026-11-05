@@ -86,6 +86,7 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(std::path::Path::new("."));
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = tempfile::Builder::new();
     // tempfile defaults to 0600; 0666 is filtered by the umask like any other new file.
     #[cfg(unix)]
