@@ -130,3 +130,21 @@ fn empty_docs_leave_the_file_docs_and_given_docs_replace_them() {
     documented.apply_to(file).expect("applies");
     assert_eq!(file.docs(), "From the import");
 }
+
+#[test]
+fn omitted_headers_are_written_and_an_empty_list_keeps_the_files_own() {
+    let dir = TempDir::new().unwrap();
+    let mut collection = Collection::create(&dir.path().join("c"), "c").expect("create");
+    let path = collection
+        .create_request(&ItemPath::root(), "r")
+        .expect("request");
+    let file = collection.request_mut(&path).expect("loaded");
+    let mut omitting = ImportedRequest::new("GET", "https://x.test");
+    omitting.omitted_headers = vec!["user-agent".into()];
+    omitting.apply_to(file).expect("applies");
+    assert_eq!(file.omitted_headers(), ["user-agent"]);
+    ImportedRequest::new("GET", "https://x.test")
+        .apply_to(file)
+        .expect("applies");
+    assert_eq!(file.omitted_headers(), ["user-agent"]);
+}

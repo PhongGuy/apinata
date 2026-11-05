@@ -16,7 +16,8 @@ use serde_json::Value;
 const VARIABLE_KEYS: [&str; 4] = ["key", "value", "disabled", "type"];
 
 /// The `protocolProfileBehavior` keys that have a request setting.
-const SETTING_KEYS: [&str; 4] = [
+const SETTING_KEYS: [&str; 5] = [
+    "disabledSystemHeaders",
     "disableUrlEncoding",
     "followAuthorizationHeader",
     "followRedirects",
@@ -480,6 +481,21 @@ pub(super) fn clean_name(key: &str) -> String {
         }
     }
     name
+}
+
+/// The default headers a request omits, from the `true` entries of
+/// `protocolProfileBehavior.disabledSystemHeaders`, trimmed with blank names dropped.
+pub(super) fn omitted_headers(behavior: Option<&Value>) -> Vec<String> {
+    let Some(Value::Object(disabled)) = behavior.and_then(|b| b.get("disabledSystemHeaders"))
+    else {
+        return Vec::new();
+    };
+    disabled
+        .iter()
+        .filter(|(_, on)| **on == Value::Bool(true))
+        .map(|(name, _)| crate::js::js_trim(name).to_owned())
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 /// A request's settings from its item's `protocolProfileBehavior`; anything without a setting

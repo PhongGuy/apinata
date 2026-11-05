@@ -132,6 +132,7 @@ impl ImportedRequest {
             auth: AuthSpec::Inherit,
             docs: String::new(),
             settings: None,
+            omitted_headers: Vec::new(),
             vars: Vec::new(),
             tags: Vec::new(),
             scripts: ImportedScripts::default(),
@@ -159,6 +160,9 @@ impl ImportedRequest {
         }
         if let Some(settings) = self.settings {
             file.set_settings(settings);
+        }
+        if !self.omitted_headers.is_empty() {
+            file.set_omitted_headers(self.omitted_headers.clone());
         }
         if !self.vars.is_empty() {
             file.set_vars(self.vars.clone());

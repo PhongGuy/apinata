@@ -217,6 +217,8 @@ fn items(
                     &crumb,
                     &mut notes,
                 ));
+                out_request.omitted_headers =
+                    details::omitted_headers(item.protocol_profile_behavior.as_ref());
                 // The reference reads only `request.description`; one beside it is lost.
                 if kept_description(item.description.as_ref()).is_some() {
                     notes.push(ImportNote::new(

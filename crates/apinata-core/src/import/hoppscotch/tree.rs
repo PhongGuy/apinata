@@ -310,6 +310,7 @@ fn request_members(
         auth,
         docs: text(r.description),
         settings: None,
+        omitted_headers: Vec::new(),
         vars: vars.into_iter().map(to_variable).collect(),
         tags: Vec::new(),
         secrets: Vec::new(),

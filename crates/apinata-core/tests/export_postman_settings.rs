@@ -160,3 +160,58 @@ fn a_typed_collection_variable_is_noted_and_a_text_one_is_not() {
         n[0].1
     );
 }
+
+fn reimported_omitted(c: &apinata_core::Collection) -> Vec<String> {
+    let json = apinata_core::export::postman(c).json;
+    let parsed = parse_postman(json.as_bytes()).expect("parses");
+    match parsed.items.as_slice() {
+        [ImportedItem::Request(r)] => r.request.omitted_headers.clone(),
+        other => panic!("one request expected: {other:?}"),
+    }
+}
+
+#[test]
+fn omitted_headers_are_written_lowercased_and_survive_a_round_trip() {
+    let (_d, c) = with(
+        "settings:\n  forwardAuthorizationHeader: false\n  omitHeaders:\n    - \" User-Agent \"\n    - Accept\n",
+    );
+    assert_eq!(
+        exported(&c)["item"][0]["protocolProfileBehavior"],
+        json!({"disabledSystemHeaders": {"user-agent": true, "accept": true}})
+    );
+    assert_eq!(reimported_omitted(&c), ["user-agent", "accept"]);
+    assert!(notes(&c).is_empty(), "{:?}", notes(&c));
+}
+
+#[test]
+fn no_omitted_headers_write_no_field() {
+    let (_d, c) = with("settings:\n  forwardAuthorizationHeader: false\n  omitHeaders: []\n");
+    assert!(
+        exported(&c)["item"][0]
+            .get("protocolProfileBehavior")
+            .is_none()
+    );
+    assert!(reimported_omitted(&c).is_empty());
+}
+
+#[test]
+fn only_true_disabled_system_headers_are_imported() {
+    let parsed = parse_postman(
+        br#"{"info": {"name": "c", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+             "item": [{"name": "r",
+               "protocolProfileBehavior": {"disabledSystemHeaders": {"accept": true, "host": false, " ": true, "user-agent": true}},
+               "request": {"method": "GET", "url": "u"}}]}"#,
+    )
+    .expect("parses");
+    let [ImportedItem::Request(r)] = parsed.items.as_slice() else {
+        panic!("one request")
+    };
+    assert_eq!(r.request.omitted_headers, ["accept", "user-agent"]);
+    assert!(
+        !r.notes
+            .iter()
+            .any(|n| n.source.contains("disabledSystemHeaders")),
+        "{:?}",
+        r.notes
+    );
+}
