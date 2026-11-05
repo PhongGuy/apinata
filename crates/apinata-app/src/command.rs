@@ -360,6 +360,16 @@ pub enum Command {
         /// Where the result goes.
         reply: async_channel::Sender<Result<Planned, PlanError>>,
     },
+    /// Work out what converting `item` to `kind` would drop, changing nothing; the preview,
+    /// or why the conversion would be refused, goes on `reply`.
+    ConvertPreview {
+        /// The request to convert.
+        item: ItemPath,
+        /// The kind it would become.
+        kind: RequestKind,
+        /// Where the preview, or why the conversion would be refused, goes.
+        reply: async_channel::Sender<Result<apinata_core::ConversionPreview, String>>,
+    },
     /// Rewrite the saved request `item` as a request of `kind`; the conversion, or why it was
     /// refused, goes on `reply`.
     ConvertKind {

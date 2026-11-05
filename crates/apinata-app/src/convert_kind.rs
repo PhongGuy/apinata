@@ -4,23 +4,105 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use apinata_core::{ItemPath, KindConversion, RequestKind};
+use apinata_core::{ConversionPreview, ItemPath, KindConversion, RequestKind};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::{App, Entity, Window};
 
 use crate::command::Command;
+use crate::confirm::{Ask, Choice};
 use crate::workspace::Workspace;
 
 /// The id type of a conversion's toast, so a later conversion replaces it.
 pub struct ConvertToast;
 
-/// Asks the actor of `root` to convert `item` to `to`, then toasts what happened. Unsaved
-/// edits refuse the conversion, as the toast says, so nothing unsaved is ever written.
+/// Converts `item` of `root` to `to` and toasts what happened. A conversion that would drop
+/// the body or saved examples asks first, naming them; unsaved edits refuse it with a toast.
 pub fn convert(
     workspace: &Entity<Workspace>,
     root: &Path,
+    item: ItemPath,
+    to: RequestKind,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let (reply, answer) = async_channel::bounded(1);
+    let command = Command::ConvertPreview {
+        item: item.clone(),
+        kind: to,
+        reply,
+    };
+    let root = root.to_path_buf();
+    if workspace
+        .update(cx, |w, cx| w.send(&root, command, cx))
+        .is_none()
+    {
+        return;
+    }
+    let workspace = workspace.clone();
+    window
+        .spawn(cx, async move |cx| {
+            let preview = match answer.recv().await {
+                Ok(Ok(preview)) => preview,
+                Ok(Err(message)) => {
+                    cx.update(|window, cx| {
+                        window.push_notification(Notification::error(message), cx)
+                    })
+                    .ok();
+                    return;
+                }
+                Err(_) => return,
+            };
+            if !preview.dropped().is_empty() {
+                let Ok(answer) =
+                    cx.update(|window, cx| crate::confirm::ask(loss_ask(to, &preview), window, cx))
+                else {
+                    return;
+                };
+                if answer.recv().await != Ok(1) {
+                    return;
+                }
+            }
+            cx.update(|window, cx| run(&workspace, root, item, to, window, cx))
+                .ok();
+        })
+        .detach();
+}
+
+// The prompt before a lossy conversion: what goes, and anything else worth knowing.
+fn loss_ask(to: RequestKind, preview: &ConversionPreview) -> Ask {
+    let detail = preview
+        .dropped()
+        .iter()
+        .chain(preview.notes())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ask {
+        title: format!("Convert to {}?", kind_name(to)).into(),
+        detail: Some(detail.into()),
+        choices: vec![
+            Choice {
+                id: "confirm-cancel",
+                label: "Cancel".into(),
+                danger: false,
+            },
+            Choice {
+                id: "confirm-convert",
+                label: "Convert".into(),
+                danger: true,
+            },
+        ],
+        default: 1,
+        cancel: 0,
+    }
+}
+
+// Sends the conversion itself and toasts its result.
+fn run(
+    workspace: &Entity<Workspace>,
+    root: PathBuf,
     item: ItemPath,
     to: RequestKind,
     window: &mut Window,
@@ -32,7 +114,6 @@ pub fn convert(
         kind: to,
         reply,
     };
-    let root = root.to_path_buf();
     if workspace
         .update(cx, |w, cx| w.send(&root, command, cx))
         .is_none()
@@ -57,6 +138,13 @@ pub fn convert(
         .detach();
 }
 
+fn kind_name(kind: RequestKind) -> &'static str {
+    match kind {
+        RequestKind::Graphql => "GraphQL",
+        _ => "HTTP",
+    }
+}
+
 /// The kind a request of `kind` converts to.
 pub fn other_kind(kind: RequestKind) -> RequestKind {
     match kind {
@@ -65,19 +153,16 @@ pub fn other_kind(kind: RequestKind) -> RequestKind {
     }
 }
 
-// Names the new kind and anything the conversion dropped; its Undo sends the conversion back.
+// Names the new kind, anything the conversion dropped and anything else it notes; its Undo sends the conversion back.
 fn converted(
     workspace: Entity<Workspace>,
     root: PathBuf,
     item: ItemPath,
     done: KindConversion,
 ) -> Notification {
-    let kind = match done.kind() {
-        RequestKind::Graphql => "GraphQL",
-        _ => "HTTP",
-    };
-    let message = std::iter::once(format!("Converted to {kind}."))
+    let message = std::iter::once(format!("Converted to {}.", kind_name(done.kind())))
         .chain(done.dropped().iter().cloned())
+        .chain(done.notes().iter().cloned())
         .collect::<Vec<_>>()
         .join(" ");
     let undo = Rc::new(move |window: &mut Window, cx: &mut App| {

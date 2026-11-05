@@ -451,6 +451,11 @@ impl Actor {
                 let _ = reply.try_send(values);
                 Ok(())
             }
+            Command::ConvertPreview { item, kind, reply } => {
+                let preview = self.collection.conversion_preview(&item, kind);
+                let _ = reply.try_send(preview.map_err(|e| e.to_string()));
+                Ok(())
+            }
             Command::ConvertKind { item, kind, reply } => {
                 self.cache.touch_all();
                 let done = self.collection.convert_request(&item, kind);
@@ -753,6 +758,11 @@ impl Actor {
             },
             Command::Plan { item, reply } => Command::Plan {
                 item: p(item),
+                reply,
+            },
+            Command::ConvertPreview { item, kind, reply } => Command::ConvertPreview {
+                item: p(item),
+                kind,
                 reply,
             },
             Command::ConvertKind { item, kind, reply } => Command::ConvertKind {
@@ -1835,6 +1845,7 @@ fn shapes_context(command: &Command) -> bool {
         | Command::SecretValues { .. }
         | Command::Search { .. }
         | Command::CopyOut { .. }
+        | Command::ConvertPreview { .. }
         | Command::RevealSecret { .. }
         | Command::StoredSecret { .. }
         | Command::OrphanedSecrets { .. }

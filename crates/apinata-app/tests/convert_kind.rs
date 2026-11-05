@@ -18,11 +18,14 @@ const HTTP: &str = "info:\n  name: a\n  type: http\n  seq: 1\n\nhttp:\n  method:
 
 const GRAPHQL: &str = "info:\n  name: g\n  type: graphql\n  seq: 2\n\ngraphql:\n  method: POST\n  url: http://x.test/graphql\n  body:\n    query: \"{ me }\"\n";
 
+const TEXT: &str = "info:\n  name: t\n  type: http\n  seq: 3\n\nhttp:\n  method: POST\n  url: http://x.test/t\n  body:\n    type: text\n    data: hello\n";
+
 fn collection() -> tempfile::TempDir {
     write_tree(&[
         ("opencollection.yml", ROOT),
         ("a.yml", HTTP),
         ("g.yml", GRAPHQL),
+        ("t.yml", TEXT),
     ])
 }
 
@@ -105,6 +108,8 @@ fn the_menu_converts_an_http_request_and_its_open_tab_follows(cx: &mut TestAppCo
         MenuEntry::ConvertToGraphql,
     );
     frame(cx, s.win);
+    // Nothing is lost, so nothing is asked.
+    assert!(!confirm_open(cx));
     let text = file(&s, "a.yml");
     assert!(text.contains("type: graphql\n"), "{text}");
     assert!(text.contains("\ngraphql:\n"), "{text}");
@@ -280,4 +285,33 @@ fn a_graphql_payload_pasted_into_a_graphql_url_takes_the_query(cx: &mut TestAppC
             variables: String::new(),
         }
     );
+}
+
+#[gpui_kit::test]
+fn a_conversion_that_drops_the_body_asks_first(cx: &mut TestAppContext) {
+    let col = collection();
+    let s = started(cx, &col);
+    let convert = |cx: &mut TestAppContext| {
+        choose_menu(
+            cx,
+            s.win,
+            "t.yml",
+            NodeKind::Request,
+            MenuEntry::ConvertToGraphql,
+        );
+        frame(cx, s.win);
+    };
+    convert(cx);
+    assert!(
+        confirm_open(cx),
+        "the loss is named before anything changes"
+    );
+    answer_confirm(cx, "confirm-cancel");
+    assert_eq!(file(&s, "t.yml"), TEXT);
+    assert_eq!(kind(cx, &s, "t.yml"), RequestKind::Http);
+    convert(cx);
+    answer_confirm(cx, "confirm-convert");
+    frame(cx, s.win);
+    assert_eq!(kind(cx, &s, "t.yml"), RequestKind::Graphql);
+    assert!(!file(&s, "t.yml").contains("hello"));
 }
