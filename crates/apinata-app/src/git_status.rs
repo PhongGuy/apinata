@@ -242,6 +242,32 @@ pub fn commit_failure_text(error: &CommitError) -> String {
     }
 }
 
+/// What a failed commit's hook did to the staged set, in plain words; `None` when the set is
+/// the same before and after.
+pub fn staged_change_note(
+    before: &std::collections::BTreeSet<PathBuf>,
+    after: &std::collections::BTreeSet<PathBuf>,
+) -> Option<String> {
+    let files = |n: usize| {
+        if n == 1 {
+            "1 file".to_owned()
+        } else {
+            format!("{n} files")
+        }
+    };
+    let lost = before.difference(after).count();
+    let gained = after.difference(before).count();
+    let what = match (lost, gained) {
+        (0, 0) => return None,
+        (n, 0) if n == 1 => "1 file is no longer staged".to_owned(),
+        (n, 0) => format!("{n} files are no longer staged"),
+        (0, n) if n == 1 => "1 file is now staged".to_owned(),
+        (0, n) => format!("{n} files are now staged"),
+        (l, g) => format!("{} no longer staged and {} now staged", files(l), files(g)),
+    };
+    Some(format!("The commit hook changed what is staged: {what}."))
+}
+
 /// The title bar's branch label: the branch, the changed-file count, or both joined by a
 /// comma; `None` when there is neither.
 pub fn branch_text(branch: Option<&str>, changes: Option<&GitChanges>) -> Option<String> {

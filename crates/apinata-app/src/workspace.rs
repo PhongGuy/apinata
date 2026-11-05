@@ -8,9 +8,9 @@ use std::time::SystemTime;
 
 use apinata_core::import::ImportedRequest;
 use apinata_core::{
-    DraftSnapshot, EnvOverlay, EnvVariable, GitError, GitOptions, GitState, GlobalEnvironments,
-    ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase, SecretStore, WorkspaceFile,
-    collection_status_with, commit, is_workspace_dir, stage, unstage,
+    CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GitError, GitOptions, GitState,
+    GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase, SecretStore,
+    StageState, WorkspaceFile, collection_status_with, commit, is_workspace_dir, stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -19,7 +19,9 @@ use crate::busy::{BusyState, BusyTracker};
 use crate::closing::{Unsaved, dirty_targets};
 use crate::command::{Command, Field, Notice, NoticeKind, Target, TreeOp};
 use crate::draft_store;
-use crate::git_status::{GitChanges, RefreshGate, after_refresh, commit_failure_text};
+use crate::git_status::{
+    GitChanges, RefreshGate, after_refresh, commit_failure_text, staged_change_note,
+};
 use crate::history_key::new_history_key;
 use crate::last_response::{StoreOp, enqueue};
 use crate::model::CollectionModel;
@@ -2008,13 +2010,28 @@ impl Workspace {
                 GitWrite::Unstage(paths) => unstage(&dir, &paths, &options)
                     .map(|()| GitWriteDone::Done)
                     .unwrap_or_else(|e| GitWriteDone::Failed(e.to_string())),
-                GitWrite::Commit(message) => match commit(&dir, &message, &options) {
-                    Ok(o) => GitWriteDone::Committed {
-                        short_id: o.short_id,
-                        subject: o.subject,
-                    },
-                    Err(e) => GitWriteDone::Failed(commit_failure_text(&e)),
-                },
+                GitWrite::Commit(message) => {
+                    let before = staged_paths(&dir, &options);
+                    match commit(&dir, &message, &options) {
+                        Ok(o) => GitWriteDone::Committed {
+                            short_id: o.short_id,
+                            subject: o.subject,
+                        },
+                        Err(e) => {
+                            let text = commit_failure_text(&e);
+                            // A hook that ran may have rewritten the index; say so first.
+                            let note = matches!(e, CommitError::Failed { .. })
+                                .then(|| {
+                                    staged_change_note(&before?, &staged_paths(&dir, &options)?)
+                                })
+                                .flatten();
+                            GitWriteDone::Failed(match note {
+                                Some(note) => format!("{note}\n{text}"),
+                                None => text,
+                            })
+                        }
+                    }
+                }
             }
         });
         // The refresh is requested before the result is handed back, so a view following the
@@ -3364,5 +3381,19 @@ fn saved_tab_of(kind: &TabKind) -> Option<SavedTab> {
             }))
         }
         other => SavedPanelKind::from_tab_kind(other).map(SavedTab::Panel),
+    }
+}
+
+// The collection-relative paths with something in the index, or `None` when git cannot say.
+fn staged_paths(dir: &Path, options: &GitOptions) -> Option<std::collections::BTreeSet<PathBuf>> {
+    match collection_status_with(dir, options).ok()? {
+        GitState::Repo(r) => Some(
+            r.stage
+                .into_iter()
+                .filter(|(_, s)| *s != StageState::Unstaged)
+                .map(|(p, _)| p)
+                .collect(),
+        ),
+        _ => None,
     }
 }

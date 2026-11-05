@@ -131,6 +131,64 @@ fn a_failing_hook_shows_its_output_and_keeps_the_message(cx: &mut TestAppContext
     assert_eq!(commits(&sb, col.path()), "2");
 }
 
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_hook_that_unstages_files_is_named_beside_its_output(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = changed(&sb);
+    h::hook(
+        col.path(),
+        "pre-commit",
+        "#!/bin/sh\ngit reset -q\necho 'hook says no' >&2\nexit 1\n",
+    );
+    let s = git_started(cx, &sb, &col);
+    open_on(cx, &s, col.path());
+    click(cx, &s, "changes-toggle-all");
+    idle(cx, &s);
+    set_message(cx, &s, "Edit a");
+    click(cx, &s, "changes-commit");
+    idle(cx, &s);
+    match notice(cx) {
+        Some(Notice::Failed(text)) => {
+            assert!(
+                text.contains(
+                    "The commit hook changed what is staged: 2 files are no longer staged."
+                ),
+                "{text}"
+            );
+            assert!(text.contains("hook says no"), "{text}");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+    assert_eq!(commits(&sb, col.path()), "1");
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_hook_that_leaves_the_index_alone_adds_no_staged_note(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = changed(&sb);
+    h::hook(
+        col.path(),
+        "pre-commit",
+        "#!/bin/sh\necho 'hook says no' >&2\nexit 1\n",
+    );
+    let s = git_started(cx, &sb, &col);
+    open_on(cx, &s, col.path());
+    click(cx, &s, "changes-toggle-all");
+    idle(cx, &s);
+    set_message(cx, &s, "Edit a");
+    click(cx, &s, "changes-commit");
+    idle(cx, &s);
+    match notice(cx) {
+        Some(Notice::Failed(text)) => {
+            assert!(text.contains("hook says no"), "{text}");
+            assert!(!text.contains("changed what is staged"), "{text}");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
 #[gpui_kit::test]
 fn a_missing_identity_shows_gits_text_with_the_hint(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
