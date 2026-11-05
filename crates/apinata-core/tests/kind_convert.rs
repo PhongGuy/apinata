@@ -2,7 +2,7 @@
 
 use crate::tree_support;
 
-use apinata_core::{BodySpec, ConvertError, RequestKind};
+use apinata_core::{BodySpec, Collection, ConvertError, ItemPath, KindConversion, RequestKind};
 use std::fs;
 use tree_support::{ROOT, ip, open};
 use yaml_serde::Value;
@@ -60,6 +60,27 @@ settings:
 docs: Some docs
 "#;
 
+// Converts as the previewed conversion, the way a shell that does not change the file between
+// the two calls does.
+trait ConvertNow {
+    fn convert_now(
+        &mut self,
+        item: &ItemPath,
+        to: RequestKind,
+    ) -> Result<KindConversion, ConvertError>;
+}
+
+impl ConvertNow for Collection {
+    fn convert_now(
+        &mut self,
+        item: &ItemPath,
+        to: RequestKind,
+    ) -> Result<KindConversion, ConvertError> {
+        let preview = self.conversion_preview(item, to)?;
+        self.convert_request(item, to, &preview)
+    }
+}
+
 fn http_with_body(body: &str) -> String {
     GRAPHQL
         .replace("type: graphql", "type: http")
@@ -93,7 +114,7 @@ fn kept(text: &str) -> Vec<Value> {
 #[test]
 fn graphql_becomes_a_json_body_of_query_and_variables() {
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
-    let done = c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap();
     assert!(done.dropped().is_empty());
     let text = fs::read_to_string(dir.path().join("u.yml")).unwrap();
     assert_eq!(kept(&text), kept(GRAPHQL));
@@ -113,9 +134,8 @@ fn graphql_becomes_a_json_body_of_query_and_variables() {
 #[test]
 fn a_round_trip_through_http_restores_the_graphql_file_byte_for_byte() {
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
-    c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
-    c.convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
+    c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap();
+    c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
     let text = fs::read_to_string(dir.path().join("u.yml")).unwrap();
     assert_eq!(text, GRAPHQL);
 }
@@ -125,9 +145,7 @@ fn a_graphql_shaped_json_body_becomes_the_query_and_indented_variables() {
     let body = "  body:\n    type: json\n    data: '{\"query\": \"{ me { id } }\", \"variables\": {\"id\": 1}}'\n";
     let http = http_with_body(body);
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
-    let done = c
-        .convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
     assert!(done.dropped().is_empty());
     let text = fs::read_to_string(dir.path().join("u.yml")).unwrap();
     assert_eq!(kept(&text), kept(&http));
@@ -147,9 +165,8 @@ fn an_http_round_trip_keeps_every_compatible_section_byte_for_byte() {
     let body = "  body:\n    type: json\n    data: '{\"query\": \"{ me }\"}'\n";
     let http = http_with_body(body);
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
-    c.convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
-    c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
+    c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap();
     let text = fs::read_to_string(dir.path().join("u.yml")).unwrap();
     let body_at = |t: &str| t.find("  body:").expect("a body");
     let auth_at = |t: &str| t.find("  auth:").expect("auth");
@@ -165,9 +182,7 @@ fn a_body_that_is_not_a_graphql_payload_is_dropped_and_noted() {
     ] {
         let http = http_with_body(body);
         let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
-        let done = c
-            .convert_request(&ip("u.yml"), RequestKind::Graphql)
-            .unwrap();
+        let done = c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
         assert_eq!(done.dropped().len(), 1, "{body}");
         assert!(done.dropped()[0].contains("body"), "{:?}", done.dropped());
         let r = c.request(&ip("u.yml")).unwrap();
@@ -188,9 +203,7 @@ fn saved_examples_are_dropped_and_noted_on_the_way_to_graphql() {
         http_with_body("")
     );
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
-    let done = c
-        .convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
     assert_eq!(done.dropped().len(), 1);
     assert!(
         done.dropped()[0].contains("example"),
@@ -205,9 +218,7 @@ fn saved_examples_are_dropped_and_noted_on_the_way_to_graphql() {
 fn unsaved_edits_refuse_the_conversion() {
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
     c.request_mut(&ip("u.yml")).unwrap().set_name("Renamed");
-    let err = c
-        .convert_request(&ip("u.yml"), RequestKind::Http)
-        .unwrap_err();
+    let err = c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap_err();
     assert!(matches!(err, ConvertError::Unsaved { .. }), "{err:?}");
     assert!(err.to_string().contains("Save or discard"), "{err}");
     let r = c.request(&ip("u.yml")).unwrap();
@@ -222,7 +233,7 @@ fn unsaved_edits_refuse_the_conversion() {
 fn converting_to_the_same_kind_is_refused() {
     let (_dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
     let err = c
-        .convert_request(&ip("u.yml"), RequestKind::Graphql)
+        .convert_now(&ip("u.yml"), RequestKind::Graphql)
         .unwrap_err();
     assert!(matches!(err, ConvertError::SameKind { .. }), "{err:?}");
 }
@@ -235,9 +246,7 @@ fn undo_puts_back_the_file_as_it_was() {
     );
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
     let before = fs::read_to_string(dir.path().join("u.yml")).unwrap();
-    let done = c
-        .convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
     c.undo_conversion(&ip("u.yml"), &done).unwrap();
     assert_eq!(
         fs::read_to_string(dir.path().join("u.yml")).unwrap(),
@@ -251,7 +260,7 @@ fn undo_puts_back_the_file_as_it_was() {
 #[test]
 fn undo_refuses_once_the_request_changed_again() {
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
-    let done = c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap();
     let r = c.request_mut(&ip("u.yml")).unwrap();
     r.set_name("Later");
     r.save().unwrap();
@@ -265,7 +274,7 @@ fn undo_refuses_once_the_request_changed_again() {
 fn a_missing_request_is_not_found() {
     let (_dir, mut c) = open(&[("opencollection.yml", ROOT)]);
     let err = c
-        .convert_request(&ip("nope.yml"), RequestKind::Http)
+        .convert_now(&ip("nope.yml"), RequestKind::Http)
         .unwrap_err();
     assert!(matches!(err, ConvertError::NotFound { .. }), "{err:?}");
 }
@@ -278,9 +287,7 @@ fn a_raw_graphql_content_type_goes_when_the_body_turns_into_json() {
         "    - name: X-Trace\n      value: \"1\"\n    - name: Content-Type\n      value: application/graphql\n",
     );
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
-    let done = c
-        .convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
     assert!(done.dropped().is_empty());
     let r = c.request(&ip("u.yml")).unwrap();
     let names: Vec<String> = r.headers().into_iter().map(|h| h.name).collect();
@@ -307,9 +314,7 @@ fn a_preview_names_the_losses_and_changes_nothing() {
     let r = c.request(&ip("u.yml")).unwrap();
     assert_eq!(r.kind(), RequestKind::Http);
     assert!(!r.is_dirty());
-    let done = c
-        .convert_request(&ip("u.yml"), RequestKind::Graphql)
-        .unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Graphql).unwrap();
     assert_eq!(done.dropped(), preview.dropped());
 }
 
@@ -333,11 +338,52 @@ fn a_graphql_get_keeps_its_method_and_says_so() {
     assert!(preview.dropped().is_empty());
     assert_eq!(preview.notes().len(), 1);
     assert!(preview.notes()[0].contains("GET"), "{:?}", preview.notes());
-    let done = c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap();
     assert_eq!(done.notes(), preview.notes());
     assert_eq!(c.request(&ip("u.yml")).unwrap().method(), "GET");
     // A POST says nothing.
     let (_dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", GRAPHQL)]);
-    let done = c.convert_request(&ip("u.yml"), RequestKind::Http).unwrap();
+    let done = c.convert_now(&ip("u.yml"), RequestKind::Http).unwrap();
     assert!(done.notes().is_empty());
+}
+
+#[test]
+fn a_conversion_that_would_now_drop_more_than_previewed_is_refused() {
+    let lossless = http_with_body("");
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &lossless)]);
+    let preview = c
+        .conversion_preview(&ip("u.yml"), RequestKind::Graphql)
+        .unwrap();
+    assert!(preview.dropped().is_empty());
+    // The file gains saved examples between the preview and the conversion.
+    let with_examples =
+        format!("{lossless}\nexamples:\n  - name: ok\n    response:\n      status: 200\n");
+    fs::write(dir.path().join("u.yml"), &with_examples).unwrap();
+    c.reload();
+    let err = c
+        .convert_request(&ip("u.yml"), RequestKind::Graphql, &preview)
+        .unwrap_err();
+    assert!(matches!(err, ConvertError::Stale { .. }), "{err:?}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("u.yml")).unwrap(),
+        with_examples
+    );
+    assert_eq!(c.request(&ip("u.yml")).unwrap().kind(), RequestKind::Http);
+}
+
+#[test]
+fn a_conversion_matching_its_preview_proceeds() {
+    let http = format!(
+        "{}\nexamples:\n  - name: ok\n    response:\n      status: 200\n",
+        http_with_body("")
+    );
+    let (_dir, mut c) = open(&[("opencollection.yml", ROOT), ("u.yml", &http)]);
+    let preview = c
+        .conversion_preview(&ip("u.yml"), RequestKind::Graphql)
+        .unwrap();
+    assert_eq!(preview.dropped().len(), 1);
+    let done = c
+        .convert_request(&ip("u.yml"), RequestKind::Graphql, &preview)
+        .unwrap();
+    assert_eq!(done.dropped(), preview.dropped());
 }

@@ -315,3 +315,31 @@ fn a_conversion_that_drops_the_body_asks_first(cx: &mut TestAppContext) {
     assert_eq!(kind(cx, &s, "t.yml"), RequestKind::Graphql);
     assert!(!file(&s, "t.yml").contains("hello"));
 }
+
+#[gpui_kit::test]
+fn a_file_that_changes_while_the_dialog_is_open_is_not_converted(cx: &mut TestAppContext) {
+    let col = collection();
+    let s = started(cx, &col);
+    choose_menu(
+        cx,
+        s.win,
+        "t.yml",
+        NodeKind::Request,
+        MenuEntry::ConvertToGraphql,
+    );
+    frame(cx, s.win);
+    assert!(confirm_open(cx));
+    // The file gains saved examples, so confirming would now drop more than was shown.
+    let changed = format!("{TEXT}\nexamples:\n  - name: ok\n    response:\n      status: 200\n");
+    std::fs::write(s.root.join("t.yml"), &changed).unwrap();
+    let path = s.root.join("t.yml");
+    s.ws.update(cx, |w, cx| {
+        w.send(&s.root, Command::Reload(vec![path.clone()]), cx)
+    });
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-convert");
+    frame(cx, s.win);
+    assert_eq!(file(&s, "t.yml"), changed);
+    assert_eq!(kind(cx, &s, "t.yml"), RequestKind::Http);
+    assert_eq!(toasts(cx, &s), 1, "the refusal is toasted");
+}

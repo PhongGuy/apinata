@@ -64,7 +64,7 @@ pub fn convert(
                     return;
                 }
             }
-            cx.update(|window, cx| run(&workspace, root, item, to, window, cx))
+            cx.update(|window, cx| run(&workspace, root, item, to, preview, window, cx))
                 .ok();
         })
         .detach();
@@ -99,12 +99,14 @@ fn loss_ask(to: RequestKind, preview: &ConversionPreview) -> Ask {
     }
 }
 
-// Sends the conversion itself and toasts its result.
+// Sends the conversion with the previewed drops and toasts its result; a file that changed
+// since the preview refuses with an error toast.
 fn run(
     workspace: &Entity<Workspace>,
     root: PathBuf,
     item: ItemPath,
     to: RequestKind,
+    expected: ConversionPreview,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -112,6 +114,7 @@ fn run(
     let command = Command::ConvertKind {
         item: item.clone(),
         kind: to,
+        expected,
         reply,
     };
     if workspace

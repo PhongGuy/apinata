@@ -456,9 +456,14 @@ impl Actor {
                 let _ = reply.try_send(preview.map_err(|e| e.to_string()));
                 Ok(())
             }
-            Command::ConvertKind { item, kind, reply } => {
+            Command::ConvertKind {
+                item,
+                kind,
+                expected,
+                reply,
+            } => {
                 self.cache.touch_all();
-                let done = self.collection.convert_request(&item, kind);
+                let done = self.collection.convert_request(&item, kind, &expected);
                 let _ = reply.try_send(done.map_err(|e| e.to_string()));
                 Ok(())
             }
@@ -765,9 +770,15 @@ impl Actor {
                 kind,
                 reply,
             },
-            Command::ConvertKind { item, kind, reply } => Command::ConvertKind {
+            Command::ConvertKind {
+                item,
+                kind,
+                expected,
+                reply,
+            } => Command::ConvertKind {
                 item: p(item),
                 kind,
+                expected,
                 reply,
             },
             Command::UndoConvert {
