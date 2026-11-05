@@ -334,44 +334,54 @@ pub(crate) fn redact_wide<'a>(
     bytes: &[u8],
     values: impl IntoIterator<Item = &'a str>,
 ) -> Option<Vec<u8>> {
-    let mut out: Option<Vec<u8>> = None;
+    let encode = |s: &str, big: bool| -> Vec<u8> {
+        s.encode_utf16()
+            .flat_map(|u| {
+                if big {
+                    u.to_be_bytes()
+                } else {
+                    u.to_le_bytes()
+                }
+            })
+            .collect()
+    };
+    // Every copy of every value in both orders is found in the original bytes, then
+    // overlapping copies merge into one span, so no copy can split another or leave a tail.
+    let mut spans: Vec<(usize, usize, bool)> = Vec::new();
     for value in values {
         if value.chars().count() < MIN_CHARS {
             continue;
         }
         for big in [false, true] {
-            let encode = |s: &str| -> Vec<u8> {
-                s.encode_utf16()
-                    .flat_map(|u| {
-                        if big {
-                            u.to_be_bytes()
-                        } else {
-                            u.to_le_bytes()
-                        }
-                    })
-                    .collect()
-            };
-            let needle = encode(value);
-            let hay = out.as_deref().unwrap_or(bytes);
-            if !contains_bytes(hay, &needle) {
-                continue;
-            }
-            let marker = encode(REDACTED);
-            let mut next = Vec::with_capacity(hay.len());
-            let mut i = 0;
-            while i < hay.len() {
-                if hay[i..].starts_with(&needle) {
-                    next.extend_from_slice(&marker);
-                    i += needle.len();
-                } else {
-                    next.push(hay[i]);
-                    i += 1;
-                }
-            }
-            out = Some(next);
+            let needle = encode(value, big);
+            for_each_match(bytes, &needle, |start| {
+                spans.push((start, start + needle.len(), big));
+                true
+            });
         }
     }
-    out
+    if spans.is_empty() {
+        return None;
+    }
+    spans.sort_unstable();
+    // A merged span takes the byte order of the copy that starts it.
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut kept = 0;
+    let mut spans = spans.into_iter().peekable();
+    while let Some((start, mut end, big)) = spans.next() {
+        while let Some(&(next, next_end, _)) = spans.peek() {
+            if next >= end {
+                break;
+            }
+            end = end.max(next_end);
+            spans.next();
+        }
+        out.extend_from_slice(&bytes[kept..start]);
+        out.extend_from_slice(&encode(REDACTED, big));
+        kept = end;
+    }
+    out.extend_from_slice(&bytes[kept..]);
+    Some(out)
 }
 
 /// Whether any of `secrets` appears in `bytes`.
@@ -396,10 +406,21 @@ pub fn bytes_hold_secret(bytes: &[u8], secrets: &[NamedSecret]) -> bool {
         })
 }
 
-// Knuth-Morris-Pratt, so a search stays linear in the haystack whatever the needle repeats.
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    let mut found = false;
+    for_each_match(haystack, needle, |_| {
+        found = true;
+        false
+    });
+    found
+}
+
+// Knuth-Morris-Pratt, so a search stays linear in the haystack whatever the needle repeats.
+// Calls `hit` with each match's start, overlapping ones included, until it returns false.
+fn for_each_match(haystack: &[u8], needle: &[u8], mut hit: impl FnMut(usize) -> bool) {
     if needle.is_empty() {
-        return true;
+        hit(0);
+        return;
     }
     let mut fail = vec![0usize; needle.len()];
     let mut k = 0;
@@ -413,18 +434,20 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
         fail[i] = k;
     }
     let mut k = 0;
-    for &b in haystack {
+    for (i, &b) in haystack.iter().enumerate() {
         while k > 0 && b != needle[k] {
             k = fail[k - 1];
         }
         if b == needle[k] {
             k += 1;
             if k == needle.len() {
-                return true;
+                if !hit(i + 1 - k) {
+                    return;
+                }
+                k = fail[k - 1];
             }
         }
     }
-    false
 }
 
 /// `text` with each secret (raw and JSON-escaped form) replaced by its placeholder and every
@@ -951,5 +974,37 @@ mod shadowed_secret_tests {
         // `gtok` is a global secret and the environment sets it to a plain value.
         let (_dir, req, ctx) = setup("none", None);
         check(&req, &ctx);
+    }
+
+    fn utf16(value: &str, big: bool) -> Vec<u8> {
+        value
+            .encode_utf16()
+            .flat_map(|u| {
+                if big {
+                    u.to_be_bytes()
+                } else {
+                    u.to_le_bytes()
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn redact_wide_finds_copies_at_odd_offsets_in_either_order() {
+        for big in [false, true] {
+            let body = [b"x".as_slice(), &utf16("k-s\u{e9}cret-1", big), b"y"].concat();
+            let out = redact_wide(&body, ["k-s\u{e9}cret-1"]).expect("a copy");
+            assert_eq!(out, [b"x".as_slice(), &utf16(REDACTED, big), b"y"].concat());
+        }
+    }
+
+    #[test]
+    fn redact_wide_merges_overlapping_copies_into_one_placeholder() {
+        for big in [false, true] {
+            let body = [utf16("abab", big), utf16("ab", big), b"!".to_vec()].concat();
+            let out = redact_wide(&body, ["abab"]).expect("a copy");
+            assert_eq!(out, [utf16(REDACTED, big), b"!".to_vec()].concat());
+        }
+        assert_eq!(redact_wide(b"plain", ["abab"]), None);
     }
 }
