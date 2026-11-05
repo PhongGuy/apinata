@@ -18,14 +18,14 @@ fn scrub(cmd: &mut assert_cmd::Command) {
     cmd.env("GIT_CONFIG_NOSYSTEM", "1");
 }
 
-fn cli(sb: &Sandbox, cwd: &Path) -> assert_cmd::Command {
+pub fn cli(sb: &Sandbox, cwd: &Path) -> assert_cmd::Command {
     let mut cmd = apinata();
     cmd.current_dir(cwd).envs(sb.env());
     scrub(&mut cmd);
     cmd
 }
 
-fn cloned(sb: &Sandbox) -> PathBuf {
+pub fn cloned(sb: &Sandbox) -> PathBuf {
     cli(sb, sb.path())
         .args(["git", "clone"])
         .arg(sb.origin())
@@ -35,11 +35,11 @@ fn cloned(sb: &Sandbox) -> PathBuf {
     sb.path().join("col")
 }
 
-fn out_text(out: &assert_cmd::assert::Assert) -> String {
+pub fn out_text(out: &assert_cmd::assert::Assert) -> String {
     String::from_utf8(out.get_output().stdout.clone()).unwrap()
 }
 
-fn err_text(out: &assert_cmd::assert::Assert) -> String {
+pub fn err_text(out: &assert_cmd::assert::Assert) -> String {
     String::from_utf8(out.get_output().stderr.clone()).unwrap()
 }
 

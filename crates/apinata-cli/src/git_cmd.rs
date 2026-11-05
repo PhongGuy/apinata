@@ -1,6 +1,6 @@
-//! `apinata git status`, `diff`, `clone`, `branches`, `switch` and `commit`: print what core
-//! reports about a collection's changes and branches, clone repositories with progress, and
-//! commit. Nothing here runs git itself.
+//! `apinata git status`, `diff`, `clone`, `branches`, `switch`, `commit`, `pull` and `push`: print
+//! what core reports about a collection's changes and branches, clone repositories with progress,
+//! commit, and fast-forward or push the current branch. Nothing here runs git itself.
 
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use anyhow::Context;
 use apinata_core::{
     CancelFlag, CloneError, CloneProgress, CloneRequest, FetchError, FileDiff, FileStatus,
-    GitOptions, GitState, LineKind, RemoteBranch, RepoStatus, SwitchError, Upstream,
+    GitOptions, GitState, LineKind, RemoteBranch, RepoStatus, SwitchError, SyncError, Upstream,
 };
 use serde::Serialize;
 
@@ -39,6 +39,12 @@ pub fn run(args: &GitArgs) -> ExitCode {
             collection,
             json,
         } => commit(message, *all, paths, collection.as_deref(), *json),
+        GitAction::Pull { collection, json } => pull(collection.as_deref(), *json),
+        GitAction::Push {
+            collection,
+            set_upstream,
+            json,
+        } => push(collection.as_deref(), set_upstream.as_deref(), *json),
     }
 }
 
@@ -369,6 +375,99 @@ fn switch(wanted: &str, collection: Option<&Path>) -> ExitCode {
             ExitCode::from(EXIT_USAGE)
         }
     }
+}
+
+/// Cut a commit id to the 7 characters shown to people.
+fn short(id: &str) -> &str {
+    id.get(..7).unwrap_or(id)
+}
+
+/// Print a finished sync result, or its error with the matching exit code.
+fn finish<T: Serialize>(
+    result: Result<(Result<T, SyncError>, bool), std::io::Error>,
+    json: bool,
+    show: impl FnOnce(&T),
+) -> ExitCode {
+    match result {
+        Ok((Ok(done), _)) => {
+            if json {
+                return print_json(&done);
+            }
+            show(&done);
+            ExitCode::SUCCESS
+        }
+        Ok((Err(SyncError::Cancelled), _)) => {
+            eprintln!("cancelled");
+            ExitCode::from(EXIT_CANCELLED)
+        }
+        Ok((Err(e), _)) => {
+            eprintln!("error: {e}");
+            ExitCode::from(EXIT_USAGE)
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::from(EXIT_USAGE)
+        }
+    }
+}
+
+fn sync_root(collection: Option<&Path>) -> Result<PathBuf, anyhow::Error> {
+    collection_arg::with_hint(
+        trust::collection_root(collection),
+        "pass the collection with --collection <DIR>",
+    )
+}
+
+fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
+    let root = match sync_root(collection) {
+        Ok(root) => root,
+        Err(e) => return usage(&e),
+    };
+    let result = with_interrupt(move |cancel| {
+        let done = apinata_core::pull(&root, cancel, &GitOptions::new());
+        (done, cancel.is_cancelled())
+    });
+    finish(result, json, |p| {
+        let (b, u) = (&p.branch, &p.upstream);
+        if p.from == p.to {
+            outln!("{b} is up to date with {u}");
+        } else {
+            outln!(
+                "Fast-forwarded {b} to {u} ({}..{})",
+                short(&p.from),
+                short(&p.to)
+            );
+        }
+        if p.from == p.to && p.ahead > 0 {
+            let n = p.ahead;
+            let noun = if n > 1 { "commits" } else { "commit" };
+            eprintln!("note: {b} is {n} {noun} ahead of {u}");
+        }
+    })
+}
+
+fn push(collection: Option<&Path>, set_upstream: Option<&str>, json: bool) -> ExitCode {
+    let root = match sync_root(collection) {
+        Ok(root) => root,
+        Err(e) => return usage(&e),
+    };
+    let remote = set_upstream.map(str::to_owned);
+    let result = with_interrupt(move |cancel| {
+        let done = apinata_core::push(&root, remote.as_deref(), cancel, &GitOptions::new());
+        (done, cancel.is_cancelled())
+    });
+    finish(result, json, |p| {
+        let (b, u) = (&p.branch, &p.upstream);
+        let mut line = match &p.from {
+            None => format!("Pushed {b} to {u} (new branch)"),
+            Some(from) if *from == p.to => format!("{u} is up to date"),
+            Some(from) => format!("Pushed {b} to {u} ({}..{})", short(from), short(&p.to)),
+        };
+        if p.upstream_set {
+            line.push_str(&format!("; {b} now tracks {u}"));
+        }
+        outln!("{line}");
+    })
 }
 
 fn commit(

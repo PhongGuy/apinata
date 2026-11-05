@@ -59,9 +59,9 @@ no collection is found, the error says which forms that command takes.
 | `ls` | `[COLLECTION] [PATH]` | `--collection <DIR>` |
 | `search` | `[COLLECTION] <QUERY>` | `--collection <DIR>` |
 | `replace` | `[COLLECTION] <PATTERN> <REPLACEMENT>` | `--collection <DIR>` |
-| `env`, `trust`, `git switch`, `git commit` | none | `--collection <DIR>` |
+| `env`, `trust`, `git switch`, `git commit`, `git pull`, `git push` | none | `--collection <DIR>` |
 
-`env`, `trust`, `git switch` and `git commit` take their own arguments first, so a leading
+`env`, `trust`, `git switch`, `git commit`, `git pull` and `git push` take their own arguments first, so a leading
 collection would be ambiguous and only the flag exists. In `ls`, one argument
 is the folder to list, unless it is a directory holding
 `opencollection.yml` that the working directory's collection has no folder of;
@@ -85,7 +85,8 @@ apinata git diff users/get-user.yml
 Without git, or outside a repository, both print a short note and exit 0 (see
 the [exit codes](#exit-codes)). `apinata git clone` clones a repository into a
 new folder, `apinata git branches` lists the remote branches and
-`apinata git switch` checks one out.
+`apinata git switch` checks one out. `apinata git pull` fetches and fast-forwards the current
+branch, and `apinata git push` pushes it to its upstream; neither merges, rebases or forces.
 
 `apinata git commit -m <MESSAGE>` commits locally and prints the new short id
 and subject (`--json` prints `{"short_id", "subject"}`). Name files or folders
