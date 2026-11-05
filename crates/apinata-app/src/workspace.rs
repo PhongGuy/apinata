@@ -910,15 +910,23 @@ impl Workspace {
         let (live, gone): (Vec<PathBuf>, Vec<PathBuf>) =
             dirs.into_iter().partition(|d| is_workspace_dir(d));
         for dir in &gone {
+            let why = if dir.is_dir() {
+                "no longer has a workspace.yml"
+            } else {
+                "no longer exists"
+            };
             cx.emit(WorkspaceEvent::FolderNotice(format!(
-                "Workspace folder {} no longer exists, so it was not reopened",
+                "Workspace folder {} {why}, so it was not reopened",
                 dir.display()
             )));
         }
-        // A workspace folder is never a collection root, and nothing under a vanished one can open.
+        // A workspace folder is never a collection root. Under a vanished one only collections
+        // still on disk reopen, so the missing ones add no failure on top of the notice.
         let roots: Vec<PathBuf> = roots
             .into_iter()
-            .filter(|r| !gone.iter().any(|g| r.starts_with(g)))
+            .filter(|r| {
+                r.join("opencollection.yml").is_file() || !gone.iter().any(|g| r.starts_with(g))
+            })
             .filter(|r| !(is_workspace_dir(r) && !r.join("opencollection.yml").is_file()))
             .collect();
         self.session.update(cx, |p, cx| {

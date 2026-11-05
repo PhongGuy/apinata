@@ -454,3 +454,67 @@ fn closing_all_after_a_restore_leaves_nothing_in_the_session(cx: &mut TestAppCon
     assert!(saved.workspaces.is_empty());
     assert!(saved.open.is_empty(), "{:?}", saved.open);
 }
+
+fn folder_notices(seen: &[WorkspaceEvent]) -> Vec<String> {
+    seen.iter()
+        .filter_map(|e| match e {
+            WorkspaceEvent::FolderNotice(m) => Some(m.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+// A folder that lost only its workspace.yml is still there: the toast says what is missing,
+// and a collection saved open inside it reopens.
+#[gpui_kit::test]
+fn restore_keeps_collections_of_a_folder_that_lost_only_its_workspace_file(
+    cx: &mut TestAppContext,
+) {
+    let dir = fixture(WS, &["one", "two"], &[("shared", SHARED)]);
+    let ws_dir = absolute(dir.path());
+    std::fs::remove_file(ws_dir.join("workspace.yml")).unwrap();
+    let one = absolute(&dir.path().join("one"));
+    let state = tempfile::tempdir().unwrap();
+    let start = apinata_app::session::Session {
+        workspaces: vec![ws_dir.clone()],
+        open: vec![ws_dir.clone(), one.clone(), ws_dir.join("vanished")],
+        ..Default::default()
+    };
+    let session = session_at(cx, &state, start);
+    let w = workspace(cx, &session);
+    let seen = events(cx, &w);
+    w.update(cx, |w, cx| w.restore(cx));
+    cx.run_until_parked();
+    assert_eq!(roots(cx, &w), std::slice::from_ref(&one));
+    let notices = folder_notices(&seen.borrow());
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(notices[0].contains("workspace.yml"), "{notices:?}");
+    assert!(!notices[0].contains("no longer exists"), "{notices:?}");
+    assert!(
+        !seen
+            .borrow()
+            .iter()
+            .any(|e| matches!(e, WorkspaceEvent::OpenFailed { .. }))
+    );
+    let saved = session_value(cx, &session);
+    assert!(saved.workspaces.is_empty());
+    assert_eq!(saved.open, [one]);
+}
+
+#[gpui_kit::test]
+fn the_vanished_workspace_toast_says_the_folder_is_gone(cx: &mut TestAppContext) {
+    let state = tempfile::tempdir().unwrap();
+    let gone = state.path().join("wcopy");
+    let start = apinata_app::session::Session {
+        workspaces: vec![gone.clone()],
+        ..Default::default()
+    };
+    let session = session_at(cx, &state, start);
+    let w = workspace(cx, &session);
+    let seen = events(cx, &w);
+    w.update(cx, |w, cx| w.restore(cx));
+    cx.run_until_parked();
+    let notices = folder_notices(&seen.borrow());
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(notices[0].contains("no longer exists"), "{notices:?}");
+}
