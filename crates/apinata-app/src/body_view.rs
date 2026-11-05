@@ -180,6 +180,29 @@ struct JsonCache {
     slot: ParsedSlot,
 }
 
+// Rides inside a background job and counts it when it ends without a result. A replaced job
+// either stops at a cancel check or, when its waiter is dropped before it ran, is dropped
+// unpolled; both drop this guard unfinished.
+struct JobGuard {
+    counted: Arc<AtomicUsize>,
+    finished: bool,
+}
+
+impl JobGuard {
+    fn finish<T>(mut self, out: Option<T>) -> Option<T> {
+        self.finished = out.is_some();
+        out
+    }
+}
+
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.counted.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
 /// Shows one result's response body.
 pub struct BodyView {
     editor: Entity<EditorState>,
@@ -1241,7 +1264,8 @@ impl BodyView {
         self.json_cache.is_some()
     }
 
-    /// How many filter or find jobs stopped early because a newer one replaced them.
+    /// How many prepare or find jobs ended without a result because a newer one replaced them,
+    /// whether dropped before they ran or stopped at a cancel check.
     pub fn cancelled_jobs(&self) -> usize {
         self.cancelled_jobs.load(Ordering::Relaxed)
     }
@@ -1254,17 +1278,15 @@ impl BodyView {
         self.find_cancel = Arc::default();
     }
 
-    // The question a job asks to learn it was replaced; a yes is counted for tests.
-    fn stop_signal(&self, flag: &Arc<AtomicBool>) -> impl Fn() -> bool + Send + 'static {
-        let (flag, counted) = (flag.clone(), self.cancelled_jobs.clone());
-        let seen = AtomicBool::new(false);
-        move || {
-            let stop = flag.load(Ordering::Relaxed);
-            if stop && !seen.swap(true, Ordering::Relaxed) {
-                counted.fetch_add(1, Ordering::Relaxed);
-            }
-            stop
-        }
+    // A job's stop question, answered by `flag`, and the guard that counts the job for tests
+    // if it ends without a result.
+    fn job_signal(&self, flag: &Arc<AtomicBool>) -> (impl Fn() -> bool + Send + 'static, JobGuard) {
+        let flag = flag.clone();
+        let guard = JobGuard {
+            counted: self.cancelled_jobs.clone(),
+            finished: false,
+        };
+        (move || flag.load(Ordering::Relaxed), guard)
     }
 
     fn find_options(&self) -> FindOptions {
@@ -1301,9 +1323,10 @@ impl BodyView {
         }
         let generation = self.find_generation;
         let text = self.editor.read(cx).value();
-        let stop = self.stop_signal(&self.find_cancel);
-        let job = cx
-            .background_spawn(async move { finder.find_in_text_until(&text, FIND_HIT_CAP, stop) });
+        let (stop, guard) = self.job_signal(&self.find_cancel);
+        let job = cx.background_spawn(async move {
+            guard.finish(finder.find_in_text_until(&text, FIND_HIT_CAP, stop))
+        });
         self.find_task = Some(cx.spawn(async move |this, cx| {
             let Some((hits, more)) = job.await else {
                 return;
@@ -1475,9 +1498,10 @@ impl BodyView {
         self.void_find_scan();
         let generation = self.find_generation;
         let chunked = self.chunked.clone();
-        let stop = self.stop_signal(&self.find_cancel);
-        let job =
-            cx.background_spawn(async move { find_in_chunked_until(&chunked, &finder, stop) });
+        let (stop, guard) = self.job_signal(&self.find_cancel);
+        let job = cx.background_spawn(async move {
+            guard.finish(find_in_chunked_until(&chunked, &finder, stop))
+        });
         self.find_task = Some(cx.spawn(async move |this, cx| {
             let Some(found) = job.await else {
                 return;
@@ -2346,84 +2370,89 @@ impl BodyView {
         if filter.is_none() {
             self.json_cache = None;
         }
-        let stop = self.stop_signal(&self.job_cancel);
+        let (stop, guard) = self.job_signal(&self.job_cancel);
         let parses = self.filter_parses.clone();
         let (mask, reveal) = (self.mask.clone(), self.reveal);
         // An invalid filter keeps the shown text only if it already belongs to this result.
         let keep = self.kind.is_some();
         let job = cx.background_spawn(async move {
-            // The kind rides beside the prepared text so the format label needs no
-            // second scan of the body on the main thread; a binary body's view is
-            // formatted here too, never on the main thread. A filter that ran rides along
-            // with whether it matched nothing: an empty JSON array or empty XPath output.
-            let Some(r) = &result.response else {
-                return Some((
-                    BodyKind::Empty,
-                    Some(Prepared::Empty),
-                    None,
-                    Vec::new(),
-                    None,
-                ));
-            };
-            let kind = body_kind(r.headers(), r.body());
-            // Only a text body is redacted; the copy is made here, off the main thread, and
-            // once per result.
-            let text = match kind {
-                BodyKind::Empty | BodyKind::Binary | BodyKind::Image(_) => r.text(),
-                _ if reveal => r.text(),
-                _ => mask.shown(&result, r.text()),
-            };
-            let whole = || prepare_body(kind, r.body(), text, pretty, r.truncated());
-            // JSON runs JSONPath and XML runs XPath; the matches read the same in Pretty and
-            // Raw. XPath matches show as plain text so a text match holding `<` is never
-            // re-parsed as markup.
-            // A replaced filter job stops here, or at the next value the JSON filter writes.
-            if filter.is_some() && stop() {
-                return None;
-            }
-            let filtered = match (kind, filter) {
-                (BodyKind::Json, Some((expr, slot))) => {
-                    // The expression is checked first, so its error wins over the body's.
-                    let out = JsonFilter::compile(&expr).and_then(|compiled| {
-                        let parsed = slot.get_or_init(|| {
-                            parses.fetch_add(1, Ordering::Relaxed);
-                            ParsedJson::parse(text)
+            let prepare_job = move || {
+                // The kind rides beside the prepared text so the format label needs no
+                // second scan of the body on the main thread; a binary body's view is
+                // formatted here too, never on the main thread. A filter that ran rides along
+                // with whether it matched nothing: an empty JSON array or empty XPath output.
+                let Some(r) = &result.response else {
+                    return Some((
+                        BodyKind::Empty,
+                        Some(Prepared::Empty),
+                        None,
+                        Vec::new(),
+                        None,
+                    ));
+                };
+                let kind = body_kind(r.headers(), r.body());
+                // Only a text body is redacted; the copy is made here, off the main thread, and
+                // once per result.
+                let text = match kind {
+                    BodyKind::Empty | BodyKind::Binary | BodyKind::Image(_) => r.text(),
+                    _ if reveal => r.text(),
+                    _ => mask.shown(&result, r.text()),
+                };
+                let whole = || prepare_body(kind, r.body(), text, pretty, r.truncated());
+                // JSON runs JSONPath and XML runs XPath; the matches read the same in Pretty and
+                // Raw. XPath matches show as plain text so a text match holding `<` is never
+                // re-parsed as markup.
+                // A replaced filter job stops here, or at the next value the JSON filter writes.
+                if filter.is_some() && stop() {
+                    return None;
+                }
+                let filtered = match (kind, filter) {
+                    (BodyKind::Json, Some((expr, slot))) => {
+                        // The expression is checked first, so its error wins over the body's.
+                        let out = JsonFilter::compile(&expr).and_then(|compiled| {
+                            let parsed = slot.get_or_init(|| {
+                                parses.fetch_add(1, Ordering::Relaxed);
+                                ParsedJson::parse(text)
+                            });
+                            compiled.run(parsed.as_ref().map_err(Clone::clone)?, &stop)
                         });
-                        compiled.run(parsed.as_ref().map_err(Clone::clone)?, &stop)
-                    });
-                    if out == Err(FilterError::Cancelled) {
-                        return None;
+                        if out == Err(FilterError::Cancelled) {
+                            return None;
+                        }
+                        out.map(|out| {
+                            let prepared = prepare(kind, &out, out.len() as u64, true);
+                            (prepared, (expr, out == "[]"))
+                        })
                     }
-                    out.map(|out| {
-                        let prepared = prepare(kind, &out, out.len() as u64, true);
-                        (prepared, (expr, out == "[]"))
-                    })
-                }
-                (BodyKind::Xml, Some((expr, _))) => {
-                    apinata_core::filter_xml(text, &expr).map(|out| {
-                        let prepared = prepare(BodyKind::Text, &out, out.len() as u64, true);
-                        (prepared, (expr, out.is_empty()))
-                    })
-                }
-                _ => {
-                    let prepared = whole();
-                    let binary = match prepared {
-                        Prepared::Binary { .. } => binary_rows(r.body(), binary_mode),
-                        _ => Vec::new(),
-                    };
-                    return Some((kind, Some(prepared), None, binary, None));
-                }
+                    (BodyKind::Xml, Some((expr, _))) => {
+                        apinata_core::filter_xml(text, &expr).map(|out| {
+                            let prepared = prepare(BodyKind::Text, &out, out.len() as u64, true);
+                            (prepared, (expr, out.is_empty()))
+                        })
+                    }
+                    _ => {
+                        let prepared = whole();
+                        let binary = match prepared {
+                            Prepared::Binary { .. } => binary_rows(r.body(), binary_mode),
+                            _ => Vec::new(),
+                        };
+                        return Some((kind, Some(prepared), None, binary, None));
+                    }
+                };
+                Some(match filtered {
+                    Ok((prepared, applied)) => {
+                        (kind, Some(prepared), None, Vec::new(), Some(applied))
+                    }
+                    Err(e) => (
+                        kind,
+                        (!keep).then(whole),
+                        Some(e.to_string()),
+                        Vec::new(),
+                        None,
+                    ),
+                })
             };
-            Some(match filtered {
-                Ok((prepared, applied)) => (kind, Some(prepared), None, Vec::new(), Some(applied)),
-                Err(e) => (
-                    kind,
-                    (!keep).then(whole),
-                    Some(e.to_string()),
-                    Vec::new(),
-                    None,
-                ),
-            })
+            guard.finish(prepare_job())
         });
         self.task = Some(cx.spawn_in(window, async move |this, cx| {
             // A replaced job lands nothing; the newer one already bumped the generation.
