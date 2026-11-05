@@ -31,11 +31,12 @@ impl RequestFile {
     /// needs a `graphql` mapping, and any other type is refused by name.
     pub fn load(path: impl AsRef<Path>) -> Result<RequestFile, FileError> {
         let path = path.as_ref();
-        let doc = Document::load(path)?;
+        let mut doc = Document::load(path)?;
         let key = match doc.get(&["info", "type"]) {
             None => "http",
             Some(kind) => match kind.as_str() {
-                Some(k @ ("http" | "graphql")) => k,
+                Some("http") => "http",
+                Some("graphql") => "graphql",
                 Some(other) => return Err(unsupported(path, other)),
                 None => {
                     let shown = yaml_serde::to_string(kind)
@@ -50,6 +51,7 @@ impl RequestFile {
                 format!("the file has no `{key}` mapping"),
             ));
         }
+        doc.migrate_runtime_auth(key);
         Ok(RequestFile::from_document(doc))
     }
 
