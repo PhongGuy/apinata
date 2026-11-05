@@ -60,18 +60,17 @@ fn changed(stored: &[Option<u64>], order: &[usize]) -> Vec<(usize, u64)> {
 }
 
 /// Merge restored items into `list`, the siblings still there, in order. `restored` runs newest
-/// delete first, each item with its tail: the siblings after it at delete time, as (path, old
-/// seq). An item goes just before the lowest-numbered tail member still listed, or last.
+/// delete first, each item with its tail: the siblings after it at delete time, in the order the
+/// folder listed them. An item goes just before the first tail member still listed, or last.
 pub(crate) fn place_restored<T: PartialEq + Clone>(
     mut list: Vec<T>,
-    restored: &[(T, Vec<(T, u64)>)],
+    restored: &[(T, Vec<T>)],
 ) -> Vec<T> {
     for (item, tail) in restored {
         let at = tail
             .iter()
-            .filter_map(|(path, old)| Some((*old, list.iter().position(|p| p == path)?)))
-            .min()
-            .map_or(list.len(), |(_, at)| at);
+            .find_map(|path| list.iter().position(|p| p == path))
+            .unwrap_or(list.len());
         list.insert(at, item.clone());
     }
     list
@@ -265,11 +264,8 @@ mod tests {
             [(1, 3), (2, 2)]
         );
     }
-    /// One restored item and its tail, as (path, old seq).
-    fn back(
-        item: &'static str,
-        tail: &[(&'static str, u64)],
-    ) -> (&'static str, Vec<(&'static str, u64)>) {
+    /// One restored item and its tail, in its old listed order.
+    fn back(item: &'static str, tail: &[&'static str]) -> (&'static str, Vec<&'static str>) {
         (item, tail.to_vec())
     }
 
@@ -279,9 +275,9 @@ mod tests {
         let order = place_restored(
             vec!["keep"],
             &[
-                back("a", &[("keep", 2)]),
-                back("b", &[("keep", 3)]),
-                back("c", &[("keep", 4)]),
+                back("a", &["keep"]),
+                back("b", &["keep"]),
+                back("c", &["keep"]),
             ],
         );
         assert_eq!(order, ["a", "b", "c", "keep"]);
@@ -292,30 +288,27 @@ mod tests {
         // [a, b, c], pruned a, then b, then c: the later tails shrink as the folder does.
         let order = place_restored(
             Vec::new(),
-            &[
-                back("c", &[]),
-                back("b", &[("c", 2)]),
-                back("a", &[("b", 2), ("c", 3)]),
-            ],
+            &[back("c", &[]), back("b", &["c"]), back("a", &["b", "c"])],
         );
         assert_eq!(order, ["a", "b", "c"]);
     }
 
     #[test]
     fn a_tail_member_that_left_the_folder_is_passed_over() {
-        let order = place_restored(vec!["x", "z"], &[back("y", &[("gone", 2), ("z", 3)])]);
+        let order = place_restored(vec!["x", "z"], &[back("y", &["gone", "z"])]);
         assert_eq!(order, ["x", "y", "z"]);
     }
 
     #[test]
     fn an_item_with_no_tail_left_goes_last() {
-        let order = place_restored(vec!["x", "z"], &[back("y", &[("gone", 2)])]);
+        let order = place_restored(vec!["x", "z"], &[back("y", &["gone"])]);
         assert_eq!(order, ["x", "z", "y"]);
     }
 
     #[test]
-    fn the_first_tail_member_is_the_lowest_old_seq_not_the_first_listed() {
-        let order = place_restored(vec!["x", "y"], &[back("n", &[("y", 3), ("x", 2)])]);
-        assert_eq!(order, ["n", "x", "y"]);
+    fn the_first_tail_member_still_listed_wins_wherever_it_now_stands() {
+        // y followed n most closely; x moved ahead of it since, so n stays behind x.
+        let order = place_restored(vec!["x", "y"], &[back("n", &["y", "x"])]);
+        assert_eq!(order, ["x", "n", "y"]);
     }
 }
