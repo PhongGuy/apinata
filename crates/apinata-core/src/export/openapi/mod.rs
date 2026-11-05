@@ -3,6 +3,7 @@
 
 mod content;
 mod responses;
+mod schemas;
 mod security;
 mod servers;
 mod url;
@@ -12,10 +13,13 @@ use super::{ExportNote, OpenApiExport};
 use crate::AuthSpec;
 use crate::Collection;
 use crate::collection::Folder;
+use crate::edit::KeyValue;
 use crate::js::script_code;
 use crate::request::RequestFile;
+use crate::resolve::HeaderSource;
 use crate::script::ScriptPhase;
 use crate::sequence::sort_by_name_then_seq;
+use schemas::Schemas;
 use security::{Mapped, Schemes};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -26,12 +30,11 @@ const METHODS: [&str; 8] = [
 ];
 
 /// The members counted into one `collection / <kind>` note each, in note order.
-const KINDS: [&str; 5] = ["scripts", "tests", "assertions", "variables", "headers"];
+const KINDS: [&str; 4] = ["scripts", "tests", "assertions", "variables"];
 const SCRIPTS: usize = 0;
 const TESTS: usize = 1;
 const ASSERTIONS: usize = 2;
 const VARIABLES: usize = 3;
-const HEADERS: usize = 4;
 
 /// The OpenAPI 3.1 document for `collection`, with notes on everything not carried over.
 pub fn openapi(collection: &Collection) -> OpenApiExport {
@@ -50,12 +53,14 @@ pub fn openapi(collection: &Collection) -> OpenApiExport {
         servers: HashMap::new(),
         first_origin: None,
         schemes: Schemes::default(),
+        schemas: Schemas::default(),
+        layers: HashMap::new(),
+        noted: HashSet::new(),
         top: None,
         counts: [0; KINDS.len()],
     };
     let file = collection.file();
     walker.count_scripts(|phase| file.script(phase));
-    walker.count(HEADERS, !file.headers().is_empty());
     // The collection's own auth is the document-wide requirement and names the first scheme.
     for detail in security::credential_url_notes(&collection.file().auth()) {
         walker
@@ -94,8 +99,15 @@ pub fn openapi(collection: &Collection) -> OpenApiExport {
         root.insert("tags".into(), walker.tags.into_values().collect());
     }
     root.insert("paths".into(), walker.paths.into());
-    if let Some(components) = walker.schemes.into_components() {
-        root.insert("components".into(), components);
+    let mut components = Map::new();
+    if let Some(schemas) = walker.schemas.into_value() {
+        components.insert("schemas".into(), schemas);
+    }
+    if let Some(schemes) = walker.schemes.into_value() {
+        components.insert("securitySchemes".into(), schemes);
+    }
+    if !components.is_empty() {
+        root.insert("components".into(), components.into());
     }
     if let Some(top) = walker.top {
         root.insert("security".into(), json!([top]));
@@ -126,6 +138,12 @@ struct Walker<'a> {
     /// The first exported operation's origin, whose servers are the document's.
     first_origin: Option<String>,
     schemes: Schemes,
+    /// Schemas inferred from JSON bodies, referenced from the operations.
+    schemas: Schemas,
+    /// Folder item path to its note source, the folder names joined by ` / `.
+    layers: HashMap<String, String>,
+    /// Inherited credential headers already noted, as (layer source, lower-case name).
+    noted: HashSet<(String, String)>,
     /// The collection auth's requirement object, when it maps to a scheme.
     top: Option<Value>,
     /// Per `KINDS` entry, how many items carry that member.
@@ -148,6 +166,10 @@ impl Walker<'_> {
     /// Sub-folders in display order, then requests, then a note per non-HTTP item. `tag` is
     /// the enclosing top-level folder, whose tag is added once an operation uses it.
     fn folder(&mut self, folder: &Folder, trail: &[&str], tag: Option<&Folder>) {
+        if let Some(item) = self.collection.item_path(folder.path()) {
+            self.layers
+                .insert(item.as_str().to_owned(), trail.join(" / "));
+        }
         if let Some(file) = folder.file().filter(|_| !trail.is_empty()) {
             let source = format!("{} / auth", trail.join(" / "));
             for detail in security::credential_url_notes(&file.auth()) {
@@ -159,7 +181,6 @@ impl Walker<'_> {
             self.count_scripts(|phase| file.script(phase));
             let vars = !file.vars().is_empty() || !file.post_response_vars().is_empty();
             self.count(VARIABLES, vars);
-            self.count(HEADERS, !file.headers().is_empty());
         }
         let folders =
             sort_by_name_then_seq(folder.folders().iter().collect(), |f| f.name(), |f| f.seq());
@@ -252,14 +273,30 @@ impl Walker<'_> {
         if *first != split.origin {
             op.insert("servers".into(), servers.into());
         }
-        let parameters = content::parameters(req, &path_key, &split.path, &source, &mut self.notes);
+        let inherited = self.inherited_rows(req);
+        let parameters = content::parameters(
+            req,
+            &inherited,
+            &mut self.noted,
+            &path_key,
+            &split.path,
+            &source,
+            &mut self.notes,
+        );
         if !parameters.is_empty() {
             op.insert("parameters".into(), parameters.into());
         }
-        if let Some(body) = content::request_body(req, &source, &mut self.notes) {
+        if let Some(body) = content::request_body(req, &source, &mut self.schemas, &mut self.notes)
+        {
             op.insert("requestBody".into(), body);
         }
-        let responses = responses::responses(&req.examples(), &source, &mut self.notes);
+        let responses = responses::responses(
+            &req.examples(),
+            req.name(),
+            &source,
+            &mut self.schemas,
+            &mut self.notes,
+        );
         op.insert("responses".into(), responses);
         if let Some(security) = self.security(req, &source) {
             op.insert("security".into(), security);
@@ -309,6 +346,25 @@ impl Walker<'_> {
             Mapped::None => return self.top.as_ref().map(|_| json!([])),
         };
         (self.top.as_ref() != Some(&requirement)).then(|| json!([requirement]))
+    }
+
+    /// The headers `req` inherits and does not override, outermost first, each with the note
+    /// source of the collection or folder holding it.
+    fn inherited_rows(&self, req: &RequestFile) -> Vec<(KeyValue, String)> {
+        let Some(path) = self.collection.item_path(req.path()) else {
+            return Vec::new();
+        };
+        let own = req.headers();
+        let layer = |source: &HeaderSource| match source {
+            HeaderSource::Folder(p) => self.layers.get(p.as_str()).cloned().unwrap_or_default(),
+            _ => "collection".to_owned(),
+        };
+        self.collection
+            .inherited_headers(&path)
+            .iter()
+            .filter(|h| !h.overridden(&own))
+            .map(|h| (KeyValue::new(h.name(), h.value()), layer(h.source())))
+            .collect()
     }
 
     /// The server list for `origin`, built on first use.

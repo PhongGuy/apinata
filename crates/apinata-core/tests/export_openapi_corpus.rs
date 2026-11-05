@@ -44,10 +44,6 @@ fn members_openapi_has_no_place_for_are_counted_once_per_collection() {
             "collection / variables",
             format!("2 items have variables{tail}"),
         ),
-        (
-            "collection / headers",
-            format!("2 items have headers{tail}"),
-        ),
     ]
     .into_iter()
     .map(|(s, d)| (s.to_owned(), d))

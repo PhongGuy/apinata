@@ -108,10 +108,20 @@ fn bodies_map_by_mode_with_the_content_type_header_winning() {
         .collect();
     let (_d, c) = open_with_root(ROOT, &files);
     let v = openapi_doc(&c);
+    // JSON schemas are hoisted; each is compared with its `$ref` inlined.
+    let inline = |mut content: Value| {
+        for media in content.as_object_mut().expect("content").values_mut() {
+            if let Some(name) = media["schema"]["$ref"].as_str() {
+                let name = name.trim_start_matches("#/components/schemas/");
+                media["schema"] = v["components"]["schemas"][name].clone();
+            }
+        }
+        content
+    };
     for (i, (_, want)) in cases.iter().enumerate() {
         let got = v["paths"][format!("/{i}")]["post"]
             .get("requestBody")
-            .map(|b| b["content"].clone());
+            .map(|b| inline(b["content"].clone()));
         assert_eq!(got.as_ref(), want.as_ref(), "case {i}");
     }
     assert_eq!(

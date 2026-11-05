@@ -62,8 +62,11 @@ fn examples_group_by_status_with_a_media_type_per_body() {
     assert_eq!(
         *responses,
         json!({
-            "200": {"description": "OK", "content": {
-                "application/json; charset=utf-8": {"examples": {"ok": {"value": {"id": 7}}}},
+            "200": {"description": "OK",
+            "headers": {"X-Hidden": {"schema": {"type": "string"}, "example": "header-value"}},
+            "content": {
+                "application/json; charset=utf-8": {"schema": {"$ref": "#/components/schemas/r_response_200"},
+                    "examples": {"ok": {"value": {"id": 7}}}},
                 "application/json": {"examples": {"ok 2": {"value": "not json"}}},
                 "application/octet-stream": {"examples": {"png": {}}},
                 "application/xml": {"examples": {"ok 3": {"value": "<ok/>"}}}}},
@@ -72,11 +75,9 @@ fn examples_group_by_status_with_a_media_type_per_body() {
                 "text/html": {"examples": {"page": {"value": "<p>no</p>"}}}}}
         })
     );
-    assert_eq!(keys(&responses["200"]), ["description", "content"]);
-    assert!(
-        !apinata_core::export::openapi(&c)
-            .json
-            .contains("header-value")
+    assert_eq!(
+        keys(&responses["200"]),
+        ["description", "headers", "content"]
     );
     assert_eq!(
         openapi_notes(&c),
@@ -108,6 +109,7 @@ fn a_blank_content_type_falls_back_to_the_body_kind() {
     let v = openapi_doc(&c);
     assert_eq!(
         v["paths"]["/r"]["get"]["responses"]["200"]["content"],
-        json!({"application/json": {"examples": {"ok": {"value": {"id": 7}}}}})
+        json!({"application/json": {"schema": {"$ref": "#/components/schemas/r_response_200"},
+            "examples": {"ok": {"value": {"id": 7}}}}})
     );
 }
