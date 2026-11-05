@@ -77,7 +77,6 @@ impl From<io::Error> for StreamError {
 /// Run `program` with `args` in `cwd`, handing each stderr line (split on `\r` and `\n`, blank
 /// lines dropped) to `on_line` on this thread. The child leads its own process group so a cancel
 /// takes its helpers down too. There is no time limit; only `cancel` stops it early.
-#[allow(dead_code)]
 pub(crate) fn stream_program(
     program: &OsStr,
     args: &[OsString],
@@ -91,7 +90,6 @@ pub(crate) fn stream_program(
 
 /// Like `stream_program`, but also keeps the first `STDOUT_CAP` bytes of stdout. Stdout is read
 /// to the end even past the cap, so a chatty child never blocks on a full pipe.
-#[allow(dead_code)]
 pub(crate) fn stream_program_capture(
     program: &OsStr,
     args: &[OsString],
@@ -249,15 +247,12 @@ fn git_stream_body<S: AsRef<OsStr>>(
         env_value(options, "GIT_SSH_COMMAND").or_else(|| global_ssh_command(cwd, options));
     let ssh = ssh_command(configured, env_value(options, "GIT_SSH").is_some());
     let env = hardened_env(options, ssh);
-    stream_body(
-        OsStr::new("git"),
-        &argv,
-        cwd,
-        &env,
-        cancel,
-        on_line,
-        capture,
-    )
+    let program = OsStr::new("git");
+    if capture {
+        stream_program_capture(program, &argv, cwd, &env, cancel, on_line)
+    } else {
+        stream_program(program, &argv, cwd, &env, cancel, on_line)
+    }
 }
 
 /// The last `options.env` entry for `key`, else the process environment.
