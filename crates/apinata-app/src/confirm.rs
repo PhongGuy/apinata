@@ -96,7 +96,13 @@ pub fn ask(spec: Ask, window: &mut Window, cx: &mut App) -> async_channel::Recei
                         .aria_label(spec.title.clone())
                         .test_support()
                         .when_some(spec.detail.clone(), |el, detail| {
-                            el.child(div().id("confirm-detail").test_support().child(detail))
+                            el.child(
+                                div()
+                                    .id("confirm-detail")
+                                    .test_support()
+                                    .aria_label(detail.clone())
+                                    .child(detail),
+                            )
                         })
                         .when_some(last, |el, last| {
                             el.child(dialog_footer(None, buttons, last))

@@ -33,7 +33,7 @@ fn tree() -> tempfile::TempDir {
 #[derive(Default)]
 pub(crate) struct Listing {
     inner: MemoryStore,
-    lists: AtomicUsize,
+    pub(crate) lists: AtomicUsize,
     fail: bool,
     pub(crate) fail_get: AtomicBool,
     pub(crate) gets: AtomicUsize,

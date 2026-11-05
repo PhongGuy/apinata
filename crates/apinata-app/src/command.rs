@@ -304,6 +304,10 @@ pub enum NetworkOp {
     Recheck,
 }
 
+/// Where a list of fileless groups, or why it failed, goes.
+pub type FilelessReply =
+    async_channel::Sender<Result<Vec<crate::orphan_section::FilelessGroup>, String>>;
+
 /// One instruction to the collection actor.
 pub enum Command {
     /// Act on the collection's record of acknowledged network settings.
@@ -422,11 +426,29 @@ pub enum Command {
         /// Where the stored value, or why it could not be read, goes.
         reply: async_channel::Sender<Result<Option<String>, String>>,
     },
-    /// List the orphaned secrets of an environment on `reply` only.
+    /// List the orphaned secrets of an environment on `reply` only, and with `fileless` the
+    /// stored secrets of environments with no file, from the same one look at the store.
     OrphanedSecrets {
         /// The environment.
         env: String,
         /// Where the names, or why they could not be listed, go.
+        reply: async_channel::Sender<Result<Vec<String>, String>>,
+        /// Where the fileless groups, or why they could not be listed, go.
+        fileless: Option<FilelessReply>,
+    },
+    /// List the stored secrets of environments with no file on `reply` only.
+    FilelessSecrets {
+        /// Where the groups, or why they could not be listed, go.
+        reply: FilelessReply,
+    },
+    /// Remove named stored secrets of an environment with no file, each named by a person's
+    /// confirmed action. Refused if the environment has a file again.
+    RemoveFilelessSecrets {
+        /// The environment.
+        env: String,
+        /// The variables to remove.
+        names: Vec<String>,
+        /// Each warning's text, or why nothing was removed.
         reply: async_channel::Sender<Result<Vec<String>, String>>,
     },
     /// Remove named orphans of an environment, each named by a person's confirmed action.

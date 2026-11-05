@@ -169,6 +169,8 @@ impl CollectionModel {
                 | Command::StoredSecret { .. }
                 | Command::OrphanedSecrets { .. }
                 | Command::RemoveOrphanedSecrets { .. }
+                | Command::FilelessSecrets { .. }
+                | Command::RemoveFilelessSecrets { .. }
         );
         let fields = match &command {
             Command::Edit { target, edit } => vec![(target.clone(), edit.field())],

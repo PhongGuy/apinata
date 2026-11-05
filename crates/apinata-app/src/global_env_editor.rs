@@ -19,7 +19,7 @@ use crate::env_table::{
     secrets_collide,
 };
 use crate::import_report::failure_text;
-use crate::orphan_section::{self, Orphans};
+use crate::orphan_section::{self, Fileless, Orphans};
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep};
 use crate::style;
@@ -47,6 +47,8 @@ pub struct GlobalEnvEditor {
     // Why the last reveal failed; the workspace holds edit failures.
     error: Option<String>,
     orphans: Orphans,
+    /// Stored secrets of global environments with no file, listed with the orphans.
+    fileless: Fileless,
     // Set while a lock or Save check is reading the store or asking; a further one is dropped,
     // and a blur stores nothing, since a dialog taking focus must not commit the typing.
     checking: bool,
@@ -121,6 +123,7 @@ impl GlobalEnvEditor {
             secrets: Vec::new(),
             error: None,
             orphans: Orphans::default(),
+            fileless: Fileless::default(),
             checking: false,
             name_input,
             naming: None,
@@ -184,24 +187,50 @@ impl GlobalEnvEditor {
         self.list_orphans(cx);
     }
 
-    /// Lists the selected environment's orphans off the main thread; an answer for an
-    /// environment no longer selected is dropped.
+    /// Lists the selected environment's orphans, and with them the stored secrets of global
+    /// environments with no file, off the main thread; an orphan answer for an environment no
+    /// longer selected is dropped.
     pub fn list_orphans(&mut self, cx: &mut Context<Self>) {
-        let Some(env) = self.selected.clone() else {
-            return;
-        };
-        let listing = self.workspace.read(cx).orphaned_global_secrets(&env, cx);
+        let env = self.selected.clone();
+        let listing = (self.workspace.read(cx)).global_secrets_to_tidy(env.as_deref(), cx);
         cx.spawn(async move |this, cx| {
-            let answer = listing.await;
+            let (orphans, fileless) = listing.await;
             this.update(cx, |e, cx| {
-                if e.selected.as_deref() == Some(env.as_str()) {
+                e.fileless = fileless.map_or_else(Fileless::Failed, Fileless::Groups);
+                if let Some(answer) = orphans
+                    && e.selected == env
+                {
                     e.orphans = answer.map_or_else(Orphans::Failed, Orphans::Names);
-                    cx.notify();
                 }
+                cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// The stored secrets of global environments with no file, as last listed.
+    pub fn fileless(&self) -> &Fileless {
+        &self.fileless
+    }
+
+    /// Asks to remove the stored value of `name` in `env`, which has no file, warning that the
+    /// file may only be elsewhere; removes it on "Delete".
+    pub fn ask_remove_fileless(
+        &mut self,
+        env: &str,
+        name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        orphan_section::ask_remove_fileless(env, name, window, cx, Self::remove_fileless);
+    }
+
+    // A failure is in the workspace's error, which the dialog shows.
+    fn remove_fileless(&mut self, env: String, name: String, cx: &mut Context<Self>) {
+        let names = vec![name];
+        let outcome = self.send(GlobalOp::RemoveFileless { name: env, names }, cx);
+        self.list_after(outcome, cx);
     }
 
     /// The selected environment's orphans as last listed, unsaved secrets included.
@@ -1012,6 +1041,14 @@ impl Render for GlobalEnvEditor {
                 .ok();
         };
         let orphans = orphan_section::section(&orphans, &self.follow, on_remove, cx);
+        let editor = cx.entity().downgrade();
+        let on_remove = move |env: &str, name: &str, window: &mut Window, cx: &mut App| {
+            editor
+                .update(cx, |e, cx| e.ask_remove_fileless(env, name, window, cx))
+                .ok();
+        };
+        let fileless =
+            orphan_section::fileless_section(&self.fileless, &self.follow, on_remove, cx);
         // Each header button reports to the follow, so Tab onto it scrolls it into view.
         let follow = self.follow.clone();
         let followed = move |id: &'static str, button: Button| Followed::new(id, &follow, button);
@@ -1072,6 +1109,7 @@ impl Render for GlobalEnvEditor {
                 .children(naming)
                 .child(self.table.clone())
                 .children(orphans)
+                .children(fileless)
                 .into_any_element()
         } else {
             // The message and its action hug their content as one group, centred in the pane
@@ -1107,6 +1145,7 @@ impl Render for GlobalEnvEditor {
                 .child(empty)
                 .children(naming)
                 .children(orphans.map(|o| div().w_full().child(o)))
+                .children(fileless.map(|f| div().w_full().child(f)))
                 .into_any_element()
         };
         v_flex()
