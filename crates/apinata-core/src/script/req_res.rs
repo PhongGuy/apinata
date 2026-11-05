@@ -93,12 +93,14 @@ fn req_dispatch(state: &HostState, op: &str, args: &str) -> String {
             req.set_headers(headers);
             json!({})
         }
-        "getBody" => match req.body_text() {
-            Some(body) => some(json!({ "text": body, "json": req.is_json_body() })),
-            None => json!({ "u": "req.getBody" }),
+        "getBody" => match (req.body_text(), req.graphql_body()) {
+            (Some(body), _) => some(json!({ "text": body, "json": req.is_json_body() })),
+            (None, Some(data)) => some(json!({ "data": data, "json": req.is_json_body() })),
+            (None, None) => json!({ "u": "req.getBody" }),
         },
         "setBody" => {
-            if req.set_body_text(text(0)) {
+            let data = graphql_value(&args, req.is_json_body());
+            if req.set_body_text(text(0)) || req.set_graphql_body(data) {
                 json!({})
             } else {
                 json!({ "u": "req.setBody" })
@@ -121,6 +123,22 @@ fn req_dispatch(state: &HostState, op: &str, args: &str) -> String {
         _ => json!({ "u": format!("req.{op}") }),
     };
     answer.to_string()
+}
+
+/// What `setBody` leaves on a GraphQL request from its `[text, value, raw]` arguments: under a
+/// JSON content type an object becomes its JSON text, sent as is; anything else is kept as given.
+fn graphql_value(args: &[Value], json: bool) -> Value {
+    let value = args.get(1).cloned().unwrap_or(Value::Null);
+    let raw = args.get(2).and_then(Value::as_bool).unwrap_or(false);
+    match value {
+        Value::Object(_) | Value::Array(_) if json && !raw => Value::String(
+            args.first()
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+        ),
+        other => other,
+    }
 }
 
 /// Runs response operation `op`: `data` answers everything the getters read, and `setBody`

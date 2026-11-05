@@ -462,11 +462,50 @@ impl PreparedRequest {
         }
     }
 
+    /// A GraphQL body as scripts see it: the file's raw query and variables text as an object,
+    /// or what a script or the send left there; `None` for other kinds.
+    pub(crate) fn graphql_body(&self) -> Option<serde_json::Value> {
+        match &self.body {
+            BodySpec::Graphql { query, variables } => {
+                Some(serde_json::json!({ "query": query, "variables": variables }))
+            }
+            BodySpec::GraphqlData(data) => Some(data.clone()),
+            _ => None,
+        }
+    }
+
+    /// Replaces a GraphQL body with a script value; `false`, changing nothing, for other kinds.
+    pub(crate) fn set_graphql_body(&mut self, data: serde_json::Value) -> bool {
+        let is_graphql = matches!(
+            self.body,
+            BodySpec::Graphql { .. } | BodySpec::GraphqlData(_)
+        );
+        if is_graphql {
+            self.body = BodySpec::GraphqlData(data);
+        }
+        is_graphql
+    }
+
+    /// After the send, an object GraphQL body becomes the object that was sent, query expanded
+    /// and variables parsed, as later phases read it; a text body stays as the script set it.
+    pub(crate) fn settle_graphql_body(&mut self, sent: &Body) {
+        let object = match &self.body {
+            BodySpec::Graphql { .. } => true,
+            BodySpec::GraphqlData(data) => data.is_object(),
+            _ => false,
+        };
+        if let (true, Body::Text(text)) = (object, sent)
+            && let Ok(data) = serde_json::from_str(text)
+        {
+            self.body = BodySpec::GraphqlData(data);
+        }
+    }
+
     /// Whether the content type, a `Content-Type` header or else the body's default, says JSON.
     pub fn is_json_body(&self) -> bool {
         let default = match &self.body {
             BodySpec::Text { content_type, .. } => *content_type,
-            BodySpec::Graphql { .. } => "application/json",
+            BodySpec::Graphql { .. } | BodySpec::GraphqlData(_) => "application/json",
             _ => "",
         };
         self.header("content-type")
@@ -1861,6 +1900,9 @@ enum BodySpec {
         query: String,
         variables: String,
     },
+    /// A body a script gave a GraphQL request, as the script value: text is expanded, and an
+    /// object has its `query` and `variables` text expanded and the variables text parsed.
+    GraphqlData(serde_json::Value),
 }
 
 /// The `Content-Type` a body asks for.
@@ -1915,6 +1957,37 @@ fn graphql_spec(body: Option<&Value>) -> BodySpec {
         query: field("query"),
         variables: decomment(if raw.is_empty() { "{}" } else { &raw }),
     }
+}
+
+/// Sends a GraphQL body. Text is expanded like a text body; an object has its string `query`
+/// and `variables` expanded separately, and the variables text parsed only after expansion.
+fn render_graphql(
+    data: serde_json::Value,
+    scope: &Scope,
+) -> Result<(Body, ContentType), ResolveError> {
+    let content_type = ContentType::Default("application/json");
+    let mut object = match data {
+        serde_json::Value::Object(object) => object,
+        // Expanded, unlike the reference, so a literal `{{x}}` is never sent.
+        serde_json::Value::String(text) => {
+            return Ok((Body::Text(scope.expand(&text)?), content_type));
+        }
+        serde_json::Value::Null => return Ok((Body::Text(String::new()), content_type)),
+        other => return Ok((Body::Text(js::stringify(&other)), content_type)),
+    };
+    if let Some(serde_json::Value::String(query)) = object.get_mut("query") {
+        *query = scope.expand(query)?;
+    }
+    if let Some(serde_json::Value::String(variables)) = object.get("variables") {
+        let parsed = serde_json::from_str(&scope.expand(variables)?).map_err(|e| {
+            ResolveError::GraphqlVariables {
+                message: e.to_string(),
+            }
+        })?;
+        object.insert("variables".to_owned(), parsed);
+    }
+    let body = js::stringify(&serde_json::Value::Object(object));
+    Ok((Body::Text(body), content_type))
 }
 
 /// The first file entry marked `selected: true`, as its raw path and content type.
@@ -1973,15 +2046,10 @@ fn render_body(
         }
         // Query and variables expand separately; the variables parse only after expansion.
         BodySpec::Graphql { query, variables } => {
-            let query = scope.expand(&query)?;
-            let variables: serde_json::Value = serde_json::from_str(&scope.expand(&variables)?)
-                .map_err(|e| ResolveError::GraphqlVariables {
-                    message: e.to_string(),
-                })?;
-            let body = serde_json::json!({ "query": query, "variables": variables });
-            let content_type = ContentType::Default("application/json");
-            Ok((Body::Text(js::stringify(&body)), content_type))
+            let data = serde_json::json!({ "query": query, "variables": variables });
+            render_graphql(data, scope)
         }
+        BodySpec::GraphqlData(data) => render_graphql(data, scope),
         BodySpec::File(None) => Ok((Body::None, ContentType::Default("application/octet-stream"))),
         // bruno-cli reads the path before interpolation, so only the type is interpolated.
         BodySpec::File(Some((path, content_type))) => {

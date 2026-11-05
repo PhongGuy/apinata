@@ -1508,8 +1508,14 @@ async fn exchange(
         }
     };
     // What the scripts read joins the request's secrets before the guard and the executor judge it.
+    // Later phases read a GraphQL object body as it was sent.
     if let Some(state) = &state {
         resolved.add_sensitive_values(&lock_sensitive(state), &written_host);
+        state
+            .prepared
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .settle_graphql_body(resolved.body());
     }
     // What was substituted, OS environment values included, hides in the result as in the entry.
     record.substituted = resolved.sensitive_values().to_vec();
