@@ -332,7 +332,7 @@ impl RequestFile {
 
     /// Set the root's `url` for a text replace, with the least churn: the `params` block is
     /// re-derived only when the new URL implies other params than the old one did, and a file
-    /// without one gets none, since its reader derives them from the URL.
+    /// without one gets none, since an absent block reads the same before and after.
     pub(crate) fn replace_url(&mut self, url: String) {
         if url == self.url() {
             return;
