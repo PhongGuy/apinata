@@ -4347,7 +4347,11 @@ impl ResponsePane {
                                     .gap_2()
                                     .text_size(style::TEXT_SMALL)
                                     .child(div().font_weight(FontWeight::MEDIUM).child(row.name))
-                                    .children(row.id.map(|id| div().text_color(muted).child(id))),
+                                    .children(row.id.map(|id| div().text_color(muted).child(id)))
+                                    .children(
+                                        live_stream::retry_label(row.retry)
+                                            .map(|t| div().text_color(muted).child(t)),
+                                    ),
                             )
                             .children(row.preview.split('\n').map(|line| {
                                 div()
