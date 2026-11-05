@@ -95,6 +95,32 @@ fn a_binary_body_holding_a_secret_is_withheld_and_the_description_says_so() {
 }
 
 #[test]
+fn a_binary_body_holding_a_secret_as_utf16_is_withheld() {
+    for little in [true, false] {
+        let wide: Vec<u8> = TOKEN
+            .encode_utf16()
+            .flat_map(|u| {
+                if little {
+                    u.to_le_bytes()
+                } else {
+                    u.to_be_bytes()
+                }
+            })
+            .collect();
+        let mut example = ExampleResponse::from_response(
+            &Response::new(200)
+                .with_header("content-type", "application/octet-stream")
+                .with_body([b"\xff\xfe".as_slice(), &wide].concat(), String::new()),
+        );
+        assert!(
+            example.scrub(Some(&secrets(&[]))).withheld,
+            "little {little}"
+        );
+        assert!(example.body.is_none());
+    }
+}
+
+#[test]
 fn a_clean_binary_body_is_kept_and_the_description_is_untouched() {
     let mut example = ExampleResponse::from_response(
         &Response::new(200)

@@ -292,6 +292,78 @@ fn bytes_hold_secret_reads_raw_bytes_through_a_lossy_copy() {
     assert!(!apinata_core::bytes_hold_secret(b"", &secrets));
 }
 
+fn utf16(text: &str, little: bool) -> Vec<u8> {
+    text.encode_utf16()
+        .flat_map(|u| {
+            if little {
+                u.to_le_bytes()
+            } else {
+                u.to_be_bytes()
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn bytes_hold_secret_finds_a_secret_stored_as_utf16_either_way_round() {
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    for little in [true, false] {
+        let body = [
+            b"\xff\xfe".as_slice(),
+            &utf16("hunter2hunter2", little),
+            b"\x00\x01",
+        ]
+        .concat();
+        assert!(
+            apinata_core::bytes_hold_secret(&body, &secrets),
+            "little {little}"
+        );
+        // Odd alignment: one stray byte before the encoded secret.
+        let odd = [b"\x07".as_slice(), &utf16("hunter2hunter2", little)].concat();
+        assert!(
+            apinata_core::bytes_hold_secret(&odd, &secrets),
+            "odd, little {little}"
+        );
+        // A non-ASCII secret is encoded as UTF-16, not as its UTF-8 bytes widened.
+        let accented = derived_secrets(&["pässwörd-9".to_owned()]);
+        assert!(apinata_core::bytes_hold_secret(
+            &utf16("pässwörd-9", little),
+            &accented
+        ));
+    }
+}
+
+#[test]
+fn bytes_hold_secret_finds_a_secret_outside_the_basic_plane_in_utf16() {
+    let value = "key-\u{1F511}-42";
+    let secrets = derived_secrets(&[value.to_owned()]);
+    for little in [true, false] {
+        let encoded = utf16(value, little);
+        // The emoji takes a surrogate pair: two code units, four bytes.
+        assert_eq!(encoded.len(), (value.chars().count() + 1) * 2);
+        let body = [b"\x00\xff".as_slice(), &encoded, b"\x01"].concat();
+        assert!(
+            apinata_core::bytes_hold_secret(&body, &secrets),
+            "little {little}"
+        );
+    }
+}
+
+#[test]
+fn bytes_hold_secret_ignores_an_ascii_near_miss_in_utf16() {
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    for little in [true, false] {
+        let near = utf16("hunter2hunter3", little);
+        assert!(
+            !apinata_core::bytes_hold_secret(&near, &secrets),
+            "little {little}"
+        );
+        // The secret's bytes spread with a non-zero filler are not UTF-16 of it.
+        let spread: Vec<u8> = b"hunter2hunter2".iter().flat_map(|b| [*b, b'x']).collect();
+        assert!(!apinata_core::bytes_hold_secret(&spread, &secrets));
+    }
+}
+
 #[test]
 fn an_unknown_server_address_leaves_serveripaddress_out() {
     let doc = parsed(&exchange());

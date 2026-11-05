@@ -315,11 +315,54 @@ fn candidates(req: &RequestFile, ctx: &VarContext) -> Vec<(String, String)> {
 /// Whether any of `secrets` appears in `bytes`.
 ///
 /// The bytes are read through a lossy UTF-8 copy and matched as [`replace_secrets`] matches
-/// text. Use it for a binary body, where a replacement would corrupt the bytes: refuse to
+/// text; each secret of at least the minimum length is also matched exactly as UTF-16LE and
+/// UTF-16BE. Use it for a binary body, where a replacement would corrupt the bytes: refuse to
 /// write the body instead.
 pub fn bytes_hold_secret(bytes: &[u8], secrets: &[NamedSecret]) -> bool {
     let lossy = String::from_utf8_lossy(bytes);
-    replace_secrets(&lossy, secrets) != lossy
+    if replace_secrets(&lossy, secrets) != lossy {
+        return true;
+    }
+    secrets
+        .iter()
+        .filter(|s| s.value.chars().count() >= MIN_CHARS)
+        .any(|s| {
+            let units: Vec<u16> = s.value.encode_utf16().collect();
+            let le: Vec<u8> = units.iter().flat_map(|u| u.to_le_bytes()).collect();
+            let be: Vec<u8> = units.iter().flat_map(|u| u.to_be_bytes()).collect();
+            contains_bytes(bytes, &le) || contains_bytes(bytes, &be)
+        })
+}
+
+// Knuth-Morris-Pratt, so a search stays linear in the haystack whatever the needle repeats.
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let mut fail = vec![0usize; needle.len()];
+    let mut k = 0;
+    for i in 1..needle.len() {
+        while k > 0 && needle[i] != needle[k] {
+            k = fail[k - 1];
+        }
+        if needle[i] == needle[k] {
+            k += 1;
+        }
+        fail[i] = k;
+    }
+    let mut k = 0;
+    for &b in haystack {
+        while k > 0 && b != needle[k] {
+            k = fail[k - 1];
+        }
+        if b == needle[k] {
+            k += 1;
+            if k == needle.len() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// `text` with each secret (raw and JSON-escaped form) replaced by its placeholder and every

@@ -156,6 +156,23 @@ pub const WITHHELD_NOTE: &str = ExampleResponse::WITHHELD_NOTE;
 pub const WITHHELD_TOAST: &str =
     "Example saved without its body: the binary body held a secret value";
 
+/// The line added to an example's description when its body was withheld unchecked.
+pub const UNCHECKED_NOTE: &str =
+    "Response body withheld: it could not be checked for secret values.";
+
+/// The toast shown after saving an example whose body was withheld unchecked.
+pub const UNCHECKED_TOAST: &str =
+    "Example saved without its body: it could not be checked for secret values";
+
+// `description` with `note` on a line of its own.
+fn with_note(description: &str, note: &str) -> String {
+    if description.is_empty() {
+        note.to_owned()
+    } else {
+        format!("{description}\n{note}")
+    }
+}
+
 // Base64 of binary bytes holds no secret text, and a replacement would corrupt it.
 fn text_body(response: &ExampleResponse) -> Option<&str> {
     (response.body.as_ref())
@@ -301,6 +318,19 @@ impl SaveExampleForm {
         }
     }
 
+    /// The secret check's line for the dialog: the secrets found, or why the check could not
+    /// run; `None` when it ran and found none.
+    pub fn finding(&self) -> Option<String> {
+        match &self.check {
+            SecretCheck::Unchecked(reason) => Some(format!(
+                "Could not check this example for secret values: {}. Saving masks \
+                 credential headers; the response body will be withheld, since it may hold one.",
+                reason.strip_suffix('.').unwrap_or(reason)
+            )),
+            _ => self.secrets_note(),
+        }
+    }
+
     // Adds or removes the note's tip in settings.json; the store saves it on its own schedule.
     fn set_dismissed(&mut self, on: bool, cx: &mut Context<Self>) {
         self.dismissed = on;
@@ -335,14 +365,11 @@ impl Render for SaveExampleForm {
             )
             .label_width(SHORT_FORM_LABEL_WIDTH)
         };
-        let finding = match (&self.check, self.secrets_note()) {
-            (_, Some(note)) => Some(("example-secrets", note)),
-            (SecretCheck::Unchecked(reason), None) => Some((
-                "example-unchecked",
-                format!("Could not check this example for secret values: {reason}"),
-            )),
-            _ => None,
+        let id = match self.check {
+            SecretCheck::Unchecked(_) => "example-unchecked",
+            _ => "example-secrets",
         };
+        let finding = self.finding().map(|text| (id, text));
         v_flex()
             .id("save-example-form")
             .gap(SPACE_2)
@@ -380,7 +407,8 @@ impl Render for SaveExampleForm {
 
 /// Opens "Save response as example" over `window` (root id `save-example-dialog`, buttons
 /// `save-example-cancel` / `save-example-save`, plus `example-keep-secrets` when secrets were
-/// found); yields the answer on Save, Enter or Keep values, `None` on Cancel or Escape.
+/// found or the check could not run); yields the answer on Save, Enter or Keep values, `None`
+/// on Cancel or Escape.
 pub fn ask(
     form: Entity<SaveExampleForm>,
     window: &mut Window,
@@ -408,7 +436,7 @@ pub fn ask(
             let on_ok = save.clone();
             let cancel_tx = tx.clone();
             let click_tx = tx.clone();
-            let keep = builder_form.read(cx).secrets_note().is_some().then(|| {
+            let keep = builder_form.read(cx).finding().is_some().then(|| {
                 let (tx, form) = (tx.clone(), builder_form.clone());
                 Button::new("example-keep-secrets")
                     .label("Keep values")
@@ -553,7 +581,7 @@ pub fn save_as_example(
             };
             let mut response = response;
             let mut description = answer.description;
-            let mut withheld = false;
+            let mut toast = None;
             if answer.keep_secrets {
                 if !confirm_keep(cx).await {
                     return;
@@ -562,8 +590,17 @@ pub fn save_as_example(
                 // Masking needs no secrets, so it also runs when the lookup failed; a withheld
                 // body is named in the description.
                 let scrubbed = response.scrub(secrets.as_deref().ok());
-                withheld = scrubbed.withheld;
                 description = scrubbed.description(&description);
+                if scrubbed.withheld {
+                    toast = Some(WITHHELD_TOAST);
+                } else if secrets.is_err()
+                    && response.body.take_if(|b| !b.data.is_empty()).is_some()
+                {
+                    // An unchecked body may hold a secret in any form, so none is written; an
+                    // empty one has nothing to withhold.
+                    description = with_note(&description, UNCHECKED_NOTE);
+                    toast = Some(UNCHECKED_TOAST);
+                }
             }
             let draft_key = item.clone();
             // The request may have been renamed while the dialog was open; its tab follows the
@@ -578,11 +615,9 @@ pub fn save_as_example(
                 response,
             };
             let sent = workspace.update(cx, |w, cx| w.send(&root, Command::Tree(op), cx));
-            if withheld {
-                cx.update(|window, cx| {
-                    window.push_notification(ui::info_toast(WITHHELD_TOAST), cx)
-                })
-                .ok();
+            if let Some(toast) = toast {
+                cx.update(|window, cx| window.push_notification(ui::info_toast(toast), cx))
+                    .ok();
             }
             if let Some(id) = sent {
                 drop_draft_once_added(&workspace, root, draft_key, id, cx).await;
