@@ -701,10 +701,13 @@ fn close_returns(returns: &mut Vec<(usize, usize, usize)>, src: &str, at: usize,
 }
 
 /// Where the argument of a `return` whose keyword ends at `from` ends, when the statement
-/// has an argument and no `;`. Line breaks end it as automatic semicolon insertion does.
+/// has an argument and no `;`. A line break ends it only where the next line surely starts a
+/// new statement; where that is unsure, `None`, since a wrong `;` breaks the script.
 fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
     let b = src.as_bytes();
-    let (mut i, mut end, mut after_op) = (from, None, false);
+    // `after_op`: the last token leaves the expression open; `postfix`: it was `++` or `--`,
+    // after which a line break may or may not end the statement.
+    let (mut i, mut end, mut after_op, mut postfix) = (from, None, false, false);
     loop {
         let ws = i;
         i = skip_ws(b, i);
@@ -720,13 +723,16 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
             continue;
         }
         if broke {
-            let continues = b".([`?&|,=+-*/%<>:".contains(&c);
-            match end {
-                Some(e) if !after_op && !continues => return Some(e),
-                None => return None,
-                Some(_) => {}
+            let e = end?;
+            if postfix {
+                return None;
+            }
+            if !after_op && !continues_line(src, i) {
+                let starts_statement = c == b'}' || (is_ident_byte(c) && !c.is_ascii_digit());
+                return starts_statement.then_some(e);
             }
         }
+        postfix = false;
         match c {
             b';' => return None,
             b')' | b']' | b'}' => return end,
@@ -736,8 +742,12 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
                 after_op = false;
             }
             _ if is_ident_byte(c) => {
-                i = ident_end(b, i);
-                after_op = false;
+                let e = ident_end(b, i);
+                after_op = matches!(
+                    &src[i..e],
+                    "in" | "instanceof" | "typeof" | "void" | "delete" | "new" | "await" | "yield"
+                );
+                i = e;
             }
             _ => match skip_opaque(src, i) {
                 Some(e) => {
@@ -745,12 +755,33 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
                     after_op = false;
                 }
                 None => {
-                    i += 1;
-                    after_op = true;
+                    postfix = matches!(&src[i..], s if s.starts_with("++") || s.starts_with("--"))
+                        && !after_op;
+                    if postfix {
+                        i += 2;
+                        after_op = false;
+                    } else {
+                        i += 1;
+                        after_op = true;
+                    }
                 }
             },
         }
         end = Some(i);
+    }
+}
+
+/// Whether the line starting at `i` carries on the expression before it: a binary operator,
+/// a member access, a call or template, or the words `in` and `instanceof`.
+fn continues_line(src: &str, i: usize) -> bool {
+    let b = src.as_bytes();
+    match b[i] {
+        b'+' | b'-' => b.get(i + 1) != Some(&b[i]),
+        b'!' => b.get(i + 1) == Some(&b'='),
+        b'.' | b'(' | b'[' | b'`' | b'?' | b'&' | b'|' | b',' | b'=' | b'*' | b'/' | b'%'
+        | b'<' | b'>' | b':' | b'^' => true,
+        c if is_ident_byte(c) => matches!(&src[i..ident_end(b, i)], "in" | "instanceof"),
+        _ => false,
     }
 }
 
@@ -2045,6 +2076,11 @@ mod tests {
                 "  const o = { a: ok ? res => res.code : res.code };",
                 "  const o = { a: ok ? res => res.code : res.status };",
             ),
+            // A line break starts a declaration in code without semicolons.
+            (
+                "  function g() {\n    const x = 1\n    function res() {}\n    return res.json()\n  }\n  res.json()",
+                "  function g() {\n    const x = 1\n    function res() {}\n    return res.json()\n  }\n  res.data",
+            ),
             // A declaration in the callback's own scope does not count, even in its own body.
             (
                 "  function res2() {}\n  function res() {\n    return res.code;\n  }\n  console.log(res.code);",
@@ -2196,6 +2232,57 @@ mod tests {
     }
 
     /// Reprinting never touches what is not a statement boundary of the changed list.
+    #[test]
+    fn a_return_continued_on_the_next_line_gets_its_semicolon_at_the_end() {
+        // Outputs produced by the reference on the same input.
+        for (next, out) in [
+            ("!== 200", "res.getStatus()\n    !== 200;"),
+            ("!= 200", "res.getStatus()\n    != 200;"),
+            ("^ 1", "res.getStatus()\n    ^ 1;"),
+        ] {
+            let src = format!("function f() {{\n  return pm.response.code\n    {next}\n}}");
+            assert_eq!(
+                t(&src),
+                format!("function f() {{\n  return {out}\n}}"),
+                "{src}"
+            );
+        }
+        assert_eq!(
+            t("function f() {\n  return pm.response.json()\n    instanceof Object\n}"),
+            "function f() {\n  return res.getBody()\n    instanceof Object;\n}"
+        );
+        assert_eq!(
+            t("function f() {\n  return pm.response.headers.has('a')\n    in o\n}"),
+            "function f() {\n  return res.headerList.has('a')\n    in o;\n}"
+        );
+        assert_eq!(
+            t("function f() {\n  return pm.response.code\n  g()\n}"),
+            "function f() {\n  return res.getStatus();\n  g()\n}"
+        );
+    }
+
+    /// Where the next line may or may not continue the argument, no `;` is added: a missing
+    /// one is cosmetic, a wrong one breaks the script.
+    #[test]
+    fn a_return_whose_end_is_uncertain_gets_no_semicolon() {
+        for next in ["!x", "~x", "++x", "--x", "'s'", "\"s\"", "5"] {
+            let src = format!("function f() {{\n  return pm.response.code\n  {next}\n}}");
+            let want = format!("function f() {{\n  return res.getStatus()\n  {next}\n}}");
+            assert_eq!(t(&src), want, "{src}");
+        }
+        for tail in ["a++", "a--"] {
+            let src = format!("function f() {{\n  return pm.response.code + {tail}\n  g()\n}}");
+            let want = format!("function f() {{\n  return res.getStatus() + {tail}\n  g()\n}}");
+            assert_eq!(t(&src), want, "{src}");
+        }
+        // A word operator at the end of a line carries the argument on to the next.
+        for tail in ["typeof", "a instanceof", "void", "a in"] {
+            let src = format!("function f() {{\n  return pm.response.code + {tail}\n  g()\n}}");
+            let want = format!("function f() {{\n  return res.getStatus() + {tail}\n  g();\n}}");
+            assert_eq!(t(&src), want, "{src}");
+        }
+    }
+
     #[test]
     fn reprints_keep_what_they_must() {
         for (src, want) in [

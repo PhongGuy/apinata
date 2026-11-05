@@ -934,10 +934,30 @@ fn function_named(b: &[u8], i: usize) -> Option<bool> {
     if prev_word(b, kw) == "async" {
         kw = prev_significant(b, kw).map_or(0, |(k, _)| k + 1 - "async".len());
     }
-    Some(matches!(
-        prev_significant(b, kw),
-        None | Some((_, b';' | b'{' | b'}'))
-    ))
+    Some(match prev_significant(b, kw) {
+        None | Some((_, b';' | b'{' | b'}')) => true,
+        // Without semicolons, a line break after a finished expression starts a statement.
+        Some((k, c)) if b[k + 1..kw].contains(&b'\n') => match c {
+            b')' | b']' | b'\'' | b'"' | b'`' => true,
+            c if is_ident_byte(c) => !matches!(
+                prev_word(b, k + 1),
+                "in" | "instanceof"
+                    | "typeof"
+                    | "void"
+                    | "delete"
+                    | "new"
+                    | "await"
+                    | "yield"
+                    | "return"
+                    | "throw"
+                    | "case"
+                    | "else"
+                    | "do"
+            ),
+            _ => false,
+        },
+        _ => false,
+    })
 }
 
 /// Whether the `?` at `i` opens a conditional rather than being part of `?.` or `??`.
