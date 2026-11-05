@@ -59,14 +59,83 @@ pub async fn fetch_schema(
     fetch_introspection(executor, req, cancel)
         .await
         .map(Introspection::into_schema)
+        .map_err(IntrospectError::into_error)
 }
 
-/// A checked introspection answer: the JSON text as received and the schema parsed from it.
-#[derive(Debug, Clone, PartialEq)]
+/// A checked introspection answer: the JSON text as received, the schema parsed from it, and
+/// the credentials the send placed, which any output of the answer must be scrubbed of.
+#[derive(Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Introspection {
     text: String,
     schema: Schema,
+    derived: Vec<String>,
+}
+
+impl std::fmt::Debug for Introspection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Introspection")
+            .field("text_bytes", &self.text.len())
+            .field("schema", &self.schema)
+            .field("derived_credentials", &self.derived.len())
+            .finish()
+    }
+}
+
+/// A failed introspection with the credentials the send placed (an OAuth 2.0 token,
+/// signatures), so a message that echoes one can still be scrubbed.
+#[derive(Clone)]
+#[non_exhaustive]
+pub struct IntrospectError {
+    error: SchemaError,
+    derived: Vec<String>,
+}
+
+impl IntrospectError {
+    /// Why the introspection failed.
+    pub fn error(&self) -> &SchemaError {
+        &self.error
+    }
+
+    /// The error, dropping the credentials.
+    pub fn into_error(self) -> SchemaError {
+        self.error
+    }
+
+    /// The credentials the send placed; empty when nothing was placed.
+    pub fn derived_credentials(&self) -> &[String] {
+        &self.derived
+    }
+}
+
+impl From<SchemaError> for IntrospectError {
+    fn from(error: SchemaError) -> IntrospectError {
+        IntrospectError {
+            error,
+            derived: Vec::new(),
+        }
+    }
+}
+
+impl std::fmt::Display for IntrospectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl std::fmt::Debug for IntrospectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntrospectError")
+            .field("error", &self.error)
+            .field("derived_credentials", &self.derived.len())
+            .finish()
+    }
+}
+
+impl std::error::Error for IntrospectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.error.source()
+    }
 }
 
 impl Introspection {
@@ -83,6 +152,12 @@ impl Introspection {
     /// The schema, dropping the text.
     pub fn into_schema(self) -> Schema {
         self.schema
+    }
+
+    /// The credentials the send placed (an OAuth 2.0 token, signatures); the server may echo
+    /// them, so output of the answer must be scrubbed of them.
+    pub fn derived_credentials(&self) -> &[String] {
+        &self.derived
     }
 }
 
@@ -129,15 +204,16 @@ impl std::fmt::Debug for IntrospectOptions {
 ///
 /// Fails with [`SchemaError::NotGraphql`] before anything else, [`SchemaError::Auth`] when the
 /// token cannot be had, [`SchemaError::Refused`] when the guard refuses, then as the two steps do.
+/// Once the request is resolved, an error carries the credentials placed on it.
 pub async fn introspect(
     executor: &Executor,
     req: &RequestFile,
     ctx: &VarContext,
     options: &IntrospectOptions,
     cancel: &CancelHandle,
-) -> Result<Introspection, SchemaError> {
+) -> Result<Introspection, IntrospectError> {
     if req.kind() != RequestKind::Graphql {
-        return Err(SchemaError::NotGraphql);
+        return Err(SchemaError::NotGraphql.into());
     }
     executor
         .prepare_auth(req, ctx, &options.authorize, cancel)
@@ -145,19 +221,23 @@ pub async fn introspect(
         .map_err(SchemaError::Auth)?;
     let resolved = introspection_request(req, ctx)?;
     if let Some(message) = options.guard.as_ref().and_then(|guard| guard(&resolved)) {
-        return Err(SchemaError::Refused { message });
+        return Err(IntrospectError {
+            error: SchemaError::Refused { message },
+            derived: resolved.derived().to_vec(),
+        });
     }
     fetch_introspection(executor, &resolved, cancel).await
 }
 
 /// Sends `req` with `executor` and checks the answer, keeping its text beside the [`Schema`].
 ///
-/// Fails as [`fetch_schema`] does.
+/// Fails as [`fetch_schema`] does; the error carries the credentials placed on the request, or
+/// once answered, those the response reports.
 pub async fn fetch_introspection(
     executor: &Executor,
     req: &ResolvedRequest,
     cancel: &CancelHandle,
-) -> Result<Introspection, SchemaError> {
+) -> Result<Introspection, IntrospectError> {
     let tag = SendTag {
         source: SendSource::GraphqlSchema,
         ..SendTag::default()
@@ -165,21 +245,31 @@ pub async fn fetch_introspection(
     let response = executor
         .send_as(req, cancel, &tag)
         .await
-        .map_err(SchemaError::Send)?;
-    if response.status() != 200 {
-        return Err(SchemaError::Status {
+        .map_err(|e| IntrospectError {
+            error: SchemaError::Send(e),
+            derived: req.derived().to_vec(),
+        })?;
+    let derived = response.derived_credentials().to_vec();
+    let checked = if response.status() != 200 {
+        Err(SchemaError::Status {
             status: response.status(),
             text: response.status_text().to_owned(),
-        });
-    }
-    if response.truncated() {
-        return Err(SchemaError::TooLarge {
+        })
+    } else if response.truncated() {
+        Err(SchemaError::TooLarge {
             limit: SCHEMA_BODY_LIMIT,
-        });
+        })
+    } else {
+        Schema::from_json(response.text())
+    };
+    match checked {
+        Ok(schema) => Ok(Introspection {
+            text: response.text().to_owned(),
+            schema,
+            derived,
+        }),
+        Err(error) => Err(IntrospectError { error, derived }),
     }
-    let text = response.text().to_owned();
-    let schema = Schema::from_json(&text)?;
-    Ok(Introspection { text, schema })
 }
 
 impl Schema {
@@ -194,7 +284,10 @@ impl Schema {
     /// Writes the schema as an SDL document that [`Schema::from_sdl`] reads back to the same
     /// types. Introspection types and the built-in scalars are left out, and directive
     /// definitions are not part of the model, so only `@deprecated` is written.
-    pub fn to_sdl(&self) -> String {
+    ///
+    /// Fails with [`SchemaError::NotPrintable`] when a name is not a GraphQL name, or when no
+    /// root is set but a type named Query, Mutation or Subscription would read back as one.
+    pub fn to_sdl(&self) -> Result<String, SchemaError> {
         print::print(self)
     }
 
@@ -259,6 +352,12 @@ pub enum SchemaError {
     Refused {
         /// Why the guard refused it.
         message: String,
+    },
+    /// The schema cannot be written as an SDL document that reads back the same.
+    #[error("the schema cannot be written as SDL: {detail}")]
+    NotPrintable {
+        /// What stands in the way.
+        detail: String,
     },
     /// The text is not a valid SDL schema document.
     #[error("the schema is not valid SDL at line {line}, column {column}: {detail}")]

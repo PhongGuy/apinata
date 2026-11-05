@@ -1,14 +1,17 @@
 //! The SDL printer: a [`Schema`] written as a schema document that the SDL reader turns back
 //! into the same types. Introspection types and the built-in scalars are left out.
 
+use super::SchemaError;
 use super::model::{InputValue, Schema, SchemaType, TypeKind};
 use super::sdl::{BUILT_IN_SCALARS, DEFAULT_DEPRECATION};
 
 /// The document for `schema`: a `schema` block when the roots differ from the conventional
-/// names, then each type in introspection order, separated by blank lines.
-pub(super) fn print(schema: &Schema) -> String {
+/// names, then each type in introspection order, separated by blank lines. Every name is
+/// checked first, so no name can break the document's syntax.
+pub(super) fn print(schema: &Schema) -> Result<String, SchemaError> {
+    check_names(schema)?;
     let mut blocks = Vec::new();
-    if let Some(block) = schema_block(schema) {
+    if let Some(block) = schema_block(schema)? {
         blocks.push(block);
     }
     blocks.extend(schema.types.iter().filter(|t| printed(t)).map(type_block));
@@ -16,7 +19,70 @@ pub(super) fn print(schema: &Schema) -> String {
     if !out.is_empty() {
         out.push('\n');
     }
-    out
+    Ok(out)
+}
+
+fn not_printable(detail: String) -> SchemaError {
+    SchemaError::NotPrintable { detail }
+}
+
+/// A GraphQL name: a letter or underscore, then letters, digits and underscores.
+fn is_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
+        && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
+/// Fails naming the first name of a printed type that is not a GraphQL name, or an enum value
+/// spelled `true`, `false` or `null`, which SDL reads as a literal.
+fn check_names(schema: &Schema) -> Result<(), SchemaError> {
+    let name = |what: &str, n: &str| {
+        if is_name(n) {
+            Ok(())
+        } else {
+            Err(not_printable(format!(
+                "the {what} name {n:?} is not a GraphQL name"
+            )))
+        }
+    };
+    let roots = [
+        &schema.query_type,
+        &schema.mutation_type,
+        &schema.subscription_type,
+    ];
+    for root in roots.into_iter().flatten() {
+        name("root type", root)?;
+    }
+    for ty in schema.types.iter().filter(|t| printed(t)) {
+        name("type", &ty.name)?;
+        for f in &ty.fields {
+            name("field", &f.name)?;
+            name("type", &f.ty.named)?;
+            for a in &f.args {
+                name("argument", &a.name)?;
+                name("type", &a.ty.named)?;
+            }
+        }
+        for v in &ty.input_fields {
+            name("input field", &v.name)?;
+            name("type", &v.ty.named)?;
+        }
+        for v in &ty.enum_values {
+            name("enum value", &v.name)?;
+            if matches!(v.name.as_str(), "true" | "false" | "null") {
+                return Err(not_printable(format!(
+                    "the enum value name {:?} is reserved",
+                    v.name
+                )));
+            }
+        }
+        for other in ty.interfaces.iter().chain(&ty.possible_types) {
+            name("type", other)?;
+        }
+    }
+    Ok(())
 }
 
 fn printed(ty: &SchemaType) -> bool {
@@ -25,8 +91,9 @@ fn printed(ty: &SchemaType) -> bool {
 }
 
 /// A `schema` block when reading the document back without one would infer other roots, since
-/// the reader defaults each root to the type named Query, Mutation or Subscription.
-fn schema_block(schema: &Schema) -> Option<String> {
+/// the reader defaults each root to the type named Query, Mutation or Subscription. With no
+/// root at all a block cannot be written, so such a schema fails instead.
+fn schema_block(schema: &Schema) -> Result<Option<String>, SchemaError> {
     let roots = [
         ("query", &schema.query_type, "Query"),
         ("mutation", &schema.mutation_type, "Mutation"),
@@ -40,7 +107,17 @@ fn schema_block(schema: &Schema) -> Option<String> {
         .iter()
         .filter_map(|(op, root, _)| root.as_ref().map(|r| format!("  {op}: {r}\n")))
         .collect();
-    (!conventional && !lines.is_empty()).then(|| format!("schema {{\n{}}}", lines.concat()))
+    if conventional {
+        return Ok(None);
+    }
+    if lines.is_empty() {
+        return Err(not_printable(
+            "it has no root types, yet a type named Query, Mutation or Subscription would read \
+             back as one"
+                .to_owned(),
+        ));
+    }
+    Ok(Some(format!("schema {{\n{}}}", lines.concat())))
 }
 
 fn type_block(ty: &SchemaType) -> String {

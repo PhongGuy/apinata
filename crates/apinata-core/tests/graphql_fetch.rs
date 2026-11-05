@@ -7,7 +7,8 @@ use crate::oauth2_support;
 use std::sync::Arc;
 
 use apinata_core::{
-    CancelHandle, ExecError, IntrospectOptions, OAuth2Error, Schema, SchemaError, introspect,
+    CancelHandle, ExecError, IntrospectError, IntrospectOptions, OAuth2Error, Schema, SchemaError,
+    introspect,
 };
 use common::setup;
 use oauth2_support::{
@@ -49,7 +50,9 @@ async fn fetch(
         ("g.yml", &graphql_file(url, "")),
     ]);
     let req = common::request(&c, "g.yml");
-    introspect(&executor(), req, &ctx, options, &CancelHandle::new()).await
+    introspect(&executor(), req, &ctx, options, &CancelHandle::new())
+        .await
+        .map_err(IntrospectError::into_error)
 }
 
 #[tokio::test]
@@ -139,7 +142,8 @@ async fn an_http_request_has_no_schema() {
         &CancelHandle::new(),
     )
     .await
-    .unwrap_err();
+    .unwrap_err()
+    .into_error();
     assert!(matches!(err, SchemaError::NotGraphql), "{err:?}");
 }
 
@@ -210,12 +214,113 @@ async fn a_failed_token_fetch_is_an_auth_error() {
         &CancelHandle::new(),
     )
     .await
-    .unwrap_err();
+    .unwrap_err()
+    .into_error();
     assert!(
         matches!(
             err,
             SchemaError::Auth(OAuth2Error::Provider { status: 401, .. })
         ),
         "{err:?}"
+    );
+}
+
+/// A client-credentials GraphQL request on `server`, whose introspection gets `answer`.
+async fn token_echo(server: &MockServer, answer: ResponseTemplate) -> Fixture {
+    on_grant(
+        server,
+        "client_credentials",
+        token_response(json!({"expires_in": 3600})),
+        1,
+    )
+    .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .respond_with(answer)
+        .mount(server)
+        .await;
+    let auth = format!("  auth:\n{}", client_credentials(&server.uri(), ""));
+    let file = graphql_file(&format!("{}/graphql", server.uri()), &auth);
+    Fixture::new(&[("opencollection.yml", ROOT), ("g.yml", &file)])
+}
+
+#[tokio::test]
+async fn an_answer_carries_the_token_placed_on_the_request() {
+    let server = MockServer::start().await;
+    let f = token_echo(
+        &server,
+        ResponseTemplate::new(200).set_body_string(fixture_json()),
+    )
+    .await;
+    let got = introspect(
+        &executor(),
+        f.request("g.yml"),
+        &f.ctx,
+        &IntrospectOptions::new(),
+        &CancelHandle::new(),
+    )
+    .await
+    .expect("a schema");
+    assert!(
+        got.derived_credentials().iter().any(|v| v == TOKEN),
+        "token not carried"
+    );
+}
+
+#[tokio::test]
+async fn a_failed_answer_carries_the_token_too() {
+    let server = MockServer::start().await;
+    let echo = format!(r#"{{"errors":[{{"message":"bad token {TOKEN}"}}]}}"#);
+    let f = token_echo(&server, ResponseTemplate::new(200).set_body_string(echo)).await;
+    let err = introspect(
+        &executor(),
+        f.request("g.yml"),
+        &f.ctx,
+        &IntrospectOptions::new(),
+        &CancelHandle::new(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.derived_credentials().iter().any(|v| v == TOKEN),
+        "token not carried"
+    );
+    assert!(
+        matches!(err.error(), SchemaError::Graphql { .. }),
+        "{:?}",
+        err.error()
+    );
+}
+
+#[tokio::test]
+async fn a_send_failure_carries_the_token_too() {
+    let server = MockServer::start().await;
+    on_grant(
+        &server,
+        "client_credentials",
+        token_response(json!({"expires_in": 3600})),
+        1,
+    )
+    .await;
+    let auth = format!("  auth:\n{}", client_credentials(&server.uri(), ""));
+    let file = graphql_file("http://127.0.0.1:1/graphql", &auth);
+    let f = Fixture::new(&[("opencollection.yml", ROOT), ("g.yml", &file)]);
+    let err = introspect(
+        &executor(),
+        f.request("g.yml"),
+        &f.ctx,
+        &IntrospectOptions::new(),
+        &CancelHandle::new(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err.error(), SchemaError::Send(_)),
+        "{:?}",
+        err.error()
+    );
+    assert!(
+        err.derived_credentials().iter().any(|v| v == TOKEN),
+        "token not carried"
     );
 }

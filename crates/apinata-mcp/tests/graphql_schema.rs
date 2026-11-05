@@ -146,3 +146,76 @@ async fn a_secret_the_server_echoes_is_scrubbed() {
     let seen = up.received_requests().await.unwrap();
     assert_eq!(seen[0].headers.get("x-key").unwrap(), "cli-Secret-5");
 }
+
+const TOKEN: &str = "tok-echo-4f1c-SECRET";
+
+/// A client-credentials GraphQL request whose token comes from `token_url`, introspected at
+/// `server`'s `/graphql`.
+fn oauth_request(server_uri: &str, token_url: &str) -> String {
+    let auth = format!(
+        "  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: \"{token_url}\"\n    credentials:\n      clientId: app\n      clientSecret: cs-77aa-SECRET\n    scope: read\n    tokenConfig:\n      id: main\n      placement:\n        header: Bearer\n"
+    );
+    graphql(&format!("{server_uri}/graphql"), &auth)
+}
+
+/// A server issuing TOKEN at `/token` and answering introspection with `answer`.
+async fn token_server(answer: ResponseTemplate) -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"access_token": TOKEN, "token_type": "Bearer", "expires_in": 3600}),
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .respond_with(answer)
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn a_token_echoed_in_a_graphql_error_is_scrubbed() {
+    let echo = format!(r#"{{"errors":[{{"message":"bad token {TOKEN}"}}]}}"#);
+    let up = token_server(ResponseTemplate::new(200).set_body_string(echo)).await;
+    let file = oauth_request(&up.uri(), &format!("{}/token", up.uri()));
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("g.yml", &file)]).await;
+    let message = server.err("graphql_schema", json!({"path": "g.yml"})).await;
+    assert!(message.contains("bad token"), "{message}");
+    assert!(!message.contains(TOKEN), "{message}");
+}
+
+#[tokio::test]
+async fn a_token_echoed_in_the_schema_text_is_scrubbed() {
+    let body = SCHEMA.replace("DESC", TOKEN);
+    let up = token_server(ResponseTemplate::new(200).set_body_string(body)).await;
+    let file = oauth_request(&up.uri(), &format!("{}/token", up.uri()));
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("g.yml", &file)]).await;
+    for format in ["sdl", "json"] {
+        let got = server
+            .ok("graphql_schema", json!({"path": "g.yml", "format": format}))
+            .await;
+        let shown = serde_json::to_string(&got).unwrap();
+        assert!(shown.contains("Query"), "{shown}");
+        assert!(!shown.contains(TOKEN), "{shown}");
+    }
+}
+
+#[tokio::test]
+async fn a_non_local_token_url_files_an_approval_and_sends_nothing() {
+    let up = upstream(ResponseTemplate::new(200).set_body_string(SCHEMA)).await;
+    let file = oauth_request(&up.uri(), "https://auth.example.com/token");
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("g.yml", &file)]).await;
+    let message = server.err("graphql_schema", json!({"path": "g.yml"})).await;
+    assert!(message.contains("`auth.example.com`"), "{message}");
+    assert!(
+        message.contains("retry after the user approves"),
+        "{message}"
+    );
+    let pending = server.inbox().pending().expect("inbox");
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert_eq!(pending[0].host, "auth.example.com");
+    assert!(up.received_requests().await.unwrap().is_empty());
+}

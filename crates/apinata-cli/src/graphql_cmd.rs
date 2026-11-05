@@ -9,7 +9,8 @@ use std::time::Duration;
 use anyhow::{Context, anyhow};
 use apinata_core::{
     CancelHandle, ContextOptions, ExecOptions, Executor, IntrospectOptions, NamedSecret,
-    OAuth2Error, SCHEMA_BODY_LIMIT, SchemaError, introspect, known_secrets, replace_secrets,
+    OAuth2Error, SCHEMA_BODY_LIMIT, SchemaError, derived_secrets, introspect, known_secrets,
+    replace_secrets,
 };
 use clap::{Subcommand, ValueEnum};
 
@@ -143,18 +144,23 @@ fn fetch(args: &SchemaArgs, secrets: &mut Vec<NamedSecret>) -> Result<(), Failur
         .enable_all()
         .build()
         .map_err(|e| anyhow!(e))?;
-    let answer = runtime
-        .block_on(introspect(
-            &executor,
-            file,
-            &target.ctx,
-            &IntrospectOptions::new(),
-            &CancelHandle::new(),
-        ))
-        .map_err(failure)?;
+    let answer = runtime.block_on(introspect(
+        &executor,
+        file,
+        &target.ctx,
+        &IntrospectOptions::new(),
+        &CancelHandle::new(),
+    ));
+    // The placed token and signatures are hidden too, since the server may echo them.
+    let placed = match &answer {
+        Ok(answer) => answer.derived_credentials(),
+        Err(e) => e.derived_credentials(),
+    };
+    secrets.extend(derived_secrets(placed));
+    let answer = answer.map_err(|e| failure(e.into_error()))?;
     let mut text = match args.format {
         SchemaFormat::Json => answer.text().to_owned(),
-        SchemaFormat::Sdl => answer.schema().to_sdl(),
+        SchemaFormat::Sdl => answer.schema().to_sdl().map_err(failure)?,
     };
     if !text.ends_with('\n') {
         text.push('\n');
@@ -168,7 +174,8 @@ fn fetch(args: &SchemaArgs, secrets: &mut Vec<NamedSecret>) -> Result<(), Failur
     Ok(())
 }
 
-/// The exit code a schema error ends with: 1 for an answer without a schema, 2 for no answer.
+/// The exit code a schema error ends with: 1 for an answer without a schema, 2 for no answer
+/// or a failed token fetch, as `run` counts a token failure as errored.
 fn failure(e: SchemaError) -> Failure {
     let code = match &e {
         SchemaError::Status { .. }
@@ -176,8 +183,9 @@ fn failure(e: SchemaError) -> Failure {
         | SchemaError::NotJson { .. }
         | SchemaError::NoData
         | SchemaError::Graphql { .. }
-        | SchemaError::Invalid { .. } => EXIT_NO_SCHEMA,
-        SchemaError::Send(_) | SchemaError::Auth(OAuth2Error::Exec(_)) => EXIT_NO_RESPONSE,
+        | SchemaError::Invalid { .. }
+        | SchemaError::NotPrintable { .. } => EXIT_NO_SCHEMA,
+        SchemaError::Send(_) | SchemaError::Auth(_) => EXIT_NO_RESPONSE,
         _ => EXIT_USAGE,
     };
     let message = match &e {

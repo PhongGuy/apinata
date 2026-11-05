@@ -140,7 +140,7 @@ enum Command {
     #[command(after_help = "Exit codes:\n  \
         0  printed or written\n  \
         1  the server answered without a schema (an error status, not JSON, GraphQL errors)\n  \
-        2  the request errored (no response)\n  \
+        2  the request or its token fetch errored (no response)\n  \
         3  usage, collection or resolve error, not a GraphQL request, or the file could not \
         be written")]
     Graphql(graphql_cmd::GraphqlArgs),

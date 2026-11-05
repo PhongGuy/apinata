@@ -189,9 +189,9 @@ pub use git::{
 };
 pub use global_env::GlobalEnvironments;
 pub use graphql_schema::{
-    Completion, CompletionKind, EnumValue, Field, INTROSPECTION_QUERY, InputValue, IntrospectGuard,
-    IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT, SCHEMA_TIMEOUT, Schema, SchemaError,
-    SchemaType, TypeKind, TypeRef, fetch_introspection, fetch_schema, introspect,
+    Completion, CompletionKind, EnumValue, Field, INTROSPECTION_QUERY, InputValue, IntrospectError,
+    IntrospectGuard, IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT, SCHEMA_TIMEOUT, Schema,
+    SchemaError, SchemaType, TypeKind, TypeRef, fetch_introspection, fetch_schema, introspect,
     introspection_request,
 };
 pub use header_check::{HeaderNameProblem, invalid_header_name};

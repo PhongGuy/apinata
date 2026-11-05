@@ -72,16 +72,18 @@ pub(crate) fn doc(
     format: &str,
     max_bytes: Option<u64>,
     redactor: &Redactor,
-) -> GraphqlSchemaDoc {
+) -> Result<GraphqlSchemaDoc, String> {
     let schema = answer.schema();
     let text = match format {
         "json" => answer.text().to_owned(),
-        _ => schema.to_sdl(),
+        _ => schema
+            .to_sdl()
+            .map_err(|e| format!("{e}; ask for `format` `json` instead"))?,
     };
     let max = max_bytes.unwrap_or(DEFAULT_BODY_BYTES).min(MAX_BODY_BYTES);
     let (shown, truncated) =
         redactor.scrub_cut(&text, usize::try_from(max).unwrap_or(usize::MAX), false);
-    GraphqlSchemaDoc {
+    Ok(GraphqlSchemaDoc {
         query_type: schema.query_type().map(str::to_owned),
         mutation_type: schema.mutation_type().map(str::to_owned),
         subscription_type: schema.subscription_type().map(str::to_owned),
@@ -90,7 +92,7 @@ pub(crate) fn doc(
         text: shown,
         total_bytes: text.len() as u64,
         truncated,
-    }
+    })
 }
 
 /// A failed fetch as one line. A refused host goes to the trust policy, which files the same

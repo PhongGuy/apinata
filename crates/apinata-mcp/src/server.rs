@@ -942,14 +942,22 @@ impl ApinataServer {
         let options = IntrospectOptions::new().guard(guard);
         let result = introspect(&exec, &file, &ctx, &options, &cancel).await;
         watcher.abort();
+        // The placed token and signatures join the session redactor before any text is shown,
+        // since the server may echo them in the answer or an error.
+        let mut placed = Redactor::default();
+        placed.add_values(match &result {
+            Ok(answer) => answer.derived_credentials(),
+            Err(e) => e.derived_credentials(),
+        });
+        self.remember(&placed);
         if ct.is_cancelled() {
             return Err("cancelled; the request may not have been sent".to_owned());
         }
         let seen = self.seen();
         match result {
-            Ok(answer) => Ok(Json(graphql::doc(&answer, format, max_bytes, &seen))),
+            Ok(answer) => graphql::doc(&answer, format, max_bytes, &seen).map(Json),
             Err(e) => Err(graphql::message(
-                e,
+                e.into_error(),
                 &item,
                 &file,
                 &ctx,
