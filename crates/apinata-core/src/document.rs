@@ -570,6 +570,16 @@ impl Document {
         &self.root
     }
 
+    /// Replace the whole draft tree; the saved snapshot is untouched.
+    pub(crate) fn set_mapping(&mut self, root: Mapping) {
+        self.root = root;
+    }
+
+    /// Whether the draft tree is `other`, key order included.
+    pub(crate) fn holds(&self, other: &Mapping) -> bool {
+        same_tree(&self.root, other)
+    }
+
     /// Hash of the bytes last read from or written to disk; `None` for a file not yet on disk.
     pub(crate) fn loaded_hash(&self) -> Option<u64> {
         self.loaded_hash

@@ -181,6 +181,27 @@ impl ImportedRequest {
         Ok(notes)
     }
 
+    /// This request as a GraphQL request when its body is a GraphQL query: a JSON `query` and
+    /// `variables` payload or an `application/graphql` body. The raw-query Content-Type goes,
+    /// since a GraphQL request sends JSON. `None` for any other body.
+    pub fn as_graphql(&self) -> Option<ImportedRequest> {
+        if self.kind == RequestKind::Graphql {
+            return Some(self.clone());
+        }
+        let content_type = crate::kind_convert::content_type(&self.headers);
+        let (query, variables) = crate::kind_convert::graphql_payload(&self.body, content_type)?;
+        let raw_query = crate::kind_convert::is_graphql_type(content_type);
+        let mut graphql = self.clone();
+        graphql.kind = RequestKind::Graphql;
+        graphql.body = BodySpec::Graphql { query, variables };
+        if raw_query {
+            graphql
+                .headers
+                .retain(|h| !h.name.eq_ignore_ascii_case("content-type"));
+        }
+        Some(graphql)
+    }
+
     /// What applying this request to a request of `kind` leaves out: a body pasted into a
     /// GraphQL request is not applied.
     pub fn notes_on(&self, kind: RequestKind) -> Vec<ImportNote> {
