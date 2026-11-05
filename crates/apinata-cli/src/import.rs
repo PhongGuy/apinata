@@ -79,7 +79,8 @@ pub struct CollectionArgs {
     pub update: bool,
     /// With `--update`, also move to the system trash requests whose operation left the
     /// description, when they are still as generated. Refused when no trash is available.
-    /// `apinata item restore --pruned` puts them back.
+    /// `apinata item restore --pruned` puts them back; a restored request is then yours and
+    /// later updates leave it alone (delete it and update again to track it).
     #[arg(long, requires = "update")]
     pub prune: bool,
     /// A folder of the existing collection `--into` names, as a path below its root. On its
