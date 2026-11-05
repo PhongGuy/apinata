@@ -766,3 +766,18 @@ fn commit_json_has_the_short_id_and_subject() {
         json!({"short_id": sb.short_head(&col), "subject": "json"})
     );
 }
+
+#[test]
+fn commit_refuses_a_parent_or_absolute_path_outside_the_collection() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    let elsewhere = sb.path().display().to_string();
+    for path in ["../x.yml", elsewhere.as_str()] {
+        let out = cli(&sb, &col)
+            .args(["git", "commit", "-m", "m", path])
+            .assert()
+            .code(3);
+        assert!(stderr(&out).contains("outside the collection"), "{path}");
+    }
+    assert_eq!(head_subject(&sb, &col), "base");
+}

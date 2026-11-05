@@ -4,8 +4,8 @@
 use std::path::{Component, Path, PathBuf};
 
 use apinata_core::{
-    FileDiff, GitError, GitOptions, GitState, StageState, collection_status_with, commit,
-    file_diff_with, stage,
+    FileDiff, FileStatus, GitError, GitOptions, GitState, StageState, collection_status_with,
+    commit, file_diff_with, stage,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -123,18 +123,40 @@ pub(crate) fn commit_paths(
         _ => return Err(format!("{} is not in a git repository.", root.display())),
     };
     if let Some(paths) = &args.paths {
+        if paths.is_empty() {
+            return Err("paths must not be empty; omit it to commit what is staged".to_owned());
+        }
+        if repo.truncated {
+            return Err(
+                "too many changes to check for other staged files; commit them in \
+                        the app or a terminal"
+                    .to_owned(),
+            );
+        }
         let wanted: Vec<PathBuf> = paths.iter().map(|p| plain(p)).collect();
-        // `.` is the whole collection, so every file counts as named.
+        let named = |file: &Path| {
+            wanted
+                .iter()
+                .any(|w| w == Path::new(".") || file.starts_with(w))
+        };
+        // A staged rename also removes its original path, so that must be named too.
         let others: Vec<String> = repo
             .stage
             .iter()
             .filter(|(_, s)| !matches!(s, StageState::Unstaged))
             .filter(|(file, _)| {
-                !wanted
-                    .iter()
-                    .any(|w| w == Path::new(".") || file.starts_with(w))
+                let from = match repo.files.get(*file) {
+                    Some(FileStatus::Renamed { from }) => Some(from),
+                    _ => None,
+                };
+                !named(file) || from.is_some_and(|f| !named(f))
             })
-            .map(|(file, _)| file.display().to_string())
+            .map(|(file, _)| match repo.files.get(file) {
+                Some(FileStatus::Renamed { from }) if !named(from) => {
+                    format!("{} (renamed from {})", file.display(), from.display())
+                }
+                _ => file.display().to_string(),
+            })
             .collect();
         if !others.is_empty() {
             return Err(format!(
@@ -145,6 +167,8 @@ pub(crate) fn commit_paths(
         }
         stage(root, &wanted, options).map_err(|e| e.to_string())?;
     }
+    // A file staged between the status read and the commit would still be committed; the window
+    // is narrow and the commit only ever holds collection files.
     let done = commit(root, &args.message, options).map_err(|e| e.to_string())?;
     Ok(CommitDoc {
         short_id: done.short_id,

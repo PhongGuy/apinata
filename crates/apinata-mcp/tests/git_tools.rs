@@ -306,3 +306,79 @@ async fn git_commit_outside_a_repository_says_so() {
         format!("{} is not in a git repository.", server.root().display())
     );
 }
+
+#[tokio::test]
+async fn git_commit_with_paths_refuses_when_the_status_list_is_truncated() {
+    let sb = Sandbox::new();
+    let server = TestServer::start_with(
+        &[
+            ("opencollection.yml", ROOT),
+            ("a.yml", "info:\n  name: a\n"),
+            ("b.yml", "info:\n  name: b\n"),
+        ],
+        |options| {
+            let git = git_options(&sb, options.root()).file_cap(1);
+            options.git(git)
+        },
+    )
+    .await;
+    sb.git(server.root(), &["init", "-q", "-b", "main"]);
+    sb.commit_all(server.root(), "base");
+    server.write("a.yml", "info:\n  name: a2\n");
+    server.write("b.yml", "info:\n  name: b2\n");
+    sb.git(server.root(), &["add", "a.yml", "b.yml"]);
+    let err = server
+        .err("git_commit", json!({"message": "m", "paths": ["a.yml"]}))
+        .await;
+    assert!(err.contains("too many changes"), "{err}");
+    assert_eq!(head_subject(&sb, server.root()), "base");
+}
+
+#[tokio::test]
+async fn git_commit_counts_a_rename_from_outside_the_paths_as_other_staged() {
+    let sb = Sandbox::new();
+    let server = serve(
+        &sb,
+        &[
+            ("opencollection.yml", ROOT),
+            ("a.yml", "info:\n  name: a\n"),
+        ],
+    )
+    .await;
+    sb.git(server.root(), &["init", "-q", "-b", "main"]);
+    sb.commit_all(server.root(), "base");
+    server.write("users/keep.yml", "info:\n  name: keep\n");
+    sb.git(server.root(), &["mv", "a.yml", "users/x.yml"]);
+    let err = server
+        .err("git_commit", json!({"message": "m", "paths": ["users"]}))
+        .await;
+    assert!(err.contains("a.yml"), "{err}");
+    assert_eq!(head_subject(&sb, server.root()), "base");
+}
+
+#[tokio::test]
+async fn git_commit_with_empty_paths_is_refused() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    let err = server
+        .err("git_commit", json!({"message": "m", "paths": []}))
+        .await;
+    assert!(err.contains("paths must not be empty"), "{err}");
+}
+
+#[tokio::test]
+async fn git_commit_refuses_parent_and_absolute_paths() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    let outside = sb.path().display().to_string();
+    for path in ["../x.yml", outside.as_str()] {
+        let err = server
+            .err("git_commit", json!({"message": "m", "paths": [path]}))
+            .await;
+        assert!(
+            err.contains("not a path inside the collection"),
+            "{path}: {err}"
+        );
+    }
+    assert_eq!(head_subject(&sb, server.root()), "base");
+}
