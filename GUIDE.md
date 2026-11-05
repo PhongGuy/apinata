@@ -725,6 +725,11 @@ The agent can write a request as code with `generate_code`, in any
 target `apinata gen` knows. Secret values come out as `<secret>`, and nothing
 is sent.
 
+`graphql_schema` fetches a GraphQL request's schema by introspection, as
+`apinata graphql schema` does, and returns it as SDL or as the JSON answer. It
+sends like `send_request`, so a host other than a local one needs the same
+approval.
+
 The agent can also start the same mock server `apinata mock` runs from the
 collection's saved examples with `mock_start`, read what it was asked with
 `mock_hits`, and stop it with `mock_stop`. The mock always listens on

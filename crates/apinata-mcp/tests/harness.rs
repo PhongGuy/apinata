@@ -62,6 +62,7 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "get_collection",
             "git_diff",
             "git_status",
+            "graphql_schema",
             "import_collection",
             "import_request",
             "list_cookies",
@@ -109,5 +110,6 @@ async fn send_and_run_are_open_world_and_the_listings_read_only() {
     assert_eq!(hints("list_cookies").0, Some(true));
     assert_eq!(hints("mock_hits").0, Some(true));
     assert_eq!(hints("generate_code"), (Some(true), Some(false)));
+    assert_eq!(hints("graphql_schema"), (Some(false), Some(true)));
     assert_eq!(hints("clear_cookies"), (None, Some(false)));
 }

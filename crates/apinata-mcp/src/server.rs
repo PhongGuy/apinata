@@ -9,9 +9,10 @@ use apinata_core::import::{FetchError, SourceFetch, default_import_name, fetch_s
 use apinata_core::mock::{self as core_mock, MockHandle, MockOptions};
 use apinata_core::{
     ApprovalInbox, AuthorizeOptions, CancelHandle, Collection, CookieJar, EnvOverlay, ExecError,
-    ExecOptions, ExecutionMode, Executor, ItemPath, OAuth2Error, Outcome, RunError, RunEvent,
-    RunOptions, RuntimeVars, ScriptPhase, ScriptTextKind, SecretStore, TokenCache,
-    assertion_sensitive_values, plan_script_texts, request_secrets, script_texts, send_one,
+    ExecOptions, ExecutionMode, Executor, IntrospectGuard, IntrospectOptions, ItemPath,
+    OAuth2Error, Outcome, RunError, RunEvent, RunOptions, RuntimeVars, SCHEMA_BODY_LIMIT,
+    ScriptPhase, ScriptTextKind, SecretStore, TokenCache, assertion_sensitive_values, introspect,
+    plan_script_texts, request_secrets, script_texts, send_one,
 };
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::tool::ToolCallContext;
@@ -40,6 +41,7 @@ use crate::examples::{
 };
 use crate::generate::{self, GenerateArgs, GeneratedCode};
 use crate::git::{self, GitDiffDoc, GitStatusDoc};
+use crate::graphql::{self, GraphqlSchemaArgs, GraphqlSchemaDoc};
 use crate::import_collection::{
     self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, NoSecrets,
 };
@@ -78,6 +80,7 @@ const NO_FILE_WRITES: &[&str] = &[
     "mock_stop",
     "clear_cookies",
     "oauth2_token",
+    "graphql_schema",
     "set_runtime_variable",
     "clear_runtime_variables",
 ];
@@ -872,6 +875,89 @@ impl ApinataServer {
                 .map(ToString::to_string)
                 .collect(),
         }))
+    }
+
+    #[tool(
+        description = "Fetch a GraphQL request's schema by introspection: the request is \
+                       resolved against an environment and `vars` as send_request would be \
+                       (auth, headers, network settings and the session's cookie jar), then \
+                       the standard introspection query is POSTed to its URL. Returns the root \
+                       type names, the type count and the schema as SDL (`format` `sdl`, the \
+                       default) or the introspection answer as received (`json`), cut to \
+                       `max_bytes` (32 KiB default, 1 MiB at most). An error status, a body \
+                       that is not JSON or a GraphQL `errors` answer is an error. Only local \
+                       hosts and hosts the user trusts are sent to; others need the user's \
+                       approval in the Apinata app, which also lets send_request reach them.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn graphql_schema(
+        &self,
+        Parameters(args): Parameters<GraphqlSchemaArgs>,
+        ct: CancellationToken,
+    ) -> Result<Json<GraphqlSchemaDoc>, String> {
+        let format = graphql::format(args.format.as_deref())?;
+        let (options, store) = (Arc::clone(&self.options), Arc::clone(&self.store));
+        let (runtime, tokens) = (self.runtime.clone(), self.tokens.clone());
+        let overlay = self.overlay.clone();
+        let (item, max_bytes) = (args.path.clone(), args.max_bytes);
+        let (ctx, file) = self
+            .with_collection(move |c| {
+                let env = args.environment.as_deref();
+                let ctx = send::context(
+                    c, env, &args.vars, &options, store, runtime, tokens, overlay,
+                )?;
+                Ok((ctx, send::request_file(c, &args.path)?))
+            })
+            .await?;
+        self.trust.refresh();
+        // Registered before anything is decided, so a refusal quoting a secret is scrubbed.
+        let mut early = Redactor::default();
+        early.add_values(assertion_sensitive_values(&file, &ctx));
+        self.remember(&early);
+        // The send guard registers the resolved request's secrets and refuses a fronted `Host`;
+        // the schema executor shares the send executor's jar and host policy, with the schema
+        // body limit so a large answer is read whole.
+        let guard: IntrospectGuard = {
+            let seen = Arc::clone(&self.seen);
+            Arc::new(move |req| run::host_guard(req, &seen))
+        };
+        let exec = Executor::new(
+            self.exec_options
+                .clone()
+                .max_body_bytes(Some(SCHEMA_BODY_LIMIT)),
+        )
+        .map_err(|e| e.to_string())?;
+        let cancel = CancelHandle::new();
+        let watcher = {
+            let (ct, cancel) = (ct.clone(), cancel.clone());
+            tokio::spawn(async move {
+                ct.cancelled().await;
+                cancel.cancel();
+            })
+        };
+        let options = IntrospectOptions::new().guard(guard);
+        let result = introspect(&exec, &file, &ctx, &options, &cancel).await;
+        watcher.abort();
+        if ct.is_cancelled() {
+            return Err("cancelled; the request may not have been sent".to_owned());
+        }
+        let seen = self.seen();
+        match result {
+            Ok(answer) => Ok(Json(graphql::doc(&answer, format, max_bytes, &seen))),
+            Err(e) => Err(graphql::message(
+                e,
+                &item,
+                &file,
+                &ctx,
+                &self.trust,
+                self.inbox.as_ref(),
+                &seen,
+            )),
+        }
     }
 
     #[tool(
