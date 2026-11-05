@@ -6,6 +6,7 @@ use super::params::text;
 use super::refs::RefKind;
 use super::version::Version;
 use super::{Doc, sample, xml};
+use crate::edit::{BodySpec, KeyValue, MultipartValue};
 use crate::example::{Example, ExampleBody, ExampleBodyKind, ExampleResponse};
 use crate::import::{DocumentError, ImportNote, ImportedRequest, NoteKind};
 use crate::js;
@@ -23,6 +24,7 @@ pub(crate) fn apply<'a: 'o, 'o>(
     let Some(responses) = op.op().get("responses").and_then(Value::as_object) else {
         return Ok(());
     };
+    let request_bytes = request_half_len(request);
     for (code, raw) in responses {
         // Swagger 2.0 skips `default`, as the reference converter does.
         if doc.version == Version::Swagger2 && code == "default" {
@@ -39,6 +41,7 @@ pub(crate) fn apply<'a: 'o, 'o>(
                 .and_then(Value::as_str)
                 .unwrap_or_default(),
             headers: header_examples(doc, &response, &source)?,
+            request_bytes,
         };
         let before = request.examples.len();
         if doc.version == Version::Swagger2 {
@@ -63,6 +66,8 @@ struct Response<'r> {
     description: &'r str,
     /// Header examples as (name, value), without `Content-Type`.
     headers: Vec<(String, String)>,
+    /// What each example's copy of the request half costs.
+    request_bytes: u64,
 }
 
 impl Response<'_> {
@@ -88,8 +93,9 @@ impl Response<'_> {
         headers.extend(self.headers.iter().cloned());
         doc.budget.charge(1)?;
         let header_bytes: usize = headers.iter().map(|(n, v)| n.len() + v.len()).sum();
+        let own = (name.len() + description.len() + header_bytes) as u64;
         doc.budget
-            .charge_bytes((name.len() + description.len() + header_bytes) as u64)?;
+            .charge_bytes(own.saturating_add(self.request_bytes))?;
         let status_text = self
             .status
             .and_then(|s| reqwest::StatusCode::from_u16(s).ok())
@@ -298,4 +304,38 @@ fn body_kind(media_type: &str) -> ExampleBodyKind {
         _ if essence.eq_ignore_ascii_case("text/html") => ExampleBodyKind::Html,
         _ => ExampleBodyKind::Text,
     }
+}
+
+/// The approximate bytes of the URL, params, headers and body each example copies from the
+/// request; multipart and file entries count their text fields plus a fixed overhead.
+fn request_half_len(request: &ImportedRequest) -> u64 {
+    let kv =
+        |k: &KeyValue| k.name.len() + k.value.len() + k.description.as_ref().map_or(0, String::len);
+    let params: usize = request
+        .params
+        .iter()
+        .map(|p| p.name.len() + p.value.len() + p.description.as_ref().map_or(0, String::len))
+        .sum();
+    let headers: usize = request.headers.iter().map(kv).sum();
+    let body = match &request.body {
+        BodySpec::Json(t) | BodySpec::Xml(t) | BodySpec::Text(t) | BodySpec::Sparql(t) => t.len(),
+        BodySpec::FormUrlEncoded(fields) => fields.iter().map(kv).sum(),
+        BodySpec::Multipart(fields) => fields
+            .iter()
+            .map(|f| {
+                let value = match &f.value {
+                    MultipartValue::Text(t) => t.len(),
+                    MultipartValue::Files(paths) => paths.iter().map(String::len).sum(),
+                };
+                f.name.len() + f.content_type.len() + value + 64
+            })
+            .sum(),
+        BodySpec::File(files) => files
+            .iter()
+            .map(|f| f.path.len() + f.content_type.len() + 64)
+            .sum(),
+        BodySpec::Graphql { query, variables } => query.len() + variables.len(),
+        _ => 0,
+    };
+    (request.url.len() + params + headers + body) as u64
 }

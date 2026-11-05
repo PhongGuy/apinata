@@ -2,11 +2,14 @@
 
 use crate::openapi_support;
 
+use crate::import_update_support::FakeBin;
 use apinata_core::import::{
     ChangedField, ImportBundle, NoteKind, UpdateOptions, add_request, apply_update, plan_update,
     write_collection,
 };
-use apinata_core::{Collection, Example, ExampleBodyKind, ItemPath, MemoryStore};
+use apinata_core::{
+    Collection, Example, ExampleBodyKind, ExampleResponse, ItemPath, MemoryStore, Trash,
+};
 use openapi_support::{import, request};
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -334,4 +337,93 @@ fn a_baseline_from_before_examples_were_imported_takes_them_on_update() {
     assert_eq!(s.changed[0].fields, [ChangedField::Examples]);
     let r = ItemPath::new("R.yml").unwrap();
     assert_eq!(c.request(&r).unwrap().examples()[0].name, "one");
+}
+
+/// Write `b` under `dir` and drop the examples hashes from its baseline, as an import made
+/// before examples were spec-owned recorded it.
+fn older_import(dir: &std::path::Path, b: &ImportBundle) -> Collection {
+    let (c, _) =
+        write_collection(dir, &b.collection, &b.environments, &MemoryStore::new()).unwrap();
+    let path = c.root().join("opencollection.yml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let older: String = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("examples:"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert_ne!(text, older);
+    std::fs::write(&path, older).unwrap();
+    Collection::open(c.root()).unwrap()
+}
+
+#[test]
+fn an_older_baseline_keeps_a_hand_saved_example_against_spec_examples() {
+    let dir = TempDir::new().unwrap();
+    let mut c = older_import(dir.path(), &import(&doc(json!({}))));
+    let r = ItemPath::new("R.yml").unwrap();
+    c.add_example(&r, "mine", "", &ExampleResponse::new(418))
+        .unwrap();
+    let file = c.root().join("R.yml");
+    let before = std::fs::read(&file).unwrap();
+    let s = apply_update(&mut c, &bundle("a"), &UpdateOptions::default(), None).unwrap();
+    assert!(s.changed.is_empty());
+    assert_eq!(s.edited_fields[0].fields, [ChangedField::Examples]);
+    assert_eq!(std::fs::read(&file).unwrap(), before);
+}
+
+fn without_r() -> ImportBundle {
+    import(
+        &json!({"openapi": "3.0.3", "servers": [{"url": "https://x.test"}],
+        "paths": {"/other": {"get": {"summary": "O"}}}}),
+    )
+}
+
+fn prune() -> UpdateOptions {
+    let mut o = UpdateOptions::default();
+    o.prune = true;
+    o
+}
+
+#[test]
+fn an_orphan_holding_only_its_generated_examples_is_pruned() {
+    let dir = TempDir::new().unwrap();
+    let b = bundle("a");
+    let (mut c, _) = write_collection(
+        dir.path(),
+        &b.collection,
+        &b.environments,
+        &MemoryStore::new(),
+    )
+    .unwrap();
+    let bin = FakeBin::new(true);
+    let s = apply_update(&mut c, &without_r(), &prune(), Some(&bin as &dyn Trash)).unwrap();
+    assert_eq!(s.pruned.len(), 1, "{:?}", s.notes);
+    assert!(!c.root().join("R.yml").exists());
+}
+
+#[test]
+fn an_orphan_with_a_hand_saved_example_is_not_pruned() {
+    let dir = TempDir::new().unwrap();
+    let b = bundle("a");
+    let (mut c, _) = write_collection(
+        dir.path(),
+        &b.collection,
+        &b.environments,
+        &MemoryStore::new(),
+    )
+    .unwrap();
+    let r = ItemPath::new("R.yml").unwrap();
+    c.add_example(&r, "mine", "", &ExampleResponse::new(418))
+        .unwrap();
+    let file = c.root().join("R.yml");
+    let before = std::fs::read(&file).unwrap();
+    let bin = FakeBin::new(true);
+    let s = apply_update(&mut c, &without_r(), &prune(), Some(&bin as &dyn Trash)).unwrap();
+    assert!(s.pruned.is_empty());
+    assert!(
+        s.notes.iter().any(|n| n.detail.starts_with("not pruned")),
+        "{:?}",
+        s.notes
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), before);
 }

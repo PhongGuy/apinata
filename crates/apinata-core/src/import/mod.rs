@@ -167,7 +167,8 @@ pub struct ImportedRequest {
     /// request file; [`store_request_secrets`] keeps them in an environment and the secret store.
     pub secrets: Vec<ImportedSecret>,
     /// Saved example responses; each one's request half is taken from the request as written.
-    /// Empty leaves the file's own.
+    /// Empty leaves the file's own on [`ImportedRequest::apply_to`], but an update that
+    /// refreshes the examples field removes the file's `examples`.
     pub examples: Vec<crate::Example>,
 }
 

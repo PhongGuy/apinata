@@ -539,6 +539,8 @@ pub(crate) fn plan(
         &mut spec_requests,
     );
     let mut spec_keys = BTreeSet::new();
+    // Examples were not spec-owned before, and older imports wrote none.
+    let absent = fields::absent_hash();
     for (folders, item) in spec_requests {
         let request = &item.request;
         let key = operation_key(&request.method, &request.url);
@@ -602,8 +604,6 @@ pub(crate) fn plan(
         for field in ChangedField::ALL {
             let spec = spec_hashes.get(field).unwrap_or("");
             let on_file = file_hashes.get(field).unwrap_or("");
-            // Examples were not spec-owned before, and older imports wrote none.
-            let absent = fields::absent_hash();
             let state = match (field, recorded.get(field)) {
                 (ChangedField::Method, recorded) => method_state(spec, on_file, recorded),
                 (ChangedField::Examples, None) => field_state(spec, on_file, &absent),
