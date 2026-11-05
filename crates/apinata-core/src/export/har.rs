@@ -8,7 +8,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{Map, Value, json};
 
 use crate::response::Response;
-use crate::secret_names::{NamedSecret, replace_secrets};
+use crate::secret_names::{NamedSecret, redact_wide, replace_secrets};
 use crate::session_log::NetworkEntry;
 
 /// Why a sent response cannot be written as HAR.
@@ -84,6 +84,12 @@ pub struct HarExchange {
     /// This send's number and the most sends the request could make; written as the `_attempt`
     /// and `_attempts` members. `None` when the request was not retrying.
     pub attempt: Option<(u32, u32)>,
+    /// The request body's full length when [`HarExchange::limited`] cut it.
+    pub request_size: Option<u64>,
+    /// The response body's full length when [`HarExchange::limited`] cut or left it out.
+    pub response_size: Option<u64>,
+    /// Notes written into the entry's `comment`, such as where a body was cut.
+    pub notes: Vec<String>,
 }
 
 impl HarExchange {
@@ -105,6 +111,9 @@ impl HarExchange {
             server_ip: None,
             override_from: None,
             attempt: None,
+            request_size: None,
+            response_size: None,
+            notes: Vec::new(),
         }
     }
 
@@ -176,6 +185,11 @@ impl HarExchange {
     /// it first with [`HarExchange::binary_body_holds_secret`] and refuse to write when it does.
     pub fn redacted(mut self, secrets: &[NamedSecret]) -> HarExchange {
         let secrets: Vec<NamedSecret> = secrets.iter().map(NamedSecret::unnamed_copy).collect();
+        for body in [&mut self.request_body, &mut self.response_body] {
+            if let Some(wide) = redact_wide(body, secrets.iter().map(NamedSecret::value)) {
+                *body = wide;
+            }
+        }
         let text = |s: &str| replace_secrets(s, &secrets);
         self.url = text(&crate::redact_url_userinfo(&self.url));
         for (_, value) in self
@@ -204,18 +218,66 @@ impl HarExchange {
     }
 
     /// Whether the response body is not UTF-8 and a secret appears in it (read through a lossy
-    /// copy), so writing it would leak a value that cannot be replaced inside the bytes.
+    /// copy), so writing it would leak a value that cannot be replaced inside the bytes. A
+    /// UTF-16 copy does not count: [`HarExchange::redacted`] replaces it in place.
     pub fn binary_body_holds_secret(&self, secrets: &[NamedSecret]) -> bool {
-        if std::str::from_utf8(&self.response_body).is_ok() {
+        let wide = redact_wide(&self.response_body, secrets.iter().map(NamedSecret::value));
+        let body = wide.as_deref().unwrap_or(&self.response_body);
+        if std::str::from_utf8(body).is_ok() {
             return false;
         }
-        crate::bytes_hold_secret(&self.response_body, secrets)
+        crate::bytes_hold_secret(body, secrets)
     }
+
+    /// This exchange with each body cut to `max` bytes (text at a character boundary), noting
+    /// each cut. A binary response body gives its type and size only unless `keep_binary`.
+    /// Cut after [`HarExchange::redacted`], so no cut can leave part of a secret behind.
+    pub fn limited(mut self, max: usize, keep_binary: bool) -> HarExchange {
+        let len = self.request_body.len();
+        if len > max {
+            self.request_body.truncate(cut_at(&self.request_body, max));
+            self.request_size = Some(len as u64);
+            let kept = self.request_body.len();
+            self.notes
+                .push(format!("The request body is cut to {kept} bytes of {len}."));
+        }
+        let len = self.response_body.len();
+        if is_binary(&self.response_body) && !keep_binary {
+            self.response_body.clear();
+            self.response_size = Some(len as u64);
+            self.notes.push(format!(
+                "The binary response body ({len} bytes) is left out; ask for more body bytes to include it."
+            ));
+        } else if len > max {
+            self.response_body
+                .truncate(cut_at(&self.response_body, max));
+            self.response_size = Some(len as u64);
+            let kept = self.response_body.len();
+            self.notes.push(format!(
+                "The response body is cut to {kept} bytes of {len}."
+            ));
+        }
+        self
+    }
+}
+
+/// Where to cut `bytes` at most `max` long: text at a character boundary, binary anywhere.
+fn cut_at(bytes: &[u8], max: usize) -> usize {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.floor_char_boundary(max),
+        Err(_) => max.min(bytes.len()),
+    }
+}
+
+// A body that is valid text without NUL bytes is written as text; anything else is base64.
+fn is_binary(bytes: &[u8]) -> bool {
+    std::str::from_utf8(bytes).is_err() || bytes.contains(&0)
 }
 
 /// `exchange` as a pretty-printed HAR 1.2 document.
 ///
-/// Only the total time is measured, so it fills `time`; every phase is -1.
+/// Only the total time is measured, so it fills `time` and the `wait` phase; `send` and
+/// `receive`, which HAR requires, are 0 and the optional phases -1.
 pub fn har(exchange: &HarExchange) -> String {
     har_log(std::slice::from_ref(exchange))
 }
@@ -243,7 +305,7 @@ fn entry(x: &HarExchange) -> Value {
     entry.insert("cache".into(), json!({}));
     entry.insert(
         "timings".into(),
-        json!({"blocked": -1, "dns": -1, "connect": -1, "send": -1, "wait": -1, "receive": -1, "ssl": -1}),
+        json!({"blocked": -1, "dns": -1, "connect": -1, "send": 0, "wait": ms, "receive": 0, "ssl": -1}),
     );
     if let Some(ip) = &x.server_ip {
         entry.insert("serverIPAddress".into(), ip.clone().into());
@@ -256,12 +318,16 @@ fn entry(x: &HarExchange) -> Value {
         entry.insert("_attempt".into(), attempt.into());
         entry.insert("_attempts".into(), of.into());
     }
+    let mut notes = Vec::new();
     if x.response_truncated {
-        let note = format!(
+        notes.push(format!(
             "The response body is truncated to {} bytes at the read limit, as the app shows it.",
-            x.response_body.len()
-        );
-        entry.insert("comment".into(), note.into());
+            x.response_size.unwrap_or(x.response_body.len() as u64)
+        ));
+    }
+    notes.extend(x.notes.iter().cloned());
+    if !notes.is_empty() {
+        entry.insert("comment".into(), notes.join(" ").into());
     }
     Value::Object(entry)
 }
@@ -337,28 +403,28 @@ fn request(x: &HarExchange) -> Value {
         r.insert("postData".into(), json!({"mimeType": mime, "text": text}));
     }
     r.insert("headersSize".into(), json!(-1));
-    r.insert("bodySize".into(), json!(x.request_body.len()));
+    let size = x.request_size.unwrap_or(x.request_body.len() as u64);
+    r.insert("bodySize".into(), json!(size));
     Value::Object(r)
 }
 
-// A body that is valid text without NUL bytes stays text; anything else is base64.
 fn content(x: &HarExchange) -> Value {
     let mime = header(&x.response_headers, "content-type").unwrap_or_default();
     let mut c = Map::new();
-    c.insert("size".into(), json!(x.response_body.len()));
+    c.insert("size".into(), json!(response_size(x)));
     c.insert("mimeType".into(), mime.into());
-    match std::str::from_utf8(&x.response_body) {
-        Ok(text) if !x.response_body.contains(&0) => {
-            if !text.is_empty() {
-                c.insert("text".into(), text.into());
-            }
-        }
-        _ => {
-            c.insert("text".into(), STANDARD.encode(&x.response_body).into());
-            c.insert("encoding".into(), "base64".into());
-        }
+    if is_binary(&x.response_body) {
+        c.insert("text".into(), STANDARD.encode(&x.response_body).into());
+        c.insert("encoding".into(), "base64".into());
+    } else if !x.response_body.is_empty() {
+        let text = String::from_utf8_lossy(&x.response_body);
+        c.insert("text".into(), text.into_owned().into());
     }
     Value::Object(c)
+}
+
+fn response_size(x: &HarExchange) -> u64 {
+    x.response_size.unwrap_or(x.response_body.len() as u64)
 }
 
 fn response(x: &HarExchange) -> Value {
@@ -371,7 +437,7 @@ fn response(x: &HarExchange) -> Value {
         "content": content(x),
         "redirectURL": header(&x.response_headers, "location").unwrap_or_default(),
         "headersSize": -1,
-        "bodySize": x.response_body.len(),
+        "bodySize": response_size(x),
     })
 }
 

@@ -327,6 +327,53 @@ fn candidates(req: &RequestFile, ctx: &VarContext) -> Vec<(String, String)> {
     candidates
 }
 
+/// `bytes` with every UTF-16LE and UTF-16BE copy of each value of at least the minimum
+/// length replaced by `[redacted]` in the same encoding, or `None` when there is none. Text
+/// redaction cannot see such a copy, though ASCII written as UTF-16 is valid UTF-8.
+pub(crate) fn redact_wide<'a>(
+    bytes: &[u8],
+    values: impl IntoIterator<Item = &'a str>,
+) -> Option<Vec<u8>> {
+    let mut out: Option<Vec<u8>> = None;
+    for value in values {
+        if value.chars().count() < MIN_CHARS {
+            continue;
+        }
+        for big in [false, true] {
+            let encode = |s: &str| -> Vec<u8> {
+                s.encode_utf16()
+                    .flat_map(|u| {
+                        if big {
+                            u.to_be_bytes()
+                        } else {
+                            u.to_le_bytes()
+                        }
+                    })
+                    .collect()
+            };
+            let needle = encode(value);
+            let hay = out.as_deref().unwrap_or(bytes);
+            if !contains_bytes(hay, &needle) {
+                continue;
+            }
+            let marker = encode(REDACTED);
+            let mut next = Vec::with_capacity(hay.len());
+            let mut i = 0;
+            while i < hay.len() {
+                if hay[i..].starts_with(&needle) {
+                    next.extend_from_slice(&marker);
+                    i += needle.len();
+                } else {
+                    next.push(hay[i]);
+                    i += 1;
+                }
+            }
+            out = Some(next);
+        }
+    }
+    out
+}
+
 /// Whether any of `secrets` appears in `bytes`.
 ///
 /// The bytes are read through a lossy UTF-8 copy and matched as [`replace_secrets`] matches

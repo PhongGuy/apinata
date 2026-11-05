@@ -105,11 +105,13 @@ fn a_json_exchange_has_the_har_12_shape() {
 fn only_the_measured_total_is_a_timing() {
     let e = &parsed(&exchange())["log"]["entries"][0];
     assert_eq!(e["time"], 42.0);
-    for phase in [
-        "blocked", "dns", "connect", "send", "wait", "receive", "ssl",
-    ] {
+    for phase in ["blocked", "dns", "connect", "ssl"] {
         assert_eq!(e["timings"][phase], -1, "{phase} is unknown");
     }
+    // HAR requires these three; the measured total is all wait.
+    assert_eq!(e["timings"]["send"], 0);
+    assert_eq!(e["timings"]["wait"], 42.0);
+    assert_eq!(e["timings"]["receive"], 0);
 }
 
 #[test]
@@ -662,4 +664,105 @@ fn several_exchanges_are_one_log_with_an_entry_each() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[1]["request"]["url"], "https://api.test/second");
     assert_eq!(har_log(&[exchange()]), har(&exchange()));
+}
+
+fn wide(value: &str, big: bool) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .flat_map(|u| {
+            if big {
+                u.to_be_bytes()
+            } else {
+                u.to_le_bytes()
+            }
+        })
+        .collect()
+}
+
+fn holds(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle)
+}
+
+/// The response body a HAR document holds, decoded from base64 when it is.
+fn content_bytes(doc: &Value) -> Vec<u8> {
+    use base64::Engine as _;
+    let content = &doc["log"]["entries"][0]["response"]["content"];
+    let text = content["text"].as_str().unwrap_or_default();
+    if content["encoding"] == "base64" {
+        base64::engine::general_purpose::STANDARD
+            .decode(text)
+            .unwrap()
+    } else {
+        text.as_bytes().to_vec()
+    }
+}
+
+#[test]
+fn a_utf16_secret_in_either_body_is_redacted_in_place() {
+    let secret = "hunter2hunter2";
+    let both = [wide(secret, false), wide(secret, true)].concat();
+    let mut x = exchange();
+    x.request_body = [b"pw=".as_slice(), &both].concat();
+    x.response_body = [b"echo:".as_slice(), &both].concat();
+    assert!(
+        std::str::from_utf8(&x.response_body).is_ok(),
+        "ASCII as UTF-16 is valid UTF-8"
+    );
+    let secrets = derived_secrets(&[secret.to_owned()]);
+    assert!(!x.binary_body_holds_secret(&secrets), "redactable in place");
+    let doc = parsed(&x.redacted(&secrets));
+    let body = content_bytes(&doc);
+    let posted = str_of(&doc["log"]["entries"][0]["request"]["postData"], "text").as_bytes();
+    for big in [false, true] {
+        let leak = wide(secret, big);
+        assert!(!holds(&body, &leak), "response body, big endian {big}");
+        assert!(!holds(posted, &leak), "request body, big endian {big}");
+        let marker = wide("[redacted]", big);
+        assert!(holds(&body, &marker), "response body, big endian {big}");
+    }
+}
+
+#[test]
+fn bodies_past_the_budget_are_cut_with_a_comment() {
+    let mut x = exchange();
+    x.response_body = "abcdef".repeat(10).into_bytes();
+    x.request_body = "0123456789".repeat(10).into_bytes();
+    let doc = parsed(&x.limited(16, false));
+    let e = &doc["log"]["entries"][0];
+    assert_eq!(e["response"]["content"]["text"], "abcdefabcdefabcd");
+    assert_eq!(e["response"]["content"]["size"], 60);
+    assert_eq!(e["request"]["postData"]["text"], "0123456789012345");
+    assert_eq!(e["request"]["bodySize"], 100);
+    let comment = str_of(e, "comment");
+    assert!(comment.contains("16 bytes"), "{comment}");
+}
+
+#[test]
+fn a_binary_body_gives_its_type_and_size_unless_the_budget_is_raised() {
+    let mut x = exchange();
+    x.response_headers = vec![("content-type".into(), "image/png".into())];
+    x.response_body = vec![0x89, b'P', b'N', b'G', 0xff, 0x00];
+    let doc = parsed(&x.clone().limited(1024, false));
+    let e = &doc["log"]["entries"][0];
+    assert!(e["response"]["content"].get("text").is_none(), "{e}");
+    assert_eq!(e["response"]["content"]["size"], 6);
+    assert_eq!(e["response"]["content"]["mimeType"], "image/png");
+    assert!(str_of(e, "comment").contains("binary"), "{e}");
+    let doc = parsed(&x.limited(4, true));
+    assert_eq!(content_bytes(&doc), [0x89, b'P', b'N', b'G']);
+}
+
+#[test]
+fn the_required_timings_are_not_negative_and_sum_to_the_time() {
+    let doc = parsed(&exchange());
+    let e = &doc["log"]["entries"][0];
+    for phase in ["send", "wait", "receive"] {
+        assert!(e["timings"][phase].as_f64().unwrap() >= 0.0, "{phase}");
+    }
+    let sum: f64 = ["blocked", "dns", "connect", "send", "wait", "receive"]
+        .iter()
+        .map(|p| e["timings"][*p].as_f64().unwrap())
+        .filter(|v| *v >= 0.0)
+        .sum();
+    assert_eq!(sum, e["time"].as_f64().unwrap());
 }

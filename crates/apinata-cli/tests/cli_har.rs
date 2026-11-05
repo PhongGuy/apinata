@@ -168,3 +168,81 @@ fn base64_of(text: &str) -> String {
     use base64::Engine as _;
     base64::engine::general_purpose::STANDARD.encode(text)
 }
+
+fn wide(value: &str, big: bool) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .flat_map(|u| {
+            if big {
+                u.to_be_bytes()
+            } else {
+                u.to_le_bytes()
+            }
+        })
+        .collect()
+}
+
+fn holds(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Echoes the X-Key header back as UTF-16LE then UTF-16BE, as a Windows-flavoured API might.
+struct WideEcho;
+impl Respond for WideEcho {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        let key = req
+            .headers
+            .get("x-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let body = [wide(key, false), wide(key, true)].concat();
+        ResponseTemplate::new(200).set_body_raw(body, "application/octet-stream")
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_utf16_secret_in_either_body_is_redacted() {
+    use base64::Engine as _;
+    let s = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(WideEcho)
+        .mount(&s)
+        .await;
+    let request = format!(
+        "info:\n  name: wide\n  type: http\n  seq: 1\nhttp:\n  method: POST\n  url: \"{}/wide\"\n  headers:\n    - name: X-Key\n      value: \"{{{{apikey}}}}\"\n  body:\n    type: file\n    data:\n      - filePath: \"wide.bin\"\n        contentType: application/octet-stream\n        selected: true\n",
+        s.uri()
+    );
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        ("wide.yml", &request),
+    ]);
+    let sent = [wide(API_KEY, false), wide(API_KEY, true)].concat();
+    std::fs::write(dir.path().join("wide.bin"), sent).unwrap();
+    let out = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let file = out.path().join("wide.har");
+    let ran = run(dir.path(), cache.path(), &file);
+    assert_eq!(
+        ran.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let e = &doc["log"]["entries"][0];
+    let content = &e["response"]["content"];
+    let body = base64::engine::general_purpose::STANDARD
+        .decode(content["text"].as_str().expect("the body"))
+        .unwrap();
+    let posted = e["request"]["postData"]["text"].as_str().expect("posted");
+    for big in [false, true] {
+        let leak = wide(API_KEY, big);
+        assert!(!holds(&body, &leak), "response body, big endian {big}");
+        assert!(
+            !holds(posted.as_bytes(), &leak),
+            "request body, big endian {big}"
+        );
+        assert!(holds(&body, &wide("[redacted]", big)), "big endian {big}");
+    }
+}

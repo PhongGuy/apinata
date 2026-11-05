@@ -318,6 +318,40 @@ mod tests {
         assert_eq!(e.response_body.raw(), None, "a UTF-16 copy counts too");
     }
 
+    fn wide(value: &str, big: bool) -> String {
+        let bytes: Vec<u8> = value
+            .encode_utf16()
+            .flat_map(|u| {
+                if big {
+                    u.to_be_bytes()
+                } else {
+                    u.to_le_bytes()
+                }
+            })
+            .collect();
+        String::from_utf8(bytes).expect("ASCII as UTF-16 is valid UTF-8")
+    }
+
+    #[test]
+    fn a_utf16_secret_is_redacted_from_the_stored_text() {
+        for big in [false, true] {
+            let body = format!("echo:{}", wide("k-secret-1", big));
+            let e = binary_entry(&Redactor::new(&["k-secret-1"]), body.as_bytes(), 64);
+            assert!(!e.response_body.text.contains(&wide("k-secret-1", big)));
+            assert!(e.response_body.text.contains(&wide("[redacted]", big)));
+        }
+    }
+
+    #[test]
+    fn a_utf16_secret_learned_later_is_redacted_from_the_stored_text() {
+        for big in [false, true] {
+            let body = format!("echo:{}", wide("k-secret-1", big));
+            let mut e = binary_entry(&Redactor::none(), body.as_bytes(), 64);
+            e.rededact(&Redactor::new(&["k-secret-1"]), 64);
+            assert!(!e.response_body.text.contains(&wide("k-secret-1", big)));
+        }
+    }
+
     #[test]
     fn a_secret_learned_later_or_a_withhold_drops_the_bytes() {
         let body = [PNG, b"k-secret-1"].concat();

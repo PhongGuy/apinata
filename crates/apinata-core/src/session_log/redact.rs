@@ -179,6 +179,12 @@ impl Redactor {
         })
     }
 
+    /// `bytes` with each value's UTF-16 copies replaced by `[redacted]` in the same encoding,
+    /// or `None` when they hold none.
+    pub(crate) fn redact_wide(&self, bytes: &[u8]) -> Option<Vec<u8>> {
+        crate::secret_names::redact_wide(bytes, self.values.iter().map(String::as_str))
+    }
+
     /// `url` with its whole userinfo dropped, then redacted. A username alone can be the
     /// credential (a token sent as the user), so a record of a send keeps none of it.
     pub(crate) fn redact_url(&self, url: &str) -> String {
