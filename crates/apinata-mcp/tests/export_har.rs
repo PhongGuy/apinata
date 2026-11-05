@@ -140,3 +140,153 @@ async fn exporting_without_a_prior_send_is_an_error() {
     let message = server.err("export_har", json!({"path": "basic.yml"})).await;
     assert!(message.contains("send the request first"), "{message}");
 }
+
+fn wide(value: &str, big: bool) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .flat_map(|u| {
+            if big {
+                u.to_be_bytes()
+            } else {
+                u.to_le_bytes()
+            }
+        })
+        .collect()
+}
+
+fn holds(hay: &[u8], needle: &[u8]) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Echoes the X-Key header back as UTF-16LE then UTF-16BE.
+struct WideEcho;
+impl Respond for WideEcho {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        let key = req
+            .headers
+            .get("x-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let body = [wide(key, false), wide(key, true)].concat();
+        ResponseTemplate::new(200).set_body_raw(body, "application/octet-stream")
+    }
+}
+
+/// A POST sending the `apikey` secret in a header and, as UTF-16, in its file body.
+async fn wide_server(url: &str) -> TestServer {
+    let request = format!(
+        "info:\n  name: wide\n  type: http\n  seq: 1\nhttp:\n  method: POST\n  url: \"{url}/wide\"\n  headers:\n    - name: X-Key\n      value: \"{{{{apikey}}}}\"\n  body:\n    type: file\n    data:\n      - filePath: \"wide.bin\"\n        contentType: application/octet-stream\n        selected: true\n"
+    );
+    let server = TestServer::start(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        ("wide.yml", &request),
+    ])
+    .await;
+    let sent = [wide(API_KEY, false), wide(API_KEY, true)].concat();
+    std::fs::write(server.root().join("wide.bin"), sent).unwrap();
+    server.set_secret("dev", "apikey", API_KEY);
+    server
+}
+
+#[tokio::test]
+async fn a_utf16_secret_in_either_body_is_redacted() {
+    let s = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(WideEcho)
+        .mount(&s)
+        .await;
+    let server = wide_server(&s.uri()).await;
+    server
+        .ok(
+            "send_request",
+            json!({"path": "wide.yml", "environment": "dev"}),
+        )
+        .await;
+    // Asked for more than the default budget, so the binary body comes back whole.
+    let exported = server
+        .ok(
+            "export_har",
+            json!({"path": "wide.yml", "max_body_bytes": 65536}),
+        )
+        .await;
+    let doc: Value = serde_json::from_str(exported["har"].as_str().unwrap()).unwrap();
+    let e = &doc["log"]["entries"][0];
+    let body = base64::engine::general_purpose::STANDARD
+        .decode(e["response"]["content"]["text"].as_str().expect("the body"))
+        .unwrap();
+    let posted = e["request"]["postData"]["text"].as_str().expect("posted");
+    for big in [false, true] {
+        let leak = wide(API_KEY, big);
+        assert!(!holds(&body, &leak), "response body, big endian {big}");
+        assert!(
+            !holds(posted.as_bytes(), &leak),
+            "request body, big endian {big}"
+        );
+        assert!(holds(&body, &wide("[redacted]", big)), "big endian {big}");
+    }
+}
+
+#[tokio::test]
+async fn bodies_are_cut_at_max_body_bytes_and_binary_gives_type_and_size() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/big"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(40 * 1024)))
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/bin"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_raw(vec![0x89, 0xff, 0x00, 0x01], "image/png"),
+        )
+        .mount(&s)
+        .await;
+    let get = |name: &str| {
+        format!(
+            "info:\n  name: {name}\n  type: http\nhttp:\n  method: GET\n  url: \"{}/{name}\"\n",
+            s.uri()
+        )
+    };
+    let server = TestServer::start(&[
+        ("opencollection.yml", ROOT),
+        ("big.yml", &get("big")),
+        ("bin.yml", &get("bin")),
+    ])
+    .await;
+    let export = |item: &'static str, args: Value| {
+        let server = &server;
+        async move {
+            server.ok("send_request", json!({"path": item})).await;
+            let out = server.ok("export_har", args).await;
+            let doc: Value = serde_json::from_str(out["har"].as_str().unwrap()).unwrap();
+            doc["log"]["entries"][0].clone()
+        }
+    };
+    let e = export("big.yml", json!({"path": "big.yml"})).await;
+    let content = &e["response"]["content"];
+    assert_eq!(
+        content["text"].as_str().unwrap().len(),
+        32 * 1024,
+        "the default budget"
+    );
+    assert_eq!(content["size"], 40 * 1024);
+    assert!(e["comment"].as_str().unwrap().contains("cut"), "{e}");
+    let e = export("big.yml", json!({"path": "big.yml", "max_body_bytes": 100})).await;
+    assert_eq!(
+        e["response"]["content"]["text"].as_str().unwrap().len(),
+        100
+    );
+
+    let e = export("bin.yml", json!({"path": "bin.yml"})).await;
+    let content = &e["response"]["content"];
+    assert!(content.get("text").is_none(), "{e}");
+    assert_eq!(content["size"], 4);
+    assert_eq!(content["mimeType"], "image/png");
+    let e = export(
+        "bin.yml",
+        json!({"path": "bin.yml", "max_body_bytes": 65536}),
+    )
+    .await;
+    assert_eq!(e["response"]["content"]["encoding"], "base64");
+}

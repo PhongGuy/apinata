@@ -10,6 +10,8 @@ use apinata_core::{Collection, ExampleResponse, ItemPath, NamedSecret, Response,
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::send::{DEFAULT_BODY_BYTES, MAX_BODY_BYTES};
+
 /// What one completed send left to save: the response as received and the secrets the request
 /// knew then, or why they could not be found.
 pub(crate) struct LastSend {
@@ -100,6 +102,9 @@ pub(crate) fn save(
 pub(crate) struct ExportHarArgs {
     /// Collection-relative path of the request, such as `users/get.yml`.
     pub path: String,
+    /// The most bytes of each body to return; 32 KiB when absent, 1 MiB at most. A binary
+    /// response body gives its type and size only unless this is raised past 32 KiB.
+    pub max_body_bytes: Option<u64>,
 }
 
 /// What `export_har` reports.
@@ -125,8 +130,13 @@ pub(crate) fn export_har(sends: &LastSends, args: ExportHarArgs) -> Result<Expor
     let secrets = last.secrets.as_deref().map_err(|reason| {
         format!("could not check the exchange for secret values: {reason}; nothing was exported")
     })?;
+    // The same budget as send_request: a cut follows redaction, so it leaves no partial secret.
+    let asked = args.max_body_bytes;
+    let max = asked.unwrap_or(DEFAULT_BODY_BYTES).min(MAX_BODY_BYTES);
+    let keep_binary = asked.is_some_and(|n| n > DEFAULT_BODY_BYTES);
     let exchange = sent_exchange(&last.response, last.ended, secrets)
-        .map_err(|e| format!("{e}; nothing was exported"))?;
+        .map_err(|e| format!("{e}; nothing was exported"))?
+        .limited(usize::try_from(max).unwrap_or(usize::MAX), keep_binary);
     Ok(ExportedHar {
         path: args.path,
         har: har(&exchange),

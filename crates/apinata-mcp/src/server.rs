@@ -1352,8 +1352,11 @@ impl ApinataServer {
                        a HAR 1.2 document with one entry, as the app's Export as HAR writes it: \
                        the request as sent, with every secret value, credential header and \
                        derived credential (OAuth 2.0 tokens, signatures) replaced by \
-                       `[redacted]`. Errors when the request was not sent this session or its \
-                       binary response body holds a secret.",
+                       `[redacted]`. Each body is cut at `max_body_bytes` (32 KiB when \
+                       absent, 1 MiB at most) with a note in the entry's `comment`; a binary \
+                       response body gives its type and size only unless `max_body_bytes` is \
+                       raised past 32 KiB. Errors when the request was not sent this session \
+                       or its binary response body holds a secret.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn export_har(
