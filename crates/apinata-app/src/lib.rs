@@ -94,6 +94,7 @@ pub mod legacy_convert;
 pub mod live_stream;
 pub mod log_feed;
 pub mod menu_focus;
+pub mod mock_server;
 pub mod model;
 pub mod network_gate;
 pub mod network_secrets;

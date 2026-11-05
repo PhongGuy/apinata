@@ -108,6 +108,9 @@ pub struct CollectionSession {
         deserialize_with = "lenient::map"
     )]
     pub runners: BTreeMap<String, SavedRunnerOptions>,
+    /// Whether the collection's mock server runs; it starts again when the collection opens.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mock: bool,
 }
 
 /// The runner options that outlive a restart. Tags and exclude tags are left out on purpose:
