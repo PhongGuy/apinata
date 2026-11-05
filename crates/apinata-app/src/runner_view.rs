@@ -23,7 +23,7 @@ use crate::response_pane::{
     check_counts, describe_error, redacted_assertion_line, shows_no_tests, test_line, tests_total,
 };
 use crate::runner_export::{ReportFormat, export_results};
-use crate::runner_model::{RowState, RunRow, RunState, RunnerModel};
+use crate::runner_model::{PlannedRow, RowState, RunRow, RunState, RunTarget, RunnerModel};
 use crate::style;
 use crate::ui;
 use crate::workspace::Workspace;
@@ -600,6 +600,74 @@ pub fn plan_count_text(requests: usize, rounds: Option<usize>) -> String {
     }
 }
 
+/// The Run button's text: "Run", or with the checked count once it is known.
+pub fn run_label(chosen: Option<usize>) -> String {
+    match chosen {
+        None => "Run".to_owned(),
+        Some(1) => "Run 1 request".to_owned(),
+        Some(n) => format!("Run {n} requests"),
+    }
+}
+
+// Each nesting level of the plan preview indents this many rems.
+const PLAN_INDENT: f32 = 1.25;
+
+/// One line of the plan preview: a folder heading or a request, at its nesting depth.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanEntry {
+    /// A folder, by its path in the collection.
+    Folder {
+        /// The folder's item path.
+        path: String,
+        /// How many shown folders enclose it.
+        depth: usize,
+    },
+    /// A request, by its index in the preview.
+    Request {
+        /// The index into the preview rows.
+        ix: usize,
+        /// How many shown folders enclose it.
+        depth: usize,
+    },
+}
+
+/// The preview rows with a heading before each folder's run, in run order. Run order keeps a
+/// folder's requests together, so a heading opens wherever a row's folders differ from the
+/// row before. Folders at or above `scope`, the runner's own folder, are not shown.
+pub fn plan_entries(rows: &[PlannedRow], scope: &str) -> Vec<PlanEntry> {
+    let mut out = Vec::new();
+    let mut open: Vec<String> = Vec::new();
+    for (ix, row) in rows.iter().enumerate() {
+        let path = row.path.as_str();
+        let chain: Vec<String> = (path.match_indices('/'))
+            .map(|(at, _)| path[..at].to_owned())
+            .filter(|f| scope != f && !scope.starts_with(&format!("{f}/")))
+            .collect();
+        let kept = open.iter().zip(&chain).take_while(|(a, b)| a == b).count();
+        for (depth, folder) in chain.iter().enumerate().skip(kept) {
+            out.push(PlanEntry::Folder {
+                path: folder.clone(),
+                depth,
+            });
+        }
+        out.push(PlanEntry::Request {
+            ix,
+            depth: chain.len(),
+        });
+        open = chain;
+    }
+    out
+}
+
+// The indices of the preview rows under folder `path`.
+fn folder_members(rows: &[PlannedRow], path: &str) -> Vec<usize> {
+    let prefix = format!("{path}/");
+    (rows.iter().enumerate())
+        .filter(|(_, row)| row.path.as_str().starts_with(&prefix))
+        .map(|(ix, _)| ix)
+        .collect()
+}
+
 /// The "Fail on status" choices, in the order the select lists them.
 pub const FAIL_ON_STATUS_CHOICES: [(&str, Option<StatusRule>); 4] = [
     ("Off", None),
@@ -858,6 +926,10 @@ impl Render for RunnerView {
         // Shown only for a finished run that has failures to run again.
         let rerunnable = finished && !model.failed_items().is_empty();
         let m4 = self.model.clone();
+        // The checked count, once the plan has arrived; a plan with no requests at all keeps
+        // Run open so its load errors can still be reported.
+        let chosen = (model.preview_loaded() && !model.preview().is_empty())
+            .then(|| model.checked_count(cx));
         // The action row never scrolls, so Run stays in view however short the pane.
         let actions = h_flex()
             .id("run-actions")
@@ -887,8 +959,8 @@ impl Render for RunnerView {
                 Button::new("run-start")
                     .primary()
                     .min_w(style::SEND_SLOT_WIDTH)
-                    .label("Run")
-                    .lock_filled(running, cx)
+                    .label(run_label(chosen))
+                    .lock_filled(running || chosen == Some(0), cx)
                     .on_click(move |_, _, cx| {
                         m2.update(cx, |m, cx| m.start(cx));
                     }),
@@ -913,29 +985,96 @@ impl Render for RunnerView {
             && !matches!(model.state(), RunState::Running | RunState::Finished(_));
         let plan = previewing.then(|| {
             let count = plan_count_text(model.preview().len(), model.preview_rounds());
-            let rows = model.preview().iter().enumerate().map(|(ix, row)| {
-                let text = format!("{} {}", row.method.to_ascii_uppercase(), row.name);
-                ListItem::new(("run-plan-item", ix)).child(
+            let preview = model.preview();
+            let checked: Vec<bool> = (preview.iter())
+                .map(|row| model.is_checked(&row.path, cx))
+                .collect();
+            let scope = match model.target() {
+                RunTarget::Scope(item) => item.as_str().to_owned(),
+                RunTarget::Items(_) => String::new(),
+            };
+            let entries = plan_entries(preview, &scope);
+            let rows = entries.iter().enumerate().map(|(k, entry)| match entry {
+                PlanEntry::Folder { path, depth } => {
+                    let members = folder_members(preview, path);
+                    let on = members.iter().filter(|&&ix| checked[ix]).count();
+                    let items: Vec<ItemPath> =
+                        members.iter().map(|&ix| preview[ix].path.clone()).collect();
+                    let name = path.rsplit('/').next().unwrap_or(path).to_owned();
+                    let mixed = on > 0 && on < members.len();
+                    // The kit's box has no mixed state to report, so the name carries it.
+                    let a11y = if mixed {
+                        format!("{name}, partly checked")
+                    } else {
+                        name.clone()
+                    };
+                    let m = self.model.clone();
                     h_flex()
-                        .id(("run-plan-row", ix))
+                        .id(("run-plan-folder", k))
                         .test_support()
-                        .aria_label(text)
+                        .aria_label(name.clone())
+                        .pl(rems(0.75 + PLAN_INDENT * *depth as f32))
                         .gap_2()
-                        .child(ui::method_tag(&row.method))
-                        .child(row.name.clone()),
-                )
+                        .child(
+                            ui::checkbox(("run-plan-folder-check", k), on == members.len())
+                                .mixed(mixed)
+                                .accessible_name(a11y)
+                                .on_click(move |on: &bool, _, cx| {
+                                    m.update(cx, |m, cx| m.set_checked(&items, *on, cx))
+                                }),
+                        )
+                        .child(name)
+                        .into_any_element()
+                }
+                PlanEntry::Request { ix, depth } => {
+                    let (ix, row) = (*ix, &preview[*ix]);
+                    let text = format!("{} {}", row.method.to_ascii_uppercase(), row.name);
+                    let (m, item) = (self.model.clone(), [row.path.clone()]);
+                    ListItem::new(("run-plan-item", ix))
+                        .pl(rems(0.75 + PLAN_INDENT * *depth as f32))
+                        .child(
+                            h_flex()
+                                .id(("run-plan-row", ix))
+                                .test_support()
+                                .aria_label(text.clone())
+                                .gap_2()
+                                .child(
+                                    ui::checkbox(("run-plan-check", ix), checked[ix])
+                                        .accessible_name(text)
+                                        .on_click(move |on: &bool, _, cx| {
+                                            m.update(cx, |m, cx| m.set_checked(&item, *on, cx))
+                                        }),
+                                )
+                                .child(ui::method_tag(&row.method))
+                                .child(row.name.clone()),
+                        )
+                        .into_any_element()
+                }
             });
-            list_box(shrink_scroll("run-plan"), model.preview().len()).child(
+            let on = checked.iter().filter(|c| **c).count();
+            let all: Vec<ItemPath> = preview.iter().map(|row| row.path.clone()).collect();
+            let m = self.model.clone();
+            let select_all = (!preview.is_empty()).then(|| {
+                ui::checkbox("run-select-all", on == preview.len())
+                    .mixed(on > 0 && on < preview.len())
+                    .label("Select all")
+                    .on_click(move |on: &bool, _, cx| {
+                        m.update(cx, |m, cx| m.set_checked(&all, *on, cx))
+                    })
+            });
+            list_box(shrink_scroll("run-plan"), entries.len()).child(
                 v_flex()
                     .gap_1()
                     .child(
-                        div()
-                            .id("run-plan-count")
-                            .test_support()
-                            .aria_label(count.clone())
-                            .text_size(style::TEXT_SMALL)
-                            .text_color(cx.theme().muted_foreground)
-                            .child(count),
+                        h_flex().gap_4().items_center().children(select_all).child(
+                            div()
+                                .id("run-plan-count")
+                                .test_support()
+                                .aria_label(count.clone())
+                                .text_size(style::TEXT_SMALL)
+                                .text_color(cx.theme().muted_foreground)
+                                .child(count),
+                        ),
                     )
                     .children(rows),
             )
@@ -1275,6 +1414,50 @@ mod tests {
         assert_eq!(
             plan_count_text(1, Some(3)),
             "1 request for each of 3 data rows"
+        );
+    }
+
+    #[test]
+    fn the_run_button_names_the_checked_count() {
+        use super::run_label;
+        assert_eq!(run_label(None), "Run");
+        assert_eq!(run_label(Some(0)), "Run 0 requests");
+        assert_eq!(run_label(Some(1)), "Run 1 request");
+        assert_eq!(run_label(Some(7)), "Run 7 requests");
+    }
+
+    #[test]
+    fn plan_entries_head_each_folder_once_below_the_scope() {
+        use super::{PlanEntry, PlannedRow, plan_entries};
+        let rows: Vec<PlannedRow> = ["f/g/x.yml", "f/y.yml", "h/z.yml", "a.yml"]
+            .iter()
+            .map(|p| PlannedRow {
+                path: ItemPath::new(p).expect("a valid item path"),
+                name: (*p).to_owned(),
+                method: "get".to_owned(),
+            })
+            .collect();
+        let folder = |path: &str, depth| PlanEntry::Folder {
+            path: path.to_owned(),
+            depth,
+        };
+        let request = |ix, depth| PlanEntry::Request { ix, depth };
+        assert_eq!(
+            plan_entries(&rows, ""),
+            [
+                folder("f", 0),
+                folder("f/g", 1),
+                request(0, 2),
+                request(1, 1),
+                folder("h", 0),
+                request(2, 1),
+                request(3, 0),
+            ]
+        );
+        // A runner of folder f shows no heading for f itself.
+        assert_eq!(
+            plan_entries(&rows[..2], "f"),
+            [folder("f/g", 0), request(0, 1), request(1, 0)]
         );
     }
 

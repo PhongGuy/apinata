@@ -468,6 +468,9 @@ pub struct Workspace {
     // Per open runner or run-selection tab, what its plan lists after the last prune of its
     // root, so a request that leaves, returns, or changes a shown field re-plans the list.
     runner_members: HashMap<TabId, RunnerRecord>,
+    // Per collection root, the requests a runner's checkboxes leave out. Kept for the app's
+    // lifetime only, and as exclusions so a request added later starts checked.
+    run_unchecked: HashMap<PathBuf, HashSet<ItemPath>>,
     // Typed script texts waiting for the write they ride on to be confirmed.
     awaiting: Vec<AwaitedApproval>,
     // Imports among `drafts`: applied to the draft once it is created.
@@ -554,6 +557,7 @@ impl Workspace {
             cross_saves: HashMap::new(),
             selection_gone: HashMap::new(),
             runner_members: HashMap::new(),
+            run_unchecked: HashMap::new(),
             awaiting: Vec::new(),
             kept_views: HashMap::new(),
             restored_active: None,
@@ -634,6 +638,32 @@ impl Workspace {
     /// The session this workspace records into.
     pub fn session(&self) -> &Entity<Persisted<Session>> {
         &self.session
+    }
+
+    /// Whether the runners of the collection at `root` include request `item`; all are
+    /// included until unchecked.
+    pub fn run_checked(&self, root: &Path, item: &ItemPath) -> bool {
+        !self
+            .run_unchecked
+            .get(root)
+            .is_some_and(|set| set.contains(item))
+    }
+
+    /// The requests the runners of the collection at `root` leave out.
+    pub fn run_unchecked(&self, root: &Path) -> HashSet<ItemPath> {
+        self.run_unchecked.get(root).cloned().unwrap_or_default()
+    }
+
+    /// Checks or unchecks `items` in the runners of the collection at `root`.
+    pub fn set_run_checked(&mut self, root: &Path, items: &[ItemPath], on: bool) {
+        let set = self.run_unchecked.entry(root.to_path_buf()).or_default();
+        for item in items {
+            if on {
+                set.remove(item);
+            } else {
+                set.insert(item.clone());
+            }
+        }
     }
 
     /// The open collections, in the order they were opened.

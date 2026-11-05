@@ -408,6 +408,7 @@ mod ring_gap;
 mod ring_room;
 mod row_move;
 mod row_move_edit;
+mod runner_checkboxes;
 mod runner_export;
 mod runner_fail_on_status;
 mod runner_layout;
