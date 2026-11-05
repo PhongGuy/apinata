@@ -31,12 +31,18 @@ pub(crate) struct Fx {
 // A POST whose url, header and body use the secret environment variable `token`, next to a
 // header of plain values. The server echoes the secret in a response header.
 pub(crate) fn shown(cx: &mut TestAppContext) -> Fx {
-    setup(cx, false)
+    setup(cx, false, "")
+}
+
+// As `shown`, with literal credentials under credential header names that no secret list knows.
+pub(crate) fn shown_named(cx: &mut TestAppContext) -> Fx {
+    let extra = "    - name: X-API-Key\n      value: lit-api-key-1\n    - name: x-session-token\n      value: lit-session-2\n";
+    setup(cx, false, extra)
 }
 
 // With `pac`, the send goes through a PAC route naming the secret, which here is the proxy's
 // own host, and the mock server answers as the proxy.
-fn setup(cx: &mut TestAppContext, pac: bool) -> Fx {
+fn setup(cx: &mut TestAppContext, pac: bool, extra: &str) -> Fx {
     http_ready(cx);
     let server = mock_server(
         cx,
@@ -81,11 +87,11 @@ http:
       value: Negotiate dG9rZW4=
     - name: proxy-authorization
       value: Basic dXNlcjpwdw==
-  body:
+{}  body:
     type: json
     data: '{{"k":"{{{{token}}}}"}}'
 "#,
-        base
+        base, extra
     );
     let dev = "name: dev\nvariables:\n  - name: token\n    secret: true\n";
     let col = write_tree(&[
@@ -297,7 +303,7 @@ fn a_reveal_is_forgotten_when_another_result_is_shown(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_pac_route_naming_a_secret_is_masked(cx: &mut TestAppContext) {
-    let fx = setup(cx, true);
+    let fx = setup(cx, true, "");
     let raw = fx.result.response.as_ref().unwrap().timeline()[0]
         .pac
         .clone()
@@ -306,4 +312,62 @@ fn a_pac_route_naming_a_secret_is_masked(cx: &mut TestAppContext) {
     let shown = label(cx, &fx, "hop-pac");
     assert_eq!(shown, format!("PAC: {}", fx.result.redact(&raw)));
     assert!(!shown.contains("127.0.0.1"), "{shown}");
+}
+
+// Clicks the eye of request header row `row`.
+fn reveal_named(cx: &mut TestAppContext, fx: &Fx, row: usize) {
+    click(cx, fx, ("hop-request-header-reveal", row));
+}
+
+#[gpui_kit::test]
+fn a_credential_named_header_is_dots_until_its_eye_reveals_it(cx: &mut TestAppContext) {
+    let fx = shown_named(cx);
+    let value = value_id(REQ);
+    for (name, literal) in [
+        ("x-api-key", "lit-api-key-1"),
+        ("x-session-token", "lit-session-2"),
+    ] {
+        let row = row_of(cx, &fx, REQ, name);
+        assert_eq!(
+            label(cx, &fx, (value, row)),
+            apinata_app::response_pane::NAME_MASK
+        );
+        assert!(
+            present(cx, fx.win, ("hop-request-header-reveal", row)),
+            "{name}"
+        );
+        reveal_named(cx, &fx, row);
+        assert_eq!(label(cx, &fx, (value, row)), literal);
+        click(cx, &fx, ("hop-request-header-hide", row));
+        assert_eq!(
+            label(cx, &fx, (value, row)),
+            apinata_app::response_pane::NAME_MASK
+        );
+    }
+    // Other headers read as before.
+    let row = row_of(cx, &fx, REQ, "x-plain");
+    assert_eq!(label(cx, &fx, (value, row)), "hello");
+}
+
+#[gpui_kit::test]
+fn a_credential_name_reveal_lasts_across_results(cx: &mut TestAppContext) {
+    let fx = shown_named(cx);
+    let row = row_of(cx, &fx, REQ, "x-api-key");
+    reveal_named(cx, &fx, row);
+    let (root, model) = (fx._keep.2.root.clone(), fx.model.clone());
+    assert!(model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx)));
+    let again = finished(cx, &model);
+    assert!(!Arc::ptr_eq(&again, &fx.result));
+    frame(cx, fx.win);
+    let row = row_of(cx, &fx, REQ, "x-api-key");
+    assert_eq!(label(cx, &fx, (value_id(REQ), row)), "lit-api-key-1");
+    // A per-result reveal is still forgotten.
+    let auth = row_of(cx, &fx, REQ, "x-auth");
+    assert_eq!(label(cx, &fx, (value_id(REQ), auth)), "Bearer [redacted]");
+    // The session log keeps showing the literal as it always did.
+    let hop = &again.response.as_ref().unwrap().timeline()[0];
+    let (name, value) = (hop.request_headers.iter())
+        .find(|(n, _)| n.eq_ignore_ascii_case("x-api-key"))
+        .unwrap();
+    assert_eq!(again.redact_header(name, value), "lit-api-key-1");
 }

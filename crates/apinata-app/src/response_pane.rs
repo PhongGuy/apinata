@@ -15,7 +15,7 @@ use apinata_core::{
     AssertionOutcome, BodyState, Comparison, ConnectCause, ConnectHint, ConsoleEntry, ConsoleLevel,
     CookieInfo, CookieOutcome, CookieRejection, ExecError, HOP_BODY_LIMIT, ItemPath, OAuth2Error,
     Outcome, RequestResult, ResolveError, Response, RunError, TestOutcome, UndefinedHint, Verdict,
-    is_credential_header,
+    is_credential_header, is_credential_name,
 };
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::WindowExt as _;
@@ -306,13 +306,25 @@ impl Masked {
     }
 }
 
-// One hop's values, masked once per result.
+// One hop's values, masked once per result. A header masked for its credential name carries
+// that name, lower-cased, since its reveal is kept by name for the session.
 struct HopMasks {
     url: Masked,
     request_headers: Vec<Masked>,
+    request_named: Vec<Option<String>>,
     request_body: Option<Masked>,
     response_headers: Vec<Masked>,
+    response_named: Vec<Option<String>>,
 }
+
+/// What a header whose name marks it a credential shows in the Timeline until revealed.
+pub const NAME_MASK: &str = crate::env_table::SECRET_HIDDEN;
+
+// The credential header names revealed in the Timeline; they stay revealed for the session.
+#[derive(Default)]
+struct NamedReveals(BTreeSet<String>);
+
+impl Global for NamedReveals {}
 
 // Which part of a hop a reveal belongs to.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -2725,6 +2737,9 @@ impl ResponsePane {
             ResponseTab::Timeline => {
                 let hops = response.map(|r| r.timeline()).unwrap_or_default();
                 let (masks, revealed) = self.timeline_masks(result);
+                let named_reveals: BTreeSet<String> = (cx.try_global::<NamedReveals>())
+                    .map(|g| g.0.clone())
+                    .unwrap_or_default();
                 let muted = cx.theme().muted_foreground;
                 let mono = cx.theme().mono_font_family.clone();
                 // A remembered response kept no hops, so say why and how to get them back.
@@ -2760,6 +2775,11 @@ impl ResponsePane {
                             };
                             let mask = &masks[ix];
                             let is_on = |field, row| revealed.contains(&(ix, field, row));
+                            // A header masked by name is revealed by name, else by its place.
+                            let row_on = |field, row, key: Option<&String>| match key {
+                                Some(name) => named_reveals.contains(name),
+                                None => is_on(field, row),
+                            };
                             let pick = |m: &Masked, on: bool| {
                                 if on {
                                     m.revealed.clone()
@@ -2774,25 +2794,32 @@ impl ResponsePane {
                                  field: Field,
                                  pairs: &[(String, String)],
                                  masked: &[Masked],
+                                 keys: &[Option<String>],
                                  cx: &mut Context<Self>| {
+                                    let key = |row: usize| keys.get(row).and_then(Option::as_ref);
                                     let shown: Vec<(String, String)> = pairs
                                         .iter()
                                         .zip(masked)
                                         .enumerate()
                                         .map(|(row, ((name, _), m))| {
-                                            (name.clone(), pick(m, is_on(field, row)))
+                                            (name.clone(), pick(m, row_on(field, row, key(row))))
                                         })
                                         .collect();
                                     let flags: Vec<Option<bool>> = masked
                                         .iter()
                                         .enumerate()
-                                        .map(|(row, m)| m.eye().then(|| is_on(field, row)))
+                                        .map(|(row, m)| {
+                                            m.eye().then(|| row_on(field, row, key(row)))
+                                        })
                                         .collect();
                                     let pane = cx.entity();
+                                    let keys = keys.to_vec();
                                     header_table(ids, &shown)
                                         .on_reveal(eyes, flags, move |row, _, cx| {
-                                            pane.update(cx, |p, cx| {
-                                                p.toggle_reveal((ix, field, row), cx)
+                                            let key = keys.get(row).cloned().flatten();
+                                            pane.update(cx, |p, cx| match key {
+                                                Some(name) => p.toggle_named_reveal(name, cx),
+                                                None => p.toggle_reveal((ix, field, row), cx),
                                             });
                                         })
                                         .follow(&follow)
@@ -2899,6 +2926,7 @@ impl ResponsePane {
                                     Field::RequestHeader,
                                     &h.request_headers,
                                     &mask.request_headers,
+                                    &mask.request_named,
                                     cx,
                                 ))
                                 .when_some(mask.request_body.as_ref(), |hop, body| {
@@ -2946,6 +2974,7 @@ impl ResponsePane {
                                     Field::ResponseHeader,
                                     &h.response_headers,
                                     &mask.response_headers,
+                                    &mask.response_named,
                                     cx,
                                 ))
                         })),
@@ -3155,6 +3184,15 @@ impl ResponsePane {
         cx.notify();
     }
 
+    // Flips every Timeline header named `name` between masked and revealed, for the session.
+    fn toggle_named_reveal(&mut self, name: String, cx: &mut Context<Self>) {
+        let set = &mut cx.default_global::<NamedReveals>().0;
+        if !set.remove(&name) {
+            set.insert(name);
+        }
+        cx.notify();
+    }
+
     // Flips one Timeline value between masked and revealed.
     fn toggle_reveal(&mut self, key: RevealKey, cx: &mut Context<Self>) {
         if let Some(m) = self.timeline_masks.borrow_mut().as_mut()
@@ -3287,6 +3325,13 @@ fn hop_masks(r: &RequestResult, h: &apinata_core::Hop) -> HopMasks {
                         revealed: text,
                     };
                 }
+                // A name that says credential hides even a literal no secret list knows.
+                if is_named_credential(name, value) {
+                    return Masked {
+                        hidden: NAME_MASK.to_owned(),
+                        revealed: value.clone(),
+                    };
+                }
                 let one = |text: &str| mask_handshake(name, text);
                 let redacted = if is_handshake_header(name) {
                     r.redact(value)
@@ -3306,12 +3351,29 @@ fn hop_masks(r: &RequestResult, h: &apinata_core::Hop) -> HopMasks {
             revealed: h.url.clone(),
         },
         request_headers: header(&h.request_headers),
+        request_named: named(&h.request_headers),
         request_body: hop_body_text(&h.request_body, h.request_body_size).map(|text| Masked {
             hidden: r.redact(&text),
             revealed: text,
         }),
         response_headers: header(&h.response_headers),
+        response_named: named(&h.response_headers),
     }
+}
+
+// Whether the Timeline masks header `name` for its name, with a reveal kept by name. A handshake
+// credential stays locked instead, and an empty value has nothing to hide.
+fn is_named_credential(name: &str, value: &str) -> bool {
+    is_credential_name(name)
+        && !value.is_empty()
+        && !(is_credential_header(name) && is_handshake_header(name))
+}
+
+// For each header, its lower-cased name when the Timeline masks it by name.
+fn named(pairs: &[(String, String)]) -> Vec<Option<String>> {
+    (pairs.iter())
+        .map(|(name, value)| is_named_credential(name, value).then(|| name.to_ascii_lowercase()))
+        .collect()
 }
 
 // The hop's PAC route as the timeline shows it, or None when PAC did not choose it.
