@@ -2,7 +2,7 @@
 //! `Debug` impls, which show sizes and header names only.
 
 use super::cap::{Cut, cap_bytes, cap_bytes_of, recap};
-use super::redact::Redactor;
+use super::redact::{REDACTED, Redactor};
 use super::{ConsoleLine, LoggedBody, LoggedHop, NetworkEntry};
 use crate::{ConsoleLevel, ScriptPhase};
 use std::fmt;
@@ -192,8 +192,19 @@ impl LoggedBody {
     }
 
     /// Re-redacts the text at `cap` with `size` as N; a cut sets `truncated`, `size` stays.
-    /// Bytes that now hold a value cannot be redacted in place, so they are dropped.
+    /// A body with kept bytes is rebuilt from them, which drops them if they now hold a value;
+    /// a lossy text that could hide a late non-ASCII UTF-16 value is replaced whole.
     fn rededact(&mut self, r: &Redactor, cap: usize) {
+        // Kept bytes hold no earlier value, so the body is rebuilt from them exactly.
+        if let Some(raw) = self.raw.take() {
+            *self = logged_body_of(r, &raw, self.size, cap);
+            return;
+        }
+        // A lossy text cannot show a non-ASCII value's UTF-16 copy whole, so it is replaced.
+        if r.has_non_ascii_wide() && self.text.contains('\u{FFFD}') {
+            self.withhold(REDACTED);
+            return;
+        }
         // UTF-16 copies in the kept content are swapped first; the cut moves with the content.
         let kept = self.cut.map_or(self.text.len(), |c| c.kept);
         if let Some(wide) = r.redact_wide(&self.text.as_bytes()[..kept]) {
@@ -205,9 +216,6 @@ impl LoggedBody {
         }
         (self.text, self.cut) = recap(r, &self.text, self.cut, cap, self.size);
         self.truncated |= self.cut.is_some();
-        if self.raw.as_deref().is_some_and(|raw| r.holds(raw)) {
-            self.raw = None;
-        }
     }
 
     /// The text replaced whole by `placeholder`; `size` stays.
