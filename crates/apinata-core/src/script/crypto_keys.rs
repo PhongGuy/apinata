@@ -24,6 +24,7 @@ use super::crypto::{
     Public, RSA_BITS, ec_pair, element, first_value, key_bytes, key_object, private_from,
     rsa_public_parts, rsa_size, spki_key, spki_of,
 };
+use super::crypto_pss::OID_RSA_PSS;
 use super::jwt::KeyInput;
 
 /// Node's message for an encrypted PEM read without a usable passphrase, once OpenSSL's code is dropped.
@@ -359,7 +360,7 @@ pub(super) fn rsa_pkcs1_fits(der: &[u8]) -> Result<(), String> {
     }))
 }
 
-/// `rsa_pkcs1_fits` for a PKCS#8 key, which only an `rsaEncryption` key can fail.
+/// `rsa_pkcs1_fits` for a PKCS#8 key, which only an RSA or RSA-PSS key can fail.
 pub(super) fn rsa_pkcs8_fits(der: &[u8]) -> Result<(), String> {
     pkcs8_rsa_key(der).map_or(Ok(()), rsa_pkcs1_fits)
 }
@@ -402,17 +403,17 @@ fn jwk_rsa_private(parts: &[Vec<u8>]) -> Result<(&'static str, Vec<u8>), String>
     same.then_some((kind, der)).ok_or_else(|| JWK_RSA.into())
 }
 
-/// The PKCS#1 RSAPrivateKey inside a PKCS#8 key, None unless it is plain `rsaEncryption`.
+/// The PKCS#1 RSAPrivateKey inside a PKCS#8 RSA or RSA-PSS key.
 fn pkcs8_rsa_key(der: &[u8]) -> Option<&[u8]> {
     let (_, info, _) = element(der)?;
     let (_, _, rest) = element(info)?;
     let (_, algorithm, rest) = element(rest)?;
     let (_, oid, _) = element(algorithm)?;
     let (_, key, _) = element(rest)?;
-    (oid == OID_RSA).then_some(key)
+    (oid == OID_RSA || oid == OID_RSA_PSS).then_some(key)
 }
 
-/// The eight RSAPrivateKey integers of a PKCS#8 key, None unless it is plain `rsaEncryption`.
+/// The eight RSAPrivateKey integers of a PKCS#8 RSA or RSA-PSS key.
 pub(super) fn rsa_private_parts(der: &[u8]) -> Option<Vec<Vec<u8>>> {
     let (_, key, _) = element(pkcs8_rsa_key(der)?)?;
     let (_, _, mut rest) = element(key)?;
@@ -444,7 +445,7 @@ fn spki_bits(der: &[u8]) -> Option<&[u8]> {
 /// checked, as in Node: any 32 bytes are kept.
 pub(super) fn public_readable(key: &Public) -> Result<(), &'static str> {
     let readable = match key {
-        Public::Rsa(der) => spki_bits(der)
+        Public::Rsa(der) | Public::RsaPss { der, .. } => spki_bits(der)
             .and(rsa_public_parts(der).map(|_| ()))
             .is_some(),
         Public::Ec(curve, der) => jwk_curve(crv(*curve))
@@ -482,6 +483,7 @@ fn jwk_parts(der: &[u8], private: bool) -> Result<(&'static str, Vec<Vec<u8>>), 
                 let x = spki_bits(&der).ok_or(JWK_KEY_TYPE)?;
                 Ok(("Ed25519", vec![x.to_vec()]))
             }
+            Public::RsaPss { .. } => Err(JWK_KEY_TYPE.into()),
         };
     }
     match private_from("PRIVATE KEY", der.to_vec())? {
@@ -500,6 +502,7 @@ fn jwk_parts(der: &[u8], private: bool) -> Result<(&'static str, Vec<Vec<u8>>), 
             let x = pair.public_key().as_ref().to_vec();
             Ok(("Ed25519", vec![seed.as_ref().to_vec(), x]))
         }
+        Private::RsaPss { .. } => Err(JWK_KEY_TYPE.into()),
     }
 }
 

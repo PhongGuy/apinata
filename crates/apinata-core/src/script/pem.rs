@@ -10,6 +10,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
 use super::crypto::{OID_EC, OID_ED25519, OID_RSA, certificate_spki, element, first_value};
+use super::crypto_pss::OID_RSA_PSS;
 use super::jwt::KeyInput;
 
 const BYTE_ORDER_MARK: &[u8] = &[0xef, 0xbb, 0xbf];
@@ -103,7 +104,7 @@ fn pkcs8_oid(der: &[u8]) -> Option<&[u8]> {
     let (key, _) = tagged(rest, OCTET_STRING)?;
     let (oid, _) = tagged(algorithm, OID)?;
     let shaped = match oid {
-        OID_RSA => opens_with_integers(key, RSA_INTEGERS),
+        OID_RSA | OID_RSA_PSS => opens_with_integers(key, RSA_INTEGERS),
         OID_EC => sec1_shaped(key),
         OID_ED25519 => tagged(key, OCTET_STRING).is_some_and(|(seed, _)| seed.len() == 32),
         _ => true,

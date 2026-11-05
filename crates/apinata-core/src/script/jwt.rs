@@ -16,7 +16,8 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, crypto};
 use rquickjs::Function;
 use serde_json::{Value, json};
 
-use super::crypto::{Curve, Padding, Public, public_key, rsa_public_parts};
+use super::crypto::{Curve, Public, public_key, rsa_public_parts};
+use super::crypto_pss::Scheme;
 use super::engine::Installer;
 
 const JWT_JS: &str = include_str!("jwt.js");
@@ -105,7 +106,9 @@ pub(crate) fn ec_private_curve(der: &[u8], sec1: bool) -> Option<&'static str> {
 fn details(key: &KeyInput) -> Result<Value, String> {
     Ok(match public_key(key)? {
         Public::Ec(curve, _) => json!({ "curve": curve_name(curve) }),
-        Public::Rsa(der) => json!({ "bits": rsa_public_parts(&der).map(|(n, _)| n.bits()) }),
+        Public::Rsa(der) | Public::RsaPss { der, .. } => {
+            json!({ "bits": rsa_public_parts(&der).map(|(n, _)| n.bits()) })
+        }
         Public::Ed(_) => json!({}),
     })
 }
@@ -148,8 +151,9 @@ const NO_OPERATION: &str = "Unsupported crypto operation";
 /// What an RSA signature fails with where a JOSE ECDSA signature is formatted.
 const NOT_ECDSA: &str = "Could not find expected \"seq\"";
 
-/// How `crypto.rs` signs a family: its digest, ECDSA encoding and RSA padding.
-fn scheme(alg: &str) -> (&'static str, &'static str, Padding) {
+/// How `crypto.rs` signs a family: its digest, ECDSA encoding and RSA options. RS names no
+/// padding, so an RSA-PSS key the type check let past signs PSS, as in Node.
+fn scheme(alg: &str) -> (&'static str, &'static str, Scheme) {
     let digest = match &alg[2..] {
         "256" => "sha256",
         "384" => "sha384",
@@ -157,9 +161,16 @@ fn scheme(alg: &str) -> (&'static str, &'static str, Padding) {
     };
     match &alg[..2] {
         // The library signs with the salt as long as the digest.
-        "PS" => (digest, "der", Padding::Pss(-1)),
-        "ES" => (digest, "ieee-p1363", Padding::Pkcs1),
-        _ => (digest, "der", Padding::Pkcs1),
+        "PS" => (
+            digest,
+            "der",
+            Scheme {
+                padding: Some(6),
+                salt: Some(-1),
+            },
+        ),
+        "ES" => (digest, "ieee-p1363", Scheme::default()),
+        _ => (digest, "der", Scheme::default()),
     }
 }
 
@@ -168,7 +179,7 @@ fn scheme(alg: &str) -> (&'static str, &'static str, Padding) {
 fn check_signing_key(alg: &str, key: &KeyInput) -> Result<(), String> {
     match (&alg[..2], public_key(key)?) {
         (_, Public::Ed(_)) => Err(NO_OPERATION.into()),
-        ("ES", Public::Rsa(_)) => Err(NOT_ECDSA.into()),
+        ("ES", Public::Rsa(_) | Public::RsaPss { .. }) => Err(NOT_ECDSA.into()),
         ("ES", Public::Ec(curve, _)) => {
             let wanted = match alg {
                 "ES256" => Curve::P256,

@@ -110,14 +110,16 @@
     }
     get type() { return KEY_DATA.get(this).type; }
     get asymmetricKeyType() { return KEY_DATA.get(this).kind; }
-    // Node builds the object once for RSA and EC keys and anew on each read for Ed25519.
+    // Node builds the object once for RSA and EC keys and anew on each read for Ed25519. An
+    // RSA-PSS key adds the parameters it is held to, when it has them.
     get asymmetricKeyDetails() {
       const data = KEY_DATA.get(this);
       if (data.type === "secret") return undefined;
       if (data.kind === "ed25519") return {};
       if (data.details === undefined) {
-        const [bits, exponent, curve] = keyDetails(data.kind, data.bytes, data.type === "private");
+        const [bits, exponent, curve, hashAlgorithm, mgf1HashAlgorithm, saltLength] = keyDetails(data.kind, data.bytes, data.type === "private");
         data.details = data.kind === "ec" ? { namedCurve: curve } : { modulusLength: bits, publicExponent: BigInt("0x" + (Buf().from(exponent).toString("hex") || "0")) };
+        if (hashAlgorithm !== "") Object.assign(data.details, { hashAlgorithm, mgf1HashAlgorithm, saltLength });
       }
       return data.details;
     }
@@ -137,10 +139,14 @@
       const { type: form, format } = options;
       if (format === "jwk") {
         if (type === "private" && options.passphrase !== undefined) throw new Error("The selected key encoding jwk does not support encryption.");
+        if (kind === "rsa-pss") throw Object.assign(new Error("Unsupported JWK Key Type."), { code: "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE" });
         return exportJwk(type, kind, bytes);
       }
       if (format !== "pem" && format !== "der") throw invalidOption("options.format", format);
       if (!EXPORT_TYPES[type].includes(form)) throw invalidOption("options.type", form);
+      if (kind === "rsa-pss" && form === "pkcs1") {
+        throw Object.assign(new Error("The selected key encoding pkcs1 can only be used for RSA keys."), { code: "ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS" });
+      }
       if (form !== (type === "private" ? "pkcs8" : "spki")) {
         throw new Error(`KeyObject export not supported: type "${form}" with format "${format}" (supported: pkcs8 for private keys and spki for public keys, as pem or der, or jwk)`);
       }
@@ -456,9 +462,9 @@
     RSA_PKCS1_PADDING: 1, RSA_PKCS1_PSS_PADDING: 6, RSA_PSS_SALTLEN_DIGEST: -1, RSA_PSS_SALTLEN_MAX_SIGN: -2, RSA_PSS_SALTLEN_AUTO: -2,
   });
   // A PEM string, Buffer or KeyObject, or `{ key, format, type, passphrase, dsaEncoding, padding,
-  // saltLength }`, as the host's [bytes, dsaEncoding, pss], `pss` being null for PKCS#1 v1.5 or the
-  // salt length. An unset salt is the digest length when signing and recovered from the signature
-  // when verifying. A key needing a format, encoding or passphrase is imported first, as Node does.
+  // saltLength }`, as the host's [bytes, dsaEncoding, [padding, saltLength]], each null when
+  // unset, since the key type settles their defaults. A key needing a format, encoding or
+  // passphrase is imported first, as Node does.
   const keyOf = (key, signing) => {
     let options = {};
     if (key !== null && typeof key === "object" && !isBytes(key) && !(key instanceof KeyObject)) [options, key] = [key, key.key];
@@ -476,26 +482,28 @@
     }
     const dsa = options.dsaEncoding ?? "der";
     if (dsa !== "der" && dsa !== "ieee-p1363") throw new TypeError(`The property 'options.dsaEncoding' is invalid. Received '${dsa}'`);
-    const padding = options.padding ?? 1;
-    if (padding !== 1 && padding !== 6) throw unsupported(`padding ${padding}`);
-    // A sign without saltLength passes -3, which the host reads as its default salt.
-    const salt = options.saltLength ?? (signing ? -3 : -2);
-    if (!Number.isInteger(salt)) throw new TypeError(`The "options.saltLength" property must be of type number`);
-    return [input(key, "key"), dsa, padding === 6 ? salt : null];
+    const padding = options.padding ?? null;
+    if (padding !== null && padding !== 1 && padding !== 6) throw unsupported(`padding ${padding}`);
+    const salt = options.saltLength ?? null;
+    if (salt !== null && !Number.isInteger(salt)) throw new TypeError(`The "options.saltLength" property must be of type number`);
+    return [input(key, "key"), dsa, [padding, salt]];
   };
   crypto.sign = (algorithm, data, key, callback) => {
-    const digest = digestOf(algorithm), bytes = input(data, "data"), [k, dsa, pss] = keyOf(key, true);
-    const work = () => Buf().from(sign(digest, bytes, k, dsa, pss));
+    const digest = digestOf(algorithm), bytes = input(data, "data"), [k, dsa, options] = keyOf(key, true);
+    const work = () => Buf().from(sign(digest, bytes, k, dsa, options));
     if (callback === undefined) return work();
     later(callbackOf(callback), work);
   };
   crypto.verify = (algorithm, data, key, signature, callback) => {
-    const digest = digestOf(algorithm), bytes = input(data, "data"), [k, dsa, pss] = keyOf(key, false);
+    const digest = digestOf(algorithm), bytes = input(data, "data"), [k, dsa, options] = keyOf(key, false);
     const sig = input(signature, "signature");
-    const work = () => verify(digest, bytes, k, sig, dsa, pss);
+    const work = () => verify(digest, bytes, k, sig, dsa, options);
     if (callback === undefined) return work();
     later(callbackOf(callback), work);
   };
+  // OpenSSL's refusals of an RSA-PSS key's digest, padding or salt, which Node's createVerify
+  // reports as a failed verification where crypto.verify throws them.
+  const PSS_REFUSALS = ["digest not allowed", "illegal or unsupported padding mode", "invalid salt length", "pss saltlen too small"];
   // createSign and createVerify gather chunks until one sign or verify call.
   const gather = (algorithm) => {
     if (typeof algorithm !== "string") throw new TypeError('The "algorithm" argument must be of type string');
@@ -513,8 +521,8 @@
     return {
       update(data, encoding) { g.add(data, encoding); return this; },
       sign(key, outputEncoding) {
-        const [k, dsa, pss] = keyOf(key, true);
-        return output(sign(g.digest, g.take(), k, dsa, pss), outputEncoding);
+        const [k, dsa, options] = keyOf(key, true);
+        return output(sign(g.digest, g.take(), k, dsa, options), outputEncoding);
       },
     };
   };
@@ -523,9 +531,14 @@
     return {
       update(data, encoding) { g.add(data, encoding); return this; },
       verify(key, signature, signatureEncoding) {
-        const [k, dsa, pss] = keyOf(key, false);
+        const [k, dsa, options] = keyOf(key, false);
         const sig = input(signature, "signature", signatureEncoding);
-        return verify(g.digest, g.take(), k, sig, dsa, pss);
+        try {
+          return verify(g.digest, g.take(), k, sig, dsa, options);
+        } catch (error) {
+          if (PSS_REFUSALS.includes(error.message)) return false;
+          throw error;
+        }
       },
     };
   };

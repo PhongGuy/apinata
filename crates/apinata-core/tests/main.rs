@@ -339,6 +339,7 @@ mod script_console_methods;
 mod script_cookies_write;
 mod script_crypto;
 mod script_crypto_keys;
+mod script_crypto_pss;
 mod script_edit;
 mod script_error_lines;
 mod script_expressions;
