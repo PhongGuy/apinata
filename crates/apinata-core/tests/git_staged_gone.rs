@@ -675,6 +675,71 @@ fn a_link_leading_out_of_the_repository_is_never_read() {
     assert!(status(&sb, &col).kept_at.is_empty());
 }
 
+#[test]
+fn a_gone_edit_with_nothing_left_opens_no_file() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_gone(&sb);
+    assert!(status(&sb, &col).opens_at.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_gone_edit_under_a_link_to_other_text_opens_the_links_target() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_under_a_link(&sb);
+    let got = status(&sb, &col);
+    assert!(got.kept_at.is_empty(), "{:?}", got.kept_at);
+    assert_eq!(got.opens_at[Path::new("p/a.yml")], Path::new("q/a.yml"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_gone_edit_kept_under_a_link_opens_nothing_else() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_under_a_link(&sb);
+    write(&col, "q/a.yml", EDITED);
+    assert!(status(&sb, &col).opens_at.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_to_a_file_git_cannot_read_claims_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_under_a_link(&sb);
+    let target = col.join("q/a.yml");
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o000)).unwrap();
+    let got = status(&sb, &col);
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(got.opens_at.is_empty(), "{:?}", got.opens_at);
+}
+
+#[test]
+fn a_lowered_file_cap_truncates_the_listing() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_gone(&sb);
+    for name in ["x.yml", "y.yml", "z.yml"] {
+        write(&col, name, BODY);
+    }
+    let options = sb.options().file_cap(2);
+    let GitState::Repo(repo) = collection_status_with(&col, &options).expect("status") else {
+        panic!("a repository");
+    };
+    assert_eq!((repo.files.len(), repo.truncated), (2, true));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_out_of_the_repository_opens_nothing_it_names() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_under_a_link(&sb);
+    let outside = sb.path().join("outside");
+    fs::rename(col.join("q"), &outside).unwrap();
+    fs::remove_file(col.join("p")).unwrap();
+    std::os::unix::fs::symlink(&outside, col.join("p")).unwrap();
+    assert!(status(&sb, &col).opens_at.is_empty());
+}
+
 #[cfg(unix)]
 #[test]
 fn a_link_leaving_the_collection_but_not_the_repository_is_named_in_full() {

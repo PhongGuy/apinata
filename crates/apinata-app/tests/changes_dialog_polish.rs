@@ -559,6 +559,7 @@ fn a_click_on_a_staged_file_gone_from_disk_drops_the_row(cx: &mut TestAppContext
     let s = git_started(cx, &sb, &col);
     open_on(cx, &s, col.path());
     click(cx, &s, ("changes-stage", 1usize));
+    answer_confirm(cx, "confirm-drop");
     idle(cx, &s);
     wait_for(cx, "row dropped", |cx| stages(cx) == [Unstaged, Unstaged]);
     assert_eq!(sb.git(col.path(), &["diff", "--cached", "--name-only"]), "");
@@ -620,6 +621,7 @@ fn unticking_a_staged_edit_gone_from_disk_unstages_it(cx: &mut TestAppContext) {
     let s = git_started(cx, &sb, &col);
     open_on(cx, &s, col.path());
     click(cx, &s, ("changes-stage", 0usize));
+    answer_confirm(cx, "confirm-drop");
     idle(cx, &s);
     wait_for(cx, "unstaged", |cx| stages(cx) == [Unstaged]);
     assert_eq!(sb.git(col.path(), &["diff", "--cached", "--name-only"]), "");

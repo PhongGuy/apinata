@@ -80,6 +80,11 @@ pub struct RepoStatus {
     /// [`GitOptions::check_kept`]; no entry says nothing about the disk.
     #[serde(skip)]
     pub kept_at: BTreeMap<PathBuf, PathBuf>,
+    /// The regular file in the repository that a [`StageState::StagedGone`] path now opens
+    /// through a symlinked parent, when it holds other content than the staged copy. Filled
+    /// alongside `kept_at`, for the paths it checks; no entry says nothing about the disk.
+    #[serde(skip)]
+    pub opens_at: BTreeMap<PathBuf, PathBuf>,
 }
 
 /// Where a changed file's change sits relative to the index.
@@ -291,6 +296,7 @@ pub struct GitOptions {
     env: Vec<(OsString, OsString)>,
     timeout: Duration,
     check_kept: bool,
+    file_cap: usize,
 }
 
 impl Default for GitOptions {
@@ -299,6 +305,7 @@ impl Default for GitOptions {
             env: Vec::new(),
             timeout: GIT_TIMEOUT,
             check_kept: false,
+            file_cap: GIT_FILE_CAP,
         }
     }
 }
@@ -320,6 +327,14 @@ impl GitOptions {
     /// Stop each git call after `limit`.
     pub fn timeout(mut self, limit: Duration) -> GitOptions {
         self.timeout = limit;
+        self
+    }
+
+    /// For tests only: list at most `cap` changed files instead of [`GIT_FILE_CAP`], so a test
+    /// reaches the cap with a handful of files.
+    #[doc(hidden)]
+    pub fn file_cap(mut self, cap: usize) -> GitOptions {
+        self.file_cap = cap;
         self
     }
 
@@ -348,11 +363,12 @@ pub fn collection_status_with(root: &Path, options: &GitOptions) -> Result<GitSt
         }
         Err(e) => return Err(e),
     };
-    let mut repo = status(root, &prefix, GIT_FILE_CAP, options)?;
+    let mut repo = status(root, &prefix, options.file_cap, options)?;
     if options.check_kept {
         settle_kept(root, &prefix, &mut repo, options);
     } else {
         repo.kept_at.clear();
+        repo.opens_at.clear();
     }
     Ok(GitState::Repo(repo))
 }
@@ -400,7 +416,8 @@ fn status(
 
 /// Settle `kept_at` for the listing: each staged path gone from disk, at the path git paired it
 /// with or through a symlinked parent, keeps an entry only for a regular file in the repository
-/// that holds the staged copy. Nothing else is opened.
+/// that holds the staged copy. A path that opens such a file through a link with other content
+/// lands in `opens_at` instead. Nothing else is opened.
 fn settle_kept(root: &Path, prefix: &str, repo: &mut RepoStatus, options: &GitOptions) {
     let paired = std::mem::take(&mut repo.kept_at);
     let Ok(base) = root.canonicalize() else {
@@ -409,7 +426,7 @@ fn settle_kept(root: &Path, prefix: &str, repo: &mut RepoStatus, options: &GitOp
     let Some(top) = base.ancestors().nth(Path::new(prefix).components().count()) else {
         return;
     };
-    let candidates = repo
+    let candidates: Vec<(&PathBuf, PathBuf)> = repo
         .stage
         .iter()
         .filter(|(_, at)| **at == StageState::StagedGone)
@@ -421,26 +438,35 @@ fn settle_kept(root: &Path, prefix: &str, repo: &mut RepoStatus, options: &GitOp
             let usable = real.starts_with(top) && real.is_file() && real != base.join(rel);
             usable.then_some((rel, real))
         })
-        .take(KEPT_CHECK_CAP);
-    let kept = candidates
-        .filter(|(rel, real)| holds_staged_copy(root, prefix, rel, real, options))
-        .map(|(rel, real)| {
-            let shown = real.strip_prefix(&base).unwrap_or(&real).to_path_buf();
-            (rel.clone(), shown)
-        })
+        .take(KEPT_CHECK_CAP)
         .collect();
+    let (mut kept, mut opens) = (BTreeMap::new(), BTreeMap::new());
+    for (rel, real) in candidates {
+        let shown = real.strip_prefix(&base).unwrap_or(&real).to_path_buf();
+        match holds_staged_copy(root, prefix, rel, &real, options) {
+            Some(true) => {
+                kept.insert(rel.clone(), shown);
+            }
+            // Only a path read through its own link opens the file; a paired one points elsewhere.
+            Some(false) if !paired.contains_key(rel) => {
+                opens.insert(rel.clone(), shown);
+            }
+            _ => {}
+        }
+    }
     repo.kept_at = kept;
+    repo.opens_at = opens;
 }
 
 /// Whether the file at `at` is what staging `rel` would store: git hashes it under `rel`, so the
-/// filters that cleaned the staged blob apply. A git failure claims nothing.
+/// filters that cleaned the staged blob apply. `None` when git fails, which claims nothing.
 fn holds_staged_copy(
     root: &Path,
     prefix: &str,
     rel: &Path,
     at: &Path,
     options: &GitOptions,
-) -> bool {
+) -> Option<bool> {
     let rel = rel.to_string_lossy();
     let hash = [
         OsString::from("hash-object"),
@@ -449,8 +475,8 @@ fn holds_staged_copy(
         at.as_os_str().to_owned(),
     ];
     let staged = format!(":0:{prefix}{rel}");
-    let staged = git_stdout(&["rev-parse", staged.as_str()], root, options);
-    staged.is_some() && staged == git_stdout(&hash, root, options)
+    let staged = git_stdout(&["rev-parse", staged.as_str()], root, options)?;
+    Some(staged == git_stdout(&hash, root, options)?)
 }
 
 /// What `args` print, `None` when git failed.

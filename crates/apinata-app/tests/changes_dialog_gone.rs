@@ -1,5 +1,6 @@
-//! An index-only copy on the Changes dialog: Stage all, Unstage all, Space and Enter ask before
-//! dropping one, Cancel changes nothing, and a row words what is left by its case.
+//! An index-only copy on the Changes dialog: Stage all, Unstage all, Space, Enter and a box click
+//! ask before dropping one, also past the list's cap, Cancel changes nothing, and a row words what
+//! is left by its case.
 
 use crate::git_support;
 use crate::h;
@@ -205,8 +206,18 @@ fn space_and_enter_on_a_normal_row_beside_it_do_not_ask(cx: &mut TestAppContext)
     });
 }
 
+// The confirm's body, as drawn.
+fn body(cx: &mut TestAppContext) -> Option<String> {
+    let win = confirm_window(cx).expect("a confirm dialog is open");
+    cx.update_window(win, |_, w, _| {
+        w.try_find("confirm-detail")
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
 #[gpui_kit::test]
-fn a_click_on_the_box_keeps_its_hover_warning_and_does_not_ask(cx: &mut TestAppContext) {
+fn a_click_on_a_gone_rows_box_asks_with_its_hover_warning(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = beside_a_normal_row(&sb);
     let s = git_started(cx, &sb, &col);
@@ -217,11 +228,141 @@ fn a_click_on_the_box_keeps_its_hover_warning_and_does_not_ask(cx: &mut TestAppC
     );
     assert_eq!(hovered_warning(cx, &s, 1).as_deref(), Some(PLAIN));
     click(cx, &s, ("changes-stage", 1usize));
+    assert_eq!(body(cx).as_deref(), Some(PLAIN));
+    assert_asked_then_cancelled(cx, &s, &sb, &col, vec![Unstaged, StagedGone, Unstaged]);
+    click(cx, &s, ("changes-stage", 1usize));
+    answer_confirm(cx, "confirm-drop");
     idle(cx, &s);
-    assert!(!confirm_open(cx));
     wait_for(cx, "the row unstaged", |cx| {
         !stages(cx).contains(&StagedGone)
     });
+    assert_eq!(sb.git(col.path(), &["diff", "--cached", "--name-only"]), "");
+}
+
+#[gpui_kit::test]
+fn space_on_a_gone_row_asks_with_its_hover_warning(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = beside_a_normal_row(&sb);
+    let s = git_started(cx, &sb, &col);
+    open_on(cx, &s, col.path());
+    on_row(cx, &s, 1);
+    platform_press(cx, s.win, "space");
+    assert_eq!(body(cx).as_deref(), Some(PLAIN));
+}
+
+// The file cap the tests past it lower core's to, so a handful of files reach it.
+const CAP: usize = 5;
+
+// Untracked files filling the lowered cap, as plain text so no request loads; `zz.yml` holds a staged
+// edit gone from disk and sorts past them all. `listed` adds such a row at `a.yml`, inside the
+// list, and `staged` stages the untracked files so every listed box is ticked.
+fn past_the_cap(sb: &Sandbox, listed: bool, staged: bool) -> tempfile::TempDir {
+    let col = committed(
+        sb,
+        &[
+            ("opencollection.yml", ROOT),
+            ("a.yml", &request("a", "http://x/a")),
+            ("zz.yml", &request("z", "http://x/z")),
+        ],
+    );
+    let mut gone = vec!["zz.yml"];
+    if listed {
+        gone.push("a.yml");
+    }
+    for name in gone {
+        write(col.path(), name, &request(name, "http://x/staged"));
+        sb.git(col.path(), &["add", name]);
+        std::fs::remove_file(col.path().join(name)).unwrap();
+    }
+    for i in 0..CAP {
+        write(col.path(), &format!("bulk/f{i:05}.txt"), "x\n");
+    }
+    if staged {
+        sb.git(col.path(), &["add", "bulk"]);
+    }
+    col
+}
+
+// The app started on `col` with git listing at most [`CAP`] files.
+fn capped_started(cx: &mut TestAppContext, sb: &Sandbox, col: &tempfile::TempDir) -> Started {
+    let s = started(cx, col);
+    let options = sb.options().file_cap(CAP);
+    s.ws.update(cx, |w, cx| w.set_git(Some(options), cx));
+    frame(cx, s.win);
+    s
+}
+
+// Opens the dialog over a list cut at the cap and presses the bulk button.
+fn bulk_past_the_cap(cx: &mut TestAppContext, s: &Started, col: &tempfile::TempDir) {
+    open_on(cx, s, col.path());
+    assert!(
+        view(cx).read_with(cx, |v, _| v.truncated()),
+        "the list stops at the cap"
+    );
+    assert!(!stages(cx).is_empty());
+    click(cx, s, "changes-toggle-all");
+}
+
+#[gpui_kit::test]
+fn stage_all_past_the_cap_asks_for_the_listed_count_or_more(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = past_the_cap(&sb, true, false);
+    let s = capped_started(cx, &sb, &col);
+    bulk_past_the_cap(cx, &s, &col);
+    assert_eq!(
+        question(cx).as_deref(),
+        Some("Drop 1 or more staged copies?")
+    );
+    let before = short(&sb, &col);
+    answer_confirm(cx, "confirm-cancel");
+    idle(cx, &s);
+    assert_eq!(short(&sb, &col), before, "Cancel leaves the index");
+}
+
+#[gpui_kit::test]
+fn unstage_all_past_the_cap_asks_for_the_listed_count_or_more(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = past_the_cap(&sb, true, true);
+    let s = capped_started(cx, &sb, &col);
+    bulk_past_the_cap(cx, &s, &col);
+    assert!(stages(cx).iter().all(|s| s.is_full()), "Unstage all");
+    assert_eq!(
+        question(cx).as_deref(),
+        Some("Drop 1 or more staged copies?")
+    );
+}
+
+#[gpui_kit::test]
+fn unstage_all_past_the_cap_with_no_listed_gone_row_still_asks(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = past_the_cap(&sb, false, true);
+    let s = capped_started(cx, &sb, &col);
+    bulk_past_the_cap(cx, &s, &col);
+    assert!(!stages(cx).contains(&StagedGone), "zz.yml is past the cap");
+    assert_eq!(
+        question(cx).as_deref(),
+        Some("Drop any staged copies past the list?")
+    );
+    answer_confirm(cx, "confirm-drop");
+    idle(cx, &s);
+    wait_for(cx, "the index emptied", |cx| {
+        !view(cx).read_with(cx, |v, _| v.busy())
+            && sb
+                .git(col.path(), &["diff", "--cached", "--name-only"])
+                .is_empty()
+    });
+}
+
+#[gpui_kit::test]
+fn stage_all_past_the_cap_with_no_listed_gone_row_still_asks(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = past_the_cap(&sb, false, false);
+    let s = capped_started(cx, &sb, &col);
+    bulk_past_the_cap(cx, &s, &col);
+    assert_eq!(
+        question(cx).as_deref(),
+        Some("Drop any staged copies past the list?")
+    );
 }
 
 // The tooltip the box at `ix` shows after a hover.
@@ -328,6 +469,7 @@ fn the_diff_follows_a_row_unstaged_under_a_link(cx: &mut TestAppContext) {
         view(cx).read_with(cx, |v, _| v.doc().is_some()) && !removes_only(cx)
     });
     click(cx, &s, ("changes-stage", 1usize));
+    answer_confirm(cx, "confirm-drop");
     idle(cx, &s);
     wait_for(cx, "the row unstaged", |cx| stages(cx)[1] == Unstaged);
     wait_for(cx, "the pane matches the row", removes_only);
@@ -617,15 +759,18 @@ fn a_moved_file_with_renames_off_speaks_only_of_the_path(cx: &mut TestAppContext
 
 #[cfg(unix)]
 #[gpui_kit::test]
-fn a_link_to_other_text_makes_no_claim_about_it(cx: &mut TestAppContext) {
+fn a_link_to_other_text_says_the_path_opens_another_file(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = staged_under_p(&sb, &["a.yml"], p_becomes_a_link);
     write(col.path(), "q/a.yml", &request("a", "http://x/later"));
     let s = git_started(cx, &sb, &col);
     open_on(cx, &s, col.path());
+    let warning = "Unstaging drops the staged copy; the path now opens another file (q/a.yml)";
     assert_eq!(
         label(cx, &s, ("changes-gone", 1usize)).as_deref(),
-        Some("staged, gone from its path")
+        Some("staged, path now opens q/a.yml")
     );
-    assert_eq!(hovered_warning(cx, &s, 1).as_deref(), Some(PLAIN));
+    assert_eq!(hovered_warning(cx, &s, 1).as_deref(), Some(warning));
+    click(cx, &s, ("changes-stage", 1usize));
+    assert_eq!(body(cx).as_deref(), Some(warning));
 }

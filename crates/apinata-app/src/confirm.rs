@@ -222,6 +222,24 @@ pub fn drop_staged_ask(count: usize, action: &'static str) -> Ask {
     careful_ask(title, detail, "confirm-drop", action)
 }
 
+/// [`drop_staged_ask`] for a list cut short: `listed` gone copies were seen, and more past the
+/// end may be gone too, so the count is a floor and none listed still asks.
+pub fn drop_staged_past_cap_ask(listed: usize, action: &'static str) -> Ask {
+    let (title, detail) = match listed {
+        0 => (
+            "Drop any staged copies past the list?".to_owned(),
+            "The list stops short, and staged files past it may be gone from their paths, so the \
+             index may hold the only copies of the edits.",
+        ),
+        n => (
+            format!("Drop {n} or more staged copies?"),
+            "They are gone from their paths, and staged files past the end of the list may be \
+             too, so the index may hold the only copies of the edits.",
+        ),
+    };
+    careful_ask(title, detail, "confirm-drop", action)
+}
+
 // A question whose safe answer is Cancel: the default, and Escape's answer too, so an accidental
 // Enter changes nothing. The confirming button is index 1.
 fn careful_ask(title: String, detail: &'static str, id: &'static str, label: &'static str) -> Ask {
