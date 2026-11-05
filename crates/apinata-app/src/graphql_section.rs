@@ -135,6 +135,9 @@ impl GraphqlSection {
         if self.schema_url != url {
             self.docs.update(cx, |d, cx| d.set_url(url.clone(), cx));
             self.completion_url.replace(url.clone());
+            if !url.is_empty() {
+                crate::schema_load::load_from_cache(url.clone(), cx);
+            }
             self.schema_url = url;
             cx.notify();
         }

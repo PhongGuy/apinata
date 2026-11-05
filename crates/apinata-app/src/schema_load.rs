@@ -1,9 +1,11 @@
-//! Loads a GraphQL request's schema into the shared store, from its server or from a schema file.
+//! Loads a GraphQL request's schema into the shared store, from its server, a schema file or
+//! the disk cache, and keeps each newest load in that cache.
 
 use std::path::{Path, PathBuf};
 
 use apinata_core::{
-    CancelHandle, ItemPath, ResolveError, Schema, SchemaError, fetch_schema, introspection_request,
+    CancelHandle, IntrospectError, ItemPath, ResolveError, Schema, SchemaError,
+    fetch_introspection, introspection_request,
 };
 use gpui_kit::{App, AppContext as _, Entity, Window};
 
@@ -42,7 +44,17 @@ pub fn load_from_server(
                     let exec = executor::schema(cx)?;
                     let load = async move {
                         let cancel = CancelHandle::new();
-                        fetch_schema(&exec, &request, &cancel).await
+                        let answer = fetch_introspection(&exec, &request, &cancel).await?;
+                        // The server may echo what the send carried, so the kept text is
+                        // scrubbed of the substituted secrets and the placed credentials.
+                        let secrets: Vec<String> = request
+                            .sensitive_values()
+                            .iter()
+                            .chain(answer.derived_credentials())
+                            .cloned()
+                            .collect();
+                        let text = answer.text().to_owned();
+                        Ok::<_, IntrospectError>((answer.into_schema(), text, secrets))
                     };
                     Some(tokio_bridge::spawn(cx, load))
                 });
@@ -57,10 +69,7 @@ pub fn load_from_server(
             Ok(Err(message)) => Err(message),
             Err(_) => Err("the schema load stopped".to_owned()),
         };
-        cx.update(|cx| {
-            cx.default_global::<SchemaStore>()
-                .finish(&url, generation, result)
-        });
+        cx.update(|cx| finish_and_keep(url, generation, result, cx));
     })
     .detach();
 }
@@ -72,14 +81,56 @@ pub fn load_from_file(url: String, path: PathBuf, cx: &mut App) {
     let read = cx.background_spawn(async move {
         let text = std::fs::read_to_string(&path)
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        Schema::from_text(&text).map_err(|e| e.to_string())
+        // The file is the user's own and nothing was sent, so there is no secret to scrub.
+        let schema = Schema::from_text(&text).map_err(|e| e.to_string())?;
+        Ok((schema, text, Vec::new()))
     });
     cx.spawn(async move |cx| {
         let result = read.await;
-        cx.update(|cx| {
-            cx.default_global::<SchemaStore>()
-                .finish(&url, generation, result)
-        });
+        cx.update(|cx| finish_and_keep(url, generation, result, cx));
     })
     .detach();
+}
+
+/// Reads the schema kept on disk for `url` in the background, the first time `url` is used
+/// and only when the store has a cache; a load started meanwhile wins over it.
+pub fn load_from_cache(url: String, cx: &mut App) {
+    let Some(cache) = cx.default_global::<SchemaStore>().probe(&url) else {
+        return;
+    };
+    let read = cx.background_spawn({
+        let url = url.clone();
+        async move { cache.load(&url) }
+    });
+    cx.spawn(async move |cx| {
+        if let Some(schema) = read.await {
+            cx.update(|cx| cx.default_global::<SchemaStore>().restore(&url, schema));
+        }
+    })
+    .detach();
+}
+
+// Stores the load's outcome and, when it is the newest load and succeeded, writes its text to
+// the disk cache in the background.
+fn finish_and_keep(
+    url: String,
+    generation: u64,
+    result: Result<(Schema, String, Vec<String>), String>,
+    cx: &mut App,
+) {
+    let store = cx.default_global::<SchemaStore>();
+    let (result, kept) = match result {
+        Ok((schema, text, secrets)) => (Ok(schema), Some((text, secrets))),
+        Err(message) => (Err(message), None),
+    };
+    let cache = store.cache().cloned();
+    if !store.finish(&url, generation, result) {
+        return;
+    }
+    if let (Some(cache), Some((text, secrets))) = (cache, kept) {
+        cx.background_spawn(async move {
+            let _ = cache.store(&url, &text, &secrets);
+        })
+        .detach();
+    }
 }

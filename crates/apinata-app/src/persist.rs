@@ -7,7 +7,7 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-/// Where the settings, keymap, session, trust file, approval inbox, update state, kept responses and cookie jar live.
+/// Where the settings, keymap, session, trust file, approval inbox, update state, kept responses, schemas and cookie jar live.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paths {
     /// The user's settings file.
@@ -40,6 +40,8 @@ pub struct Paths {
     pub global_environments: PathBuf,
     /// The directory of user theme files, one theme set per `*.json`.
     pub themes: PathBuf,
+    /// The directory of GraphQL schemas kept between runs; the app's alone.
+    pub schemas: PathBuf,
 }
 
 impl Paths {
@@ -63,6 +65,7 @@ impl Paths {
             oauth2_tokens: TokenCache::default_path()?,
             global_environments: dirs::config_dir()?.join("apinata/global-environments"),
             themes: dirs::config_dir()?.join("apinata/themes"),
+            schemas: dirs::data_local_dir()?.join("apinata/graphql-schemas"),
         })
     }
 
@@ -92,6 +95,7 @@ impl Paths {
             oauth2_tokens: dir.join("oauth2-tokens.json"),
             global_environments: dir.join("global-environments"),
             themes: dir.join("themes"),
+            schemas: dir.join("graphql-schemas"),
         }
     }
 }
@@ -155,6 +159,21 @@ pub fn save_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let mut file = tempfile::NamedTempFile::new_in(parent)?;
     serde_json::to_writer_pretty(&mut file, value)?;
     file.write_all(b"\n")?;
+    file.as_file().sync_all()?;
+    file.persist(path).map_err(|e| e.error)?;
+    Ok(())
+}
+
+/// Writes `bytes` to `path` as `save_json` does: parent created, temporary sibling synced and
+/// renamed over `path`.
+pub fn save_bytes(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+    file.write_all(bytes)?;
     file.as_file().sync_all()?;
     file.persist(path).map_err(|e| e.error)?;
     Ok(())

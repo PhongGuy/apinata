@@ -204,6 +204,11 @@ pub fn start_with_trash(
     })
     .detach();
 
+    let schemas = crate::schema_cache::SchemaCache::new(paths.schemas.clone());
+    cx.set_global(crate::graphql_schema_store::SchemaStore::with_cache(
+        schemas,
+    ));
+
     let responses = crate::last_response::ResponseStore::new(paths.responses.clone());
     crate::last_response::install(responses.clone(), cx);
     // The digest key reads the keychain, so it loads off the UI thread; until it does, or when
