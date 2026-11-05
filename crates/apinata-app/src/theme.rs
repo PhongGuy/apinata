@@ -163,7 +163,7 @@ pub fn set_mode(mode: ThemeMode, window: Option<&mut Window>, cx: &mut App) {
             .colors
             .list_active
             .as_deref()
-            .and_then(|hex| Hsla::parse_hex(hex).ok());
+            .and_then(crate::ui::parse_color);
         if let Some(fill) = opaque {
             t.list_active = fill;
             t.tokens.list_active = fill.into();

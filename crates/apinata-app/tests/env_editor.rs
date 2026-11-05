@@ -1276,6 +1276,23 @@ fn a_lowercase_preset_selects_its_swatch_without_a_rewrite(cx: &mut TestAppConte
 }
 
 #[gpui_kit::test]
+fn a_malformed_file_colour_shows_as_a_custom_swatch_without_crashing(cx: &mut TestAppContext) {
+    for bad in ["#1é234", "#ce4f3", "#ééé"] {
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            (
+                "environments/dev.yml",
+                &format!("name: dev\ncolor: \"{bad}\"\n"),
+            ),
+        ]);
+        let (_state, ws, root) = open_dir(cx, &col);
+        let (win, _ed) = env_editor(cx, &ws, &root);
+        assert!(present(cx, win, "env-swatch-custom"), "{bad:?}");
+        assert!(ringed(cx, win, "env-swatch-custom"), "{bad:?}");
+    }
+}
+
+#[gpui_kit::test]
 fn colour_and_extends_share_the_form_grid(cx: &mut TestAppContext) {
     use apinata_app::style::FORM_LABEL_WIDTH;
     let col = tree();

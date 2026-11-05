@@ -16,7 +16,7 @@ use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Colorize as _, ThemeStyled as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -1847,7 +1847,7 @@ fn swatch(
             theme.muted_foreground
         })
         .when_some(fill, |dot, hex| {
-            dot.bg(Hsla::parse_hex(hex).unwrap_or(theme.muted))
+            dot.bg(crate::ui::parse_color(hex).unwrap_or(theme.muted))
         });
     let ring = chosen.then(|| {
         div()

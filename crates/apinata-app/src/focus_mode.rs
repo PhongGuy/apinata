@@ -2,7 +2,7 @@
 //! pointer press puts back the plain input border. A change swaps the kit theme's `ring` and
 //! `focus_ring`, so every kit control follows without per-site code.
 
-use gpui_kit::component::{Colorize as _, Theme};
+use gpui_kit::component::Theme;
 use gpui_kit::{
     App, DispatchPhase, Global, Hsla, IntoElement, MouseDownEvent, Styled as _, Subscription,
     Window, canvas,
@@ -90,7 +90,7 @@ pub fn accent_ring(theme: &Theme) -> Hsla {
         .colors
         .ring
         .as_deref()
-        .and_then(|hex| Hsla::parse_hex(hex).ok())
+        .and_then(crate::ui::parse_color)
         .unwrap_or(theme.primary)
 }
 

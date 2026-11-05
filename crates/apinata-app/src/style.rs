@@ -186,6 +186,8 @@ pub const TEXT_TITLE: Rems = rems(16. / 13.);
 pub const METHOD_COLUMN: Rems = ui(32.);
 /// Diameter of the unsaved-changes dot.
 pub const DOT: Rems = ui(6.);
+/// Height of the active environment's colour stripe along the window's top edge.
+pub const ENV_STRIPE_HEIGHT: Rems = ui(2.);
 /// Width of the title bar's environment control.
 pub const ENV_CONTROL_WIDTH: Rems = ui(180.);
 /// The narrowest a title-bar environment select shrinks to, so 800 px at 200% fits.
