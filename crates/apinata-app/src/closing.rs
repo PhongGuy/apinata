@@ -83,6 +83,7 @@ pub fn install(
     cx.default_global::<TabAreas>()
         .0
         .insert(id, tab_area.downgrade());
+    forget_on_close(cx);
     window.on_window_should_close(cx, move |window, cx| {
         // A close asked for while a tab close settles or asks waits for that to end.
         let id = window.window_handle().window_id();
@@ -180,6 +181,32 @@ pub(crate) fn unhold(window: &mut Window, cx: &mut App) {
     // Deferred, since the tab area calls this from its own update and the close reads it.
     window.defer(cx, release_queued);
 }
+
+/// Whether a window close asked for during a hold is still waiting to run in window `id`.
+pub fn close_queued(id: WindowId, cx: &App) -> bool {
+    cx.try_global::<Queued>()
+        .is_some_and(|q| q.0.contains_key(&id))
+}
+
+// A window gone by any route ends every close flow it had, so its queued close, which holds the
+// workspace, and its marks go with it.
+fn forget_on_close(cx: &mut App) {
+    if cx.has_global::<Forgetting>() {
+        return;
+    }
+    cx.set_global(Forgetting);
+    cx.on_window_closed(|cx, id| {
+        cx.default_global::<Queued>().0.remove(&id);
+        cx.default_global::<Holding>().0.remove(&id);
+        cx.default_global::<Prompting>().0.remove(&id);
+        cx.default_global::<TabAreas>().0.remove(&id);
+    })
+    .detach();
+}
+
+struct Forgetting;
+
+impl Global for Forgetting {}
 
 // Runs the window close asked for during a hold, once no prompt is showing. A prompt still
 // open leaves it queued for that prompt's end.
