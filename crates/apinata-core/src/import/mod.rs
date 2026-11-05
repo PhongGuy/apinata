@@ -232,6 +232,8 @@ pub struct ImportedFolder {
 }
 
 /// One node of an imported tree.
+// A tree is built once per import and walked by reference, so a boxed request saves nothing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ImportedItem {
