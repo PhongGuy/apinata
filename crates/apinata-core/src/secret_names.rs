@@ -384,13 +384,10 @@ pub fn bytes_hold_secret(bytes: &[u8], secrets: &[NamedSecret]) -> bool {
     if replace_secrets(&lossy, secrets) != lossy {
         return true;
     }
-    secrets
-        .iter()
-        .filter(|s| wide_searched(&s.value))
-        .any(|s| {
-            contains_bytes(bytes, &utf16_bytes(&s.value, false))
-                || contains_bytes(bytes, &utf16_bytes(&s.value, true))
-        })
+    secrets.iter().filter(|s| wide_searched(&s.value)).any(|s| {
+        contains_bytes(bytes, &utf16_bytes(&s.value, false))
+            || contains_bytes(bytes, &utf16_bytes(&s.value, true))
+    })
 }
 
 /// `value` as UTF-16 bytes in big or little endian order.
