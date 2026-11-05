@@ -321,3 +321,38 @@ fn from_text_picks_json_or_sdl_by_content() {
         Err(SchemaError::Sdl { .. })
     ));
 }
+
+#[test]
+fn a_schema_extension_alone_keeps_the_default_roots_it_does_not_set() {
+    let s = sdl(
+        "extend schema { mutation: Change }\ntype Query { a: Int }\ntype Change { b: Int }\ntype Subscription { c: Int }",
+    );
+    assert_eq!(
+        (s.query_type(), s.mutation_type(), s.subscription_type()),
+        (Some("Query"), Some("Change"), Some("Subscription"))
+    );
+}
+
+#[test]
+fn error_positions_skip_comments_before_the_culprit() {
+    let (line, column, _) = sdl_error("type Query { a: Int }\n# an operation\nquery Q { a }");
+    assert_eq!((line, column), (3, 1));
+    let (line, column, _) = sdl_error("type Query { a: Int }\n# again\ntype Query { b: Int }");
+    assert_eq!((line, column), (3, 6));
+    let (line, column, _) = sdl_error("type Query {\n  a: # the type\n    Missing\n}");
+    assert_eq!((line, column), (3, 5));
+}
+
+#[test]
+fn every_line_break_style_starts_a_new_line() {
+    for text in [
+        "type Query {\r  a: Missing\r}",
+        "type Query {\r\n  a: Missing\r\n}",
+        "type Query {\n  a: Missing\n}",
+    ] {
+        let (line, column, _) = sdl_error(text);
+        assert_eq!((line, column), (2, 6), "{text:?}");
+    }
+    let (line, column, _) = sdl_error("type Query {\r\r\n\n  a: Missing }");
+    assert_eq!((line, column), (4, 6));
+}

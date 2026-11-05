@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use apollo_parser::cst::{self, CstNode};
-use apollo_parser::{Parser, SyntaxNode};
+use apollo_parser::{Parser, SyntaxKind, SyntaxNode};
 
 use super::SchemaError;
 use super::model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
@@ -27,6 +27,7 @@ pub(super) fn parse(text: &str) -> Result<Schema, SchemaError> {
         index: HashMap::new(),
         refs: Vec::new(),
         roots: Vec::new(),
+        schema_block: false,
     };
     // Definitions first, then extensions, so an extension may come before the type it extends.
     let definitions: Vec<cst::Definition> = tree.document().definitions().collect();
@@ -47,6 +48,7 @@ struct Reader<'a> {
     refs: Vec<(String, usize)>,
     /// Root operations from `schema` blocks: (operation, type name, offset).
     roots: Vec<(Root, String, usize)>,
+    schema_block: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -74,6 +76,7 @@ impl Reader<'_> {
             }
             D::DirectiveDefinition(_) => return Ok(()),
             D::SchemaDefinition(s) => {
+                self.schema_block = true;
                 return self.schema_roots(s.root_operation_type_definitions());
             }
             D::ScalarTypeDefinition(t) => (t.name(), TypeKind::Scalar, t.description()),
@@ -359,15 +362,18 @@ impl Reader<'_> {
                 .map(|(name, _)| name.clone())
                 .collect();
         }
+        // A `schema` block names every root; extensions alone leave unset roots at the defaults.
         let root = |which: Root, default: &str| -> Option<String> {
-            if self.roots.is_empty() {
-                self.index.contains_key(default).then(|| default.to_owned())
+            let named = self
+                .roots
+                .iter()
+                .rev()
+                .find(|(r, _, _)| *r == which)
+                .map(|(_, name, _)| name.clone());
+            if named.is_some() || self.schema_block {
+                named
             } else {
-                self.roots
-                    .iter()
-                    .rev()
-                    .find(|(r, _, _)| *r == which)
-                    .map(|(_, name, _)| name.clone())
+                self.index.contains_key(default).then(|| default.to_owned())
             }
         };
         Ok(Schema {
@@ -410,27 +416,33 @@ fn source_of(node: &SyntaxNode) -> String {
         .to_owned()
 }
 
-/// The byte offset of a node's first significant token, skipping attached whitespace.
+/// The byte offset of a node's first significant token, past whitespace, commas and comments.
 fn offset(node: &SyntaxNode) -> usize {
-    let start = usize::from(node.text_range().start());
-    let text = node.text().to_string();
-    start
-        + (text.len()
-            - text
-                .trim_start_matches(|c: char| c.is_whitespace() || c == ',')
-                .len())
+    node.descendants_with_tokens()
+        .filter_map(|e| e.into_token())
+        .find(|t| {
+            !matches!(
+                t.kind(),
+                SyntaxKind::WHITESPACE | SyntaxKind::COMMA | SyntaxKind::COMMENT
+            )
+        })
+        .map_or(node.text_range().start(), |t| t.text_range().start())
+        .into()
 }
 
 /// An SDL error at a byte offset, as a 1-based line and a column counted in characters.
+/// A line ends at `\n`, `\r\n` or a lone `\r`, as the GraphQL spec counts them.
 fn at(text: &str, index: usize, detail: &str) -> SchemaError {
     let mut index = index.min(text.len());
     while !text.is_char_boundary(index) {
         index -= 1;
     }
     let before = &text[..index];
-    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+    let line_start = before.rfind(['\n', '\r']).map_or(0, |i| i + 1);
+    let breaks = before.matches('\n').count() + before.matches('\r').count()
+        - before.matches("\r\n").count();
     SchemaError::Sdl {
-        line: before.matches('\n').count() + 1,
+        line: breaks + 1,
         column: before[line_start..].chars().count() + 1,
         detail: detail.to_owned(),
     }
