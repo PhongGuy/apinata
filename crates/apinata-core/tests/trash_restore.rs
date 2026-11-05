@@ -185,7 +185,7 @@ fn a_platform_that_cannot_restore_says_so_and_the_next_restore_goes_further_back
     );
     let text = err.to_string();
     assert!(
-        text.contains("cannot be restored on this platform"),
+        text.contains("cannot be restored from here"),
         "{text}"
     );
     assert!(text.contains("system trash"), "{text}");

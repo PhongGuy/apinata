@@ -32,7 +32,7 @@ pub enum TrashError {
     #[error("it is no longer in the trash")]
     Missing,
     /// This platform's trash cannot give items back; the item stays in the system trash.
-    #[error("it is in the system trash, but cannot be restored on this platform")]
+    #[error("it is in the system trash, but cannot be restored from here")]
     RestoreUnsupported,
     /// The trash exists but the operation failed.
     #[error("{0}")]

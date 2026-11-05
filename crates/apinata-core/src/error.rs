@@ -678,7 +678,7 @@ pub enum TreeError {
     NotInTrash,
     /// The item is in the system trash, but this platform cannot give it back.
     #[error(
-        "it is in the system trash, but cannot be restored on this platform; \
+        "it is in the system trash, but cannot be restored from here; \
          put it back from the file manager"
     )]
     RestoreUnsupported,

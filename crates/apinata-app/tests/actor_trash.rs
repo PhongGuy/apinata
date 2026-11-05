@@ -155,7 +155,7 @@ fn undo_on_a_platform_without_restore_says_it_cannot_be_restored(cx: &mut TestAp
         panic!("{got:?}")
     };
     assert!(
-        message.contains("cannot be restored on this platform") && message.contains("system trash"),
+        message.contains("cannot be restored from here") && message.contains("system trash"),
         "{message}"
     );
     assert!(!dir.path().join("a.yml").exists());

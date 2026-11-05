@@ -108,7 +108,7 @@ pub enum ItemError {
     /// The platform's trash cannot give items back, so the record was dropped; the item stays
     /// in the system trash.
     #[error(
-        "{item} is in the system trash, but cannot be restored on this platform, so its \
+        "{item} is in the system trash, but cannot be restored from here, so its \
          record was dropped; put it back from the file manager. The next restore goes to the \
          item deleted before it"
     )]
