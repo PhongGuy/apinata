@@ -202,6 +202,68 @@ fn with_the_sidebar_hidden_ctrl_z_outside_an_editor_undoes_the_delete(cx: &mut T
     assert_eq!(active.as_deref(), Some("a.yml"));
 }
 
+// Selects a.yml and c.yml in the tree, leaving the set active.
+fn select_a_and_c(cx: &mut TestAppContext, h: &SidebarHarness) {
+    cx.update_window(h.win, |_, w, cx| w.click(row("a.yml"), cx))
+        .unwrap();
+    secondary_click(cx, h.win, row("c.yml"));
+}
+
+fn delete_selection(cx: &mut TestAppContext, h: &SidebarHarness) {
+    focus_tree(cx, h);
+    press(cx, h, "delete");
+    frame(cx, h.win);
+}
+
+#[gpui_kit::test]
+fn undo_of_a_multi_delete_gives_back_the_original_strip_order(cx: &mut TestAppContext) {
+    let (h, bin) = shell_with_trash(cx);
+    open_tabs(cx, &h, &["a.yml", "b.yml", "c.yml", "d.yml"], "b.yml");
+    select_a_and_c(cx, &h);
+    delete_selection(cx, &h);
+    assert_eq!(strip(cx, &h).0, tabs(&["b.yml", "d.yml"]));
+    click_undo(cx, &h);
+    frame(cx, h.win);
+    assert_restored(cx, &h, "a.yml", &bin);
+    assert!(h.root.join("c.yml").exists());
+    let (order, active) = strip(cx, &h);
+    assert_eq!(order, tabs(&["a.yml", "b.yml", "c.yml", "d.yml"]));
+    assert_eq!(active.as_deref(), Some("a.yml"));
+}
+
+// The run tab over a deleted selection comes back in place, and active as it was.
+#[gpui_kit::test]
+fn undo_reopens_a_run_selection_tab_the_delete_closed(cx: &mut TestAppContext) {
+    let (h, bin) = shell_with_trash(cx);
+    open_tabs(cx, &h, &["a.yml", "b.yml"], "b.yml");
+    select_a_and_c(cx, &h);
+    cx.update_window(h.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.right_click(row("a.yml"), cx)
+    })
+    .unwrap();
+    frame(cx, h.win);
+    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(0usize, cx))
+        .unwrap();
+    frame(cx, h.win);
+    let run = format!(
+        "{:?}",
+        TabKind::RunSelection(vec![ip("a.yml"), ip("c.yml")])
+    );
+    assert_eq!(
+        strip(cx, &h),
+        (tabs(&["a.yml", "b.yml", &run]), Some(run.clone()))
+    );
+    delete_selection(cx, &h);
+    assert_eq!(strip(cx, &h).0, tabs(&["b.yml"]));
+    click_undo(cx, &h);
+    frame(cx, h.win);
+    assert_restored(cx, &h, "a.yml", &bin);
+    let (order, active) = strip(cx, &h);
+    assert_eq!(order, tabs(&["a.yml", "b.yml", &run]));
+    assert_eq!(active, Some(run));
+}
+
 #[gpui_kit::test]
 fn with_the_sidebar_hidden_ctrl_z_in_a_text_input_edits_the_text(cx: &mut TestAppContext) {
     let (h, bin) = shell_with_trash(cx);

@@ -33,7 +33,7 @@ pub enum TabKind {
     Environments,
     /// The runner of a folder, or of the whole collection at `ItemPath::root()`.
     Runner(ItemPath),
-    /// A run over a multi-selection: sorted, deduplicated, never remembered for reopen.
+    /// A run over a multi-selection: sorted, deduplicated, never kept for reopening a closed tab.
     RunSelection(Vec<ItemPath>),
     /// Saved example `index` of the request `item`, shown read-only.
     Example {
