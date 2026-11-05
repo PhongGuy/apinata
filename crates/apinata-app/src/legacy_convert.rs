@@ -31,12 +31,23 @@ pub(crate) struct Offers {
 /// asks about each in turn once the previous one is resolved. A root already waiting or on
 /// screen is not queued again, since after converting it the repeat would find nothing legacy.
 pub fn offer(shell: &mut Shell, root: PathBuf, window: &mut Window, cx: &mut Context<Shell>) {
+    let root = identity(&root);
     let offers = &mut shell.legacy_offers;
     if offers.showing.as_ref() == Some(&root) || offers.waiting.contains(&root) {
         return;
     }
     offers.waiting.push_back(root);
     show_next(shell, window, cx);
+}
+
+/// The directory's identity for dedupe: canonical when it resolves, else the absolute path
+/// with `.` and trailing separators dropped, so a failure never drops an offer.
+fn identity(root: &Path) -> PathBuf {
+    if let Ok(real) = root.canonicalize() {
+        return real;
+    }
+    let abs = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    abs.components().collect()
 }
 
 fn show_next(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) {
