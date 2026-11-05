@@ -328,11 +328,19 @@ pub enum EnvAction {
     /// List stored secrets the environment's file no longer marks secret.
     ///
     /// `--all` looks across every environment and also lists stored secrets whose environment
-    /// has no file, as after a deletion or a rename outside the app.
+    /// has no file, as after a deletion or a rename outside the app. `--old-roots` lists the
+    /// collection roots that are gone but still hold stored secrets.
     Orphans {
         /// The environment's name.
-        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        #[arg(required_unless_present_any = ["all", "old_roots"], conflicts_with = "all")]
         name: Option<String>,
+        /// List the roots that no longer exist but still hold stored secrets, each with the
+        /// command that shows them; works without a collection.
+        #[arg(
+            long,
+            conflicts_with_all = ["name", "all", "no_file", "old_root", "global"]
+        )]
+        old_roots: bool,
         /// List every environment's, marking those with no file.
         #[arg(long)]
         all: bool,
