@@ -28,6 +28,12 @@ pub struct ExportArgs {
     /// Also write each environment to this directory as <name>.postman_environment.json (Postman only).
     #[arg(long, value_name = "DIR")]
     pub env_dir: Option<PathBuf>,
+    /// Add each request's assertions and scripts to the page, as escaped code (HTML only).
+    #[arg(long)]
+    pub include_scripts: bool,
+    /// Add a section listing each environment's variables as stored, secrets masked (HTML only).
+    #[arg(long)]
+    pub include_environments: bool,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -38,7 +44,7 @@ pub enum ExportFormat {
     Openapi,
     /// OpenAPI 3.1 as YAML whatever the output name is; environments become servers.
     OpenapiYaml,
-    /// One self-contained HTML documentation page; environments are left out.
+    /// One self-contained HTML documentation page; --include-scripts and --include-environments add sections.
     Html,
 }
 
@@ -65,6 +71,16 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
             ExportFormat::Html => anyhow::bail!(
                 "--env-dir does not apply to --format html; the page leaves environments out"
             ),
+        }
+    }
+    if !matches!(args.format, ExportFormat::Html) {
+        for (flag, set) in [
+            ("--include-scripts", args.include_scripts),
+            ("--include-environments", args.include_environments),
+        ] {
+            if set {
+                anyhow::bail!("{flag} does not apply to this format; it adds to the HTML page");
+            }
         }
     }
     let named = collection_arg::require(
@@ -100,7 +116,10 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
             (text, exported.notes)
         }
         ExportFormat::Html => {
-            let exported = export::html(&collection);
+            let options = export::HtmlOptions::new()
+                .include_scripts(args.include_scripts)
+                .include_environments(args.include_environments);
+            let exported = export::html_with(&collection, &options);
             (exported.html, exported.notes)
         }
     };

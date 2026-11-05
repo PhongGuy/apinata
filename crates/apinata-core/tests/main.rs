@@ -143,6 +143,7 @@ mod export_html;
 mod export_html_corpus;
 mod export_html_examples;
 mod export_html_requests;
+mod export_html_sections;
 mod export_html_tree;
 mod export_ntlm;
 mod export_openapi;
