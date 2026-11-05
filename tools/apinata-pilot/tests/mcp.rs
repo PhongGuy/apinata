@@ -652,14 +652,12 @@ async fn undo_after_a_delete_restores_the_request_file() {
         .await;
     pilot.ok("key", json!({ "keys": "delete" })).await;
     // With a trash and nothing unsaved the delete needs no prompt: the toast is the safety net.
-    let toast = pilot
+    pilot
         .ok("tree", json!({ "wait_for": { "id": ["undo-delete"] } }))
         .await;
     assert!(!file.exists(), "the delete left the file in place");
-    // Clicked by position: an id target times out on the toast button although the tree lists it.
-    let (x, y) = centre(&node(&toast, "undo-delete")["bounds"]);
     pilot
-        .ok("click", json!({ "target": { "x": x, "y": y } }))
+        .ok("click", json!({ "target": { "id": ["undo-delete"] } }))
         .await;
     pilot
         .ok("tree", json!({ "wait_for": { "id": ["0:health.yml"] } }))
