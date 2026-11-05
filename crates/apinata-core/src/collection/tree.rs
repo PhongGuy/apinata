@@ -693,14 +693,15 @@ impl Collection {
             .map(|i| rest[i].path.clone())
             .collect();
         // An item that failed to load is not a sibling, so it takes no number.
-        let placed: Vec<(ItemPath, Vec<(ItemPath, u64)>)> = items
+        let placed: Vec<(ItemPath, Vec<ItemPath>)> = items
             .iter()
             .filter_map(|t| {
                 let own = list.iter().find(|n| n.path == t.item)?.item.seq;
-                // Records from before the tail was exact also name siblings ahead of the item.
+                // Records from before the first release follow load order and also name siblings
+                // ahead of the item.
                 let after = |old: &u64| own.is_none_or(|own| *old >= own);
                 let tail = t.renumbered.iter().filter(|(_, old, _)| after(old));
-                let tail = tail.map(|(p, old, _)| (p.clone(), *old));
+                let tail = tail.map(|(p, ..)| p.clone());
                 Some((t.item.clone(), tail.collect()))
             })
             .collect();

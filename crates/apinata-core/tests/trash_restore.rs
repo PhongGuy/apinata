@@ -1168,3 +1168,141 @@ fn a_seqless_sibling_renumbered_since_the_delete_stays_where_it_was_put() {
         [1, 2, 3, 4].map(Some)
     );
 }
+
+#[test]
+fn undoing_a_delete_keeps_a_seqless_folder_where_it_stood_before_a_numbered_tail() {
+    // Seqless requests count as 1, so the folder sorts after them and before e.
+    for batch in [false, true] {
+        let got = after_undo("a/- b- c- d- e3", "d", batch);
+        assert_eq!(got, "a/4 b- c2 d3 e5", "batch {batch}");
+    }
+}
+
+/// The names of a case in the order the folder lists them: names first, then each positive seq
+/// spliced in at its index, equal seqs sharing a slot. A request stored without one counts as 1.
+fn listed_order(case: &str) -> String {
+    let mut items: Vec<(char, Option<u64>)> = case
+        .split(' ')
+        .map(|t| {
+            let name = t.chars().next().expect("name");
+            let digits = t.trim_start_matches(|c: char| !c.is_ascii_digit());
+            let stored: Option<u64> = digits.parse().ok();
+            let seq = match &t[1..2] {
+                "/" => stored,
+                "!" => Some(stored.unwrap_or(1)),
+                _ => Some(stored.filter(|&s| s > 0).unwrap_or(1)),
+            };
+            (name, seq.filter(|&s| s > 0))
+        })
+        .collect();
+    items.sort_by_key(|&(name, _)| name);
+    let (mut numbered, rest): (Vec<_>, Vec<_>) = items.into_iter().partition(|i| i.1.is_some());
+    numbered.sort_by_key(|&(_, seq)| seq);
+    let mut slots: Vec<Vec<(char, Option<u64>)>> = rest.into_iter().map(|i| vec![i]).collect();
+    for item in numbered {
+        let at =
+            usize::try_from(item.1.expect("seq") - 1).map_or(slots.len(), |i| i.min(slots.len()));
+        match slots.get_mut(at) {
+            Some(slot) if slot[0].1 == item.1 => slot.push(item),
+            _ => slots.insert(at, vec![item]),
+        }
+    }
+    slots.into_iter().flatten().map(|(name, _)| name).collect()
+}
+
+/// A small deterministic generator, so each seed always draws the same folder and deletes.
+struct Draw(u64);
+
+impl Draw {
+    fn below(&mut self, n: u64) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (self.0 >> 33) % n
+    }
+}
+
+/// A random folder in the table notation and a few of its items to delete, in order. A
+/// canonical folder holds only requests and folders numbered 1..n, each number once, though an
+/// item may store no number at all.
+fn drawn_case(seed: u64, canonical: bool) -> (String, String) {
+    let mut draw = Draw(seed);
+    let count = 3 + draw.below(4);
+    let mut free: Vec<u64> = (1..=count).collect();
+    let tokens: Vec<String> = (0..count)
+        .map(|i| {
+            let name = char::from(b'a' + u8::try_from(i).expect("small"));
+            let kind = match draw.below(10) {
+                0 if !canonical => "!",
+                0..=3 => "/",
+                _ => "",
+            };
+            let seq = if canonical {
+                let at = usize::try_from(draw.below(free.len() as u64)).expect("small");
+                let seq = free.remove(at);
+                if draw.below(3) == 0 {
+                    "-".to_owned()
+                } else {
+                    seq.to_string()
+                }
+            } else {
+                match draw.below(count + 3) {
+                    0 => "-".to_owned(),
+                    1 => "0".to_owned(),
+                    n => (n - 1).min(6).to_string(),
+                }
+            };
+            format!("{name}{kind}{seq}")
+        })
+        .collect();
+    let mut names: Vec<char> = tokens
+        .iter()
+        .map(|t| t.chars().next().expect("name"))
+        .collect();
+    let mut deleted = Vec::new();
+    for _ in 0..1 + draw.below(3) {
+        let i = usize::try_from(draw.below(names.len() as u64)).expect("small");
+        deleted.push(names.remove(i).to_string());
+    }
+    (tokens.join(" "), deleted.join(" "))
+}
+
+/// Every run over `seeds` whose undo leaves the folder in another order than it started in.
+fn lost_orders(seeds: std::ops::Range<u64>, canonical: bool) -> Vec<String> {
+    let mut differ = Vec::new();
+    for seed in seeds {
+        let (start, deleted) = drawn_case(seed, canonical);
+        for batch in [false, true] {
+            let got = after_undo(&start, &deleted, batch);
+            if listed_order(&got) != listed_order(&start) {
+                differ.push(format!("{start}, deleting {deleted}, batch {batch}: {got}"));
+            }
+        }
+    }
+    differ
+}
+
+#[test]
+fn undoing_random_deletes_loses_the_old_order_no_more_often() {
+    // Some folders cannot get their order back, such as one whose app item holds a number past a
+    // gap; the ceiling is the count of those today, so a change that loses order elsewhere fails.
+    let differ = lost_orders(0..400, false);
+    assert!(
+        differ.len() <= 148,
+        "{} differ:\n{}",
+        differ.len(),
+        differ.join("\n")
+    );
+}
+
+#[test]
+fn undoing_random_deletes_in_a_folder_numbered_one_to_n_keeps_the_old_order() {
+    let differ = lost_orders(0..400, true);
+    assert!(
+        differ.is_empty(),
+        "{} differ:\n{}",
+        differ.len(),
+        differ.join("\n")
+    );
+}
