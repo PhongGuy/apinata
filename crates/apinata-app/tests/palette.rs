@@ -364,18 +364,23 @@ fn escape_closes_the_palette_with_a_query_typed(cx: &mut TestAppContext) {
     assert!(!present(cx, s.win, "command-palette"));
 }
 
-// The palette names the one area a pane command works in, beside its key.
+// The palette names the one area a pane command works in, beside its key. Undo delete is
+// listed only once a delete into the trash can be undone.
 #[gpui_kit::test]
 fn a_pane_command_row_names_its_area(cx: &mut TestAppContext) {
-    let col = two_requests();
-    let s = started(cx, &col);
-    open_tab(cx, &s.ws, &s.root, "a.yml");
-    frame(cx, s.win);
-    open_palette(cx, &s);
-    type_query(cx, &s, "undo");
+    let (h, bin) = crate::sidebar_trash::shell_with_trash(cx);
+    open_tab(cx, &h.ws, &h.root, "a.yml");
+    frame(cx, h.win);
+    crate::sidebar_trash::select_and_delete(cx, &h, "b.yml");
+    assert_eq!(bin.len(), 1, "b went to the trash");
+    cx.simulate_keystrokes(h.win, &key("shift-p"));
+    frame(cx, h.win);
+    cx.update_window(h.win, |_, w, cx| w.input("undo", cx))
+        .unwrap();
+    frame(cx, h.win);
     let pane = ix_of(&apinata_app::sidebar::UndoDelete);
     let global = ix_of(&apinata_app::keymap::UndoActive);
-    cx.update_window(s.win, |_, w, _| {
+    cx.update_window(h.win, |_, w, _| {
         let palette = w.within("command-palette");
         assert!(palette.try_find(("palette-kbd", global)).is_some());
         assert!(palette.try_find(("palette-scope", global)).is_none());
