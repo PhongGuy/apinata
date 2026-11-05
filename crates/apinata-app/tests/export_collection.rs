@@ -248,3 +248,25 @@ fn the_palette_exports_the_active_collection_to_html(cx: &mut TestAppContext) {
     palette(cx, &s, "export collection to html");
     assert_eq!(export_html_to_chosen_file(cx, &s), ["a", "b"]);
 }
+
+#[gpui_kit::test]
+fn a_yaml_file_name_makes_the_openapi_export_yaml(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    choose_menu(
+        cx,
+        s.win,
+        "",
+        NodeKind::Collection,
+        MenuEntry::ExportOpenApi,
+    );
+    assert!(cx.did_prompt_for_new_path());
+    let out = tempfile::tempdir().unwrap();
+    let file = out.path().join("c.openapi.yaml");
+    let chosen = file.clone();
+    cx.simulate_new_path_selection(move |_| Some(chosen));
+    cx.run_until_parked();
+    let text = std::fs::read_to_string(&file).expect("written");
+    assert!(text.starts_with("openapi: 3.1.0\n"), "{text}");
+    assert!(serde_json::from_str::<serde_json::Value>(&text).is_err());
+}
