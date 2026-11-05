@@ -6,6 +6,7 @@ use gpui_kit::Action;
 
 use crate::body_find::{
     FindInResponse, FindNextInResponse, FindPreviousInResponse, KEY_CONTEXT as RESPONSE_BODY,
+    ToggleFindRegex, ToggleFindWholeWord,
 };
 use crate::body_node::{
     AssertCaretJsonValue, CopyCaretJsonPath, CopyCaretJsonValue, SetCaretJsonVariable,
@@ -822,6 +823,44 @@ pub fn registry() -> Vec<Command> {
                     &["cmd-shift-g"]
                 } else {
                     &["shift-f3"]
+                },
+            );
+            c.scope = Scope::Pane(RESPONSE_BODY);
+            hidden(c)
+        },
+        // Alt+R and Alt+W as in common editors, but not on macOS, where Option types a
+        // character in the find field and Cmd+Option+R already focuses the response.
+        {
+            let mut c = command(
+                "view.find_regex_in_response",
+                "Toggle regex in response find",
+                View,
+                vec![
+                    at(ToggleFindRegex, RESPONSE_BODY),
+                    at(ToggleFindRegex, "ResponseBody > Input"),
+                ],
+                if cfg!(target_os = "macos") {
+                    &[]
+                } else {
+                    &["alt-r"]
+                },
+            );
+            c.scope = Scope::Pane(RESPONSE_BODY);
+            hidden(c)
+        },
+        {
+            let mut c = command(
+                "view.find_whole_word_in_response",
+                "Toggle whole word in response find",
+                View,
+                vec![
+                    at(ToggleFindWholeWord, RESPONSE_BODY),
+                    at(ToggleFindWholeWord, "ResponseBody > Input"),
+                ],
+                if cfg!(target_os = "macos") {
+                    &[]
+                } else {
+                    &["alt-w"]
                 },
             );
             c.scope = Scope::Pane(RESPONSE_BODY);

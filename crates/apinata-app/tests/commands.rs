@@ -100,6 +100,8 @@ const IDS: &[&str] = &[
     "view.find_in_response",
     "view.find_next_in_response",
     "view.find_previous_in_response",
+    "view.find_regex_in_response",
+    "view.find_whole_word_in_response",
     "view.focus_url",
     "view.next_section",
     "view.previous_section",
@@ -379,6 +381,16 @@ fn today() -> Vec<Triple> {
     // The kit's Redo gets Ctrl+Shift+Z off macOS, where it already has Cmd+Shift+Z.
     #[cfg(not(target_os = "macos"))]
     e.push(("ctrl-shift-z".into(), "input::Redo", "Input"));
+    // The find toggles' chords, off macOS only.
+    #[cfg(not(target_os = "macos"))]
+    for (k, a) in [
+        ("alt-r", "apinata::ToggleFindRegex"),
+        ("alt-w", "apinata::ToggleFindWholeWord"),
+    ] {
+        for c in ["ResponseBody", "ResponseBody > Input"] {
+            e.push((k.into(), a, c));
+        }
+    }
     // Redo's extra chord off macOS.
     #[cfg(not(target_os = "macos"))]
     for (a, c) in [
@@ -463,6 +475,8 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.find_in_response");
     expected.insert("view.find_next_in_response");
     expected.insert("view.find_previous_in_response");
+    expected.insert("view.find_regex_in_response");
+    expected.insert("view.find_whole_word_in_response");
     expected.insert("view.focus_next_control");
     expected.insert("view.focus_previous_control");
     assert_eq!(hidden, expected);
