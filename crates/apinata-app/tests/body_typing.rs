@@ -153,7 +153,7 @@ fn body_text(cx: &mut TestAppContext, s: &Started) -> String {
 
 #[gpui_kit::test]
 fn a_key_in_the_app_costs_the_same_at_the_end_of_a_long_line(cx: &mut TestAppContext) {
-    const ROUNDS: usize = 20;
+    const ROUNDS: usize = 100;
     const KEYS: usize = 10;
     let (short, _col) = app_body_focused(cx, "");
     let (long, _col2) = app_body_focused(cx, &"a".repeat(APP_LINE - ROUNDS * KEYS));
@@ -169,7 +169,8 @@ fn a_key_in_the_app_costs_the_same_at_the_end_of_a_long_line(cx: &mut TestAppCon
     );
     // Load only ever adds time to a burst, so the fastest burst on each side is the nearest
     // to the code's own cost; a key that costs more on the long line slows every long burst,
-    // the fastest too. Twenty rounds give each side many chances at a quiet moment.
+    // the fastest too. A hundred rounds give each side a quiet moment even when the machine
+    // has three runnable threads per core.
     let (short_min, long_min) = (min(&on_short), min(&on_long));
     let per_key = |burst: Duration| burst / KEYS as u32;
     let measured = format!(
@@ -178,5 +179,6 @@ fn a_key_in_the_app_costs_the_same_at_the_end_of_a_long_line(cx: &mut TestAppCon
         per_key(long_min),
         growth(short_min, long_min)
     );
+    eprintln!("{measured}");
     assert!(growth(short_min, long_min) < APP_GROWTH, "{measured}");
 }
