@@ -27,7 +27,9 @@ use crate::last_response::{StoreOp, enqueue};
 use crate::model::CollectionModel;
 use crate::persisted::Persisted;
 use crate::prompt_vars::PromptMemory;
-use crate::session::{SavedExample, SavedPanel, SavedPanelKind, SavedTab, Session};
+use crate::session::{
+    SavedExample, SavedExampleTab, SavedPanel, SavedPanelKind, SavedTab, Session,
+};
 use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
 use crate::tabs::{TabEntry, TabId, TabKind, Tabs};
 use crate::watch::rules::{WatchMsg, translate};
@@ -912,15 +914,23 @@ impl Workspace {
         let (live, gone): (Vec<PathBuf>, Vec<PathBuf>) =
             dirs.into_iter().partition(|d| is_workspace_dir(d));
         for dir in &gone {
+            let why = if dir.is_dir() {
+                "no longer has a workspace.yml"
+            } else {
+                "no longer exists"
+            };
             cx.emit(WorkspaceEvent::FolderNotice(format!(
-                "Workspace folder {} no longer exists, so it was not reopened",
+                "Workspace folder {} {why}, so it was not reopened",
                 dir.display()
             )));
         }
-        // A workspace folder is never a collection root, and nothing under a vanished one can open.
+        // A workspace folder is never a collection root. Under a vanished one only collections
+        // still on disk reopen, so the missing ones add no failure on top of the notice.
         let roots: Vec<PathBuf> = roots
             .into_iter()
-            .filter(|r| !gone.iter().any(|g| r.starts_with(g)))
+            .filter(|r| {
+                r.join("opencollection.yml").is_file() || !gone.iter().any(|g| r.starts_with(g))
+            })
             .filter(|r| !(is_workspace_dir(r) && !r.join("opencollection.yml").is_file()))
             .collect();
         self.session.update(cx, |p, cx| {
@@ -2443,82 +2453,68 @@ impl Workspace {
     // is open, since opening a preview replaces the one there is.
     fn restore_tabs(&mut self, root: &Path, cx: &mut Context<Self>) {
         let before = self.tabs.active().map(|e| e.id);
-        let (saved, preview, examples, panels, saved_active, active_draft, pinned) = self
+        let (order, preview, saved_active, active_draft, pinned) = self
             .session
             .read(cx)
             .get()
             .collections
             .get(root)
             .map(|c| {
-                let (tabs, preview) = (c.tabs.clone(), c.preview.clone());
-                let (active, draft) = (c.active.clone(), c.active_draft.clone());
                 (
-                    tabs,
-                    preview,
-                    c.examples.clone(),
-                    c.panels.clone(),
-                    active,
-                    draft,
+                    c.saved_order(),
+                    c.preview.clone(),
+                    c.active.clone(),
+                    c.active_draft.clone(),
                     c.pinned.clone(),
                 )
             })
             .unwrap_or_default();
-        for name in &saved {
-            let Some(item) = ItemPath::new(name) else {
-                continue;
-            };
-            if self.request(root, &item, cx).is_some() {
-                let as_preview = preview.as_ref() == Some(name)
-                    && !self.tabs.entries().iter().any(|e| e.preview);
-                self.tabs.open(root, TabKind::Request(item), as_preview);
-            }
-        }
-        // Example tabs come back as permanent tabs, each only while it still exists, placed
-        // after its request and the examples of that request restored before it.
-        let active = self.tabs.active().map(|e| e.id);
-        for saved in examples {
-            let Some(item) = ItemPath::new(&saved.item) else {
-                continue;
-            };
-            let kind = TabKind::Example {
-                item: item.clone(),
-                index: saved.index,
-            };
-            if !self.has_tab_target(root, &kind, cx) {
-                continue;
-            }
-            let id = self.tabs.open(root, kind, false);
-            place_example(&mut self.tabs, root, id);
-        }
-        // Panel tabs come back at their saved position among this root's tabs, lowest first,
-        // each only while its folder still exists.
-        let mut panels = panels;
-        panels.sort_by_key(|p| p.position);
-        // A selection may lose members, so its pin is matched by what was saved.
+        // Every tab comes back in one pass in saved order, each only while its target still
+        // exists, so a dropped tab shifts nothing. Examples and panels come back permanent.
+        // The last restored request is the active tab when no saved one applies.
+        let mut active = before;
         let mut pinned_panels = Vec::new();
-        for saved in panels {
-            let Some(kind) = self.restorable(root, &saved.kind, cx) else {
-                continue;
-            };
-            // A runner plans when its view opens, so this delivery's prune must not re-plan it.
-            let snapshot = self.snapshot(root, cx);
-            let record = snapshot.and_then(|s| runner_record(&s.content, &kind, None));
-            let id = self.tabs.open(root, kind, false);
-            if let Some(record) = record {
-                self.runner_members.insert(id, record);
-            }
-            if pinned.contains(&SavedTab::Panel(saved.kind)) {
-                pinned_panels.push(id);
-            }
-            let anchor = self
-                .tabs
-                .entries()
-                .iter()
-                .filter(|e| e.root == root && e.id != id)
-                .nth(saved.position)
-                .map(|e| e.id);
-            if let Some(anchor) = anchor {
-                self.tabs.move_before(id, anchor);
+        for saved in order {
+            match saved {
+                SavedTab::Request(name) => {
+                    let Some(item) = ItemPath::new(&name) else {
+                        continue;
+                    };
+                    if self.request(root, &item, cx).is_some() {
+                        let as_preview = preview.as_ref() == Some(&name)
+                            && !self.tabs.entries().iter().any(|e| e.preview);
+                        active = Some(self.tabs.open(root, TabKind::Request(item), as_preview));
+                    }
+                }
+                SavedTab::Example(saved) => {
+                    let Some(item) = ItemPath::new(&saved.item) else {
+                        continue;
+                    };
+                    let kind = TabKind::Example {
+                        item,
+                        index: saved.index,
+                    };
+                    if self.has_tab_target(root, &kind, cx) {
+                        self.tabs.open(root, kind, false);
+                    }
+                }
+                SavedTab::Panel(saved) => {
+                    let Some(kind) = self.restorable(root, &saved, cx) else {
+                        continue;
+                    };
+                    // A runner plans when its view opens, so this delivery's prune must not
+                    // re-plan it.
+                    let snapshot = self.snapshot(root, cx);
+                    let record = snapshot.and_then(|s| runner_record(&s.content, &kind, None));
+                    let id = self.tabs.open(root, kind, false);
+                    if let Some(record) = record {
+                        self.runner_members.insert(id, record);
+                    }
+                    // A selection may lose members, so its pin is matched by what was saved.
+                    if pinned.contains(&SavedTab::Panel(saved)) {
+                        pinned_panels.push(id);
+                    }
+                }
             }
         }
         // Pinned tabs are pinned last, in their current order, so they end up first and
@@ -2538,7 +2534,7 @@ impl Workspace {
             self.tabs.set_pinned(id, true);
         }
         // The saved active tab wins; failing that, an active tab another root's restore
-        // brought back stays active, else the tab active before the examples does.
+        // brought back stays active, else the last restored request does.
         let wanted = saved_active.and_then(|t| match t {
             SavedTab::Request(name) => ItemPath::new(&name).map(TabKind::Request),
             SavedTab::Example(e) => ItemPath::new(&e.item).map(|item| TabKind::Example {
@@ -3084,7 +3080,10 @@ impl Workspace {
                             if is_active {
                                 active = Some(SavedTab::Example(saved.clone()));
                             }
-                            examples.push(saved);
+                            examples.push(SavedExampleTab {
+                                example: saved,
+                                position: Some(saved_count),
+                            });
                             saved_count += 1;
                         }
                         _ => {}
