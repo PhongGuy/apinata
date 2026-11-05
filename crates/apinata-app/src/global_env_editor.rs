@@ -19,7 +19,7 @@ use crate::env_table::{
 };
 use crate::import_report::failure_text;
 use crate::orphan_section::{self, Orphans};
-use crate::scroll_follow::FocusFollow;
+use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep};
 use crate::style;
 use crate::ui;
@@ -872,7 +872,9 @@ impl GlobalEnvEditor {
             .flex_none()
             .gap_1()
             .children(items)
-            .child(
+            .child(Followed::new(
+                "global-env-create-follow",
+                &self.follow,
                 Button::new("global-env-create")
                     .label("New")
                     .on_click(cx.listener(|e, _, window, cx| {
@@ -885,7 +887,7 @@ impl GlobalEnvEditor {
                             e.start_naming(Naming::Create, window, cx)
                         })
                     })),
-            )
+            ))
     }
 }
 
@@ -972,33 +974,42 @@ impl Render for GlobalEnvEditor {
                 .update(cx, |e, cx| e.ask_remove_orphan(name, window, cx))
                 .ok();
         };
-        let orphans = orphan_section::section(&orphans, on_remove, cx);
+        let orphans = orphan_section::section(&orphans, &self.follow, on_remove, cx);
+        // Each header button reports to the follow, so Tab onto it scrolls it into view.
+        let follow = self.follow.clone();
+        let followed = move |id: &'static str, button: Button| Followed::new(id, &follow, button);
         // A focused header button takes Enter as its press, not the dialog's Confirm.
         let header = h_flex()
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .gap_2()
-            .child(Button::new("global-env-rename").label("Rename").on_click(
-                cx.listener(|e, _, window, cx| e.start_naming(Naming::Rename, window, cx)),
+            .child(followed(
+                "global-env-rename-follow",
+                Button::new("global-env-rename").label("Rename").on_click(
+                    cx.listener(|e, _, window, cx| e.start_naming(Naming::Rename, window, cx)),
+                ),
             ))
-            .child(
+            .child(followed(
+                "global-env-duplicate-follow",
                 Button::new("global-env-duplicate")
                     .label("Duplicate")
                     .on_click(cx.listener(|e, _, window, cx| {
                         e.after_asking(window, cx, |e, window, cx| e.duplicate(window, cx))
                     })),
-            )
-            .child(
+            ))
+            .child(followed(
+                "global-env-delete-follow",
                 Button::new("global-env-delete")
                     .label("Delete")
                     .on_click(cx.listener(|e, _, window, cx| e.ask_delete(window, cx))),
-            )
-            .child(
+            ))
+            .child(followed(
+                "global-env-save-follow",
                 Button::new("global-env-save")
                     .label("Save")
                     .on_click(cx.listener(|e, _, window, cx| {
                         let _ = e.save_asking(window, cx);
                     })),
-            );
+            ));
         let body = if selected {
             v_flex()
                 .flex_1()

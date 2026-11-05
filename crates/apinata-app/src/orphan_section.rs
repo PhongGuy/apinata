@@ -7,6 +7,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
+use crate::scroll_follow::{FocusFollow, Followed};
 use crate::ui;
 
 /// The confirm step's detail, shared by both editors.
@@ -61,10 +62,12 @@ pub fn ask_remove<E: 'static>(
     .detach();
 }
 
-/// The section under the variable table, or nothing when there is nothing to say.
+/// The section under the variable table, or nothing when there is nothing to say; each Remove
+/// reports to `follow`, so Tab onto it scrolls it into view.
 /// Ids: `env-orphans`, `("env-orphan-row", ix)`, `("env-orphan-remove", ix)`, `env-orphans-failed`.
 pub fn section(
     state: &Orphans,
+    follow: &FocusFollow,
     on_remove: impl Fn(&str, &mut Window, &mut App) + Clone + 'static,
     cx: &App,
 ) -> Option<AnyElement> {
@@ -96,14 +99,16 @@ pub fn section(
                     .w_full()
                     .gap_2()
                     // The button leads, so a pane wider than the window cannot clip it.
-                    .child(
+                    .child(Followed::new(
+                        ("env-orphan-remove-follow", ix),
+                        follow,
                         Button::new(("env-orphan-remove", ix))
                             .ghost()
                             .compact()
                             .label("Remove")
                             .accessibility_label(format!("Remove stored secret {name}"))
                             .on_click(move |_, window, cx| on_remove(&clicked, window, cx)),
-                    )
+                    ))
                     .child(div().flex_1().min_w_0().truncate().child(name.clone()))
             });
             let section = v_flex()
