@@ -2924,6 +2924,8 @@ impl Workspace {
     }
 
     // Files the tabs each Trashed notice closed under its ticket, with their old positions.
+    // Positions count against the strip as each delete in turn left it, so restores sent
+    // newest first rebuild the strip exactly. A run tab goes with the last delete it covers.
     fn remember_trashed(
         &mut self,
         root: &Path,
@@ -2932,19 +2934,41 @@ impl Workspace {
         before: &[TabId],
         active: Option<TabId>,
     ) {
-        let mut left: Vec<&TabEntry> = gone.iter().collect();
-        for notice in notices {
-            let NoticeKind::Trashed { item, ticket } = &notice.kind else {
-                continue;
+        let trashed: Vec<(&ItemPath, u64)> = (notices.iter())
+            .filter_map(|n| match &n.kind {
+                NoticeKind::Trashed { item, ticket } => Some((item, *ticket)),
+                _ => None,
+            })
+            .collect();
+        let owner = |e: &TabEntry| -> Option<usize> {
+            let covers = |p: &ItemPath| {
+                trashed
+                    .iter()
+                    .position(|(t, _)| crate::stale::is_within(p, t))
             };
-            let (mine, rest): (Vec<_>, Vec<_>) = left.into_iter().partition(|e| {
-                trashed_path(&e.kind).is_some_and(|p| crate::stale::is_within(p, item))
-            });
-            left = rest;
-            let tabs = mine
-                .into_iter()
+            match &e.kind {
+                TabKind::RunSelection(items) => items.iter().filter_map(covers).max(),
+                kind => trashed_path(kind).and_then(covers),
+            }
+        };
+        let owners: Vec<(&TabEntry, usize)> = (gone.iter())
+            .filter_map(|e| owner(e).map(|o| (e, o)))
+            .collect();
+        // Tabs closed for no delete here never come back, so they hold no place.
+        let mut strip: Vec<TabId> = (before.iter())
+            .filter(|id| {
+                owners.iter().any(|(e, _)| e.id == **id) || !gone.iter().any(|e| e.id == **id)
+            })
+            .copied()
+            .collect();
+        for (n, (_, ticket)) in trashed.iter().enumerate() {
+            let mine: Vec<&TabEntry> = (owners.iter())
+                .filter(|(_, o)| *o == n)
+                .map(|(e, _)| *e)
+                .collect();
+            let tabs = (mine.iter())
                 .map(|e| TrashedTab {
-                    index: before
+                    index: strip
                         .iter()
                         .position(|id| *id == e.id)
                         .unwrap_or(usize::MAX),
@@ -2954,6 +2978,7 @@ impl Workspace {
                     active: Some(e.id) == active,
                 })
                 .collect();
+            strip.retain(|id| !mine.iter().any(|e| e.id == *id));
             self.trashed_tabs.insert((absolute(root), *ticket), tabs);
         }
     }
