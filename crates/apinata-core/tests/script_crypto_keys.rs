@@ -3,7 +3,11 @@
 //! not produce are the named refusals. `fixtures/crypto-keys/vectors.json` holds keys made for
 //! these tests by Node 24 and openssl 3.6, and hostile keys built by hand.
 
-use crate::script_crypto::run_crypto;
+use crate::script_crypto::{run_crypto, run_crypto_with};
+use crate::script_support::on;
+
+use apinata_core::{RunOptions, ScriptOptions};
+use std::time::Duration;
 
 const VECTORS: &str = include_str!("fixtures/crypto-keys/vectors.json");
 
@@ -12,12 +16,20 @@ const NODE_ANSWERS: &str = include_str!("fixtures/crypto-keys/malformed-node.txt
 /// Each line a corpus tag, the shim's answer and the decision behind it, tab separated, for lines
 /// the shim answers another way than Node by decision.
 const DECIDED: &str = include_str!("fixtures/crypto-keys/malformed-decided.tsv");
+/// The corpus's script limit, in seconds.
+const LIMIT_SECS: u64 = 300;
 
 /// `run_crypto` with the vectors as `K` and their passphrase as `PW`.
 async fn run_keys(code: &str) -> Vec<String> {
-    run_crypto(&format!(
-        "const K = {VECTORS};\nconst PW = \"correct horse\";\n{code}"
-    ))
+    run_keys_with(code, on()).await
+}
+
+/// `run_keys` under the given run options.
+async fn run_keys_with(code: &str, opts: RunOptions) -> Vec<String> {
+    run_crypto_with(
+        &format!("const K = {VECTORS};\nconst PW = \"correct horse\";\n{code}"),
+        opts,
+    )
     .await
 }
 
@@ -1084,7 +1096,14 @@ fn decided() -> Vec<(&'static str, &'static str)> {
 /// The lines `malformed-decided.tsv` names keep the shim's answer instead.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn malformed_keys_get_nodes_answers() {
-    let ours: Vec<String> = run_keys(MALFORMED)
+    // The corpus is long and builds keys nested 100 000 deep, so a loaded debug build can pass
+    // the default script limit; the limit here only stops a decoder that never ends.
+    let opts = on().scripts(
+        ScriptOptions::new()
+            .enabled(true)
+            .timeout(Duration::from_secs(LIMIT_SECS)),
+    );
+    let ours: Vec<String> = run_keys_with(MALFORMED, opts)
         .await
         .iter()
         .map(|line| comparable(line.strip_prefix("log:").unwrap_or(line)))

@@ -622,19 +622,40 @@ console.log(show(e.toString("utf8", 1, 3)), show(e.toString("utf8", 3, 7)), show
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn buffer_utf8_decodes_a_four_megabyte_body_quickly() {
-    // Ten bytes per unit (ASCII, a three-byte and a four-byte character), 400 000 units. The
-    // script times only the decode; the budget is generous so a loaded debug build never flakes.
+async fn buffer_utf8_decodes_a_four_megabyte_body() {
+    // Ten bytes per unit (ASCII, a three-byte and a four-byte character), 400 000 units.
     let code = r#"const b = Buffer.from("abc\u20ac\u{1f600}".repeat(400000));
-const t = Date.now();
 const s = b.toString();
-const ms = Date.now() - t;
-console.log(b.length, s.length, s.slice(0, 6) === "abc\u20ac\u{1f600}", s.slice(-6) === "abc\u20ac\u{1f600}", s.charCodeAt(2000002).toString(16));
-console.log(ms);"#;
+console.log(b.length, s.length, s.slice(0, 6) === "abc\u20ac\u{1f600}", s.slice(-6) === "abc\u20ac\u{1f600}", s.charCodeAt(2000002).toString(16));"#;
+    let result = run_code(code, "").await;
+    assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
+    assert_eq!(console(&result), ["log:4000000 2400000 true true d83d"]);
+}
+
+// Ten times the bytes should cost about ten times the decode. The two sizes are decoded in
+// turn, best of many, so load slows both alike; a decode that copies its output so far per
+// chunk grows fifty to seventy times here, far past the bound.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn buffer_utf8_decode_cost_grows_in_line_with_the_body() {
+    let code = r#"const body = (units) => Buffer.from("abc\u20ac\u{1f600}".repeat(units));
+const small = body(4000), large = body(40000);
+const time = (b) => { const t = Date.now(); b.toString(); return Date.now() - t; };
+let bestSmall = Infinity, bestLarge = Infinity;
+for (let i = 0; i < 20; i++) { bestSmall = Math.min(bestSmall, time(small)); bestLarge = Math.min(bestLarge, time(large)); }
+console.log(bestSmall, bestLarge);"#;
     let result = run_code(code, "").await;
     assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.tests);
     let lines = console(&result);
-    assert_eq!(lines[0], "log:4000000 2400000 true true d83d");
-    let ms: u64 = lines[1].trim_start_matches("log:").parse().unwrap();
-    assert!(ms < 4_000, "4 MB utf8 decode took {ms} ms");
+    let best: Vec<f64> = lines[0]
+        .trim_start_matches("log:")
+        .split(' ')
+        .map(|ms| ms.parse().unwrap())
+        .collect();
+    // A millisecond floor keeps a decode too quick for the clock from dividing by zero.
+    let ratio = best[1] / best[0].max(1.0);
+    eprintln!(
+        "40 kB {} ms, 400 kB {} ms, ratio {ratio:.1}",
+        best[0], best[1]
+    );
+    assert!(ratio < 30.0, "ten times the bytes cost {ratio:.1} times");
 }
