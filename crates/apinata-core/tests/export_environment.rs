@@ -228,6 +228,8 @@ fn every_environment_gets_a_file_whose_text_is_the_single_export() {
     assert_eq!(values(&c, "prod"), json!([row("t", "", "secret")]));
 }
 
+// Windows forbids `:` and `*` in file names and macOS folds case, so only Linux can hold these.
+#[cfg(target_os = "linux")]
 #[test]
 fn stems_that_collide_are_numbered_ignoring_case() {
     // Names come from file names, which differ here only in case or in a forbidden character.

@@ -728,7 +728,6 @@ impl GlobalEnvEditor {
         }
     }
 
-    // Deleting removes the file and its stored secrets, so it asks first.
     /// Exports every global environment as saved to a folder the user picks, noting unsaved
     /// edits in the toast.
     pub fn export_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -742,6 +741,7 @@ impl GlobalEnvEditor {
         crate::export::export_environments(source, count, dirty, window, cx);
     }
 
+    // Deleting removes the file and its stored secrets, so it asks first.
     fn ask_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(name) = self.selected.clone() else {
             return;
