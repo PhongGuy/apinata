@@ -386,7 +386,7 @@ pub fn bytes_hold_secret(bytes: &[u8], secrets: &[NamedSecret]) -> bool {
     }
     secrets
         .iter()
-        .filter(|s| s.value.chars().count() >= MIN_CHARS)
+        .filter(|s| wide_searched(&s.value))
         .any(|s| {
             contains_bytes(bytes, &utf16_bytes(&s.value, false))
                 || contains_bytes(bytes, &utf16_bytes(&s.value, true))
