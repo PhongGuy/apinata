@@ -120,6 +120,7 @@ pub struct KvHead {
     extras: Vec<AnyElement>,
     action: Option<Option<AnyElement>>,
     pad_end: bool,
+    band: bool,
 }
 
 /// The heading row with id `id` over `columns`.
@@ -133,6 +134,7 @@ pub fn kv_head(id: impl Into<ElementId>, columns: Vec<KvColumn>) -> KvHead {
         extras: Vec::new(),
         action: None,
         pad_end: false,
+        band: false,
     }
 }
 
@@ -168,6 +170,12 @@ impl KvHead {
         self
     }
 
+    /// Give the heading the shared edit-grid band height, whatever its action slot holds.
+    pub fn shared_band(mut self) -> Self {
+        self.band = true;
+        self
+    }
+
     /// End with a `kv-action` slot holding `slot`, or empty for `None`.
     pub fn action(mut self, slot: Option<AnyElement>) -> Self {
         self.action = Some(slot);
@@ -186,11 +194,8 @@ impl RenderOnce for KvHead {
             .gap(SPACE_2)
             .items_center()
             .py(SPACE_0)
-            // Edit grids share one band height whether or not their action slot holds a toggle;
-            // read-only view heads (the only ones padded at the end) keep their natural height.
-            .when(self.action.is_some() && !self.pad_end, |r| {
-                r.h(KV_HEAD_HEIGHT)
-            })
+            // Edit grids opt into one shared band height; read-only view heads keep their natural one.
+            .when(self.band, |r| r.h(KV_HEAD_HEIGHT))
             .when(self.pad_end, |r| r.pr(SPACE_2))
             .rounded(RADIUS)
             .bg(fill)

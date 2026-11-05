@@ -1323,6 +1323,7 @@ impl KvTable {
         let state = self.enabled_state();
         let locked = self.locked;
         kv_head("kv-head", columns.describe(self.labels))
+            .shared_band()
             .grip_column()
             .check_box(
                 ui::checkbox("kv-head-enabled", state == Tri::On)
