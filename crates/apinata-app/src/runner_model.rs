@@ -1,7 +1,7 @@
 //! Running a folder or a whole collection from a runner tab: plan it on the collection
 //! actor, run it on the tokio bridge with the shared executor, and track each row.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -121,6 +121,7 @@ pub struct RunnerModel {
     // the current tags; refiltered on every tag edit so typing never waits on the actor.
     planned: Vec<(PlannedRow, Vec<String>)>,
     preview: Vec<PlannedRow>,
+    preview_loaded: bool,
     preview_rounds: Option<usize>,
     preview_task: Option<Task<()>>,
     // The parsed tags, exclude tags and data file the shown rows ran with.
@@ -133,6 +134,18 @@ pub struct RunnerModel {
     // The row (as an index into `rows`) waiting out the pause before a retry, with the attempt
     // about to start and the most there may be.
     retrying: Option<(usize, u32, u32)>,
+}
+
+// The plan narrowed to the requests the runner's checkboxes leave in, in plan order.
+fn choose_checked(
+    plan: apinata_core::RunPlan,
+    unchecked: &HashSet<ItemPath>,
+) -> Result<apinata_core::RunPlan, apinata_core::SelectError> {
+    let chosen: Vec<ItemPath> = (plan.items())
+        .filter(|item| !unchecked.contains(*item))
+        .cloned()
+        .collect();
+    plan.choose(&chosen)
 }
 
 type PlanAnswer = async_channel::Receiver<Result<Planned, crate::command::PlanError>>;
@@ -186,6 +199,7 @@ impl RunnerModel {
             task: None,
             planned: Vec::new(),
             preview: Vec::new(),
+            preview_loaded: false,
             preview_rounds: None,
             preview_task: None,
             ran_with: Default::default(),
@@ -479,8 +493,47 @@ impl RunnerModel {
         self.preview_rounds
     }
 
+    /// Whether the saved plan has arrived at least once, so the preview is not just empty.
+    pub fn preview_loaded(&self) -> bool {
+        self.preview_loaded
+    }
+
+    /// Whether the next run includes request `item`; the choice is shared by every runner of
+    /// the collection.
+    pub fn is_checked(&self, item: &ItemPath, cx: &App) -> bool {
+        self.workspace.read(cx).run_checked(&self.root, item)
+    }
+
+    /// Includes `items` in, or leaves them out of, the next run of this collection's runners.
+    pub fn set_checked(&mut self, items: &[ItemPath], on: bool, cx: &mut Context<Self>) {
+        let root = self.root.clone();
+        self.workspace
+            .update(cx, |w, _| w.set_run_checked(&root, items, on));
+        cx.notify();
+    }
+
+    /// The collection's folder names as the sidebar shows them, by item path.
+    pub fn folder_names(&self, cx: &App) -> HashMap<String, String> {
+        let Some(snapshot) = self.workspace.read(cx).snapshot(&self.root, cx) else {
+            return HashMap::new();
+        };
+        (snapshot.content.rows.iter())
+            .filter(|row| row.kind == crate::snapshot::RowKind::Folder)
+            .map(|row| (row.path.as_str().to_owned(), row.name.clone()))
+            .collect()
+    }
+
+    /// How many of the previewed requests are checked.
+    pub fn checked_count(&self, cx: &App) -> usize {
+        let unchecked = self.workspace.read(cx).run_unchecked(&self.root);
+        (self.preview.iter())
+            .filter(|row| !unchecked.contains(&row.path))
+            .count()
+    }
+
     fn keep_plan(&mut self, planned: Vec<(PlannedRow, Vec<String>)>, cx: &mut Context<Self>) {
         self.planned = planned;
+        self.preview_loaded = true;
         self.refilter();
         cx.notify();
     }
@@ -594,7 +647,11 @@ impl RunnerModel {
 
     /// Starts a fresh run, clearing the last one's rows. Returns `false`, doing nothing,
     /// while a run is under way; failures to start become `Failed` states.
+    /// With every previewed request unchecked there is nothing to run, and it does nothing.
     pub fn start(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.preview_loaded && !self.preview.is_empty() && self.checked_count(cx) == 0 {
+            return false;
+        }
         self.start_with(None, cx)
     }
 
@@ -636,6 +693,7 @@ impl RunnerModel {
             self.finish(RunState::Failed("the HTTP client is not ready".into()), cx);
             return true;
         };
+        let unchecked = self.workspace.read(cx).run_unchecked(&self.root);
         let (sent, answer) = self.send_plan(cx);
         if sent.is_none() {
             self.finish(RunState::Failed(PLAN_UNANSWERED.into()), cx);
@@ -666,6 +724,13 @@ impl RunnerModel {
             // Filtered first, so the script question and the rows see only the kept requests.
             let Planned { plan, context } = planned;
             let plan = plan.filter_tags(&filter);
+            let plan = match choose_checked(plan, &unchecked) {
+                Ok(plan) => plan,
+                Err(e) => {
+                    let failed = RunState::Failed(e.to_string());
+                    return drop(this.update(cx, |m, cx| m.finish(failed, cx)));
+                }
+            };
             let mut planned = Planned {
                 plan: match &only {
                     Some(items) => plan.retain_items(items),

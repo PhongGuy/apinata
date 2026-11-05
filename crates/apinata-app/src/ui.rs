@@ -2322,8 +2322,8 @@ impl Checkbox {
         self
     }
 
-    /// The accessibility label alone, for a box whose row already shows the text; a visible
-    /// `label` takes precedence as the name.
+    /// The accessibility label alone, for a box whose row already shows the text; set beside a
+    /// visible `label`, it replaces that label as the name.
     pub fn accessible_name(mut self, name: impl Into<SharedString>) -> Self {
         self.name = Some(name.into());
         self
@@ -2439,7 +2439,7 @@ impl RenderOnce for Checkbox {
         let (a11y_label, label) = if self.lock {
             (Some(SharedString::from("Secret")), None)
         } else {
-            (self.label.clone().or(self.name), self.label)
+            (self.name.or(self.label.clone()), self.label)
         };
         let labelled = label.is_some();
         let lock = self.lock.then(|| lock_look(checked, self.disabled, cx));
