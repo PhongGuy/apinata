@@ -285,9 +285,11 @@ fn unmapped(
 
 /// The scripts of an `event` list, as the reference reads them (`postman-to-bruno.js`
 /// `importScriptsFromEvents`, usebruno/bruno @1301ea17): `prerequest` is the pre-request
-/// script, `test` the post-response one, and the last non-blank event of a kind wins. Each
-/// carried script gets a `Converted` note, plus one per `pm` API that was left as written;
-/// a script that is superseded or of another kind gets a `Dropped` one.
+/// script, `test` the post-response one, and the last non-blank event of a kind wins, where the
+/// reference lets a later blank one win and loses the script. Each carried script gets a
+/// `Converted` note, plus one per `pm` API that was left as written; a script that is
+/// superseded or of another kind, and a blank one that would have replaced a script, get a
+/// `Dropped` one.
 fn events_to_scripts(events: &[Value], at: &str, notes: &mut Vec<ImportNote>) -> ImportedScripts {
     let kind = |event: &Value| match event.get("listen").and_then(Value::as_str) {
         Some("prerequest") => Some(0),
@@ -303,6 +305,19 @@ fn events_to_scripts(events: &[Value], at: &str, notes: &mut Vec<ImportNote>) ->
     let mut out = ImportedScripts::default();
     for (index, event) in events.iter().enumerate() {
         let Some(code) = exec_text(event) else {
+            // The reference would replace the earlier script with this blank one; keeping the
+            // earlier script loses nothing, so only say so.
+            if let Some(k) = kind(event)
+                && winner[k].is_some_and(|w| w < index)
+                && has_exec(event)
+            {
+                let label = ["pre-request", "post-response"][k];
+                notes.push(ImportNote::new(
+                    format!("{at}[{index}]"),
+                    NoteKind::Dropped,
+                    format!("this {label} script is blank, so the earlier one is kept"),
+                ));
+            }
             continue;
         };
         let source = format!("{at}[{index}]");
@@ -365,6 +380,15 @@ fn events_to_scripts(events: &[Value], at: &str, notes: &mut Vec<ImportNote>) ->
         }
     }
     out
+}
+
+/// Whether an event's `script.exec` is there at all: a non-empty string or a list of lines.
+fn has_exec(event: &Value) -> bool {
+    match event.get("script").and_then(|s| s.get("exec")) {
+        Some(Value::String(code)) => !code.is_empty(),
+        Some(Value::Array(_)) => true,
+        _ => false,
+    }
 }
 
 /// An event's `script.exec`, a string or lines joined by a newline, when it has non-blank text.

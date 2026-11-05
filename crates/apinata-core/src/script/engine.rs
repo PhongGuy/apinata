@@ -172,11 +172,12 @@ fn thrown(message: impl Into<String>) -> Failure {
 /// How the evaluation inside the context ended, before the limits are taken into account.
 enum Outcome {
     Done,
-    /// A JavaScript throw: `String(value)`, its line in the wrapped source if known, and the
-    /// segment that was running.
+    /// A JavaScript throw: `String(value)`, its line and column in the wrapped source if
+    /// known, and the segment that was running.
     Threw {
         text: String,
         line: Option<u32>,
+        column: Option<u32>,
         segment: usize,
         unsupported: bool,
     },
@@ -255,7 +256,7 @@ async fn drive(
             message: time_limit_message(limits.timeout),
         });
     }
-    let (text, line, segment) = match outcome {
+    let (text, position, segment) = match outcome {
         Outcome::Done => return None,
         Outcome::Threw {
             text,
@@ -267,11 +268,13 @@ async fn drive(
         Outcome::Threw {
             text,
             line,
+            column,
             segment,
             ..
-        } => (text, line, Some(segment)),
-        Outcome::Aborted { text } => (text, None, None),
+        } => (text, (line, column), Some(segment)),
+        Outcome::Aborted { text } => (text, (None, None), None),
     };
+    let (line, column) = position;
     // The heap is freed by the time the error is seen, so out of memory is recognised by its
     // message or by usage still near the limit; `throw null` on a small heap stays a throw.
     if out_of_memory(&text, rt.memory_usage().await.malloc_size, limits.memory) {
@@ -279,9 +282,9 @@ async fn drive(
             message: memory_limit_message(limits.memory),
         });
     }
-    // An untranslated Postman call finds no `pm` global; name the call the importer reported.
+    // An untranslated Postman call finds no `pm` global; name the call that ran.
     let text = match segment {
-        Some(running) => name_missing_pm(&segments, running, text),
+        Some(running) => name_missing_pm(&segments, &starts, (line, column), running, text),
         None => text,
     };
     // An engine failure without a JavaScript value belongs to no script line.
@@ -298,9 +301,15 @@ const MISSING_GLOBAL_HINTS: [(&str, &str); 3] = [
     ("xml2Json", "xml2Json is not available here"),
 ];
 
-/// Rewrites "ReferenceError: pm is not defined" (or `postman`) to name the first `pm.` call
-/// in the running segment; any other text passes through.
-fn name_missing_pm(segments: &[Segment], running: usize, text: String) -> String {
+/// Rewrites "ReferenceError: pm is not defined" (or `postman`) to name the `pm.` call at the
+/// throw's position, else the first in the running segment; any other text passes through.
+fn name_missing_pm(
+    segments: &[Segment],
+    starts: &[u32],
+    (line, column): (Option<u32>, Option<u32>),
+    running: usize,
+    text: String,
+) -> String {
     if let Some((_, hint)) = MISSING_GLOBAL_HINTS
         .iter()
         .find(|(name, _)| text == format!("ReferenceError: {name} is not defined"))
@@ -312,9 +321,10 @@ fn name_missing_pm(segments: &[Segment], running: usize, text: String) -> String
         "ReferenceError: postman is not defined" => "postman",
         _ => return text,
     };
+    let (index, line) = locate(starts, line).unwrap_or((running, 0));
     let chain = segments
-        .get(running)
-        .and_then(|s| crate::import::first_pm_chain(&s.code))
+        .get(index)
+        .and_then(|s| crate::import::pm_chain_at(&s.code, line, column))
         .unwrap_or_else(|| global.to_owned());
     format!("{chain} is not available; see the import report")
 }
@@ -448,11 +458,7 @@ pub(crate) fn attribute(
     running: usize,
     text: &str,
 ) -> String {
-    let located = line.and_then(|line| {
-        let index = starts.iter().rposition(|start| *start <= line)?;
-        Some((index, line - starts[index] + 1))
-    });
-    match located {
+    match locate(starts, line) {
         Some((index, line)) => {
             let quote = quoted_line(&segments[index].code, line, text);
             format!(
@@ -465,6 +471,13 @@ pub(crate) fn attribute(
             None => text.to_owned(),
         },
     }
+}
+
+/// The segment holding `line` of the wrapped source, and the line within it (1-based).
+fn locate(starts: &[u32], line: Option<u32>) -> Option<(usize, u32)> {
+    let line = line?;
+    let index = starts.iter().rposition(|start| *start <= line)?;
+    Some((index, line - starts[index] + 1))
 }
 
 /// ` in "<line>"` for an engine-raised TypeError, ReferenceError or RangeError, quoting the
@@ -528,6 +541,7 @@ fn caught<'js>(ctx: &Ctx<'js>, error: CaughtError<'js>) -> Outcome {
             Outcome::Threw {
                 text,
                 line: error_line(error),
+                column: error_column(error),
                 segment: running_segment(ctx),
                 unsupported,
             }
@@ -536,6 +550,7 @@ fn caught<'js>(ctx: &Ctx<'js>, error: CaughtError<'js>) -> Outcome {
         // still carry a stack that locates the throw.
         CaughtError::Value(value) => Outcome::Threw {
             line: value.as_object().and_then(error_line),
+            column: value.as_object().and_then(error_column),
             text: to_string(ctx, value),
             segment: running_segment(ctx),
             unsupported: false,
@@ -601,6 +616,20 @@ pub(crate) fn error_line(error: &Object<'_>) -> Option<u32> {
             .ok()
     });
     from_stack.or_else(|| error.get::<_, Option<u32>>("lineNumber").ok().flatten())
+}
+
+/// The column of the innermost user-code frame in the stack.
+fn error_column(error: &Object<'_>) -> Option<u32> {
+    let stack: Option<String> = error.get("stack").ok().flatten();
+    let rest = stack?.split(&format!("{SCRIPT_FILE}:")).nth(1)?.to_owned();
+    let mut parts = rest.split(':');
+    parts.next()?;
+    parts
+        .next()?
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn running_segment(ctx: &Ctx<'_>) -> usize {

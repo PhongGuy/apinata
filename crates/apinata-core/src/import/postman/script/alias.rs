@@ -2,7 +2,8 @@
 //! declaration is dropped, as the reference's `preprocessAliases` does (usebruno/bruno
 //! @1301ea17). Works on a token list, in a few linear passes. A name that is declared more
 //! than once, reassigned, used as a parameter or as an object key is left alone, where the
-//! reference would emit invalid JavaScript.
+//! reference would emit invalid JavaScript. The statement list a removed declaration leaves
+//! is reprinted the way the reference's printer does.
 
 use std::collections::HashMap;
 
@@ -243,16 +244,235 @@ fn pass(src: &str, cx: &mut Ctx) -> Option<String> {
     sc.cx.replaced += removed;
     let mut out = String::with_capacity(src.len());
     let mut at = 0;
-    for (s, e, text) in edits {
+    // Where whole statements left, in the new text: their lists are reprinted.
+    let mut removed_at = Vec::new();
+    for (s, e, text, stmt) in edits {
         if s < at {
             continue;
         }
         out.push_str(&src[at..s]);
+        if stmt {
+            removed_at.push(out.len());
+        }
         out.push_str(text);
         at = e;
     }
     out.push_str(&src[at..]);
-    Some(out)
+    Some(reprint_lists(&out, &removed_at, sc.cx))
+}
+
+/// The reference reprints a statement list it removed a statement from: statements that
+/// shared a line are joined, and empty statements are dropped. `removed_at` are offsets in
+/// `src` where a statement left; only their lists change.
+fn reprint_lists(src: &str, removed_at: &[usize], cx: &mut Ctx) -> String {
+    if removed_at.is_empty() {
+        return src.to_string();
+    }
+    let mut lx = Lexed::default();
+    lex(src, 0, src.len(), 0, cx, &mut lx);
+    let (toks, mate) = (&lx.toks, match_brackets(&lx.toks));
+    // The bracket each token sits directly in; a closing bracket sits where its opener does.
+    let mut parent = vec![None; toks.len()];
+    let mut stack: Vec<usize> = Vec::new();
+    for (i, t) in toks.iter().enumerate() {
+        match t.k {
+            K::Punct(b')' | b']' | b'}') if mate[i].is_some() => {
+                stack.pop();
+                parent[i] = mate[i].and_then(|o| parent[o]);
+            }
+            K::Punct(b'(' | b'[' | b'{') if mate[i].is_some() => {
+                parent[i] = stack.last().copied();
+                stack.push(i);
+            }
+            _ => parent[i] = stack.last().copied(),
+        }
+    }
+    let mut lists: Vec<Option<usize>> = Vec::new();
+    for &p in removed_at {
+        let t = toks.partition_point(|t| t.s < p);
+        let list = match toks.get(t) {
+            None => None,
+            Some(tok) if tok.k == K::Punct(b'}') && mate[t].is_some() => mate[t],
+            Some(_) => parent[t],
+        };
+        if list.is_none_or(|o| toks[o].k == K::Punct(b'{')) && !lists.contains(&list) {
+            lists.push(list);
+        }
+    }
+    let rp = Reprint {
+        src,
+        toks,
+        comments: &lx.comments,
+        mate: &mate,
+        parent: &parent,
+    };
+    let in_list = |i: usize| lists.contains(&parent[i]);
+    let empty: Vec<bool> = (0..toks.len())
+        .map(|i| in_list(i) && rp.empty_statement(i))
+        .collect();
+    // Empty statements go with the blanks before them; leading ones with the blanks after.
+    let mut drops: Vec<Option<(usize, usize)>> = vec![None; toks.len()];
+    let mut leading = true;
+    for i in 0..toks.len() {
+        if !empty[i] {
+            leading = false;
+            continue;
+        }
+        drops[i] = Some(match (i.checked_sub(1), leading) {
+            (Some(p), false) => (toks[p].e, toks[i].e),
+            _ => (toks[i].s, super::skip_ws(src.as_bytes(), toks[i].e)),
+        });
+    }
+    let mut edits: Vec<(usize, usize)> = drops.iter().flatten().copied().collect();
+    for i in 0..toks.len() {
+        if empty[i] || !in_list(i) || !rp.statement_end(i) {
+            continue;
+        }
+        let Some(next) = (i + 1..toks.len()).find(|n| !empty[*n]) else {
+            continue;
+        };
+        if !rp.statement_start(next) {
+            continue;
+        }
+        // The blanks left after this end and any empty statements dropped behind it.
+        let from = drops[next - 1].map_or(toks[i].e, |d| d.1.max(toks[i].e));
+        if let Some(to) = rp.joinable(from, toks[next].s) {
+            edits.push((from, to));
+        }
+    }
+    edits.sort_unstable();
+    let mut out = String::with_capacity(src.len());
+    let mut at = 0;
+    for (s, e) in edits {
+        if s < at {
+            continue;
+        }
+        out.push_str(&src[at..s]);
+        at = e;
+    }
+    out.push_str(&src[at..]);
+    out
+}
+
+struct Reprint<'a> {
+    src: &'a str,
+    toks: &'a [Tok],
+    comments: &'a [(usize, usize)],
+    mate: &'a [Option<usize>],
+    parent: &'a [Option<usize>],
+}
+
+impl Reprint<'_> {
+    fn ident(&self, i: usize) -> Option<&str> {
+        let t = self.toks.get(i)?;
+        (t.k == K::Ident).then(|| &self.src[t.s..t.e])
+    }
+
+    fn punct(&self, i: usize) -> Option<u8> {
+        match self.toks.get(i)?.k {
+            K::Punct(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    /// A `;` with nothing before it in its statement.
+    fn empty_statement(&self, i: usize) -> bool {
+        if self.punct(i) != Some(b';') {
+            return false;
+        }
+        match i.checked_sub(1) {
+            None => true,
+            Some(p) => {
+                Some(p) == self.parent[i]
+                    || (self.parent[p] == self.parent[i]
+                        && (self.punct(p) == Some(b';') || self.block_close(p)))
+            }
+        }
+    }
+
+    fn statement_end(&self, i: usize) -> bool {
+        self.punct(i) == Some(b';') || self.block_close(i)
+    }
+
+    fn statement_start(&self, i: usize) -> bool {
+        match self.toks[i].k {
+            K::Punct(c) => !b")]};,.".contains(&c),
+            K::Ident => !matches!(self.ident(i), Some("else" | "catch" | "finally" | "while")),
+            K::Value => true,
+        }
+    }
+
+    /// A `}` that ends a statement: a block, a control body or a function declaration.
+    fn block_close(&self, i: usize) -> bool {
+        if self.punct(i) != Some(b'}') {
+            return false;
+        }
+        let Some(open) = self.mate[i] else {
+            return false;
+        };
+        let Some(before) = open.checked_sub(1) else {
+            return true;
+        };
+        match self.toks[before].k {
+            K::Punct(b';' | b'{' | b'}') => true,
+            K::Ident => matches!(self.ident(before), Some("else" | "try" | "finally" | "do")),
+            K::Punct(b')') => {
+                let Some(paren) = self.mate[before] else {
+                    return false;
+                };
+                let Some(head) = paren.checked_sub(1) else {
+                    return false;
+                };
+                match self.ident(head) {
+                    Some("if" | "for" | "while" | "with" | "switch" | "catch") => true,
+                    Some(_) => self.declares_function(head),
+                    None => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the name at `name` is that of a function declaration (`function name(`
+    /// starting a statement).
+    fn declares_function(&self, name: usize) -> bool {
+        let mut kw = name;
+        if kw > 0 && self.punct(kw - 1) == Some(b'*') {
+            kw -= 1;
+        }
+        let Some(kw) = kw
+            .checked_sub(1)
+            .filter(|k| self.ident(*k) == Some("function"))
+        else {
+            return false;
+        };
+        let start = match kw.checked_sub(1) {
+            Some(a) if self.ident(a) == Some("async") => a,
+            _ => kw,
+        };
+        start == 0 || matches!(self.punct(start - 1), Some(b';' | b'{' | b'}'))
+    }
+
+    /// The end of the blanks at `from` when dropping them joins two statements on one line:
+    /// only spaces and tabs before the next statement, or before a block comment that the
+    /// next statement follows on the same line.
+    fn joinable(&self, from: usize, next: usize) -> Option<usize> {
+        let b = self.src.as_bytes();
+        let mut to = from;
+        while to < next && matches!(b[to], b' ' | b'\t') {
+            to += 1;
+        }
+        if to == from {
+            return None;
+        }
+        if to == next {
+            return Some(to);
+        }
+        let k = self.comments.binary_search_by_key(&to, |c| c.0).ok()?;
+        let (s, e) = self.comments[k];
+        let block = self.src[s..].starts_with("/*");
+        (block && !self.src[s..next].contains('\n') && e <= next).then_some(to)
+    }
 }
 
 const CONTROL: [&str; 6] = ["if", "while", "for", "switch", "with", "catch"];
@@ -684,7 +904,8 @@ impl<'a> Scan<'a, '_> {
     }
 
     /// Removals and replacements as `(start, end, text)`, in source order.
-    fn edits(&self) -> Vec<(usize, usize, &'static str)> {
+    /// Each edit says whether it removes a whole statement.
+    fn edits(&self) -> Vec<(usize, usize, &'static str, bool)> {
         let mut out = Vec::new();
         let mut value: HashMap<&str, &'static str> = HashMap::new();
         for c in &self.cands {
@@ -697,9 +918,9 @@ impl<'a> Scan<'a, '_> {
             match c.removal {
                 Removal::Stmt(kw, last) if all && c.complete => {
                     let (s, e) = self.stmt_span(kw, last);
-                    out.push((s, e, ""));
+                    out.push((s, e, "", true));
                 }
-                Removal::Range(s, e) if all => out.push((s, e, "")),
+                Removal::Range(s, e) if all => out.push((s, e, "", false)),
                 _ => {}
             }
         }
@@ -713,7 +934,7 @@ impl<'a> Scan<'a, '_> {
             if let Some(v) = value.get(&self.src[t.s..t.e])
                 && !is_property_access(self.src.as_bytes(), t.s)
             {
-                out.push((t.s, t.e, *v));
+                out.push((t.s, t.e, *v, false));
             }
         }
         out.sort_by_key(|e| e.0);

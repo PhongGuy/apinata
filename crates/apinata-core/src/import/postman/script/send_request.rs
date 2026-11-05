@@ -5,6 +5,8 @@
 //! `await` is legal. The reference reprints the call with a printer; the layout rules that
 //! matter (wrap past 74 columns, fresh objects one property per line) are reproduced here.
 
+use std::collections::HashSet;
+
 use super::{
     Ctx, ident_end, is_ident_byte, is_property_access, prev_significant, skip_opaque, skip_ws,
     split_top_level, translate_code,
@@ -683,11 +685,18 @@ fn returns_param(text: &str, f: &FnParts, name: &str) -> bool {
 
 /// `text` with the response access of its body (from `body_at`) rewritten for `name`.
 fn with_response(text: &str, body_at: usize, name: &str) -> String {
-    format!(
-        "{}{}",
-        &text[..body_at],
-        rewrite_response(&text[body_at..], name, false, 0)
-    )
+    let body = &text[body_at..];
+    // A first pass finds the nested functions that declare the name anywhere in their body,
+    // since `var` and function declarations bind it before their own line.
+    let mut hoisted = HashSet::new();
+    let mut scan = Response {
+        name,
+        hoisted: &mut hoisted,
+        collect: true,
+    };
+    scan.rewrite(body, 0, false, 0);
+    scan.collect = false;
+    format!("{}{}", &text[..body_at], scan.rewrite(body, 0, false, 0))
 }
 
 struct ScopeFrame {
@@ -696,168 +705,266 @@ struct ScopeFrame {
     /// The name is rebound in this frame or one around it.
     shadow: bool,
     open: u8,
+    /// Conditional `?`s in this frame still waiting for their `:`.
+    pending_colons: u32,
 }
 
-/// Rewrite `name.json()`, `name.code` and the like in a callback body, leaving alone
-/// whatever a nested function that rebinds `name` (parameter, `var`, `catch`) refers to.
-/// The callback's own scope is not nested, so its own redeclarations do not stop it.
-fn rewrite_response(src: &str, name: &str, shadowed: bool, depth: usize) -> String {
-    let b = src.as_bytes();
-    let mut out = String::with_capacity(src.len());
-    let mut frames: Vec<ScopeFrame> = Vec::new();
-    let mut occ: Vec<usize> = Vec::new();
-    let mut opens: Vec<usize> = Vec::new();
-    // Index of the `)` or `>` after which the next function body shadows the name, and
-    // the last closed parenthesis group: its index, whether it is a control head, `catch`.
-    let mut pending: Option<usize> = None;
-    let mut last_close: Option<(usize, bool, bool)> = None;
-    let mut i = 0;
-    let cur = |frames: &Vec<ScopeFrame>| shadowed || frames.last().is_some_and(|f| f.shadow);
-    while i < b.len() {
-        if b[i] == b'`' {
-            let end = super::template_end(src, i);
-            let mut k = i + 1;
-            let mut from = i;
-            while k < end {
-                match b[k] {
-                    b'\\' => k += 2,
-                    b'$' if b.get(k + 1) == Some(&b'{') => {
-                        let Some(close) = super::find_close(src, k + 1).filter(|c| *c < end) else {
-                            break;
-                        };
-                        out.push_str(&src[from..k + 2]);
-                        let hole = &src[k + 2..close];
-                        if depth < super::MAX_DEPTH {
-                            out.push_str(&rewrite_response(hole, name, cur(&frames), depth + 1));
-                        } else {
-                            out.push_str(hole);
+/// Rewrites `name.json()`, `name.code` and the like in a callback body, leaving alone
+/// whatever a nested function that rebinds `name` (parameter, declaration, its own name as
+/// an expression, `catch`) refers to. The callback's own scope is not nested, so its own
+/// redeclarations do not stop it.
+struct Response<'n, 'h> {
+    name: &'n str,
+    /// Absolute offsets of the nested function bodies that declare the name.
+    hoisted: &'h mut HashSet<usize>,
+    /// The first pass only fills `hoisted`.
+    collect: bool,
+}
+
+impl Response<'_, '_> {
+    fn rewrite(&mut self, src: &str, base: usize, shadowed: bool, depth: usize) -> String {
+        let name = self.name;
+        let b = src.as_bytes();
+        let mut out = String::with_capacity(src.len());
+        let mut frames: Vec<ScopeFrame> = Vec::new();
+        // Where each open frame starts, for the hoisting record.
+        let mut starts: Vec<usize> = Vec::new();
+        let mut occ: Vec<usize> = Vec::new();
+        let mut opens: Vec<usize> = Vec::new();
+        // Index of the `)` or `>` after which the next function body shadows the name, and
+        // the last closed parenthesis group: its index, whether it is a control head, `catch`.
+        let mut pending: Option<usize> = None;
+        let mut last_close: Option<(usize, bool, bool)> = None;
+        // The `(` of a function expression named after the response.
+        let mut named_fn: Option<usize> = None;
+        let mut i = 0;
+        let cur = |frames: &Vec<ScopeFrame>| shadowed || frames.last().is_some_and(|f| f.shadow);
+        let push = |frames: &mut Vec<ScopeFrame>, starts: &mut Vec<usize>, at, frame| {
+            frames.push(frame);
+            starts.push(at);
+        };
+        while i < b.len() {
+            if b[i] == b'`' {
+                let end = super::template_end(src, i);
+                let mut k = i + 1;
+                let mut from = i;
+                while k < end {
+                    match b[k] {
+                        b'\\' => k += 2,
+                        b'$' if b.get(k + 1) == Some(&b'{') => {
+                            let Some(close) = super::find_close(src, k + 1).filter(|c| *c < end)
+                            else {
+                                break;
+                            };
+                            out.push_str(&src[from..k + 2]);
+                            let hole = &src[k + 2..close];
+                            if depth < super::MAX_DEPTH {
+                                let inner = cur(&frames);
+                                out.push_str(&self.rewrite(hole, base + k + 2, inner, depth + 1));
+                            } else {
+                                out.push_str(hole);
+                            }
+                            from = close;
+                            k = close + 1;
                         }
-                        from = close;
-                        k = close + 1;
-                    }
-                    _ => k += 1,
-                }
-            }
-            out.push_str(&src[from..end]);
-            i = end;
-            continue;
-        }
-        if let Some(end) = skip_opaque(src, i) {
-            out.push_str(&src[i..end]);
-            i = end;
-            continue;
-        }
-        let c = b[i];
-        if is_ident_byte(c) {
-            let end = ident_end(b, i);
-            let word = &src[i..end];
-            if word == name && !is_property_access(b, i) {
-                occ.push(i);
-                let next = skip_ws(b, end);
-                if src[next..].starts_with("=>") {
-                    pending = Some(next + 1);
-                }
-                if matches!(
-                    prev_word(b, i),
-                    "var" | "let" | "const" | "function" | "class"
-                ) && let Some(k) = frames.iter().rposition(|f| f.func)
-                {
-                    for f in &mut frames[k..] {
-                        f.shadow = true;
+                        _ => k += 1,
                     }
                 }
-                if !cur(&frames)
-                    && let Some((text, next)) = response_member(src, end, name)
-                {
-                    out.push_str(&text);
-                    i = next;
-                    continue;
+                out.push_str(&src[from..end]);
+                i = end;
+                continue;
+            }
+            if let Some(end) = skip_opaque(src, i) {
+                out.push_str(&src[i..end]);
+                i = end;
+                continue;
+            }
+            let c = b[i];
+            if is_ident_byte(c) {
+                let end = ident_end(b, i);
+                let word = &src[i..end];
+                if word == name && !is_property_access(b, i) {
+                    occ.push(i);
+                    let next = skip_ws(b, end);
+                    if src[next..].starts_with("=>") {
+                        pending = Some(next + 1);
+                    }
+                    match function_named(b, i) {
+                        Some(false) if b.get(next) == Some(&b'(') => named_fn = Some(next),
+                        _ => {}
+                    }
+                    let declares = matches!(prev_word(b, i), "var" | "let" | "const" | "class")
+                        || function_named(b, i) == Some(true);
+                    if declares && let Some(k) = frames.iter().rposition(|f| f.func) {
+                        if self.collect {
+                            self.hoisted.insert(base + starts[k]);
+                        }
+                        for f in &mut frames[k..] {
+                            f.shadow = true;
+                        }
+                    }
+                    if !cur(&frames)
+                        && let Some((text, next)) = response_member(src, end, name)
+                    {
+                        out.push_str(&text);
+                        i = next;
+                        continue;
+                    }
                 }
+                out.push_str(word);
+                i = end;
+                continue;
             }
-            out.push_str(word);
-            i = end;
-            continue;
-        }
-        let inherit = cur(&frames);
-        match c {
-            b'(' => {
-                opens.push(i);
-                frames.push(ScopeFrame {
-                    func: false,
-                    shadow: inherit,
-                    open: b'(',
-                });
-            }
-            b'[' => frames.push(ScopeFrame {
-                func: false,
-                shadow: inherit,
-                open: b'[',
-            }),
-            b'{' => {
-                let (func, shadow) = match prev_significant(b, i) {
-                    Some((k, b'>')) if k > 0 && b[k - 1] == b'=' => (true, pending == Some(k)),
-                    Some((k, b')')) => match last_close {
-                        Some((at, control, catch)) if at == k => (
-                            !control && !catch,
-                            (!control || catch) && pending == Some(k),
-                        ),
+            let inherit = cur(&frames);
+            let frame = |open, func, shadow| ScopeFrame {
+                func,
+                shadow,
+                open,
+                pending_colons: 0,
+            };
+            match c {
+                b'(' => {
+                    opens.push(i);
+                    push(&mut frames, &mut starts, i, frame(b'(', false, inherit));
+                }
+                b'[' => push(&mut frames, &mut starts, i, frame(b'[', false, inherit)),
+                b'{' => {
+                    let (func, shadow) = match prev_significant(b, i) {
+                        Some((k, b'>')) if k > 0 && b[k - 1] == b'=' => (true, pending == Some(k)),
+                        Some((k, b')')) => match last_close {
+                            Some((at, control, catch)) if at == k => (
+                                !control && !catch,
+                                (!control || catch) && pending == Some(k),
+                            ),
+                            _ => (false, false),
+                        },
                         _ => (false, false),
-                    },
-                    _ => (false, false),
-                };
-                frames.push(ScopeFrame {
-                    func,
-                    shadow: inherit || shadow,
-                    open: b'{',
-                });
-            }
-            b')' | b']' | b'}' => {
-                while frames.last().is_some_and(|f| f.open == b'>') {
-                    frames.pop();
+                    };
+                    let hoist = func && self.hoisted.contains(&(base + i));
+                    push(
+                        &mut frames,
+                        &mut starts,
+                        i,
+                        frame(b'{', func, inherit || shadow || hoist),
+                    );
                 }
-                frames.pop();
-                if c == b')'
-                    && let Some(open) = opens.pop()
-                {
-                    let next = skip_ws(b, i + 1);
-                    let head = prev_word(b, open);
-                    let control = matches!(head, "if" | "for" | "while" | "switch" | "with");
-                    let catch = head == "catch";
-                    last_close = Some((i, control, catch));
-                    let binds = src[next..].starts_with("=>") || b.get(next) == Some(&b'{');
-                    let lo = occ.partition_point(|p| *p < open);
-                    if binds && !control && occ.get(lo).is_some_and(|p| *p < i) {
+                b')' | b']' | b'}' => {
+                    while frames.last().is_some_and(|f| f.open == b'>') {
+                        frames.pop();
+                        starts.pop();
+                    }
+                    frames.pop();
+                    starts.pop();
+                    if c == b')'
+                        && let Some(open) = opens.pop()
+                    {
+                        let next = skip_ws(b, i + 1);
+                        let head = prev_word(b, open);
+                        let control = matches!(head, "if" | "for" | "while" | "switch" | "with");
+                        let catch = head == "catch";
+                        last_close = Some((i, control, catch));
+                        let binds = src[next..].starts_with("=>") || b.get(next) == Some(&b'{');
+                        let lo = occ.partition_point(|p| *p < open);
+                        let in_params = occ.get(lo).is_some_and(|p| *p < i);
+                        if binds && !control && (in_params || named_fn == Some(open)) {
+                            pending = Some(i);
+                        }
+                    }
+                }
+                b',' | b';' => {
+                    while frames.last().is_some_and(|f| f.open == b'>') {
+                        frames.pop();
+                        starts.pop();
+                    }
+                }
+                b'?' if is_conditional(b, i) => {
+                    if let Some(f) = frames.last_mut() {
+                        f.pending_colons += 1;
+                    }
+                }
+                b':' => {
+                    // The `:` of a conditional ends the concise arrow bodies opened since its `?`.
+                    while frames
+                        .last()
+                        .is_some_and(|f| f.open == b'>' && f.pending_colons == 0)
+                    {
+                        frames.pop();
+                        starts.pop();
+                    }
+                    if let Some(f) = frames.last_mut() {
+                        f.pending_colons = f.pending_colons.saturating_sub(1);
+                    }
+                }
+                b'>' if i > 0 && b[i - 1] == b'=' => {
+                    let params_shadow = match prev_significant(b, i - 1) {
+                        Some((k, b')')) => pending == Some(k),
+                        _ => pending == Some(i),
+                    };
+                    if params_shadow {
                         pending = Some(i);
+                        if b.get(skip_ws(b, i + 1)) != Some(&b'{') {
+                            push(&mut frames, &mut starts, i, frame(b'>', true, true));
+                        }
                     }
                 }
+                _ => {}
             }
-            b',' | b';' => {
-                while frames.last().is_some_and(|f| f.open == b'>') {
-                    frames.pop();
-                }
-            }
-            b'>' if i > 0 && b[i - 1] == b'=' => {
-                let params_shadow = match prev_significant(b, i - 1) {
-                    Some((k, b')')) => pending == Some(k),
-                    _ => pending == Some(i),
-                };
-                if params_shadow {
-                    pending = Some(i);
-                    if b.get(skip_ws(b, i + 1)) != Some(&b'{') {
-                        frames.push(ScopeFrame {
-                            func: true,
-                            shadow: true,
-                            open: b'>',
-                        });
-                    }
-                }
-            }
-            _ => {}
+            out.push(c as char);
+            i += 1;
         }
-        out.push(c as char);
-        i += 1;
+        out
     }
-    out
+}
+
+/// For an identifier at `i` named by `function`, whether that function is a declaration
+/// (`Some(true)`, it binds the enclosing scope) or an expression (`Some(false)`, it binds
+/// only inside itself).
+fn function_named(b: &[u8], i: usize) -> Option<bool> {
+    let mut at = prev_significant(b, i)?;
+    if at.1 == b'*' {
+        at = prev_significant(b, at.0)?;
+    }
+    let mut kw = at.0 + 1;
+    while kw > 0 && is_ident_byte(b[kw - 1]) {
+        kw -= 1;
+    }
+    if &b[kw..at.0 + 1] != b"function" {
+        return None;
+    }
+    if prev_word(b, kw) == "async" {
+        kw = prev_significant(b, kw).map_or(0, |(k, _)| k + 1 - "async".len());
+    }
+    Some(match prev_significant(b, kw) {
+        None | Some((_, b';' | b'{' | b'}')) => true,
+        // Without semicolons, a line break after a finished expression starts a statement.
+        Some((k, c)) if b[k + 1..kw].contains(&b'\n') => match c {
+            b')' | b']' | b'\'' | b'"' | b'`' => true,
+            c if is_ident_byte(c) => !matches!(
+                prev_word(b, k + 1),
+                "in" | "instanceof"
+                    | "typeof"
+                    | "void"
+                    | "delete"
+                    | "new"
+                    | "await"
+                    | "yield"
+                    | "return"
+                    | "throw"
+                    | "case"
+                    | "else"
+                    | "do"
+            ),
+            _ => false,
+        },
+        _ => false,
+    })
+}
+
+/// Whether the `?` at `i` opens a conditional rather than being part of `?.` or `??`.
+pub(super) fn is_conditional(b: &[u8], i: usize) -> bool {
+    let optional_member =
+        b.get(i + 1) == Some(&b'.') && !b.get(i + 2).is_some_and(u8::is_ascii_digit);
+    !optional_member && b.get(i + 1) != Some(&b'?') && !(i > 0 && b[i - 1] == b'?')
 }
 
 fn json_property(prop: &str) -> Option<&'static str> {

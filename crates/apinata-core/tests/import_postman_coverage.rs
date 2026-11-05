@@ -326,6 +326,36 @@ fn events_at_every_level_become_scripts_with_converted_notes() {
     assert!(has(&r.notes, NoteKind::Dropped, "f / r / event[2]"));
 }
 
+/// A later blank event of a kind would replace an earlier script with nothing; the earlier
+/// script is kept instead, and the blank event says so.
+#[test]
+fn a_later_blank_event_keeps_the_earlier_script_and_says_so() {
+    let c = parse(
+        r#", "event": [
+            {"listen": "prerequest", "script": {"exec": ["pm.environment.set('a', 1);"]}},
+            {"listen": "test", "script": {"exec": "kept();"}},
+            {"listen": "prerequest", "script": {"exec": []}},
+            {"listen": "test", "script": {"exec": ["", "  "]}},
+            {"listen": "test", "script": {}}]"#,
+        "[]",
+    );
+    assert_eq!(c.scripts.pre_request, "bru.setEnvVar('a', 1);");
+    assert_eq!(c.scripts.post_response, "kept();");
+    for (source, label) in [
+        ("collection / event[2]", "pre-request"),
+        ("collection / event[3]", "post-response"),
+    ] {
+        let note = c.notes.iter().find(|n| n.source == source).expect(source);
+        assert_eq!(note.kind, NoteKind::Dropped, "{note:?}");
+        assert_eq!(
+            note.detail,
+            format!("this {label} script is blank, so the earlier one is kept")
+        );
+    }
+    // An event without code would not replace anything, so it is not worth a note.
+    assert!(!c.notes.iter().any(|n| n.source == "collection / event[4]"));
+}
+
 /// The sorted note sources of the only request in a collection whose sole item is `request`.
 fn request_sources(request: &str) -> Vec<String> {
     let c = parse("", &format!(r#"[{{"name": "r", "request": {request}}}]"#));

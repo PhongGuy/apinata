@@ -360,6 +360,35 @@ async fn an_untranslated_pm_call_errors_naming_the_call() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_error_names_the_untranslated_call_that_ran() {
+    let code = "function later() {\n  pm.visualizer.set('x');\n}\nif (false) { pm.iterationData.get('a'); }\nvar n = pm.info.iteration;";
+    let text = pre_request_error(code).await;
+    assert!(
+        text.contains("pm.info.iteration is not available; see the import report"),
+        "{text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn of_two_untranslated_calls_on_a_line_the_error_names_the_one_that_ran() {
+    let text = pre_request_error("var a = 1;\nfalse && pm.a.b(); pm.c.d();").await;
+    assert!(
+        text.contains("pm.c.d is not available; see the import report"),
+        "{text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_untranslated_call_in_a_called_function_is_named() {
+    let code = "if (false) { pm.x.y(); }\nfunction f() {\n  return pm.iterationData.get('a');\n}\nvar early = typeof pm;\nf();";
+    let text = pre_request_error(code).await;
+    assert!(
+        text.contains("pm.iterationData.get is not available; see the import report"),
+        "{text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_untranslated_postman_global_errors_naming_the_call() {
     let text = pre_request_error("postman.setNextRequest('x');").await;
     assert!(

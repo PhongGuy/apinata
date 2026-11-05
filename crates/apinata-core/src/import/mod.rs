@@ -14,7 +14,7 @@ mod load;
 mod openapi;
 mod place;
 mod postman;
-pub(crate) use postman::first_pm_chain;
+pub(crate) use postman::pm_chain_at;
 mod request;
 mod source;
 mod update;
