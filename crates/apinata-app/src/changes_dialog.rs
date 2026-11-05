@@ -777,7 +777,7 @@ impl ChangesView {
                                         .test_support()
                                         .min_w_0()
                                         .truncate()
-                                        .tooltip(path_tooltip(
+                                        .tooltip(ui::text_tooltip(
                                             "changes-file-tooltip",
                                             SharedString::from(path.clone()),
                                         ))
@@ -795,7 +795,7 @@ impl ChangesView {
                                     .text_size(style::TEXT_SMALL)
                                     .text_color(muted)
                                     .aria_label(text.clone())
-                                    .tooltip(path_tooltip(
+                                    .tooltip(ui::text_tooltip(
                                         "changes-from-tooltip",
                                         SharedString::from(origin),
                                     ))
@@ -918,7 +918,7 @@ impl ChangesView {
             .id(("changes-stage-box", ix))
             .flex_none()
             .when(gone, |d| {
-                d.tooltip(path_tooltip("changes-gone-tooltip", warning.into()))
+                d.tooltip(ui::text_tooltip("changes-gone-tooltip", warning))
             })
             .child(
                 ui::checkbox(("changes-stage", ix), stage.is_full())
@@ -1093,24 +1093,6 @@ impl ChangesView {
             .child(pane)
             .children(ui::scroll_bar_x("diff-scrollbar", &sideways))
             .into_any_element()
-    }
-}
-
-/// A tooltip reading `path` in full, for a row's text that may be cut short; `id` marks it.
-fn path_tooltip(
-    id: &'static str,
-    path: SharedString,
-) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    move |window, cx| {
-        let path = path.clone();
-        Tooltip::element(move |_, _| {
-            div()
-                .id(id)
-                .test_support()
-                .aria_label(path.clone())
-                .child(path.clone())
-        })
-        .build(window, cx)
     }
 }
 

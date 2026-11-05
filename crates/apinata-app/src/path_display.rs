@@ -17,6 +17,11 @@ pub fn tilde(path: &Path, home: Option<&Path>) -> String {
     path.display().to_string()
 }
 
+/// Whether `shown` leaves part of `path` out, so the full path belongs in a tooltip.
+pub fn is_shortened(path: &Path, home: Option<&Path>, shown: &str) -> bool {
+    shown != tilde(path, home)
+}
+
 /// `path` as it should read within `max` width units, as `measure` counts them.
 ///
 /// A path that fits is whole. Otherwise leading components give way first, in the middle,

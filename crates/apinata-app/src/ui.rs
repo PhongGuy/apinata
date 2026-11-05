@@ -1156,6 +1156,25 @@ pub fn rollup_dot(id: ElementId) -> impl IntoElement + use<> {
         .tooltip(|window, cx| Tooltip::new("Changes inside").build(window, cx))
 }
 
+/// A tooltip of `text` whose element tests find by `id`, named by the text itself.
+pub fn text_tooltip(
+    id: impl Into<SharedString>,
+    text: impl Into<SharedString>,
+) -> impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static {
+    let (id, text): (SharedString, SharedString) = (id.into(), text.into());
+    move |window, cx| {
+        let (id, text) = (id.clone(), text.clone());
+        Tooltip::element(move |_, _| {
+            div()
+                .id(id.clone())
+                .test_support()
+                .aria_label(text.clone())
+                .child(text.clone())
+        })
+        .build(window, cx)
+    }
+}
+
 /// A file's git letter, named in words by its label and tooltip so colour never carries it
 /// alone: success for added and untracked, danger for conflicted, muted otherwise.
 pub fn git_letter(id: ElementId, change: &GitChange, cx: &App) -> impl IntoElement + use<> {

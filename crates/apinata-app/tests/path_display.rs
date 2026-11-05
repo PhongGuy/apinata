@@ -193,3 +193,133 @@ fn the_clone_dialog_folder_uses_the_helper(cx: &mut TestAppContext) {
     assert!(shown.ends_with("client/shop-b"), "{shown}");
     assert_eq!(full, Some(parent.display().to_string()));
 }
+
+// The tooltip shown after hovering `target`, read from the element `tip`, if any.
+fn tip_after_hover(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    target: impl Into<gpui_kit::ElementId> + Clone,
+    tip: &'static str,
+) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(target.into(), cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(tip)
+            .map(|t| t.label().unwrap_or_default().to_owned())
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn hovering_a_shortened_switcher_path_shows_the_full_path(cx: &mut TestAppContext) {
+    let tmp = tempfile::tempdir().unwrap();
+    let a = deep_collection(tmp.path(), LONG, "shop-a");
+    let win = shell(cx, Some(a.clone()), vec![], tmp.path().to_path_buf());
+    cx.update_window(win, |_, w, cx| {
+        w.within("title-bar").click("collection-switcher", cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let tip = tip_after_hover(
+        cx,
+        win,
+        ("switcher-open-path", 0usize),
+        "switcher-open-path-tooltip",
+    );
+    assert_eq!(tip, Some(a.display().to_string()));
+}
+
+#[gpui_kit::test]
+fn hovering_a_shortened_recent_path_shows_the_full_path(cx: &mut TestAppContext) {
+    let tmp = tempfile::tempdir().unwrap();
+    let b = deep_collection(tmp.path(), LONG, "shop-b");
+    let win = shell(cx, None, vec![b.clone()], tmp.path().to_path_buf());
+    let tip = tip_after_hover(cx, win, ("recent-path", 0usize), "recent-path-tooltip");
+    assert_eq!(tip, Some(b.display().to_string()));
+}
+
+#[gpui_kit::test]
+fn a_whole_recent_path_has_no_tooltip(cx: &mut TestAppContext) {
+    let tmp = tempfile::tempdir().unwrap();
+    let b = deep_collection(tmp.path(), "x", "shop-b");
+    let win = shell(cx, None, vec![b.clone()], tmp.path().to_path_buf());
+    let shown = value(cx, win, ("recent-path", 0)).expect("recent path text");
+    assert!(!shown.contains('…'), "{shown}");
+    let tip = tip_after_hover(cx, win, ("recent-path", 0usize), "recent-path-tooltip");
+    assert_eq!(tip, None);
+}
+
+// The clone dialog opened over a started shell, showing `parent` under `home`; the shell and
+// its collection are returned so they outlive the test's reads.
+fn clone_with_parent(
+    cx: &mut TestAppContext,
+    home: &Path,
+    parent: &Path,
+) -> (Started, tempfile::TempDir) {
+    cx.executor().allow_parking();
+    let col = collection();
+    let s = started(cx, &col);
+    let ws = s.ws.clone();
+    let view = cx
+        .update_window(s.win, |_, w, cx| clone_dialog::open(&ws, w, cx))
+        .unwrap();
+    let (home, parent) = (home.to_path_buf(), parent.to_path_buf());
+    cx.update(|cx| {
+        view.update(cx, |v, cx| {
+            v.set_home(Some(home));
+            v.set_parent(parent, cx);
+        })
+    });
+    frame(cx, s.win);
+    frame(cx, s.win);
+    (s, col)
+}
+
+#[gpui_kit::test]
+fn hovering_a_shortened_clone_folder_shows_the_full_path(cx: &mut TestAppContext) {
+    let tmp = tempfile::tempdir().unwrap();
+    let parent = tmp.path().join(LONG).join("client").join("shop-b");
+    std::fs::create_dir_all(&parent).unwrap();
+    let (s, _col) = clone_with_parent(cx, tmp.path(), &parent);
+    let win = s.win;
+    let tip = tip_after_hover(cx, win, "clone-parent", "clone-parent-tooltip");
+    assert_eq!(tip, Some(parent.display().to_string()));
+}
+
+#[gpui_kit::test]
+fn the_clone_folder_is_fitted_to_its_measured_width(cx: &mut TestAppContext) {
+    let tmp = tempfile::tempdir().unwrap();
+    // Many short components, so a few pixels of room change what is kept.
+    let mut parent = tmp.path().to_path_buf();
+    for i in 0..60 {
+        parent.push(format!("d{i}"));
+    }
+    parent.push("shop-b");
+    std::fs::create_dir_all(&parent).unwrap();
+    let (s, _col) = clone_with_parent(cx, tmp.path(), &parent);
+    let win = s.win;
+    let (shown, expected) = cx
+        .update_window(win, |_, w, _| {
+            let e = w.find("clone-parent");
+            let shown = e.value().map(str::to_owned);
+            let size = w.text_style().font_size.to_pixels(w.rem_size());
+            let measure = apinata_app::path_display::measurer(w, size);
+            let expected = display(
+                &parent,
+                Some(tmp.path()),
+                f32::from(e.bounds().size.width),
+                &measure,
+            );
+            (shown, expected)
+        })
+        .unwrap();
+    assert!(expected.contains('…'), "{expected}");
+    assert_eq!(shown.as_deref(), Some(expected.as_str()));
+}
