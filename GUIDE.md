@@ -585,7 +585,9 @@ When an OpenAPI description changes, `--update` refreshes a collection
 imported from it: fields you have not edited are rewritten, new operations are
 added, and requests whose operation vanished are listed as orphaned. `--prune`
 also removes the orphans that are still as generated, and `--dry-run` only
-reports. `--into` is then the collection's own directory:
+reports. A request you restore after a prune is yours from then on: later updates
+leave it alone and never delete or overwrite it. To track it again, delete it and
+update from the description. `--into` is then the collection's own directory:
 
 ```sh
 apinata import collection openapi.yaml --into ./collections/Shop --update --dry-run
