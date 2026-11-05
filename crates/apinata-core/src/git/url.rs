@@ -129,7 +129,8 @@ pub fn default_folder_name(url: &str) -> Option<String> {
 /// The userinfo of a `scheme://` URL is what precedes the last `@` of the whitespace-free token,
 /// so a password may hold `/`, `?`, `#`, `@` or `:`. That `@` is not userinfo when a `/`, `?` or
 /// `#` precedes the first `:` (a path or query holding an `@`) or the token starts with `[` (an
-/// IPv6 host). It fails closed: `host:8080/a?e=a@b` reads as userinfo `host:8080/a?e=a`.
+/// IPv6 host, unless an `@` sits inside the brackets, which marks userinfo of an invalid URL).
+/// It fails closed: `host:8080/a?e=a@b` reads as userinfo `host:8080/a?e=a`.
 /// That suits text a user typed, such as git output; a url that was parsed takes
 /// [`redact_url_userinfo`] instead.
 pub fn redact_url(text: &str) -> String {
@@ -160,11 +161,25 @@ fn redact_schemes(word: &str) -> String {
                 out.push_str(&after[end + 1..]);
                 return out;
             }
-            None => rest = after,
+            None => match bracketed_userinfo_end(after) {
+                Some(end) => {
+                    out.push('[');
+                    rest = &after[end + 1..];
+                }
+                None => rest = after,
+            },
         }
     }
     out.push_str(rest);
     out
+}
+
+/// The index of the last `@` inside a leading `[...]` of `after` (to its end when unclosed).
+/// An IPv6 host never holds `@`, so the text before it is userinfo of an invalid URL.
+fn bracketed_userinfo_end(after: &str) -> Option<usize> {
+    let inner = after.strip_prefix('[')?;
+    let close = inner.find(']').unwrap_or(inner.len());
+    inner[..close].rfind('@').map(|at| at + 1)
 }
 
 /// `text` with the userinfo of every `scheme://` url removed, where the userinfo is what

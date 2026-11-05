@@ -33,8 +33,6 @@ fn redact_url_table() {
         ("https://token@host/a", "https://host/a"),
         ("https://u:123/x@host/y", "https://host/y"),
         ("https://u:123?x@host/y", "https://host/y"),
-        // Fail closed: a port then a path holding '@' reads as userinfo.
-        ("https://h:8080/a?e=a@b", "https://b"),
         ("ssh://git:s3cr3t@host/x", "ssh://host/x"),
         ("ssh://git:s3/cr3t@host/x", "ssh://host/x"),
         (
@@ -64,6 +62,72 @@ fn redact_url_table() {
     ] {
         assert_eq!(redact_url(url), want, "{url}");
     }
+}
+
+/// Over-redaction is deliberate: a port then a path or query holding '@' reads as userinfo.
+/// Ending userinfo at the first '/', '?' or '#' would show this one whole, but it would also
+/// show the password of `https://u:123/x@host/y`, which git sends as userinfo `u:123/x`.
+#[test]
+fn redact_url_over_redacts_a_port_then_an_at_in_the_path_on_purpose() {
+    assert_eq!(redact_url("https://h:8080/a?e=a@b"), "https://b");
+    assert_eq!(redact_url("https://h:8080/a/x@b/c"), "https://b/c");
+    assert_eq!(redact_url("https://u:123/x@host/y"), "https://host/y");
+}
+
+/// A bracketed authority holding an '@' is not an IPv6 host, so its text before the '@' is
+/// dropped as userinfo even though the URL is invalid.
+#[test]
+fn redact_url_drops_userinfo_inside_brackets() {
+    for (url, want) in [
+        ("https://[u:s3cr3t@h]/x", "https://[h]/x"),
+        ("https://[u:s3cr3t@h]:80/x", "https://[h]:80/x"),
+        ("https://[u:s3/cr3t@h]/x", "https://[h]/x"),
+        ("https://[u:s3cr3t@h/x", "https://[h/x"),
+        (
+            "see 'https://[u:s3cr3t@h]/x' now",
+            "see 'https://[h]/x' now",
+        ),
+        // A real IPv6 host keeps its path '@'.
+        ("https://[::1]:80/a@b", "https://[::1]:80/a@b"),
+        ("https://u:s3cr3t@[::1]:80/a", "https://[::1]:80/a"),
+    ] {
+        let shown = redact_url(url);
+        assert_eq!(shown, want, "{url}");
+        assert!(!shown.contains("s3cr3t"), "{url}: {shown}");
+    }
+}
+
+/// Redaction works per whitespace-free word, so a password broken by whitespace or a line
+/// break is not redacted across the break. Git never wraps a URL, and clone validation
+/// refuses such a URL before git runs, so this text never comes from a clone.
+#[test]
+fn redact_url_does_not_join_a_url_across_whitespace() {
+    for url in [
+        format!("https://user:{PW} x@host/a"),
+        format!("https://user:{PW}\nx@host/a"),
+        format!("https://user:s3\n{PW}@host/a"),
+    ] {
+        assert_eq!(redact_url(&url), url);
+        let err = validate_clone_url(&url).unwrap_err();
+        assert!(matches!(err, CloneError::InvalidUrl { .. }), "{url}");
+        assert!(!err.to_string().contains(PW), "{url}: {err}");
+    }
+}
+
+/// Git reads the first ':' of the scp form as the path separator, so `user:pw@host:path` has
+/// no password and is refused as an invalid URL, without echoing what followed the user.
+#[test]
+fn the_scp_form_with_a_password_is_an_invalid_url() {
+    for url in [
+        format!("user:{PW}@host:repo.git"),
+        format!("user:{PW}@host:team/repo.git"),
+        format!("git:{PW}@127.0.0.1:x.git"),
+    ] {
+        let err = validate_clone_url(&url).unwrap_err();
+        assert!(matches!(err, CloneError::InvalidUrl { .. }), "{url}");
+        assert!(!err.to_string().contains(PW), "{url}: {err}");
+    }
+    assert!(validate_clone_url("git@host:repo.git").is_ok());
 }
 
 /// Git prints the URL inside its sentences, quoted or not, and sometimes in a variant.
