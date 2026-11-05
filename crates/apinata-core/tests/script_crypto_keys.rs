@@ -9,6 +9,9 @@ const VECTORS: &str = include_str!("fixtures/crypto-keys/vectors.json");
 
 const MALFORMED: &str = include_str!("fixtures/crypto-keys/malformed.js");
 const NODE_ANSWERS: &str = include_str!("fixtures/crypto-keys/malformed-node.txt");
+/// Each line a corpus tag, the shim's answer and the decision behind it, tab separated, for lines
+/// the shim answers another way than Node by decision.
+const DECIDED: &str = include_str!("fixtures/crypto-keys/malformed-decided.tsv");
 
 /// `run_crypto` with the vectors as `K` and their passphrase as `PW`.
 async fn run_keys(code: &str) -> Vec<String> {
@@ -149,7 +152,7 @@ show("format sign", () => crypto.sign("sha256", m, { key: RSA, format: "pkcs" })
             "log:long buffer Error interrupted or cancelled",
             "log:long plain key ok private",
             "log:der no type TypeError The property 'options.type' is invalid. Received undefined",
-            "log:der wrong type Error Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key",
+            "log:der wrong type Error Failed to read asymmetric key",
             "log:format TypeError The property 'options.format' is invalid. Received 'pkcs'",
             "log:format sign TypeError The property 'options.format' is invalid. Received 'pkcs'",
         ]
@@ -613,7 +616,7 @@ show("passphrase ignored", () => crypto.createPrivateKey({ key: ec, format: "jwk
     );
 }
 
-/// Keys Node holds and the shim has no type for, and inconsistent keys Node accepts and our crates refuse, are named refusals, never a key that signs wrongly.
+/// Keys Node holds and the shim has no type for, and inconsistent private keys Node accepts and our crates refuse, are named refusals, never a key that signs wrongly. Public RSA members open as in Node.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn jwk_kinds_and_inconsistent_keys_are_named() {
     let code = r#"const show = (tag, f) => { try { const r = f(); console.log(tag, "ok", Buffer.isBuffer(r) ? r.length : r instanceof crypto.KeyObject ? r.type : JSON.stringify(r)); } catch (e) { console.log(tag, e.name, e.message); } };
@@ -649,14 +652,14 @@ show("compressed", () => crypto.createPublicKey(K.ec256_compressed_pub).export({
             "log:rsa dp Error Unsupported key: the JWK's RSA values do not form a usable key",
             "log:rsa qi Error Unsupported key: the JWK's RSA values do not form a usable key",
             "log:rsa n Error Unsupported key: the JWK's RSA values do not form a usable key",
-            "log:rsa pub n Error Unsupported key: the JWK's RSA values do not form a usable key",
-            "log:rsa pub e Error Unsupported key: the JWK's RSA values do not form a usable key",
-            "log:rsa pub tiny Error Unsupported key: the JWK's RSA values do not form a usable key",
+            "log:rsa pub n ok public",
+            "log:rsa pub e ok public",
+            "log:rsa pub tiny ok public",
             "log:rsa-pss Error Unsupported JWK Key Type.",
             "log:rsa-pss public Error Unsupported JWK Key Type.",
             "log:rsa-pss encrypted ok private",
             "log:x25519 pem Error Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)",
-            "log:compressed Error Unsupported key: JWK export of a compressed EC public key",
+            r#"log:compressed ok {"kty":"EC","x":"nL3dTBpnl4An7dq_L_qtEBd3hVvvf_6gwVpT4GW4nDs","y":"R_2yvrlv2vOL7xe_lGSRieXWEvc-n-fPro3-K01d_yI","crv":"P-256"}"#,
         ]
     );
 }
@@ -1049,19 +1052,36 @@ show("not decoded", () => crypto.createPrivateKey({ key: K.rsa_aes256, passphras
 }
 
 /// A corpus line at the fidelity of this file: an error's name, code and message, except that
-/// OpenSSL's own errors read as the DER path's message and have no code.
+/// OpenSSL's decoding errors read as the DER path's message and have no code, and its RSA and
+/// provider errors keep their text alone, as the shim gives them.
 fn comparable(line: &str) -> String {
     let Some((head, message)) = line.split_once(" | ") else {
         return line.to_string();
     };
     let (name, code) = head.rsplit_once(' ').expect("an error line has a code");
-    if message.starts_with("error:") {
+    if let Some(openssl) = message.strip_prefix("error:") {
+        let (library, text) = openssl.rsplit_once("::").unwrap_or(("", openssl));
+        if library.ends_with(":rsa routines") || library.ends_with(":Provider routines") {
+            return format!("{name} undefined | {text}");
+        }
         return format!("{name} undefined | Failed to read asymmetric key");
     }
     format!("{name} {code} | {message}")
 }
 
+/// Each decided row's tag and the shim's answer; every row names its decision.
+fn decided() -> Vec<(&'static str, &'static str)> {
+    DECIDED
+        .lines()
+        .map(|row| match row.split('\t').collect::<Vec<_>>()[..] {
+            [tag, answer, decision] if !decision.is_empty() => (tag, answer),
+            _ => panic!("a decided row is a tag, the shim's answer and a decision: {row}"),
+        })
+        .collect()
+}
+
 /// Every line of `malformed.js` as Node 24 answered it; `gen.js` records `malformed-node.txt`.
+/// The lines `malformed-decided.tsv` names keep the shim's answer instead.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn malformed_keys_get_nodes_answers() {
     let ours: Vec<String> = run_keys(MALFORMED)
@@ -1069,7 +1089,17 @@ async fn malformed_keys_get_nodes_answers() {
         .iter()
         .map(|line| comparable(line.strip_prefix("log:").unwrap_or(line)))
         .collect();
-    let node: Vec<String> = NODE_ANSWERS.lines().map(comparable).collect();
+    let decided = decided();
+    let node: Vec<String> = NODE_ANSWERS
+        .lines()
+        .map(|line| {
+            let (tag, _) = line.split_once(" => ").expect("a corpus line has a tag");
+            match decided.iter().find(|(listed, _)| *listed == tag) {
+                Some((_, answer)) => format!("{tag} => {answer}"),
+                None => comparable(line),
+            }
+        })
+        .collect();
     assert_eq!(ours.len(), node.len());
     let wrong: Vec<String> = ours
         .iter()
@@ -1084,6 +1114,22 @@ async fn malformed_keys_get_nodes_answers() {
         node.len(),
         wrong.join("\n")
     );
+}
+
+/// Each decided row names a line Node answered, and answers it another way.
+#[test]
+fn every_decided_row_differs_from_a_recorded_line() {
+    for (tag, answer) in decided() {
+        let node = NODE_ANSWERS
+            .lines()
+            .find_map(|line| line.strip_prefix(tag)?.strip_prefix(" => "))
+            .unwrap_or_else(|| panic!("{tag} is not a corpus line"));
+        assert_ne!(
+            comparable(&format!("{tag} => {node}")),
+            format!("{tag} => {answer}"),
+            "{tag}"
+        );
+    }
 }
 
 /// `{ key, passphrase }` opens as `createPrivateKey` opens it, in each form that takes; RSA signatures are deterministic, so the tokens equal the plain key's.

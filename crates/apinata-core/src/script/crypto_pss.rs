@@ -14,6 +14,7 @@ use rsa::{BigUint, RsaPrivateKey, RsaPublicKey};
 use super::crypto::{
     BAD_PRIVATE, BAD_PUBLIC, RSA_BITS, element, rsa_public_parts, rsa_size, unsupported,
 };
+use super::crypto_der::{algorithm as identifier, tlv, uint};
 
 pub(super) const OID_RSA_PSS: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a];
 const OID_MGF1: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x08];
@@ -118,8 +119,9 @@ fn hash_name(algorithm: &[u8]) -> Result<&'static str, ()> {
 }
 
 /// The fields of RSASSA-PSS-params, each optional, in order, and defaulting to SHA-1, MGF1 with
-/// SHA-1 and a 20-byte salt; the trailer field may only be 1.
-fn read_params(params: &[u8]) -> Result<Option<PssParams>, ()> {
+/// SHA-1 and a 20-byte salt. The salt is a minimal non-negative INTEGER of at most four bytes and
+/// the trailer field may only be 1.
+pub(super) fn read_params(params: &[u8]) -> Result<Option<PssParams>, ()> {
     if params.is_empty() {
         return Ok(None);
     }
@@ -150,7 +152,7 @@ fn read_params(params: &[u8]) -> Result<Option<PssParams>, ()> {
                 }
                 found.mgf1 = hash_name(hash)?;
             }
-            (0xa2, 0x02) if value.len() <= 2 && value.first().is_some_and(|b| b & 0x80 == 0) => {
+            (0xa2, 0x02) if value.len() <= 4 && minimal_non_negative(value) => {
                 found.salt = value.iter().fold(0, |a, &b| (a << 8) | usize::from(b));
             }
             (0xa3, 0x02) if value == [1] => {}
@@ -160,18 +162,64 @@ fn read_params(params: &[u8]) -> Result<Option<PssParams>, ()> {
     Ok(Some(found))
 }
 
-fn tlv(tag: u8, body: &[u8]) -> Vec<u8> {
-    let len = body.len().to_be_bytes();
-    let skip = len.iter().take_while(|&&b| b == 0).count();
-    let mut out = vec![tag];
-    if body.len() < 0x80 {
-        out.push(body.len() as u8);
-    } else {
-        out.push(0x80 | (len.len() - skip) as u8);
-        out.extend_from_slice(&len[skip..]);
+/// INTEGER contents OpenSSL reads as a non-negative value: no sign bit, no redundant zero byte.
+fn minimal_non_negative(value: &[u8]) -> bool {
+    match value {
+        [] => false,
+        [first, ..] if first & 0x80 != 0 => false,
+        [0, next, ..] => next & 0x80 != 0,
+        _ => true,
     }
-    out.extend_from_slice(body);
-    out
+}
+
+/// RSASSA-PSS-params as OpenSSL writes them: each field only where it differs from its default.
+pub(super) fn encode_params(params: PssParams) -> Vec<u8> {
+    let hash = |name: &str| {
+        let oid = HASHES
+            .iter()
+            .find(|(known, _)| *known == name)
+            .map_or(&[][..], |(_, oid)| oid);
+        identifier(oid, Some(&[0x05, 0x00]))
+    };
+    let mut fields = Vec::new();
+    if params.hash != "sha1" {
+        fields.extend(tlv(0xa0, &hash(params.hash)));
+    }
+    if params.mgf1 != "sha1" {
+        fields.extend(tlv(0xa1, &identifier(OID_MGF1, Some(&hash(params.mgf1)))));
+    }
+    if params.salt != 20 {
+        fields.extend(tlv(0xa2, &uint(&params.salt.to_be_bytes())));
+    }
+    tlv(0x30, &fields)
+}
+
+/// OpenSSL's check as a restricted key is put to use: its salt must leave room for the hash in
+/// a modulus-sized message, one byte less when the top byte holds a single bit.
+fn salt_fits(params: Option<PssParams>, bits: usize, h_len: usize) -> Result<(), String> {
+    let room = bits
+        .div_ceil(8)
+        .saturating_sub(h_len + usize::from(bits % 8 == 1));
+    match params {
+        Some(p) if p.salt > room => Err(INVALID_SALT.into()),
+        _ => Ok(()),
+    }
+}
+
+/// A PKCS#8 RSA-PSS key with its algorithm identifier as OpenSSL writes it again; None for any
+/// other key, or parameters this reader does not take.
+pub(super) fn canonical_pkcs8(pkcs8: &[u8]) -> Option<Vec<u8>> {
+    let (_, body, _) = element(pkcs8)?;
+    let (_, _, rest) = element(body)?;
+    let version = &body[..body.len() - rest.len()];
+    let (_, algorithm, key) = element(rest)?;
+    let (_, oid, params) = element(algorithm)?;
+    if oid != OID_RSA_PSS {
+        return None;
+    }
+    let encoded = read_params(params).ok()?.map(encode_params);
+    let algorithm = identifier(OID_RSA_PSS, encoded.as_deref());
+    Some(tlv(0x30, &[version, &algorithm, key].concat()))
 }
 
 /// The SubjectPublicKeyInfo of an RSA-PSS private key, under the PKCS#8 algorithm identifier.
@@ -280,6 +328,7 @@ pub(super) fn sign(
     let bits = key.n().bits();
     rsa_size(bits)?;
     let (hash, mask_hash) = hashes(params, digest)?;
+    salt_fits(params, bits, hash.output_len())?;
     if scheme.padding == Some(1) {
         return Err(ILLEGAL_PADDING.into());
     }
@@ -337,6 +386,7 @@ pub(super) fn verify(
     let bits = n.bits();
     rsa_size(bits)?;
     let (hash, mask_hash) = hashes(params, digest)?;
+    salt_fits(params, bits, hash.output_len())?;
     if scheme.padding == Some(1) {
         return Err(ILLEGAL_PADDING.into());
     }

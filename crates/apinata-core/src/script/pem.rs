@@ -112,6 +112,18 @@ fn pkcs8_oid(der: &[u8]) -> Option<&[u8]> {
     shaped.then_some(oid)
 }
 
+/// A PrivateKeyInfo by its outer shape alone: a version, an algorithm OID and the key bytes.
+pub(super) fn pkcs8_shaped(der: &[u8]) -> bool {
+    let shaped = || {
+        let (info, _) = tagged(der, SEQUENCE)?;
+        let (_, rest) = tagged(info, INTEGER)?;
+        let (algorithm, rest) = tagged(rest, SEQUENCE)?;
+        tagged(algorithm, OID)?;
+        tagged(rest, OCTET_STRING)
+    };
+    shaped().is_some()
+}
+
 /// An EncryptedPrivateKeyInfo opens with a SEQUENCE where a plain key has its version.
 fn encrypted_shaped(der: &[u8]) -> bool {
     tagged(der, SEQUENCE).is_some_and(|(info, _)| info.first() == Some(&SEQUENCE))

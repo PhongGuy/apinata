@@ -17,12 +17,11 @@ use rquickjs::{Ctx, Exception};
 use rsa::BigUint;
 use rsa::pkcs1::UintRef;
 use rsa::pkcs1::der::Encode;
-use rsa::pkcs8::EncodePublicKey;
 
 use super::crypto::{
     Curve, MAX_ITERATIONS, MAX_PBKDF2_WORK, MAX_SCRYPT_MEMORY, MAX_SCRYPT_WORK, OID_RSA, Private,
     Public, RSA_BITS, ec_pair, element, first_value, key_bytes, key_object, private_from,
-    rsa_public_parts, rsa_size, spki_key, spki_of,
+    rsa_public_parts, rsa_size, rsa_spki_der, spki_key, spki_of,
 };
 use super::crypto_pss::OID_RSA_PSS;
 use super::jwt::KeyInput;
@@ -31,6 +30,9 @@ use super::jwt::KeyInput;
 const NO_PASSPHRASE_PEM: &str = "interrupted or cancelled";
 const NO_PASSPHRASE_DER: &str = "Passphrase required for encrypted key";
 const BAD_DECRYPT: &str = "bad decrypt";
+/// Node's message when a wrong passphrase passes the cipher's padding check by chance and
+/// OpenSSL's decoder then finds no key in the plaintext.
+const NOT_DECODED: &str = "unsupported";
 /// Node's message for DER in the wrong shape, once OpenSSL's code is dropped.
 const WRONG_TAG: &str = "wrong tag";
 /// OpenSSL refuses a longer passphrase while reading a key.
@@ -56,7 +58,6 @@ const INVALID_JWK_EC: &str = "Invalid JWK EC key";
 const JWK_KEY_TYPE: &str = "Unsupported JWK Key Type.";
 const JWK_MISMATCH: &str = "Unsupported key: the JWK's private and public values do not match";
 const JWK_RSA: &str = "Unsupported key: the JWK's RSA values do not form a usable key";
-const JWK_COMPRESSED: &str = "Unsupported key: JWK export of a compressed EC public key";
 pub(super) const UNREADABLE_PUBLIC: &str = "Failed to read asymmetric key";
 
 /// Throws `message` with the error type Node gives it.
@@ -131,11 +132,20 @@ pub(super) fn decrypted(
             pkcs8::pkcs5::Error::DecryptFailed => BAD_DECRYPT,
             _ => PBES2,
         })?;
-    // As OpenSSL does, read the one DER value and ignore what follows it.
+    // As OpenSSL does, read the one DER value and ignore what follows it. A plaintext that is no
+    // PrivateKeyInfo came from a wrong passphrase; DER input names a missing SEQUENCE as such.
+    let refused = if from_der && plain.first() != Some(&0x30) {
+        WRONG_TAG
+    } else {
+        NOT_DECODED
+    };
     let (.., after) = element(&plain)
         .filter(|(tag, ..)| *tag == 0x30)
-        .ok_or(BAD_DECRYPT)?;
+        .ok_or(refused)?;
     let key = &plain[..plain.len() - after.len()];
+    if !super::pem::pkcs8_shaped(key) {
+        return Err(NOT_DECODED.into());
+    }
     pkcs8::der::pem::encode_string("PRIVATE KEY", LineEnding::LF, key)
         .map(|text| Some(KeyInput::Text(text)))
         .map_err(|_| UNREADABLE.into())
@@ -326,13 +336,11 @@ fn jwk_ec(
     Ok(("ec", der.as_ref().to_vec()))
 }
 
+/// As in Node, any two integers make a public key, a zero or empty one included; a key that
+/// cannot verify fails at use, and only the size cap is held here.
 fn jwk_rsa_public(n: &[u8], e: &[u8]) -> Result<(&'static str, Vec<u8>), String> {
-    let (n, e) = (BigUint::from_bytes_be(n), BigUint::from_bytes_be(e));
-    let der = rsa::RsaPublicKey::new_with_max_size(n, e, *RSA_BITS.end())
-        .ok()
-        .and_then(|key| key.to_public_key_der().ok())
-        .ok_or(JWK_RSA)?;
-    Ok(("rsa", der.into_vec()))
+    rsa_integers_fit([n, e].into_iter())?;
+    Ok(("rsa", rsa_spki_der(n, e)))
 }
 
 /// Refuses integers over the RSA size cap. The crates' key checks grow with their size and a
@@ -455,11 +463,10 @@ pub(super) fn public_readable(key: &Public) -> Result<(), &'static str> {
     readable.then_some(()).ok_or(UNREADABLE_PUBLIC)
 }
 
-/// An uncompressed or hybrid EC point as its x and y; a hybrid prefix also says y's parity.
+/// An uncompressed EC point as its x and y.
 fn point_parts(point: &[u8]) -> Result<Vec<Vec<u8>>, String> {
-    let body = match point.split_first() {
-        Some((0x04 | 0x06 | 0x07, body)) => body,
-        _ => return Err(JWK_COMPRESSED.into()),
+    let Some((0x04, body)) = point.split_first() else {
+        return Err(JWK_KEY_TYPE.into());
     };
     let (x, y) = body.split_at(body.len() / 2);
     Ok(vec![x.to_vec(), y.to_vec()])
@@ -475,8 +482,12 @@ fn jwk_parts(der: &[u8], private: bool) -> Result<(&'static str, Vec<Vec<u8>>), 
                 let member = |value: BigUint| trimmed(&value.to_bytes_be()).to_vec();
                 Ok(("", vec![member(n), member(e)]))
             }
+            // aws-lc-rs writes the point uncompressed, whatever form the key holds it in.
             Public::Ec(curve, der) => {
-                let point = spki_bits(&der).ok_or(JWK_KEY_TYPE)?;
+                let (_, verifying, _) = jwk_curve(crv(curve)).ok_or(JWK_KEY_TYPE)?;
+                let key = ParsedPublicKey::new(verifying, &der).map_err(|_| JWK_KEY_TYPE)?;
+                let spki = spki_of(&key)?;
+                let point = spki_bits(&spki).ok_or(JWK_KEY_TYPE)?;
                 Ok((crv(curve), point_parts(point)?))
             }
             Public::Ed(der) => {

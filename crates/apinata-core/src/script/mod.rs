@@ -5,6 +5,7 @@ mod chai;
 pub(crate) mod compile;
 mod cookies;
 mod crypto;
+mod crypto_der;
 mod crypto_keys;
 mod crypto_pss;
 pub(crate) mod edit;

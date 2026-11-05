@@ -32,6 +32,7 @@ use rsa::rand_core::OsRng;
 use rsa::traits::PublicKeyParts;
 use rsa::{BigUint, Pkcs1v15Sign, Pss, RsaPrivateKey, RsaPublicKey};
 
+use super::crypto_der::{self, SpkiParts, spki_parts};
 use super::crypto_keys::{
     OPENED_UNSUPPORTED, UNREADABLE_PUBLIC, decrypted, jwk_key_host, jwk_parts_host,
     public_readable, rsa_pkcs1_fits, rsa_pkcs8_fits, throw,
@@ -399,7 +400,7 @@ fn private_key(key: &KeyInput) -> Result<Private, String> {
 }
 
 pub(super) fn private_from(label: &str, der: Vec<u8>) -> Result<Private, String> {
-    let der = first_value(&der).to_vec();
+    let der = held_private(label, &der);
     match label {
         "RSA PRIVATE KEY" => {
             rsa_pkcs1_fits(&der)?;
@@ -510,6 +511,19 @@ pub(super) fn key_bytes(key: &KeyInput) -> &[u8] {
     }
 }
 
+/// A private key's first DER value as OpenSSL would write it again, or as it came when it does
+/// not parse, so the key reader names the failure.
+fn held_private(label: &str, der: &[u8]) -> Vec<u8> {
+    let der = first_value(der);
+    let canonical = if label == "PRIVATE KEY" {
+        crypto_der::canonical_pkcs8(der)
+            .map(|held| crypto_pss::canonical_pkcs8(&held).unwrap_or(held))
+    } else {
+        crypto_der::canonical(der)
+    };
+    canonical.unwrap_or_else(|| der.to_vec())
+}
+
 /// The SubjectPublicKeyInfo a public PEM block holds, None for a private block. Every path that
 /// reads a public key comes through here, so verify refuses what createPublicKey refuses.
 fn public_block(label: &str, der: &[u8]) -> Result<Option<(Public, Vec<u8>)>, String> {
@@ -521,7 +535,15 @@ fn public_block(label: &str, der: &[u8]) -> Result<Option<(Public, Vec<u8>)>, St
     };
     let parsed = spki_key(&spki)?;
     public_readable(&parsed)?;
+    let spki = spki_der(&parsed).to_vec();
     Ok(Some((parsed, spki)))
+}
+
+/// The SubjectPublicKeyInfo of a key `spki_key` read.
+fn spki_der(key: &Public) -> &[u8] {
+    match key {
+        Public::Rsa(der) | Public::Ec(_, der) | Public::Ed(der) | Public::RsaPss { der, .. } => der,
+    }
 }
 
 /// A PKCS#1 public key wrapped as SubjectPublicKeyInfo. Its integers are not judged here: Node
@@ -588,34 +610,78 @@ const OID_P384: &[u8] = &[0x2b, 0x81, 0x04, 0x00, 0x22];
 const OID_P521: &[u8] = &[0x2b, 0x81, 0x04, 0x00, 0x23];
 pub(super) const OID_ED25519: &[u8] = &[0x2b, 0x65, 0x70];
 
-/// The key a SubjectPublicKeyInfo holds, picked by its algorithm identifier.
+/// The key a SubjectPublicKeyInfo holds, picked by its algorithm identifier and held as the
+/// SubjectPublicKeyInfo OpenSSL would write again: RSA keys are rebuilt from their integers, and
+/// other keys keep their bytes under a canonical identifier.
 pub(super) fn spki_key(der: &[u8]) -> Result<Public, String> {
-    let parsed = || {
-        let (_, spki, _) = element(der)?;
-        let (_, algorithm, _) = element(spki)?;
-        let (_, oid, params) = element(algorithm)?;
-        Some((oid, params))
-    };
-    let (oid, params) = parsed().ok_or(BAD_PUBLIC)?;
-    let curve = element(params).map(|(_, curve, _)| curve);
-    match (oid, curve) {
-        (OID_RSA, _) => Ok(Public::Rsa(der.to_vec())),
-        (OID_RSA_PSS, _) => match crypto_pss::pss_key(der, false) {
-            Some(Ok((params, _))) => Ok(Public::RsaPss {
-                der: der.to_vec(),
+    if element(der).is_none() {
+        return Err(BAD_PUBLIC.into());
+    }
+    let SpkiParts { oid, params, key } = spki_parts(der).ok_or(UNREADABLE_PUBLIC)?;
+    let unreadable = || String::from(UNREADABLE_PUBLIC);
+    match oid {
+        // RSA takes any one parameter; OpenSSL writes NULL.
+        OID_RSA => {
+            let (n, e) = rsa_members(&key).ok_or_else(unreadable)?;
+            Ok(Public::Rsa(rsa_spki_der(n, e)))
+        }
+        OID_RSA_PSS => {
+            let (n, e) = rsa_members(&key).ok_or_else(unreadable)?;
+            let params =
+                crypto_pss::read_params(params.unwrap_or_default()).map_err(|()| unreadable())?;
+            let encoded = params.map(crypto_pss::encode_params);
+            let identifier = crypto_der::algorithm(OID_RSA_PSS, encoded.as_deref());
+            Ok(Public::RsaPss {
+                der: rsa_spki_under(&identifier, n, e),
                 params,
-            }),
-            _ => Err(UNREADABLE_PUBLIC.into()),
-        },
-        (OID_EC, Some(OID_P256)) => Ok(Public::Ec(Curve::P256, der.to_vec())),
-        (OID_EC, Some(OID_P384)) => Ok(Public::Ec(Curve::P384, der.to_vec())),
-        (OID_EC, Some(OID_P521)) => Ok(Public::Ec(Curve::P521, der.to_vec())),
-        (OID_EC, _) => Err(unsupported("an EC key on an unsupported curve")),
+            })
+        }
+        OID_EC => {
+            let Some((0x06, curve, _)) = params.and_then(element) else {
+                return Err(unreadable());
+            };
+            let curve = match curve {
+                OID_P256 => Curve::P256,
+                OID_P384 => Curve::P384,
+                OID_P521 => Curve::P521,
+                _ => return Err(unsupported("an EC key on an unsupported curve")),
+            };
+            let identifier = crypto_der::algorithm(OID_EC, params);
+            Ok(Public::Ec(curve, crypto_der::spki(&identifier, &key)))
+        }
         // Ed25519 takes no parameters, so any bytes here, parsable or not, are refused.
-        (OID_ED25519, _) if params.is_empty() => Ok(Public::Ed(der.to_vec())),
-        (OID_ED25519, _) => Err(UNREADABLE_PUBLIC.into()),
+        OID_ED25519 if params.is_none() => {
+            let identifier = crypto_der::algorithm(OID_ED25519, None);
+            Ok(Public::Ed(crypto_der::spki(&identifier, &key)))
+        }
+        OID_ED25519 => Err(unreadable()),
         _ => Err(BAD_PUBLIC.into()),
     }
+}
+
+/// The modulus and exponent contents of a PKCS#1 RSAPublicKey; OpenSSL ignores what follows it.
+fn rsa_members(key: &[u8]) -> Option<(&[u8], &[u8])> {
+    let (0x30, body, _) = element(key)? else {
+        return None;
+    };
+    let (0x02, n, rest) = element(body)? else {
+        return None;
+    };
+    let (0x02, e, after) = element(rest)? else {
+        return None;
+    };
+    after.is_empty().then_some((n, e))
+}
+
+/// An RSA SubjectPublicKeyInfo as OpenSSL writes one, with NULL parameters. Each integer is read
+/// as unsigned bytes, so a zero or empty member is kept as zero.
+pub(super) fn rsa_spki_der(n: &[u8], e: &[u8]) -> Vec<u8> {
+    rsa_spki_under(&crypto_der::algorithm(OID_RSA, Some(&[0x05, 0x00])), n, e)
+}
+
+fn rsa_spki_under(identifier: &[u8], n: &[u8], e: &[u8]) -> Vec<u8> {
+    let pkcs1 = [crypto_der::uint(n), crypto_der::uint(e)].concat();
+    crypto_der::spki(identifier, &crypto_der::tlv(crypto_der::SEQUENCE, &pkcs1))
 }
 
 /// The SubjectPublicKeyInfo of an X.509 certificate, the seventh field of its TBS
@@ -1101,7 +1167,7 @@ fn plain_key_object(key: &KeyInput, public: bool) -> Result<(&'static str, Vec<u
             Private::RsaPss { .. } => "rsa-pss",
         };
         if pem.label == "PRIVATE KEY" {
-            return Ok((kind, first_value(&pem.der).to_vec()));
+            return Ok((kind, held_private(pem.label, &pem.der)));
         }
         let der = match parsed {
             Private::Rsa {
@@ -1153,7 +1219,9 @@ fn plain_key_object(key: &KeyInput, public: bool) -> Result<(&'static str, Vec<u
         Err(e) if e == BAD_PRIVATE => Err(BAD_PUBLIC),
         Err(e) => return Err(e),
     }?;
-    Ok((public_kind(&spki_key(&spki)?), spki))
+    let parsed = spki_key(&spki)?;
+    let spki = spki_der(&parsed).to_vec();
+    Ok((public_kind(&parsed), spki))
 }
 
 fn public_kind(key: &Public) -> &'static str {
