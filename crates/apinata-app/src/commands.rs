@@ -29,9 +29,9 @@ use crate::row_move::{MoveRowDown, MoveRowUp};
 use crate::search_dialog::OpenCollectionSearch;
 use crate::shell::{
     CloneRepository, CloseCollection, ExportCollection, ExportCollectionHtml,
-    ExportCollectionOpenApi, ExportEnvironment, ImportCollection, ImportCurl, ImportEnvironment,
-    NewCollection, OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments,
-    OpenRuntimeVariables, OpenVariablesOverview, SwitchBranch,
+    ExportCollectionOpenApi, ExportEnvironment, ExportEnvironments, ImportCollection, ImportCurl,
+    ImportEnvironment, NewCollection, OpenCollection, OpenCookies, OpenDemoCollection,
+    OpenGlobalEnvironments, OpenRuntimeVariables, OpenVariablesOverview, SwitchBranch,
 };
 use crate::sidebar::{
     CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, FocusFilter,
@@ -938,6 +938,13 @@ pub fn registry() -> Vec<Command> {
             "Export environment…",
             Environment,
             shell(ExportEnvironment),
+            &[],
+        ),
+        command(
+            "environment.export_all",
+            "Export environments…",
+            Environment,
+            shell(ExportEnvironments),
             &[],
         ),
         command(

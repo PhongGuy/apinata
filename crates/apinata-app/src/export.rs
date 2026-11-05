@@ -1,13 +1,14 @@
 //! Export to Postman, OpenAPI or HTML documentation: ask where to save, export the collection's
 //! saved files off the UI thread, write the file atomically and toast what was not carried over.
-//! One environment exports the same way, as a Postman environment.
+//! One environment exports the same way, as a Postman environment; every environment of a
+//! collection or of the global set goes to a chosen folder, one file each.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use apinata_core::{Collection, IgnorePolicy, OpenOptions};
+use apinata_core::{Collection, GlobalEnvironments, IgnorePolicy, OpenOptions};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
-use gpui_kit::{App, AppContext as _, Entity, Window};
+use gpui_kit::{App, AppContext as _, Entity, PathPromptOptions, Window};
 
 use crate::ui;
 use crate::workspace::Workspace;
@@ -63,6 +64,22 @@ pub fn environment_exported_message(path: &Path, dirty: bool) -> String {
         format!("Exported to {shown} (unsaved edits not included)")
     } else {
         format!("Exported to {shown}")
+    }
+}
+
+/// The toast after exporting `count` environments to the folder `dir`; `dirty` notes that
+/// unsaved edits were left out.
+pub fn environments_exported_message(dir: &Path, count: usize, dirty: bool) -> String {
+    let noun = if count == 1 {
+        "environment"
+    } else {
+        "environments"
+    };
+    let done = format!("Exported {count} {noun} to {}", dir.display());
+    if dirty {
+        format!("{done} (unsaved edits not included)")
+    } else {
+        done
     }
 }
 
@@ -181,6 +198,79 @@ pub fn export_environment(root: &Path, name: &str, dirty: bool, window: &mut Win
             let note = match job.await {
                 Ok(path) => ui::info_toast(environment_exported_message(&path, dirty)),
                 Err(e) => Notification::error(format!("Could not export the environment: {e}")),
+            };
+            cx.update(|window, cx| window.push_notification(note, cx))
+                .ok();
+        })
+        .detach();
+}
+
+/// Where a folder export reads its environments from.
+#[derive(Debug, Clone)]
+pub enum EnvironmentSource {
+    /// The collection at this root.
+    Collection(PathBuf),
+    /// The global environments directory.
+    Global(PathBuf),
+}
+
+/// Prompts for a folder, then writes every saved environment of `source` there as Postman
+/// environment files, named and numbered as `apinata export --env-dir` names them, replacing
+/// files of the same name. `available` is how many environments there are; with none, a toast
+/// says so instead of prompting. `dirty` adds a note that unsaved edits were not included.
+pub fn export_environments(
+    source: EnvironmentSource,
+    available: usize,
+    dirty: bool,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if available == 0 {
+        window.push_notification(
+            Notification::error("There are no environments to export"),
+            cx,
+        );
+        return;
+    }
+    let reply = cx.prompt_for_paths(PathPromptOptions {
+        files: false,
+        directories: true,
+        multiple: false,
+        prompt: Some("Export environments to".into()),
+    });
+    window
+        .spawn(cx, async move |cx| {
+            let Ok(Ok(Some(paths))) = reply.await else {
+                return;
+            };
+            let Some(dir) = paths.into_iter().next() else {
+                return;
+            };
+            // Core reads the saved files, so the export is what is on disk, secrets blanked.
+            let job = cx.background_spawn(async move {
+                let files = match source {
+                    EnvironmentSource::Collection(root) => {
+                        let options = OpenOptions::new().ignore(IgnorePolicy::BrunoApp);
+                        let collection =
+                            Collection::open_with(&root, &options).map_err(|e| e.to_string())?;
+                        apinata_core::export::postman_environment_files(&collection)
+                    }
+                    EnvironmentSource::Global(globals) => {
+                        let globals =
+                            GlobalEnvironments::open(&globals).map_err(|e| e.to_string())?;
+                        apinata_core::export::postman_global_environment_files(&globals)
+                    }
+                };
+                for file in &files {
+                    write_export(&dir.join(&file.file_name), file.export.json.as_bytes())?;
+                }
+                Ok::<_, String>((dir, files.len()))
+            });
+            let note = match job.await {
+                Ok((dir, count)) => {
+                    ui::info_toast(environments_exported_message(&dir, count, dirty))
+                }
+                Err(e) => Notification::error(format!("Could not export the environments: {e}")),
             };
             cx.update(|window, cx| window.push_notification(note, cx))
                 .ok();

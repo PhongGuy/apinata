@@ -273,6 +273,7 @@ pub fn collection_scoped_ids() -> Vec<&'static str> {
             "environment.open_selector",
             "environment.import",
             "environment.export",
+            "environment.export_all",
             "request.rename",
             "request.duplicate",
             "request.show_in_file_manager",

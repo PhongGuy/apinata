@@ -45,12 +45,14 @@ actions!(
     ]
 );
 
-/// The "…" menu's entries by index; the separator sits at 2. Rename is first.
+/// The "…" menu's entries by index; the separator sits at 3. Rename is first.
 pub const ENV_MENU_RENAME: usize = 0;
 /// The "…" menu's Export entry.
 pub const ENV_MENU_EXPORT: usize = 1;
+/// The "…" menu's entry exporting every environment to a folder.
+pub const ENV_MENU_EXPORT_ALL: usize = 2;
 /// The "…" menu's Delete entry, after the separator.
-pub const ENV_MENU_DELETE: usize = 3;
+pub const ENV_MENU_DELETE: usize = 4;
 
 /// Tooltip and accessibility label of `env-more`; one const, so they agree.
 pub const MORE_ACTIONS: &str = "More actions";
@@ -714,6 +716,18 @@ impl EnvEditor {
         };
         let dirty = self.view(cx).is_some_and(|v| v.dirty);
         crate::export::export_environment(&self.root, &name, dirty, window, cx);
+    }
+
+    /// Exports every environment of the collection as saved to a folder the user picks, noting
+    /// unsaved edits in any of them in the toast.
+    pub fn export_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let snapshot = self.snapshot(cx);
+        let envs = snapshot
+            .as_ref()
+            .map_or(&[][..], |s| &s.content.environments[..]);
+        let dirty = envs.iter().any(|e| e.dirty);
+        let source = crate::export::EnvironmentSource::Collection(self.root.clone());
+        crate::export::export_environments(source, envs.len(), dirty, window, cx);
     }
 
     fn snapshot(&self, cx: &App) -> Option<Arc<CollectionSnapshot>> {
@@ -1875,6 +1889,7 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
         })
     };
     let export = editor.clone();
+    let export_all = editor.clone();
     let delete = PopupMenuItem::element(|_, cx| {
         div()
             .id("env-menu-delete")
@@ -1888,6 +1903,11 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
         .item(
             PopupMenuItem::new("Export")
                 .on_click(move |_, window, cx| export.update(cx, |e, cx| e.export(window, cx))),
+        )
+        .item(
+            PopupMenuItem::new("Export environments…").on_click(move |_, window, cx| {
+                export_all.update(cx, |e, cx| e.export_all(window, cx))
+            }),
         )
         .separator()
         .item(delete)

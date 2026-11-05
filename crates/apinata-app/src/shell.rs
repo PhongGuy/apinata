@@ -107,6 +107,9 @@ actions!(
         /// Prompts for a file and exports the current collection's active environment there as
         /// Postman environment JSON.
         ExportEnvironment,
+        /// Prompts for a folder and exports every environment of the current collection there
+        /// as Postman environment files.
+        ExportEnvironments,
         /// Opens the cookie jar dialog.
         OpenCookies,
         /// Opens the current collection's runtime variables dialog.
@@ -1252,6 +1255,21 @@ impl Shell {
             env.is_some_and(|e| e.dirty)
         });
         crate::export::export_environment(&root, &name, dirty, window, cx);
+    }
+
+    // Exports every environment of the current collection as saved to a chosen folder.
+    fn export_environments(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ws = self.workspace.read(cx);
+        let Some(root) = ws.current_root() else {
+            return;
+        };
+        let snapshot = ws.snapshot(&root, cx);
+        let envs = snapshot
+            .as_ref()
+            .map_or(&[][..], |s| &s.content.environments[..]);
+        let dirty = envs.iter().any(|e| e.dirty);
+        let source = crate::export::EnvironmentSource::Collection(root.clone());
+        crate::export::export_environments(source, envs.len(), dirty, window, cx);
     }
 
     // Opens the settings tab of the collection the selector acts on, if any is open.
@@ -2631,6 +2649,9 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|this, _: &ExportEnvironment, window, cx| {
                 this.export_environment(window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ExportEnvironments, window, cx| {
+                this.export_environments(window, cx)
             }))
             .on_action(cx.listener(|this, _: &OpenGlobalEnvironments, window, cx| {
                 open_global_env_editor(this.workspace.clone(), window, cx);

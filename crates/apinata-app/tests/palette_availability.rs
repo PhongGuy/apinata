@@ -288,6 +288,7 @@ fn the_collection_flag_hides_environment_and_sidebar_commands_that_need_one() {
         "environment.open_selector",
         "environment.import",
         "environment.export",
+        "environment.export_all",
         "request.rename",
         "request.duplicate",
         "request.show_in_file_manager",

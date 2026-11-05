@@ -4,6 +4,8 @@
 //! Every change is a [`GlobalOp`] the workspace applies off the main thread; the dialog only
 //! reads the workspace's published snapshot and its last error.
 
+use std::path::Path;
+
 use apinata_core::EnvVariable;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
@@ -727,6 +729,19 @@ impl GlobalEnvEditor {
     }
 
     // Deleting removes the file and its stored secrets, so it asks first.
+    /// Exports every global environment as saved to a folder the user picks, noting unsaved
+    /// edits in the toast.
+    pub fn export_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let workspace = self.workspace.read(cx);
+        let Some(dir) = workspace.global_dir().map(Path::to_path_buf) else {
+            return;
+        };
+        let count = workspace.global_environments().len();
+        let dirty = self.has_edits(cx);
+        let source = crate::export::EnvironmentSource::Global(dir);
+        crate::export::export_environments(source, count, dirty, window, cx);
+    }
+
     fn ask_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(name) = self.selected.clone() else {
             return;
@@ -1091,6 +1106,12 @@ impl Render for GlobalEnvEditor {
                     .on_click(cx.listener(|e, _, window, cx| {
                         e.after_asking(window, cx, |e, window, cx| e.duplicate(window, cx))
                     })),
+            ))
+            .child(followed(
+                "global-env-export-follow",
+                Button::new("global-env-export")
+                    .label("Export environments…")
+                    .on_click(cx.listener(|e, _, window, cx| e.export_all(window, cx))),
             ))
             .child(followed(
                 "global-env-delete-follow",

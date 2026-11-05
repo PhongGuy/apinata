@@ -11,7 +11,10 @@ mod html;
 mod openapi;
 mod postman;
 
-pub use environment::postman_environment;
+pub use environment::{
+    EnvironmentFile, postman_environment, postman_environment_files, postman_global_environment,
+    postman_global_environment_files,
+};
 pub use har::{HarExchange, har};
 pub use html::html;
 pub use openapi::openapi;

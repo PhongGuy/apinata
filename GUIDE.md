@@ -632,6 +632,11 @@ and whatever the file cannot carry, such as assertions, is noted on stderr:
 apinata export ./my-api --format postman --out my-api.postman_collection.json --env-dir ./envs
 ```
 
+In the app, "Export environments…" in the environment editor's "…" menu or the
+command palette writes the same files to a folder you pick, and the global
+environments dialog has the same button for the global set. Saved files are
+exported, secret values stay empty, and a file of the same name is replaced.
+
 `--format openapi` writes an OpenAPI 3.1 description instead, with environments
 as servers, so it takes no `--env-dir`:
 

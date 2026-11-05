@@ -2,8 +2,8 @@ use crate::support;
 
 use apinata_app::command::Command;
 use apinata_app::env_editor::{
-    ENV_MENU_DELETE, ENV_MENU_EXPORT, ENV_MENU_RENAME, ENV_SWATCHES, MORE_ACTIONS,
-    RENAME_LOCKED_REASON,
+    ENV_MENU_DELETE, ENV_MENU_EXPORT, ENV_MENU_EXPORT_ALL, ENV_MENU_RENAME, ENV_SWATCHES,
+    MORE_ACTIONS, RENAME_LOCKED_REASON,
 };
 use apinata_app::env_table::EnvTableEvent;
 use apinata_app::style::{ROW_HEIGHT, at_zoom};
@@ -1058,6 +1058,10 @@ fn the_menu_holds_rename_export_and_a_separated_delete(cx: &mut TestAppContext) 
         let menu = w.within("popup-menu");
         assert_eq!(menu.find(ENV_MENU_RENAME).label(), Some("Rename"));
         assert_eq!(menu.find(ENV_MENU_EXPORT).label(), Some("Export"));
+        assert_eq!(
+            menu.find(ENV_MENU_EXPORT_ALL).label(),
+            Some("Export environments…")
+        );
         assert_eq!(menu.find("env-menu-delete").label(), Some("Delete"));
     })
     .unwrap();
