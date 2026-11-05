@@ -41,7 +41,7 @@ pub struct Pushed {
     pub upstream_set: bool,
 }
 
-/// Why a pull did not finish.
+/// Why a pull or push did not finish.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SyncError {

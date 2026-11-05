@@ -52,7 +52,7 @@ fn a_lock_taken_during_the_fetch_is_busy_and_kept() {
         advance(&sb, "c.txt");
         let held = root.join(".git").join(name);
         let after = format!(": > '{}'", held.display());
-        let (opts, _) = wrapped(&sb, "wrap", "fetch", ":", &after);
+        let (opts, log) = wrapped(&sb, "wrap", "fetch", ":", &after);
         match pull(&root, &CancelFlag::new(), &opts) {
             Err(SyncError::Busy { lock }) => {
                 assert_eq!(
@@ -64,6 +64,8 @@ fn a_lock_taken_during_the_fetch_is_busy_and_kept() {
             other => panic!("{name}: expected Busy, got {other:?}"),
         }
         assert!(held.exists(), "{name} was deleted");
+        // Refused before the merge runs, not by the merge itself failing on the lock.
+        assert!(!logged(&log).contains(" merge "), "{name}");
         assert_eq!(rev(&sb, &root, "HEAD"), head, "{name}");
         assert!(!root.join("c.txt").exists(), "{name}");
     }
