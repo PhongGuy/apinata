@@ -540,6 +540,40 @@ async fn logged_retries_export_their_attempt_numbers() {
     assert_eq!(attempts, [(json!(1), json!(2)), (json!(2), json!(2))]);
 }
 
+#[tokio::test]
+async fn a_logged_binary_body_exports_as_its_exact_bytes() {
+    use crate::session_log_support::{logged, only};
+    use apinata_core::ExecOptions;
+    use base64::Engine as _;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let body = vec![0x89, b'P', b'N', b'G', 0x00, 0xff, 0xfe, 0x10, 0x00];
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "image/png")
+                .set_body_bytes(body.clone()),
+        )
+        .mount(&server)
+        .await;
+    let (exec, log) = logged(ExecOptions::new());
+    let url = format!("{}/img", server.uri());
+    exec.send(&crate::common::resolved_one("GET", &url, "", ""))
+        .await
+        .expect("sent");
+    let doc = parsed(&HarExchange::from_network_entry(&only(&log)).expect("answered"));
+    let response = &doc["log"]["entries"][0]["response"];
+    assert_eq!(response["statusText"], "OK");
+    assert_eq!(response["content"]["encoding"], "base64");
+    assert_eq!(response["content"]["size"], body.len());
+    let text = str_of(&response["content"], "text");
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(text)
+        .unwrap();
+    assert_eq!(decoded, body);
+}
+
 #[test]
 fn a_url_userinfo_password_is_dropped_even_when_no_secret_is_known() {
     let x = HarExchange::new("GET", "http://user:pa55word-xyz@api.test/items");
@@ -584,4 +618,48 @@ fn a_url_at_sign_in_the_path_is_not_userinfo() {
         let doc = parsed(&HarExchange::new("GET", url).redacted(&[]));
         assert_eq!(doc["log"]["entries"][0]["request"]["url"], url);
     }
+}
+
+#[test]
+fn a_response_without_its_request_has_no_sent_exchange() {
+    use apinata_core::export::{HarRefusal, sent_exchange};
+    let res = Response::new(200).with_text_body("kept");
+    let refusal = sent_exchange(&res, SystemTime::now(), &[]).unwrap_err();
+    assert_eq!(refusal, HarRefusal::NoRequest);
+}
+
+#[tokio::test]
+async fn a_sent_exchange_starts_its_response_time_before_the_end_and_refuses_a_binary_secret() {
+    use apinata_core::export::{HarRefusal, sent_exchange};
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    let body = [b"t=hunter2hunter2".as_slice(), &[0xff, 0x00]].concat();
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+        .mount(&server)
+        .await;
+    let url = format!("{}/bin", server.uri());
+    let res = crate::common::executor()
+        .send(&crate::common::resolved_one("GET", &url, "", ""))
+        .await
+        .expect("sent");
+    let ended = SystemTime::UNIX_EPOCH + Duration::from_secs(1_760_000_000);
+    let x = sent_exchange(&res, ended, &[]).expect("no secret known");
+    assert_eq!(x.started + res.response_time(), ended);
+    let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
+    let refusal = sent_exchange(&res, ended, &secrets).unwrap_err();
+    assert_eq!(refusal, HarRefusal::BinarySecret);
+}
+
+#[test]
+fn several_exchanges_are_one_log_with_an_entry_each() {
+    use apinata_core::export::har_log;
+    let mut second = exchange();
+    second.url = "https://api.test/second".into();
+    let doc: Value = serde_json::from_str(&har_log(&[exchange(), second])).unwrap();
+    let entries = doc["log"]["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[1]["request"]["url"], "https://api.test/second");
+    assert_eq!(har_log(&[exchange()]), har(&exchange()));
 }

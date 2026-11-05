@@ -625,20 +625,24 @@ fn detail_pane(e: &NetworkEntry, area: Option<WeakEntity<TabArea>>, cx: &App) ->
     });
     // A tab still showing this exchange exports it the way the tab does; otherwise the log's
     // entry, already redacted, exports as it stands.
+    // The row keeps the button at its label's width; the column would stretch it.
     let logged = e.clone();
     let export = HarExchange::from_network_entry(e).map(|exchange| {
-        Button::new("dock-export-har")
-            .ghost()
-            .compact()
-            .label("Export as HAR")
-            .on_click(move |_, window, cx| {
-                let area = area.as_ref().and_then(|a| a.upgrade());
-                let via_tab = area
-                    .is_some_and(|a| a.update(cx, |a, cx| a.export_logged(&logged, window, cx)));
-                if !via_tab {
-                    har_export::save(exchange.clone(), window, cx);
-                }
-            })
+        h_flex().child(
+            Button::new("dock-export-har")
+                .ghost()
+                .compact()
+                .label("Export as HAR")
+                .on_click(move |_, window, cx| {
+                    let area = area.as_ref().and_then(|a| a.upgrade());
+                    let via_tab = area.is_some_and(|a| {
+                        a.update(cx, |a, cx| a.export_logged(&logged, window, cx))
+                    });
+                    if !via_tab {
+                        har_export::save(exchange.clone(), window, cx);
+                    }
+                }),
+        )
     });
     let hops = e.hops.iter().enumerate().map(|(ix, h)| {
         let label = hop_label(h);

@@ -149,6 +149,21 @@ impl NamedSecret {
         &self.value
     }
 
+    /// This secret with `[redacted]` as its stand-in, for a record of what was sent.
+    pub(crate) fn unnamed_copy(&self) -> NamedSecret {
+        unnamed(&self.label, &self.value)
+    }
+
+    /// A secret that came from the variable `name`, as resolving a request would find it.
+    #[cfg(test)]
+    pub(crate) fn variable(name: &str, value: &str) -> NamedSecret {
+        NamedSecret {
+            label: name.to_owned(),
+            placeholder: format!("{{{{{name}}}}}"),
+            value: value.to_owned(),
+        }
+    }
+
     fn named(&self) -> bool {
         self.placeholder != REDACTED
     }

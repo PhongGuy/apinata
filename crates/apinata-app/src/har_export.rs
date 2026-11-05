@@ -4,7 +4,7 @@
 use std::future::Future;
 use std::time::SystemTime;
 
-use apinata_core::export::{HarExchange, har};
+use apinata_core::export::{HarExchange, har, sent_exchange};
 use apinata_core::{NamedSecret, Response};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
@@ -17,41 +17,27 @@ use crate::ui;
 pub const NO_REQUEST: &str =
     "The request is not kept with a saved response. Send it again to export";
 
-/// The exchange `response` ended at `ended` (now if unknown), or `None` when it has no
-/// request attached. Both HAR controls build their file from this, so they agree.
-pub fn exchange_for_response(
-    response: &Response,
+/// Once `secrets` resolve, offers `response`, which ended at `ended` (now if unknown), to
+/// [`save`] as core writes every sent exchange: as sent, with secrets `[redacted]`. A response
+/// core refuses, or secrets that could not be checked, write nothing and say why.
+pub fn save_sent(
+    response: Response,
     ended: Option<SystemTime>,
-) -> Option<HarExchange> {
-    if response.timeline().is_empty() {
-        return None;
-    }
-    let ended = ended.unwrap_or_else(SystemTime::now);
-    let started = ended.checked_sub(response.response_time()).unwrap_or(ended);
-    Some(HarExchange::from_response(response, started))
-}
-
-/// Redacts `exchange` once `secrets` resolve, then offers it to [`save`]. A binary body that
-/// holds a secret, or secrets that could not be checked, write nothing and say why.
-pub fn save_redacted(
-    exchange: HarExchange,
     secrets: impl Future<Output = Result<Vec<NamedSecret>, String>> + 'static,
     window: &mut Window,
     cx: &mut App,
 ) {
+    let ended = ended.unwrap_or_else(SystemTime::now);
     window
         .spawn(cx, async move |cx| {
             let failure = match secrets.await {
-                Ok(secrets) if exchange.binary_body_holds_secret(&secrets) => {
-                    "The response body is binary and holds a secret value that cannot be \
-                     replaced inside it, so nothing was exported"
-                        .to_owned()
-                }
-                Ok(secrets) => {
-                    let exchange = exchange.redacted(&secrets);
-                    cx.update(|window, cx| save(exchange, window, cx)).ok();
-                    return;
-                }
+                Ok(secrets) => match sent_exchange(&response, ended, &secrets) {
+                    Ok(exchange) => {
+                        cx.update(|window, cx| save(exchange, window, cx)).ok();
+                        return;
+                    }
+                    Err(refusal) => refused(&refusal.to_string()),
+                },
                 Err(reason) => format!(
                     "Could not check the request for secrets, so nothing was exported: {reason}"
                 ),
@@ -61,6 +47,17 @@ pub fn save_redacted(
                 .ok();
         })
         .detach();
+}
+
+// Core words a refusal as a clause; the toast makes it a sentence.
+fn refused(clause: &str) -> String {
+    let mut chars = clause.chars();
+    let first = chars.next().map(|c| c.to_uppercase().collect::<String>());
+    format!(
+        "{}{}, so nothing was exported",
+        first.unwrap_or_default(),
+        chars.as_str()
+    )
 }
 
 /// The save dialog's suggested name: the host of the request, else `exchange`, plus `.har`.

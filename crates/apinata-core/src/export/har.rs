@@ -11,6 +11,38 @@ use crate::response::Response;
 use crate::secret_names::{NamedSecret, replace_secrets};
 use crate::session_log::NetworkEntry;
 
+/// Why a sent response cannot be written as HAR.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum HarRefusal {
+    /// The response has no request attached, as one kept from an earlier session.
+    #[error("the request is not kept with this response; send it again to export")]
+    NoRequest,
+    /// The body is binary and holds a secret that cannot be replaced inside it.
+    #[error(
+        "the response body is binary and holds a secret value that cannot be replaced inside it"
+    )]
+    BinarySecret,
+}
+
+/// The exchange `response` ended at `ended`, redacted against `secrets`, as every shell
+/// exports a send: the request as sent, each secret and credential written `[redacted]`.
+pub fn sent_exchange(
+    response: &Response,
+    ended: SystemTime,
+    secrets: &[NamedSecret],
+) -> Result<HarExchange, HarRefusal> {
+    if response.timeline().is_empty() {
+        return Err(HarRefusal::NoRequest);
+    }
+    let started = ended.checked_sub(response.response_time()).unwrap_or(ended);
+    let exchange = HarExchange::from_response(response, started);
+    if exchange.binary_body_holds_secret(secrets) {
+        return Err(HarRefusal::BinarySecret);
+    }
+    Ok(exchange.redacted(secrets))
+}
+
 /// Everything one HAR entry holds: the request as sent and the response as received.
 ///
 /// Fill it with [`HarExchange::from_response`] or [`HarExchange::from_network_entry`], call
@@ -103,7 +135,8 @@ impl HarExchange {
     }
 
     /// The exchange a session log entry recorded, or `None` for one that failed before a
-    /// response. The log keeps bodies as capped, redacted text, so a binary body is not exact.
+    /// response. The log keeps bodies as capped, redacted text; a binary response body is
+    /// exact only when the log kept its bytes.
     pub fn from_network_entry(entry: &NetworkEntry) -> Option<HarExchange> {
         let hop = entry.hops.last()?;
         let mut x = HarExchange::new(entry.method.clone(), entry.url.clone());
@@ -118,22 +151,32 @@ impl HarExchange {
         x.request_headers = entry.request_headers.clone();
         x.request_body = entry.request_body.text.clone().into_bytes();
         x.status = entry.status?;
+        // The executor words the status by its standard reason phrase, so the log need not keep it.
+        x.status_text = http::StatusCode::from_u16(x.status)
+            .ok()
+            .and_then(|s| s.canonical_reason())
+            .unwrap_or_default()
+            .to_owned();
         x.response_headers = hop.response_headers.clone();
-        x.response_body = entry.response_body.text.clone().into_bytes();
+        x.response_body = match entry.response_body.raw() {
+            Some(raw) => raw.to_vec(),
+            None => entry.response_body.text.clone().into_bytes(),
+        };
         x.response_truncated = entry.response_body.truncated;
         x.time = entry.duration;
         Some(x)
     }
 
-    /// This exchange with every URL's userinfo dropped, every secret replaced by its placeholder
-    /// in the URL, header values and bodies, and every header masked as
+    /// This exchange with every URL's userinfo dropped, every secret replaced by `[redacted]`
+    /// in the URL, header values and bodies (the request as sent, never its template), and every header masked as
     /// [`crate::mask_response_header`] does (a Set-Cookie keeps its name only, a credential
     /// header or Cookie is hidden whole), so a value the server issued is gone although no known
     /// secret matches it. A request body that is not UTF-8 is redacted through a lossy copy,
     /// which the file holds as lossy text anyway. A binary response body is left as it is: check
     /// it first with [`HarExchange::binary_body_holds_secret`] and refuse to write when it does.
     pub fn redacted(mut self, secrets: &[NamedSecret]) -> HarExchange {
-        let text = |s: &str| replace_secrets(s, secrets);
+        let secrets: Vec<NamedSecret> = secrets.iter().map(NamedSecret::unnamed_copy).collect();
+        let text = |s: &str| replace_secrets(s, &secrets);
         self.url = text(&crate::redact_url_userinfo(&self.url));
         for (_, value) in self
             .request_headers
@@ -174,7 +217,23 @@ impl HarExchange {
 ///
 /// Only the total time is measured, so it fills `time`; every phase is -1.
 pub fn har(exchange: &HarExchange) -> String {
-    let x = exchange;
+    har_log(std::slice::from_ref(exchange))
+}
+
+/// `exchanges` as one pretty-printed HAR 1.2 document with an entry each, in order.
+pub fn har_log(exchanges: &[HarExchange]) -> String {
+    let entries: Vec<Value> = exchanges.iter().map(entry).collect();
+    let log = json!({
+        "version": "1.2",
+        "creator": {"name": "Apinata", "version": env!("CARGO_PKG_VERSION")},
+        "entries": entries,
+    });
+    let mut out = serde_json::to_string_pretty(&json!({ "log": log })).unwrap_or_default();
+    out.push('\n');
+    out
+}
+
+fn entry(x: &HarExchange) -> Value {
     let ms = (x.time.as_secs_f64() * 1000.0 * 1000.0).round() / 1000.0;
     let mut entry = Map::new();
     entry.insert("startedDateTime".into(), started(x.started).into());
@@ -204,14 +263,7 @@ pub fn har(exchange: &HarExchange) -> String {
         );
         entry.insert("comment".into(), note.into());
     }
-    let log = json!({
-        "version": "1.2",
-        "creator": {"name": "Apinata", "version": env!("CARGO_PKG_VERSION")},
-        "entries": [Value::Object(entry)],
-    });
-    let mut out = serde_json::to_string_pretty(&json!({ "log": log })).unwrap_or_default();
-    out.push('\n');
-    out
+    Value::Object(entry)
 }
 
 fn started(at: SystemTime) -> String {
@@ -321,4 +373,20 @@ fn response(x: &HarExchange) -> Value {
         "headersSize": -1,
         "bodySize": x.response_body.len(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_named_secret_is_written_as_sent_redacted_not_as_its_placeholder() {
+        let secret = NamedSecret::variable("process.env.apikey", "Key-V4lue-123");
+        let mut x = HarExchange::new("GET", "https://api.test/?k=Key-V4lue-123");
+        x.request_headers = vec![("x-key".into(), "Bearer Key-V4lue-123".into())];
+        let text = har(&x.redacted(&[secret]));
+        assert!(!text.contains("Key-V4lue-123"), "{text}");
+        assert!(!text.contains("{{process.env.apikey}}"), "{text}");
+        assert!(text.contains("\"Bearer [redacted]\""), "{text}");
+    }
 }

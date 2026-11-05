@@ -46,11 +46,15 @@ pub(crate) fn logged_body(r: &Redactor, bytes: &[u8], cap: usize) -> LoggedBody 
 /// capped at `cap`; a body kept only in part is stored as cut.
 pub(crate) fn logged_body_of(r: &Redactor, bytes: &[u8], size: u64, cap: usize) -> LoggedBody {
     let (text, cut) = cap_bytes_of(r, bytes, cap, size);
+    let whole = bytes.len() as u64 == size && bytes.len() <= cap;
+    let raw =
+        (whole && std::str::from_utf8(bytes).is_err() && !r.holds(bytes)).then(|| bytes.to_vec());
     LoggedBody {
         text,
         size,
         truncated: cut.is_some(),
         cut,
+        raw,
     }
 }
 
@@ -176,10 +180,20 @@ fn withhold_url(url: &mut String, cut: &mut Option<Cut>, placeholder: &str) {
 }
 
 impl LoggedBody {
+    /// The exact bytes of a binary body, kept only when the whole body fit the cap and held
+    /// no value the log hides; `None` for text, which `text` already holds exactly.
+    pub fn raw(&self) -> Option<&[u8]> {
+        self.raw.as_deref()
+    }
+
     /// Re-redacts the text at `cap` with `size` as N; a cut sets `truncated`, `size` stays.
+    /// Bytes that now hold a value cannot be redacted in place, so they are dropped.
     fn rededact(&mut self, r: &Redactor, cap: usize) {
         (self.text, self.cut) = recap(r, &self.text, self.cut, cap, self.size);
         self.truncated |= self.cut.is_some();
+        if self.raw.as_deref().is_some_and(|raw| r.holds(raw)) {
+            self.raw = None;
+        }
     }
 
     /// The text replaced whole by `placeholder`; `size` stays.
@@ -187,6 +201,11 @@ impl LoggedBody {
         self.text = placeholder.to_owned();
         self.cut = None;
         self.truncated = false;
+        self.raw = None;
+    }
+
+    fn owned_bytes(&self) -> usize {
+        self.text.capacity() + self.raw.as_ref().map_or(0, Vec::capacity)
     }
 }
 
@@ -245,8 +264,8 @@ impl NetworkEntry {
             + self.url.capacity()
             + self.error.as_ref().map_or(0, String::capacity)
             + pairs_bytes(&self.request_headers)
-            + self.request_body.text.capacity()
-            + self.response_body.text.capacity()
+            + self.request_body.owned_bytes()
+            + self.response_body.owned_bytes()
             + self.hops.capacity() * size_of::<LoggedHop>()
             + self.hops.iter().map(LoggedHop::owned_bytes).sum::<usize>()
     }

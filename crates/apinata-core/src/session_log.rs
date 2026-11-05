@@ -207,6 +207,8 @@ pub struct LoggedBody {
     /// Whether `text` was cut.
     pub truncated: bool,
     cut: Option<Cut>,
+    // A whole binary body within the cap that holds no known value, kept so an export is exact.
+    raw: Option<Vec<u8>>,
 }
 
 /// A shared, bounded log of console lines and network entries; clones share one ring.
