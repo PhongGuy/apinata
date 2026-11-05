@@ -656,3 +656,89 @@ mod parsed_once {
         assert_eq!(parses(cx, &view), 1);
     }
 }
+
+mod xml_parsed_once {
+    use super::*;
+    use apinata_app::body_view::XML_PARSE_CACHE_MAX_BYTES;
+
+    fn parses(cx: &mut TestAppContext, view: &Entity<BodyView>) -> usize {
+        view.read_with(cx, |v, _| v.filter_parses())
+    }
+
+    fn holds(cx: &mut TestAppContext, view: &Entity<BodyView>) -> bool {
+        view.read_with(cx, |v, _| v.holds_parsed_body())
+    }
+
+    #[gpui_kit::test]
+    fn keystrokes_on_an_xml_body_reuse_one_parse(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, XML.into(), "application/xml");
+        assert_eq!(parses(cx, &view), 0, "no filter, no parse");
+        for e in [
+            "//book",
+            "//book/@id",
+            "//book[",
+            "count(//book)",
+            "//title/text()",
+        ] {
+            filter(cx, win, &view, e);
+        }
+        assert_eq!(text(cx, &view), "Alpha\nBeta & Gamma");
+        assert_eq!(parses(cx, &view), 1);
+        assert!(holds(cx, &view));
+        filter(cx, win, &view, "");
+        assert!(!holds(cx, &view), "an empty expression frees it");
+    }
+
+    #[gpui_kit::test]
+    fn a_new_xml_response_parses_again(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, XML.into(), "application/xml");
+        filter(cx, win, &view, "//book/@id");
+        assert_eq!(parses(cx, &view), 1);
+        show_next(
+            cx,
+            win,
+            &view,
+            "<store><book id=\"9\"/></store>",
+            "application/xml",
+        );
+        assert_eq!(text(cx, &view), "9");
+        assert_eq!(parses(cx, &view), 2);
+    }
+
+    #[gpui_kit::test]
+    fn an_xml_body_over_the_cache_limit_is_not_kept(cx: &mut TestAppContext) {
+        let n = XML_PARSE_CACHE_MAX_BYTES / "<i/>".len() + 1;
+        let (win, view) = shown_with(cx, format!("<r>{}</r>", "<i/>".repeat(n)), "text/xml");
+        filter(cx, win, &view, "count(/r/i)");
+        assert_eq!(text(cx, &view), n.to_string());
+        assert!(!holds(cx, &view), "a body this large keeps no parsed copy");
+        filter(cx, win, &view, "count(/r)");
+        assert_eq!(parses(cx, &view), 2, "each filter parses it afresh");
+    }
+
+    #[gpui_kit::test]
+    fn an_empty_attribute_match_is_not_no_match(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, r#"<a b=""/>"#.into(), "application/xml");
+        filter(cx, win, &view, "//@b");
+        assert!(!view.read_with(cx, |v, _| v.filter_no_match()));
+        assert!(!present(cx, win, "body-filter-no-match"));
+        filter(cx, win, &view, "//@c");
+        assert!(view.read_with(cx, |v, _| v.filter_no_match()));
+    }
+
+    #[gpui_kit::test]
+    fn a_newer_xml_filter_cancels_the_one_still_running(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, XML.into(), "application/xml");
+        cx.update_window(win, |_, w, cx| {
+            view.update(cx, |v, cx| {
+                v.set_filter("//book/@id", w, cx);
+                v.set_filter("//title/text()", w, cx);
+            })
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(text(cx, &view), "Alpha\nBeta & Gamma");
+        assert_eq!(view.read_with(cx, |v, _| v.cancelled_jobs()), 1);
+        assert_eq!(parses(cx, &view), 1);
+    }
+}

@@ -11,7 +11,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use apinata_core::{Assertion, FilterError, JsonFilter, ParsedJson, RequestResult};
+use apinata_core::{
+    Assertion, FilterError, JsonFilter, ParsedJson, ParsedXml, RequestResult, XmlFilter,
+};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::input::{DiagnosticColors, InputEditorStyle};
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
@@ -110,6 +112,10 @@ impl WrapBasis {
 /// take well under a frame.
 const RECHUNK_INLINE_BYTES: usize = 64 * 1024;
 
+/// Largest XML body whose parse is kept across filter edits; its tree costs several times the
+/// body, so a larger one is parsed afresh for each filter instead.
+pub const XML_PARSE_CACHE_MAX_BYTES: usize = 4 << 20;
+
 // An unwrapped line wider than this goes to the rows list, whose rows stay short, because the
 // editor's horizontal scroll falls short of the end of very long lines.
 const EDITOR_LINE_MAX_WIDTH: f32 = 32_768.;
@@ -171,13 +177,26 @@ pub fn mono_advance(size: Pixels, window: &Window, cx: &App) -> Pixels {
         .map_or(size * 0.6, |a| a.width)
 }
 
-// The shown JSON body parsed for the filter, filled by the first job that needs it; later jobs
+// The shown body parsed for the filter, filled by the first job that needs it; later jobs
 // for the same response and reveal share it, so a keystroke never parses the body again.
 type ParsedSlot = Arc<OnceLock<Result<ParsedJson, FilterError>>>;
+type XmlSlot = Arc<OnceLock<Result<ParsedXml, FilterError>>>;
+
+#[derive(Clone, Default)]
+struct ParsedSlots {
+    json: ParsedSlot,
+    xml: XmlSlot,
+}
 
 struct JsonCache {
     reveal: bool,
-    slot: ParsedSlot,
+    slot: ParsedSlots,
+}
+
+// XPath output ends every match in a newline; the last one is dropped on screen, so the view
+// ends on the last match rather than an empty line.
+fn xpath_shown(out: &str) -> &str {
+    out.strip_suffix('\n').unwrap_or(out)
 }
 
 // Rides inside a background job and counts it when it ends without a result. A replaced job
@@ -1254,14 +1273,16 @@ impl BodyView {
         self.editor_scans
     }
 
-    /// How many times a body has been parsed for the JSON filter.
+    /// How many times a body has been parsed for the JSON or XML filter.
     pub fn filter_parses(&self) -> usize {
         self.filter_parses.load(Ordering::Relaxed)
     }
 
     /// Whether a parsed copy of the body is kept for the filter.
     pub fn holds_parsed_body(&self) -> bool {
-        self.json_cache.is_some()
+        self.json_cache
+            .as_ref()
+            .is_some_and(|c| c.slot.json.get().is_some() || c.slot.xml.get().is_some())
     }
 
     /// How many prepare or find jobs ended without a result because a newer one replaced them,
@@ -1948,9 +1969,10 @@ impl BodyView {
         // Filter output reads as JSON for JSONPath and as plain text for XPath, always pretty.
         let (kind, out) = match (kind, self.applied_filter.as_deref()) {
             (BodyKind::Json, Some(expr)) => (kind, apinata_core::filter_json(text, expr).ok()?),
-            (BodyKind::Xml, Some(expr)) => {
-                (BodyKind::Text, apinata_core::filter_xml(text, expr).ok()?)
-            }
+            (BodyKind::Xml, Some(expr)) => (
+                BodyKind::Text,
+                xpath_shown(&apinata_core::filter_xml(text, expr).ok()?).to_owned(),
+            ),
             _ => return display_text(kind, text, self.mode == BodyMode::Pretty).map(|(t, _)| t),
         };
         display_text(kind, &out, true).map(|(t, _)| t)
@@ -2306,13 +2328,13 @@ impl BodyView {
 
     // The slot the shown body's parse lives in: kept while the response and reveal stay, so
     // every keystroke's job shares one parse.
-    fn parsed_slot(&mut self) -> ParsedSlot {
+    fn parsed_slot(&mut self) -> ParsedSlots {
         let reveal = self.reveal;
         let cache = match self.json_cache.take() {
             Some(cache) if cache.reveal == reveal => cache,
             _ => JsonCache {
                 reveal,
-                slot: ParsedSlot::default(),
+                slot: ParsedSlots::default(),
             },
         };
         let slot = cache.slot.clone();
@@ -2402,7 +2424,7 @@ impl BodyView {
                 // JSON runs JSONPath and XML runs XPath; the matches read the same in Pretty and
                 // Raw. XPath matches show as plain text so a text match holding `<` is never
                 // re-parsed as markup.
-                // A replaced filter job stops here, or at the next value the JSON filter writes.
+                // A replaced filter job stops here, or at the next value or match the filter writes.
                 if filter.is_some() && stop() {
                     return None;
                 }
@@ -2410,7 +2432,7 @@ impl BodyView {
                     (BodyKind::Json, Some((expr, slot))) => {
                         // The expression is checked first, so its error wins over the body's.
                         let out = JsonFilter::compile(&expr).and_then(|compiled| {
-                            let parsed = slot.get_or_init(|| {
+                            let parsed = slot.json.get_or_init(|| {
                                 parses.fetch_add(1, Ordering::Relaxed);
                                 ParsedJson::parse(text)
                             });
@@ -2424,9 +2446,26 @@ impl BodyView {
                             (prepared, (expr, out == "[]"))
                         })
                     }
-                    (BodyKind::Xml, Some((expr, _))) => {
-                        apinata_core::filter_xml(text, &expr).map(|out| {
-                            let prepared = prepare(BodyKind::Text, &out, out.len() as u64, true);
+                    (BodyKind::Xml, Some((expr, slot))) => {
+                        // A body over the cache limit is parsed for this run only, so its tree
+                        // is freed when the run ends.
+                        let out = XmlFilter::compile(&expr).and_then(|compiled| {
+                            let parse = || {
+                                parses.fetch_add(1, Ordering::Relaxed);
+                                ParsedXml::parse(text)
+                            };
+                            if text.len() > XML_PARSE_CACHE_MAX_BYTES {
+                                return compiled.run(&parse()?, &stop);
+                            }
+                            let parsed = slot.xml.get_or_init(parse);
+                            compiled.run(parsed.as_ref().map_err(Clone::clone)?, &stop)
+                        });
+                        if out == Err(FilterError::Cancelled) {
+                            return None;
+                        }
+                        out.map(|out| {
+                            let shown = xpath_shown(&out);
+                            let prepared = prepare(BodyKind::Text, shown, shown.len() as u64, true);
                             (prepared, (expr, out.is_empty()))
                         })
                     }
