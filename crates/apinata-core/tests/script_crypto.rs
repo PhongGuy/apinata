@@ -3,7 +3,7 @@
 
 use crate::script_support;
 
-use apinata_core::Outcome;
+use apinata_core::{Outcome, RunOptions};
 use script_support::*;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -76,6 +76,11 @@ const KEYS: [(&str, &str); 23] = [
 
 /// Runs `code` as a tests script with the keys defined and returns its console lines.
 pub(crate) async fn run_crypto(code: &str) -> Vec<String> {
+    run_crypto_with(code, on()).await
+}
+
+/// `run_crypto` under the given run options.
+pub(crate) async fn run_crypto_with(code: &str, opts: RunOptions) -> Vec<String> {
     let s = MockServer::start().await;
     Mock::given(path("/r"))
         .respond_with(ResponseTemplate::new(200))
@@ -88,7 +93,7 @@ pub(crate) async fn run_crypto(code: &str) -> Vec<String> {
     full.push_str(code);
     let text = scripted("R", &format!("{}/r", s.uri()), &script("tests", &full), "");
     let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &text)]);
-    let result = send(dir.path(), "r.yml", on()).await;
+    let result = send(dir.path(), "r.yml", opts).await;
     assert_eq!(result.outcome, Outcome::Passed, "{:?}", tests(&result));
     console(&result)
 }
