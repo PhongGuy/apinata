@@ -169,6 +169,8 @@ pub struct Shell {
     narrow: bool,
     // Whether the title bar shows the global environments button in place of its select.
     global_button: bool,
+    // Whether the environment select was last too squeezed to show.
+    env_squeezed: bool,
     sidebar_auto_hidden: bool,
     focus: FocusHandle,
     // What held focus before the shell's own handle took it; see `refocus`.
@@ -322,6 +324,15 @@ impl Shell {
                 this.refresh_branch(runs != this.branch_runs, cx);
                 this.cache_missing_recent_names(cx);
                 cx.notify();
+            }),
+            // A squeezed environment select leaves the Tab order and takes its focus with it,
+            // as the global select does when its button replaces it.
+            cx.observe_in(&env_selector, window, |this, selector, window, cx| {
+                let squeezed = selector.read(cx).squeezed();
+                if squeezed != this.env_squeezed {
+                    this.env_squeezed = squeezed;
+                    cx.defer_in(window, Self::take_stranded_focus);
+                }
             }),
             // HEAD can move while the window is in the background, so every activation
             // change re-reads it; the test window never reports itself active.
@@ -517,6 +528,7 @@ impl Shell {
             dock_open: false,
             narrow: false,
             global_button: false,
+            env_squeezed: false,
             sidebar_auto_hidden: false,
             focus,
             stand_in,
@@ -2718,7 +2730,12 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::previous_section)))
             .on_action(cx.listener(to_tabs(TabArea::focus_response)))
             .on_action(
+                // A squeezed select is hidden and takes no focus, so the command opens the
+                // environments tab, as the bar's environments button beside it does.
                 cx.listener(|this, _: &OpenEnvironmentSelector, window, cx| {
+                    if this.env_selector.read(cx).squeezed() {
+                        return this.open_environments(cx);
+                    }
                     this.env_selector
                         .update(cx, |s, cx| s.open_menu(window, cx))
                 }),

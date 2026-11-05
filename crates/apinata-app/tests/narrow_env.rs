@@ -6,8 +6,8 @@ use crate::support;
 
 use apinata_app::app::AppState;
 use apinata_app::style::{
-    DIALOG_SIDE_PADDINGS, ENV_EDITOR_LIST_WIDTH, ENV_PANE_MIN, GLOBAL_ENV_DIALOG_WIDTH,
-    SCROLLBAR_GUTTER, resolve,
+    DIALOG_SIDE_PADDINGS, ENV_EDITOR_LIST_WIDTH, ENV_LIST_WIDTH, ENV_PANE_MIN,
+    GLOBAL_ENV_DIALOG_WIDTH, SCROLLBAR_GUTTER, resolve,
 };
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
@@ -186,8 +186,17 @@ fn zoomed_globals(
     cx: &mut TestAppContext,
     zoom: f32,
 ) -> (tempfile::TempDir, tempfile::TempDir, Started) {
+    zoomed_with(cx, zoom, &[("g.yml", GLOBAL_FILE)])
+}
+
+// `zoomed_globals` over the global environment files `files`.
+fn zoomed_with(
+    cx: &mut TestAppContext,
+    zoom: f32,
+    files: &[(&str, &str)],
+) -> (tempfile::TempDir, tempfile::TempDir, Started) {
     let col = two_requests();
-    let globals = write_tree(&[("g.yml", GLOBAL_FILE)]);
+    let globals = write_tree(files);
     let s = started(cx, &col);
     let dir = globals.path().to_path_buf();
     s.ws.update(cx, |w, cx| w.set_global_dir(dir, cx));
@@ -329,7 +338,8 @@ fn every_global_control_can_be_reached_at_200_percent_at_the_narrowest_width(
     frame(cx, s.win);
     let dialog = bounds(cx, s.win, GLOBAL_SCROLL);
     assert!(dialog.right() <= px(NARROW), "{dialog:?}");
-    let ids: [ElementId; 7] = [
+    let ids: [ElementId; 8] = [
+        ACTIVE.into(),
         "global-env-rename".into(),
         "global-env-duplicate".into(),
         "global-env-delete".into(),
@@ -341,8 +351,7 @@ fn every_global_control_can_be_reached_at_200_percent_at_the_narrowest_width(
     for id in ids {
         reach(cx, s.win, GLOBAL_SCROLL, id);
     }
-    // The list column alone is wider than the dialog here, so its button shows in part, with
-    // its label in view once the list is scrolled back.
+    // The list's button is in view once the list is scrolled back.
     wheel(cx, s.win, GLOBAL_SCROLL, (10_000., 0.));
     let (view, create) = (
         bounds(cx, s.win, GLOBAL_SCROLL),
@@ -675,6 +684,7 @@ fn tab_keeps_each_collection_control_whole_at_the_narrowest_width(cx: &mut TestA
 fn global_tab_stops() -> Vec<ElementId> {
     vec![
         "global-env-create".into(),
+        ACTIVE.into(),
         "global-env-rename".into(),
         "global-env-duplicate".into(),
         "global-env-delete".into(),
@@ -736,4 +746,258 @@ fn tab_never_scrolls_a_wide_global_dialog(cx: &mut TestAppContext) {
         tab_to(cx, win, id);
         assert_eq!(bounds(cx, win, "global-env-editor"), before);
     }
+}
+
+// The dialog's control that makes the selected global environment the active one.
+const ACTIVE: &str = "global-env-active";
+const TWO_GLOBALS: [(&str, &str); 2] = [("g.yml", GLOBAL_FILE), ("h.yml", "name: h\n")];
+
+fn checked(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    id: impl Into<ElementId>,
+) -> Option<bool> {
+    let id = id.into();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find(id).checked()
+    })
+    .unwrap()
+}
+
+fn active_global(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    s.ws.read_with(cx, |w, _| w.selected_global_environment())
+}
+
+// What the title bar's global control shows, select or not.
+fn bar_shows(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    let sel = s
+        .shell
+        .read_with(cx, |sh, _| sh.global_env_selector().clone());
+    sel.read_with(cx, |g, _| g.shown().map(|n| n.to_string()))
+}
+
+fn click(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId>) {
+    let id = id.into();
+    cx.update_window(win, |_, w, cx| w.click(id, cx)).unwrap();
+    cx.run_until_parked();
+    for _ in 0..3 {
+        frame(cx, win);
+    }
+}
+
+fn open_dialog_from_the_bar_button(cx: &mut TestAppContext, s: &Started) {
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("title-bar").click("global-environments", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "global-env-editor"));
+}
+
+// Where the bar has only the button, the dialog shows the active global and changes it, by
+// pointer and by keyboard, and the bar follows.
+#[gpui_kit::test]
+fn the_active_global_is_seen_and_changed_in_the_dialog_at_200_percent_at_the_narrowest_width(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _globals, s) = zoomed_with(cx, 2.0, &TWO_GLOBALS);
+    open_dialog_from_the_bar_button(cx, &s);
+    reach(cx, s.win, GLOBAL_SCROLL, ACTIVE);
+    assert_eq!(checked(cx, s.win, ACTIVE), Some(false), "none is active");
+    for ix in 0..2usize {
+        assert!(!present(cx, s.win, ("global-env-active-mark", ix)));
+    }
+    reach(cx, s.win, GLOBAL_SCROLL, ("global-env-item", 1usize));
+    click(cx, s.win, ("global-env-item", 1usize));
+    reach(cx, s.win, GLOBAL_SCROLL, ACTIVE);
+    click(cx, s.win, ACTIVE);
+    assert_eq!(active_global(cx, &s).as_deref(), Some("h"));
+    assert_eq!(checked(cx, s.win, ACTIVE), Some(true));
+    assert!(present(cx, s.win, ("global-env-active-mark", 1usize)));
+    assert!(!present(cx, s.win, ("global-env-active-mark", 0usize)));
+    assert_eq!(bar_shows(cx, &s).as_deref(), Some("h"));
+    // Space on the focused box chooses none again.
+    tab_to(cx, s.win, ACTIVE);
+    press(cx, s.win, "space");
+    cx.run_until_parked();
+    assert_eq!(active_global(cx, &s), None);
+    assert_eq!(checked(cx, s.win, ACTIVE), Some(false));
+    assert!(!present(cx, s.win, ("global-env-active-mark", 1usize)));
+    assert_eq!(
+        bar_shows(cx, &s).as_deref(),
+        Some(apinata_app::global_env_selector::NO_GLOBAL_ENVIRONMENT)
+    );
+}
+
+#[gpui_kit::test]
+fn the_global_list_fits_the_dialogs_body_at_200_percent_at_the_narrowest_width(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _globals, s) = zoomed_globals(cx, 2.0);
+    open_dialog_from_the_bar_button(cx, &s);
+    wheel(cx, s.win, GLOBAL_SCROLL, (10_000., 0.));
+    let (view, list) = (
+        bounds(cx, s.win, GLOBAL_SCROLL),
+        bounds(cx, s.win, "global-env-list"),
+    );
+    assert!(
+        list.left() >= view.left() - px(1.) && list.right() <= view.right() + px(1.),
+        "{list:?} overflows {view:?}"
+    );
+}
+
+// A wide dialog keeps its list at full width.
+#[gpui_kit::test]
+fn a_wide_global_dialog_keeps_its_list_width(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
+    resize(cx, win, 1000., 700.);
+    let list = bounds(cx, win, "global-env-list");
+    assert_eq!(list.size.width, resolved(cx, win, ENV_LIST_WIDTH));
+}
+
+// A wide bar still picks the active global with its select, and the dialog then shows it.
+#[gpui_kit::test]
+fn the_bar_select_still_picks_the_active_global_in_a_wide_window(cx: &mut TestAppContext) {
+    let (_col, _globals, s) = zoomed_with(cx, 1.0, &TWO_GLOBALS);
+    resize(cx, s.win, 1000., 700.);
+    let sel = s
+        .shell
+        .read_with(cx, |sh, _| sh.global_env_selector().clone());
+    let select = sel.read_with(cx, |g, _| g.select().clone());
+    // What a click on the entry does: the kit moves its cursor there, then confirms it.
+    cx.update_window(s.win, |_, w, cx| {
+        select.update(cx, |st, cx| st.set_selected_value(&"h".into(), w, cx))
+    })
+    .unwrap();
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("title-bar").click("global-env-select", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, "enter");
+    cx.run_until_parked();
+    assert_eq!(active_global(cx, &s).as_deref(), Some("h"));
+    assert_eq!(bar_shows(cx, &s).as_deref(), Some("h"));
+    open_dialog_from_the_select(cx, &s);
+    assert_eq!(checked(cx, s.win, ACTIVE), Some(true));
+    assert!(present(cx, s.win, ("global-env-active-mark", 1usize)));
+}
+
+fn env_select_focused(cx: &mut TestAppContext, s: &Started) -> bool {
+    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        env.read(cx).select().focus_handle(cx).is_focused(w)
+    })
+    .unwrap()
+}
+
+// The environment select squeezed to a sliver left of the globe is not shown, so Tab passes it.
+#[gpui_kit::test]
+fn tab_skips_the_squeezed_environment_select_at_200_percent_at_the_narrowest_width(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _globals, s) = zoomed_globals(cx, 2.0);
+    for _ in 0..30 {
+        press(cx, s.win, "tab");
+        assert!(
+            !env_select_focused(cx, &s),
+            "Tab stopped on the hidden select"
+        );
+    }
+    // A wide bar shows it, and Tab reaches it there.
+    resize(cx, s.win, 1000., 700.);
+    let reached = (0..30).any(|_| {
+        press(cx, s.win, "tab");
+        env_select_focused(cx, &s)
+    });
+    assert!(reached, "Tab never reached the shown select");
+}
+
+// The select gives way with focus on it, and the app's keys must not leave with it.
+#[gpui_kit::test]
+fn narrowing_past_the_environment_select_keeps_the_keys_with_it_focused(cx: &mut TestAppContext) {
+    let (_col, _globals, s) = zoomed_globals(cx, 2.0);
+    resize(cx, s.win, 640., 700.);
+    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        let handle = env.read(cx).select().focus_handle(cx);
+        handle.focus(w, cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert!(palette_reachable(cx, &s));
+    resize(cx, s.win, NARROW, 700.);
+    assert!(palette_reachable(cx, &s));
+}
+
+// The selector command at a width that hides the select opens what the bar still shows for
+// environments, the environments tab, and the app's keys stay reachable.
+#[gpui_kit::test]
+fn the_selector_command_opens_the_environments_tab_where_the_select_is_hidden(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _globals, s) = zoomed_globals(cx, 2.0);
+    assert!(palette_reachable(cx, &s));
+    cx.simulate_keystrokes(s.win, &secondary("alt-e"));
+    cx.run_until_parked();
+    assert!(
+        palette_reachable(cx, &s),
+        "the keys left with the hidden select"
+    );
+    assert!(!env_select_focused(cx, &s));
+    assert!(
+        present(cx, s.win, "env-empty-pane"),
+        "the environments tab opened"
+    );
+}
+
+// The checkbox and the list's mark agree with the workspace's active global.
+fn assert_active_shown(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    ws: &gpui_kit::Entity<apinata_app::workspace::Workspace>,
+    ed: &gpui_kit::Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) {
+    frame(cx, win);
+    let active = ws.read_with(cx, |w, _| w.selected_global_environment());
+    let names = ws.read_with(cx, |w, _| w.global_environments());
+    let selected = ed.read_with(cx, |e, _| e.selected().map(str::to_owned));
+    let want = selected.is_some() && selected == active;
+    assert_eq!(
+        checked(cx, win, ACTIVE),
+        Some(want),
+        "{active:?} {selected:?}"
+    );
+    for (ix, name) in names.iter().enumerate() {
+        let marked = present(cx, win, ("global-env-active-mark", ix));
+        assert_eq!(marked, active.as_ref() == Some(name), "{name}: {active:?}");
+    }
+}
+
+#[gpui_kit::test]
+fn renaming_or_deleting_the_active_global_keeps_the_box_and_mark_right(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, ed, _key, ws) =
+        crate::env_orphans::global_editor_with_ws(cx, Arc::new(Listing::default()), GLOBAL_FILE);
+    ws.update(cx, |w, cx| {
+        w.select_global_environment(Some("g".into()), cx)
+    });
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.choose("g", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert_active_shown(cx, win, &ws, &ed);
+    assert_eq!(checked(cx, win, ACTIVE), Some(true));
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.rename("k", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.selected().map(str::to_owned))
+            .as_deref(),
+        Some("k")
+    );
+    assert_active_shown(cx, win, &ws, &ed);
+    ed.update(cx, |e, cx| e.delete(cx));
+    cx.run_until_parked();
+    assert_active_shown(cx, win, &ws, &ed);
 }

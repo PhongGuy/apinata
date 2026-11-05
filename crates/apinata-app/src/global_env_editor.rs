@@ -5,9 +5,10 @@
 //! reads the workspace's published snapshot and its last error.
 
 use apinata_core::EnvVariable;
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -67,6 +68,8 @@ pub struct GlobalEnvEditor {
     follow: FocusFollow,
     // The dialog's close guard, which a switch to another environment asks through too.
     guard: Option<GuardRef>,
+    // The active global as last drawn, so a workspace change redraws only when it moves.
+    active: Option<String>,
     _subs: Vec<Subscription>,
 }
 
@@ -83,7 +86,12 @@ impl GlobalEnvEditor {
         let name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Environment name"));
         let subs = vec![
             cx.observe_in(&workspace, window, |this, _, window, cx| {
-                this.refresh(window, cx)
+                this.refresh(window, cx);
+                let active = this.active(cx);
+                if active != this.active {
+                    this.active = active;
+                    cx.notify();
+                }
             }),
             cx.subscribe_in(
                 &table,
@@ -124,8 +132,10 @@ impl GlobalEnvEditor {
             scroll: ScrollHandle::new(),
             follow,
             guard: None,
+            active: None,
             _subs: subs,
         };
+        editor.active = editor.active(cx);
         editor.refresh(window, cx);
         editor.list_orphans(cx);
         editor
@@ -151,6 +161,19 @@ impl GlobalEnvEditor {
             .update(cx, |t, cx| t.load(Vec::new(), window, cx));
         self.load(true, window, cx);
         cx.notify();
+    }
+
+    /// The active global environment, as the title bar's picker names it.
+    pub fn active(&self, cx: &App) -> Option<String> {
+        self.workspace.read(cx).selected_picker_item()
+    }
+
+    /// Makes the selected environment the active global, or none when `on` is false, as the
+    /// title bar's picker does.
+    pub fn set_active(&mut self, on: bool, cx: &mut Context<Self>) {
+        let picked = self.selected.clone().filter(|_| on).unwrap_or_default();
+        self.workspace
+            .update(cx, |w, cx| w.select_picker_item(&picked, cx));
     }
 
     /// A person's selection of `name`: [`Self::select`], then a list of its orphans. Paths the
@@ -846,10 +869,11 @@ impl GlobalEnvEditor {
         cx.notify();
     }
 
-    fn render_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let active = cx.theme().list_active;
+    fn render_list(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (active, muted) = (cx.theme().list_active, cx.theme().muted_foreground);
         let items = self.names(cx).into_iter().enumerate().map(|(ix, name)| {
             let chosen = self.selected.as_deref() == Some(name.as_str());
+            let in_use = self.active.as_deref() == Some(name.as_str());
             h_flex()
                 .id(("global-env-item", ix))
                 .test_support()
@@ -858,8 +882,19 @@ impl GlobalEnvEditor {
                 .px(style::SPACE_2)
                 .rounded(style::RADIUS)
                 .cursor_pointer()
+                .gap_1()
                 .when(chosen, |row| row.bg(active))
-                .child(div().truncate().child(name.clone()))
+                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+                .when(in_use, |row| {
+                    row.child(
+                        div()
+                            .id(("global-env-active-mark", ix))
+                            .test_support()
+                            .aria_label("Active")
+                            .flex_none()
+                            .child(Icon::new(IconName::Check).small().text_color(muted)),
+                    )
+                })
                 .on_click(cx.listener(move |e, _, window, cx| {
                     let name = name.clone();
                     e.after_asking(window, cx, move |e, window, cx| e.choose(&name, window, cx))
@@ -867,8 +902,10 @@ impl GlobalEnvEditor {
         });
         // The list holds no input, so its New button takes Enter as a press.
         v_flex()
+            .id("global-env-list")
+            .test_support()
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
-            .w(style::ENV_LIST_WIDTH)
+            .w(list_width(window))
             .flex_none()
             .gap_1()
             .children(items)
@@ -978,10 +1015,25 @@ impl Render for GlobalEnvEditor {
         // Each header button reports to the follow, so Tab onto it scrolls it into view.
         let follow = self.follow.clone();
         let followed = move |id: &'static str, button: Button| Followed::new(id, &follow, button);
-        // A focused header button takes Enter as its press, not the dialog's Confirm.
+        let me = cx.entity().downgrade();
+        let in_use = self.selected.is_some() && self.selected == self.active;
+        let active_box = Followed::new(
+            "global-env-active-follow",
+            &self.follow,
+            ui::checkbox("global-env-active", in_use)
+                .label("Active")
+                .tooltip("Use this environment for every collection's sends")
+                .on_click(move |on, _, cx| {
+                    me.update(cx, |e, cx| e.set_active(*on, cx)).ok();
+                }),
+        );
+        // A focused header button takes Enter as its press, not the dialog's Confirm. The header
+        // wraps where the pane is at its minimum, so the scroll reaches every button.
         let header = h_flex()
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
+            .flex_wrap()
             .gap_2()
+            .child(active_box)
             .child(followed(
                 "global-env-rename-follow",
                 Button::new("global-env-rename").label("Rename").on_click(
@@ -1062,7 +1114,13 @@ impl Render for GlobalEnvEditor {
             .test_support()
             .track_focus(&self.focus)
             .w_full()
-            .min_w(style::GLOBAL_ENV_CONTENT_MIN)
+            // The content scrolls sideways under the dialog: the list, its gap and the pane's
+            // minimum.
+            .min_w(
+                list_width(window)
+                    + style::resolve(style::SPACE_2, window)
+                    + style::resolve(style::ENV_PANE_MIN, window),
+            )
             .gap_2()
             .children(error)
             .children(load_errors)
@@ -1073,10 +1131,22 @@ impl Render for GlobalEnvEditor {
                     .gap_2()
                     .items_stretch()
                     .min_h(style::GLOBAL_ENV_BODY_MIN)
-                    .child(self.render_list(cx))
+                    .child(self.render_list(window, cx))
                     .child(body),
             )
     }
+}
+
+// Two panes need more room than the default width, but never more than the window.
+fn dialog_width(window: &Window) -> Pixels {
+    style::resolve(style::GLOBAL_ENV_DIALOG_WIDTH, window).min(window.viewport_size().width * 0.9)
+}
+
+// The list's width, capped at the room inside the dialog's side paddings and its 1 px border
+// on each side, so a narrow dialog shows the list whole.
+fn list_width(window: &Window) -> Pixels {
+    let body = dialog_width(window) - style::DIALOG_SIDE_PADDINGS - px(2.);
+    style::resolve(style::ENV_LIST_WIDTH, window).min(body)
 }
 
 /// Reload the directory and open the editor dialog (root id `global-env-editor`) over `window`.
@@ -1104,9 +1174,7 @@ pub fn open_global_env_editor(
         // The body scrolls inside the room above the status bar, as the cookie jar's does; the
         // sideways bar shares that room, so the body gives up its height to it.
         let room = crate::dialog_frame::titled_body_room(window);
-        // Two panes need more room than the default width, but never more than the window.
-        let width = style::resolve(style::GLOBAL_ENV_DIALOG_WIDTH, window)
-            .min(window.viewport_size().width * 0.9);
+        let width = dialog_width(window);
         let d = guard.apply(crate::dialog_frame::place(d, window));
         ui::with_close(d, "Global environments")
             .width(width)
