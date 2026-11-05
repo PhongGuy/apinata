@@ -13,6 +13,7 @@ yaml_serde.workspace = true
 saphyr-parser.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+apollo-parser.workspace = true
 serde_path_to_error.workspace = true
 serde_json_path.workspace = true
 uppsala.workspace = true

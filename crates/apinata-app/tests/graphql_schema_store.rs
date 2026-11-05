@@ -112,6 +112,7 @@ fn schema_files_load_with_or_without_the_wrapper(cx: &mut TestAppContext) {
         ("w.json", fixture()),
         ("b.json", serde_json::to_string(&v["data"]).unwrap()),
         ("h.json", "<html></html>".to_owned()),
+        ("s.graphql", "type Query { me: String }".to_owned()),
     ];
     for (name, text) in &files {
         std::fs::write(dir.path().join(name), text).unwrap();
@@ -121,12 +122,13 @@ fn schema_files_load_with_or_without_the_wrapper(cx: &mut TestAppContext) {
         ("u2", "b.json"),
         ("u3", "h.json"),
         ("u4", "missing.json"),
+        ("u5", "s.graphql"),
     ] {
         let path = dir.path().join(name);
         cx.update(|cx| load_from_file(url.into(), path, cx));
     }
     wait_for(cx, "file loads", |cx| {
-        ["u1", "u2", "u3", "u4"].iter().all(|u| {
+        ["u1", "u2", "u3", "u4", "u5"].iter().all(|u| {
             !matches!(
                 cx.update(|cx| state(cx, u)),
                 None | Some(SchemaState::Loading)
@@ -135,10 +137,64 @@ fn schema_files_load_with_or_without_the_wrapper(cx: &mut TestAppContext) {
     });
     assert!(loaded(cx, "u1"));
     assert!(loaded(cx, "u2"));
+    // Text that does not start like JSON is read as SDL, so markup fails as SDL at its start.
     assert!(
         failed(cx, "u3")
             .unwrap()
-            .starts_with("the text is not JSON")
+            .starts_with("the schema is not valid SDL at line 1, column 1")
     );
+    assert!(loaded(cx, "u5"));
     assert!(failed(cx, "u4").unwrap().starts_with("could not read"));
+}
+
+// An SDL file picked through the section's file button fills the docs explorer and completion.
+#[gpui_kit::test]
+fn an_sdl_file_picked_in_the_section_loads_docs_and_completion(cx: &mut TestAppContext) {
+    use apinata_app::graphql_complete::SchemaCompletions;
+    use apinata_app::graphql_docs::{DocRow, DocsView, page};
+    use gpui_kit::component::Rope;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let url = "http://sdl.test/graphql";
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &gql("a", url))]);
+    let schema_file = col.path().join("schema.graphqls");
+    std::fs::write(
+        &schema_file,
+        "schema { query: Root }\n\"The entry point.\"\ntype Root { viewer: Person }\ntype Person { name: String }\n",
+    )
+    .unwrap();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _) = editor_for(cx, &ws, &root, "a.yml", false);
+    query_tab(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("graphql-schema-file", cx))
+        .unwrap();
+    wait_for(cx, "the schema file prompt", |cx| cx.did_prompt_for_paths());
+    cx.simulate_path_prompt_response(move |o| {
+        assert!(o.files && !o.directories && !o.multiple);
+        Some(vec![schema_file])
+    });
+    wait_for(cx, "the SDL schema", |cx| loaded(cx, url));
+    let Some(SchemaState::Loaded(schema)) = cx.update(|cx| state(cx, url)) else {
+        panic!("no schema")
+    };
+    let root_page = page(&schema, &DocsView::Root, "", false);
+    assert!(root_page.rows.contains(&DocRow::Link {
+        label: "query: Root".into(),
+        to: DocsView::Type("Root".into()),
+    }));
+    cx.update_window(win, |_, w, cx| {
+        w.click("graphql-docs-toggle", cx);
+        w.render_frame(cx)
+    })
+    .unwrap();
+    assert!(present(cx, win, "graphql-docs-search"));
+    assert!(present(cx, win, ("graphql-docs-row", 1usize)));
+    let provider = SchemaCompletions::new(Rc::new(RefCell::new(url.to_owned())));
+    let labels: Vec<String> = cx
+        .update(|cx| provider.answer(&Rope::from("{ vi"), 4, cx))
+        .into_iter()
+        .map(|i| i.label)
+        .collect();
+    assert_eq!(labels, ["viewer"]);
 }

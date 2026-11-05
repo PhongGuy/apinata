@@ -155,7 +155,7 @@ impl GraphqlSection {
         self.docs_open
     }
 
-    // Asks for one JSON file and loads it as the schema of the current URL.
+    // Asks for one schema file, introspection JSON or SDL, and loads it for the current URL.
     fn pick_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,

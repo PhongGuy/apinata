@@ -349,6 +349,7 @@ name = "apinata-core"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "apollo-parser",
  "apple-native-keyring-store",
  "aws-credential-types",
  "aws-lc-rs",
@@ -441,6 +442,17 @@ dependencies = [
  "tokio-util",
  "url",
  "wiremock",
+]
+
+[[package]]
+name = "apollo-parser"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11f6e2be4b3474e5890d34d3e483d49ec9b5cbf9e358bc62c9cc5423376df54b"
+dependencies = [
+ "memchr",
+ "rowan",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1884,6 +1896,12 @@ dependencies = [
  "unicode-script",
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "countme"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7704b5fdd17b18ae31c4c1da5a2e0305a2bf17b5249300a9ee9ed7b72114c636"
 
 [[package]]
 name = "cpu-time"
@@ -7067,6 +7085,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rowan"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "417a3a9f582e349834051b8a10c8d71ca88da4211e4093528e36b9845f6b5f21"
+dependencies = [
+ "countme",
+ "hashbrown 0.14.5",
+ "rustc-hash 1.1.0",
+ "text-size",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8489,6 +8519,12 @@ name = "termtree"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
+
+[[package]]
+name = "text-size"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f18aa187839b2bdb1ad2fa35ead8c4c2976b64e4363c386d45ac0f7ee85c9233"
 
 [[package]]
 name = "thiserror"

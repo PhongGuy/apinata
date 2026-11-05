@@ -1,4 +1,4 @@
-//! Loads a GraphQL request's schema into the shared store, from its server or from a JSON file.
+//! Loads a GraphQL request's schema into the shared store, from its server or from a schema file.
 
 use std::path::{Path, PathBuf};
 
@@ -65,14 +65,14 @@ pub fn load_from_server(
     .detach();
 }
 
-/// Reads an introspection answer (with or without its `data` wrapper) from `path` in the
-/// background and stores it under `url`.
+/// Reads a schema file from `path` in the background and stores it under `url`: introspection
+/// JSON (with or without its `data` wrapper) or an SDL document, told apart by content.
 pub fn load_from_file(url: String, path: PathBuf, cx: &mut App) {
     let generation = cx.default_global::<SchemaStore>().begin(&url);
     let read = cx.background_spawn(async move {
         let text = std::fs::read_to_string(&path)
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        Schema::from_json(&text).map_err(|e| e.to_string())
+        Schema::from_text(&text).map_err(|e| e.to_string())
     });
     cx.spawn(async move |cx| {
         let result = read.await;
