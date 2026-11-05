@@ -154,6 +154,53 @@ fn an_item_gone_from_the_bin_is_dropped_and_the_next_restore_goes_further_back()
     assert!(exists(&dir, "a.yml") && !exists(&dir, "c.yml"));
 }
 
+/// A bin that takes items like [`FakeBin`] but, like a platform trash without restore, can
+/// never give one back.
+#[derive(Debug)]
+struct NoRestoreBin(FakeBin);
+
+impl Trash for NoRestoreBin {
+    fn available(&self) -> bool {
+        true
+    }
+    fn trash(&self, path: &Path) -> Result<TrashHandle, TrashError> {
+        self.0.trash(path)
+    }
+    fn restore(&self, _: &TrashHandle) -> Result<(), TrashError> {
+        Err(TrashError::RestoreUnsupported)
+    }
+}
+
+#[test]
+fn a_platform_that_cannot_restore_says_so_and_the_next_restore_goes_further_back() {
+    let (dir, mut c) = three();
+    let logs = TempDir::new().expect("tempdir");
+    let (bin, log) = (NoRestoreBin(FakeBin::new()), TrashLog::new(logs.path()));
+    item_ops::trash_item_logged(&mut c, "a.yml", &bin, Some(&log)).expect("rm a");
+    item_ops::trash_item_logged(&mut c, "c.yml", &bin, Some(&log)).expect("rm c");
+    let err = item_ops::restore_last_trashed(&mut c, &bin, &log).unwrap_err();
+    assert!(
+        matches!(&err, apinata_core::ItemError::RestoreUnsupported { item } if item == "c.yml"),
+        "{err:?}"
+    );
+    let text = err.to_string();
+    assert!(
+        text.contains("cannot be restored from here"),
+        "{text}"
+    );
+    assert!(text.contains("system trash"), "{text}");
+    assert!(!exists(&dir, "c.yml"), "nothing came back");
+    assert_eq!(fs::read_dir(bin.0.dir.path()).expect("bin").count(), 2);
+
+    let err = item_ops::restore_last_trashed(&mut c, &bin, &log).unwrap_err();
+    assert!(err.to_string().contains("a.yml"), "{err}");
+    let err = item_ops::restore_last_trashed(&mut c, &bin, &log).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "nothing deleted from this collection is left to restore"
+    );
+}
+
 #[test]
 fn a_log_written_for_another_collection_is_ignored() {
     let (_a_dir, mut a) = three();

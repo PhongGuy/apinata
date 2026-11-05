@@ -660,6 +660,7 @@ impl Collection {
         }
         bin.restore(&trashed.handle).map_err(|e| match e {
             TrashError::Missing => TreeError::NotInTrash,
+            TrashError::RestoreUnsupported => TreeError::RestoreUnsupported,
             e => TreeError::Trash {
                 message: e.to_string(),
             },

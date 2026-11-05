@@ -105,6 +105,17 @@ pub enum ItemError {
         /// The collection-relative path.
         item: String,
     },
+    /// The platform's trash cannot give items back, so the record was dropped; the item stays
+    /// in the system trash.
+    #[error(
+        "{item} is in the system trash, but cannot be restored from here, so its \
+         record was dropped; put it back from the file manager. The next restore goes to the \
+         item deleted before it"
+    )]
+    RestoreUnsupported {
+        /// The collection-relative path.
+        item: String,
+    },
     /// The newest record does not describe an item of this collection, so it was dropped.
     #[error("the trash record for {item} was invalid, so it was dropped and nothing was restored")]
     InvalidTrashRecord {
@@ -524,6 +535,10 @@ pub fn restore_last_trashed(
             drop_newest(entries);
             return Err(ItemError::NoLongerInTrash { item });
         }
+        Err(TreeError::RestoreUnsupported) => {
+            drop_newest(entries);
+            return Err(ItemError::RestoreUnsupported { item });
+        }
         Err(TreeError::Trash { message }) => {
             return Err(ItemError::RestoreFailed { item, message });
         }
@@ -739,6 +754,11 @@ fn restore_batch(
             Err(TreeError::NotInTrash) => {
                 gone.insert(item.index);
                 stopped = Some(ItemError::NoLongerInTrash { item: text });
+                break;
+            }
+            Err(TreeError::RestoreUnsupported) => {
+                gone.insert(item.index);
+                stopped = Some(ItemError::RestoreUnsupported { item: text });
                 break;
             }
             Err(TreeError::RestoreClash { .. }) => {

@@ -676,6 +676,12 @@ pub enum TreeError {
     /// The item to restore is no longer in the bin, so nothing was restored.
     #[error("it is no longer in the trash")]
     NotInTrash,
+    /// The item is in the system trash, but this platform cannot give it back.
+    #[error(
+        "it is in the system trash, but cannot be restored from here; \
+         put it back from the file manager"
+    )]
+    RestoreUnsupported,
     /// Restoring would overwrite a file that is there now, so nothing was restored.
     #[error("{} already exists, so the restored copy was left in the trash", path.display())]
     RestoreClash {

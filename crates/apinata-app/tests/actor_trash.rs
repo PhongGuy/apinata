@@ -141,6 +141,27 @@ fn a_broken_trash_fails_the_delete_and_keeps_the_file(cx: &mut TestAppContext) {
     assert!(dir.path().join("a.yml").exists());
 }
 
+#[gpui_kit::test]
+fn undo_on_a_platform_without_restore_says_it_cannot_be_restored(cx: &mut TestAppContext) {
+    let dir = tree();
+    let bin = Arc::new(FakeTrash::no_restore());
+    let model = open_with_trash(cx, &dir, bin.clone());
+    let ticket = trash_item(cx, &model, "a.yml");
+    notices(cx, &model);
+    send(cx, &model, Command::Tree(TreeOp::Restore { ticket }));
+    cx.run_until_parked();
+    let got = notices(cx, &model);
+    let [NoticeKind::Failed { message, .. }] = got.as_slice() else {
+        panic!("{got:?}")
+    };
+    assert!(
+        message.contains("cannot be restored from here") && message.contains("system trash"),
+        "{message}"
+    );
+    assert!(!dir.path().join("a.yml").exists());
+    assert_eq!(bin.len(), 1, "the item stays in the platform trash");
+}
+
 /// The seqs of `files`, on disk and in the model, which must agree.
 fn seqs<const N: usize>(
     cx: &mut TestAppContext,
