@@ -23,6 +23,7 @@ pub(crate) struct ReplaceArgs {
     #[serde(default)]
     pub case: bool,
     /// Only list the hits and write nothing. Default true: set false to apply the replacement.
+    #[schemars(extend("default" = true))]
     pub dry_run: Option<bool>,
 }
 

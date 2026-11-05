@@ -49,6 +49,7 @@ async fn schema_requires_only_pattern_and_replacement_and_is_not_read_only() {
         .collect();
     required.sort();
     assert_eq!(required, ["pattern", "replacement"]);
+    assert_eq!(props["dry_run"]["default"], json!(true), "{props:?}");
     let hints = tool.annotations.as_ref().expect("annotations");
     assert_ne!(hints.read_only_hint, Some(true));
     assert_eq!(hints.destructive_hint, Some(false));
