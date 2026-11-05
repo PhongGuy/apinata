@@ -104,8 +104,12 @@ fn the_form_answers_trimmed_text_and_needs_a_name(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_toolbar_saves_the_shown_response_with_the_unresolved_request(cx: &mut TestAppContext) {
+    // `id` resolves, so the secret check runs and the body is saved; the file keeps the template.
     let col = write_tree(&[
-        ("opencollection.yml", ROOT),
+        (
+            "opencollection.yml",
+            &format!("{ROOT}request:\n  variables:\n    - name: id\n      value: \"42\"\n"),
+        ),
         ("a.yml", &request("a", "http://x/{{id}}")),
     ]);
     let s = started(cx, &col);
@@ -781,6 +785,111 @@ fn keeping_secrets_keeps_the_raw_cookie(cx: &mut TestAppContext) {
     answer_confirm(cx, "confirm-save-secrets");
     wait_for(cx, "the example", |_| disk(&col).contains("examples:"));
     assert!(disk(&col).contains("abc123"), "{}", disk(&col));
+}
+
+/// As `secret_collection`, but `a.yml`'s URL names a variable nothing defines, so its
+/// secrets cannot be resolved and the example cannot be checked.
+fn unchecked_collection() -> tempfile::TempDir {
+    write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", DEV),
+        ("a.yml", &request("a", "http://x/{{missing}}")),
+    ])
+}
+
+const UNCHECKED_TEXT: &str = "text-body-never-checked";
+
+fn unchecked_text() -> Response {
+    Response::new(200).with_text_body(UNCHECKED_TEXT)
+}
+
+#[gpui_kit::test]
+fn an_unchecked_example_says_its_body_will_be_withheld(cx: &mut TestAppContext) {
+    let col = unchecked_collection();
+    let s = showing(cx, &col, unchecked_text());
+    assert!(present(cx, s.win, "example-unchecked"));
+    assert!(present(cx, s.win, "example-keep-secrets"));
+    assert!(!present(cx, s.win, "example-secrets"));
+}
+
+#[gpui_kit::test]
+fn the_unchecked_finding_names_the_withheld_body(cx: &mut TestAppContext) {
+    support::init(cx);
+    let check = SecretCheck::Unchecked("undefined variable".into());
+    let (win, form) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| SaveExampleForm::new("example", check, w, cx))
+            })
+        })
+        .unwrap();
+    frame(cx, win);
+    assert!(present(cx, win, "example-unchecked"));
+    let text = form.read_with(cx, |f, _| f.finding()).expect("a finding");
+    assert!(
+        text.starts_with("Could not check this example for secret values: undefined variable."),
+        "{text}"
+    );
+    assert!(text.contains("body will be withheld"), "{text}");
+}
+
+#[gpui_kit::test]
+fn an_unchecked_text_body_is_withheld_by_default(cx: &mut TestAppContext) {
+    let col = unchecked_collection();
+    let s = showing(cx, &col, unchecked_text());
+    let before = toasts(cx, &s);
+    cx.update_window(s.win, |_, w, cx| w.click("save-example-save", cx))
+        .unwrap();
+    wait_for(cx, "the example", |_| disk(&col).contains("examples:"));
+    cx.run_until_parked();
+    let disk = disk(&col);
+    assert!(!disk.contains(UNCHECKED_TEXT), "{disk}");
+    assert!(disk.contains("status: 200"), "{disk}");
+    assert!(
+        disk.contains("could not be checked"),
+        "the note is in the file: {disk}"
+    );
+    assert_eq!(toasts(cx, &s), before + 2, "saved, and body withheld");
+}
+
+#[gpui_kit::test]
+fn an_unchecked_binary_body_is_withheld_by_default(cx: &mut TestAppContext) {
+    let col = unchecked_collection();
+    let s = showing(cx, &col, binary_echo());
+    cx.update_window(s.win, |_, w, cx| w.click("save-example-save", cx))
+        .unwrap();
+    wait_for(cx, "the example", |_| disk(&col).contains("examples:"));
+    let disk = disk(&col);
+    assert!(!disk.contains(&base64_of(&binary_echo())), "{disk}");
+    assert!(disk.contains("could not be checked"), "{disk}");
+}
+
+#[gpui_kit::test]
+fn keep_values_keeps_an_unchecked_text_body(cx: &mut TestAppContext) {
+    let col = unchecked_collection();
+    let s = showing(cx, &col, unchecked_text());
+    cx.update_window(s.win, |_, w, cx| w.click("example-keep-secrets", cx))
+        .unwrap();
+    answer_confirm(cx, "confirm-save-secrets");
+    wait_for(cx, "the example", |_| disk(&col).contains("examples:"));
+    let disk = disk(&col);
+    assert!(disk.contains(UNCHECKED_TEXT), "{disk}");
+    assert!(!disk.contains("withheld"), "{disk}");
+}
+
+#[gpui_kit::test]
+fn keep_values_keeps_an_unchecked_binary_body(cx: &mut TestAppContext) {
+    let col = unchecked_collection();
+    let s = showing(cx, &col, binary_echo());
+    cx.update_window(s.win, |_, w, cx| w.click("example-keep-secrets", cx))
+        .unwrap();
+    answer_confirm(cx, "confirm-save-secrets");
+    wait_for(cx, "the example", |_| disk(&col).contains("examples:"));
+    assert!(
+        disk(&col).contains(&base64_of(&binary_echo())),
+        "{}",
+        disk(&col)
+    );
 }
 
 /// Opens the dialog on `rel`'s tab over a plain 200 response.
