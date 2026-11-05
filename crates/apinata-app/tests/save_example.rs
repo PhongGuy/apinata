@@ -865,6 +865,36 @@ fn an_unchecked_binary_body_is_withheld_by_default(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn an_unchecked_empty_body_saves_without_a_withheld_note(cx: &mut TestAppContext) {
+    let col = unchecked_collection();
+    let s = showing(cx, &col, Response::new(200).with_text_body(""));
+    let before = toasts(cx, &s);
+    cx.update_window(s.win, |_, w, cx| w.click("save-example-save", cx))
+        .unwrap();
+    wait_for(cx, "the example", |_| disk(&col).contains("examples:"));
+    cx.run_until_parked();
+    let disk = disk(&col);
+    assert!(!disk.contains("withheld"), "{disk}");
+    assert_eq!(toasts(cx, &s), before + 1, "only the saved toast");
+}
+
+#[gpui_kit::test]
+fn an_unchecked_reason_ending_in_a_period_is_not_doubled(cx: &mut TestAppContext) {
+    support::init(cx);
+    let check = SecretCheck::Unchecked("undefined variable.".into());
+    let (_, form) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| SaveExampleForm::new("example", check, w, cx))
+            })
+        })
+        .unwrap();
+    let text = form.read_with(cx, |f, _| f.finding()).expect("a finding");
+    assert!(text.contains("undefined variable. Saving"), "{text}");
+    assert!(!text.contains(".."), "{text}");
+}
+
+#[gpui_kit::test]
 fn keep_values_keeps_an_unchecked_text_body(cx: &mut TestAppContext) {
     let col = unchecked_collection();
     let s = showing(cx, &col, unchecked_text());

@@ -334,6 +334,22 @@ fn bytes_hold_secret_finds_a_secret_stored_as_utf16_either_way_round() {
 }
 
 #[test]
+fn bytes_hold_secret_finds_a_secret_outside_the_basic_plane_in_utf16() {
+    let value = "key-\u{1F511}-42";
+    let secrets = derived_secrets(&[value.to_owned()]);
+    for little in [true, false] {
+        let encoded = utf16(value, little);
+        // The emoji takes a surrogate pair: two code units, four bytes.
+        assert_eq!(encoded.len(), (value.chars().count() + 1) * 2);
+        let body = [b"\x00\xff".as_slice(), &encoded, b"\x01"].concat();
+        assert!(
+            apinata_core::bytes_hold_secret(&body, &secrets),
+            "little {little}"
+        );
+    }
+}
+
+#[test]
 fn bytes_hold_secret_ignores_an_ascii_near_miss_in_utf16() {
     let secrets = derived_secrets(&["hunter2hunter2".to_owned()]);
     for little in [true, false] {

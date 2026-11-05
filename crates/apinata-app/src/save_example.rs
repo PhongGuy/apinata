@@ -323,8 +323,9 @@ impl SaveExampleForm {
     pub fn finding(&self) -> Option<String> {
         match &self.check {
             SecretCheck::Unchecked(reason) => Some(format!(
-                "Could not check this example for secret values: {reason}. Saving masks \
-                 credential headers; the response body will be withheld, since it may hold one."
+                "Could not check this example for secret values: {}. Saving masks \
+                 credential headers; the response body will be withheld, since it may hold one.",
+                reason.strip_suffix('.').unwrap_or(reason)
             )),
             _ => self.secrets_note(),
         }
@@ -406,7 +407,8 @@ impl Render for SaveExampleForm {
 
 /// Opens "Save response as example" over `window` (root id `save-example-dialog`, buttons
 /// `save-example-cancel` / `save-example-save`, plus `example-keep-secrets` when secrets were
-/// found or the check could not run); yields the answer on Save, Enter or Keep values, `None` on Cancel or Escape.
+/// found or the check could not run); yields the answer on Save, Enter or Keep values, `None`
+/// on Cancel or Escape.
 pub fn ask(
     form: Entity<SaveExampleForm>,
     window: &mut Window,
@@ -591,8 +593,11 @@ pub fn save_as_example(
                 description = scrubbed.description(&description);
                 if scrubbed.withheld {
                     toast = Some(WITHHELD_TOAST);
-                } else if secrets.is_err() && response.body.take().is_some() {
-                    // An unchecked body may hold a secret in any form, so none is written.
+                } else if secrets.is_err()
+                    && response.body.take_if(|b| !b.data.is_empty()).is_some()
+                {
+                    // An unchecked body may hold a secret in any form, so none is written; an
+                    // empty one has nothing to withhold.
                     description = with_note(&description, UNCHECKED_NOTE);
                     toast = Some(UNCHECKED_TOAST);
                 }
