@@ -15,6 +15,11 @@ use crate::workspace::Workspace;
 /// The error shown when the text does not start with `curl`.
 const NOT_CURL: &str = "Not a curl command. Paste one that starts with curl.";
 
+/// A pasted command whose body is a GraphQL query becomes a GraphQL request; any other stays HTTP.
+pub fn graphql_or_http(request: ImportedRequest) -> ImportedRequest {
+    request.as_graphql().unwrap_or(request)
+}
+
 /// The dialog's body: the command editor and the last parse error.
 struct ImportCurlForm {
     editor: Entity<EditorState>,
@@ -29,7 +34,7 @@ impl ImportCurlForm {
             return Err(NOT_CURL.into());
         }
         parse_request(None, &text)
-            .map(|parsed| parsed.request)
+            .map(|parsed| graphql_or_http(parsed.request))
             .map_err(|e| e.to_string().into())
     }
 }

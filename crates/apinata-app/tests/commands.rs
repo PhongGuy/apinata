@@ -43,6 +43,8 @@ const IDS: &[&str] = &[
     "request.stop",
     "request.copy_as_curl",
     "request.generate_code",
+    "request.convert_to_graphql",
+    "request.convert_to_http",
     "request.beautify_body",
     "request.minify_body",
     "request.save_as_example",

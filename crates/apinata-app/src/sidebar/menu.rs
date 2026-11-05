@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use apinata_core::ItemPath;
+use apinata_core::{ItemPath, RequestKind};
 
 use super::model::NodeKind;
 use crate::commands::label;
@@ -30,6 +30,10 @@ pub enum MenuEntry {
     CopyAsCurl,
     /// Show the request as code in a chosen language.
     GenerateCode,
+    /// Rewrite an HTTP request as a GraphQL request; a GraphQL row offers `ConvertToHttp` here.
+    ConvertToGraphql,
+    /// Rewrite a GraphQL request as an HTTP request.
+    ConvertToHttp,
     /// Open the collection's runner tab.
     RunCollection,
     /// Open the folder's runner tab.
@@ -80,6 +84,8 @@ impl MenuEntry {
             MenuEntry::SortByName => label("collection.sort_by_name"),
             MenuEntry::CopyAsCurl => label("request.copy_as_curl"),
             MenuEntry::GenerateCode => label("request.generate_code"),
+            MenuEntry::ConvertToGraphql => label("request.convert_to_graphql"),
+            MenuEntry::ConvertToHttp => label("request.convert_to_http"),
             MenuEntry::RunCollection => label("collection.run"),
             MenuEntry::RunFolder => label("collection.run_folder"),
             MenuEntry::CollectionSettings => label("collection.settings"),
@@ -160,6 +166,7 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
             E::PasteItem,
             E::CopyAsCurl,
             E::GenerateCode,
+            E::ConvertToGraphql,
             E::ShowInFileManager,
             E::OpenInTerminal,
             E::Rename,
@@ -176,6 +183,15 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
         NodeKind::Example => &[E::Rename, E::Delete],
         NodeKind::Draft => &[E::SaveDraft, E::CloseDraft],
         NodeKind::Invalid | NodeKind::UnsavedGroup => &[],
+    }
+}
+
+/// The entry a request row of `kind` shows in `entry`'s place: the conversion slot names the
+/// other kind, so a GraphQL row offers Convert to HTTP where an HTTP row offers Convert to GraphQL.
+pub fn for_request_kind(entry: MenuEntry, kind: RequestKind) -> MenuEntry {
+    match (entry, kind) {
+        (MenuEntry::ConvertToGraphql, RequestKind::Graphql) => MenuEntry::ConvertToHttp,
+        _ => entry,
     }
 }
 

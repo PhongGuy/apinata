@@ -1753,8 +1753,8 @@ impl Workspace {
         Some(id)
     }
 
-    /// Asks for an HTTP draft at the collection root that, once it opens as a tab, takes
-    /// `request` as a paste would; the command id, or `None` when the root is not open.
+    /// Asks for a draft of `request`'s kind at the collection root that, once it opens as a
+    /// tab, takes `request` as a paste would; the command id, or `None` when the root is not open.
     pub fn new_draft_from_import(
         &mut self,
         root: &Path,
@@ -1762,7 +1762,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<u64> {
         let root = absolute(root);
-        let id = self.new_draft_of_kind(&root, ItemPath::root(), RequestKind::Http, cx)?;
+        let id = self.new_draft_of_kind(&root, ItemPath::root(), request.kind, cx)?;
         self.draft_imports.insert((root, id), request);
         Some(id)
     }

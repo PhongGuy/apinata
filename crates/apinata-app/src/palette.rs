@@ -32,9 +32,9 @@ use crate::snapshot::RowKind;
 use crate::style;
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, CloseAllTabs, CloseOtherTabs,
-    CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, CopyAsCurl, ExportHar, GenerateCode,
-    MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample, SendActive,
-    StopActive, TabArea, UnpinTab,
+    CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp,
+    CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar,
+    SaveAll, SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
 };
 use crate::workspace::Workspace;
 use crate::zoom;
@@ -194,6 +194,10 @@ pub struct Availability {
     /// Send, the copy and export commands and the JSON caret commands: the active tab is a
     /// request tab, a draft included.
     pub request_tab: bool,
+    /// "Convert to GraphQL": the active tab is a saved HTTP request.
+    pub to_graphql: bool,
+    /// "Convert to HTTP": the active tab is a saved GraphQL request.
+    pub to_http: bool,
     /// "Rename selected": no sidebar rename is already under way.
     pub rename_idle: bool,
     /// "Close all tabs": an unpinned tab is open.
@@ -235,6 +239,8 @@ impl Availability {
             beautify: true,
             has_tabs: true,
             request_tab: true,
+            to_graphql: true,
+            to_http: true,
             rename_idle: true,
             close_all: true,
             pin: true,
@@ -312,6 +318,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.has_tabs, RedoActive.name()),
         (available.request_tab, SendActive.name()),
         (available.request_tab, CopyAsCurl.name()),
+        (available.to_graphql, ConvertToGraphql.name()),
+        (available.to_http, ConvertToHttp.name()),
         (available.request_tab, GenerateCode.name()),
         (available.request_tab, SaveAsExample.name()),
         (available.request_tab, ExportHar.name()),
@@ -487,6 +495,8 @@ fn availability_now(
         beautify: tabs.is_none_or(|t| t.beautify),
         has_tabs: tabs.is_none_or(|t| t.has_tabs),
         request_tab: tabs.is_none_or(|t| t.request_tab),
+        to_graphql: tabs.is_none_or(|t| t.to_graphql),
+        to_http: tabs.is_none_or(|t| t.to_http),
         rename_idle: sidebar
             .as_ref()
             .is_none_or(|s| s.read(cx).renaming().is_none()),

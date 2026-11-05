@@ -41,9 +41,9 @@ use crate::sidebar::{
 };
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, CloseAllTabs,
-    CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, CopyAsCurl, ExportHar,
-    GenerateCode, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar, SaveAll, SaveAsExample,
-    SendActive, StopActive, UnpinTab,
+    CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, ConvertToGraphql,
+    ConvertToHttp, CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab,
+    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, UnpinTab,
 };
 use crate::ui::{CODE_EDITOR_CONTEXT as CODE_EDITOR, FocusNextControl, FocusPreviousControl};
 use crate::updates::CheckForUpdates;
@@ -405,6 +405,20 @@ pub fn registry() -> Vec<Command> {
             "Generate code",
             Request,
             shell(GenerateCode),
+            &[],
+        ),
+        command(
+            "request.convert_to_graphql",
+            "Convert to GraphQL",
+            Request,
+            shell(ConvertToGraphql),
+            &[],
+        ),
+        command(
+            "request.convert_to_http",
+            "Convert to HTTP",
+            Request,
+            shell(ConvertToHttp),
             &[],
         ),
         command(

@@ -50,7 +50,9 @@ pub fn classify(path: &Path) -> Dropped {
         && RequestFormat::detect(text).is_some()
     {
         return match parse_request(None, text) {
-            Ok(parsed) => Dropped::Request(Box::new(parsed.request)),
+            Ok(parsed) => Dropped::Request(Box::new(crate::import_curl::graphql_or_http(
+                parsed.request,
+            ))),
             Err(e) => refuse(&crate::ui::plain_quotes(&e.to_string())),
         };
     }

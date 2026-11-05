@@ -2784,6 +2784,8 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::stop_active)))
             .on_action(cx.listener(to_tabs(TabArea::copy_active_as_curl)))
             .on_action(cx.listener(to_tabs(TabArea::generate_active_code)))
+            .on_action(cx.listener(to_tabs(TabArea::convert_active_to_graphql)))
+            .on_action(cx.listener(to_tabs(TabArea::convert_active_to_http)))
             .on_action(cx.listener(to_tabs(TabArea::beautify_active_body)))
             .on_action(cx.listener(to_tabs(TabArea::minify_active_body)))
             .on_action(cx.listener(to_tabs(TabArea::copy_caret_json_value)))

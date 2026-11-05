@@ -1200,9 +1200,15 @@ impl RequestEditor {
     }
 
     // Sends the parsed paste to this tab's request and shows its notes, if any, in the banner.
-    fn apply_paste(&mut self, parsed: ParsedRequest, cx: &mut Context<Self>) {
+    fn apply_paste(&mut self, mut parsed: ParsedRequest, cx: &mut Context<Self>) {
         let mut notes = parsed.notes;
         if let Some(view) = self.view(cx) {
+            // A GraphQL request takes a pasted GraphQL payload as its query and variables.
+            if view.kind == RequestKind::Graphql
+                && let Some(graphql) = parsed.request.as_graphql()
+            {
+                parsed.request = graphql;
+            }
             notes.extend(parsed.request.notes_on(view.kind));
         }
         let secrets = parsed.request.secrets.clone();
