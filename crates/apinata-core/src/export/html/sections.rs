@@ -44,7 +44,7 @@ pub(super) fn scripts(req: &RequestFile) -> String {
             out.push_str(&format!(
                 "<p class=\"part\">Script ({})</p>\n<pre>{}</pre>\n",
                 phase.as_str(),
-                escape(&js::script_code(&code))
+                escape(js::script_code(&code))
             ));
         }
     }
