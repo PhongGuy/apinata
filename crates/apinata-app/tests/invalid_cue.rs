@@ -360,60 +360,91 @@ fn the_body_filter_keeps_its_bounds_when_marked(cx: &mut TestAppContext) {
     assert_eq!(bounds(cx, win, "body-filter-input"), marked);
 }
 
-// Every Preferences field that can refuse a value, with a value it refuses.
-const REFUSED: [(&str, &str); 9] = [
-    ("zoom", "250"),
-    ("editor-font-size", "x"),
-    ("response-font-size", "x"),
-    ("body-cap", "x"),
-    ("history-limit", "x"),
-    ("script-timeout", "x"),
-    ("request-timeout", "x"),
-    ("global-proxy-port", "x"),
-    ("global-proxy-pac", "ftp://example.com/proxy.pac"),
-];
+// Every Preferences field that can refuse a value is marked, one test per field with a value
+// it refuses. Each opens its own app: an earlier refusal's message would push later rows off
+// screen, and one window per test keeps every frame cheap.
+fn assert_refusal_marked(cx: &mut TestAppContext, id: &'static str, bad: &str) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    // The proxy fields show only in the mode that uses them.
+    let mode = match id {
+        "global-proxy-port" => ProxyMode::Manual,
+        "global-proxy-pac" => ProxyMode::Pac,
+        _ => ProxyMode::System,
+    };
+    cx.update(|cx| {
+        let settings = cx.global::<AppState>().settings.clone();
+        settings.update(cx, |p, cx| p.update(cx, |s| s.proxy.mode = mode));
+    });
+    cx.run_until_parked();
+    cx.update_window(s.win, |_, w, cx| apinata_app::preferences::open(w, cx))
+        .unwrap();
+    frame(cx, s.win);
+    reveal(cx, s.win, id);
+    replace_input(cx, s.win, None, id, bad);
+    cx.update_window(s.win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(present(cx, s.win, format!("{id}-error")), "{id} refused");
+    let ring = format!("{id}-danger-ring");
+    let icon = format!("{id}-invalid-icon");
+    assert!(shown(cx, s.win, ring.clone()), "{id} ring");
+    assert!(shown(cx, s.win, icon.clone()), "{id} icon focused");
+    // Tab moves focus on, which commits the field again and keeps its refusal.
+    cx.update_window(s.win, |_, w, cx| w.press("tab", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(
+        present(cx, s.win, format!("{id}-error")),
+        "{id} still refused"
+    );
+    assert!(!shown(cx, s.win, ring), "{id} no ring unfocused");
+    assert!(shown(cx, s.win, icon), "{id} icon unfocused");
+}
 
 #[gpui_kit::test]
-fn every_refusing_preferences_field_is_marked(cx: &mut TestAppContext) {
-    let col = two_requests();
-    for (id, bad) in REFUSED {
-        // A fresh dialog per field: an earlier refusal's message would push later rows off screen.
-        let s = started(cx, &col);
-        // The proxy fields show only in the mode that uses them.
-        let mode = match id {
-            "global-proxy-port" => ProxyMode::Manual,
-            "global-proxy-pac" => ProxyMode::Pac,
-            _ => ProxyMode::System,
-        };
-        cx.update(|cx| {
-            let settings = cx.global::<AppState>().settings.clone();
-            settings.update(cx, |p, cx| p.update(cx, |s| s.proxy.mode = mode));
-        });
-        cx.run_until_parked();
-        cx.update_window(s.win, |_, w, cx| apinata_app::preferences::open(w, cx))
-            .unwrap();
-        frame(cx, s.win);
-        reveal(cx, s.win, id);
-        replace_input(cx, s.win, None, id, bad);
-        cx.update_window(s.win, |_, w, cx| w.press("enter", cx))
-            .unwrap();
-        cx.run_until_parked();
-        assert!(present(cx, s.win, format!("{id}-error")), "{id} refused");
-        let ring = format!("{id}-danger-ring");
-        let icon = format!("{id}-invalid-icon");
-        assert!(shown(cx, s.win, ring.clone()), "{id} ring");
-        assert!(shown(cx, s.win, icon.clone()), "{id} icon focused");
-        // Tab moves focus on, which commits the field again and keeps its refusal.
-        cx.update_window(s.win, |_, w, cx| w.press("tab", cx))
-            .unwrap();
-        cx.run_until_parked();
-        assert!(
-            present(cx, s.win, format!("{id}-error")),
-            "{id} still refused"
-        );
-        assert!(!shown(cx, s.win, ring), "{id} no ring unfocused");
-        assert!(shown(cx, s.win, icon), "{id} icon unfocused");
-    }
+fn a_refused_zoom_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "zoom", "250");
+}
+
+#[gpui_kit::test]
+fn a_refused_editor_font_size_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "editor-font-size", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_response_font_size_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "response-font-size", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_body_cap_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "body-cap", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_history_limit_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "history-limit", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_script_timeout_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "script-timeout", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_request_timeout_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "request-timeout", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_global_proxy_port_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "global-proxy-port", "x");
+}
+
+#[gpui_kit::test]
+fn a_refused_global_proxy_pac_is_marked(cx: &mut TestAppContext) {
+    assert_refusal_marked(cx, "global-proxy-pac", "ftp://example.com/proxy.pac");
 }
 
 // Scrolls the Preferences list until the input `id` is on screen.

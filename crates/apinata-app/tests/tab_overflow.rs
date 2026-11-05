@@ -970,10 +970,26 @@ fn fade_width(cx: &mut TestAppContext, win: AnyWindowHandle) -> gpui_kit::Pixels
     .unwrap()
 }
 
+// Wheels the tab strip `k` notches along as one event. The strip clamps its offset and
+// nothing else moves it while it wheels, so this lands where `k` single notches would.
+fn wheel_notches(cx: &mut TestAppContext, win: AnyWindowHandle, k: usize) {
+    if k == 0 {
+        return;
+    }
+    let down = gpui_kit::ScrollDelta::Lines(point(0., -(k as f32)));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.scroll("tab-strip", down, cx)
+    })
+    .unwrap();
+    frames(cx, win, 2);
+}
+
 // With each tab activated in turn, clicks along every other tab's close slot (the last
 // row-height of its wrapper) that is not wholly outside both fades. Such a click never closes
 // the tab; it selects it. The slot's own button may be hidden there, so the slot is
-// measured from the tab's wrapper.
+// measured from the tab's wrapper. Returns how many clicks were made; each width is its own
+// test to keep tests short.
 fn check_close_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32) -> usize {
     let count = 9;
     let (_col, s) = shell_strip(cx, count, width, zoom);
@@ -989,15 +1005,7 @@ fn check_close_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32) -> usi
         loop {
             s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(0)));
             frames(cx, s.win, 6);
-            for _ in 0..k {
-                let down = gpui_kit::ScrollDelta::Lines(point(0., -1.));
-                cx.update_window(s.win, |_, w, cx| {
-                    w.render_frame(cx);
-                    w.scroll("tab-strip", down, cx)
-                })
-                .unwrap();
-                frames(cx, s.win, 2);
-            }
+            wheel_notches(cx, s.win, k);
             let why = format!("{width} px, zoom {zoom}, wheeled {k}, probe {n}");
             // The strip's fades and every cut slot with the points to click along it.
             let state = cx
@@ -1064,12 +1072,35 @@ fn a_cut_close_button_under_a_fade_selects_its_tab_at_440(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn a_cut_close_button_under_a_fade_selects_its_tab_at_double_zoom(cx: &mut TestAppContext) {
-    let probed: usize = [500., 560., 640., 720.]
-        .into_iter()
-        .map(|width| check_close_under_fade(cx, width, 2.0))
-        .sum();
-    assert!(probed > 0, "no close slot lay under a fade");
+fn a_cut_close_button_under_a_fade_selects_its_tab_at_double_zoom_500(cx: &mut TestAppContext) {
+    assert!(
+        check_close_under_fade(cx, 500., 2.0) > 0,
+        "no close slot lay under a fade"
+    );
+}
+
+#[gpui_kit::test]
+fn a_cut_close_button_under_a_fade_selects_its_tab_at_double_zoom_560(cx: &mut TestAppContext) {
+    assert!(
+        check_close_under_fade(cx, 560., 2.0) > 0,
+        "no close slot lay under a fade"
+    );
+}
+
+#[gpui_kit::test]
+fn a_cut_close_button_under_a_fade_selects_its_tab_at_double_zoom_640(cx: &mut TestAppContext) {
+    assert!(
+        check_close_under_fade(cx, 640., 2.0) > 0,
+        "no close slot lay under a fade"
+    );
+}
+
+#[gpui_kit::test]
+fn a_cut_close_button_under_a_fade_selects_its_tab_at_double_zoom_720(cx: &mut TestAppContext) {
+    assert!(
+        check_close_under_fade(cx, 720., 2.0) > 0,
+        "no close slot lay under a fade"
+    );
 }
 
 // Nothing of the strip is painted past the overflow button's left edge: every quad the strip
@@ -1126,7 +1157,8 @@ enum Under {
 
 // For each wheel position, clicks a tab that lies under a shown fade on `kind`'s side (or
 // wholly between the fades), then checks the tab is clear of both shown fades, or has not
-// moved when it already was. Returns how many clicks were made.
+// moved when it already was. Returns how many clicks were made. Each width is its own test
+// to keep tests short; the 440 px strip always has such a tab, so it asserts a click.
 fn check_click_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32, kind: Under) -> usize {
     let count = 9;
     let (_col, s) = shell_strip(cx, count, width, zoom);
@@ -1135,15 +1167,7 @@ fn check_click_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32, kind: 
     for k in 0..14 {
         s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(0)));
         frames(cx, s.win, 6);
-        for _ in 0..k {
-            let down = gpui_kit::ScrollDelta::Lines(point(0., -1.));
-            cx.update_window(s.win, |_, w, cx| {
-                w.render_frame(cx);
-                w.scroll("tab-strip", down, cx)
-            })
-            .unwrap();
-            frames(cx, s.win, 2);
-        }
+        wheel_notches(cx, s.win, k);
         // The edges of the shown fades as (left fade's right edge, right fade's left edge).
         let edges = |cx: &mut TestAppContext| {
             cx.update_window(s.win, |_, w, cx| {
@@ -1227,46 +1251,101 @@ fn check_click_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32, kind: 
 }
 
 #[gpui_kit::test]
-fn a_tab_whose_right_edge_lies_under_a_fade_scrolls_clear(cx: &mut TestAppContext) {
-    let n: usize = [
-        (440., 1.0),
-        (500., 2.0),
-        (560., 2.0),
-        (640., 2.0),
-        (720., 2.0),
-    ]
-    .into_iter()
-    .map(|(w, z)| check_click_under_fade(cx, w, z, Under::Right))
-    .sum();
-    assert!(n > 0, "no tab had its right edge under a fade");
+fn a_tab_whose_right_edge_lies_under_a_fade_scrolls_clear_at_440(cx: &mut TestAppContext) {
+    assert!(
+        check_click_under_fade(cx, 440., 1.0, Under::Right) > 0,
+        "no tab had its right edge under a fade"
+    );
 }
 
 #[gpui_kit::test]
-fn a_tab_whose_left_edge_lies_under_a_fade_scrolls_clear(cx: &mut TestAppContext) {
-    let n: usize = [
-        (440., 1.0),
-        (500., 2.0),
-        (560., 2.0),
-        (640., 2.0),
-        (720., 2.0),
-    ]
-    .into_iter()
-    .map(|(w, z)| check_click_under_fade(cx, w, z, Under::Left))
-    .sum();
-    assert!(n > 0, "no tab had its left edge under a fade");
+fn a_tab_whose_right_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_500(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 500., 2.0, Under::Right);
 }
 
 #[gpui_kit::test]
-fn a_tab_clear_of_the_fades_does_not_move_when_clicked(cx: &mut TestAppContext) {
-    let n: usize = [
-        (440., 1.0),
-        (500., 2.0),
-        (560., 2.0),
-        (640., 2.0),
-        (720., 2.0),
-    ]
-    .into_iter()
-    .map(|(w, z)| check_click_under_fade(cx, w, z, Under::Neither))
-    .sum();
-    assert!(n > 0, "no tab lay between the fades");
+fn a_tab_whose_right_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_560(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 560., 2.0, Under::Right);
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_right_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_640(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 640., 2.0, Under::Right);
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_right_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_720(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 720., 2.0, Under::Right);
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_left_edge_lies_under_a_fade_scrolls_clear_at_440(cx: &mut TestAppContext) {
+    assert!(
+        check_click_under_fade(cx, 440., 1.0, Under::Left) > 0,
+        "no tab had its left edge under a fade"
+    );
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_left_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_500(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 500., 2.0, Under::Left);
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_left_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_560(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 560., 2.0, Under::Left);
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_left_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_640(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 640., 2.0, Under::Left);
+}
+
+#[gpui_kit::test]
+fn a_tab_whose_left_edge_lies_under_a_fade_scrolls_clear_at_double_zoom_720(
+    cx: &mut TestAppContext,
+) {
+    check_click_under_fade(cx, 720., 2.0, Under::Left);
+}
+
+#[gpui_kit::test]
+fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_440(cx: &mut TestAppContext) {
+    assert!(
+        check_click_under_fade(cx, 440., 1.0, Under::Neither) > 0,
+        "no tab lay between the fades"
+    );
+}
+
+#[gpui_kit::test]
+fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_double_zoom_500(cx: &mut TestAppContext) {
+    check_click_under_fade(cx, 500., 2.0, Under::Neither);
+}
+
+#[gpui_kit::test]
+fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_double_zoom_560(cx: &mut TestAppContext) {
+    check_click_under_fade(cx, 560., 2.0, Under::Neither);
+}
+
+#[gpui_kit::test]
+fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_double_zoom_640(cx: &mut TestAppContext) {
+    check_click_under_fade(cx, 640., 2.0, Under::Neither);
+}
+
+#[gpui_kit::test]
+fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_double_zoom_720(cx: &mut TestAppContext) {
+    check_click_under_fade(cx, 720., 2.0, Under::Neither);
 }
