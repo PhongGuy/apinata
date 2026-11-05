@@ -73,6 +73,9 @@ impl SecretStore for NeverRead {
     fn list(&self, collection: &Path) -> Result<Vec<SecretKey>, SecretError> {
         self.0.list(collection)
     }
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.0.list_roots()
+    }
 }
 
 /// Lists like its inner store, twice over, and refuses to delete `locked`.
@@ -100,6 +103,9 @@ impl SecretStore for Awkward {
         let mut keys = self.inner.list(collection)?;
         keys.extend(self.inner.list(collection)?);
         Ok(keys)
+    }
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.inner.list_roots()
     }
 }
 
@@ -135,6 +141,9 @@ impl SecretStore for TextRoots {
         let mut keys = self.0.list(collection)?;
         keys.retain(|key| key.collection.as_os_str() == collection.as_os_str());
         Ok(keys)
+    }
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.0.list_roots()
     }
 }
 

@@ -10,7 +10,7 @@ use crate::env_file::EnvVariable;
 use crate::env_file::TOP as ENV_TOP;
 use crate::error::{EnvError, SaveError};
 use crate::naming::{sanitize_name, validate_name};
-use crate::secrets::{EnvWarning, SecretKey, SecretStore};
+use crate::secrets::{EnvWarning, SecretError, SecretKey, SecretStore};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -906,6 +906,19 @@ impl MovedRoot {
         }
         moved.confirm_absent()?;
         Ok(moved)
+    }
+
+    /// The roots `store` holds secrets under that are certainly gone, sorted, each one a path
+    /// [`MovedRoot::new`] takes. Never reads a value; fails when the store cannot list them all.
+    pub fn gone_roots(store: &dyn SecretStore) -> Result<Vec<PathBuf>, SecretError> {
+        let mut roots: Vec<PathBuf> = store
+            .list_roots()?
+            .into_iter()
+            .filter(|root| MovedRoot::new(root.as_path()).is_ok())
+            .collect();
+        roots.sort();
+        roots.dedup();
+        Ok(roots)
     }
 
     /// Every key under the root, none with a file. Refused if the root has come back.

@@ -3,7 +3,7 @@
 //! `keychain`) uses the platform keychain.
 
 use crate::collection::Collection;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -71,6 +71,14 @@ pub trait SecretStore: Send + Sync {
             message: "this secret store cannot list its entries".to_owned(),
         })
     }
+    /// Every collection root the store holds a secret under, each once, in no fixed order. Never
+    /// reads a value, and skips entries this app did not write and per-install keys (empty
+    /// root). The default is `SecretError::Failed`, for the same reason as [`Self::list`].
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        Err(SecretError::Failed {
+            message: "this secret store cannot list every collection it holds".to_owned(),
+        })
+    }
 }
 
 /// A secret store in process memory, empty at start and lost at exit.
@@ -111,6 +119,16 @@ impl SecretStore for MemoryStore {
         let entries = self.entries();
         let keys = entries.keys().filter(|k| k.collection == collection);
         Ok(keys.cloned().collect())
+    }
+
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        let entries = self.entries();
+        let roots: HashSet<_> = entries
+            .keys()
+            .filter(|k| !k.collection.as_os_str().is_empty())
+            .map(|k| k.collection.clone())
+            .collect();
+        Ok(roots.into_iter().collect())
     }
 }
 

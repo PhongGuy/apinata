@@ -64,6 +64,9 @@ impl SecretStore for Listing {
         }
         self.inner.list(p)
     }
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.inner.list_roots()
+    }
 }
 
 pub(crate) fn seeded(col: &tempfile::TempDir) -> (Arc<Listing>, SecretKey) {
