@@ -211,6 +211,7 @@ pub(crate) fn parse(
         stage,
         truncated,
         kept_at,
+        opens_at: BTreeMap::new(),
     })
 }
 

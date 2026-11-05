@@ -49,19 +49,33 @@ const GONE_NOTE: &str = "staged, gone from its path";
 // What the box of such a row warns of: its copy in the index is all that was at that path.
 const GONE_UNSTAGE: &str = "Unstaging drops the staged copy, and nothing is left at this path";
 
-// A gone row's note, naming the file that holds its staged copy when there is one.
-fn gone_note(kept: Option<&str>) -> String {
-    match kept {
-        Some(kept) => format!("staged, file now at {kept}"),
-        None => GONE_NOTE.to_owned(),
+// What is on disk for a gone row, as far as core knows.
+enum Left {
+    Nothing,
+    // A file holding the staged copy.
+    Kept(String),
+    // The file the path opens through a link, with other content.
+    Opens(String),
+}
+
+// A gone row's note, naming the file that holds its staged copy or that the path now opens.
+fn gone_note(left: &Left) -> String {
+    match left {
+        Left::Kept(kept) => format!("staged, file now at {kept}"),
+        Left::Opens(other) => format!("staged, path now opens {other}"),
+        Left::Nothing => GONE_NOTE.to_owned(),
     }
 }
 
-// A gone row's warning; a file holding the same content keeps the edit safe.
-fn gone_warning(kept: Option<&str>) -> String {
-    match kept {
-        Some(kept) => format!("Unstaging drops the staged copy; the file at {kept} stays"),
-        None => GONE_UNSTAGE.to_owned(),
+// A gone row's warning, on its box and in the question before it drops; a file holding the same
+// content keeps the edit safe.
+fn gone_warning(left: &Left) -> String {
+    match left {
+        Left::Kept(kept) => format!("Unstaging drops the staged copy; the file at {kept} stays"),
+        Left::Opens(other) => {
+            format!("Unstaging drops the staged copy; the path now opens another file ({other})")
+        }
+        Left::Nothing => GONE_UNSTAGE.to_owned(),
     }
 }
 
@@ -270,10 +284,10 @@ impl ChangesView {
         })
     }
 
-    // How many gone rows an action on the row at `ix` drops, `own` counting that row itself: git
-    // takes a path with all under it, an entry replaces any file over or under it, and unstaging
-    // resets the origin of every rename at or under the row's path too.
-    fn gone_around(&self, ix: usize, own: bool) -> usize {
+    // How many gone rows an action on the row at `ix` drops, that row included: git takes a path
+    // with all under it, an entry replaces any file over or under it, and unstaging resets the
+    // origin of every rename at or under the row's path too.
+    fn gone_around(&self, ix: usize) -> usize {
         let Some((at, _)) = self.files.get(ix) else {
             return 0;
         };
@@ -287,27 +301,31 @@ impl ChangesView {
             .collect();
         let touches =
             |path: &Path, other: &Path| path.starts_with(other) || other.starts_with(path);
-        (self.files.iter().zip(&self.stages).enumerate())
-            .filter(|(i, ((path, _), stage))| {
+        (self.files.iter().zip(&self.stages))
+            .filter(|((path, _), stage)| {
                 **stage == GitStage::StagedGone
-                    && (own || *i != ix)
                     && (touches(path, at) || origins.iter().any(|o| touches(path, o)))
             })
             .count()
     }
 
-    // Toggles the row at `ix`, asking first when that drops a gone row's copy.
-    fn toggle_asking(&mut self, ix: usize, own: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some((op, action)) = self.row_op(ix) {
-            let gone = self.gone_around(ix, own);
-            self.confirmed(op, gone, action, window, cx);
-        }
-    }
-
-    // Space or Enter on a row: the keyboard never reaches the warning on a gone row's box, so
-    // its own copy counts too.
+    // Toggles the row at `ix` by Space, Enter or its box, asking first when that drops a gone
+    // row's copy; a gone row that drops only itself asks in the words of its box's warning.
     fn press(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        self.toggle_asking(ix, true, window, cx);
+        let Some((op, action)) = self.row_op(ix) else {
+            return;
+        };
+        let ask = match self.gone_around(ix) {
+            0 => None,
+            1 if self.stages.get(ix) == Some(&GitStage::StagedGone) => {
+                let mut ask = confirm::drop_staged_ask(1, action);
+                let path = self.files[ix].0.to_string_lossy();
+                ask.detail = Some(gone_warning(&self.left_at(&path)).into());
+                Some(ask)
+            }
+            n => Some(confirm::drop_staged_ask(n, action)),
+        };
+        self.confirmed(op, ask, window, cx);
     }
 
     // Unstages everything when every box is ticked, else stages everything; either drops the
@@ -323,28 +341,32 @@ impl ChangesView {
             .iter()
             .filter(|s| **s == GitStage::StagedGone)
             .count();
-        self.confirmed(op, gone, action, window, cx);
+        // `.` reaches past the cap, where any file may be gone, so a cut list always asks.
+        let ask = match (self.truncated(), gone) {
+            (true, n) => Some(confirm::drop_staged_past_cap_ask(n, action)),
+            (false, 0) => None,
+            (false, n) => Some(confirm::drop_staged_ask(n, action)),
+        };
+        self.confirmed(op, ask, window, cx);
     }
 
-    // Runs `op`, after asking when it would drop `gone` staged copies; Cancel runs nothing, so
-    // every row stays as it was.
+    // Runs `op`, after `ask` when there is one; Cancel runs nothing, so every row stays as it was.
     fn confirmed(
         &mut self,
         op: GitWrite,
-        gone: usize,
-        action: &'static str,
+        ask: Option<confirm::Ask>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.busy {
             return;
         }
-        if gone == 0 {
+        let Some(ask) = ask else {
             self.notice = None;
             self.start(op, cx);
             return;
-        }
-        let answer = confirm::ask(confirm::drop_staged_ask(gone, action), window, cx);
+        };
+        let answer = confirm::ask(ask, window, cx);
         cx.spawn(async move |this, cx| {
             if answer.recv().await == Ok(1) {
                 this.update(cx, |v, cx| {
@@ -658,8 +680,7 @@ impl ChangesView {
             let note = match self.stages.get(ix) {
                 Some(GitStage::Both) => Some(("changes-partly", "partly staged".to_owned())),
                 Some(GitStage::StagedGone) => {
-                    let kept = self.kept_at(&path);
-                    Some(("changes-gone", gone_note(kept.as_deref())))
+                    Some(("changes-gone", gone_note(&self.left_at(&path))))
                 }
                 _ => None,
             };
@@ -888,7 +909,7 @@ impl ChangesView {
     fn stage_box(&self, ix: usize, path: &str, this: Entity<Self>) -> impl IntoElement + use<> {
         let stage = self.stages.get(ix).copied().unwrap_or(GitStage::Unstaged);
         let gone = stage == GitStage::StagedGone;
-        let warning = gone_warning(self.kept_at(path).as_deref());
+        let warning = gone_warning(&self.left_at(path));
         let name = match gone {
             true => format!("Stage {path}. {warning}"),
             false => format!("Stage {path}"),
@@ -904,18 +925,27 @@ impl ChangesView {
                     .accessible_name(name)
                     .disabled(self.busy)
                     .tab_stop(false)
-                    // A gone row's own box warns on hover; a neighbour's shows nothing.
+                    // A gone row's own box warns on hover and asks the same on a click.
                     .on_click(move |_, window, cx| {
-                        this.update(cx, |v, cx| v.toggle_asking(ix, false, window, cx))
+                        this.update(cx, |v, cx| v.press(ix, window, cx))
                     }),
             )
     }
 
-    // Where the file of the gone row at `path` went, when core knows.
-    fn kept_at(&self, path: &str) -> Option<String> {
-        let changes = self.seen.as_ref()?;
-        let kept = changes.kept_at.get(Path::new(path))?;
-        Some(kept.to_string_lossy().into_owned())
+    // What is on disk for the gone row at `path`: where its file went, or the other file its
+    // path now opens, when core knows.
+    fn left_at(&self, path: &str) -> Left {
+        let Some(changes) = self.seen.as_ref() else {
+            return Left::Nothing;
+        };
+        let shown = |p: &Path| p.to_string_lossy().into_owned();
+        match changes.kept_at.get(Path::new(path)) {
+            Some(kept) => Left::Kept(shown(kept)),
+            None => match changes.opens_at.get(Path::new(path)) {
+                Some(other) => Left::Opens(shown(other)),
+                None => Left::Nothing,
+            },
+        }
     }
 
     // The counts and the one bulk button; absent in the quiet and empty states.

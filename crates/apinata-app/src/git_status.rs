@@ -122,6 +122,8 @@ pub struct GitChanges {
     pub branch: Option<String>,
     /// Where the file of a staged path gone from disk went, when core knows.
     pub kept_at: BTreeMap<PathBuf, PathBuf>,
+    /// The other file a staged path gone from disk now opens through a link, when core knows.
+    pub opens_at: BTreeMap<PathBuf, PathBuf>,
 }
 
 impl GitChanges {
@@ -148,6 +150,7 @@ impl GitChanges {
                     .collect(),
                 branch: repo.branch.clone(),
                 kept_at: repo.kept_at.clone(),
+                opens_at: repo.opens_at.clone(),
             }),
             _ => None,
         }
