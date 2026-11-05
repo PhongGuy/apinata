@@ -54,7 +54,7 @@ use crate::history_palette::{OpenHistory, OpenHistoryEntry};
 use crate::keymap::{
     OpenCollectionSettings, OpenEnvironmentSelector, OpenEnvironments, ResetZoom, RunCollection,
     RunFolder, SHELL_CONTEXT, SaveActive, ToggleConsole, ToggleOrientation, ToggleSidebar,
-    ToggleTheme, ZoomIn, ZoomOut,
+    ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
 use crate::palette::{OpenCommandPalette, OpenRequest};
 use crate::path_display;
@@ -64,7 +64,7 @@ use crate::runner_view::OpenRunResult;
 use crate::search_dialog::{OpenCollectionSearch, OpenSearchHit};
 use crate::session::{SavedBounds, Session};
 use crate::settings::{LinuxTitleBar, Orientation, ThemeChoice};
-use crate::sidebar::{FocusFilter, Sidebar, SidebarEvent};
+use crate::sidebar::{FocusFilter, Sidebar, SidebarEvent, UndoDelete};
 use crate::stand_in::StandIn;
 use crate::style;
 use crate::tab_area::TabArea;
@@ -2689,6 +2689,7 @@ impl Render for Shell {
             .on_action(cx.listener(to_sidebar(Sidebar::new_request)))
             .on_action(cx.listener(to_sidebar(Sidebar::new_graphql_request)))
             .on_action(cx.listener(to_sidebar(Sidebar::delete_selected)))
+            .on_action(cx.listener(to_sidebar(Sidebar::undo_delete)))
             .on_action(cx.listener(to_sidebar(Sidebar::run_selected)))
             .on_action(cx.listener(to_sidebar(Sidebar::new_folder)))
             .on_action(cx.listener(to_sidebar(Sidebar::sort_by_name)))
@@ -2697,7 +2698,17 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::discard_changes)))
             .on_action(cx.listener(to_tabs(TabArea::save_active)))
             .on_action(cx.listener(to_tabs(TabArea::send_active)))
-            .on_action(cx.listener(to_tabs(TabArea::undo_active)))
+            // With no tab open, focus falls back to the shell and Undo edit has nothing to
+            // undo, so the chord goes to the newest delete.
+            .on_action(cx.listener(|this, a: &UndoActive, window, cx| {
+                if this.workspace.read(cx).tabs().active().is_none() {
+                    this.sidebar
+                        .update(cx, |s, cx| s.undo_delete(&UndoDelete, window, cx));
+                } else {
+                    this.tab_area
+                        .update(cx, |t, cx| t.undo_active(a, window, cx));
+                }
+            }))
             .on_action(cx.listener(to_tabs(TabArea::redo_active)))
             .on_action(cx.listener(to_tabs(TabArea::stop_active)))
             .on_action(cx.listener(to_tabs(TabArea::copy_active_as_curl)))

@@ -1561,10 +1561,21 @@ impl Sidebar {
         }
     }
 
-    // Ctrl+Z in the sidebar restores the newest delete; with none left the key goes on to the
-    // shell's undo of the active tab. A delete still landing is the newest and has no undo
-    // ticket yet, so the key claims that delete, which is undone the moment it lands.
-    fn undo_delete(&mut self, _: &UndoDelete, window: &mut Window, cx: &mut Context<Self>) {
+    /// Whether `UndoDelete` has a delete to undo: one still landing into the trash, or a
+    /// finished one of a collection instance still open.
+    pub fn can_undo_delete(&self, cx: &App) -> bool {
+        let ws = self.workspace.read(cx);
+        let open = |root: &Path, generation: u64| {
+            (ws.collections().iter()).any(|c| c.root() == root && c.generation() == generation)
+        };
+        self.batches.iter().any(|b| b.awaits_undo())
+            || (self.deletes.iter()).any(|d| open(&d.root, d.generation))
+    }
+
+    /// Ctrl+Z outside any editor or input restores the newest delete; with none left the key
+    /// goes on to the shell's undo of the active tab. A delete still landing is the newest and
+    /// has no undo ticket yet, so the key claims that delete, undone the moment it lands.
+    pub fn undo_delete(&mut self, _: &UndoDelete, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(batch) = self.batches.iter_mut().rev().find(|b| b.awaits_undo()) {
             batch.owe_undo();
         } else if !self.undo_newest(window, cx) {
@@ -2354,7 +2365,6 @@ impl Render for Sidebar {
             .on_action(cx.listener(Self::cut_action))
             .on_action(cx.listener(Self::paste_action))
             .on_action(cx.listener(Self::delete_selected))
-            .on_action(cx.listener(Self::undo_delete))
             .on_action(cx.listener(Self::clear_filter))
             .on_action(cx.listener(Self::run_selected))
             .on_action(cx.listener(Self::open_selected))

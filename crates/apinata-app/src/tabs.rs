@@ -164,6 +164,38 @@ impl Tabs {
         id
     }
 
+    /// Puts back a tab that closed with its target at position `ix` (clamped), without
+    /// activating it. It comes back as a preview only while no other preview is open, and
+    /// pinned tabs stay a prefix. An already open tab of `kind` is returned as it is.
+    pub fn reopen_at(
+        &mut self,
+        root: &Path,
+        kind: TabKind,
+        ix: usize,
+        preview: bool,
+        pinned: bool,
+    ) -> TabId {
+        if let Some(e) = self
+            .entries
+            .iter()
+            .find(|e| e.root == root && e.kind == kind)
+        {
+            return e.id;
+        }
+        let entry = TabEntry {
+            id: TabId(self.next),
+            root: root.to_path_buf(),
+            kind,
+            preview: preview && !pinned && !self.entries.iter().any(|e| e.preview),
+            pinned,
+        };
+        self.next += 1;
+        let id = entry.id;
+        self.entries.insert(ix.min(self.entries.len()), entry);
+        self.keep_pinned_first();
+        id
+    }
+
     /// The history key of draft tab `id`, once a send has given it one.
     pub fn history_key(&self, id: TabId) -> Option<&ItemPath> {
         self.history_keys.get(&id)

@@ -532,7 +532,9 @@ pub fn registry() -> Vec<Command> {
         ),
         {
             // Takes the shell's Undo edit chord inside the sidebar; with nothing to undo there
-            // the handler passes the key on, and the sidebar's inputs keep their own undo.
+            // the handler passes the key on, and the sidebar's inputs keep their own undo. With
+            // no tab open the shell's Undo edit falls back to it, so it works with the sidebar
+            // hidden too.
             let mut c = command(
                 "request.undo_delete",
                 "Undo delete",

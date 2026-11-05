@@ -27,7 +27,7 @@ use crate::persisted::Persisted;
 use crate::prompt_vars::PromptMemory;
 use crate::session::{SavedExample, SavedPanel, SavedPanelKind, SavedTab, Session};
 use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
-use crate::tabs::{TabId, TabKind, Tabs};
+use crate::tabs::{TabEntry, TabId, TabKind, Tabs};
 use crate::watch::rules::{WatchMsg, translate};
 use crate::watch::set::{EventHandler, Watch, WatchError, WatchFactory};
 use crate::watch::watcher::CollectionWatcher;
@@ -330,6 +330,15 @@ struct Restoring {
     at_send: Option<TabId>,
 }
 
+/// A tab a delete into the trash closed: what it showed, where it stood and how.
+struct TrashedTab {
+    index: usize,
+    kind: TabKind,
+    preview: bool,
+    pinned: bool,
+    active: bool,
+}
+
 /// Script texts typed in the app, approved once the write of `command` is confirmed.
 struct AwaitedApproval {
     root: PathBuf,
@@ -449,6 +458,10 @@ pub struct Workspace {
     // Commands of a sidebar batch, by root and id, whose notices the batch summarises instead
     // of the shell toasting each one.
     batched: HashSet<(PathBuf, u64)>,
+    // The tabs each delete into the trash closed, by root and trash ticket, so restoring
+    // that ticket puts them back; `restores` maps a sent Restore's command id to its ticket.
+    trashed_tabs: HashMap<(PathBuf, u64), Vec<TrashedTab>>,
+    restores: HashMap<(PathBuf, u64), u64>,
     // The global environments directory, its latest loaded snapshot and the active name.
     global_dir: Option<PathBuf>,
     // The hidden scratch collection's directory, once the app names it.
@@ -520,6 +533,8 @@ impl Workspace {
             restoring: HashMap::new(),
             restore_ids: HashMap::new(),
             batched: HashSet::new(),
+            trashed_tabs: HashMap::new(),
+            restores: HashMap::new(),
             global_dir: None,
             scratch_dir: None,
             globals: None,
@@ -816,6 +831,8 @@ impl Workspace {
         self.restoring.remove(&root);
         self.restore_ids.retain(|(r, _), _| *r != root);
         self.batched.retain(|(r, _)| *r != root);
+        self.trashed_tabs.retain(|(r, _), _| *r != root);
+        self.restores.retain(|(r, _), _| *r != root);
         let tabs = &self.tabs;
         self.kept_views.retain(|t, _| tabs.get(*t).is_some());
         self.forget_open(&root, cx);
@@ -1025,7 +1042,22 @@ impl Workspace {
             Command::Revert(Target::Environment(name)) => Some(name.clone()),
             _ => None,
         };
+        let ticket_op = match &command {
+            Command::Tree(TreeOp::Restore { ticket }) => Some((true, *ticket)),
+            Command::Tree(TreeOp::ForgetTrash { ticket }) => Some((false, *ticket)),
+            _ => None,
+        };
         let id = model.update(cx, |m, _| m.send_from(command, basis));
+        // A restore reopens its ticket's tabs once it lands; a forgotten ticket never will.
+        match ticket_op {
+            Some((true, ticket)) => {
+                self.restores.insert((absolute(root), id), ticket);
+            }
+            Some((false, ticket)) => {
+                self.trashed_tabs.remove(&(absolute(root), ticket));
+            }
+            None => {}
+        }
         if writes && let Some(entry) = self.entry_mut(root) {
             entry.git_write = entry.git_write.max(Some(id));
         }
@@ -2206,6 +2238,8 @@ impl Workspace {
             self.draft_imports.retain(|(r, _), _| r != root);
             self.restoring.remove(root);
             self.restore_ids.retain(|(r, _), _| r != root);
+            self.trashed_tabs.retain(|(r, _), _| r != root);
+            self.restores.retain(|(r, _), _| r != root);
             let tabs = &self.tabs;
             self.kept_views.retain(|t, _| tabs.get(*t).is_some());
             self.forget_open(root, cx);
@@ -2745,9 +2779,13 @@ impl Workspace {
             }
         }
         let content = &snapshot.content;
+        let before: Vec<TabId> = self.tabs.entries().iter().map(|e| e.id).collect();
+        let active = self.tabs.active().map(|e| e.id);
         let gone = self
             .tabs
             .retain(|e| e.root != root || shows(content, &e.kind));
+        self.remember_trashed(root, notices, &gone, &before, active);
+        self.reopen_restored(root, notices, content);
         // The app's own delete already says what went, so the tabs it covers close silently.
         let removed: Vec<&ItemPath> = (notices.iter())
             .filter_map(|n| match &n.kind {
@@ -2833,6 +2871,64 @@ impl Workspace {
                 items: items.flatten().collect(),
                 tabs,
             });
+        }
+    }
+
+    // Files the tabs each Trashed notice closed under its ticket, with their old positions.
+    fn remember_trashed(
+        &mut self,
+        root: &Path,
+        notices: &[Notice],
+        gone: &[TabEntry],
+        before: &[TabId],
+        active: Option<TabId>,
+    ) {
+        let mut left: Vec<&TabEntry> = gone.iter().collect();
+        for notice in notices {
+            let NoticeKind::Trashed { item, ticket } = &notice.kind else {
+                continue;
+            };
+            let (mine, rest): (Vec<_>, Vec<_>) = left.into_iter().partition(|e| {
+                trashed_path(&e.kind).is_some_and(|p| crate::stale::is_within(p, item))
+            });
+            left = rest;
+            let tabs = mine
+                .into_iter()
+                .map(|e| TrashedTab {
+                    index: before
+                        .iter()
+                        .position(|id| *id == e.id)
+                        .unwrap_or(usize::MAX),
+                    kind: e.kind.clone(),
+                    preview: e.preview,
+                    pinned: e.pinned,
+                    active: Some(e.id) == active,
+                })
+                .collect();
+            self.trashed_tabs.insert((absolute(root), *ticket), tabs);
+        }
+    }
+
+    // Puts back, in their old order, the tabs of each ticket a Restored notice answers, and
+    // activates the one that was active when the delete closed it.
+    fn reopen_restored(&mut self, root: &Path, notices: &[Notice], content: &Content) {
+        let root = absolute(root);
+        for notice in notices {
+            let Some(ticket) = self.restores.remove(&(root.clone(), notice.command)) else {
+                continue;
+            };
+            let tabs = self.trashed_tabs.remove(&(root.clone(), ticket));
+            if !matches!(notice.kind, NoticeKind::Restored(_)) {
+                continue;
+            }
+            let mut tabs = tabs.unwrap_or_default();
+            tabs.sort_by_key(|t| t.index);
+            for t in tabs.into_iter().filter(|t| shows(content, &t.kind)) {
+                let id = (self.tabs).reopen_at(&root, t.kind, t.index, t.preview, t.pinned);
+                if t.active {
+                    self.tabs.activate(id);
+                }
+            }
         }
     }
 
@@ -3111,6 +3207,17 @@ pub(crate) fn label_or_dir(name: Option<&str>, root: &Path) -> SharedString {
 /// file is no error here, only the fallback.
 pub(crate) fn collection_label(root: &Path) -> SharedString {
     label_or_dir(apinata_core::collection_name(root).as_deref(), root)
+}
+
+// The one item a tab shows, which a delete of it or a folder above takes with it.
+fn trashed_path(kind: &TabKind) -> Option<&ItemPath> {
+    match kind {
+        TabKind::Request(p)
+        | TabKind::Folder(p)
+        | TabKind::Runner(p)
+        | TabKind::Example { item: p, .. } => Some(p),
+        _ => None,
+    }
 }
 
 /// `root` made absolute, so roots given relative match the absolute ones `open` stores.

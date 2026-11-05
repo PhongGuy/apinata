@@ -179,6 +179,7 @@ fn open_palette_lists_run_selected(cx: &mut TestAppContext, s: &Started) -> bool
         discard: false,
         save_all: false,
         beautify: false,
+        undo_delete: false,
         ..Availability::all()
     });
     let ix = items

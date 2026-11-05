@@ -25,7 +25,9 @@ use crate::body_node::{
 use crate::commands::registry;
 use crate::keymap::{DiscardChanges, RedoActive, SaveActive, UndoActive};
 use crate::sidebar::menu::MenuEntry;
-use crate::sidebar::{CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar};
+use crate::sidebar::{
+    CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar, UndoDelete,
+};
 use crate::snapshot::RowKind;
 use crate::style;
 use crate::tab_area::{
@@ -214,6 +216,8 @@ pub struct Availability {
     pub multi_tab: bool,
     /// "Last tab": the active tab is not already the last one.
     pub not_last: bool,
+    /// "Undo delete": a delete into the trash is still undoable.
+    pub undo_delete: bool,
 }
 
 impl Availability {
@@ -242,6 +246,7 @@ impl Availability {
             close_saved: true,
             multi_tab: true,
             not_last: true,
+            undo_delete: true,
         }
     }
 }
@@ -327,6 +332,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.multi_tab, ActivateNextTab.name()),
         (available.multi_tab, ActivatePrevTab.name()),
         (available.not_last, ActivateLastTab.name()),
+        (available.undo_delete, UndoDelete.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -492,6 +498,9 @@ fn availability_now(
         close_saved: tabs.is_none_or(|t| t.close_saved),
         multi_tab: tabs.is_none_or(|t| t.multi_tab),
         not_last: tabs.is_none_or(|t| t.not_last),
+        undo_delete: sidebar
+            .as_ref()
+            .is_none_or(|s| s.read(cx).can_undo_delete(cx)),
         collection_open: workspace
             .as_ref()
             .is_none_or(|w| !w.read(cx).shows_empty_state(cx)),

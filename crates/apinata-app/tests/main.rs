@@ -509,6 +509,7 @@ mod sidebar_rows;
 mod sidebar_run_buttons;
 mod sidebar_sort;
 mod sidebar_trash;
+mod sidebar_trash_tabs;
 mod snapshot;
 mod snapshot_cost;
 mod split_adaptive;

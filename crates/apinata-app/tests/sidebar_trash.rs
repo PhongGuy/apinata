@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use support::*;
 
-fn press(cx: &mut TestAppContext, h: &SidebarHarness, key: &str) {
+pub(crate) fn press(cx: &mut TestAppContext, h: &SidebarHarness, key: &str) {
     cx.update_window(h.win, |_, w, cx| w.press(key, cx))
         .unwrap();
     cx.run_until_parked();
@@ -33,7 +33,7 @@ fn with_trash(cx: &mut TestAppContext) -> (SidebarHarness, Arc<FakeTrash>) {
 }
 
 // The sidebar inside a whole shell, whose own notice toasts show beside the sidebar's.
-fn shell_with_trash(cx: &mut TestAppContext) -> (SidebarHarness, Arc<FakeTrash>) {
+pub(crate) fn shell_with_trash(cx: &mut TestAppContext) -> (SidebarHarness, Arc<FakeTrash>) {
     shell_with_trash_files(cx, multi_files())
 }
 
@@ -74,7 +74,7 @@ fn shell_with_trash_files(
     (h, bin)
 }
 
-fn select_and_delete(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str) {
+pub(crate) fn select_and_delete(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str) {
     cx.update_window(h.win, |_, w, cx| w.click(row(rel), cx))
         .unwrap();
     focus_tree(cx, h);
@@ -82,7 +82,7 @@ fn select_and_delete(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str) {
     frame(cx, h.win);
 }
 
-fn has(cx: &mut TestAppContext, h: &SidebarHarness, id: &'static str) -> bool {
+pub(crate) fn has(cx: &mut TestAppContext, h: &SidebarHarness, id: &'static str) -> bool {
     cx.update_window(h.win, |_, w, _| w.try_find(id).is_some())
         .unwrap()
 }
@@ -109,7 +109,7 @@ fn undo_toasts(cx: &mut TestAppContext, h: &SidebarHarness) -> usize {
 
 // Lets every toast showing time out and finish closing. A pointer over the toasts pauses
 // their timers, so it moves to the tree first.
-fn expire_toasts(cx: &mut TestAppContext, h: &SidebarHarness) {
+pub(crate) fn expire_toasts(cx: &mut TestAppContext, h: &SidebarHarness) {
     cx.update_window(h.win, |_, w, cx| w.hover("sidebar-view", cx))
         .unwrap();
     for _ in 0..20 {
@@ -123,13 +123,13 @@ fn expire_toasts(cx: &mut TestAppContext, h: &SidebarHarness) {
 }
 
 // Presses Ctrl+Z (Cmd+Z on macOS) and lets any toast it closes finish closing.
-fn ctrl_z(cx: &mut TestAppContext, h: &SidebarHarness) {
+pub(crate) fn ctrl_z(cx: &mut TestAppContext, h: &SidebarHarness) {
     press(cx, h, &secondary("z"));
     cx.executor().advance_clock(Duration::from_secs(1));
     frame(cx, h.win);
 }
 
-fn click_undo(cx: &mut TestAppContext, h: &SidebarHarness) {
+pub(crate) fn click_undo(cx: &mut TestAppContext, h: &SidebarHarness) {
     cx.update_window(h.win, |_, w, cx| w.click("undo-delete", cx))
         .unwrap();
     frame(cx, h.win);
@@ -603,7 +603,7 @@ fn ctrl_z_after_a_reopen_restores_nothing_and_undoes_the_active_tab(cx: &mut Tes
 }
 
 // Clicks into the open tab's URL input, where Ctrl+Z is the input's own.
-fn focus_url(cx: &mut TestAppContext, h: &SidebarHarness) {
+pub(crate) fn focus_url(cx: &mut TestAppContext, h: &SidebarHarness) {
     cx.update_window(h.win, |_, w, cx| w.click("url", cx))
         .unwrap();
     frame(cx, h.win);
@@ -629,13 +629,18 @@ fn menu_click(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, ix: usize)
     frame(cx, h.win);
 }
 
-fn menu_delete(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, kind: NodeKind) {
+pub(crate) fn menu_delete(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, kind: NodeKind) {
     let entries = menu_entries(kind);
     let ix = (entries.iter().position(|e| *e == MenuEntry::Delete)).expect("Delete is offered");
     menu_click(cx, h, rel, ix);
 }
 
-fn assert_restored(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, bin: &FakeTrash) {
+pub(crate) fn assert_restored(
+    cx: &mut TestAppContext,
+    h: &SidebarHarness,
+    rel: &str,
+    bin: &FakeTrash,
+) {
     assert!(h.root.join(rel).exists(), "{rel} came back");
     assert_eq!(bin.len(), 0);
     assert!(!has(cx, h, "toast-error") && !has(cx, h, "toast-warning"));
@@ -960,7 +965,7 @@ fn ctrl_z_after_a_prompted_bulk_delete_entered_with_a_tab_behind(cx: &mut TestAp
 }
 
 // Runs the palette's "Delete selected" from wherever focus is now.
-fn palette_delete(cx: &mut TestAppContext, h: &SidebarHarness) {
+pub(crate) fn palette_delete(cx: &mut TestAppContext, h: &SidebarHarness) {
     cx.simulate_keystrokes(h.win, &secondary("shift-p"));
     frame(cx, h.win);
     cx.update_window(h.win, |_, w, cx| w.input("Delete selected", cx))
