@@ -258,6 +258,7 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "tree-sitter-c-sharp",
