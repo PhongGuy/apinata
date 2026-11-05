@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::blocking::off_thread;
 use crate::command::Command;
 use apinata_core::{Branch, CancelFlag, FetchError, GitOptions, SwitchError, Switched, Upstream};
 use gpui_kit::{Context, Entity, EventEmitter, Subscription};
@@ -91,18 +92,6 @@ pub struct BranchPicker {
 }
 
 impl EventEmitter<PickerEvent> for BranchPicker {}
-
-/// Runs `work` on its own thread and delivers the result: the test executor polls background
-/// tasks on the test thread, where a stalled git would freeze the cancel path.
-fn off_thread<T: Send + 'static>(
-    work: impl FnOnce() -> T + Send + 'static,
-) -> async_channel::Receiver<T> {
-    let (tx, rx) = async_channel::bounded(1);
-    std::thread::spawn(move || {
-        let _ = tx.try_send(work());
-    });
-    rx
-}
 
 impl BranchPicker {
     /// A picker over the repository at `root`; it starts listing at once.
@@ -213,7 +202,6 @@ impl BranchPicker {
                 match apinata_core::fetch(&root, &remote, &cancel, &options) {
                     Ok(()) => {}
                     Err(FetchError::Cancelled) => return None,
-                    Err(FetchError::Failed { stderr }) => return Some(Notice::Failed(stderr)),
                     Err(e) => return Some(Notice::Failed(e.to_string())),
                 }
             }
@@ -323,7 +311,6 @@ impl BranchPicker {
                 }
             }
             Err(SwitchError::Dirty) => self.notice = Some(Notice::Dirty),
-            Err(SwitchError::Failed { stderr }) => self.notice = Some(Notice::Failed(stderr)),
             Err(e) => self.notice = Some(Notice::Failed(e.to_string())),
         }
         self.release(cx);

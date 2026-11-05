@@ -4,7 +4,7 @@ use crate::git_support::{Sandbox, path_with, write};
 use crate::support::*;
 
 use apinata_app::branch_dialog;
-use apinata_app::branch_picker::Activity;
+use apinata_app::branch_picker::{Activity, Notice};
 use apinata_app::changes_dialog;
 use apinata_app::session::Session;
 use apinata_app::workspace::Workspace;
@@ -442,4 +442,48 @@ fn a_local_row_names_its_upstream_only_when_the_names_differ(cx: &mut TestAppCon
     let picker = cx.update(|cx| branch_dialog::current(cx)).expect("open");
     let rows = picker.read_with(cx, |p, _| p.branches().len());
     assert_eq!(rows, 2);
+}
+
+/// Leaves an unsaved in-app edit on the collection, which the picker refuses to switch over.
+fn unsaved_edit(cx: &mut TestAppContext, r: &Rig) {
+    use apinata_app::command::{Command, Edit, Target};
+    let root = r.dir.path().to_path_buf();
+    r.ws.update(cx, |w, cx| {
+        w.send(
+            &root,
+            Command::Edit {
+                target: Target::Collection,
+                edit: Edit::Docs("draft".into()),
+            },
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert!(
+        !r.ws
+            .read_with(cx, |w, cx| w.unsaved(Some(&root), cx))
+            .is_empty()
+    );
+}
+
+#[gpui_kit::test]
+fn an_unsaved_edit_shows_its_refusal_in_the_dialog_and_keeps_the_branch(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let r = rig(cx, &sb, |_| {});
+    unsaved_edit(cx, &r);
+    open_dialog(cx, &r);
+    let ix = row_of(cx, "feature");
+    click(cx, &r, ("branch-row", ix));
+    wait_for(cx, "the refusal", |cx| present(cx, r.win, "branch-notice"));
+    let picker = cx.update(|cx| branch_dialog::current(cx)).expect("open");
+    assert_eq!(
+        picker.read_with(cx, |p, _| p.notice().cloned()),
+        Some(Notice::Unsaved)
+    );
+    assert!(!present(cx, r.win, "branch-open-changes"));
+    assert!(dialog_open(cx, &r));
+    assert_eq!(
+        sb.git(r.dir.path(), &["branch", "--show-current"]).trim(),
+        "main"
+    );
 }
