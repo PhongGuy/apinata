@@ -104,6 +104,12 @@ pub enum ConvertError {
         /// The request.
         item: ItemPath,
     },
+    /// The conversion would now drop something other than what was previewed.
+    #[error("{item} changed since the conversion was previewed; review it and convert again")]
+    Stale {
+        /// The request.
+        item: ItemPath,
+    },
     /// Writing the file failed; the request is left as it was before the call.
     #[error(transparent)]
     Save(#[from] SaveError),
@@ -134,16 +140,22 @@ impl Collection {
 
     /// Rewrite the saved request at `item` as a request of kind `to`, in place. Everything both
     /// kinds hold is kept as written; the body is translated where it can be and otherwise
-    /// dropped, and [`KindConversion::dropped`] says so. Unsaved edits refuse the conversion.
+    /// dropped, and [`KindConversion::dropped`] says so. Unsaved edits refuse the conversion,
+    /// and so does a drop list other than `expected`, with [`ConvertError::Stale`].
     pub fn convert_request(
         &mut self,
         item: &ItemPath,
         to: RequestKind,
+        expected: &ConversionPreview,
     ) -> Result<KindConversion, ConvertError> {
         let r = self
             .request_mut(item)
             .ok_or_else(|| ConvertError::NotFound { item: item.clone() })?;
         refuse(item, r, to)?;
+        // Judge the loss on a copy, so a mismatch leaves the request and its file untouched.
+        if rewrite(&mut r.clone(), to).0 != expected.dropped {
+            return Err(ConvertError::Stale { item: item.clone() });
+        }
         let before = r.document().mapping().clone();
         let (dropped, notes) = rewrite(r, to);
         if let Err(e) = r.save() {

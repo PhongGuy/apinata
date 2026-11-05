@@ -370,13 +370,15 @@ pub enum Command {
         /// Where the preview, or why the conversion would be refused, goes.
         reply: async_channel::Sender<Result<apinata_core::ConversionPreview, String>>,
     },
-    /// Rewrite the saved request `item` as a request of `kind`; the conversion, or why it was
-    /// refused, goes on `reply`.
+    /// Rewrite the saved request `item` as a request of `kind`, provided it still drops what
+    /// `expected` said; the conversion, or why it was refused, goes on `reply`.
     ConvertKind {
         /// The request to convert.
         item: ItemPath,
         /// The kind it becomes.
         kind: RequestKind,
+        /// The preview the user confirmed.
+        expected: apinata_core::ConversionPreview,
         /// Where the conversion, or why it was refused, goes.
         reply: async_channel::Sender<Result<apinata_core::KindConversion, String>>,
     },
