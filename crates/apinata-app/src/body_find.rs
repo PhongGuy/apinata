@@ -135,18 +135,33 @@ impl Finder {
 
     /// Like [`Finder::find_in_text`], but stops after `cap` hits; the flag says more exist.
     pub fn find_in_text_capped(&self, text: &str, cap: usize) -> (Vec<Range<usize>>, bool) {
+        self.find_in_text_until(text, cap, || false)
+            .unwrap_or_default()
+    }
+
+    /// [`Finder::find_in_text_capped`] that asks `cancelled` before each line and gives up
+    /// with `None` once it says yes, so a superseded scan frees its worker early.
+    pub fn find_in_text_until(
+        &self,
+        text: &str,
+        cap: usize,
+        cancelled: impl Fn() -> bool,
+    ) -> Option<(Vec<Range<usize>>, bool)> {
         let mut out = Vec::new();
         let mut at = 0;
         for line in text.split('\n') {
+            if cancelled() {
+                return None;
+            }
             for r in self.line_hits(line) {
                 if out.len() == cap {
-                    return (out, true);
+                    return Some((out, true));
                 }
                 out.push(r.start + at..r.end + at);
             }
             at += line.len() + 1;
         }
-        (out, false)
+        Some((out, false))
     }
 }
 
@@ -218,10 +233,23 @@ pub fn find_in_chunked(chunked: &Chunked, query: &str, case_sensitive: bool) -> 
 
 /// Like [`find_in_chunked`], with a compiled [`Finder`].
 pub fn find_in_chunked_with(chunked: &Chunked, finder: &Finder) -> RowMatches {
+    find_in_chunked_until(chunked, finder, || false).unwrap_or_default()
+}
+
+/// [`find_in_chunked_with`] that asks `cancelled` before each source line and gives up with
+/// `None` once it says yes.
+pub fn find_in_chunked_until(
+    chunked: &Chunked,
+    finder: &Finder,
+    cancelled: impl Fn() -> bool,
+) -> Option<RowMatches> {
     let mut out = RowMatches::default();
     let rows = &chunked.rows;
     let mut first = 0;
     while first < rows.len() {
+        if cancelled() {
+            return None;
+        }
         let mut end = first + 1;
         while chunked.line_nos.get(end).is_some_and(|n| *n == 0) {
             end += 1;
@@ -251,7 +279,7 @@ pub fn find_in_chunked_with(chunked: &Chunked, finder: &Finder) -> RowMatches {
         }
         first = end;
     }
-    out
+    Some(out)
 }
 
 /// The selection colour of the response body editor. The kit paints every find match in it
