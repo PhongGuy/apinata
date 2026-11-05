@@ -4,7 +4,8 @@ use crate::common;
 use crate::network_support;
 
 use apinata_core::{
-    ExecError, ExecOptions, Executor, GlobalProxy, HttpVersion, HttpVersionPolicy, NetworkSettings,
+    ConnectKind, ExecError, ExecOptions, Executor, GlobalProxy, HttpVersion, HttpVersionPolicy,
+    NetworkSettings,
 };
 use common::resolved_one;
 use hyper::body::Incoming;
@@ -230,4 +231,24 @@ async fn the_session_log_keeps_each_hops_version() {
         .expect("sent");
     let entry = log.network_since(0).entries.remove(0);
     assert_eq!(entry.hops[0].version(), Some(HttpVersion::Http2));
+}
+
+#[tokio::test]
+async fn a_second_h2_send_reuses_the_connection_with_no_connect_phase() {
+    let port = h2_tls_server(None).await;
+    let req = resolved_one("GET", &format!("https://127.0.0.1:{port}/"), "", "");
+    let exec = executor(Auto);
+    let mut hops = Vec::new();
+    for _ in 0..2 {
+        let res = exec.send(&req).await.expect("sent");
+        let hop = &res.timeline()[0];
+        assert_eq!(hop.version(), Some(HttpVersion::Http2));
+        hops.push(hop.timing.clone().expect("timing"));
+    }
+    let (first, second) = (&hops[0], &hops[1]);
+    assert!(first.connect.is_some() && !first.reused, "{first:?}");
+    assert_eq!(first.connect_kind, ConnectKind::ConnectAndTls);
+    // Reuse means no lookup or connect was measured, so neither appears as a zero.
+    assert!(second.reused, "{second:?}");
+    assert_eq!((second.dns, second.connect), (None, None), "{second:?}");
 }

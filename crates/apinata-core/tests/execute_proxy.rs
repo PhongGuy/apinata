@@ -4,7 +4,8 @@
 use crate::network_support;
 
 use apinata_core::{
-    ContextOptions, ExecOptions, Executor, GlobalProxy, NetworkSettings, ResolvedProxy,
+    ConnectKind, ContextOptions, ExecOptions, Executor, GlobalProxy, HopTiming, NetworkSettings,
+    ResolvedProxy,
 };
 use network_support::{custom_proxy, http_proxy, resolve_in, root_with, socks5_proxy, tls_server};
 use wiremock::matchers::path;
@@ -242,4 +243,64 @@ async fn a_proxied_hop_is_marked_via_proxy_with_a_connect_phase() {
     let res = exec.send(r.request()).await.expect("sent");
     let t = res.timeline()[0].timing.clone().expect("timing");
     assert!(t.via_proxy && t.connect.is_some() && !t.reused, "{t:?}");
+}
+
+/// The final hop's timing of one send of `url` under `root`, on `exec`.
+async fn timing_of(exec: &Executor, root: &str, url: &str) -> HopTiming {
+    let r = resolve_in(root, url, ContextOptions::new());
+    let res = exec.send(r.request()).await.expect("sent");
+    res.timeline()[0].timing.clone().expect("timing")
+}
+
+#[tokio::test]
+async fn socks5_http_reports_a_proxied_connect_and_no_lookup_for_an_ip_literal() {
+    let origin = origin().await;
+    let proxy = socks5_proxy(None).await;
+    let url = format!("{}/ping", origin.uri());
+    let t = timing_of(&direct(), &via("socks5", proxy.port, None, ""), &url).await;
+    // No name was looked up, so DNS is absent rather than a measured near-zero.
+    assert_eq!(t.dns, None, "{t:?}");
+    assert!(t.connect.is_some() && t.via_proxy && !t.reused, "{t:?}");
+    assert_eq!(t.connect_kind, ConnectKind::Connect);
+}
+
+#[tokio::test]
+async fn socks5_https_reports_connect_and_tls_through_the_proxy() {
+    let server = tls_server(false).await;
+    let proxy = socks5_proxy(None).await;
+    let url = format!("https://127.0.0.1:{}/", server.port);
+    let exec = Executor::new(ExecOptions::new().insecure(true)).expect("executor");
+    let root = via("socks5", proxy.port, None, "");
+    let first = timing_of(&exec, &root, &url).await;
+    assert_eq!(first.dns, None, "{first:?}");
+    assert!(
+        first.connect.is_some() && first.via_proxy && !first.reused,
+        "{first:?}"
+    );
+    assert_eq!(first.connect_kind, ConnectKind::ConnectAndTls);
+    // The tunnel is pooled: the second send measures no lookup or connect at all.
+    let second = timing_of(&exec, &root, &url).await;
+    assert!(second.reused, "{second:?}");
+    assert_eq!((second.dns, second.connect), (None, None), "{second:?}");
+    assert_eq!(server.connections(), 1);
+}
+
+#[tokio::test]
+async fn https_through_connect_reports_connect_and_tls_including_the_tunnel() {
+    let server = tls_server(false).await;
+    let proxy = http_proxy(None).await;
+    let url = format!("https://127.0.0.1:{}/", server.port);
+    let exec = Executor::new(ExecOptions::new().insecure(true)).expect("executor");
+    let root = via("http", proxy.port, None, "");
+    let first = timing_of(&exec, &root, &url).await;
+    assert_eq!(first.dns, None, "{first:?}");
+    assert!(
+        first.connect.is_some() && first.via_proxy && !first.reused,
+        "{first:?}"
+    );
+    assert_eq!(first.connect_kind, ConnectKind::ConnectAndTls);
+    let second = timing_of(&exec, &root, &url).await;
+    assert!(second.reused && second.via_proxy, "{second:?}");
+    assert_eq!((second.dns, second.connect), (None, None), "{second:?}");
+    assert_eq!(proxy.seen.lines().len(), 1, "{:?}", proxy.seen.lines());
 }
