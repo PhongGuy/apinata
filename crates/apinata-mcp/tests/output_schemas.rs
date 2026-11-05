@@ -414,6 +414,14 @@ async fn every_tool_result_matches_its_output_schema() {
     .await;
     ex.run(&server, "export_har", json!({"path": "r.yml"}))
         .await;
+    ex.run(&server, "export_openapi", json!({})).await;
+    ex.run(
+        &server,
+        "export_openapi",
+        json!({"format": "yaml", "max_bytes": 20}),
+    )
+    .await;
+    ex.run(&server, "export_postman", json!({})).await;
     ex.run(&server, "run_folder", json!({"path": ""})).await;
     ex.run(&server, "run_folder", json!({"path": "f"})).await;
     for action in ["status", "fetch", "status", "refresh", "clear"] {

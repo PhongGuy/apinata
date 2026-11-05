@@ -21,6 +21,7 @@ mod empty_url;
 mod env_not_found;
 mod env_ops;
 mod export_har;
+mod export_tools;
 mod generate_code;
 mod git_tools;
 mod global_env;

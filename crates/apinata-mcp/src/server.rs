@@ -40,6 +40,7 @@ use crate::examples::{
     self, ExportHarArgs, ExportedHar, LastSend, LastSends, SaveExampleArgs, SavedExample,
     ScrubArgs, ScrubbedUserinfo,
 };
+use crate::export::{self, ExportDoc, ExportOpenapiArgs, ExportPostmanArgs};
 use crate::generate::{self, GenerateArgs, GeneratedCode};
 use crate::git::{self, GitDiffDoc, GitStatusDoc};
 use crate::graphql::{self, GraphqlSchemaArgs, GraphqlSchemaDoc};
@@ -1458,6 +1459,44 @@ impl ApinataServer {
         Parameters(args): Parameters<ExportHarArgs>,
     ) -> Result<Json<ExportedHar>, String> {
         examples::export_har(&self.last_sends, args).map(Json)
+    }
+
+    #[tool(
+        description = "Export the whole collection as OpenAPI 3.1, the text `apinata export \
+                       --format openapi` writes: `json` (the default) or `yaml` in `format`, \
+                       environments as servers. Secret values are never part of it. The text \
+                       is cut to `max_bytes` (32 KiB default, 1 MiB at most) and `truncated` \
+                       says whether it was; `notes` lists what OpenAPI cannot carry. Nothing \
+                       is sent or written.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn export_openapi(
+        &self,
+        Parameters(args): Parameters<ExportOpenapiArgs>,
+    ) -> Result<Json<ExportDoc>, String> {
+        let format = export::format(args.format.as_deref())?;
+        let seen = self.seen();
+        self.with_collection(move |c| export::openapi(c, format, args.max_bytes, &seen))
+            .await
+            .map(Json)
+    }
+
+    #[tool(
+        description = "Export the whole collection as a Postman v2.1 collection, the text \
+                       `apinata export --format postman` writes. Secret values are never part \
+                       of it. The text is cut to `max_bytes` (32 KiB default, 1 MiB at most) \
+                       and `truncated` says whether it was; `notes` lists what Postman cannot \
+                       carry. Nothing is sent or written.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn export_postman(
+        &self,
+        Parameters(args): Parameters<ExportPostmanArgs>,
+    ) -> Result<Json<ExportDoc>, String> {
+        let seen = self.seen();
+        self.with_collection(move |c| Ok(export::postman(c, args.max_bytes, &seen)))
+            .await
+            .map(Json)
     }
 
     #[tool(
