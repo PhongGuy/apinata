@@ -112,3 +112,17 @@ async fn a_chosen_request_keeps_its_folder_headers() {
     // The mocks' `.expect` counts fail on drop if x or b was sent, or y lost its folder header.
     server.verify().await;
 }
+
+#[test]
+fn a_choice_keeps_every_load_error_of_the_plan() {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &req("a", 1, "http://127.0.0.1:1/a")),
+        ("bad.yml", "info: ["),
+    ]);
+    let c = Collection::open(dir.path()).expect("opens");
+    let plan = c.plan(dir.path()).expect("plan");
+    assert_eq!(plan.load_errors().len(), 1);
+    let chosen = plan.choose(&[ip("a.yml")]).expect("planned");
+    assert_eq!(chosen.load_errors().len(), 1);
+}

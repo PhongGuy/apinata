@@ -94,16 +94,18 @@ impl RunPlan {
     }
 
     /// The plan narrowed to exactly the requests in `requests`, kept in the plan's run order
-    /// whatever order or repeats they are given in. An id the plan does not hold (a folder, a
-    /// request outside it or one that no longer exists) fails with [`SelectError::NotPlanned`].
-    pub fn choose(self, requests: &[ItemPath]) -> Result<RunPlan, SelectError> {
+    /// whatever order or repeats they are given in. The plan's load errors are all kept, since
+    /// its scope is unchanged. An id the plan does not hold (a folder, a request outside it or
+    /// one that no longer exists) fails with [`SelectError::NotPlanned`].
+    pub fn choose(mut self, requests: &[ItemPath]) -> Result<RunPlan, SelectError> {
         if let Some(item) = requests
             .iter()
             .find(|i| !self.requests.iter().any(|(p, _, _)| p == *i))
         {
             return Err(SelectError::NotPlanned { item: item.clone() });
         }
-        Ok(self.retain_items(requests))
+        self.requests.retain(|(path, _, _)| requests.contains(path));
+        Ok(self)
     }
 }
 
