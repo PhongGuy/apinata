@@ -170,11 +170,12 @@ hdiutil create -volname Apinata -srcfolder $out/Apinata.app -ov -format UDZO $ou
 
 test_cli_zip_holds_the_exe_and_files() {
   printf 'MZ' >"$WORK/apinata.exe"; printf 'mit\n' >"$WORK/LICENSE-MIT"; printf 'readme\n' >"$WORK/README.md"
-  cli_zip "$WORK/apinata.exe" 9.9.9 x86_64-pc-windows-msvc "$WORK/zout" "$WORK/LICENSE-MIT" "$WORK/README.md"
+  mkdir -p "$WORK/licenses"; printf 'chai\n' >"$WORK/licenses/chai-MIT.txt"
+  cli_zip "$WORK/apinata.exe" 9.9.9 x86_64-pc-windows-msvc "$WORK/zout" "$WORK/LICENSE-MIT" "$WORK/README.md" "$WORK/licenses"
   local z=$WORK/zout/apinata-9.9.9-x86_64-pc-windows-msvc.zip
   [[ -f $z ]] || { fail "zip not written"; return 0; }
   local listing; listing=$(unzip -Z1 "$z" | LC_ALL=C sort | tr '\n' ' ')
-  local want="apinata-9.9.9-x86_64-pc-windows-msvc/ apinata-9.9.9-x86_64-pc-windows-msvc/LICENSE-MIT apinata-9.9.9-x86_64-pc-windows-msvc/README.md apinata-9.9.9-x86_64-pc-windows-msvc/apinata.exe "
+  local want="apinata-9.9.9-x86_64-pc-windows-msvc/ apinata-9.9.9-x86_64-pc-windows-msvc/LICENSE-MIT apinata-9.9.9-x86_64-pc-windows-msvc/README.md apinata-9.9.9-x86_64-pc-windows-msvc/apinata.exe apinata-9.9.9-x86_64-pc-windows-msvc/licenses/ apinata-9.9.9-x86_64-pc-windows-msvc/licenses/chai-MIT.txt "
   [[ $listing == "$want" ]] || fail "zip listing: $listing"
 }
 

@@ -42,6 +42,20 @@ seed_tools() {
   done <"$manifest"
 }
 
+# Copy each FILE into DEST by name; a directory is copied as DEST/<name>/ holding its *.txt files.
+stage_files() {
+  local dest=$1 f t
+  shift
+  for f in "$@"; do
+    if [[ -d $f ]]; then
+      install -d -m 0755 "$dest/$(basename "$f")"
+      for t in "$f"/*.txt; do install -m 0644 "$t" "$dest/$(basename "$f")/$(basename "$t")"; done
+    else
+      install -m 0644 "$f" "$dest/$(basename "$f")"
+    fi
+  done
+}
+
 # Write OUT/apinata-VERSION-TARGET.tar.gz holding the binary and FILEs.
 # Staging with install and fixing tar's order, owner and mtime makes the
 # archive byte-reproducible for a given SOURCE_DATE_EPOCH.
@@ -54,9 +68,7 @@ cli_archive() {
   install -d -m 0755 "$stage/$name"
   install -m 0755 "$binary" "$stage/$name/apinata"
   local f
-  for f in "$@"; do
-    install -m 0644 "$f" "$stage/$name/$(basename "$f")"
-  done
+  stage_files "$stage/$name" "$@"
   mkdir -p "$out"
   "${TAR:-tar}" -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner \
     --mtime="@${SOURCE_DATE_EPOCH:-0}" -cf - "$name" | gzip -n -9 >"$out/$name.tar.gz"
@@ -219,7 +231,8 @@ verify_packages() {
     for f in usr/bin/apinata usr/bin/apinata-app usr/share/applications/apinata-app.desktop \
       usr/share/icons/hicolor/256x256/apps/apinata-app.png \
       usr/lib/apinata-app/Inter-OFL.txt usr/lib/apinata-app/JetBrainsMono-OFL.txt \
-      usr/lib/apinata-app/Lucide-ISC.txt; do
+      usr/lib/apinata-app/Lucide-ISC.txt usr/lib/apinata-app/THIRD-PARTY-CRATES.md \
+      usr/lib/apinata-app/THIRD-PARTY.md; do
       [[ -f $work/deb/data/$f ]] || die ".deb lacks $f"
     done
     desktop_entry_ok "$work/deb/data/usr/share/applications/apinata-app.desktop" apinata-app ||
@@ -238,12 +251,16 @@ verify_packages() {
     desktop_entry_ok "$work/squashfs-root/usr/share/applications/apinata-app.desktop" apinata-app ||
       die "AppImage desktop entry is incomplete"
     expect_version apinata "$work/squashfs-root/usr/bin/apinata"
-    [[ -f $work/squashfs-root/usr/lib/apinata-app/Lucide-ISC.txt ]] ||
-      die "AppImage lacks usr/lib/apinata-app/Lucide-ISC.txt"
+    for f in Lucide-ISC.txt THIRD-PARTY-CRATES.md THIRD-PARTY.md; do
+      [[ -f $work/squashfs-root/usr/lib/apinata-app/$f ]] || die "AppImage lacks usr/lib/apinata-app/$f"
+    done
 
     mkdir -p "$work/tar"
     tar -C "$work/tar" -xzf "$out/apinata-$version-$target.tar.gz" || die "cannot unpack the tarball"
     expect_version apinata "$work/tar/apinata-$version-$target/apinata"
+    for f in THIRD-PARTY-CRATES.md THIRD-PARTY.md licenses/Lucide-ISC.txt licenses/chai-MIT.txt; do
+      [[ -f $work/tar/apinata-$version-$target/$f ]] || die "tarball lacks $f"
+    done
   )
 }
 
@@ -326,7 +343,7 @@ main() {
   cargo build --release --locked -p apinata-cli -p apinata-app
   package_app "$out"
   cli_archive "$bin_dir/apinata" "$version" "$target" "$out" \
-    "$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$root/THIRD-PARTY-CRATES.md" "$root/README.md"
+    "$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$root/THIRD-PARTY-CRATES.md" "$root/THIRD-PARTY.md" "$root/licenses" "$root/README.md"
   cli_raw "$bin_dir/apinata" "$version" "$target" "$out"
   rm -rf -- "$out/.cargo-packager"
   verify_packages "$out" "$version" "$target"
