@@ -82,3 +82,47 @@ fn a_collection_lists_graphql_files_as_requests() {
     assert_eq!(c.load_errors().len(), 1);
     assert_eq!(c.tree().requests().len(), 2);
 }
+
+const LEGACY_AUTH: &str = "info:\n  name: g\n  type: graphql\ngraphql:\n  method: POST\n  url: u\nruntime:\n  auth:\n    type: bearer\n    token: t\n";
+
+#[test]
+fn a_legacy_runtime_auth_is_read_as_the_graphql_auth() {
+    let (_d, r) = load_text(LEGACY_AUTH);
+    let r = r.expect("loads");
+    assert!(matches!(r.auth(), AuthSpec::Bearer { token } if token == "t"));
+    assert!(!r.is_dirty(), "opening a legacy file is not an edit");
+}
+
+#[test]
+fn a_legacy_http_runtime_auth_is_read_the_same_way() {
+    let text = LEGACY_AUTH
+        .replace("type: graphql", "type: http")
+        .replace("graphql:", "http:");
+    let (_d, r) = load_text(&text);
+    assert!(matches!(r.expect("loads").auth(), AuthSpec::Bearer { token } if token == "t"));
+}
+
+#[test]
+fn saving_moves_a_legacy_runtime_auth_under_graphql() {
+    let (d, r) = load_text(LEGACY_AUTH);
+    let mut r = r.expect("loads");
+    r.set_url("v");
+    r.save().expect("saves");
+    let written = fs::read_to_string(d.path().join("r.yml")).unwrap();
+    assert!(!written.contains("runtime"), "{written}");
+    let reread = RequestFile::load(d.path().join("r.yml")).expect("loads");
+    assert!(matches!(reread.auth(), AuthSpec::Bearer { token } if token == "t"));
+    assert!(written.contains("graphql:\n  method: POST\n  url: v\n  auth:\n    type: bearer"));
+}
+
+#[test]
+fn a_current_auth_wins_over_a_legacy_one_and_the_legacy_key_is_dropped() {
+    let text = LEGACY_AUTH.replace("url: u\n", "url: u\n  auth: inherit\n");
+    let (d, r) = load_text(&text);
+    let mut r = r.expect("loads");
+    assert!(matches!(r.auth(), AuthSpec::Inherit));
+    r.set_url("v");
+    r.save().expect("saves");
+    let written = fs::read_to_string(d.path().join("r.yml")).unwrap();
+    assert!(!written.contains("runtime"), "{written}");
+}

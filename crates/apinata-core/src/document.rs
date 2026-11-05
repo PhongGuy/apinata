@@ -322,6 +322,31 @@ impl Document {
         remove_in(&mut self.root, keys)
     }
 
+    /// Move an early-preview `runtime.auth` under `root_key`, in the snapshot and the draft alike
+    /// so the document stays clean. An `auth` already under the root wins; the legacy key is
+    /// dropped either way, so the next save writes only the current place.
+    pub(crate) fn migrate_runtime_auth(&mut self, root_key: &str) {
+        for tree in [&mut self.root, &mut self.saved] {
+            let Some(Value::Mapping(runtime)) = tree.get_mut("runtime") else {
+                continue;
+            };
+            let Some(legacy) = runtime.shift_remove("auth") else {
+                continue;
+            };
+            if runtime.is_empty() {
+                tree.shift_remove("runtime");
+            }
+            let has_current = tree
+                .get(root_key)
+                .and_then(|r| r.get("auth"))
+                .is_some_and(|a| !a.is_null());
+            if !has_current && !legacy.is_null() {
+                let orders: &[&[&str]] = &[order::TOP, order::HTTP];
+                set_in(tree, &[root_key, "auth"], legacy, orders, 0);
+            }
+        }
+    }
+
     /// Remove the mapping at `keys` only when it is empty, so a drained section disappears.
     pub(crate) fn remove_if_empty(&mut self, keys: &[&str]) -> bool {
         let empty = self
