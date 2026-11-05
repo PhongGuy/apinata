@@ -659,6 +659,15 @@ pub fn plan_entries(rows: &[PlannedRow], scope: &str) -> Vec<PlanEntry> {
     out
 }
 
+// A box's accessible name; the kit's box has no mixed state to report, so the name carries it.
+fn partly_named(name: &str, mixed: bool) -> String {
+    if mixed {
+        format!("{name}, partly checked")
+    } else {
+        name.to_owned()
+    }
+}
+
 // The indices of the preview rows under folder `path`.
 fn folder_members(rows: &[PlannedRow], path: &str) -> Vec<usize> {
     let prefix = format!("{path}/");
@@ -994,20 +1003,17 @@ impl Render for RunnerView {
                 RunTarget::Items(_) => String::new(),
             };
             let entries = plan_entries(preview, &scope);
+            let folder_names = model.folder_names(cx);
             let rows = entries.iter().enumerate().map(|(k, entry)| match entry {
                 PlanEntry::Folder { path, depth } => {
                     let members = folder_members(preview, path);
                     let on = members.iter().filter(|&&ix| checked[ix]).count();
                     let items: Vec<ItemPath> =
                         members.iter().map(|&ix| preview[ix].path.clone()).collect();
-                    let name = path.rsplit('/').next().unwrap_or(path).to_owned();
+                    let name = (folder_names.get(path).cloned())
+                        .unwrap_or_else(|| path.rsplit('/').next().unwrap_or(path).to_owned());
                     let mixed = on > 0 && on < members.len();
-                    // The kit's box has no mixed state to report, so the name carries it.
-                    let a11y = if mixed {
-                        format!("{name}, partly checked")
-                    } else {
-                        name.clone()
-                    };
+                    let a11y = partly_named(&name, mixed);
                     let m = self.model.clone();
                     h_flex()
                         .id(("run-plan-folder", k))
@@ -1055,9 +1061,11 @@ impl Render for RunnerView {
             let all: Vec<ItemPath> = preview.iter().map(|row| row.path.clone()).collect();
             let m = self.model.clone();
             let select_all = (!preview.is_empty()).then(|| {
+                let mixed = on > 0 && on < preview.len();
                 ui::checkbox("run-select-all", on == preview.len())
-                    .mixed(on > 0 && on < preview.len())
+                    .mixed(mixed)
                     .label("Select all")
+                    .accessible_name(partly_named("Select all", mixed))
                     .on_click(move |on: &bool, _, cx| {
                         m.update(cx, |m, cx| m.set_checked(&all, *on, cx))
                     })

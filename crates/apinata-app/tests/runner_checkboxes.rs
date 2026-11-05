@@ -3,11 +3,13 @@
 
 use crate::support;
 
+use apinata_app::command::{Command, TreeOp};
 use apinata_app::runner_model::{RunState, RunnerModel};
 use apinata_app::tabs::TabId;
-use apinata_core::ItemPath;
+use apinata_core::{DropTarget, ItemPath};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, ElementId, Entity, TestAppContext};
+use std::collections::HashSet;
 use support::*;
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -217,4 +219,142 @@ fn the_boxes_are_reached_by_tab_and_toggled_by_space(cx: &mut TestAppContext) {
     press_key(cx, s.win, "space");
     cx.run_until_parked();
     model.read_with(cx, |m, cx| assert!(!m.is_checked(&ip("api/one.yml"), cx)));
+}
+
+#[gpui_kit::test]
+fn a_folder_heading_shows_the_folder_name_not_its_directory(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("api/folder.yml", &folder("Service")),
+        ("api/one.yml", &request("one", "http://127.0.0.1:9/one")),
+        ("api/two.yml", &request("two", "http://127.0.0.1:9/two")),
+        ("other.yml", &request("other", "http://127.0.0.1:9/other")),
+    ]);
+    let s = started(cx, &col);
+    open(cx, &s);
+    assert_eq!(state(cx, &s, FOLDER), (Some(true), Some("Service".into())));
+    click(cx, &s, ("run-plan-check", 0usize));
+    assert_eq!(
+        state(cx, &s, FOLDER).1.as_deref(),
+        Some("Service, partly checked")
+    );
+}
+
+#[gpui_kit::test]
+fn select_all_names_a_partial_choice(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = tree("http://127.0.0.1:9");
+    let s = started(cx, &col);
+    open(cx, &s);
+    assert_eq!(
+        state(cx, &s, "run-select-all").1.as_deref(),
+        Some("Select all")
+    );
+    click(cx, &s, ("run-plan-check", 2usize));
+    assert_eq!(
+        state(cx, &s, "run-select-all").1.as_deref(),
+        Some("Select all, partly checked")
+    );
+}
+
+fn unchecked(cx: &mut TestAppContext, s: &Started) -> HashSet<String> {
+    s.ws.read_with(cx, |w, _| {
+        (w.run_unchecked(&s.root).iter())
+            .map(|i| i.as_str().to_owned())
+            .collect()
+    })
+}
+
+fn uncheck(cx: &mut TestAppContext, s: &Started, items: &[&str]) {
+    let items: Vec<ItemPath> = items.iter().map(|i| ip(i)).collect();
+    s.ws.update(cx, |w, _| w.set_run_checked(&s.root, &items, false));
+}
+
+// Sends a tree command and waits until the snapshot holds request `then`.
+fn tree_op(cx: &mut TestAppContext, s: &Started, op: TreeOp, then: &str) {
+    s.ws.update(cx, |w, cx| w.send(&s.root, Command::Tree(op), cx))
+        .expect("sent");
+    let want = ip(then);
+    wait_real(cx, |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.snapshot(&s.root, cx)
+                .is_some_and(|snap| snap.content.requests.contains_key(&want))
+        })
+    });
+}
+
+fn set(items: &[&str]) -> HashSet<String> {
+    items.iter().map(|i| (*i).to_owned()).collect()
+}
+
+#[gpui_kit::test]
+fn an_unchecked_request_stays_unchecked_when_moved(cx: &mut TestAppContext) {
+    let col = tree("http://127.0.0.1:9");
+    let s = started(cx, &col);
+    uncheck(cx, &s, &["other.yml"]);
+    let op = TreeOp::Move {
+        item: ip("other.yml"),
+        to: DropTarget::Inside(ip("api")),
+    };
+    tree_op(cx, &s, op, "api/other.yml");
+    assert_eq!(unchecked(cx, &s), set(&["api/other.yml"]));
+}
+
+#[gpui_kit::test]
+fn a_moved_folder_carries_the_choice_of_the_requests_below(cx: &mut TestAppContext) {
+    let col = tree("http://127.0.0.1:9");
+    std::fs::create_dir(col.path().join("dest")).unwrap();
+    std::fs::write(col.path().join("dest/folder.yml"), folder("dest")).unwrap();
+    let s = started(cx, &col);
+    uncheck(cx, &s, &["api/one.yml"]);
+    let op = TreeOp::Move {
+        item: ip("api"),
+        to: DropTarget::Inside(ip("dest")),
+    };
+    tree_op(cx, &s, op, "dest/api/one.yml");
+    assert_eq!(unchecked(cx, &s), set(&["dest/api/one.yml"]));
+}
+
+#[gpui_kit::test]
+fn a_request_deleted_and_made_again_starts_checked(cx: &mut TestAppContext) {
+    let col = tree("http://127.0.0.1:9");
+    let s = started(cx, &col);
+    uncheck(cx, &s, &["other.yml"]);
+    s.ws.update(cx, |w, cx| {
+        w.send(
+            &s.root,
+            Command::Tree(TreeOp::Delete {
+                item: ip("other.yml"),
+            }),
+            cx,
+        )
+    })
+    .expect("sent");
+    wait_real(cx, |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.snapshot(&s.root, cx)
+                .is_some_and(|snap| !snap.content.requests.contains_key(&ip("other.yml")))
+        })
+    });
+    assert!(
+        unchecked(cx, &s).is_empty(),
+        "the deleted request is forgotten"
+    );
+    let create = TreeOp::CreateRequest {
+        parent: ItemPath::root(),
+        name: "other".into(),
+    };
+    tree_op(cx, &s, create, "other.yml");
+    assert!(s.ws.read_with(cx, |w, _| w.run_checked(&s.root, &ip("other.yml"))));
+}
+
+#[gpui_kit::test]
+fn closing_the_collection_forgets_its_choice(cx: &mut TestAppContext) {
+    let col = tree("http://127.0.0.1:9");
+    let s = started(cx, &col);
+    uncheck(cx, &s, &["other.yml"]);
+    s.ws.update(cx, |w, cx| w.close(&s.root, cx));
+    cx.run_until_parked();
+    assert!(unchecked(cx, &s).is_empty());
 }

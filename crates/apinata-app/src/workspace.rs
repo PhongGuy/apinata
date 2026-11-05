@@ -654,6 +654,15 @@ impl Workspace {
         self.run_unchecked.get(root).cloned().unwrap_or_default()
     }
 
+    // Moves the runner choice of `from`, or of everything under it when it is a folder, to `to`.
+    fn follow_run_move(&mut self, root: &Path, from: &ItemPath, to: &ItemPath) {
+        if let Some(set) = self.run_unchecked.get_mut(root) {
+            *set = (set.drain())
+                .map(|item| crate::stale::rebase(&item, from, to).unwrap_or(item))
+                .collect();
+        }
+    }
+
     /// Checks or unchecks `items` in the runners of the collection at `root`.
     pub fn set_run_checked(&mut self, root: &Path, items: &[ItemPath], on: bool) {
         let set = self.run_unchecked.entry(root.to_path_buf()).or_default();
@@ -890,6 +899,7 @@ impl Workspace {
         self.batched.retain(|(r, _)| *r != root);
         self.trashed_tabs.retain(|(r, _), _| *r != root);
         self.restores.retain(|(r, _), _| *r != root);
+        self.run_unchecked.remove(&root);
         let tabs = &self.tabs;
         self.kept_views.retain(|t, _| tabs.get(*t).is_some());
         self.forget_open(&root, cx);
@@ -2791,6 +2801,7 @@ impl Workspace {
                     {
                         draft_store::discard(&key, cx);
                     }
+                    self.follow_run_move(root, from, to);
                     self.tabs.follow_move(root, from, to)
                 }
                 NoticeKind::ExampleDeleted { item, index } => {
@@ -2871,6 +2882,10 @@ impl Workspace {
             }
         }
         let content = &snapshot.content;
+        // A request that left is forgotten, so one made again at its path starts checked.
+        if let Some(set) = self.run_unchecked.get_mut(root) {
+            set.retain(|item| content.requests.contains_key(item));
+        }
         let before: Vec<TabId> = self.tabs.entries().iter().map(|e| e.id).collect();
         let active = self.tabs.active().map(|e| e.id);
         let gone = self

@@ -512,6 +512,17 @@ impl RunnerModel {
         cx.notify();
     }
 
+    /// The collection's folder names as the sidebar shows them, by item path.
+    pub fn folder_names(&self, cx: &App) -> HashMap<String, String> {
+        let Some(snapshot) = self.workspace.read(cx).snapshot(&self.root, cx) else {
+            return HashMap::new();
+        };
+        (snapshot.content.rows.iter())
+            .filter(|row| row.kind == crate::snapshot::RowKind::Folder)
+            .map(|row| (row.path.as_str().to_owned(), row.name.clone()))
+            .collect()
+    }
+
     /// How many of the previewed requests are checked.
     pub fn checked_count(&self, cx: &App) -> usize {
         let unchecked = self.workspace.read(cx).run_unchecked(&self.root);

@@ -109,7 +109,7 @@ async fn a_chosen_request_keeps_its_folder_headers() {
     .await;
     let ran: Vec<&str> = report.results.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(ran, ["y", "a"]);
-    // The mocks' `.expect` counts fail on drop if x or b was sent, or y lost its folder header.
+    // The names above catch a stray send of x or b; verify() catches y without its folder header.
     server.verify().await;
 }
 
