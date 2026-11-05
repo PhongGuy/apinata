@@ -1413,6 +1413,7 @@ impl Shell {
             let name = self.recent_name(&root);
             let full = root.display().to_string();
             let path = path_display::fitted(&root, self.home.as_deref(), room, window);
+            let cut = path_display::is_shortened(&root, self.home.as_deref(), &path);
             v_flex()
                 .id(("recent", ix))
                 .test_support()
@@ -1430,11 +1431,14 @@ impl Shell {
                     div()
                         .id(("recent-path", ix))
                         .test_support()
-                        .aria_label(full)
+                        .aria_label(full.clone())
                         .aria_value(path.clone())
                         .truncate()
                         .text_size(style::TEXT_SMALL)
                         .text_color(muted)
+                        .when(cut, |d| {
+                            d.tooltip(ui::text_tooltip("recent-path-tooltip", full))
+                        })
                         .child(path),
                 )
         });
@@ -2932,7 +2936,7 @@ fn path_room(window: &Window) -> Pixels {
 }
 
 // A collection's path as muted secondary text, fitted by `path_display` so the folder name
-// and its parent stay visible; the full path is the label.
+// and its parent stay visible; the full path is the label, and the tooltip once shortened.
 fn root_path_text(
     id: (&'static str, usize),
     root: &Path,
@@ -2941,16 +2945,21 @@ fn root_path_text(
 ) -> impl IntoElement + use<> {
     let (home, room, window) = fit;
     let shown = path_display::fitted(root, home, room, window);
+    let full = root.display().to_string();
+    let cut = path_display::is_shortened(root, home, &shown);
     div()
         .id(id)
         .test_support()
-        .aria_label(root.display().to_string())
+        .aria_label(full.clone())
         .aria_value(shown.clone())
         .px(style::SPACE_2)
         .max_w(style::RECENT_LIST_WIDTH)
         .truncate()
         .text_size(style::TEXT_SMALL)
         .text_color(muted)
+        .when(cut, |d| {
+            d.tooltip(ui::text_tooltip(format!("{}-tooltip", id.0), full))
+        })
         .child(shown)
 }
 

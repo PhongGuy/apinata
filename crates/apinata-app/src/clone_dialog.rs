@@ -2,11 +2,14 @@
 //! The form rules live in `clone_form`, the git work in `clone_job`.
 
 use crate::ui::LockButton as _;
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::app::AppState;
@@ -14,7 +17,7 @@ use crate::clone_form::{self, Opened};
 use crate::clone_job::{CloneEvent, CloneJob};
 use crate::form_drafts;
 use crate::path_display;
-use crate::style::{self, CLONE_BROWSE_WIDTH, SHORT_FORM_LABEL_WIDTH, SPACE_1, SPACE_2};
+use crate::style::{SHORT_FORM_LABEL_WIDTH, SPACE_1, SPACE_2};
 use crate::ui;
 use crate::workspace::Workspace;
 use apinata_core::{CloneProgress, CloneRequest, GitOptions};
@@ -50,6 +53,8 @@ pub struct CloneView {
     shown_url: Option<String>,
     // Holds focus while a clone runs, so Escape still reaches the dialog after the form is gone.
     running_focus: FocusHandle,
+    // The folder cell's width and text size as last laid out; None before its first frame.
+    parent_room: Rc<Cell<Option<(Pixels, Pixels)>>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -106,6 +111,7 @@ pub fn open(workspace: &Entity<Workspace>, window: &mut Window, cx: &mut App) ->
             progress: None,
             shown_url: None,
             running_focus: cx.focus_handle().tab_stop(true),
+            parent_room: Rc::default(),
             _subscriptions: subscriptions,
         }
     });
@@ -461,18 +467,45 @@ impl CloneView {
     }
 
     fn form(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        // The field's room: the dialog body less the label, the Browse button and the gaps.
-        let room = style::resolve(style::DIALOG_BODY_WIDTH, window)
-            - style::resolve(SHORT_FORM_LABEL_WIDTH, window)
-            - style::resolve(SPACE_2, window) * 2.
-            - style::resolve(CLONE_BROWSE_WIDTH, window);
-        let (parent_text, parent_full) = match &self.parent {
-            Some(p) => (
-                path_display::fitted(p, self.home.as_deref(), room, window),
-                p.display().to_string(),
+        // The folder is fitted to the room its cell got from layout, at the size it renders;
+        // until the first layout it shows whole and clips.
+        let home = self.home.as_deref();
+        let (parent_text, parent_full, cut) = match &self.parent {
+            Some(p) => {
+                let shown = match self.parent_room.get() {
+                    Some((room, size)) => path_display::display(
+                        p,
+                        home,
+                        f32::from(room),
+                        &path_display::measurer(window, size),
+                    ),
+                    None => path_display::tilde(p, home),
+                };
+                let cut = path_display::is_shortened(p, home, &shown);
+                (shown, p.display().to_string(), cut)
+            }
+            None => (
+                "Choose a folder".to_owned(),
+                "Choose a folder".to_owned(),
+                false,
             ),
-            None => ("Choose a folder".to_owned(), "Choose a folder".to_owned()),
         };
+        // A changed room redraws the form once the frame is done.
+        let (cell, me) = (self.parent_room.clone(), cx.entity().downgrade());
+        let measure = canvas(
+            move |bounds, window, cx| {
+                let size = window.text_style().font_size.to_pixels(window.rem_size());
+                let now = Some((bounds.size.width, size));
+                if cell.replace(now) != now {
+                    window.defer(cx, move |_, cx| {
+                        me.update(cx, |_, cx| cx.notify()).ok();
+                    });
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
         let note = clone_form::is_unencrypted(&self.url(cx)).then(|| {
             div()
                 .id("clone-http-note")
@@ -514,12 +547,17 @@ impl CloneView {
                     div()
                         .id("clone-parent")
                         .test_support()
-                        .aria_label(parent_full)
+                        .aria_label(parent_full.clone())
                         .aria_value(parent_text.clone())
+                        .relative()
                         .flex_1()
                         .min_w_0()
                         .overflow_hidden()
                         .truncate()
+                        .when(cut, |d| {
+                            d.tooltip(ui::text_tooltip("clone-parent-tooltip", parent_full))
+                        })
+                        .child(measure)
                         .child(parent_text),
                 )
                 .child(

@@ -2133,7 +2133,7 @@ impl ResponsePane {
                 .text_color(cx.theme().muted_foreground)
                 .aria_label(peer.clone())
                 .child(peer)
-                .tooltip(text_tooltip("response-address-tooltip", tip))
+                .tooltip(ui::text_tooltip("response-address-tooltip", tip))
         });
         self.min.facts_shown(self.facts_key(result, cx));
         // The actions sit as one tight group, as the request toolbar's adjacent buttons do.
@@ -5233,7 +5233,7 @@ fn tipped(id: &'static str, label: SharedString, dropdown: impl IntoElement) -> 
     div()
         .id(SharedString::from(format!("{id}-tip")))
         .flex_none()
-        .tooltip(text_tooltip(format!("{id}-tooltip"), label))
+        .tooltip(ui::text_tooltip(format!("{id}-tooltip"), label))
         .child(dropdown)
         .into_any_element()
 }
@@ -5264,28 +5264,9 @@ fn export_har_button(response: &Response, cx: &App) -> AnyElement {
     div()
         .id("response-export-har-tip")
         .flex_none()
-        .tooltip(text_tooltip("response-export-har-tooltip", tip))
+        .tooltip(ui::text_tooltip("response-export-har-tooltip", tip))
         .child(button)
         .into_any_element()
-}
-
-// A tooltip of `text` whose element is findable by `id` and named by the text.
-fn text_tooltip(
-    id: impl Into<SharedString>,
-    text: impl Into<SharedString>,
-) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    let (id, text): (SharedString, SharedString) = (id.into(), text.into());
-    move |window, cx| {
-        let (id, text) = (id.clone(), text.clone());
-        Tooltip::element(move |_, _| {
-            div()
-                .id(id.clone())
-                .test_support()
-                .aria_label(text.clone())
-                .child(text.clone())
-        })
-        .build(window, cx)
-    }
 }
 
 // "Save response as example": enabled for a whole response under the size limit of a request that
