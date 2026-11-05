@@ -51,6 +51,8 @@ fn unstage_under_a_held_lock_is_busy_and_unstages_nothing() {
     );
 }
 
+// Windows words this differently; the core's unit tests pin both texts.
+#[cfg(not(windows))]
 #[test]
 fn busy_tells_the_user_where_the_lock_is() {
     let lock = Path::new("/r/.git/index.lock");

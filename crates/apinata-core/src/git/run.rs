@@ -251,7 +251,8 @@ pub(super) fn stop_group(child: &mut Child) -> bool {
         let _ = child.wait();
         return true;
     }
-    // Without the `kill` helper (or on Windows) git is killed at once, with no grace.
+    // Without the `kill` helper, or on Windows, git is killed at once. Git for Windows cleans up
+    // only on Ctrl+C, which cannot be sent to git alone, so a Windows stop has no graceful form.
     let _ = child.kill();
     let _ = child.wait();
     true

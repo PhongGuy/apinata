@@ -246,13 +246,41 @@ pub enum GitError {
     Io(#[from] io::Error),
 }
 
-/// The text of every busy error: which lock is held, and when it is safe to delete it.
+/// The text of every busy error on this platform.
 pub(crate) fn busy_message(lock: &Path) -> String {
-    format!(
-        "git is busy: another git process is using this repository ({} exists; delete it if no \
-         git process is running)",
-        lock.display()
+    busy_text(
+        lock,
+        if cfg!(windows) {
+            Os::Windows
+        } else {
+            Os::Other
+        },
     )
+}
+
+/// Which platform's advice a busy error gives.
+#[derive(Clone, Copy)]
+enum Os {
+    Windows,
+    Other,
+}
+
+/// Which lock is held, and when it is safe to delete it. On Windows a timed-out git can only be
+/// terminated outright, so the lock may be a leftover rather than another git's.
+fn busy_text(lock: &Path, os: Os) -> String {
+    let lock = lock.display();
+    match os {
+        Os::Other => format!(
+            "git is busy: another git process is using this repository ({lock} exists; delete \
+             it if no git process is running)"
+        ),
+        Os::Windows => format!(
+            "git is busy: {lock} exists. Another git process may be using this repository, or a \
+             git stopped at its time limit left it behind, because Windows gives a stopped git \
+             no chance to clean up. Once no git.exe is running (check Task Manager), delete \
+             {lock} and try again."
+        ),
+    }
 }
 
 /// How git is run: extra child environment, the time limit of each call, and whether a status
@@ -477,4 +505,30 @@ fn show_prefix(root: &Path, options: &GitOptions) -> Result<String, GitError> {
 /// counts; a refused unsafe repository stays an error.
 fn is_not_a_repo(error: &GitError) -> bool {
     matches!(error, GitError::Failed { stderr, .. } if stderr.contains("not a git repository"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Os, busy_text};
+    use std::path::Path;
+
+    #[test]
+    fn busy_text_elsewhere_names_the_lock_and_when_to_delete_it() {
+        assert_eq!(
+            busy_text(Path::new("/r/.git/index.lock"), Os::Other),
+            "git is busy: another git process is using this repository \
+             (/r/.git/index.lock exists; delete it if no git process is running)"
+        );
+    }
+
+    #[test]
+    fn busy_text_on_windows_says_a_stopped_git_leaves_the_lock_and_how_to_clear_it() {
+        assert_eq!(
+            busy_text(Path::new("C:/r/.git/index.lock"), Os::Windows),
+            "git is busy: C:/r/.git/index.lock exists. Another git process may be using this \
+              repository, or a git stopped at its time limit left it behind, because Windows \
+              gives a stopped git no chance to clean up. Once no git.exe is running (check Task \
+              Manager), delete C:/r/.git/index.lock and try again."
+        );
+    }
 }
