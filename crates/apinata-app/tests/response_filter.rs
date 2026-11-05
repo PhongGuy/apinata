@@ -537,3 +537,91 @@ fn enter_on_clear_closes_the_filter(cx: &mut TestAppContext) {
 fn space_on_clear_closes_the_filter(cx: &mut TestAppContext) {
     clear_by(cx, "space");
 }
+
+mod parsed_once {
+    use super::*;
+    use gpui_kit::Focusable as _;
+
+    fn parses(cx: &mut TestAppContext, view: &Entity<BodyView>) -> usize {
+        view.read_with(cx, |v, _| v.filter_parses())
+    }
+
+    fn show(cx: &mut TestAppContext, win: AnyWindowHandle, view: &Entity<BodyView>, s: &Sent) {
+        let r = s.result.clone();
+        cx.update_window(win, |_, w, cx| {
+            view.update(cx, |v, cx| v.show(Some(r), w, cx))
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+
+    fn json(body: &str) -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_raw(body.to_owned(), "application/json")
+    }
+
+    #[gpui_kit::test]
+    fn keystrokes_reuse_one_parse_and_a_new_response_parses_again(cx: &mut TestAppContext) {
+        let first = send_once(cx, json(JSON), "");
+        support::init(cx);
+        let (win, view) = cx
+            .update(|cx| {
+                gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                    cx.new(|cx| BodyView::new(w, cx))
+                })
+            })
+            .unwrap();
+        show(cx, win, &view, &first);
+        assert_eq!(parses(cx, &view), 0, "no filter, no parse");
+        for e in ["$.data", "$.data[0]", "$.data[0].id", "$.data[0", "$..name"] {
+            filter(cx, win, &view, e);
+        }
+        assert_eq!(text(cx, &view), "[\n  \"a\",\n  \"b\"\n]");
+        assert_eq!(parses(cx, &view), 1);
+        show(cx, win, &view, &first);
+        assert_eq!(parses(cx, &view), 1, "the same response keeps its parse");
+
+        let other = send_once(cx, json(r#"{"data":[{"name":"z"}]}"#), "");
+        show(cx, win, &view, &other);
+        assert_eq!(text(cx, &view), "[\n  \"z\"\n]");
+        assert_eq!(parses(cx, &view), 2);
+        filter(cx, win, &view, "$.data[0].name");
+        assert_eq!(parses(cx, &view), 2);
+    }
+
+    #[gpui_kit::test]
+    fn an_edit_to_the_body_drops_the_parse(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, JSON.into(), "application/json");
+        filter(cx, win, &view, "$.data[0].id");
+        assert_eq!(parses(cx, &view), 1);
+        cx.update_window(win, |_, w, cx| {
+            view.update(cx, |v, cx| v.set_editing(true, w, cx))
+        })
+        .unwrap();
+        let ed = view.read_with(cx, |v, _| v.editor().clone());
+        cx.update_window(win, |_, w, cx| {
+            ed.read(cx).focus_handle(cx).focus(w, cx);
+            w.input("x", cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        filter(cx, win, &view, "$.data[1].id");
+        assert_eq!(parses(cx, &view), 2);
+    }
+
+    #[gpui_kit::test]
+    fn a_newer_filter_cancels_the_one_still_running(cx: &mut TestAppContext) {
+        let (win, view) = shown_with(cx, JSON.into(), "application/json");
+        // Both start before either job runs, so the first is cancelled before it writes.
+        cx.update_window(win, |_, w, cx| {
+            view.update(cx, |v, cx| {
+                v.set_filter("$..id", w, cx);
+                v.set_filter("$..name", w, cx);
+            })
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(text(cx, &view), "[\n  \"a\",\n  \"b\"\n]");
+        assert_eq!(view.read_with(cx, |v, _| v.cancelled_jobs()), 1);
+        assert_eq!(parses(cx, &view), 1);
+    }
+}

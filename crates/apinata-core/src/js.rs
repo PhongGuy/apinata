@@ -178,13 +178,16 @@ impl serde_json::ser::Formatter for PrettyJsFormatter {
 
 /// JavaScript `JSON.stringify(value, null, 2)`.
 pub(crate) fn stringify_pretty(value: &Value) -> String {
+    write_pretty(value).unwrap_or_default()
+}
+
+/// [`stringify_pretty`] for any serializable value, passing on the value's own write error.
+pub(crate) fn write_pretty<T: serde::Serialize + ?Sized>(value: &T) -> serde_json::Result<String> {
     let mut out = Vec::new();
     let formatter = PrettyJsFormatter(serde_json::ser::PrettyFormatter::new());
     let mut serializer = serde_json::Serializer::with_formatter(&mut out, formatter);
-    if serde::Serialize::serialize(value, &mut serializer).is_err() {
-        return String::new();
-    }
-    String::from_utf8(out).unwrap_or_default()
+    value.serialize(&mut serializer)?;
+    Ok(String::from_utf8(out).unwrap_or_default())
 }
 
 /// Renders a value the way Bruno's interpolation turns it into text.

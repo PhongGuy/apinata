@@ -204,7 +204,7 @@ pub use item_ops::{
 pub use item_path::ItemPath;
 pub use iteration_data::{DataFileError, IterationData, iteration_total};
 pub use js::script_code;
-pub use json_filter::{FilterError, filter_json};
+pub use json_filter::{FilterError, JsonFilter, ParsedJson, filter_json};
 pub use json_node::{JsonNode, json_node_at};
 pub use json_syntax::{JsonSyntaxError, json_syntax_error};
 pub use jwt::{DecodedJwt, Expiry, JwtError, decode_jwt};

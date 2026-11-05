@@ -7,11 +7,11 @@ use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use apinata_core::{Assertion, RequestResult};
+use apinata_core::{Assertion, FilterError, JsonFilter, ParsedJson, RequestResult};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::input::{DiagnosticColors, InputEditorStyle};
 use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
@@ -29,7 +29,7 @@ use crate::app::AppState;
 use crate::body_find::{
     CloseFindInResponse, FIND_HIT_CAP, FindInResponse, FindNextInResponse, FindOptions,
     FindPreviousInResponse, Finder, KEY_CONTEXT, RowDown, RowFirst, RowLast, RowPageDown,
-    RowPageUp, RowUp, ToggleFindRegex, ToggleFindWholeWord, find_in_chunked_with, find_selection,
+    RowPageUp, RowUp, ToggleFindRegex, ToggleFindWholeWord, find_in_chunked_until, find_selection,
     match_colours,
 };
 use crate::body_node::{
@@ -171,6 +171,15 @@ pub fn mono_advance(size: Pixels, window: &Window, cx: &App) -> Pixels {
         .map_or(size * 0.6, |a| a.width)
 }
 
+// The shown JSON body parsed for the filter, filled by the first job that needs it; later jobs
+// for the same response and reveal share it, so a keystroke never parses the body again.
+type ParsedSlot = Arc<OnceLock<Result<ParsedJson, FilterError>>>;
+
+struct JsonCache {
+    reveal: bool,
+    slot: ParsedSlot,
+}
+
 /// Shows one result's response body.
 pub struct BodyView {
     editor: Entity<EditorState>,
@@ -243,6 +252,8 @@ pub struct BodyView {
     row_current: Option<usize>,
     find_generation: u64,
     find_task: Option<Task<()>>,
+    // Raised when a newer scan replaces the running one, which then stops at its next line.
+    find_cancel: Arc<AtomicBool>,
     // The query the last run searched for.
     find_ran: SharedString,
     filter_input: Entity<InputState>,
@@ -266,6 +277,13 @@ pub struct BodyView {
     download: Option<DownloadHook>,
     generation: u64,
     task: Option<Task<()>>,
+    // Raised when a newer prepare replaces the running one, so its filter stops early.
+    job_cancel: Arc<AtomicBool>,
+    // At most one parsed copy of the body; a new response or an edit drops it.
+    json_cache: Option<JsonCache>,
+    // For tests: bodies parsed for the filter, and jobs that stopped on a cancel.
+    filter_parses: Arc<AtomicUsize>,
+    cancelled_jobs: Arc<AtomicUsize>,
     // A typed filter waiting for the typing to pause; replacing it cancels the wait.
     filter_settle: Option<Task<()>>,
     // A typed rows-mode find query waiting for the typing to pause, likewise.
@@ -411,10 +429,13 @@ impl BodyView {
         });
         // An edit moves text under the editor-mode hits, so they are found again in place.
         let editor_edits = cx.subscribe(&editor, |this, _, event: &InputEvent, cx| {
+            // An edited body no longer matches the parse kept for the filter.
+            if matches!(event, InputEvent::Change) {
+                this.json_cache = None;
+            }
             if matches!(event, InputEvent::Change) && this.own_editor_find() && this.find_open {
                 // A scan already running read the old text, so its offsets must not land.
-                this.find_generation += 1;
-                this.find_task = None;
+                this.void_find_scan();
                 let timer = cx.background_executor().timer(SETTLE);
                 this.edit_settle = Some(cx.spawn(async move |this, cx| {
                     timer.await;
@@ -472,6 +493,7 @@ impl BodyView {
             row_current: None,
             find_generation: 0,
             find_task: None,
+            find_cancel: Arc::default(),
             find_ran: SharedString::default(),
             filter_input,
             filter_open: false,
@@ -487,6 +509,10 @@ impl BodyView {
             download: None,
             generation: 0,
             task: None,
+            job_cancel: Arc::default(),
+            json_cache: None,
+            filter_parses: Arc::default(),
+            cancelled_jobs: Arc::default(),
             filter_settle: None,
             find_settle: None,
             _settings: settings,
@@ -729,6 +755,7 @@ impl BodyView {
             self.reveal = false;
             self.editing = false;
             self.mask = Arc::default();
+            self.json_cache = None;
         }
         self.result = result;
         self.kind = None;
@@ -1146,8 +1173,7 @@ impl BodyView {
 
     // Drops the row matches and voids any scan still running.
     fn clear_row_matches(&mut self) {
-        self.find_generation += 1;
-        self.find_task = None;
+        self.void_find_scan();
         self.row_matches.clear();
         self.row_tails.clear();
         self.find_anchor = None;
@@ -1209,6 +1235,37 @@ impl BodyView {
         self.editor_scans
     }
 
+    /// How many times a body has been parsed for the JSON filter.
+    pub fn filter_parses(&self) -> usize {
+        self.filter_parses.load(Ordering::Relaxed)
+    }
+
+    /// How many filter or find jobs stopped early because a newer one replaced them.
+    pub fn cancelled_jobs(&self) -> usize {
+        self.cancelled_jobs.load(Ordering::Relaxed)
+    }
+
+    // The running find scan's result never lands, and its worker stops at the next line.
+    fn void_find_scan(&mut self) {
+        self.find_generation += 1;
+        self.find_task = None;
+        self.find_cancel.store(true, Ordering::Relaxed);
+        self.find_cancel = Arc::default();
+    }
+
+    // The question a job asks to learn it was replaced; a yes is counted for tests.
+    fn stop_signal(&self, flag: &Arc<AtomicBool>) -> impl Fn() -> bool + Send + 'static {
+        let (flag, counted) = (flag.clone(), self.cancelled_jobs.clone());
+        let seen = AtomicBool::new(false);
+        move || {
+            let stop = flag.load(Ordering::Relaxed);
+            if stop && !seen.swap(true, Ordering::Relaxed) {
+                counted.fetch_add(1, Ordering::Relaxed);
+            }
+            stop
+        }
+    }
+
     fn find_options(&self) -> FindOptions {
         FindOptions {
             case_sensitive: self.find_case_sensitive,
@@ -1230,8 +1287,7 @@ impl BodyView {
         let query = self.find_input.read(cx).value();
         let found = Finder::new(&query, self.find_options());
         self.find_invalid = found.is_err();
-        self.find_generation += 1;
-        self.find_task = None;
+        self.void_find_scan();
         let Some(finder) = found.ok().flatten() else {
             self.clear_editor_hits(cx);
             cx.notify();
@@ -1244,10 +1300,13 @@ impl BodyView {
         }
         let generation = self.find_generation;
         let text = self.editor.read(cx).value();
-        let job =
-            cx.background_spawn(async move { finder.find_in_text_capped(&text, FIND_HIT_CAP) });
+        let stop = self.stop_signal(&self.find_cancel);
+        let job = cx
+            .background_spawn(async move { finder.find_in_text_until(&text, FIND_HIT_CAP, stop) });
         self.find_task = Some(cx.spawn(async move |this, cx| {
-            let (hits, more) = job.await;
+            let Some((hits, more)) = job.await else {
+                return;
+            };
             let _ = this.update(cx, |this, cx| {
                 if this.find_generation == generation {
                     this.land_editor_hits(hits, more, place, kept, cx);
@@ -1392,8 +1451,7 @@ impl BodyView {
         self.row_current = None;
         self.editor_hit = None;
         self.find_anchor = None;
-        self.find_generation += 1;
-        self.find_task = None;
+        self.void_find_scan();
         self.find_invalid = false;
         let timer = cx.background_executor().timer(SETTLE);
         self.find_settle = Some(cx.spawn(async move |this, cx| {
@@ -1413,12 +1471,16 @@ impl BodyView {
             return;
         };
         self.row_current = None;
-        self.find_generation += 1;
+        self.void_find_scan();
         let generation = self.find_generation;
         let chunked = self.chunked.clone();
-        let job = cx.background_spawn(async move { find_in_chunked_with(&chunked, &finder) });
+        let stop = self.stop_signal(&self.find_cancel);
+        let job =
+            cx.background_spawn(async move { find_in_chunked_until(&chunked, &finder, stop) });
         self.find_task = Some(cx.spawn(async move |this, cx| {
-            let found = job.await;
+            let Some(found) = job.await else {
+                return;
+            };
             let _ = this.update(cx, |this, cx| {
                 if this.find_generation == generation {
                     // After a re-cut the scan resumes at the match nearest the old one and
@@ -2217,7 +2279,23 @@ impl BodyView {
         .detach();
     }
 
-    // A long body costs a parse per filter run, so typing on one waits for a pause and
+    // The slot the shown body's parse lives in: kept while the response and reveal stay, so
+    // every keystroke's job shares one parse.
+    fn parsed_slot(&mut self) -> ParsedSlot {
+        let reveal = self.reveal;
+        let cache = match self.json_cache.take() {
+            Some(cache) if cache.reveal == reveal => cache,
+            _ => JsonCache {
+                reveal,
+                slot: ParsedSlot::default(),
+            },
+        };
+        let slot = cache.slot.clone();
+        self.json_cache = Some(cache);
+        slot
+    }
+
+    // A long body costs a filter run per keystroke, so typing on one waits for a pause and
     // each keystroke restarts the wait; a short body refilters on every keystroke.
     fn filter_typed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let len = self
@@ -2244,6 +2322,8 @@ impl BodyView {
         self.filter_settle = None;
         self.generation += 1;
         let generation = self.generation;
+        self.job_cancel.store(true, Ordering::Relaxed);
+        self.job_cancel = Arc::default();
         let Some(result) = self.result.clone() else {
             self.task = None;
             self.shown = Shown::Empty;
@@ -2258,7 +2338,9 @@ impl BodyView {
         let basis = self.wrap_basis(window, cx);
         let pretty = self.mode == BodyMode::Pretty;
         let binary_mode = self.binary_mode;
-        let filter = self.filter_expression(cx);
+        let filter = (self.filter_expression(cx)).map(|expr| (expr, self.parsed_slot()));
+        let stop = self.stop_signal(&self.job_cancel);
+        let parses = self.filter_parses.clone();
         let (mask, reveal) = (self.mask.clone(), self.reveal);
         // An invalid filter keeps the shown text only if it already belongs to this result.
         let keep = self.kind.is_some();
@@ -2268,13 +2350,13 @@ impl BodyView {
             // formatted here too, never on the main thread. A filter that ran rides along
             // with whether it matched nothing: an empty JSON array or empty XPath output.
             let Some(r) = &result.response else {
-                return (
+                return Some((
                     BodyKind::Empty,
                     Some(Prepared::Empty),
                     None,
                     Vec::new(),
                     None,
-                );
+                ));
             };
             let kind = body_kind(r.headers(), r.body());
             // Only a text body is redacted; the copy is made here, off the main thread, and
@@ -2288,25 +2370,44 @@ impl BodyView {
             // JSON runs JSONPath and XML runs XPath; the matches read the same in Pretty and
             // Raw. XPath matches show as plain text so a text match holding `<` is never
             // re-parsed as markup.
+            // A replaced filter job stops here, or at the next value the JSON filter writes.
+            if filter.is_some() && stop() {
+                return None;
+            }
             let filtered = match (kind, filter) {
-                (BodyKind::Json, Some(expr)) => apinata_core::filter_json(text, &expr).map(|out| {
-                    let prepared = prepare(kind, &out, out.len() as u64, true);
-                    (prepared, (expr, out == "[]"))
-                }),
-                (BodyKind::Xml, Some(expr)) => apinata_core::filter_xml(text, &expr).map(|out| {
-                    let prepared = prepare(BodyKind::Text, &out, out.len() as u64, true);
-                    (prepared, (expr, out.is_empty()))
-                }),
+                (BodyKind::Json, Some((expr, slot))) => {
+                    // The expression is checked first, so its error wins over the body's.
+                    let out = JsonFilter::compile(&expr).and_then(|compiled| {
+                        let parsed = slot.get_or_init(|| {
+                            parses.fetch_add(1, Ordering::Relaxed);
+                            ParsedJson::parse(text)
+                        });
+                        compiled.run(parsed.as_ref().map_err(Clone::clone)?, &stop)
+                    });
+                    if out == Err(FilterError::Cancelled) {
+                        return None;
+                    }
+                    out.map(|out| {
+                        let prepared = prepare(kind, &out, out.len() as u64, true);
+                        (prepared, (expr, out == "[]"))
+                    })
+                }
+                (BodyKind::Xml, Some((expr, _))) => {
+                    apinata_core::filter_xml(text, &expr).map(|out| {
+                        let prepared = prepare(BodyKind::Text, &out, out.len() as u64, true);
+                        (prepared, (expr, out.is_empty()))
+                    })
+                }
                 _ => {
                     let prepared = whole();
                     let binary = match prepared {
                         Prepared::Binary { .. } => binary_rows(r.body(), binary_mode),
                         _ => Vec::new(),
                     };
-                    return (kind, Some(prepared), None, binary, None);
+                    return Some((kind, Some(prepared), None, binary, None));
                 }
             };
-            match filtered {
+            Some(match filtered {
                 Ok((prepared, applied)) => (kind, Some(prepared), None, Vec::new(), Some(applied)),
                 Err(e) => (
                     kind,
@@ -2315,10 +2416,13 @@ impl BodyView {
                     Vec::new(),
                     None,
                 ),
-            }
+            })
         });
         self.task = Some(cx.spawn_in(window, async move |this, cx| {
-            let (kind, mut prepared, error, binary, applied) = job.await;
+            // A replaced job lands nothing; the newer one already bumped the generation.
+            let Some((kind, mut prepared, error, binary, applied)) = job.await else {
+                return;
+            };
             // A long body is cut for the pane it lands in, so it never shows at the fixed width
             // first.
             let mut width = ROW_WIDTH;

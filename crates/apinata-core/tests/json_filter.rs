@@ -113,3 +113,84 @@ fn a_leading_byte_order_mark_is_ignored() {
         "[\n  1\n]"
     );
 }
+
+mod parsed_once {
+    use std::cell::Cell;
+    use std::time::Instant;
+
+    use apinata_core::{FilterError, JsonFilter, ParsedJson, filter_json};
+
+    use super::BODY;
+
+    fn never() -> bool {
+        false
+    }
+
+    #[test]
+    fn a_parsed_body_filters_the_same_as_the_one_shot_call() {
+        let parsed = ParsedJson::parse(BODY).unwrap();
+        for expression in ["$.data[0]", "$..name", "data[*].id", "$.nope", "$.n"] {
+            let compiled = JsonFilter::compile(expression).unwrap();
+            assert_eq!(
+                compiled.run(&parsed, never),
+                filter_json(BODY, expression),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn compile_and_parse_report_the_same_errors_as_the_one_shot_call() {
+        let expression = JsonFilter::compile("$.data[1").unwrap_err();
+        assert_eq!(Err(expression), filter_json(BODY, "$.data[1"));
+        let body = ParsedJson::parse("{nope").unwrap_err();
+        assert_eq!(Err(body), filter_json("{nope", "$.a"));
+        assert!(ParsedJson::parse("\u{feff}[1]").is_ok());
+    }
+
+    #[test]
+    fn a_cancelled_run_stops_at_the_next_element() {
+        let body = format!("[{}]", vec!["{\"a\":[1,2,3]}"; 10_000].join(","));
+        let parsed = ParsedJson::parse(&body).unwrap();
+        let compiled = JsonFilter::compile("$").unwrap();
+        // The run asks before each element; it is told to stop on the sixth question.
+        let asked = Cell::new(0);
+        let cancelled = || {
+            asked.set(asked.get() + 1);
+            asked.get() > 5
+        };
+        assert_eq!(
+            compiled.run(&parsed, cancelled),
+            Err(FilterError::Cancelled)
+        );
+        assert_eq!(asked.get(), 6);
+    }
+
+    // A rough timing of keystrokes over a large body, with and without the parsed copy kept:
+    // cargo test --release -p apinata-core --test integration parsed_once -- --ignored --nocapture
+    #[test]
+    #[ignore = "a timing, not a check"]
+    fn time_filters_with_and_without_the_parsed_copy() {
+        let row = r#"{"id":1,"name":"widget","tags":["a","b","c"],"price":12.5,"nested":{"x":true,"y":null}}"#;
+        let body = format!("[{}]", vec![row; 110_000].join(","));
+        let keystrokes = ["$[0", "$[0]", "$[0].", "$[0].n", "$[0].na", "$[0].name"];
+        let start = Instant::now();
+        for e in keystrokes {
+            let _ = std::hint::black_box(filter_json(&body, e));
+        }
+        let uncached = start.elapsed();
+        let start = Instant::now();
+        let parsed = ParsedJson::parse(&body).unwrap();
+        for e in keystrokes {
+            if let Ok(compiled) = JsonFilter::compile(e) {
+                let _ = std::hint::black_box(compiled.run(&parsed, never));
+            }
+        }
+        let cached = start.elapsed();
+        println!(
+            "{} MB, {} keystrokes: reparse each {uncached:?}, parse once {cached:?}",
+            body.len() / 1_000_000,
+            keystrokes.len()
+        );
+    }
+}

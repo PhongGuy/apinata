@@ -231,6 +231,7 @@ mod example_tab;
 mod export_collection;
 mod export_environment;
 mod files;
+mod find_cancel;
 mod find_options;
 mod focus_commands;
 mod focus_modality;
