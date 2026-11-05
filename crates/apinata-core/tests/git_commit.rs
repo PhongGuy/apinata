@@ -738,6 +738,14 @@ mod pipes {
         let (repo, col) = committed(&sb);
         write(&col, "a.yml", "staged\n");
         stage(&col, &["a.yml"], &sb.options()).expect("stage");
+        // Git opens attributes only to read a file's content, which it does when the stat no
+        // longer matches the index; without this a slow stage leaves nothing to read.
+        let moved = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+        fs::File::options()
+            .write(true)
+            .open(col.join("a.yml"))
+            .and_then(|f| f.set_modified(moved))
+            .expect("move the mtime");
         let pipe = repo.join(".gitattributes");
         pipe_over(&pipe);
         let options = sb.options().timeout(Duration::from_secs(2));
