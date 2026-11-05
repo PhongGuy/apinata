@@ -240,11 +240,19 @@ fn go(args: &EnvArgs) -> anyhow::Result<()> {
         EnvAction::Orphans {
             name,
             all: _,
+            old_roots,
             no_file,
             old_root,
             json,
             global,
         } => {
+            if *old_roots {
+                anyhow::ensure!(
+                    args.collection.is_none(),
+                    "--old-roots looks across every collection, so it cannot be used with --collection"
+                );
+                return gone_roots(*json, &*platform_store());
+            }
             // The list already covers secrets with no file, so the flag would promise a filter.
             anyhow::ensure!(
                 name.is_some() || !*no_file || old_root.is_some(),
@@ -332,6 +340,45 @@ fn orphans_everywhere(envs: &Envs, json: bool, store: &dyn SecretStore) -> anyho
         "some environments could not be read"
     );
     Ok(())
+}
+
+/// `env orphans --old-roots` as JSON.
+#[derive(Serialize)]
+struct RootsDoc {
+    roots: Vec<String>,
+}
+
+/// Print every gone root that still holds secrets. A store that cannot list them all fails the
+/// command rather than print nothing, which would read as none.
+fn gone_roots(json: bool, store: &dyn SecretStore) -> anyhow::Result<()> {
+    let roots = MovedRoot::gone_roots(store)
+        .map_err(|e| anyhow::anyhow!("cannot list the collections in the secret store: {e}"))?;
+    if json {
+        let roots = roots.iter().map(|r| r.to_string_lossy().into_owned());
+        return print_json(&RootsDoc {
+            roots: roots.collect(),
+        });
+    }
+    for line in root_lines(&roots) {
+        outln!("{line}");
+    }
+    Ok(())
+}
+
+/// Each root, a tab, and the command that lists its secrets, the path single-quoted for a POSIX
+/// shell; a root with control characters shows escaped, so its command names no real path.
+/// A root is untrusted text from the store, so both go through [`shown`].
+fn root_lines(roots: &[PathBuf]) -> Vec<String> {
+    let line = |root: &PathBuf| {
+        let text = root.to_string_lossy();
+        let quoted = format!("'{}'", text.replace('\'', r"'\''"));
+        format!(
+            "{}\tapinata env orphans --all --old-root {}",
+            shown(&text),
+            shown(&quoted)
+        )
+    };
+    roots.iter().map(line).collect()
 }
 
 /// The report as printed: tab-separated columns of escaped names, so a stored tab cannot add one.
@@ -975,6 +1022,39 @@ mod tests {
     }
 
     #[test]
+    fn gone_roots_print_with_the_command_that_cleans_each_up() {
+        let here = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new();
+        let live = here.path().join("live");
+        std::fs::create_dir(&live).unwrap();
+        let gone = here.path().join("old one");
+        for root in [&live, &gone] {
+            store
+                .set(&apinata_core::SecretKey::new(root, "dev", "t"), "v")
+                .unwrap();
+        }
+        let roots = MovedRoot::gone_roots(&store).unwrap();
+        let shown_root = gone.display().to_string();
+        assert_eq!(
+            root_lines(&roots),
+            [format!(
+                "{shown_root}\tapinata env orphans --all --old-root '{shown_root}'"
+            )]
+        );
+    }
+
+    #[test]
+    fn a_root_with_a_quote_or_a_control_character_stays_one_safe_line() {
+        let roots = [PathBuf::from("/old/it's\u{1b}[2J")];
+        let line = &root_lines(&roots)[0];
+        assert!(!line.contains('\u{1b}'), "{line}");
+        assert!(
+            line.ends_with(r"--old-root '/old/it'\''s\u{1b}[2J'"),
+            "{line}"
+        );
+    }
+
+    #[test]
     fn a_failed_delete_fails_the_command() {
         struct NoDelete(MemoryStore);
         impl SecretStore for NoDelete {
@@ -1001,6 +1081,9 @@ mod tests {
                 p: &std::path::Path,
             ) -> Result<Vec<apinata_core::SecretKey>, apinata_core::SecretError> {
                 self.0.list(p)
+            }
+            fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, apinata_core::SecretError> {
+                self.0.list_roots()
             }
         }
         let (dir, _c, store) = orphan_setup();
@@ -1049,6 +1132,9 @@ mod tests {
             p: &std::path::Path,
         ) -> Result<Vec<apinata_core::SecretKey>, apinata_core::SecretError> {
             self.inner.list(p)
+        }
+        fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, apinata_core::SecretError> {
+            self.inner.list_roots()
         }
     }
 

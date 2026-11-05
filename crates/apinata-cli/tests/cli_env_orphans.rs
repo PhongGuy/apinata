@@ -289,3 +289,41 @@ fn the_help_says_how_to_give_an_old_root() {
         "{out}"
     );
 }
+
+#[test]
+fn old_roots_lists_without_a_collection() {
+    let (dir, profile) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (code, out, err) = run(
+        dir.path(),
+        profile.path(),
+        &["env", "orphans", "--old-roots"],
+    );
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(out, "");
+    let (code, out, err) = run(
+        dir.path(),
+        profile.path(),
+        &["env", "orphans", "--old-roots", "--json"],
+    );
+    assert_eq!(code, 0, "{err}");
+    let doc: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(doc, serde_json::json!({"roots": []}));
+}
+
+#[test]
+fn old_roots_refuses_every_other_selector() {
+    let (dir, profile) = (tree(), tempfile::tempdir().unwrap());
+    let old = gone(dir.path());
+    let here = dir.path().to_str().unwrap().to_owned();
+    for args in [
+        &["env", "orphans", "--old-roots", "dev"][..],
+        &["env", "orphans", "--old-roots", "--all"][..],
+        &["env", "orphans", "--old-roots", "--no-file"][..],
+        &["env", "orphans", "--old-roots", "--global"][..],
+        &["env", "orphans", "--old-roots", "--old-root", &old][..],
+        &["env", "--collection", &here, "orphans", "--old-roots"][..],
+    ] {
+        let (code, _, _) = run(dir.path(), profile.path(), args);
+        assert_ne!(code, 0, "{args:?}");
+    }
+}

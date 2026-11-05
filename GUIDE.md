@@ -208,6 +208,11 @@ which the path must be given exactly as it was, resolved (`//`, a `.` and traili
 slashes are tidied, nothing else). Both ask first, and a removal under either warns that
 the directory may only be elsewhere, for example on a drive that is not mounted. Neither
 ever touches an environment that has a file, even one that failed to parse.
+`apinata env orphans --old-roots` finds those paths for you: it needs no collection and
+prints each root that no longer exists but still holds stored secrets, followed by the
+`env orphans --all --old-root` command that lists them (`--json` prints the roots as
+data). Values are never read, and a root it cannot be sure is gone is left out. A store
+that cannot list every collection makes it fail rather than print nothing.
 
 ### Items and folders
 

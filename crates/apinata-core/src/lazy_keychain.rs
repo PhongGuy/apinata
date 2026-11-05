@@ -1,6 +1,6 @@
 //! The platform keychain, opened lazily, and a wrapper that bounds each call of a secret store.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, OnceLock};
@@ -45,6 +45,10 @@ impl SecretStore for LazyKeychain {
 
     fn list(&self, collection: &Path) -> Result<Vec<SecretKey>, SecretError> {
         self.store()?.list(collection)
+    }
+
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        self.store()?.list_roots()
     }
 }
 
@@ -157,6 +161,10 @@ impl SecretStore for TimeoutStore {
         let collection = collection.to_path_buf();
         self.bounded(move |store| store.list(&collection))
     }
+
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        self.bounded(|store| store.list_roots())
+    }
 }
 
 #[cfg(test)]
@@ -176,6 +184,17 @@ mod tests {
         assert_eq!(store.get(&key()).expect("get").as_deref(), Some("v"));
         store.delete(&key()).expect("delete");
         assert_eq!(store.get(&key()).expect("get"), None);
+    }
+
+    #[test]
+    fn list_roots_is_passed_through() {
+        let inner = MemoryStore::new();
+        inner.set(&key(), "v").expect("set");
+        let store = TimeoutStore::new(Arc::new(inner), Duration::from_secs(5));
+        assert_eq!(
+            store.list_roots().expect("roots"),
+            [std::path::PathBuf::from("/srv/shop")]
+        );
     }
 
     /// A store whose calls never return, counting how many were started.

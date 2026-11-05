@@ -5,7 +5,7 @@ use crate::secrets::{SecretError, SecretKey, SecretStore};
 use keyring_core::{CredentialStore, Entry, Error};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const SERVICE: &str = "apinata";
@@ -136,6 +136,39 @@ impl SecretStore for KeychainStore {
             }
         }
         Ok(keys)
+    }
+
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        let spec = search_spec();
+        let spec = spec.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        let mut roots = HashSet::new();
+        for entry in self.store.search(&spec).map_err(map_error)? {
+            // The same skips as `list`; an empty path is a per-install key, not a collection.
+            let Some((service, account)) = entry.get_specifiers() else {
+                continue;
+            };
+            if service != SERVICE {
+                continue;
+            }
+            let Ok([path, _, _]) = serde_json::from_str::<[String; 3]>(&account) else {
+                continue;
+            };
+            if !path.is_empty() {
+                roots.insert(PathBuf::from(unprefixed(&path)));
+            }
+        }
+        Ok(roots.into_iter().collect())
+    }
+}
+
+/// An account's path without the verbatim prefix a legacy account kept, so both name one root.
+fn unprefixed(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("//?/UNC/") {
+        return format!("//{rest}");
+    }
+    match path.strip_prefix("//?/") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest.to_owned(),
+        _ => path.to_owned(),
     }
 }
 
@@ -372,6 +405,60 @@ mod tests {
         let only_old = SecretKey::new(r"\\?\C:\work\api", "stage", "u");
         put(&raw, &legacy_account(&only_old).unwrap(), "old");
         assert_eq!(listed(&keychain, r"\\?\C:\work\api").len(), 2);
+    }
+
+    fn roots(keychain: &KeychainStore) -> Vec<std::path::PathBuf> {
+        let mut got = keychain.list_roots().unwrap();
+        got.sort();
+        got
+    }
+
+    #[test]
+    fn list_roots_names_each_root_once_without_foreign_or_per_install_entries() {
+        let (keychain, raw) = store();
+        put(&raw, r#"["/home/u/c","dev","a"]"#, "1");
+        put(&raw, r#"["/home/u/c","prod","b"]"#, "2");
+        put(&raw, r#"["/home/u/old","dev","c"]"#, "3");
+        put(&raw, r#"["","","oauth2-token-key"]"#, "k");
+        put(&raw, r#"["","app","proxy-password"]"#, "k");
+        put(&raw, "not json", "no");
+        put(&raw, r#"["/home/u/x","dev"]"#, "no");
+        let foreign = raw
+            .build("not-apinata", r#"["/home/u/y","dev","x"]"#, None)
+            .unwrap();
+        foreign.set_password("no").unwrap();
+        assert_eq!(
+            roots(&keychain),
+            [
+                std::path::PathBuf::from("/home/u/c"),
+                std::path::PathBuf::from("/home/u/old")
+            ]
+        );
+    }
+
+    #[test]
+    fn list_roots_folds_a_legacy_account_into_its_root() {
+        let (keychain, raw) = store();
+        let key = verbatim_key();
+        put(&raw, &legacy_account(&key).unwrap(), "old");
+        put(&raw, &account(&key), "new");
+        assert_eq!(roots(&keychain), [std::path::PathBuf::from("C:/work/api")]);
+    }
+
+    #[test]
+    fn list_roots_reads_no_value() {
+        let (keychain, raw) = store();
+        put(&raw, r#"["/home/u/c","dev","a"]"#, "1");
+        let entry = raw
+            .build(SERVICE, r#"["/home/u/c","dev","a"]"#, None)
+            .unwrap();
+        let cred = entry
+            .as_any()
+            .downcast_ref::<keyring_core::mock::Cred>()
+            .unwrap();
+        cred.set_error(Error::Invalid("armed".into(), "armed".into()));
+        assert_eq!(roots(&keychain).len(), 1);
+        assert!(entry.get_password().is_err());
     }
 
     #[test]

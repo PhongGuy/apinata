@@ -919,6 +919,11 @@ impl SecretStore for ReportOnUse {
         self.report();
         self.inner.list(collection)
     }
+
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.report();
+        self.inner.list_roots()
+    }
 }
 
 pub(crate) fn default_keychain() -> Arc<dyn SecretStore> {
@@ -1047,6 +1052,21 @@ mod tests {
     use apinata_core::CreateError;
     use apinata_core::import::ImportError;
     use std::path::PathBuf;
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn the_reporting_wrapper_passes_list_roots_through() {
+        use apinata_core::{MemoryStore, SecretKey, SecretStore};
+        let inner = MemoryStore::new();
+        inner
+            .set(&SecretKey::new("/old/c", "dev", "t"), "v")
+            .unwrap();
+        let store = super::ReportOnUse {
+            name: "memory",
+            inner: std::sync::Arc::new(inner),
+        };
+        assert_eq!(store.list_roots().unwrap(), [PathBuf::from("/old/c")]);
+    }
 
     #[test]
     fn default_names_follow_the_last_path_segment_else_the_host() {

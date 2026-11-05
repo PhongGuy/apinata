@@ -62,6 +62,9 @@ impl SecretStore for NoDelete {
     fn list(&self, collection: &std::path::Path) -> Result<Vec<SecretKey>, SecretError> {
         self.inner.list(collection)
     }
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.inner.list_roots()
+    }
 }
 
 /// A store with the default `list`.
@@ -346,4 +349,81 @@ fn an_empty_variable_with_nothing_stored_still_becomes_secret() {
     c.set_variable_secret("dev", "token", true, &store).unwrap();
     assert!(c.environment("dev").unwrap().variables()[0].secret);
     assert_eq!(store.get(&key).unwrap().as_deref(), Some(""));
+}
+
+/// Answers `list_roots` from its inner store; reading a value fails the test.
+struct RootsOnly(MemoryStore);
+
+impl SecretStore for RootsOnly {
+    fn get(&self, _: &SecretKey) -> Result<Option<String>, SecretError> {
+        panic!("no value may be read")
+    }
+    fn set(&self, key: &SecretKey, value: &str) -> Result<(), SecretError> {
+        self.0.set(key, value)
+    }
+    fn delete(&self, _: &SecretKey) -> Result<(), SecretError> {
+        panic!("nothing may be deleted by a listing")
+    }
+    fn list_roots(&self) -> Result<Vec<std::path::PathBuf>, SecretError> {
+        self.0.list_roots()
+    }
+}
+
+fn sorted_roots(store: &dyn SecretStore) -> Vec<std::path::PathBuf> {
+    let mut roots = store.list_roots().unwrap();
+    roots.sort();
+    roots
+}
+
+#[test]
+fn list_roots_names_each_root_once_and_skips_per_install_keys() {
+    let store = MemoryStore::new();
+    store
+        .set(&SecretKey::new("/old/a", "dev", "x"), "v")
+        .unwrap();
+    store
+        .set(&SecretKey::new("/old/a", "prod", "y"), "v")
+        .unwrap();
+    store
+        .set(&SecretKey::new("/old/b", "dev", "x"), "v")
+        .unwrap();
+    store
+        .set(&SecretKey::new("", "", "oauth2-token-key"), "k")
+        .unwrap();
+    store
+        .set(&SecretKey::new("", "app", "proxy-password"), "k")
+        .unwrap();
+    assert_eq!(
+        sorted_roots(&store),
+        [
+            std::path::PathBuf::from("/old/a"),
+            std::path::PathBuf::from("/old/b")
+        ]
+    );
+}
+
+#[test]
+fn a_store_without_list_roots_fails_closed() {
+    let got = NoList.list_roots();
+    assert!(matches!(got, Err(SecretError::Failed { .. })), "{got:?}");
+    let got = apinata_core::MovedRoot::gone_roots(&NoList);
+    assert!(got.is_err(), "{got:?}");
+}
+
+#[test]
+fn gone_roots_keeps_only_roots_that_no_longer_exist() {
+    let here = TempDir::new().unwrap();
+    let live = here.path().join("live");
+    fs::create_dir(&live).unwrap();
+    let gone_b = here.path().join("gone-b");
+    let gone_a = here.path().join("gone-a");
+    let inner = MemoryStore::new();
+    for root in [&live, &gone_b, &gone_a] {
+        inner.set(&SecretKey::new(root, "dev", "x"), "v").unwrap();
+    }
+    inner
+        .set(&SecretKey::new("", "", "oauth2-token-key"), "k")
+        .unwrap();
+    let got = apinata_core::MovedRoot::gone_roots(&RootsOnly(inner)).unwrap();
+    assert_eq!(got, [gone_a, gone_b], "sorted, live root left out");
 }

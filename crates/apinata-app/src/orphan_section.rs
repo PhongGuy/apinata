@@ -333,4 +333,25 @@ impl SecretStore for ListOnce<'_> {
         *listed = Some((collection.to_owned(), answer.clone()));
         answer
     }
+
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        self.inner.list_roots()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ListOnce;
+    use apinata_core::{MemoryStore, SecretKey, SecretStore};
+    use std::path::PathBuf;
+
+    #[test]
+    fn list_roots_is_passed_through() {
+        let inner = MemoryStore::new();
+        inner
+            .set(&SecretKey::new("/old/c", "dev", "t"), "v")
+            .unwrap();
+        let store = ListOnce::new(&inner);
+        assert_eq!(store.list_roots().unwrap(), [PathBuf::from("/old/c")]);
+    }
 }
