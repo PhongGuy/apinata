@@ -1253,6 +1253,77 @@ fn rename_asks_over_held_typing(cx: &mut TestAppContext) {
     assert!(!f.typing(cx));
 }
 
+// Add to environment's Replace stores the held typing, then switches and adds the row.
+#[gpui_kit::test]
+fn add_to_environment_over_held_typing_stores_it_once_confirmed(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.hold(cx);
+    f.add_to_other(cx);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("prod"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    let Ed::Collection(ed) = &f.ed else {
+        unreachable!("a collection editor")
+    };
+    let table = ed.read_with(cx, |e, _| e.table().clone());
+    let rows = table.read_with(cx, |t, cx| t.rows(cx));
+    assert!(rows.iter().any(|r| r.name == "x"), "the row is added");
+}
+
+// Create selects the new environment, which would take held typing with it, so it asks first.
+#[gpui_kit::test]
+fn create_asks_over_held_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.hold(cx);
+    f.create(cx, "qa");
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?")
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(!f.names(cx).contains(&"qa".to_owned()), "nothing created");
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    f.create(cx, "qa");
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("qa"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    assert!(!f.typing(cx));
+}
+
+// Duplicate copies what the store holds, so held typing is asked about and stored first.
+#[gpui_kit::test]
+fn duplicate_asks_over_held_typing(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Collection, HOST);
+    f.hold(cx);
+    let duplicate = |cx: &mut TestAppContext| {
+        frame(cx, f.win);
+        cx.update_window(f.win, |_, w, cx| w.click("env-duplicate", cx))
+            .unwrap();
+        cx.run_until_parked();
+    };
+    duplicate(cx);
+    assert_eq!(
+        title(cx).as_deref(),
+        Some("Replace the stored value of \"old\"?")
+    );
+    answer_confirm(cx, CANCEL);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev"));
+    assert!(!f.names(cx).contains(&"dev copy".to_owned()), "no copy");
+    assert!(f.typing(cx));
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+    duplicate(cx);
+    answer_confirm(cx, REPLACE);
+    assert_eq!(f.selected(cx).as_deref(), Some("dev copy"));
+    assert_eq!(f.held().as_deref(), Some("typed"));
+    let (_, root) = f.outside.as_ref().unwrap();
+    let copy = Collection::open(root)
+        .unwrap()
+        .secret_key("dev copy", "old");
+    assert_eq!(f.store.get(&copy).unwrap().as_deref(), Some("typed"));
+}
+
 // A click on another environment asks through the close guard, whose Save checks the store.
 fn switch_in_the_global_list(cx: &mut TestAppContext, f: &Fix) {
     frame(cx, f.win);
@@ -1711,6 +1782,56 @@ mod held {
         cx.run_until_parked();
         assert_eq!(windows(cx), 0);
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
+    }
+
+    fn close_collection(cx: &mut TestAppContext, s: &Started) {
+        cx.dispatch_action(s.win, apinata_app::shell::CloseCollection);
+        cx.run_until_parked();
+    }
+
+    fn collections(cx: &mut TestAppContext, s: &Started) -> usize {
+        s.ws.read_with(cx, |w, _| w.collections().len())
+    }
+
+    #[gpui_kit::test]
+    fn a_collection_close_releases_held_typing_when_nothing_is_stored(cx: &mut TestAppContext) {
+        let (_col, s, store, key) = app(cx, false);
+        close_collection(cx, &s);
+        assert!(!confirm_open(cx));
+        assert_eq!(collections(cx, &s), 0);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
+    }
+
+    #[gpui_kit::test]
+    fn a_collection_close_asks_over_a_stored_value(cx: &mut TestAppContext) {
+        let (_col, s, store, key) = app(cx, true);
+        close_collection(cx, &s);
+        assert_eq!(
+            title(cx).as_deref(),
+            Some("Replace the stored value of \"old\"?")
+        );
+        answer_confirm(cx, CANCEL);
+        assert_eq!(collections(cx, &s), 1, "the collection stays");
+        assert!(present(cx, s.win, "env-editor"), "the tab stays");
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+        close_collection(cx, &s);
+        answer_confirm(cx, REPLACE);
+        cx.run_until_parked();
+        assert!(!confirm_open(cx), "no second prompt");
+        assert_eq!(collections(cx, &s), 0);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("typed"));
+    }
+
+    #[gpui_kit::test]
+    fn a_failed_read_stops_a_collection_close(cx: &mut TestAppContext) {
+        let (_col, s, store, key) = app(cx, true);
+        store.fail_get.store(true, Ordering::SeqCst);
+        close_collection(cx, &s);
+        assert!(!confirm_open(cx));
+        assert_eq!(collections(cx, &s), 1);
+        assert!(present(cx, s.win, "env-error"));
+        store.fail_get.store(false, Ordering::SeqCst);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
     }
 
     #[gpui_kit::test]
