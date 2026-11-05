@@ -115,6 +115,7 @@ const IDS: &[&str] = &[
     "environment.open_selector",
     "environment.import",
     "environment.export",
+    "environment.export_all",
     "environment.cookies",
     "environment.variables_overview",
     "environment.runtime_variables",
@@ -526,6 +527,7 @@ fn the_four_dialog_commands_end_in_an_ellipsis() {
     assert_eq!(label("collection.new"), "New collection…");
     assert_eq!(label("collection.import"), "Import collection…");
     assert_eq!(label("environment.export"), "Export environment…");
+    assert_eq!(label("environment.export_all"), "Export environments…");
 }
 
 #[test]

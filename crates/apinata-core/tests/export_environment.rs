@@ -1,10 +1,13 @@
-//! `export::postman_environment` and `export::file_stem`.
+//! `export::postman_environment`, its global and every-environment forms, and `export::file_stem`.
 
 use crate::export_support;
 
-use apinata_core::Collection;
-use apinata_core::export::{file_stem, postman_environment};
+use apinata_core::export::{
+    EnvironmentFile, file_stem, postman_environment, postman_environment_files,
+    postman_global_environment, postman_global_environment_files,
+};
 use apinata_core::import::parse_postman_environment;
+use apinata_core::{Collection, GlobalEnvironments};
 use export_support::*;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -192,4 +195,115 @@ fn file_stems_guard_superscript_and_console_device_names() {
     // Near misses stay as they are.
     assert_eq!(file_stem("COM\u{b9}x"), "COM\u{b9}x");
     assert_eq!(file_stem("CONIN"), "CONIN");
+}
+
+fn names(files: &[EnvironmentFile]) -> Vec<&str> {
+    files.iter().map(|f| f.file_name.as_str()).collect()
+}
+
+#[test]
+fn every_environment_gets_a_file_whose_text_is_the_single_export() {
+    let (_d, c) = open(&[
+        ("opencollection.yml", ROOT),
+        (
+            "environments/dev.yml",
+            "name: dev\nvariables:\n  - name: h\n    value: x\n",
+        ),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - name: t\n    value: s\n    secret: true\n",
+        ),
+    ]);
+    let files = postman_environment_files(&c);
+    assert_eq!(
+        names(&files),
+        [
+            "dev.postman_environment.json",
+            "prod.postman_environment.json"
+        ]
+    );
+    for (file, env) in files.iter().zip(["dev", "prod"]) {
+        assert_eq!(file.export, postman_environment(&c, env).unwrap());
+    }
+    assert_eq!(values(&c, "prod"), json!([row("t", "", "secret")]));
+}
+
+// Windows forbids `:` and `*` in file names and macOS folds case, so only Linux can hold these.
+#[cfg(target_os = "linux")]
+#[test]
+fn stems_that_collide_are_numbered_ignoring_case() {
+    // Names come from file names, which differ here only in case or in a forbidden character.
+    let (_d, c) = open(&[
+        ("opencollection.yml", ROOT),
+        ("environments/Dev.yml", "name: x\n"),
+        ("environments/dev.yml", "name: x\n"),
+        ("environments/d:v.yml", "name: x\n"),
+        ("environments/d*v.yml", "name: x\n"),
+    ]);
+    let files = postman_environment_files(&c);
+    let mut got = names(&files);
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            "Dev.postman_environment.json",
+            "d_v (2).postman_environment.json",
+            "d_v.postman_environment.json",
+            "dev (2).postman_environment.json",
+        ]
+    );
+}
+
+#[test]
+fn global_environments_export_like_a_collections_with_secrets_left_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = "name: base\nvariables:\n  - name: h\n    value: x\n  - name: t\n    value: leaked\n    secret: true\n";
+    std::fs::write(dir.path().join("base.yml"), base).unwrap();
+    std::fs::write(
+        dir.path().join("dev.yml"),
+        "name: dev\nextends: base\nvariables:\n  - name: own\n    value: o\n",
+    )
+    .unwrap();
+    let globals = GlobalEnvironments::open(dir.path()).unwrap();
+    let out = postman_global_environment(&globals, "dev").expect("dev");
+    let v: Value = serde_json::from_str(&out.json).unwrap();
+    assert_eq!(
+        v["values"],
+        json!([
+            row("h", "x", "default"),
+            row("own", "o", "default"),
+            row("t", "", "secret")
+        ])
+    );
+    assert_eq!(v["_postman_variable_scope"], "environment");
+    assert!(postman_global_environment(&globals, "nope").is_none());
+
+    // A collection holding the same files exports the same bytes.
+    let (_c, c) = open(&[
+        ("opencollection.yml", ROOT),
+        ("environments/base.yml", base),
+        (
+            "environments/dev.yml",
+            "name: dev\nextends: base\nvariables:\n  - name: own\n    value: o\n",
+        ),
+    ]);
+    let files = postman_global_environment_files(&globals);
+    assert_eq!(
+        names(&files),
+        [
+            "base.postman_environment.json",
+            "dev.postman_environment.json"
+        ]
+    );
+    assert_eq!(files, postman_environment_files(&c));
+}
+
+#[test]
+fn a_broken_global_chain_is_noted_as_a_global() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("lost.yml"), "name: lost\nextends: nope\n").unwrap();
+    let globals = GlobalEnvironments::open(dir.path()).unwrap();
+    let notes = postman_global_environment(&globals, "lost").unwrap().notes;
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].source, "global environments / lost");
 }
