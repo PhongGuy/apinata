@@ -253,6 +253,7 @@ dependencies = [
  "notify-debouncer-full",
  "percent-encoding",
  "quick-xml",
+ "regress",
  "rust-embed",
  "ryu-js",
  "serde",
