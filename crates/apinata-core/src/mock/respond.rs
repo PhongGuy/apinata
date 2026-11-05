@@ -2,7 +2,7 @@
 
 use super::MockHit;
 use super::pick::Candidate;
-use crate::ExampleResponse;
+use crate::{ExampleBodyKind, ExampleResponse};
 use std::collections::VecDeque;
 use std::sync::{Mutex, PoisonError};
 
@@ -12,6 +12,8 @@ pub(crate) struct Prepared {
     pub reason: Option<String>,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Binary bodies are replayed byte for byte, never templated.
+    pub binary: bool,
 }
 
 /// Headers the server frames itself, so a recorded value would corrupt the reply.
@@ -52,8 +54,40 @@ pub(crate) fn prepare(example: &ExampleResponse) -> (Prepared, Vec<String>) {
         reason,
         headers,
         body: response.body().to_vec(),
+        binary: example
+            .body
+            .as_ref()
+            .is_some_and(|b| b.kind == ExampleBodyKind::Binary),
     };
     (prepared, warnings)
+}
+
+/// Replaces each `{{name}}` with its path param value in one left-to-right pass, so a value that
+/// itself holds `{{x}}` is not expanded again. Unknown names and stray braces stay literal.
+pub(crate) fn fill_params(text: &str, params: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let found = after.find("}}").and_then(|end| {
+            let name = after[..end].trim();
+            let value = params.iter().find(|(n, _)| *n == name)?.1;
+            Some((value, end + 2))
+        });
+        match found {
+            Some((value, used)) => {
+                out.push_str(value);
+                rest = &after[used..];
+            }
+            None => {
+                out.push_str("{{");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Body of the 404 miss response.
@@ -145,6 +179,16 @@ mod tests {
         assert_eq!(p.status, 200);
         assert_eq!(p.body, [0u8, 1, 2, 255]);
         assert!(w.is_empty());
+    }
+
+    #[test]
+    fn fill_params_substitutes_known_names_once_and_leaves_the_rest() {
+        let p = [("id", "{{x}}"), ("n", "7")];
+        assert_eq!(
+            fill_params("a {{id}} {{ n }} {{zz}} {{", &p),
+            "a {{x}} 7 {{zz}} {{"
+        );
+        assert_eq!(fill_params("{{n}}{{n}}", &p), "77");
     }
 
     #[test]

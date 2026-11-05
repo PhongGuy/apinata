@@ -559,6 +559,12 @@ When a request matches a route, the example is chosen by the
 parameters recorded in the example, then the first example is used. A request
 that matches nothing answers 404 with a JSON trace of what was tried.
 
+A route with path parameters fills them into the example: for `/users/:id`, each
+`{{id}}` in the example's body and header values becomes the matched segment
+(percent-decoded). Other names stay as written, and environment variables are
+never filled in, so secrets cannot leak into a response. Binary bodies are
+served unchanged.
+
 Examples are read once at start, so restart the server to pick up edits. Press
 ctrl-c to stop it.
 
