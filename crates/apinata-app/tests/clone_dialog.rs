@@ -434,6 +434,50 @@ fn a_clone_that_finishes_after_a_cancel_is_discarded(cx: &mut TestAppContext) {
     assert_eq!(toasts(cx, s.win), 0);
 }
 
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_canonicalized_root_under_a_symlinked_parent_is_discarded(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_col, s) = app(cx, sb.options());
+    let view = open_dialog(cx, &s);
+    let real = dest_parent(&sb);
+    let link = sb.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    write(&real, "other/keep.txt", "mine\n");
+    // The dialog knows the folder through the link; core reports it canonicalized.
+    let tx = scripted(cx, &s, &view, &link);
+    click(cx, s.win, "clone-cancel");
+    write(&real, "col/opencollection.yml", "opencollection: 1.0.0\n");
+    let root = real.canonicalize().unwrap().join("col");
+    tx.try_send(CloneEvent::Finished(Ok(root))).unwrap();
+    wait_for(cx, "the dialog to close", |cx| !dialog_open(cx, s.win));
+    assert!(!real.join("col").exists(), "the discarded clone is removed");
+    assert!(real.join("other/keep.txt").is_file());
+    assert!(link.exists(), "the parent link stays");
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_symlink_at_the_target_name_is_never_followed_or_removed(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_col, s) = app(cx, sb.options());
+    let view = open_dialog(cx, &s);
+    let parent = dest_parent(&sb);
+    let victim = sb.path().join("victim");
+    write(&victim, "precious.txt", "mine\n");
+    let tx = scripted(cx, &s, &view, &parent);
+    click(cx, s.win, "clone-cancel");
+    // Something put a link where the clone was meant to go.
+    std::os::unix::fs::symlink(&victim, parent.join("col")).unwrap();
+    // Core would report the link's canonical target, which equals the canonicalized link.
+    let root = victim.canonicalize().unwrap();
+    tx.try_send(CloneEvent::Finished(Ok(root))).unwrap();
+    wait_for(cx, "the dialog to close", |cx| !dialog_open(cx, s.win));
+    assert!(victim.join("precious.txt").is_file(), "the target survives");
+    let kept = std::fs::symlink_metadata(parent.join("col")).unwrap();
+    assert!(kept.is_symlink(), "the link survives");
+}
+
 #[gpui_kit::test]
 fn enter_on_the_focused_browse_button_asks_for_a_folder(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
