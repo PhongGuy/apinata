@@ -184,10 +184,7 @@ fn a_platform_that_cannot_restore_says_so_and_the_next_restore_goes_further_back
         "{err:?}"
     );
     let text = err.to_string();
-    assert!(
-        text.contains("cannot be restored from here"),
-        "{text}"
-    );
+    assert!(text.contains("cannot be restored from here"), "{text}");
     assert!(text.contains("system trash"), "{text}");
     assert!(!exists(&dir, "c.yml"), "nothing came back");
     assert_eq!(fs::read_dir(bin.0.dir.path()).expect("bin").count(), 2);
