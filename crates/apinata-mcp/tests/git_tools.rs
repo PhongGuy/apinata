@@ -177,3 +177,132 @@ async fn git_diff_reads_a_doubled_slash_or_leading_dot_as_the_plain_path() {
         assert_eq!(got, plain, "{spelled}");
     }
 }
+
+/// The subject of the newest commit.
+fn head_subject(sb: &Sandbox, root: &Path) -> String {
+    sb.git(root, &["log", "-1", "--format=%s"])
+        .trim()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn git_commit_is_listed_as_a_local_write_that_is_not_destructive() {
+    let sb = Sandbox::new();
+    let server = serve(&sb, &[("opencollection.yml", ROOT)]).await;
+    let tools = server.tools().await;
+    let tool = tools
+        .iter()
+        .find(|t| t.name == "git_commit")
+        .expect("git_commit listed");
+    let annotations = tool.annotations.as_ref().expect("annotations");
+    assert_ne!(annotations.read_only_hint, Some(true));
+    assert_eq!(annotations.destructive_hint, Some(false));
+    assert_eq!(annotations.open_world_hint, Some(false));
+    let description = tool.description.as_deref().unwrap_or_default();
+    assert!(description.contains("local"), "{description}");
+    assert!(description.contains("hooks"), "{description}");
+}
+
+#[tokio::test]
+async fn git_commit_stages_a_path_and_commits_it() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    server.write("other.yml", "info:\n  name: other\n");
+    let got = server
+        .ok(
+            "git_commit",
+            json!({"message": "change url\n\nbody", "paths": ["users/get.yml"]}),
+        )
+        .await;
+    assert_eq!(got["subject"], "change url");
+    assert_eq!(got["short_id"], sb.short_head(server.root()));
+    assert_eq!(head_subject(&sb, server.root()), "change url");
+    // The other file was not named, so it stays untracked.
+    let files = sb.git(server.root(), &["status", "--porcelain"]);
+    assert!(files.contains("?? other.yml"), "{files}");
+}
+
+#[tokio::test]
+async fn git_commit_with_a_dot_commits_everything() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    server.write("other.yml", "info:\n  name: other\n");
+    server
+        .ok("git_commit", json!({"message": "all", "paths": ["."]}))
+        .await;
+    assert_eq!(sb.git(server.root(), &["status", "--porcelain"]), "");
+}
+
+#[tokio::test]
+async fn git_commit_without_paths_commits_what_is_staged() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    sb.git(server.root(), &["add", "users/get.yml"]);
+    server.ok("git_commit", json!({"message": "staged"})).await;
+    assert_eq!(head_subject(&sb, server.root()), "staged");
+}
+
+#[tokio::test]
+async fn git_commit_with_nothing_staged_is_refused() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    let err = server.err("git_commit", json!({"message": "m"})).await;
+    assert!(err.contains("nothing"), "{err}");
+}
+
+#[tokio::test]
+async fn git_commit_with_paths_refuses_when_other_files_are_staged() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    server.write("other.yml", "info:\n  name: other\n");
+    sb.git(server.root(), &["add", "other.yml"]);
+    let err = server
+        .err(
+            "git_commit",
+            json!({"message": "m", "paths": ["users/get.yml"]}),
+        )
+        .await;
+    assert!(err.contains("other.yml"), "{err}");
+    // Nothing was staged or committed by the refused call.
+    assert_eq!(head_subject(&sb, server.root()), "base");
+    let status = sb.git(server.root(), &["status", "--porcelain"]);
+    assert!(status.contains(" M users/get.yml"), "{status}");
+}
+
+#[tokio::test]
+async fn git_commit_allows_paths_that_are_already_staged_themselves() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    sb.git(server.root(), &["add", "users/get.yml"]);
+    server
+        .ok(
+            "git_commit",
+            json!({"message": "m", "paths": ["users/get.yml"]}),
+        )
+        .await;
+    assert_eq!(head_subject(&sb, server.root()), "m");
+}
+
+#[tokio::test]
+async fn git_commit_refuses_an_empty_message() {
+    let sb = Sandbox::new();
+    let server = edited(&sb).await;
+    let err = server
+        .err("git_commit", json!({"message": "  ", "paths": ["."]}))
+        .await;
+    assert!(err.contains("empty"), "{err}");
+    assert_eq!(head_subject(&sb, server.root()), "base");
+}
+
+#[tokio::test]
+async fn git_commit_outside_a_repository_says_so() {
+    let sb = Sandbox::new();
+    let server = serve(&sb, &[("opencollection.yml", ROOT)]).await;
+    let err = server
+        .err("git_commit", json!({"message": "m", "paths": ["."]}))
+        .await;
+    assert_eq!(
+        err,
+        format!("{} is not in a git repository.", server.root().display())
+    );
+}
