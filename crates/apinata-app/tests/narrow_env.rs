@@ -583,3 +583,132 @@ fn a_crossing_leaves_a_drawn_focused_control_alone(cx: &mut TestAppContext) {
         .unwrap();
     assert!(in_url, "focus stays in the URL input");
 }
+
+fn focused(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId>) -> bool {
+    let id = id.into();
+    cx.update_window(win, |_, w, _| w.find(id).focused())
+        .unwrap()
+        == Some(true)
+}
+
+fn press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
+    cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
+    for _ in 0..4 {
+        frame(cx, win);
+    }
+}
+
+// Presses Tab until `id` has focus; the walk passes the title bar and every editor control.
+fn tab_to(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId> + Clone) {
+    for _ in 0..200 {
+        if focused(cx, win, id.clone()) {
+            return;
+        }
+        press(cx, win, "tab");
+    }
+    panic!("Tab never reached {:?}", id.into());
+}
+
+fn assert_whole(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    scroller: &'static str,
+    id: impl Into<ElementId> + Clone,
+    from: &str,
+) {
+    let (view, at) = (bounds(cx, win, scroller), bounds(cx, win, id.clone()));
+    let inside = at.left() >= view.left() - px(1.)
+        && at.right() <= view.right() + px(1.)
+        && at.top() >= view.top() - px(1.)
+        && at.bottom() <= view.bottom() + px(1.);
+    assert!(
+        inside,
+        "{:?} from {from}: {at:?} is outside {view:?}",
+        id.into()
+    );
+}
+
+// Tabs onto each control, then onto it again from each corner of the area, the area wheeled
+// away after leaving it, and checks the control is whole in view every time.
+fn tab_follows(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    scroller: &'static str,
+    ids: &[ElementId],
+) {
+    for id in ids {
+        tab_to(cx, win, id.clone());
+        assert_whole(cx, win, scroller, id.clone(), "the walk");
+        for corner in [(10_000., 10_000.), (-10_000., -10_000.)] {
+            press(cx, win, "shift-tab");
+            wheel(cx, win, scroller, (corner.0, 0.));
+            wheel(cx, win, scroller, (0., corner.1));
+            press(cx, win, "tab");
+            assert!(focused(cx, win, id.clone()), "{id:?} lost focus");
+            assert_whole(cx, win, scroller, id.clone(), &format!("{corner:?}"));
+        }
+    }
+}
+
+fn collection_tab_stops() -> Vec<ElementId> {
+    let mut ids: Vec<ElementId> = vec![
+        ("env-item", 0usize).into(),
+        "env-create".into(),
+        "env-more".into(),
+        "env-duplicate".into(),
+        "env-save".into(),
+        "env-swatch-none".into(),
+    ];
+    ids.extend((0..6usize).map(|ix| ("env-swatch", ix).into()));
+    ids.push("env-extends".into());
+    ids.push(("env-orphan-remove", 0usize).into());
+    ids
+}
+
+#[gpui_kit::test]
+fn tab_keeps_each_collection_control_whole_at_the_narrowest_width(cx: &mut TestAppContext) {
+    let (_col, s) = collection(cx);
+    resize(cx, s.win, NARROW, 300.);
+    tab_follows(cx, s.win, SCROLL, &collection_tab_stops());
+}
+
+fn global_tab_stops() -> Vec<ElementId> {
+    vec![
+        "global-env-create".into(),
+        "global-env-rename".into(),
+        "global-env-duplicate".into(),
+        "global-env-delete".into(),
+        "global-env-save".into(),
+        ("env-orphan-remove", 0usize).into(),
+    ]
+}
+
+#[gpui_kit::test]
+fn tab_keeps_each_global_control_whole_at_the_narrowest_width(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
+    resize(cx, win, NARROW, 400.);
+    tab_follows(cx, win, GLOBAL_SCROLL, &global_tab_stops());
+}
+
+// Where everything fits, Tab through every control leaves the page where it was.
+#[gpui_kit::test]
+fn tab_never_scrolls_a_wide_collection_editor(cx: &mut TestAppContext) {
+    let (_col, s) = collection(cx);
+    resize(cx, s.win, 1000., 700.);
+    let before = bounds(cx, s.win, "env-pane");
+    for id in collection_tab_stops() {
+        tab_to(cx, s.win, id);
+        assert_eq!(bounds(cx, s.win, "env-pane"), before);
+    }
+}
+
+#[gpui_kit::test]
+fn tab_never_scrolls_a_wide_global_dialog(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
+    resize(cx, win, 1000., 700.);
+    let before = bounds(cx, win, "global-env-editor");
+    for id in global_tab_stops() {
+        tab_to(cx, win, id);
+        assert_eq!(bounds(cx, win, "global-env-editor"), before);
+    }
+}

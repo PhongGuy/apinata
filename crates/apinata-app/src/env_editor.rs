@@ -30,7 +30,7 @@ use crate::env_table::{
 };
 use crate::orphan_section::{self, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
-use crate::scroll_follow::FocusFollow;
+use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep, ReplaceAnswer};
 use crate::snapshot::{CollectionSnapshot, DiskState, EnvView};
 use crate::style::{self, PANE_INSET};
@@ -1667,14 +1667,18 @@ impl EnvEditor {
         });
         let presets: Vec<_> = presets.collect();
         let custom = custom.map(|text| swatch("env-swatch-custom", &text, Some(&text), true, cx));
+        // Each swatch reports to the follow, so Tab onto one scrolls it into view.
+        let follow = &self.follow;
+        let presets = (presets.into_iter().enumerate())
+            .map(|(ix, b)| Followed::new(("env-swatch-follow", ix), follow, b));
         h_flex()
             .id("env-swatches")
             .test_support()
             .flex_wrap()
             .gap_1()
-            .child(none)
+            .child(Followed::new("env-swatch-none-follow", follow, none))
             .children(presets)
-            .children(custom)
+            .children(custom.map(|b| Followed::new("env-swatch-custom-follow", follow, b)))
     }
 
     // The pane's header: the name as a title that truncates, then the "…" menu, then Save
@@ -1682,6 +1686,7 @@ impl EnvEditor {
     fn header(&self, locked: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let name = self.selected.clone().unwrap_or_default();
         let this = cx.entity();
+        let followed = |id: &'static str, button: Button| Followed::new(id, &self.follow, button);
         let more = Button::new("env-more")
             .ghost()
             .compact()
@@ -1707,8 +1712,9 @@ impl EnvEditor {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(name),
             )
-            .child(more)
-            .child(
+            .child(Followed::new("env-more-follow", &self.follow, more))
+            .child(followed(
+                "env-duplicate-follow",
                 Button::new("env-duplicate")
                     .label("Duplicate")
                     .lock(locked, cx)
@@ -1716,13 +1722,14 @@ impl EnvEditor {
                     .on_click(cx.listener(|e, _, window, cx| {
                         e.after_held(window, cx, |e, _, cx| e.duplicate(cx))
                     })),
-            )
-            .child(
+            ))
+            .child(followed(
+                "env-save-follow",
                 Button::new("env-save")
                     .primary()
                     .label("Save")
                     .on_click(cx.listener(|e, _, window, cx| e.save_asking(window, cx))),
-            )
+            ))
     }
 }
 
@@ -1867,7 +1874,7 @@ impl Render for EnvEditor {
                 .clone();
             let focused = focus.is_focused(window);
             let name = name.clone();
-            h_flex()
+            let item = h_flex()
                 .id(("env-item", ix))
                 .test_support()
                 .track_focus(&focus)
@@ -1887,7 +1894,8 @@ impl Render for EnvEditor {
                         .truncate()
                         .child(name.clone()),
                 )
-                .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)))
+                .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)));
+            Followed::new(("env-item-follow", ix), &self.follow, item)
         });
         // The list gives up width only as far as the pane's minimum content needs it.
         let list = v_flex()
@@ -1899,8 +1907,12 @@ impl Render for EnvEditor {
             .flex_shrink(1.)
             .gap_1()
             .children(items)
-            .child(Button::new("env-create").label("New").on_click(
-                cx.listener(|e, _, window, cx| e.start_naming(Naming::Create, window, cx)),
+            .child(Followed::new(
+                "env-create-follow",
+                &self.follow,
+                Button::new("env-create").label("New").on_click(
+                    cx.listener(|e, _, window, cx| e.start_naming(Naming::Create, window, cx)),
+                ),
             ));
         // The editor scrolls as one page, list included, so a short or narrow window still
         // reaches the variable table.
@@ -2009,7 +2021,9 @@ impl Render for EnvEditor {
                         .child(empty)
                         .children(naming)
                         .children(error),
-                ),
+                )
+                // The list's controls report even with nothing selected, so the watch stays.
+                .child(self.follow.watch(&self.scroll)),
             );
         }
         let locked = self.locked;
@@ -2051,7 +2065,7 @@ impl Render for EnvEditor {
                 .update(cx, |e, cx| e.ask_remove_orphan(name, window, cx))
                 .ok();
         };
-        let orphans = orphan_section::section(&orphans, on_remove, cx);
+        let orphans = orphan_section::section(&orphans, &self.follow, on_remove, cx);
         self.scrolled(
             root.child(
                 v_flex()
@@ -2071,7 +2085,11 @@ impl Render for EnvEditor {
                         div()
                             .w(style::ENV_CONTROL_WIDTH)
                             .max_w_full()
-                            .child(Select::new(&self.extends).id("env-extends")),
+                            .child(Followed::new(
+                                "env-extends-follow",
+                                &self.follow,
+                                Select::new(&self.extends).id("env-extends"),
+                            )),
                     ))
                     .child(self.table.clone())
                     .children(orphans)
