@@ -83,36 +83,60 @@ pub async fn twins_dropped(names: Vec<String>, cx: &mut AsyncWindowContext) -> b
     matches!(opened, Ok(answer) if answer.recv().await == Ok(1))
 }
 
-/// Whether a Save may go ahead once `reads` have named what it would replace: `None` from a
-/// read means it failed and has said so. All the names share one prompt.
-pub async fn replace_agreed(
-    reads: Vec<Task<Option<Vec<String>>>>,
-    cx: &mut AsyncWindowContext,
-) -> bool {
+/// One environment's read of what a Save would replace: the names, or `None` once a failed
+/// read has said so, under the `place` a prompt over several environments names it by.
+pub type PlacedRead = (String, Task<Option<Vec<String>>>);
+
+/// Whether a Save may go ahead once `reads` have named what it would replace. All the names
+/// share one prompt.
+pub async fn replace_agreed(reads: Vec<PlacedRead>, cx: &mut AsyncWindowContext) -> bool {
     replace_answer(reads, cx).await != ReplaceAnswer::Stop
 }
 
 /// [`replace_agreed`], telling apart a Save that asked from one with nothing to ask.
-pub async fn replace_answer(
-    reads: Vec<Task<Option<Vec<String>>>>,
-    cx: &mut AsyncWindowContext,
-) -> ReplaceAnswer {
-    let mut names = Vec::new();
-    for read in reads {
+pub async fn replace_answer(reads: Vec<PlacedRead>, cx: &mut AsyncWindowContext) -> ReplaceAnswer {
+    let mut found = Vec::new();
+    for (place, read) in reads {
         match read.await {
-            Some(found) => names.extend(found),
+            Some(names) => found.push((place, names)),
             None => return ReplaceAnswer::Stop,
         }
     }
-    names.sort();
-    names.dedup();
-    if names.is_empty() {
+    let entries = replace_entries(found);
+    if entries.is_empty() {
         return ReplaceAnswer::Nothing;
     }
-    let spec = confirm::replace_secret_ask(&names);
+    let spec = confirm::replace_entries_ask(&entries);
     let opened = cx.update(|window: &mut Window, cx| confirm::ask(spec, window, cx));
     match opened {
         Ok(answer) if answer.recv().await == Ok(1) => ReplaceAnswer::Replace,
         _ => ReplaceAnswer::Stop,
     }
+}
+
+/// The quoted names a Replace prompt lists, in the order `found` gives them, each once per
+/// environment. Across several environments each names its place, so one name never stands
+/// for two stored values.
+pub fn replace_entries(found: Vec<(String, Vec<String>)>) -> Vec<String> {
+    let found: Vec<(String, Vec<String>)> = (found.into_iter())
+        .map(|(place, names)| {
+            let mut seen = Vec::new();
+            for name in names {
+                if !seen.contains(&name) {
+                    seen.push(name);
+                }
+            }
+            (place, seen)
+        })
+        .filter(|(_, names)| !names.is_empty())
+        .collect();
+    let placed = found.len() > 1;
+    (found.into_iter())
+        .flat_map(|(place, names)| {
+            names.into_iter().map(move |name| match placed {
+                true => format!("\"{name}\" in {place}"),
+                false => format!("\"{name}\""),
+            })
+        })
+        .collect()
 }

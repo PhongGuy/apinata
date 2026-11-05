@@ -296,6 +296,19 @@ impl EnvEditor {
         self.selected.as_deref()
     }
 
+    /// The selected environment as a prompt over several collections names it: "dev of Shop".
+    pub fn place(&self, cx: &App) -> String {
+        let snapshot = self.workspace.read(cx).snapshot(&self.root, cx);
+        let name = snapshot
+            .as_ref()
+            .and_then(|s| s.content.collection.name.clone());
+        let collection = crate::workspace::label_or_dir(name.as_deref(), &self.root);
+        format!(
+            "{} of {collection}",
+            self.selected.as_deref().unwrap_or_default()
+        )
+    }
+
     /// Selects the environment `name` and shows it as the snapshot has it. Secret typing not
     /// yet committed is stored in the environment being left first, except in rows not yet
     /// saved: the switch saves nothing, so their typing is dropped. Selecting the environment
@@ -1019,7 +1032,7 @@ impl EnvEditor {
         }
         let read = self.begin_replace_check(saving, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let go = secret_lock::replace_agreed(vec![read], cx).await;
+            let go = secret_lock::replace_agreed(vec![(String::new(), read)], cx).await;
             this.update_in(cx, |e, window, cx| {
                 e.end_replace_check(go, cx);
                 if go {
@@ -1529,7 +1542,7 @@ impl EnvEditor {
         }
         let read = self.begin_replace_check(true, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let answer = secret_lock::replace_answer(vec![read], cx).await;
+            let answer = secret_lock::replace_answer(vec![(String::new(), read)], cx).await;
             this.update_in(cx, |e, window, cx| {
                 e.end_replace_check(answer == ReplaceAnswer::Replace, cx);
                 match answer {

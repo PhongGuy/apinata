@@ -1986,6 +1986,55 @@ mod tabs {
         assert!(typing(cx, &s), "the typing stays");
     }
 
+    // Types a new secret row `old` into the environments tab of the collection at `root`.
+    fn draft_in(cx: &mut TestAppContext, s: &Started, root: &std::path::Path) {
+        use apinata_app::tabs::TabKind;
+        s.ws.update(cx, |w, cx| w.open_settings(root, TabKind::Environments, cx))
+            .unwrap();
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-name", 1usize), "old");
+        cx.run_until_parked();
+        click_lock(cx, s.win, 1);
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-value", 1usize), "typed");
+        cx.run_until_parked();
+    }
+
+    // Two collections each holding a stored `old`: the prompt names it once for each, by its
+    // environment and collection, in tab order.
+    #[gpui_kit::test]
+    fn one_name_in_two_collections_is_named_for_each(cx: &mut TestAppContext) {
+        let dev = format!("name: dev\n{HOST}");
+        let col = write_tree(&[("opencollection.yml", ROOT), ("environments/dev.yml", &dev)]);
+        let other = write_tree(&[
+            (
+                "opencollection.yml",
+                "opencollection: 1.0.0\ninfo:\n  name: d\n",
+            ),
+            ("environments/dev.yml", &dev),
+        ]);
+        let (store, key) = seeded(&col);
+        let two = Collection::open(other.path())
+            .unwrap()
+            .secret_key("dev", "old");
+        store.set(&two, "second").unwrap();
+        let s = started_with_store(cx, &col, store.clone());
+        let second = other.path().to_path_buf();
+        s.ws.update(cx, |w, cx| w.open(second.clone(), cx));
+        cx.run_until_parked();
+        draft_in(cx, &s, &s.root.clone());
+        draft_in(cx, &s, &second);
+        cx.dispatch_action(s.win, SaveAll);
+        cx.run_until_parked();
+        assert_eq!(
+            title(cx).as_deref(),
+            Some("Replace the stored values of \"old\" in dev of c, \"old\" in dev of d?")
+        );
+        answer_confirm(cx, CANCEL);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+        assert_eq!(store.get(&two).unwrap().as_deref(), Some("second"));
+    }
+
     #[gpui_kit::test]
     fn closing_a_tab_through_save_asks(cx: &mut TestAppContext) {
         let (col, s, store, key) = app(cx);

@@ -506,7 +506,7 @@ impl TabArea {
     // counts as dirty, so the prompt covers the edit that has not landed.
     fn close_settled(&mut self, ids: Vec<TabId>, window: &mut Window, cx: &mut Context<Self>) {
         // Held typing goes through the Save check first, and the store's write settles again.
-        let held = self.env_editors(&ids);
+        let held = self.env_editors(&ids, cx);
         let held: Vec<_> = held
             .into_iter()
             .filter(|editor| editor.read(cx).holds_typing(cx))
@@ -1485,7 +1485,7 @@ impl TabArea {
         cx: &mut Context<Self>,
         done: impl FnOnce(bool, &mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) {
-        let editors: Vec<Entity<EnvEditor>> = (self.env_editors(ids).into_iter())
+        let editors: Vec<Entity<EnvEditor>> = (self.env_editors(ids, cx).into_iter())
             .filter(|editor| editor.read(cx).owes_replace_check(true, cx))
             .collect();
         if editors.is_empty() {
@@ -1509,12 +1509,11 @@ impl TabArea {
         });
     }
 
-    fn env_editors(&self, ids: &[TabId]) -> Vec<Entity<EnvEditor>> {
-        ids.iter()
-            .filter_map(|id| match self.editors.get(id) {
-                Some((_, TabView::Env(editor))) => Some(editor.clone()),
-                _ => None,
-            })
+    // The environment editors among `ids` in tab strip order, which a shared prompt lists in.
+    fn env_editors(&self, ids: &[TabId], cx: &App) -> Vec<Entity<EnvEditor>> {
+        (self.workspace.read(cx).tabs().entries().iter())
+            .filter(|e| ids.contains(&e.id))
+            .filter_map(|e| self.env_editor(e.id).cloned())
             .collect()
     }
 
@@ -1553,9 +1552,14 @@ impl TabArea {
             .detach();
             return;
         }
-        let reads = editors
-            .iter()
-            .map(|editor| editor.update(cx, |e, cx| e.begin_replace_check(saving, cx)))
+        let reads = (editors.iter())
+            .map(|editor| {
+                let place = editor.read(cx).place(cx);
+                (
+                    place,
+                    editor.update(cx, |e, cx| e.begin_replace_check(saving, cx)),
+                )
+            })
             .collect();
         cx.spawn_in(window, async move |this, cx| {
             let go = crate::secret_lock::replace_agreed(reads, cx).await;
@@ -1726,7 +1730,7 @@ impl TabArea {
         done: impl FnOnce(bool, &mut Window, &mut App) + 'static,
     ) {
         let ids = self.held_tabs(root, cx);
-        let editors = self.env_editors(&ids);
+        let editors = self.env_editors(&ids, cx);
         self.check_replace(editors, false, window, cx, move |go, area, window, cx| {
             if go {
                 area.store_pending_secrets(&ids, false, cx);

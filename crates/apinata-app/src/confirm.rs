@@ -242,7 +242,12 @@ fn careful_ask(title: String, detail: &'static str, id: &'static str, label: &'s
 /// Overwriting the stored values of `names`: `[Cancel, Replace]`, Cancel the default.
 pub fn replace_secret_ask(names: &[String]) -> Ask {
     let quoted: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
-    let (title, detail) = match quoted.as_slice() {
+    replace_entries_ask(&quoted)
+}
+
+/// [`replace_secret_ask`] over `entries` already quoted, each perhaps naming its environment.
+pub fn replace_entries_ask(entries: &[String]) -> Ask {
+    let (title, detail) = match entries {
         [one] => (
             format!("Replace the stored value of {one}?"),
             "A value is already stored for this name. It is overwritten and cannot be recovered.",
