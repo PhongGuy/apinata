@@ -46,6 +46,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: d8ad8056c4645ee4
+          examples: 7ace431cb61584cb
           file: pet/Deletes a pet.yml
         DELETE /store/order/{}:
           target: 7c1dae09a3c2baa6
@@ -55,6 +56,7 @@ extensions:
           tags: ae792f1146394e0f
           vars: 7ace431cb61584cb
           method: d8ad8056c4645ee4
+          examples: 7ace431cb61584cb
           file: store/Delete purchase order by identifier.yml
         DELETE /user/{}:
           target: 248ec40b3acc2587
@@ -64,6 +66,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: d8ad8056c4645ee4
+          examples: 7ace431cb61584cb
           file: user/Delete user resource.yml
         GET /pet/findByStatus:
           target: 6659d3e0fe3b7294
@@ -73,6 +76,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: ba939a0d9e41f719
           file: pet/Finds Pets by status.yml
         GET /pet/findByTags:
           target: 4b353dc8c39d22e1
@@ -82,6 +86,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 40bc133d670a2396
           file: pet/Finds Pets by tags.yml
         GET /pet/{}:
           target: 505b7dbb2e5ac824
@@ -91,6 +96,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 52930809e7db8836
           file: pet/Find pet by ID.yml
         GET /store/inventory:
           target: ee379feeff07d77b
@@ -100,6 +106,7 @@ extensions:
           tags: ae792f1146394e0f
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 2a693bbd6a54ede3
           file: store/Returns pet inventories by status.yml
         GET /store/order/{}:
           target: a1b5da84c13e0edb
@@ -109,6 +116,7 @@ extensions:
           tags: ae792f1146394e0f
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: ff668ec91825c5f7
           file: store/Find purchase order by ID.yml
         GET /user/login:
           target: 7facc1680f53ceb5
@@ -118,6 +126,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: bf01b650106d9ea1
           file: user/Logs user into the system.yml
         GET /user/logout:
           target: 7a80e066e47bfe10
@@ -127,6 +136,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: user/Logs out current logged in user session.yml
         GET /user/{}:
           target: 53c4b64a1967890f
@@ -136,6 +146,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: de2bab45d7cb7cd8
           file: user/Get user by user name.yml
         POST /pet:
           target: 3561051dad38cdc1
@@ -145,6 +156,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: f973fd4c248a473d
           file: pet/Add a new pet to the store.yml
         POST /pet/{}:
           target: f461d3b4d3a1f6b3
@@ -154,6 +166,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 4d5281bc831d0906
           file: pet/Updates a pet in the store with form data.yml
         POST /pet/{}/uploadImage:
           target: b9a87ecbd86feb79
@@ -163,6 +176,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: ebf3fc283e263e2c
           file: pet/Uploads an image.yml
         POST /store/order:
           target: 3826160129f0e11c
@@ -172,6 +186,7 @@ extensions:
           tags: ae792f1146394e0f
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 5b06f496a1920cd8
           file: store/Place an order for a pet.yml
         POST /user:
           target: 494ce4fc3702909f
@@ -181,6 +196,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 6bbc2cc74b2bc6ea
           file: user/Create user.yml
         POST /user/createWithList:
           target: 6c4366ed414581d1
@@ -190,6 +206,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: c09a53da8797cbac
           file: user/Creates list of users with given input array.yml
         PUT /pet:
           target: 3561051dad38cdc1
@@ -199,6 +216,7 @@ extensions:
           tags: 2f0b3efa4935e66e
           vars: 7ace431cb61584cb
           method: 651ba8f38be35d73
+          examples: 225460fab7aeaee2
           file: pet/Update an existing pet.yml
         PUT /user/{}:
           target: 64f411ba3ea33ac9
@@ -208,6 +226,7 @@ extensions:
           tags: 84584fcbb36de5bd
           vars: 7ace431cb61584cb
           method: 651ba8f38be35d73
+          examples: 7ace431cb61584cb
           file: user/Update user resource.yml
 
 === pet/Add a new pet to the store.yml
@@ -262,6 +281,102 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Successful operation
+    request:
+      url: "{{baseUrl}}/pet"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+  - name: 200 Response
+    description: Successful operation
+    request:
+      url: "{{baseUrl}}/pet"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <pet>
+            <id></id>
+            <name></name>
+            <category>
+              <id></id>
+              <name></name>
+            </category>
+            <photoUrls></photoUrls>
+            <tags></tags>
+            <status></status>
+          </pet>
 
 docs: Add a new pet to the store.
 
@@ -339,6 +454,74 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/:petId"
+      method: GET
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: ID of pet to return
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/:petId"
+      method: GET
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: ID of pet to return
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <pet>
+            <id></id>
+            <name></name>
+            <category>
+              <id></id>
+              <name></name>
+            </category>
+            <photoUrls></photoUrls>
+            <tags></tags>
+            <status></status>
+          </pet>
+
 docs: Returns a single pet.
 
 === pet/Finds Pets by status.yml
@@ -390,6 +573,84 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/findByStatus?status=available"
+      method: GET
+      params:
+        - name: status
+          value: available
+          type: query
+          description: Status values that need to be considered for filter
+        - name: status
+          value: pending
+          type: query
+          description: Status values that need to be considered for filter
+          disabled: true
+        - name: status
+          value: sold
+          type: query
+          description: Status values that need to be considered for filter
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 10,
+              "name": "doggie",
+              "category": {
+                "id": 1,
+                "name": "Dogs"
+              },
+              "photoUrls": [],
+              "tags": [
+                {
+                  "id": 0,
+                  "name": ""
+                }
+              ],
+              "status": "available"
+            }
+          ]
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/findByStatus?status=available"
+      method: GET
+      params:
+        - name: status
+          value: available
+          type: query
+          description: Status values that need to be considered for filter
+        - name: status
+          value: pending
+          type: query
+          description: Status values that need to be considered for filter
+          disabled: true
+        - name: status
+          value: sold
+          type: query
+          description: Status values that need to be considered for filter
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: ""
+
 docs: Multiple status values can be provided with comma separated strings.
 
 === pet/Finds Pets by tags.yml
@@ -430,6 +691,64 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/findByTags?tags=[]"
+      method: GET
+      params:
+        - name: tags
+          value: "[]"
+          type: query
+          description: Tags to filter by
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 10,
+              "name": "doggie",
+              "category": {
+                "id": 1,
+                "name": "Dogs"
+              },
+              "photoUrls": [],
+              "tags": [
+                {
+                  "id": 0,
+                  "name": ""
+                }
+              ],
+              "status": "available"
+            }
+          ]
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/findByTags?tags=[]"
+      method: GET
+      params:
+        - name: tags
+          value: "[]"
+          type: query
+          description: Tags to filter by
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: ""
 
 docs: Multiple tags can be provided with comma separated strings. Use tag1, tag2, tag3 for testing.
 
@@ -486,6 +805,102 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Successful operation
+    request:
+      url: "{{baseUrl}}/pet"
+      method: PUT
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+  - name: 200 Response
+    description: Successful operation
+    request:
+      url: "{{baseUrl}}/pet"
+      method: PUT
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <pet>
+            <id></id>
+            <name></name>
+            <category>
+              <id></id>
+              <name></name>
+            </category>
+            <photoUrls></photoUrls>
+            <tags></tags>
+            <status></status>
+          </pet>
+
 docs: Update an existing pet by Id.
 
 === pet/Updates a pet in the store with form data.yml
@@ -537,6 +952,94 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/:petId"
+      method: POST
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: ID of pet that needs to be updated
+        - name: name
+          value: ""
+          type: query
+          description: Name of pet that needs to be updated
+          disabled: true
+        - name: status
+          value: ""
+          type: query
+          description: Status of pet that needs to be updated
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "name": "doggie",
+            "category": {
+              "id": 1,
+              "name": "Dogs"
+            },
+            "photoUrls": [],
+            "tags": [
+              {
+                "id": 0,
+                "name": ""
+              }
+            ],
+            "status": "available"
+          }
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/:petId"
+      method: POST
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: ID of pet that needs to be updated
+        - name: name
+          value: ""
+          type: query
+          description: Name of pet that needs to be updated
+          disabled: true
+        - name: status
+          value: ""
+          type: query
+          description: Status of pet that needs to be updated
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <pet>
+            <id></id>
+            <name></name>
+            <category>
+              <id></id>
+              <name></name>
+            </category>
+            <photoUrls></photoUrls>
+            <tags></tags>
+            <status></status>
+          </pet>
+
 docs: Updates a pet resource based on the form data.
 
 === pet/Uploads an image.yml
@@ -585,6 +1088,40 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/pet/:petId/uploadImage"
+      method: POST
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: ID of pet to update
+        - name: additionalMetadata
+          value: ""
+          type: query
+          description: Additional Metadata
+          disabled: true
+      body:
+        type: text
+        data: ""
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "code": 0,
+            "type": "",
+            "message": ""
+          }
 
 docs: Upload image of the pet.
 
@@ -653,6 +1190,63 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/store/order/:orderId"
+      method: GET
+      params:
+        - name: orderId
+          value: ""
+          type: path
+          description: ID of order that needs to be fetched
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "petId": 198772,
+            "quantity": 7,
+            "shipDate": "",
+            "status": "approved",
+            "complete": false
+          }
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/store/order/:orderId"
+      method: GET
+      params:
+        - name: orderId
+          value: ""
+          type: path
+          description: ID of order that needs to be fetched
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <order>
+            <id></id>
+            <petId></petId>
+            <quantity></quantity>
+            <shipDate></shipDate>
+            <status></status>
+            <complete></complete>
+          </order>
+
 docs: For valid response try integer IDs with value <= 5 or > 10. Other values will generate exceptions.
 
 === store/Place an order for a pet.yml
@@ -686,6 +1280,41 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/store/order"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "petId": 198772,
+            "quantity": 7,
+            "shipDate": "",
+            "status": "approved",
+            "complete": false
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "petId": 198772,
+            "quantity": 7,
+            "shipDate": "",
+            "status": "approved",
+            "complete": false
+          }
+
 docs: Place a new order in the store.
 
 === store/Returns pet inventories by status.yml
@@ -711,6 +1340,22 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/store/inventory"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: "{}"
 
 docs: Returns a map of status codes to quantities.
 
@@ -760,6 +1405,83 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/user"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "username": "theUser",
+            "firstName": "John",
+            "lastName": "James",
+            "email": "john@email.com",
+            "password": "12345",
+            "phone": "12345",
+            "userStatus": 1
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "username": "theUser",
+            "firstName": "John",
+            "lastName": "James",
+            "email": "john@email.com",
+            "password": "12345",
+            "phone": "12345",
+            "userStatus": 1
+          }
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/user"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "username": "theUser",
+            "firstName": "John",
+            "lastName": "James",
+            "email": "john@email.com",
+            "password": "12345",
+            "phone": "12345",
+            "userStatus": 1
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <user>
+            <id></id>
+            <username></username>
+            <firstName></firstName>
+            <lastName></lastName>
+            <email></email>
+            <password></password>
+            <phone></phone>
+            <userStatus></userStatus>
+          </user>
+
 docs: This can only be done by the logged in user.
 
 === user/Creates list of users with given input array.yml
@@ -796,6 +1518,87 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Successful operation
+    request:
+      url: "{{baseUrl}}/user/createWithList"
+      method: POST
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 10,
+              "username": "theUser",
+              "firstName": "John",
+              "lastName": "James",
+              "email": "john@email.com",
+              "password": "12345",
+              "phone": "12345",
+              "userStatus": 1
+            }
+          ]
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "username": "theUser",
+            "firstName": "John",
+            "lastName": "James",
+            "email": "john@email.com",
+            "password": "12345",
+            "phone": "12345",
+            "userStatus": 1
+          }
+  - name: 200 Response
+    description: Successful operation
+    request:
+      url: "{{baseUrl}}/user/createWithList"
+      method: POST
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 10,
+              "username": "theUser",
+              "firstName": "John",
+              "lastName": "James",
+              "email": "john@email.com",
+              "password": "12345",
+              "phone": "12345",
+              "userStatus": 1
+            }
+          ]
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <user>
+            <id></id>
+            <username></username>
+            <firstName></firstName>
+            <lastName></lastName>
+            <email></email>
+            <password></password>
+            <phone></phone>
+            <userStatus></userStatus>
+          </user>
 
 docs: Creates list of users with given input array.
 
@@ -851,6 +1654,67 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/user/:username"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+          description: The name that needs to be fetched. Use user1 for testing
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 10,
+            "username": "theUser",
+            "firstName": "John",
+            "lastName": "James",
+            "email": "john@email.com",
+            "password": "12345",
+            "phone": "12345",
+            "userStatus": 1
+          }
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/user/:username"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+          description: The name that needs to be fetched. Use user1 for testing
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <user>
+            <id></id>
+            <username></username>
+            <firstName></firstName>
+            <lastName></lastName>
+            <email></email>
+            <password></password>
+            <phone></phone>
+            <userStatus></userStatus>
+          </user>
+
 docs: Get user detail based on username.
 
 === user/Logs out current logged in user session.yml
@@ -905,6 +1769,58 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/user/login"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: query
+          description: The user name for login
+          disabled: true
+        - name: password
+          value: ""
+          type: query
+          description: The password for login in clear text
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/xml
+      body:
+        type: xml
+        data: ""
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/user/login"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: query
+          description: The user name for login
+          disabled: true
+        - name: password
+          value: ""
+          type: query
+          description: The password for login in clear text
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: '""'
 
 docs: Log into the system.
 

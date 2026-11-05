@@ -166,6 +166,9 @@ pub struct ImportedRequest {
     /// Secret values the request refers to by variable name. They are never written to the
     /// request file; [`store_request_secrets`] keeps them in an environment and the secret store.
     pub secrets: Vec<ImportedSecret>,
+    /// Saved example responses; each one's request half is taken from the request as written.
+    /// Empty leaves the file's own.
+    pub examples: Vec<crate::Example>,
 }
 
 /// A secret value an imported request refers to as `{{name}}`. Its `Debug` hides the value.

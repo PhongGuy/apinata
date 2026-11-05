@@ -30,6 +30,47 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: a pull request object
+    request:
+      url: "{{baseUrl}}/2.0/repositories/:username/:slug/pullrequests/:pid"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+        - name: slug
+          value: ""
+          type: path
+        - name: pid
+          value: ""
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "title": "",
+            "repository": {
+              "slug": "",
+              "owner": {
+                "username": "",
+                "uuid": ""
+              }
+            },
+            "author": {
+              "username": "",
+              "uuid": ""
+            }
+          }
+
 === getPullRequestsByRepository.yml
 info:
   name: getPullRequestsByRepository
@@ -67,6 +108,58 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: an array of pull request objects
+    request:
+      url: "{{baseUrl}}/2.0/repositories/:username/:slug/pullrequests"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+        - name: slug
+          value: ""
+          type: path
+        - name: state
+          value: open
+          type: query
+          disabled: true
+        - name: state
+          value: merged
+          type: query
+          disabled: true
+        - name: state
+          value: declined
+          type: query
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "title": "",
+              "repository": {
+                "slug": "",
+                "owner": {
+                  "username": "",
+                  "uuid": ""
+                }
+              },
+              "author": {
+                "username": "",
+                "uuid": ""
+              }
+            }
+          ]
+
 === getRepositoriesByOwner.yml
 info:
   name: getRepositoriesByOwner
@@ -88,6 +181,35 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: repositories owned by the supplied user
+    request:
+      url: "{{baseUrl}}/2.0/repositories/:username"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "slug": "",
+              "owner": {
+                "username": "",
+                "uuid": ""
+              }
+            }
+          ]
 
 === getRepository.yml
 info:
@@ -114,6 +236,36 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: The repository
+    request:
+      url: "{{baseUrl}}/2.0/repositories/:username/:slug"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+        - name: slug
+          value: ""
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "slug": "",
+            "owner": {
+              "username": "",
+              "uuid": ""
+            }
+          }
+
 === getUserByName.yml
 info:
   name: getUserByName
@@ -135,6 +287,30 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: The User
+    request:
+      url: "{{baseUrl}}/2.0/users/:username"
+      method: GET
+      params:
+        - name: username
+          value: ""
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "username": "",
+            "uuid": ""
+          }
 
 === mergePullRequest.yml
 info:
@@ -186,6 +362,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 676095420b4b1f8a
           file: getRepositoriesByOwner.yml
         GET /2.0/repositories/{}/{}:
           target: ab77cd4749361ed2
@@ -195,6 +372,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 79e77fea072f6ccc
           file: getRepository.yml
         GET /2.0/repositories/{}/{}/pullrequests:
           target: f10519ecb4764da3
@@ -204,6 +382,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 1d49e1dfc52cab2b
           file: getPullRequestsByRepository.yml
         GET /2.0/repositories/{}/{}/pullrequests/{}:
           target: a68a76db4f86ff6a
@@ -213,6 +392,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: e7459a1560baa2b5
           file: getPullRequestsById.yml
         GET /2.0/users/{}:
           target: 22743641212fd2a9
@@ -222,6 +402,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 34c6f827021200fd
           file: getUserByName.yml
         POST /2.0/repositories/{}/{}/pullrequests/{}/merge:
           target: 14edf905db113073
@@ -231,6 +412,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 7ace431cb61584cb
           file: mergePullRequest.yml
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending

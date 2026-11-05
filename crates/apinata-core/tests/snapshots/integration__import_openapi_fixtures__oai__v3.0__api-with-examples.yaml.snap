@@ -20,6 +20,86 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: foo
+    request:
+      url: "{{baseUrl}}/"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "versions": [
+              {
+                "status": "CURRENT",
+                "updated": "2011-01-21T11:33:21Z",
+                "id": "v2.0",
+                "links": [
+                  {
+                    "href": "http://127.0.0.1:8774/v2/",
+                    "rel": "self"
+                  }
+                ]
+              },
+              {
+                "status": "EXPERIMENTAL",
+                "updated": "2013-07-23T11:33:21Z",
+                "id": "v3.0",
+                "links": [
+                  {
+                    "href": "http://127.0.0.1:8774/v3/",
+                    "rel": "self"
+                  }
+                ]
+              }
+            ]
+          }
+  - name: foo
+    request:
+      url: "{{baseUrl}}/"
+      method: GET
+    response:
+      status: 300
+      statusText: Multiple Choices
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |
+          {
+           "versions": [
+                 {
+                   "status": "CURRENT",
+                   "updated": "2011-01-21T11:33:21Z",
+                   "id": "v2.0",
+                   "links": [
+                       {
+                           "href": "http://127.0.0.1:8774/v2/",
+                           "rel": "self"
+                       }
+                   ]
+               },
+               {
+                   "status": "EXPERIMENTAL",
+                   "updated": "2013-07-23T11:33:21Z",
+                   "id": "v3.0",
+                   "links": [
+                       {
+                           "href": "http://127.0.0.1:8774/v3/",
+                           "rel": "self"
+                       }
+                   ]
+               }
+           ]
+          }
+
 === Show API version details.yml
 info:
   name: Show API version details
@@ -37,6 +117,105 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: foo
+    request:
+      url: "{{baseUrl}}/v2"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "version": {
+              "status": "CURRENT",
+              "updated": "2011-01-21T11:33:21Z",
+              "media-types": [
+                {
+                  "base": "application/xml",
+                  "type": "application/vnd.openstack.compute+xml;version=2"
+                },
+                {
+                  "base": "application/json",
+                  "type": "application/vnd.openstack.compute+json;version=2"
+                }
+              ],
+              "id": "v2.0",
+              "links": [
+                {
+                  "href": "http://127.0.0.1:8774/v2/",
+                  "rel": "self"
+                },
+                {
+                  "href": "http://docs.openstack.org/api/openstack-compute/2/os-compute-devguide-2.pdf",
+                  "type": "application/pdf",
+                  "rel": "describedby"
+                },
+                {
+                  "href": "http://docs.openstack.org/api/openstack-compute/2/wadl/os-compute-2.wadl",
+                  "type": "application/vnd.sun.wadl+xml",
+                  "rel": "describedby"
+                },
+                {
+                  "href": "http://docs.openstack.org/api/openstack-compute/2/wadl/os-compute-2.wadl",
+                  "type": "application/vnd.sun.wadl+xml",
+                  "rel": "describedby"
+                }
+              ]
+            }
+          }
+  - name: foo
+    request:
+      url: "{{baseUrl}}/v2"
+      method: GET
+    response:
+      status: 203
+      statusText: Non Authoritative Information
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "version": {
+              "status": "CURRENT",
+              "updated": "2011-01-21T11:33:21Z",
+              "media-types": [
+                {
+                  "base": "application/xml",
+                  "type": "application/vnd.openstack.compute+xml;version=2"
+                },
+                {
+                  "base": "application/json",
+                  "type": "application/vnd.openstack.compute+json;version=2"
+                }
+              ],
+              "id": "v2.0",
+              "links": [
+                {
+                  "href": "http://23.253.228.211:8774/v2/",
+                  "rel": "self"
+                },
+                {
+                  "href": "http://docs.openstack.org/api/openstack-compute/2/os-compute-devguide-2.pdf",
+                  "type": "application/pdf",
+                  "rel": "describedby"
+                },
+                {
+                  "href": "http://docs.openstack.org/api/openstack-compute/2/wadl/os-compute-2.wadl",
+                  "type": "application/vnd.sun.wadl+xml",
+                  "rel": "describedby"
+                }
+              ]
+            }
+          }
 
 === opencollection.yml
 opencollection: 1.0.0
@@ -60,6 +239,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 0ddc39ab08f7dd60
           file: List API versions.yml
         GET /v2:
           target: b0232563e699e0f3
@@ -69,6 +249,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 6a39e59069a93592
           file: Show API version details.yml
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending

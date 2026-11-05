@@ -99,7 +99,7 @@ fn hashes_are_16_lowercase_hex_and_differ_only_in_the_changed_field() {
             "{field:?}"
         );
     }
-    assert_eq!(a.iter().count(), 7);
+    assert_eq!(a.iter().count(), 8);
 }
 
 #[test]

@@ -38,6 +38,29 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/admin/users"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "email": ""
+            }
+          ]
+
 docs: Retrieve all users (admin only)
 
 === Create user.yml
@@ -67,6 +90,34 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 201 Response
+    description: User created
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "email": ""
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "name": "",
+            "email": ""
+          }
+
 docs: Create a new user
 
 === Get public data.yml
@@ -85,6 +136,26 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/public/data"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "message": "",
+            "timestamp": ""
+          }
 
 docs: Retrieve public data without authentication
 
@@ -107,6 +178,29 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "email": ""
+            }
+          ]
 
 docs: Retrieve a list of users
 
@@ -153,6 +247,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 678c1413b9cbfdac
           file: Admin get users.yml
         GET /public/data:
           target: 302d15f41caae4f0
@@ -162,6 +257,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 60f5e33e07013749
           file: Get public data.yml
         GET /users:
           target: fd5684d8ea61b64c
@@ -171,6 +267,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 8fb41ca0a919476b
           file: Get users.yml
         POST /users:
           target: fd5684d8ea61b64c
@@ -180,6 +277,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 046668a5e771a893
           file: Create user.yml
 
 note Converted Admin get users.yml | paths./admin/users.get.security | `oauth2` uses placeholder variables: set their values in the environment

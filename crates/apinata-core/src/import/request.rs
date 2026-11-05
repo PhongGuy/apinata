@@ -137,15 +137,16 @@ impl ImportedRequest {
             tags: Vec::new(),
             scripts: ImportedScripts::default(),
             secrets: Vec::new(),
+            examples: Vec::new(),
         }
     }
 
     /// Write everything but the name and sequence number into `file`, in memory. The URL and
     /// params are written as given, not derived from each other. A header the format cannot
     /// hold is [`EditError::InvalidHeaderName`], and nothing after the headers is written. Empty
-    /// docs, vars or tags leave the file's own, so applying to a draft never clears them. A
-    /// GraphQL file keeps its query and variables against an HTTP import; the returned notes say
-    /// what was left out.
+    /// docs, vars, tags or examples leave the file's own, so applying to a draft never clears
+    /// them. A GraphQL file keeps its query and variables against an HTTP import; the returned
+    /// notes say what was left out.
     pub fn apply_to(&self, file: &mut RequestFile) -> Result<Vec<ImportNote>, EditError> {
         let notes = self.notes_on(file.kind());
         file.set_method(self.method.as_str());
@@ -172,6 +173,9 @@ impl ImportedRequest {
         }
         self.scripts
             .write_with(|phase, code| file.set_script(phase, code));
+        if !self.examples.is_empty() && file.kind() == RequestKind::Http {
+            super::update::write_examples(file, self)?;
+        }
         Ok(notes)
     }
 

@@ -198,11 +198,25 @@ fn an_export_round_trips_requests_headers_and_examples_through_the_importer() {
         ),
         other => panic!("not a JSON body: {other:?}"),
     }
-    // The importer reads requests only; the example response survives in the document it read.
-    let created = &doc["paths"]["/users"]["post"]["responses"]["201"];
-    assert_eq!(created["headers"]["Location"]["example"], json!("/users/7"));
+    // The saved example comes back with its status, headers and body.
+    let [example] = r.request.examples.as_slice() else {
+        panic!("one example: {:?}", r.request.examples);
+    };
+    assert_eq!(example.name, "created");
+    let response = example.response.as_ref().expect("a response half");
+    assert_eq!(response.status, Some(201));
+    assert_eq!(response.status_text.as_deref(), Some("Created"));
     assert_eq!(
-        created["content"]["application/json"]["examples"]["created"]["value"],
+        response.headers,
+        [
+            ("Content-Type".to_owned(), "application/json".to_owned()),
+            ("Location".to_owned(), "/users/7".to_owned()),
+        ]
+    );
+    let body = response.body.as_ref().expect("a body");
+    assert_eq!(body.kind, apinata_core::ExampleBodyKind::Json);
+    assert_eq!(
+        serde_json::from_str::<Value>(&body.data).unwrap(),
         json!({"id": 7})
     );
 }

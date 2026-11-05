@@ -24,6 +24,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: e6397faea14fa77a
           file: subscribes a client to receive out-of-band data.yml
 
 === subscribes a client to receive out-of-band data.yml
@@ -50,6 +51,32 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 201 Response
+    description: subscription successfully created
+    request:
+      url: "{{baseUrl}}/streams?callbackUrl=https://tonys-server.com"
+      method: POST
+      params:
+        - name: callbackUrl
+          value: https://tonys-server.com
+          type: query
+          description: |
+            the location where data will be sent.  Must be network accessible
+            by the source server
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "subscriptionId": "2531329f-fb09-4ef7-887e-84e648214436"
+          }
 
 docs: subscribes a client to receive out-of-band data
 

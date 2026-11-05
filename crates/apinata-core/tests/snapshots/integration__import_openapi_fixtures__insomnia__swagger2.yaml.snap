@@ -63,4 +63,5 @@ extensions:
           tags: 4f55cb6067946c83
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: custom-tag/get pet by id.yml

@@ -28,6 +28,41 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Login successful
+    request:
+      url: "{{baseUrl}}/auth/login"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "email": "",
+            "password": ""
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "token": "",
+            "expiresIn": 0,
+            "user": {
+              "id": "",
+              "email": "",
+              "name": "",
+              "avatar": "",
+              "createdAt": "",
+              "updatedAt": ""
+            }
+          }
+
 docs: Authenticate user and get access token
 
 === Authentication/folder.yml
@@ -67,6 +102,46 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 201 Response
+    description: Post created successfully
+    request:
+      url: "{{baseUrl}}/posts"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "title": "",
+            "content": "",
+            "category": ""
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "",
+            "title": "",
+            "content": "",
+            "author": {
+              "id": "",
+              "email": "",
+              "name": "",
+              "avatar": "",
+              "createdAt": "",
+              "updatedAt": ""
+            },
+            "category": "",
+            "publishedAt": "",
+            "createdAt": ""
+          }
+
 docs: Create a new blog post
 
 === Posts/Get all posts.yml
@@ -99,6 +174,51 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: List of posts
+    request:
+      url: "{{baseUrl}}/posts"
+      method: GET
+      params:
+        - name: author
+          value: ""
+          type: query
+          description: Filter by author ID
+          disabled: true
+        - name: category
+          value: ""
+          type: query
+          description: Filter by category
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": "",
+              "title": "",
+              "content": "",
+              "author": {
+                "id": "",
+                "email": "",
+                "name": "",
+                "avatar": "",
+                "createdAt": "",
+                "updatedAt": ""
+              },
+              "category": "",
+              "publishedAt": "",
+              "createdAt": ""
+            }
+          ]
 
 docs: Retrieve all blog posts
 
@@ -140,6 +260,67 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 201 Response
+    description: User created successfully
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "email": "",
+            "name": "",
+            "password": "",
+            "avatar": ""
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "",
+            "email": "",
+            "name": "",
+            "avatar": "",
+            "createdAt": "",
+            "updatedAt": ""
+          }
+  - name: 400 Response
+    description: Bad request
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "email": "",
+            "name": "",
+            "password": "",
+            "avatar": ""
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "",
+            "message": "",
+            "code": 0
+          }
+
 docs: Create a new user account
 
 === Users/Delete user.yml
@@ -166,6 +347,32 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 404 Response
+    description: Resource not found
+    request:
+      url: "{{baseUrl}}/users/:userId"
+      method: DELETE
+      params:
+        - name: userId
+          value: ""
+          type: path
+          description: The user ID
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "",
+            "message": "",
+            "code": 0
+          }
 
 docs: Delete a user account
 
@@ -203,6 +410,120 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: List of users retrieved successfully
+    request:
+      url: "{{baseUrl}}/users?page=1&limit=20"
+      method: GET
+      params:
+        - name: page
+          value: "1"
+          type: query
+          description: Page number for pagination
+        - name: limit
+          value: "20"
+          type: query
+          description: Number of items per page
+        - name: filter
+          value: ""
+          type: query
+          description: Filter users by name or email
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "users": [
+              {
+                "id": "",
+                "email": "",
+                "name": "",
+                "avatar": "",
+                "createdAt": "",
+                "updatedAt": ""
+              }
+            ],
+            "pagination": {
+              "page": 0,
+              "limit": 0,
+              "total": 0,
+              "totalPages": 0
+            }
+          }
+  - name: 400 Response
+    description: Bad request
+    request:
+      url: "{{baseUrl}}/users?page=1&limit=20"
+      method: GET
+      params:
+        - name: page
+          value: "1"
+          type: query
+          description: Page number for pagination
+        - name: limit
+          value: "20"
+          type: query
+          description: Number of items per page
+        - name: filter
+          value: ""
+          type: query
+          description: Filter users by name or email
+          disabled: true
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "",
+            "message": "",
+            "code": 0
+          }
+  - name: 401 Response
+    description: Unauthorized
+    request:
+      url: "{{baseUrl}}/users?page=1&limit=20"
+      method: GET
+      params:
+        - name: page
+          value: "1"
+          type: query
+          description: Page number for pagination
+        - name: limit
+          value: "20"
+          type: query
+          description: Number of items per page
+        - name: filter
+          value: ""
+          type: query
+          description: Filter users by name or email
+          disabled: true
+    response:
+      status: 401
+      statusText: Unauthorized
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "",
+            "message": "",
+            "code": 0
+          }
+
 docs: Retrieve a paginated list of all users
 
 === Users/Get user by ID.yml
@@ -229,6 +550,59 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: User retrieved successfully
+    request:
+      url: "{{baseUrl}}/users/:userId"
+      method: GET
+      params:
+        - name: userId
+          value: ""
+          type: path
+          description: The user ID
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "",
+            "email": "",
+            "name": "",
+            "avatar": "",
+            "createdAt": "",
+            "updatedAt": ""
+          }
+  - name: 404 Response
+    description: Resource not found
+    request:
+      url: "{{baseUrl}}/users/:userId"
+      method: GET
+      params:
+        - name: userId
+          value: ""
+          type: path
+          description: The user ID
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "",
+            "message": "",
+            "code": 0
+          }
 
 docs: Retrieve a specific user by their ID
 
@@ -263,6 +637,73 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: User updated successfully
+    request:
+      url: "{{baseUrl}}/users/:userId"
+      method: PUT
+      params:
+        - name: userId
+          value: ""
+          type: path
+          description: The user ID
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "avatar": ""
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "",
+            "email": "",
+            "name": "",
+            "avatar": "",
+            "createdAt": "",
+            "updatedAt": ""
+          }
+  - name: 404 Response
+    description: Resource not found
+    request:
+      url: "{{baseUrl}}/users/:userId"
+      method: PUT
+      params:
+        - name: userId
+          value: ""
+          type: path
+          description: The user ID
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "avatar": ""
+          }
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "",
+            "message": "",
+            "code": 0
+          }
 
 docs: Update an existing user
 
@@ -330,6 +771,7 @@ extensions:
           tags: a816fc4ae59a17a4
           vars: 7ace431cb61584cb
           method: d8ad8056c4645ee4
+          examples: f88236081e44d401
           file: Users/Delete user.yml
         GET /posts:
           target: 7d926d123aad74ae
@@ -339,6 +781,7 @@ extensions:
           tags: 6649c5cc351bd044
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 86984f34c1b66d91
           file: Posts/Get all posts.yml
         GET /users:
           target: 4d64ffe5c1e218a2
@@ -348,6 +791,7 @@ extensions:
           tags: a816fc4ae59a17a4
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: a89dadab8a29feb1
           file: Users/Get all users.yml
         GET /users/{}:
           target: 74ccd207c9ff8418
@@ -357,6 +801,7 @@ extensions:
           tags: a816fc4ae59a17a4
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: cfbbb9d6b98c0c93
           file: Users/Get user by ID.yml
         POST /auth/login:
           target: b5f57b04027763f5
@@ -366,6 +811,7 @@ extensions:
           tags: 0f2af95d5d699a4c
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: dc8a040ed25af4e9
           file: Authentication/User login.yml
         POST /posts:
           target: daf230798a40e4d6
@@ -375,6 +821,7 @@ extensions:
           tags: 6649c5cc351bd044
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 6f39371a9218ffac
           file: Posts/Create a new post.yml
         POST /users:
           target: fd5684d8ea61b64c
@@ -384,6 +831,7 @@ extensions:
           tags: a816fc4ae59a17a4
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 4625ba17bfb2696c
           file: Users/Create a new user.yml
         PUT /users/{}:
           target: 74ccd207c9ff8418
@@ -393,6 +841,7 @@ extensions:
           tags: a816fc4ae59a17a4
           vars: 7ace431cb61584cb
           method: 651ba8f38be35d73
+          examples: 3cafd882e97d3344
           file: Users/Update user.yml
 
 note Converted opencollection.yml | security | only the first security requirement's first scheme, `bearerAuth`, is used

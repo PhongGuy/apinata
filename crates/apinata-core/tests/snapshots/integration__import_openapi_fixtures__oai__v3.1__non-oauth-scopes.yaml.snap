@@ -50,6 +50,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: get -users.yml
 
 note NeedsInput opencollection.yml | servers | no server gives an absolute URL; set `baseUrl` in an environment before sending

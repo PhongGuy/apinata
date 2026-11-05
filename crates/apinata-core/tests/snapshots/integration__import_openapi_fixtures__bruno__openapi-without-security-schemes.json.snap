@@ -27,6 +27,35 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 201 Response
+    description: Data created successfully
+    request:
+      url: "{{baseUrl}}/data"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "description": ""
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "name": "",
+            "description": "",
+            "created_at": ""
+          }
+
 docs: Create new data item
 
 === Delete data.yml
@@ -77,6 +106,32 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/data/:id"
+      method: GET
+      params:
+        - name: id
+          value: ""
+          type: path
+          description: ID of the data item
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "name": "",
+            "description": ""
+          }
+
 docs: Retrieve a specific data item by its ID
 
 === Get data.yml
@@ -102,6 +157,34 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/data?limit=10"
+      method: GET
+      params:
+        - name: limit
+          value: "10"
+          type: query
+          description: Maximum number of items to return
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "description": ""
+            }
+          ]
+
 docs: Retrieve data from the API
 
 === Get public information.yml
@@ -122,6 +205,26 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/public/info"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "version": "",
+            "features": []
+          }
+
 docs: Retrieve public information that doesn't require authentication
 
 === Health check.yml
@@ -141,6 +244,26 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: API is healthy
+    request:
+      url: "{{baseUrl}}/health"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "status": "ok",
+            "timestamp": ""
+          }
 
 docs: Check if the API is healthy
 
@@ -173,6 +296,40 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Data updated successfully
+    request:
+      url: "{{baseUrl}}/data/:id"
+      method: PUT
+      params:
+        - name: id
+          value: ""
+          type: path
+          description: ID of the data item
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "description": ""
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "name": "",
+            "description": "",
+            "updated_at": ""
+          }
 
 docs: Update an existing data item
 
@@ -208,6 +365,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: d8ad8056c4645ee4
+          examples: 7ace431cb61584cb
           file: Delete data.yml
         GET /data:
           target: 1ca73d8b63000013
@@ -217,6 +375,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: f9e4d8073df0a325
           file: Get data.yml
         GET /data/{}:
           target: a7644978d850c762
@@ -226,6 +385,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 9cbd953eff12ebfa
           file: Get data by ID.yml
         GET /health:
           target: b03f9aa0440c5f75
@@ -235,6 +395,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 064ba849982757e0
           file: Health check.yml
         GET /public/info:
           target: cefd5d18ecd44723
@@ -244,6 +405,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 5e317a2538339bc6
           file: Get public information.yml
         POST /data:
           target: c1b9bbe53029b327
@@ -253,6 +415,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: bfe12014c281b91f
           file: Create data.yml
         PUT /data/{}:
           target: a7644978d850c762
@@ -262,4 +425,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: 651ba8f38be35d73
+          examples: 2be300571d21dc0b
           file: Update data.yml

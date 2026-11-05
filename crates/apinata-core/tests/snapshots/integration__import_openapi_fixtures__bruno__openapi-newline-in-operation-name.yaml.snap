@@ -20,6 +20,22 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 201 Response
+    description: Created
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: "{}"
+
 docs: This operation has multiple consecutive newlines
 
 === Get users with newline.yml
@@ -39,6 +55,22 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Success
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: "{}"
 
 docs: This operation has newlines in the summary
 
@@ -74,6 +106,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 45e96729ea8f3b21
           file: Get users with newline.yml
         POST /users:
           target: fd5684d8ea61b64c
@@ -83,4 +116,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: d7796f649335f5ec
           file: Create user with multiple newlines.yml

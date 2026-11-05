@@ -150,6 +150,7 @@ pub(super) fn map(
         vars: Vec::new(),
         tags: Vec::new(),
         secrets: Vec::new(),
+        examples: Vec::new(),
     };
     let item = ImportedRequestItem {
         name,

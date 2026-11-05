@@ -16,6 +16,7 @@ use crate::request::{RequestFile, RequestKind};
 use crate::script::ScriptPhase;
 use crate::trash::Trash;
 use fields::refresh_fields;
+pub(crate) use fields::write_examples;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How an update treats vanished operations.
@@ -364,22 +365,22 @@ fn prune_blocker(f: &RequestFile, recorded: &FieldHashes) -> Option<&'static str
         Some("it has scripts")
     } else if !f.assertions().is_empty() || !f.post_response_vars().is_empty() {
         Some("it has assertions or post-response variables")
-    } else if !f.examples().is_empty() {
+    } else if !f.examples().is_empty() && recorded.get(ChangedField::Examples).is_none() {
         Some("it has examples")
     } else {
         None
     }
 }
 
-/// Whether every recorded hash still equals the file's; an older baseline has no method hash,
-/// so the method is only compared when one was recorded.
+/// Whether every recorded hash still equals the file's; an older baseline has no method or
+/// examples hash, so those are only compared when one was recorded.
 fn matches_recorded(f: &RequestFile, recorded: &FieldHashes) -> bool {
     let now = file_field_hashes(f);
     ChangedField::ALL
         .into_iter()
         .all(|field| match recorded.get(field) {
             Some(h) => now.get(field) == Some(h),
-            None => field == ChangedField::Method,
+            None => matches!(field, ChangedField::Method | ChangedField::Examples),
         })
 }
 
@@ -601,10 +602,12 @@ pub(crate) fn plan(
         for field in ChangedField::ALL {
             let spec = spec_hashes.get(field).unwrap_or("");
             let on_file = file_hashes.get(field).unwrap_or("");
-            let state = if field == ChangedField::Method {
-                method_state(spec, on_file, recorded.get(field))
-            } else {
-                field_state(spec, on_file, recorded.get(field).unwrap_or(""))
+            // Examples were not spec-owned before, and older imports wrote none.
+            let absent = fields::absent_hash();
+            let state = match (field, recorded.get(field)) {
+                (ChangedField::Method, recorded) => method_state(spec, on_file, recorded),
+                (ChangedField::Examples, None) => field_state(spec, on_file, &absent),
+                (_, recorded) => field_state(spec, on_file, recorded.unwrap_or("")),
             };
             match state {
                 FieldState::Same => {}

@@ -114,6 +114,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: List products.yml
         GET /products/{}:
           target: db0c549f525c1a3b
@@ -123,6 +124,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Get product by ID.yml
         GET /users:
           target: fd5684d8ea61b64c
@@ -132,6 +134,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: List users.yml
         GET /users/{}:
           target: 8a6b7eda4c4f28ff
@@ -141,4 +144,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Get user by ID.yml

@@ -39,6 +39,50 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: An array of price estimates by product
+    request:
+      url: "{{baseUrl}}/estimates/price?start_latitude=&start_longitude=&end_latitude=&end_longitude="
+      method: GET
+      params:
+        - name: start_latitude
+          value: ""
+          type: query
+          description: Latitude component of start location.
+        - name: start_longitude
+          value: ""
+          type: query
+          description: Longitude component of start location.
+        - name: end_latitude
+          value: ""
+          type: query
+          description: Latitude component of end location.
+        - name: end_longitude
+          value: ""
+          type: query
+          description: Longitude component of end location.
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "product_id": "",
+              "currency_code": "",
+              "display_name": "",
+              "estimate": "",
+              "low_estimate": 0,
+              "high_estimate": 0,
+              "surge_multiplier": 0
+            }
+          ]
+
 docs: The Price Estimates endpoint returns an estimated price range for each product offered at a given location. The price estimate is provided as a formatted string with the full price range and the localized currency symbol.<br><br>The response also includes low and high estimates, and the [ISO 4217](http://en.wikipedia.org/wiki/ISO_4217) currency code for situations requiring currency conversion. When surge is active for a particular product, its surge_multiplier will be greater than 1, but the price estimate already factors in this multiplier.
 
 === Estimates/Time Estimates.yml
@@ -80,6 +124,50 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: An array of products
+    request:
+      url: "{{baseUrl}}/estimates/time?start_latitude=&start_longitude="
+      method: GET
+      params:
+        - name: start_latitude
+          value: ""
+          type: query
+          description: Latitude component of start location.
+        - name: start_longitude
+          value: ""
+          type: query
+          description: Longitude component of start location.
+        - name: customer_uuid
+          value: ""
+          type: query
+          description: Unique customer identifier to be used for experience customization.
+          disabled: true
+        - name: product_id
+          value: ""
+          type: query
+          description: Unique identifier representing a specific product for a given latitude & longitude.
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "product_id": "",
+              "description": "",
+              "display_name": "",
+              "capacity": "",
+              "image": ""
+            }
+          ]
+
 docs: The Time Estimates endpoint returns ETAs for all products offered at a given location, with the responses expressed as integers in seconds. We recommend that this endpoint be called every minute to provide the most accurate, up-to-date ETAs.
 
 === Estimates/folder.yml
@@ -119,6 +207,40 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: An array of products
+    request:
+      url: "{{baseUrl}}/products?latitude=&longitude="
+      method: GET
+      params:
+        - name: latitude
+          value: ""
+          type: query
+          description: Latitude component of location.
+        - name: longitude
+          value: ""
+          type: query
+          description: Longitude component of location.
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "product_id": "",
+              "description": "",
+              "display_name": "",
+              "capacity": "",
+              "image": ""
+            }
+          ]
 
 docs: The Products endpoint returns information about the Uber products offered at a given location. The response includes the display name and other details about each product, and lists the products in the proper display order.
 
@@ -162,6 +284,43 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: History information for the given user
+    request:
+      url: "{{baseUrl}}/history"
+      method: GET
+      params:
+        - name: offset
+          value: ""
+          type: query
+          description: Offset the list of returned results by this amount. Default is zero.
+          disabled: true
+        - name: limit
+          value: ""
+          type: query
+          description: Number of items to retrieve. Default is 5, maximum is 100.
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "offset": 0,
+            "limit": 0,
+            "count": 0,
+            "history": [
+              {
+                "uuid": ""
+              }
+            ]
+          }
+
 docs: The User Activity endpoint returns data about a user's lifetime activity with Uber. The response will include pickup locations and times, dropoff locations and times, the distance of past requests, and information about which products were requested.<br><br>The history array in the response will have a maximum length based on the limit parameter. The response value count may exceed limit, therefore subsequent API requests may be necessary.
 
 === User/User Profile.yml
@@ -183,6 +342,29 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Profile information for a user
+    request:
+      url: "{{baseUrl}}/me"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "first_name": "",
+            "last_name": "",
+            "email": "",
+            "picture": "",
+            "promo_code": ""
+          }
 
 docs: The User Profile endpoint returns information about the Uber user that has authorized with the application.
 
@@ -227,6 +409,7 @@ extensions:
           tags: 98bebd4be016691f
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 0c1cde1a633472c8
           file: Estimates/Price Estimates.yml
         GET /estimates/time:
           target: 0c5c6838a6784543
@@ -236,6 +419,7 @@ extensions:
           tags: 98bebd4be016691f
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: c5dacbc14e4441ff
           file: Estimates/Time Estimates.yml
         GET /history:
           target: 0581517de068c64e
@@ -245,6 +429,7 @@ extensions:
           tags: beb763378adcd76b
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 585567f2ac27e099
           file: User/User Activity.yml
         GET /me:
           target: c5b4d1c699e7e97b
@@ -254,6 +439,7 @@ extensions:
           tags: beb763378adcd76b
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 1648202bfcf0b91f
           file: User/User Profile.yml
         GET /products:
           target: 4c838057da2840d6
@@ -263,4 +449,5 @@ extensions:
           tags: 17168a6314a63f4e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 85d03a58a03ca4dc
           file: Products/Product Types.yml

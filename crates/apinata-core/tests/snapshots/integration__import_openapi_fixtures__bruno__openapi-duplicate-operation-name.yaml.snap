@@ -20,6 +20,22 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Success
+    request:
+      url: "{{baseUrl}}/products"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: "{}"
+
 docs: Get all products (same summary as users GET)
 
 === Get Users (POST).yml
@@ -40,6 +56,22 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 201 Response
+    description: Created
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: "{}"
+
 docs: Create a new user (same summary as GET)
 
 === Get Users.yml
@@ -59,6 +91,22 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Success
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: "{}"
 
 docs: Get all users
 
@@ -94,6 +142,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: f1da3fe373dcce10
           file: Get Users (GET).yml
         GET /users:
           target: fd5684d8ea61b64c
@@ -103,6 +152,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 45e96729ea8f3b21
           file: Get Users.yml
         POST /users:
           target: fd5684d8ea61b64c
@@ -112,6 +162,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: d7796f649335f5ec
           file: Get Users (POST).yml
 
 note Renamed Get Users (POST).yml | paths./users.post | renamed to `Get Users (POST)` because another request here has the same name

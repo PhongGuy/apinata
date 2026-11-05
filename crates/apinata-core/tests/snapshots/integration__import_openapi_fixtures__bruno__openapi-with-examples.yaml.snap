@@ -27,6 +27,61 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: User Created
+    description: Successfully created user
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "name": "John Doe",
+            "email": "john@example.com"
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 123,
+            "name": "John Doe",
+            "email": "john@example.com",
+            "created_at": "2023-01-01T00:00:00Z"
+          }
+  - name: Validation Error
+    description: Invalid user data
+    request:
+      url: "{{baseUrl}}/users"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "name": "John Doe",
+            "email": "john@example.com"
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Validation failed",
+            "message": "Name and email are required",
+            "code": "VALIDATION_ERROR"
+          }
+
 === Get all users.yml
 info:
   name: Get all users
@@ -44,6 +99,91 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: Success Response
+    description: A successful response with user data
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "users": [
+              {
+                "id": 1,
+                "name": "John Doe",
+                "email": "john@example.com"
+              },
+              {
+                "id": 2,
+                "name": "Jane Smith",
+                "email": "jane@example.com"
+              }
+            ]
+          }
+  - name: Empty Response
+    description: No users found
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "users": []
+          }
+  - name: Validation Error
+    description: Invalid request parameters
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Invalid parameters",
+            "message": "The request contains invalid data",
+            "code": "VALIDATION_ERROR"
+          }
+  - name: Server Error
+    description: Internal server error occurred
+    request:
+      url: "{{baseUrl}}/users"
+      method: GET
+    response:
+      status: 500
+      statusText: Internal Server Error
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Internal Server Error",
+            "message": "Something went wrong on our end",
+            "code": "INTERNAL_ERROR"
+          }
 
 === Get user by ID.yml
 info:
@@ -66,6 +206,55 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: User Found
+    description: User successfully retrieved
+    request:
+      url: "{{baseUrl}}/users/:id"
+      method: GET
+      params:
+        - name: id
+          value: "123"
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 123,
+            "name": "John Doe",
+            "email": "john@example.com",
+            "created_at": "2023-01-01T00:00:00Z"
+          }
+  - name: User Not Found
+    description: User with the specified ID does not exist
+    request:
+      url: "{{baseUrl}}/users/:id"
+      method: GET
+      params:
+        - name: id
+          value: "123"
+          type: path
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Not Found",
+            "message": "User with ID 123 not found",
+            "code": "USER_NOT_FOUND"
+          }
 
 === environments/Production server.yml
 name: Production server
@@ -99,6 +288,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 9c740fd826a185f7
           file: Get all users.yml
         GET /users/{}:
           target: ee30cc74a44ebbd7
@@ -108,6 +298,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 17618a72d73f8606
           file: Get user by ID.yml
         POST /users:
           target: fd5684d8ea61b64c
@@ -117,4 +308,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: c249d4a3a16b4e0c
           file: Create a new user.yml

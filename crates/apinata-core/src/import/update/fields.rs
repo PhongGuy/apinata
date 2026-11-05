@@ -1,4 +1,4 @@
-//! The operation key and the canonical hashes of the seven spec-owned fields of a request.
+//! The operation key and the canonical hashes of the eight spec-owned fields of a request.
 
 use crate::document::Document;
 use crate::error::EditError;
@@ -27,11 +27,13 @@ pub enum ChangedField {
     Vars,
     /// The HTTP method as the file holds it.
     Method,
+    /// The saved example responses.
+    Examples,
 }
 
 impl ChangedField {
     /// Every field, in declaration order.
-    pub const ALL: [ChangedField; 7] = [
+    pub const ALL: [ChangedField; 8] = [
         ChangedField::Target,
         ChangedField::Headers,
         ChangedField::Body,
@@ -39,6 +41,7 @@ impl ChangedField {
         ChangedField::Tags,
         ChangedField::Vars,
         ChangedField::Method,
+        ChangedField::Examples,
     ];
 
     /// The stable name used in the baseline and in summaries.
@@ -51,6 +54,7 @@ impl ChangedField {
             ChangedField::Tags => "tags",
             ChangedField::Vars => "vars",
             ChangedField::Method => "method",
+            ChangedField::Examples => "examples",
         }
     }
 }
@@ -133,7 +137,7 @@ pub fn spec_field_hashes(request: &ImportedRequest) -> Result<FieldHashes, Impor
     Ok(file_field_hashes(&scratch))
 }
 
-/// The hashes of the seven fields as `file` holds them now, unsaved edits included.
+/// The hashes of the eight fields as `file` holds them now, unsaved edits included.
 pub fn file_field_hashes(file: &RequestFile) -> FieldHashes {
     FieldHashes::new(
         ChangedField::ALL
@@ -169,9 +173,47 @@ pub(crate) fn refresh_fields(
                     file.set_method(request.method.clone());
                 }
             }
+            ChangedField::Examples => {
+                if file.kind() == RequestKind::Http {
+                    write_examples(file, request)?;
+                }
+            }
         }
     }
     Ok(())
+}
+
+/// Replace the examples of `file` with the spec's, their request half taken from the spec
+/// request rather than the file, so a hand-edited URL or header does not leak into them.
+pub(crate) fn write_examples(
+    file: &mut RequestFile,
+    request: &ImportedRequest,
+) -> Result<(), EditError> {
+    let root = crate::collection::new_request_root("scratch", 1, RequestKind::Http);
+    let mut shape = RequestFile::from_document(Document::draft(PathBuf::from("scratch.yml"), root));
+    let half = [
+        ChangedField::Target,
+        ChangedField::Headers,
+        ChangedField::Body,
+        ChangedField::Method,
+    ];
+    refresh_fields(&mut shape, request, &half)?;
+    shape.set_examples(&request.examples);
+    match shape.document().get(&["examples"]) {
+        Some(list) => file
+            .document_mut()
+            .set(&["examples"], list.clone(), &[crate::order::TOP]),
+        None => {
+            file.document_mut().remove(&["examples"]);
+        }
+    }
+    Ok(())
+}
+
+/// The hash of a field the file does not hold, which is what a baseline recorded before the
+/// field was spec-owned stands for.
+pub(crate) fn absent_hash() -> String {
+    hash_value(None)
 }
 
 // The YAML subtree a field owns; None when every key of it is absent.
@@ -195,6 +237,7 @@ fn subtree(file: &RequestFile, field: ChangedField) -> Option<Value> {
         ChangedField::Tags => get(&["info", "tags"]),
         ChangedField::Vars => get(&["runtime", "variables"]),
         ChangedField::Method => Some(Value::String(file.method().to_owned())),
+        ChangedField::Examples => get(&["examples"]),
     }
 }
 

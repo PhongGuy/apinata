@@ -314,6 +314,7 @@ fn request_members(
         vars: vars.into_iter().map(to_variable).collect(),
         tags: Vec::new(),
         secrets: Vec::new(),
+        examples: Vec::new(),
     })
 }
 

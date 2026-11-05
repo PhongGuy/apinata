@@ -131,6 +131,29 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: A JSON object containing the id
+    request:
+      url: "{{baseUrl}}/pets/:id"
+      method: GET
+      params:
+        - name: id
+          value: ""
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": ""
+          }
+
 === Misc/folder.yml
 info:
   name: Misc
@@ -176,6 +199,7 @@ extensions:
           tags: 3ef82e3ee70a1c8f
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Auth/Make basic auth request.yml
         GET /delay/seconds/{}:
           target: 8df7f8842671f054
@@ -185,6 +209,7 @@ extensions:
           tags: 1d8b7b43dd730b3e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Misc/Delay by seconds.yml
         GET /file/dummy.csv:
           target: 62e7b914ced6202f
@@ -194,6 +219,7 @@ extensions:
           tags: 494139221175d8fe
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: File/Get dummy CSV file.yml
         GET /file/dummy.pdf:
           target: 8cf5e5a6d7d25641
@@ -203,6 +229,7 @@ extensions:
           tags: 494139221175d8fe
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: File/Get dummy PDF file.yml
         GET /pets/{}:
           target: a56ee25cc2b89d39
@@ -212,6 +239,7 @@ extensions:
           tags: 1d8b7b43dd730b3e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 570b53594047c226
           file: Misc/Echo id.yml
 
 note NeedsInput environments/Environment 1.yml | components.securitySchemes | the secret `username` has no value; enter it before sending
