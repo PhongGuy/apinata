@@ -15,6 +15,7 @@ use serde_json::Value;
 /// The newest collection and request versions whose shape is known.
 const COLLECTION_VERSION: u64 = 12;
 const REQUEST_VERSION: u64 = 17;
+const GQL_REQUEST_VERSION: u64 = 10;
 
 /// Parse a Hoppscotch collection export, one collection or an array of them.
 pub(crate) fn parse_hoppscotch(
@@ -98,8 +99,8 @@ enum RequestKind {
     Legacy,
     /// A version 1 or later request; `newer` when its version is past the newest known.
     Rest { newer: bool },
-    /// A GraphQL request, which is not imported.
-    GraphQl,
+    /// A GraphQL request; `newer` when its version is past the newest known.
+    GraphQl { newer: bool },
     /// A `v` that names no request version.
     Unknown,
 }
@@ -112,12 +113,17 @@ impl RequestKind {
             None => {
                 let has = |key| request.get(key).is_some();
                 if has("query") && has("url") && !has("endpoint") {
-                    RequestKind::GraphQl
+                    RequestKind::GraphQl { newer: false }
                 } else {
                     RequestKind::Legacy
                 }
             }
-            Some(Value::Number(_)) => RequestKind::GraphQl,
+            Some(Value::Number(v)) => match v.as_u64() {
+                Some(n) => RequestKind::GraphQl {
+                    newer: n > GQL_REQUEST_VERSION,
+                },
+                None => RequestKind::Unknown,
+            },
             Some(Value::String(v)) if !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()) => {
                 // A digit string too long for `u64` is still a newer version.
                 match v.parse::<u64>() {

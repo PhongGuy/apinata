@@ -1,0 +1,72 @@
+---
+source: crates/apinata-core/tests/import_graphql.rs
+expression: text
+---
+== Catalog/Products.yml
+info:
+  name: Products
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: "{{base_url}}/graphql"
+  headers:
+    - name: Accept
+      value: application/json
+  body:
+    query: "{ products(first: 2) { sku } }"
+  auth:
+    type: basic
+    username: ann
+    password: "{{password}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Catalog/folder.yml
+info:
+  name: Catalog
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== Count.yml
+info:
+  name: Count
+  type: graphql
+  seq: 2
+
+graphql:
+  method: POST
+  url: https://api.example.test/graphql
+  body:
+    query: "query Count($n: Int) { count(n: $n) }"
+    variables: |-
+      {
+        "n": 3
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: GraphQL v5
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report

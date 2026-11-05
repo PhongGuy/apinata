@@ -1,0 +1,35 @@
+type: collection.insomnia.rest/5.0
+name: GraphQL v5
+meta:
+  id: wrk_gql5
+collection:
+  - name: Catalog
+    meta:
+      id: fld_catalog
+      sortKey: 1
+    children:
+      - url: "{{ _.base_url }}/graphql"
+        name: Products
+        meta:
+          id: req_products
+          sortKey: 1
+        method: POST
+        body:
+          mimeType: application/graphql
+          text: '{"query":"{ products(first: 2) { sku } }"}'
+        headers:
+          - name: Accept
+            value: application/json
+        authentication:
+          type: basic
+          username: ann
+          password: "{{ _.password }}"
+  - url: https://api.example.test/graphql
+    name: Count
+    meta:
+      id: req_count
+      sortKey: 2
+    method: POST
+    body:
+      mimeType: application/graphql
+      text: '{"query":"query Count($n: Int) { count(n: $n) }","variables":{"n":3},"operationName":""}'

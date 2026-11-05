@@ -88,14 +88,7 @@ fn mapped_auth(auth: &Value) -> bool {
 }
 
 fn written_request(r: &Value) -> bool {
-    let mime = r
-        .get("body")
-        .and_then(|b| b.get("mimeType"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    r.get("method").is_some()
-        && r.get("reflectionApi").is_none()
-        && !mime.starts_with("application/graphql")
+    r.get("method").is_some() && r.get("reflectionApi").is_none()
 }
 
 /// Plant the probe in the request's own levels; returns the expected source suffixes.

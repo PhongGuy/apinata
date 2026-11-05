@@ -1,0 +1,57 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "resources": [
+    {
+      "_id": "wrk_gql",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "GraphQL v4"
+    },
+    {
+      "_id": "fld_users",
+      "_type": "request_group",
+      "parentId": "wrk_gql",
+      "name": "Users",
+      "metaSortKey": 1
+    },
+    {
+      "_id": "req_user",
+      "_type": "request",
+      "parentId": "fld_users",
+      "name": "User by id",
+      "metaSortKey": 1,
+      "method": "POST",
+      "url": "{{ _.base_url }}/graphql",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "X-Trace", "value": "on", "disabled": true }
+      ],
+      "authentication": { "type": "bearer", "token": "{{ _.token }}" },
+      "body": {
+        "mimeType": "application/graphql",
+        "text": "{\"query\":\"query User($id: ID!) { user(id: $id) { id name } }\",\"variables\":{\"id\":\"{{ _.user_id }}\"},\"operationName\":\"User\"}"
+      }
+    },
+    {
+      "_id": "req_broken",
+      "_type": "request",
+      "parentId": "wrk_gql",
+      "name": "Broken body",
+      "metaSortKey": 2,
+      "method": "POST",
+      "url": "https://api.example.test/graphql",
+      "body": { "mimeType": "application/graphql", "text": "{ users { id } }" }
+    },
+    {
+      "_id": "req_plain",
+      "_type": "request",
+      "parentId": "wrk_gql",
+      "name": "Plain JSON",
+      "metaSortKey": 3,
+      "method": "POST",
+      "url": "https://api.example.test/items",
+      "body": { "mimeType": "application/json", "text": "{\"a\": 1}" }
+    }
+  ]
+}

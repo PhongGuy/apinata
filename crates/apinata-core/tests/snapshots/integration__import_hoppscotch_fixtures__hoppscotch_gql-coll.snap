@@ -3,6 +3,66 @@ source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
 expression: text
 ---
 ### collection 0: GraphQL Only
+== Anonymous query.yml
+info:
+  name: Anonymous query
+  type: graphql
+  seq: 3
+
+graphql:
+  method: POST
+  url: https://echo.hoppscotch.io/graphql
+  body:
+    query: "{ url }"
+    variables: "{}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Named query.yml
+info:
+  name: Named query
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: https://echo.hoppscotch.io/graphql
+  body:
+    query: query RequestInfo { method url }
+    variables: "{}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Scripted auth header.yml
+info:
+  name: Scripted auth header
+  type: graphql
+  seq: 2
+
+graphql:
+  method: POST
+  url: https://echo.hoppscotch.io/graphql
+  headers:
+    - name: Authorization
+      value: Bearer {{myToken}}
+  body:
+    query: query AuthEcho { headers { key value } }
+    variables: "{}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
 == opencollection.yml
 opencollection: 1.0.0
 
@@ -15,6 +75,6 @@ extensions:
       - node_modules
       - .git
 == report
-Dropped Named query: GraphQL requests are not imported (-)
-Dropped Scripted auth header: GraphQL requests are not imported (-)
-Dropped Anonymous query: GraphQL requests are not imported (-)
+Dropped Named query / testScript: scripts are not imported (Named query.yml)
+Dropped Scripted auth header / preRequestScript: scripts are not imported (Scripted auth header.yml)
+Dropped Scripted auth header / testScript: scripts are not imported (Scripted auth header.yml)

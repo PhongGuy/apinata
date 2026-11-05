@@ -88,6 +88,31 @@ pub(super) struct Request {
     pub(super) rest: Map<String, Value>,
 }
 
+/// A GraphQL request of any version, always sent as a POST to `url`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlRequest {
+    #[expect(dead_code, reason = "the name is read before the request deserialises")]
+    pub(super) name: Option<Text>,
+    pub(super) url: Option<Text>,
+    pub(super) headers: Option<Vec<Pair>>,
+    pub(super) query: Option<Text>,
+    pub(super) variables: Option<Text>,
+    pub(super) auth: Option<Auth>,
+    pub(super) description: Option<Text>,
+    pub(super) pre_request_script: Option<Text>,
+    pub(super) test_script: Option<Text>,
+    pub(super) responses: Option<Value>,
+    #[serde(rename = "v")]
+    _v: Option<IgnoredAny>,
+    #[serde(rename = "id")]
+    _id: Option<IgnoredAny>,
+    #[serde(rename = "_ref_id")]
+    _ref_id: Option<IgnoredAny>,
+    #[serde(flatten)]
+    pub(super) rest: Map<String, Value>,
+}
+
 /// A param, header or request variable.
 #[derive(Deserialize)]
 pub(super) struct Pair {

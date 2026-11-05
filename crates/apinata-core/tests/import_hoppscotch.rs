@@ -7,7 +7,7 @@ use apinata_core::import::{
 };
 use apinata_core::{
     ApiKeyPlacement, AuthSpec, BodySpec, FileEntry, KeyValue, MultipartField, Param, ParamKind,
-    VarValue, Variable,
+    RequestKind, VarValue, Variable,
 };
 use serde_json::{Value, json};
 
@@ -193,7 +193,7 @@ fn collection_versions_read_missing_known_and_newer() {
 }
 
 #[test]
-fn request_versions_read_newer_and_skip_graphql_and_unknown() {
+fn request_versions_read_newer_and_graphql_and_skip_unknown() {
     let gql = json!({"v": 10, "name": "q", "url": "https://x.test/graphql", "query": "{ a }", "headers": [], "variables": "{}"});
     let legacy_gql = json!({"name": "lq", "url": "https://x.test/graphql", "query": "{ a }"});
     let requests = vec![
@@ -212,23 +212,19 @@ fn request_versions_read_newer_and_skip_graphql_and_unknown() {
             _ => "folder",
         })
         .collect();
-    assert_eq!(names, ["new", "kept"]);
+    assert_eq!(names, ["new", "q", "lq", "kept"]);
     assert!(has(&c, NoteKind::Converted, "new / v"));
-    for source in ["odd", "q", "lq"] {
-        let found = c
-            .unwritten
-            .iter()
-            .any(|n| n.source == source && n.kind == NoteKind::Dropped);
-        assert!(found, "{source}: {:?}", c.unwritten);
+    for name in ["q", "lq"] {
+        assert_eq!(request(&c.items, name).request.kind, RequestKind::Graphql);
     }
-    assert!(
-        c.unwritten
-            .iter()
-            .any(|n| n.source == "q" && n.detail.contains("GraphQL"))
-    );
+    let found = c
+        .unwritten
+        .iter()
+        .any(|n| n.source == "odd" && n.kind == NoteKind::Dropped);
+    assert!(found, "odd: {:?}", c.unwritten);
     assert_eq!(
         (request(&c.items, "new").seq, request(&c.items, "kept").seq),
-        (1, 2),
+        (1, 4),
         "unwritten requests take no seq"
     );
 }

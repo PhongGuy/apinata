@@ -1,10 +1,10 @@
 //! Collections and folders to the import tree, and each request's own members.
 
-use super::model::{self, Collection, Pair, Request, Text, text};
+use super::model::{self, Collection, GqlRequest, Pair, Request, Text, text};
 use super::template::rewrite;
-use super::{REQUEST_VERSION, RequestKind, collection_version_note};
+use super::{GQL_REQUEST_VERSION, REQUEST_VERSION, RequestKind, collection_version_note};
 use super::{auth, body};
-use crate::edit::{AuthSpec, KeyValue, Param, ParamKind, VarValue, Variable};
+use crate::edit::{AuthSpec, BodySpec, KeyValue, Param, ParamKind, VarValue, Variable};
 use crate::import::{
     DocumentError, ImportNote, ImportedCollection, ImportedFolder, ImportedItem, ImportedRequest,
     ImportedRequestItem, NoteKind,
@@ -190,7 +190,7 @@ fn collection_vars(
     Ok(out)
 }
 
-/// A REST request, or `None` with an unwritten note for GraphQL, an unknown version, or
+/// A REST or GraphQL request, or `None` with an unwritten note for an unknown version or
 /// members of the wrong types.
 fn request(
     value: Value,
@@ -202,10 +202,8 @@ fn request(
     let own = raw_name(&value);
     let kind = RequestKind::of(&value);
     let newer = match kind {
-        RequestKind::GraphQl => {
-            let detail = "GraphQL requests are not imported";
-            unwritten.push(budget.note(trail, &[&own], NoteKind::Dropped, detail)?);
-            return Ok(None);
+        RequestKind::GraphQl { newer } => {
+            return graphql_request(value, own, newer, seq, trail, unwritten, budget);
         }
         RequestKind::Unknown => {
             let v = value.get("v").map(Value::to_string).unwrap_or_default();
@@ -236,6 +234,73 @@ fn request(
         request: request?,
         notes,
     }))
+}
+
+/// A GraphQL request, or `None` with an unwritten note when its members have the wrong types.
+fn graphql_request(
+    value: Value,
+    own: String,
+    newer: bool,
+    seq: u64,
+    trail: &mut Vec<String>,
+    unwritten: &mut Vec<ImportNote>,
+    budget: &mut Budget,
+) -> Result<Option<ImportedRequestItem>, DocumentError> {
+    let r: GqlRequest = match serde_json::from_value(value) {
+        Ok(r) => r,
+        Err(e) => {
+            let detail = format!("not imported: {e}");
+            unwritten.push(budget.note(trail, &[&own], NoteKind::Dropped, detail)?);
+            return Ok(None);
+        }
+    };
+    budget.entry()?;
+    trail.push(own);
+    let mut scope = Scope::new(budget, trail);
+    let request = graphql_members(r, newer, &mut scope);
+    let notes = scope.notes;
+    let name = trail.pop().unwrap_or_default();
+    Ok(Some(ImportedRequestItem {
+        name,
+        seq,
+        request: request?,
+        notes,
+    }))
+}
+
+/// A GraphQL request's own members. Auth missing before version 2 means none, as its
+/// migration sets it.
+fn graphql_members(
+    r: GqlRequest,
+    newer: bool,
+    scope: &mut Scope,
+) -> Result<ImportedRequest, DocumentError> {
+    if newer {
+        let detail = format!("a newer request version; read as version {GQL_REQUEST_VERSION}");
+        scope.note("v", NoteKind::Converted, detail)?;
+    }
+    scope.rest(r.rest, String::new)?;
+    let url = scope.value(text(r.url), || "url".to_owned())?;
+    let headers = pairs(r.headers, "headers", scope)?;
+    let query = scope.value(text(r.query), || "query".to_owned())?;
+    let variables = scope.value(text(r.variables), || "variables".to_owned())?;
+    let auth = match r.auth {
+        None => AuthSpec::None,
+        member => auth::auth(member, auth::Legacy::default(), scope)?,
+    };
+    scope.script("preRequestScript", r.pre_request_script)?;
+    scope.script("testScript", r.test_script)?;
+    if r.responses.as_ref().is_some_and(|v| !is_empty(v)) {
+        let detail = "saved responses are not imported";
+        scope.note("responses", NoteKind::Dropped, detail)?;
+    }
+    let mut request = ImportedRequest::new("POST", url);
+    request.kind = crate::request::RequestKind::Graphql;
+    request.headers = headers;
+    request.body = BodySpec::Graphql { query, variables };
+    request.auth = auth;
+    request.docs = text(r.description);
+    Ok(request)
 }
 
 /// A request's own members, with notes at `<trail> / <member>`.
