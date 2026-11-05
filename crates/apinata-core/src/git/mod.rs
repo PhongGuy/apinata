@@ -296,6 +296,7 @@ pub struct GitOptions {
     env: Vec<(OsString, OsString)>,
     timeout: Duration,
     check_kept: bool,
+    file_cap: usize,
 }
 
 impl Default for GitOptions {
@@ -304,6 +305,7 @@ impl Default for GitOptions {
             env: Vec::new(),
             timeout: GIT_TIMEOUT,
             check_kept: false,
+            file_cap: GIT_FILE_CAP,
         }
     }
 }
@@ -325,6 +327,14 @@ impl GitOptions {
     /// Stop each git call after `limit`.
     pub fn timeout(mut self, limit: Duration) -> GitOptions {
         self.timeout = limit;
+        self
+    }
+
+    /// For tests only: list at most `cap` changed files instead of [`GIT_FILE_CAP`], so a test
+    /// reaches the cap with a handful of files.
+    #[doc(hidden)]
+    pub fn file_cap(mut self, cap: usize) -> GitOptions {
+        self.file_cap = cap;
         self
     }
 
@@ -353,7 +363,7 @@ pub fn collection_status_with(root: &Path, options: &GitOptions) -> Result<GitSt
         }
         Err(e) => return Err(e),
     };
-    let mut repo = status(root, &prefix, GIT_FILE_CAP, options)?;
+    let mut repo = status(root, &prefix, options.file_cap, options)?;
     if options.check_kept {
         settle_kept(root, &prefix, &mut repo, options);
     } else {
@@ -433,11 +443,15 @@ fn settle_kept(root: &Path, prefix: &str, repo: &mut RepoStatus, options: &GitOp
     let (mut kept, mut opens) = (BTreeMap::new(), BTreeMap::new());
     for (rel, real) in candidates {
         let shown = real.strip_prefix(&base).unwrap_or(&real).to_path_buf();
-        if holds_staged_copy(root, prefix, rel, &real, options) {
-            kept.insert(rel.clone(), shown);
-        } else if !paired.contains_key(rel) {
+        match holds_staged_copy(root, prefix, rel, &real, options) {
+            Some(true) => {
+                kept.insert(rel.clone(), shown);
+            }
             // Only a path read through its own link opens the file; a paired one points elsewhere.
-            opens.insert(rel.clone(), shown);
+            Some(false) if !paired.contains_key(rel) => {
+                opens.insert(rel.clone(), shown);
+            }
+            _ => {}
         }
     }
     repo.kept_at = kept;
@@ -445,14 +459,14 @@ fn settle_kept(root: &Path, prefix: &str, repo: &mut RepoStatus, options: &GitOp
 }
 
 /// Whether the file at `at` is what staging `rel` would store: git hashes it under `rel`, so the
-/// filters that cleaned the staged blob apply. A git failure claims nothing.
+/// filters that cleaned the staged blob apply. `None` when git fails, which claims nothing.
 fn holds_staged_copy(
     root: &Path,
     prefix: &str,
     rel: &Path,
     at: &Path,
     options: &GitOptions,
-) -> bool {
+) -> Option<bool> {
     let rel = rel.to_string_lossy();
     let hash = [
         OsString::from("hash-object"),
@@ -461,8 +475,8 @@ fn holds_staged_copy(
         at.as_os_str().to_owned(),
     ];
     let staged = format!(":0:{prefix}{rel}");
-    let staged = git_stdout(&["rev-parse", staged.as_str()], root, options);
-    staged.is_some() && staged == git_stdout(&hash, root, options)
+    let staged = git_stdout(&["rev-parse", staged.as_str()], root, options)?;
+    Some(staged == git_stdout(&hash, root, options)?)
 }
 
 /// What `args` print, `None` when git failed.

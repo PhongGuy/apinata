@@ -703,6 +703,33 @@ fn a_gone_edit_kept_under_a_link_opens_nothing_else() {
 
 #[cfg(unix)]
 #[test]
+fn a_link_to_a_file_git_cannot_read_claims_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_under_a_link(&sb);
+    let target = col.join("q/a.yml");
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o000)).unwrap();
+    let got = status(&sb, &col);
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(got.opens_at.is_empty(), "{:?}", got.opens_at);
+}
+
+#[test]
+fn a_lowered_file_cap_truncates_the_listing() {
+    let sb = Sandbox::new();
+    let (_repo, col) = staged_edit_gone(&sb);
+    for name in ["x.yml", "y.yml", "z.yml"] {
+        write(&col, name, BODY);
+    }
+    let options = sb.options().file_cap(2);
+    let GitState::Repo(repo) = collection_status_with(&col, &options).expect("status") else {
+        panic!("a repository");
+    };
+    assert_eq!((repo.files.len(), repo.truncated), (2, true));
+}
+
+#[cfg(unix)]
+#[test]
 fn a_link_out_of_the_repository_opens_nothing_it_names() {
     let sb = Sandbox::new();
     let (_repo, col) = staged_edit_under_a_link(&sb);

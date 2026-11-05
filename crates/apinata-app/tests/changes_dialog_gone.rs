@@ -250,7 +250,10 @@ fn space_on_a_gone_row_asks_with_its_hover_warning(cx: &mut TestAppContext) {
     assert_eq!(body(cx).as_deref(), Some(PLAIN));
 }
 
-// Untracked files past core's cap, as plain text so no request loads; `zz.yml` holds a staged
+// The file cap the tests past it lower core's to, so a handful of files reach it.
+const CAP: usize = 5;
+
+// Untracked files filling the lowered cap, as plain text so no request loads; `zz.yml` holds a staged
 // edit gone from disk and sorts past them all. `listed` adds such a row at `a.yml`, inside the
 // list, and `staged` stages the untracked files so every listed box is ticked.
 fn past_the_cap(sb: &Sandbox, listed: bool, staged: bool) -> tempfile::TempDir {
@@ -271,13 +274,22 @@ fn past_the_cap(sb: &Sandbox, listed: bool, staged: bool) -> tempfile::TempDir {
         sb.git(col.path(), &["add", name]);
         std::fs::remove_file(col.path().join(name)).unwrap();
     }
-    for i in 0..apinata_core::GIT_FILE_CAP {
+    for i in 0..CAP {
         write(col.path(), &format!("bulk/f{i:05}.txt"), "x\n");
     }
     if staged {
         sb.git(col.path(), &["add", "bulk"]);
     }
     col
+}
+
+// The app started on `col` with git listing at most [`CAP`] files.
+fn capped_started(cx: &mut TestAppContext, sb: &Sandbox, col: &tempfile::TempDir) -> Started {
+    let s = started(cx, col);
+    let options = sb.options().file_cap(CAP);
+    s.ws.update(cx, |w, cx| w.set_git(Some(options), cx));
+    frame(cx, s.win);
+    s
 }
 
 // Opens the dialog over a list cut at the cap and presses the bulk button.
@@ -295,7 +307,7 @@ fn bulk_past_the_cap(cx: &mut TestAppContext, s: &Started, col: &tempfile::TempD
 fn stage_all_past_the_cap_asks_for_the_listed_count_or_more(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = past_the_cap(&sb, true, false);
-    let s = git_started(cx, &sb, &col);
+    let s = capped_started(cx, &sb, &col);
     bulk_past_the_cap(cx, &s, &col);
     assert_eq!(
         question(cx).as_deref(),
@@ -311,7 +323,7 @@ fn stage_all_past_the_cap_asks_for_the_listed_count_or_more(cx: &mut TestAppCont
 fn unstage_all_past_the_cap_asks_for_the_listed_count_or_more(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = past_the_cap(&sb, true, true);
-    let s = git_started(cx, &sb, &col);
+    let s = capped_started(cx, &sb, &col);
     bulk_past_the_cap(cx, &s, &col);
     assert!(stages(cx).iter().all(|s| s.is_full()), "Unstage all");
     assert_eq!(
@@ -324,7 +336,7 @@ fn unstage_all_past_the_cap_asks_for_the_listed_count_or_more(cx: &mut TestAppCo
 fn unstage_all_past_the_cap_with_no_listed_gone_row_still_asks(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = past_the_cap(&sb, false, true);
-    let s = git_started(cx, &sb, &col);
+    let s = capped_started(cx, &sb, &col);
     bulk_past_the_cap(cx, &s, &col);
     assert!(!stages(cx).contains(&StagedGone), "zz.yml is past the cap");
     assert_eq!(
@@ -345,7 +357,7 @@ fn unstage_all_past_the_cap_with_no_listed_gone_row_still_asks(cx: &mut TestAppC
 fn stage_all_past_the_cap_with_no_listed_gone_row_still_asks(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = past_the_cap(&sb, false, false);
-    let s = git_started(cx, &sb, &col);
+    let s = capped_started(cx, &sb, &col);
     bulk_past_the_cap(cx, &s, &col);
     assert_eq!(
         question(cx).as_deref(),
