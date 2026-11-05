@@ -641,7 +641,8 @@ mod parsed_once {
     #[gpui_kit::test]
     fn a_newer_filter_cancels_the_one_still_running(cx: &mut TestAppContext) {
         let (win, view) = shown_with(cx, JSON.into(), "application/json");
-        // Both start before either job runs, so the first is cancelled before it writes.
+        // Both start before either job runs. Whichever order the scheduler picks, the first is
+        // dropped unrun or stops at its raised cancel, and lands nothing either way.
         cx.update_window(win, |_, w, cx| {
             view.update(cx, |v, cx| {
                 v.set_filter("$..id", w, cx);
