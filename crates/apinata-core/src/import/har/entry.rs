@@ -146,6 +146,7 @@ pub(super) fn map(
         auth,
         docs: String::new(),
         settings: None,
+        omitted_headers: Vec::new(),
         vars: Vec::new(),
         tags: Vec::new(),
         secrets: Vec::new(),

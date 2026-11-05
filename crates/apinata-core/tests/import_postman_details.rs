@@ -299,11 +299,9 @@ fn protocol_profile_behavior_becomes_settings_where_core_has_the_field() {
     );
     let r = only_request(&c);
     assert_eq!(r.request.settings.expect("set").max_redirects, 5);
-    for key in [
-        "maxRedirects",
-        "disabledSystemHeaders",
-        "disableBodyPruning",
-    ] {
+    // disabledSystemHeaders is a supported key: it becomes omitted headers, with no note.
+    assert_eq!(r.request.omitted_headers, ["user-agent"]);
+    for key in ["maxRedirects", "disableBodyPruning"] {
         assert!(
             has(
                 &r.notes,

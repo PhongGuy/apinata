@@ -155,6 +155,8 @@ pub struct ImportedRequest {
     pub docs: String,
     /// The settings, or `None` to leave the file's own.
     pub settings: Option<RequestSettings>,
+    /// Default headers the request omits; empty leaves the file's own.
+    pub omitted_headers: Vec<String>,
     /// Request variables; empty leaves the file's own.
     pub vars: Vec<Variable>,
     /// Tags, in order; empty leaves the file's own.

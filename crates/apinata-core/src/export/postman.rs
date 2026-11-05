@@ -215,6 +215,15 @@ fn settings_behavior(
     path: &[&str],
     req: &RequestFile,
 ) {
+    // Postman keys the omitted default headers by lowercased name.
+    let omitted: Map<String, Value> = req
+        .omitted_headers()
+        .iter()
+        .map(|name| (name.to_lowercase(), true.into()))
+        .collect();
+    if !omitted.is_empty() {
+        behavior.insert("disabledSystemHeaders".into(), omitted.into());
+    }
     let s = req.settings();
     if !s.encode_url {
         behavior.insert("disableUrlEncoding".into(), true.into());
