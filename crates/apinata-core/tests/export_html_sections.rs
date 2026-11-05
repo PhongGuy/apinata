@@ -33,7 +33,7 @@ fn include_scripts_shows_assertions_and_scripts_escaped() {
     let want = [
         "<p class=\"part\">Assertions</p>\n<ul>\n",
         "<li><code>res.status eq 200</code></li>\n",
-        "<li class=\"disabled\"><code>res.body.x isEmpty</code> <span class=\"tag\">disabled</span></li>\n",
+        "<li><code>res.body.x isEmpty</code> <span class=\"tag\">disabled</span></li>\n",
         "<p class=\"part\">Script (pre-request)</p>\n<pre>const pre = 1;</pre>\n",
         "<p class=\"part\">Script (tests)</p>\n<pre>test(&quot;&lt;script&gt;alert(1)&lt;/script&gt;&quot;, () =&gt; {});</pre>\n",
     ];

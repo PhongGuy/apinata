@@ -57,7 +57,7 @@ caption { text-align: left; font-weight: 600; padding: 4px 0; }
 table { display: block; overflow-x: auto; border-collapse: collapse; margin: 8px 0; max-width: 100%; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
 th { background: var(--panel); }
-tr.disabled td, li.disabled { opacity: 0.55; }
+tr.disabled td { opacity: 0.55; }
 .tag { margin-left: 6px; padding: 0 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8em; color: var(--muted); }
 .method { display: inline-block; min-width: 4.5em; padding: 1px 6px; border-radius: 4px; color: #ffffff; font: 600 0.8em ui-monospace, Menlo, Consolas, monospace; text-align: center; background: var(--other); }
 .m-get { background: var(--get); }

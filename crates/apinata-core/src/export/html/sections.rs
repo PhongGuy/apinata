@@ -23,7 +23,7 @@ pub(super) fn scripts(req: &RequestFile) -> String {
             match a.enabled() {
                 true => format!("<li><code>{}</code></li>\n", escape(&line)),
                 false => format!(
-                    "<li class=\"disabled\"><code>{}</code> <span class=\"tag\">disabled</span></li>\n",
+                    "<li><code>{}</code> <span class=\"tag\">disabled</span></li>\n",
                     escape(&line)
                 ),
             }
