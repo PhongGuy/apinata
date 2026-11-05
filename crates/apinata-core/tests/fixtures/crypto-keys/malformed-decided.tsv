@@ -1,0 +1,26 @@
+jwk private n empty	Error undefined | Unsupported key: the JWK's RSA values do not form a usable key	a private RSA JWK whose members form no key: the crates hold only consistent keys, and Node signs with some of these
+jwk private e empty	Error undefined | Unsupported key: the JWK's RSA values do not form a usable key	a private RSA JWK whose members form no key: the crates hold only consistent keys, and Node signs with some of these
+jwk private d empty	Error undefined | Unsupported key: the JWK's RSA values do not form a usable key	a private RSA JWK whose members form no key: the crates hold only consistent keys, and Node signs with some of these
+jwk private p empty	Error undefined | Unsupported key: the JWK's RSA values do not form a usable key	a private RSA JWK whose members form no key: the crates hold only consistent keys, and Node signs with some of these
+jwk private dp empty	Error undefined | Unsupported key: the JWK's RSA values do not form a usable key	a private RSA JWK whose members form no key: the crates hold only consistent keys, and Node signs with some of these
+pss trailer 2 der	Error undefined | Failed to read asymmetric key	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss trailer 2 pem	Error undefined | Failed to read asymmetric key	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss trailer 2 verify	Error undefined | Failed to read asymmetric key	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss trailer 2 spki	Error undefined | Failed to read asymmetric key	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss salt negative der	Error undefined | Failed to read asymmetric key	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss salt negative pem	Error undefined | Failed to read asymmetric key	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss salt negative verify	Error undefined | Failed to read asymmetric key	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss salt negative spki	Error undefined | Failed to read asymmetric key	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss private trailer 2	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss private trailer 2 sign	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss private trailer 2 sign 222	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss private trailer 2 public	Error undefined | Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss private trailer 2 export	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss private trailer 2 verify 222	Error undefined | Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key	an RSA-PSS trailer field other than 1: Node opens the key but cannot export it or derive its public key
+pss private salt negative	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss private salt negative sign	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss private salt negative sign 222	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss private salt negative public	Error undefined | Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss private salt negative export	Error undefined | Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+pss private salt negative verify 222	Error undefined | Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key	a negative RSA-PSS salt length: Node opens the key but every use and export fails
+padding w189647 der	ok unsupported	DER whose wrong passphrase decrypts to a SEQUENCE: the shim names the decoder failure, not the ASN.1 detail OpenSSL reports

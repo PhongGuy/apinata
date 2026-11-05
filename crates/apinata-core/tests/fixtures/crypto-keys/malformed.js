@@ -133,3 +133,143 @@ for (const [name, alg, p, digest, real] of [["p256", ecAlg, pt, "sha256", EC256_
   pub(`prefix 5 ${name}`, spki(alg, prefixed(p, 5)), { digest });
   pub(`prefix 0 ${name}`, spki(alg, prefixed(p, 0)), { digest });
 }
+
+// 7. Unused bits in a key's BIT STRING: OpenSSL clears them, so the key's last byte can change.
+for (const unused of [1, 7, 8]) {
+  pub(`rsa unused ${unused}`, spki(rsaAlg, pkcs1, unused), { real: RSA });
+  pub(`ec unused ${unused}`, spki(ecAlg, pt, unused), { real: EC256_SEC1 });
+  pub(`ed unused ${unused}`, spki(edAlg, edKey, unused), { ...ed, real: ED_PRIV });
+}
+pub("rsa unused empty", spki(rsaAlg, b(), 1));
+
+// 8. Long-form lengths and padded integers open, verify, and export as canonical DER.
+const long = (tag, ...parts) => { const c = Buffer.concat(parts); return Buffer.concat([b(tag, 0x82, c.length >> 8, c.length & 255), c]); };
+pub("rsa long outer", long(0x30, rsaAlg, tlv(3, b(0), pkcs1)), { real: RSA, clean: rsaDer });
+pub("rsa long alg", tlv(0x30, long(0x30, ...members(rsaAlg)), tlv(3, b(0), pkcs1)), { real: RSA, clean: rsaDer });
+pub("rsa long bits", tlv(0x30, rsaAlg, long(3, b(0), pkcs1)), { real: RSA, clean: rsaDer });
+pub("rsa padded e", spki(rsaAlg, rsaKey(n, Buffer.concat([b(0), e]))), { real: RSA, clean: rsaDer });
+pub("rsa padded n", spki(rsaAlg, rsaKey(Buffer.concat([b(0), n]), e)), { real: RSA, clean: rsaDer });
+pub("rsa padded pkcs1", rsaKey(Buffer.concat([b(0), n]), e), { ...pkcs1Form, real: RSA });
+pub("ec long outer", long(0x30, ecAlg, tlv(3, b(0), pt)), { real: EC256_SEC1, clean: ecDer });
+pub("ed long outer", long(0x30, edAlg, tlv(3, b(0), edKey)), { ...ed, real: ED_PRIV, clean: edDer });
+for (const [name, key] of [["rsa", RSA], ["ec", EC256_SEC1], ["ed", ED_PRIV]]) {
+  const d = pkcs8Der(key), x = long(0x30, ...members(d)), o = { key: x, format: "der", type: "pkcs8" };
+  show(`pkcs8 ${name} long outer`, () => pkcs8Der(o).equals(d));
+  show(`pkcs8 ${name} long outer pem`, () => pkcs8Der(pemOf(x, "PRIVATE KEY")).equals(d));
+}
+
+// 9. SPKI tags and the algorithm identifier's tail are checked; RSA takes any one parameter.
+const retag = (d, tag) => { const c = Buffer.from(d); c[0] = tag; return c; };
+const [rsaOid, rsaNull] = members(rsaAlg), [ecOid, ecCurve] = members(ecAlg);
+pub("rsa outer set", retag(rsaDer, 0x31));
+pub("rsa alg set", tlv(0x30, retag(rsaAlg, 0x31), tlv(3, b(0), pkcs1)));
+pub("rsa bits octets", tlv(0x30, rsaAlg, tlv(4, b(0), pkcs1)));
+pub("rsa oid tag", spki(tlv(0x30, retag(rsaOid, 0x04), rsaNull), pkcs1));
+pub("rsa no params", spki(tlv(0x30, rsaOid), pkcs1), { real: RSA, clean: rsaDer });
+pub("rsa integer params", spki(tlv(0x30, rsaOid, b(2, 1, 0)), pkcs1), { real: RSA, clean: rsaDer });
+pub("rsa params tail", spki(tlv(0x30, rsaOid, rsaNull, b(5, 0)), pkcs1));
+pub("ec params tail", spki(tlv(0x30, ecOid, ecCurve, b(5, 0)), pt));
+pub("ec curve tag", spki(tlv(0x30, ecOid, retag(ecCurve, 0x04)), pt));
+pub("ec no params", spki(tlv(0x30, ecOid), pt));
+
+// 10. What each odd key exports as: OpenSSL rebuilds RSA keys and keeps an EC point's form.
+const exported = (tag, d, type = "spki") => show(tag, () => {
+  const x = crypto.createPublicKey({ key: d, format: "der", type }).export({ type: "spki", format: "der" });
+  return x.equals(rsaDer) ? "rsaDer" : x.equals(ecDer) ? "ecDer" : x.equals(edDer) ? "edDer" : x.toString("hex");
+});
+exported("export rsa inner trailing", spki(rsaAlg, trailing(pkcs1)));
+exported("export rsa unused 1", spki(rsaAlg, pkcs1, 1));
+exported("export ec unused 1", spki(ecAlg, pt, 1));
+exported("export ed unused 7", spki(edAlg, edKey, 7));
+exported("export hybrid", spki(ecAlg, prefixed(pt, 6 + (pt[64] & 1))));
+exported("export zero n", spki(rsaAlg, rsaKey(b(0), e)));
+exported("export empty n", spki(rsaAlg, rsaKey(b(), e)));
+exported("export negative e", spki(rsaAlg, rsaKey(n, b(0x81))));
+
+// 11. A compressed EC point opens, exports compressed, and its JWK has the full point.
+const compressed = (p) => Buffer.concat([b(2 + (p[p.length - 1] & 1)), p.subarray(1, 1 + (p.length - 1) / 2)]);
+pub("compressed p256", spki(ecAlg, compressed(pt)), { real: EC256_SEC1 });
+pub("compressed p384", spki(ec384Alg, compressed(pt384)), { digest: "sha384", real: EC384 });
+pub("compressed p256 bad prefix", spki(ecAlg, Buffer.concat([b(5 - (pt[64] & 1)), pt.subarray(1, 33)])));
+exported("export compressed p256", spki(ecAlg, compressed(pt)));
+
+// 12. A JWK with a zero or empty RSA member opens as a public key that verifies nothing.
+const rsaJwk = crypto.createPublicKey(RSA_PUB).export({ format: "jwk" }), rsaPrivateJwk = crypto.createPrivateKey(RSA).export({ format: "jwk" });
+const jwkPub = (o) => crypto.createPublicKey({ key: o, format: "jwk" });
+for (const [tag, o] of [["n empty", { ...rsaJwk, n: "" }], ["e empty", { ...rsaJwk, e: "" }], ["both empty", { kty: "RSA", n: "", e: "" }], ["n zero", { ...rsaJwk, n: "AA" }], ["e zero", { ...rsaJwk, e: "AA" }]]) {
+  show(`jwk ${tag}`, () => jwkPub(o).export({ format: "jwk" }));
+  show(`jwk ${tag} spki`, () => jwkPub(o).export({ type: "spki", format: "der" }).toString("hex"));
+  show(`jwk ${tag} verify`, () => crypto.verify("sha256", m, jwkPub(o), sig));
+}
+for (const member of ["n", "e", "d", "p", "dp"]) show(`jwk private ${member} empty`, () => crypto.createPrivateKey({ key: { ...rsaPrivateJwk, [member]: "" }, format: "jwk" }).type);
+
+// 13. Hostile RSASSA-PSS-params on the RSA key, read and checked against a real PSS signature.
+const pssOid = tlv(6, b(0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a));
+const sha256Alg = tlv(0x30, tlv(6, b(0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01)));
+const mgf1 = tlv(0x30, tlv(6, b(0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x08)), sha256Alg);
+const [h0, m1, s2] = [tlv(0xa0, sha256Alg), tlv(0xa1, mgf1), tlv(0xa2, tlv(2, b(32)))];
+const salted = (...bytes) => tlv(0x30, h0, m1, tlv(0xa2, tlv(2, b(...bytes))));
+const pssSig = crypto.sign("sha256", m, { key: RSA, padding: 6, saltLength: 32 });
+const details = (k) => `${k.asymmetricKeyType} ${JSON.stringify(k.asymmetricKeyDetails, (_, v) => (typeof v === "bigint" ? `${v}n` : v))}`;
+const pssKey = (tag, params, salt = 32) => {
+  const d = spki(tlv(0x30, pssOid, ...(params ? [params] : [])), pkcs1), o = { key: d, format: "der", type: "spki" };
+  show(`${tag} der`, () => details(crypto.createPublicKey(o)));
+  show(`${tag} pem`, () => crypto.createPublicKey(pemOf(d, "PUBLIC KEY")).type);
+  show(`${tag} verify`, () => crypto.verify("sha256", m, { key: pemOf(d, "PUBLIC KEY"), saltLength: salt }, pssSig));
+  show(`${tag} spki`, () => crypto.createPublicKey(o).export({ type: "spki", format: "der" }).subarray(0, 80).toString("hex"));
+};
+pssKey("pss plain", tlv(0x30, h0, m1, s2));
+pssKey("pss none", null);
+pssKey("pss trailer 1", tlv(0x30, h0, m1, s2, tlv(0xa3, tlv(2, b(1)))));
+pssKey("pss trailer 2", tlv(0x30, h0, m1, s2, tlv(0xa3, tlv(2, b(2)))));
+pssKey("pss trailer padded", tlv(0x30, h0, m1, s2, tlv(0xa3, tlv(2, b(0, 1)))));
+pssKey("pss out of order", tlv(0x30, m1, h0, s2));
+pssKey("pss salt first", tlv(0x30, s2, h0, m1));
+pssKey("pss truncated", tlv(0x30, h0, m1, s2).subarray(0, 20));
+pssKey("pss truncated inner", Buffer.concat([b(0x30, 0x10), h0.subarray(0, 16)]));
+pssKey("pss salt padded", salted(0, 32));
+pssKey("pss salt zero", salted(0), -2);
+pssKey("pss salt 32767", salted(0x7f, 0xff), -2);
+pssKey("pss salt 32768", salted(0, 0x80, 0), -2);
+pssKey("pss salt 40000", salted(0, 0x9c, 0x40), -2);
+pssKey("pss salt huge", salted(0x7f, 0xff, 0xff, 0xff), -2);
+pssKey("pss salt negative", salted(0xff), -2);
+pssKey("pss hash null params", tlv(0x30, tlv(0xa0, tlv(0x30, ...members(sha256Alg), b(5, 0))), m1, s2));
+pssKey("pss sha1 explicit", tlv(0x30, tlv(0xa0, tlv(0x30, tlv(6, b(0x2b, 0x0e, 0x03, 0x02, 0x1a)))), tlv(0xa2, tlv(2, b(20)))), 20);
+show("pss alg tail", () => crypto.createPublicKey({ key: spki(tlv(0x30, pssOid, tlv(0x30, h0, m1, s2), b(5, 0)), pkcs1), format: "der", type: "spki" }).type);
+show("pss params trailing", () => crypto.createPublicKey({ key: spki(tlv(0x30, pssOid, Buffer.concat([tlv(0x30, h0, m1, s2), b(5, 0)])), pkcs1), format: "der", type: "spki" }).type);
+const pssPrivate = (params) => { const [v, , k] = members(pkcs8Der(RSA)); return { key: tlv(0x30, v, tlv(0x30, pssOid, params), k), format: "der", type: "pkcs8" }; };
+for (const [tag, params] of [["trailer 2", tlv(0x30, h0, m1, s2, tlv(0xa3, tlv(2, b(2))))], ["salt 32767", salted(0x7f, 0xff)], ["salt 223", salted(0, 223)], ["salt negative", salted(0xff)]]) {
+  const o = pssPrivate(params);
+  show(`pss private ${tag}`, () => crypto.createPrivateKey(o).asymmetricKeyDetails.saltLength);
+  show(`pss private ${tag} sign`, () => crypto.sign("sha256", m, o).length);
+  show(`pss private ${tag} sign 222`, () => crypto.sign("sha256", m, { ...o, saltLength: 222 }).length);
+  show(`pss private ${tag} public`, () => crypto.createPublicKey(o).export({ type: "spki", format: "der" }).length);
+  show(`pss private ${tag} export`, () => crypto.createPrivateKey(o).export({ type: "pkcs8", format: "der" }).length);
+  show(`pss private ${tag} verify 222`, () => crypto.verify("sha256", m, { key: crypto.createPublicKey(o), saltLength: 222 }, pssSig));
+}
+
+// 14. A modulus of 8k + 1 bits encodes PSS messages one byte shorter than the key. The plain
+// key signs at the digest length, as the shim's plain RSA keys only do; the PSS key at any salt.
+const salts = { rsa_2049: [32], pss_2049: [0, 32, 222, 223] };
+for (const name of ["rsa_2049", "pss_2049"]) {
+  const key = K[name], pubKey = crypto.createPublicKey(key), nodeSig = Buffer.from(K[`${name}_sig`], "base64");
+  show(`${name} details`, () => details(pubKey));
+  for (const salt of salts[name]) {
+    show(`${name} sign ${salt}`, () => crypto.verify("sha256", m, { key: pubKey, padding: 6, saltLength: salt }, crypto.sign("sha256", m, { key, padding: 6, saltLength: salt })));
+    show(`${name} recovered ${salt}`, () => crypto.verify("sha256", m, { key: pubKey, padding: 6, saltLength: -2 }, crypto.sign("sha256", m, { key, padding: 6, saltLength: salt })));
+  }
+  for (const salt of [32, -2, 31, 33, 0]) show(`${name} node signature ${salt}`, () => crypto.verify("sha256", m, { key: pubKey, padding: 6, saltLength: salt }, nodeSig));
+  show(`${name} node signature tampered`, () => crypto.verify("sha256", Buffer.from("n"), { key: pubKey, padding: 6, saltLength: -2 }, nodeSig));
+}
+
+// 15. A wrong passphrase whose decryption passes CBC padding by chance (PBKDF2 at one
+// iteration): OpenSSL's decoder refuses the plaintext, not the cipher.
+const iter1Der = derOf(K.ec_iter1, "ENCRYPTED PRIVATE KEY");
+const message = (f) => { try { return `opened ${f().type}`; } catch (e) { return e.message.split("::").pop(); } };
+for (const pw of ["right", "wrong", "w218", "w189647"]) {
+  show(`padding ${pw} pem`, () => message(() => crypto.createPrivateKey({ key: K.ec_iter1, passphrase: pw })));
+  show(`padding ${pw} der`, () => message(() => crypto.createPrivateKey({ key: iter1Der, format: "der", type: "pkcs8", passphrase: pw })));
+  show(`padding ${pw} public`, () => message(() => crypto.createPublicKey({ key: K.ec_iter1, passphrase: pw })));
+  show(`padding ${pw} sign`, () => message(() => ({ type: crypto.sign("sha256", m, { key: K.ec_iter1, passphrase: pw }).length > 0 })));
+}
