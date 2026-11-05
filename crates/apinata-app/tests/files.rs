@@ -161,6 +161,7 @@ fn session_round_trips_with_per_collection_state() {
         active_draft: None,
         expanded: Some(vec!["".into(), "users".into()]),
         runners: Default::default(),
+        mock: true,
     };
     s.collections.insert("/c/a".into(), c);
     s.window = Some(SavedBounds::from_window(WindowBounds::Maximized(b(

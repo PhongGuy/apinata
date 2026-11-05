@@ -327,6 +327,7 @@ mod locked_hint;
 mod log_feed;
 mod mask_template;
 mod menu_focus;
+mod mock_toggle;
 mod narrow_env;
 mod network_cert_focus;
 mod network_certificates;

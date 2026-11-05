@@ -449,6 +449,20 @@ impl Actor {
                 let _ = reply.try_send(self.variables(&item));
                 Ok(())
             }
+            Command::MockSource { reply } => {
+                let source = self.open_saved().and_then(|collection| {
+                    let context = self.saved_context(&collection)?;
+                    Ok(crate::command::MockSource {
+                        collection,
+                        context,
+                    })
+                });
+                let _ = reply.try_send(source.map_err(|e| match e {
+                    PlanError::Select(m) | PlanError::Context(m) => m,
+                    PlanError::NotFound(item) => format!("{} not found", item.as_str()),
+                }));
+                Ok(())
+            }
             Command::SecretValues { reply } => {
                 let values = self
                     .context
@@ -1883,7 +1897,7 @@ fn network_snapshot(
 
 /// Whether `command` may change what the variable context holds: anything but a request's
 /// own edits, imports and conflict actions, held-edit discards, plans, variable reads,
-/// secret-value lists, reveals and orphan lists and removals.
+/// secret-value lists, mock sources, reveals and orphan lists and removals.
 fn shapes_context(command: &Command) -> bool {
     match command {
         Command::Edit { target, .. }
@@ -1897,6 +1911,7 @@ fn shapes_context(command: &Command) -> bool {
         | Command::FileTexts { .. }
         | Command::Variables { .. }
         | Command::SecretValues { .. }
+        | Command::MockSource { .. }
         | Command::Search { .. }
         | Command::CopyOut { .. }
         | Command::ConvertPreview { .. }

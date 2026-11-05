@@ -24,6 +24,7 @@ use crate::git_status::{
 };
 use crate::history_key::new_history_key;
 use crate::last_response::{StoreOp, enqueue};
+use crate::mock_server::{self, MockServers, MockState};
 use crate::model::CollectionModel;
 use crate::persisted::Persisted;
 use crate::prompt_vars::PromptMemory;
@@ -106,6 +107,13 @@ pub enum WorkspaceEvent {
     },
     /// Opening a folder as a reference workspace failed or skipped something; the text says what.
     FolderNotice(String),
+    /// The mock server of the collection at `root` did not start, so its toggle is off.
+    MockFailed {
+        /// The collection's root.
+        root: PathBuf,
+        /// Why, for display.
+        message: String,
+    },
     /// Watching the collection at `root`, or the global directory, stopped; changes on disk
     /// need a manual reload.
     WatchFailed {
@@ -531,6 +539,8 @@ pub struct Workspace {
     script_sides: HashMap<(PathBuf, ItemPath), ScriptPhase>,
     // "Add to environment" requests waiting for an environment editor, by absolute root.
     env_intents: HashMap<PathBuf, EnvIntent>,
+    // Each collection's mock server, stopped when its collection closes.
+    mocks: MockServers,
 }
 
 impl EventEmitter<WorkspaceEvent> for Workspace {}
@@ -586,6 +596,7 @@ impl Workspace {
             split_ratio: crate::style::DEFAULT_SPLIT_RATIO,
             script_sides: HashMap::new(),
             env_intents: HashMap::new(),
+            mocks: MockServers::default(),
         }
     }
 
@@ -900,6 +911,9 @@ impl Workspace {
         self.trashed_tabs.retain(|(r, _), _| *r != root);
         self.restores.retain(|(r, _), _| *r != root);
         self.run_unchecked.remove(&root);
+        if let Some(stop) = self.mocks.stop(&root, cx) {
+            stop.detach();
+        }
         let tabs = &self.tabs;
         self.kept_views.retain(|t, _| tabs.get(*t).is_some());
         self.forget_open(&root, cx);
@@ -2383,6 +2397,10 @@ impl Workspace {
             cx.emit(WorkspaceEvent::Opened(root.to_path_buf()));
             self.restore_tabs(root, cx);
             self.restore_environment(root, cx);
+            // After the environment, so the actor builds the routes in the restored one.
+            if self.remembered_mock(root, cx) {
+                self.set_mock(root, true, cx);
+            }
         }
         // Refresh git on the first snapshot and once the reply covering our own write lands.
         let acked = model.read(cx).snapshot().map_or(0, |s| s.acked);
@@ -3236,6 +3254,109 @@ impl Workspace {
                 root.display()
             );
         }
+    }
+
+    /// Where the mock server of the collection at `root` stands.
+    pub fn mock_state(&self, root: &Path) -> MockState {
+        self.mocks.state(&absolute(root))
+    }
+
+    /// Test-only: later mock starts bind `port` instead of a free one.
+    #[doc(hidden)]
+    pub fn set_mock_port(&mut self, port: u16) {
+        self.mocks.set_port(port);
+    }
+
+    /// Turns the mock server of the collection at `root` off when it runs or is starting,
+    /// else on.
+    pub fn toggle_mock(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let on = self.mock_state(root) == MockState::Off;
+        self.set_mock(root, on, cx);
+    }
+
+    /// Starts or stops the mock server of the open collection at `root` and remembers the
+    /// choice. A start runs in the background; one that fails emits
+    /// [`WorkspaceEvent::MockFailed`] and leaves the server off.
+    pub fn set_mock(&mut self, root: &Path, on: bool, cx: &mut Context<Self>) {
+        let root = absolute(root);
+        if !on {
+            if let Some(stop) = self.mocks.stop(&root, cx) {
+                stop.detach();
+            }
+            self.save_mock(&root, false, cx);
+            cx.notify();
+            return;
+        }
+        if self.mocks.state(&root) != MockState::Off {
+            return;
+        }
+        // The actor reopens the saved files, so the server never serves unsaved drafts.
+        let (reply, source) = async_channel::bounded(1);
+        if self
+            .send(&root, Command::MockSource { reply }, cx)
+            .is_none()
+        {
+            return;
+        }
+        let port = self.mocks.port();
+        let key = root.clone();
+        self.mocks.begin(root, |id| {
+            cx.spawn(async move |this, cx| {
+                let source = (source.recv().await)
+                    .unwrap_or_else(|_| Err("the collection closed".to_owned()));
+                let started = match source {
+                    Ok(source) => cx.update(|cx| mock_server::start(source, port, cx)).await,
+                    Err(e) => Err(e),
+                };
+                this.update(cx, |w, cx| w.mock_started(&key, id, started, cx))
+                    .ok();
+            })
+        });
+        cx.notify();
+    }
+
+    // Keeps a server whose start is still wanted, and reports a failed one; a start a later
+    // toggle or close replaced is dropped, which stops its server.
+    fn mock_started(
+        &mut self,
+        root: &Path,
+        id: u64,
+        started: Result<apinata_core::mock::MockHandle, String>,
+        cx: &mut Context<Self>,
+    ) {
+        match started {
+            Ok(handle) => {
+                if self.mocks.finish(root, id, handle) {
+                    self.save_mock(root, true, cx);
+                }
+            }
+            Err(message) => {
+                if self.mocks.fail(root, id) {
+                    self.save_mock(root, false, cx);
+                    let root = root.to_path_buf();
+                    cx.emit(WorkspaceEvent::MockFailed { root, message });
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    fn remembered_mock(&self, root: &Path, cx: &App) -> bool {
+        let session = self.session.read(cx).get();
+        session.collections.get(root).is_some_and(|c| c.mock)
+    }
+
+    // Writes the mock choice of `root` when it differs; a root without a UTF-8 path is not
+    // stored, as `Session::remember` does.
+    fn save_mock(&mut self, root: &Path, on: bool, cx: &mut Context<Self>) {
+        if root.to_str().is_none() || self.remembered_mock(root, cx) == on {
+            return;
+        }
+        self.session.update(cx, |p, cx| {
+            p.update(cx, |s| {
+                s.collections.entry(root.to_path_buf()).or_default().mock = on;
+            })
+        });
     }
 
     fn forget_open(&mut self, root: &Path, cx: &mut Context<Self>) {

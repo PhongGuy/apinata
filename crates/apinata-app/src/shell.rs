@@ -56,6 +56,7 @@ use crate::keymap::{
     RunFolder, SHELL_CONTEXT, SaveActive, ToggleConsole, ToggleOrientation, ToggleSidebar,
     ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
+use crate::mock_server::{MOCK_TIP, MockState};
 use crate::palette::{OpenCommandPalette, OpenRequest};
 use crate::path_display;
 use crate::persisted::{Persisted, SaveFailed};
@@ -1405,6 +1406,12 @@ impl Shell {
             WorkspaceEvent::FolderNotice(text) => {
                 window.push_notification(Notification::warning(text.clone()), cx);
             }
+            WorkspaceEvent::MockFailed { root, message } => {
+                let name = display_name(root);
+                let text = format!("The mock server of {name} did not start: {message}");
+                window.push_notification(ui::kind_toast(ui::ToastKind::Error, text), cx);
+                cx.notify();
+            }
             WorkspaceEvent::WatchFailed { root, message }
                 if self.workspace.read(cx).global_dir() == Some(root.as_path()) =>
             {
@@ -2163,8 +2170,10 @@ impl Shell {
         )
     }
 
-    // The window's foot: a marker and a manual reload for each collection no longer watched.
+    // The window's foot: a marker and a manual reload for each collection no longer watched,
+    // and the current collection's mock toggle.
     fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mock = self.mock_controls(cx);
         let workspace = self.workspace.read(cx);
         let unwatched: Vec<_> = workspace
             .listed_collections(cx)
@@ -2222,6 +2231,7 @@ impl Shell {
                         cx,
                     ))
                     .children(markers)
+                    .when_some(mock, |bar, mock| bar.right(mock))
                     .right(ui::solid_ring(
                         icon_button(
                             "toggle-console",
@@ -2309,7 +2319,70 @@ impl Shell {
         let orientation = cx
             .try_global::<AppState>()
             .map(|s| s.settings.read(cx).get().response_orientation);
-        StatusInputs(unwatched, orientation)
+        StatusInputs(unwatched, orientation, self.current_mock(cx))
+    }
+
+    // The current user collection and where its mock server stands; the scratch has none.
+    fn current_mock(&self, cx: &App) -> Option<(PathBuf, MockState)> {
+        let workspace = self.workspace.read(cx);
+        let root = workspace.current_user_root()?;
+        let state = workspace.mock_state(&root);
+        Some((root, state))
+    }
+
+    // The mock toggle, then the address it answers on with a copy button while it runs.
+    fn mock_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (root, state) = self.current_mock(cx)?;
+        use crate::theme::SelectedStyle;
+        use crate::ui::ChooseButton as _;
+        let toggle = Button::new("mock-toggle")
+            .ghost()
+            .xsmall()
+            .label("Mock")
+            .choose(state != MockState::Off, SelectedStyle::Ghost, cx)
+            .accessibility_label("Mock server")
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx));
+            }));
+        let address = match state {
+            MockState::On(addr) => Some(format!("http://{addr}")),
+            _ => None,
+        };
+        let shown = address.map(|url| {
+            let copied = url.clone();
+            h_flex()
+                .gap(style::SPACE_1)
+                .child(
+                    div()
+                        .id("mock-address")
+                        .test_support()
+                        .aria_label(url.clone())
+                        .text_color(cx.theme().muted_foreground)
+                        .child(url),
+                )
+                .child(ui::solid_ring(
+                    icon_button("mock-copy", IconName::Copy, "Copy mock address", None)
+                        .xsmall()
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(
+                                copied.clone(),
+                            ));
+                        }),
+                    cx,
+                ))
+        });
+        Some(
+            h_flex()
+                .gap(style::SPACE_1)
+                .child(
+                    div()
+                        .id("mock-toggle-slot")
+                        .tooltip(ui::text_tooltip("mock-tooltip", MOCK_TIP))
+                        .child(ui::solid_ring(toggle, cx)),
+                )
+                .children(shown)
+                .into_any_element(),
+        )
     }
 
     // The kit's bar owns drag, double click and the window controls; its close goes through
@@ -2473,7 +2546,11 @@ struct TitleInputs {
 }
 
 #[derive(PartialEq)]
-struct StatusInputs(Vec<(usize, PathBuf)>, Option<Orientation>);
+struct StatusInputs(
+    Vec<(usize, PathBuf)>,
+    Option<Orientation>,
+    Option<(PathBuf, MockState)>,
+);
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

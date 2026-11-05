@@ -282,6 +282,14 @@ pub struct Planned {
     pub context: VarContext,
 }
 
+/// What a mock server serves: the saved collection and the context its URLs resolve in.
+pub struct MockSource {
+    /// The collection as saved on disk.
+    pub collection: apinata_core::Collection,
+    /// The variables for the selected environment.
+    pub context: VarContext,
+}
+
 /// Why a `Plan` command produced no plan.
 #[derive(Debug)]
 pub enum PlanError {
@@ -412,6 +420,12 @@ pub enum Command {
     SecretValues {
         /// Where the values, or the context error's text, go.
         reply: async_channel::Sender<Result<Vec<String>, String>>,
+    },
+    /// Open the saved files afresh with a variable context for them and send both on `reply`,
+    /// for the mock server to build its routes from; the actor's drafts stay out.
+    MockSource {
+        /// Where the collection and context, or why they could not be built, go.
+        reply: async_channel::Sender<Result<MockSource, String>>,
     },
     /// Search the collection's request text for `query` and send the hits on `reply`, or the
     /// text of why the query cannot run (an invalid regular expression). The search reads only
