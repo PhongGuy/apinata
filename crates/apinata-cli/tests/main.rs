@@ -33,6 +33,7 @@ mod cli_git;
 mod cli_git_clone;
 mod cli_global_env;
 mod cli_graphql;
+mod cli_har;
 mod cli_http_version;
 mod cli_import;
 mod cli_import_bundles;

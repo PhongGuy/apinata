@@ -286,6 +286,7 @@ pub async fn run(
     }
     let data = data_file(args)?;
     let example = crate::example_cmd::plan(args, &target, data.as_ref())?;
+    let har = crate::har_cmd::plan(args, &target, data.as_ref());
     let mut exec = ExecOptions::new()
         .insecure(args.insecure)
         .store_cookies(!args.disable_cookies)
@@ -339,6 +340,7 @@ pub async fn run(
     let mismatched = crate::query_notice::lines(&target.plan);
     let on_event: Box<dyn FnMut(RunEvent) + Send> = {
         let mut show = show;
+        let record_har = har.as_ref().map(|h| h.recorder());
         let log = log.clone();
         let next = Arc::clone(&next);
         let cap_text = cap_text.clone();
@@ -363,6 +365,9 @@ pub async fn run(
                 );
             }
             if let RunEvent::RequestFinished { result, .. } = &event {
+                if let Some(record) = &record_har {
+                    record(result);
+                }
                 show.request_finished(result);
                 if let Some(log) = &log {
                     drain(log, &next);
@@ -441,6 +446,12 @@ pub async fn run(
     // A failed save leaves the run's report as it was and only changes the exit code.
     if let Some(example) = &example
         && let Err(e) = crate::example_cmd::save(example, &report)
+    {
+        eprintln!("error: {e:#}");
+        write_failed.store(true, Ordering::Relaxed);
+    }
+    if let Some(har) = &har
+        && let Err(e) = har.write(&report)
     {
         eprintln!("error: {e:#}");
         write_failed.store(true, Ordering::Relaxed);
