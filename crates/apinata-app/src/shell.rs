@@ -2340,6 +2340,7 @@ impl Shell {
             .xsmall()
             .label("Mock")
             .choose(state != MockState::Off, SelectedStyle::Ghost, cx)
+            .toggled(state != MockState::Off)
             .accessibility_label("Mock server")
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx));

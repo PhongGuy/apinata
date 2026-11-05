@@ -72,6 +72,23 @@ fn label(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Opt
     .unwrap()
 }
 
+fn pressed(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<bool> {
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        w.try_find("mock-toggle").and_then(|e| e.checked())
+    })
+    .unwrap()
+}
+
+// A port free right now, so a start that binds it twice would fail with the port in use.
+fn free_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
 fn remembered(cx: &mut TestAppContext, ws: &gpui_kit::Entity<Workspace>, root: &Path) -> bool {
     let session = ws.read_with(cx, |w, _| w.session().clone());
     let value = session_value(cx, &session);
@@ -85,8 +102,10 @@ fn the_toggle_serves_the_examples_on_loopback_and_shows_the_address(cx: &mut Tes
     assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
     assert!(present(cx, s.win, "mock-toggle"));
     assert!(!present(cx, s.win, "mock-address"));
+    assert_eq!(pressed(cx, s.win), Some(false));
     click(cx, s.win, "mock-toggle");
     let addr = running(cx, &s.ws, &s.root);
+    assert_eq!(pressed(cx, s.win), Some(true));
     assert_eq!(addr.ip().to_string(), "127.0.0.1");
     assert_ne!(addr.port(), 0);
     let url = format!("http://{addr}");
@@ -193,4 +212,49 @@ fn the_session_keeps_the_choice_only_when_on() {
     assert!(!off.contains("mock"), "{off}");
     let back: CollectionSession = serde_json::from_str(&text).unwrap();
     assert!(back.mock);
+}
+
+#[gpui_kit::test]
+fn turning_off_during_a_start_leaves_no_server_and_no_toast(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let port = free_port();
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        w.set_mock_port(port);
+        w.set_mock(&root, true, cx);
+        assert_eq!(w.mock_state(&root), MockState::Starting);
+        w.set_mock(&root, false, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
+    assert!(!present(cx, s.win, "toast-error"));
+    assert!(!remembered(cx, &s.ws, &s.root));
+    // The abandoned start holds nothing: a new one binds the same fixed port.
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    assert_eq!(addr.port(), port);
+    assert!(!present(cx, s.win, "toast-error"));
+}
+
+#[gpui_kit::test]
+fn on_off_on_in_quick_succession_leaves_exactly_one_server(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let port = free_port();
+    let root = s.root.clone();
+    // On a fixed port a second live server could not bind, so one success means one server.
+    s.ws.update(cx, |w, cx| {
+        w.set_mock_port(port);
+        w.set_mock(&root, true, cx);
+        w.set_mock(&root, false, cx);
+        w.set_mock(&root, true, cx);
+    });
+    let addr = running(cx, &s.ws, &s.root);
+    assert_eq!(addr.port(), port);
+    assert!(get(addr, "/users").starts_with("HTTP/1.1 200"));
+    assert!(!present(cx, s.win, "toast-error"));
+    assert!(remembered(cx, &s.ws, &s.root));
+    s.ws.update(cx, |w, cx| w.set_mock(&root, false, cx));
+    wait_real(cx, |_| refused(addr));
 }

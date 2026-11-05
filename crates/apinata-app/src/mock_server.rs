@@ -13,7 +13,7 @@ use crate::tokio_bridge;
 
 /// The toggle's tooltip. Core builds the routes once, so later edits need a restart.
 pub const MOCK_TIP: &str = "Serve this collection's saved examples on 127.0.0.1. \
-    It serves the examples saved when it started; turn it off and on to serve later edits.";
+    Example edits and environment changes take effect after turning it off and on.";
 
 /// Where one collection's mock server stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,8 +51,8 @@ impl MockServers {
         }
     }
 
-    /// Test-only: the port later starts bind instead of a free one.
-    pub fn set_port(&mut self, port: u16) {
+    // Test-only, through `Workspace::set_mock_port`: the port later starts bind.
+    pub(crate) fn set_port(&mut self, port: u16) {
         self.port = port;
     }
 
