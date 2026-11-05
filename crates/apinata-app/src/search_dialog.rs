@@ -238,7 +238,8 @@ impl SearchForm {
         cx.notify();
     }
 
-    // A text toggle in the style of the body find bar's case button.
+    // A text toggle styled like the body find bar's case button, which is an icon: ghost,
+    // compact, and the ghost selected look while on.
     fn option_button(
         &self,
         id: &'static str,
