@@ -13,6 +13,7 @@ use gpui_kit::EntityInputHandler as _;
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::{Checkbox as BaseCheckbox, CheckboxIndicator};
+use gpui_kit::component::Colorize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState, Textarea, TextareaState};
@@ -2241,8 +2242,25 @@ pub fn lock_look(on: bool, disabled: bool, cx: &App) -> LockLook {
     }
 }
 
+/// A colour from text that may come from a file: `#rgb`, `#rrggbb` or `#rrggbbaa` in ASCII hex,
+/// the `#` optional; anything else is `None`.
+pub fn parse_color(text: &str) -> Option<Hsla> {
+    // The kit's parser slices by byte offset, so non-ASCII text of a valid length would panic
+    // inside it; only plain hex digits ever reach it.
+    let digits = text.strip_prefix('#').unwrap_or(text);
+    if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let full = match digits.len() {
+        3 => digits.chars().flat_map(|c| [c, c]).collect(),
+        6 | 8 => digits.to_owned(),
+        _ => return None,
+    };
+    Hsla::parse_hex(&full).ok()
+}
+
 /// The WCAG contrast ratio of two colours, ignoring alpha.
-pub(crate) fn luminance_ratio(a: Hsla, b: Hsla) -> f32 {
+pub fn luminance_ratio(a: Hsla, b: Hsla) -> f32 {
     let lum = |c: Hsla| {
         let c = c.to_rgb();
         let ch = |v: f32| {

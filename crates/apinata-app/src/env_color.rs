@@ -1,6 +1,5 @@
 //! An environment's colour as drawn outside its editor, and the contrast rule for text on it.
 
-use gpui_kit::component::Colorize as _;
 use gpui_kit::{
     Hsla, InteractiveElement as _, IntoElement, Styled as _, TestSupportExt as _, div, hsla,
 };
@@ -13,7 +12,7 @@ pub const TEXT_CONTRAST: f32 = 4.5;
 
 /// The fill for an environment colour, or none when there is no colour or it is no hex colour.
 pub fn env_fill(color: Option<&str>) -> Option<Hsla> {
-    Hsla::parse_hex(color?.trim()).ok()
+    crate::ui::parse_color(color?.trim())
 }
 
 /// `text` when it reaches 4.5:1 on `fill`, else black or white, whichever contrasts more;

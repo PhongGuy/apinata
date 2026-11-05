@@ -7,29 +7,46 @@ use apinata_app::command::{Command, Edit, Target};
 use apinata_app::env_color::{env_fill, text_on};
 use apinata_app::env_selector::option_id;
 use apinata_app::style::{ENV_STRIPE_HEIGHT, at_zoom};
+use apinata_app::ui::{luminance_ratio, parse_color};
 use gpui_kit::component::Colorize as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Hsla, TestAppContext, hsla, px};
 use support::*;
 
-fn ratio(a: Hsla, b: Hsla) -> f32 {
-    let lum = |c: Hsla| {
-        let c = c.to_rgb();
-        let ch = |v: f32| {
-            if v <= 0.03928 {
-                v / 12.92
-            } else {
-                ((v + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b)
-    };
-    let (x, y) = (lum(a), lum(b));
-    (x.max(y) + 0.05) / (x.min(y) + 0.05)
-}
-
 fn hex(text: &str) -> Hsla {
     Hsla::parse_hex(text).unwrap()
+}
+
+#[test]
+fn the_contrast_ratio_matches_known_wcag_values() {
+    let white = hex("#ffffff");
+    for (fg, bg, want) in [
+        ("#000000", "#ffffff", 21.0),
+        ("#777777", "#ffffff", 4.48),
+        ("#767676", "#ffffff", 4.54),
+        ("#ffffff", "#ffffff", 1.0),
+    ] {
+        let got = luminance_ratio(hex(fg), hex(bg));
+        assert!((got - want).abs() < 0.01, "{fg} on {bg}: {got}");
+    }
+    assert_eq!(
+        luminance_ratio(hex("#777777"), white),
+        luminance_ratio(white, hex("#777777"))
+    );
+}
+
+#[test]
+fn parse_color_takes_only_ascii_hex() {
+    assert_eq!(parse_color("#ce4f3b"), Some(hex("#ce4f3b")));
+    assert_eq!(parse_color("ce4f3b"), Some(hex("#ce4f3b")));
+    assert_eq!(parse_color("#ce4f3b80"), Some(hex("#ce4f3b80")));
+    assert_eq!(parse_color("#abc"), Some(hex("#aabbcc")));
+    for bad in [
+        "", "#", "#1é234", "1é234", "#ce4f3", "#ce4f3b8", "#abcd", "##ce4f3b", "#gggggg", "#ééé",
+        "#1é2345", "ce4f3bé",
+    ] {
+        assert_eq!(parse_color(bad), None, "{bad:?}");
+    }
 }
 
 #[test]
@@ -38,6 +55,9 @@ fn a_hex_colour_fills_and_anything_else_does_not() {
     assert_eq!(env_fill(Some(" #CE4F3B ")), Some(hex("#ce4f3b")));
     assert_eq!(env_fill(Some("crimson")), None);
     assert_eq!(env_fill(Some("")), None);
+    assert_eq!(env_fill(Some("#1é234")), None);
+    assert_eq!(env_fill(Some("#ce4f3")), None);
+    assert_eq!(env_fill(Some("#abc")), Some(hex("#aabbcc")));
     assert_eq!(env_fill(None), None);
 }
 
@@ -59,8 +79,8 @@ fn unreadable_text_falls_back_to_a_neutral_that_passes() {
     ] {
         let (fill, text) = (hex(fill), hex(text));
         let shown = text_on(fill, text);
-        assert!(ratio(shown, fill) >= 4.5, "{shown:?} on {fill:?}");
-        if ratio(text, fill) < 4.5 {
+        assert!(luminance_ratio(shown, fill) >= 4.5, "{shown:?} on {fill:?}");
+        if luminance_ratio(text, fill) < 4.5 {
             let rgb = shown.to_rgb();
             assert!(
                 rgb.r == rgb.g && rgb.g == rgb.b,
@@ -131,6 +151,27 @@ fn an_environment_without_a_colour_draws_no_stripe(cx: &mut TestAppContext) {
     let s = started(cx, &col);
     select(cx, &s, Some("plain"));
     assert_eq!(stripe(cx, &s), None);
+}
+
+#[gpui_kit::test]
+fn a_malformed_colour_draws_nothing_and_does_not_crash(cx: &mut TestAppContext) {
+    for bad in ["#1é234", "", "#ce4f3", "#ééé"] {
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            (
+                "environments/odd.yml",
+                &format!("name: odd\ncolor: \"{bad}\"\n"),
+            ),
+        ]);
+        let s = started(cx, &col);
+        select(cx, &s, Some("odd"));
+        assert_eq!(stripe(cx, &s), None, "{bad:?}");
+        assert!(!present(cx, s.win, "env-trigger-dot"), "{bad:?}");
+        cx.update_window(s.win, |_, w, cx| w.click("env-select", cx))
+            .unwrap();
+        frame(cx, s.win);
+        assert!(!present(cx, s.win, "env-row-dot"), "{bad:?}");
+    }
 }
 
 #[gpui_kit::test]
