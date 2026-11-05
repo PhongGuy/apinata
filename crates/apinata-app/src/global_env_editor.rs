@@ -1022,7 +1022,7 @@ impl Render for GlobalEnvEditor {
             &self.follow,
             ui::checkbox("global-env-active", in_use)
                 .label("Active")
-                .tooltip("The global environment every collection's sends use")
+                .tooltip("Use this environment for every collection's sends")
                 .on_click(move |on, _, cx| {
                     me.update(cx, |e, cx| e.set_active(*on, cx)).ok();
                 }),

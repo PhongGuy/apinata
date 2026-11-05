@@ -2730,7 +2730,12 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::previous_section)))
             .on_action(cx.listener(to_tabs(TabArea::focus_response)))
             .on_action(
+                // A squeezed select is hidden and takes no focus, so the command opens the
+                // environments tab, as the bar's environments button beside it does.
                 cx.listener(|this, _: &OpenEnvironmentSelector, window, cx| {
+                    if this.env_selector.read(cx).squeezed() {
+                        return this.open_environments(cx);
+                    }
                     this.env_selector
                         .update(cx, |s, cx| s.open_menu(window, cx))
                 }),

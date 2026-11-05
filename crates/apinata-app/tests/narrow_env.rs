@@ -931,3 +931,73 @@ fn narrowing_past_the_environment_select_keeps_the_keys_with_it_focused(cx: &mut
     resize(cx, s.win, NARROW, 700.);
     assert!(palette_reachable(cx, &s));
 }
+
+// The selector command at a width that hides the select opens what the bar still shows for
+// environments, the environments tab, and the app's keys stay reachable.
+#[gpui_kit::test]
+fn the_selector_command_opens_the_environments_tab_where_the_select_is_hidden(
+    cx: &mut TestAppContext,
+) {
+    let (_col, _globals, s) = zoomed_globals(cx, 2.0);
+    assert!(palette_reachable(cx, &s));
+    cx.simulate_keystrokes(s.win, &secondary("alt-e"));
+    cx.run_until_parked();
+    assert!(
+        palette_reachable(cx, &s),
+        "the keys left with the hidden select"
+    );
+    assert!(!env_select_focused(cx, &s));
+    assert!(
+        present(cx, s.win, "env-empty-pane"),
+        "the environments tab opened"
+    );
+}
+
+// The checkbox and the list's mark agree with the workspace's active global.
+fn assert_active_shown(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    ws: &gpui_kit::Entity<apinata_app::workspace::Workspace>,
+    ed: &gpui_kit::Entity<apinata_app::global_env_editor::GlobalEnvEditor>,
+) {
+    frame(cx, win);
+    let active = ws.read_with(cx, |w, _| w.selected_global_environment());
+    let names = ws.read_with(cx, |w, _| w.global_environments());
+    let selected = ed.read_with(cx, |e, _| e.selected().map(str::to_owned));
+    let want = selected.is_some() && selected == active;
+    assert_eq!(
+        checked(cx, win, ACTIVE),
+        Some(want),
+        "{active:?} {selected:?}"
+    );
+    for (ix, name) in names.iter().enumerate() {
+        let marked = present(cx, win, ("global-env-active-mark", ix));
+        assert_eq!(marked, active.as_ref() == Some(name), "{name}: {active:?}");
+    }
+}
+
+#[gpui_kit::test]
+fn renaming_or_deleting_the_active_global_keeps_the_box_and_mark_right(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, ed, _key, ws) =
+        crate::env_orphans::global_editor_with_ws(cx, Arc::new(Listing::default()), GLOBAL_FILE);
+    ws.update(cx, |w, cx| {
+        w.select_global_environment(Some("g".into()), cx)
+    });
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.choose("g", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert_active_shown(cx, win, &ws, &ed);
+    assert_eq!(checked(cx, win, ACTIVE), Some(true));
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.rename("k", w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.selected().map(str::to_owned))
+            .as_deref(),
+        Some("k")
+    );
+    assert_active_shown(cx, win, &ws, &ed);
+    ed.update(cx, |e, cx| e.delete(cx));
+    cx.run_until_parked();
+    assert_active_shown(cx, win, &ws, &ed);
+}
