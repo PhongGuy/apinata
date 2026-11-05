@@ -652,9 +652,9 @@ show("compressed", () => crypto.createPublicKey(K.ec256_compressed_pub).export({
             "log:rsa pub n Error Unsupported key: the JWK's RSA values do not form a usable key",
             "log:rsa pub e Error Unsupported key: the JWK's RSA values do not form a usable key",
             "log:rsa pub tiny Error Unsupported key: the JWK's RSA values do not form a usable key",
-            "log:rsa-pss Error Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)",
-            "log:rsa-pss public Error Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key",
-            "log:rsa-pss encrypted Error Unsupported key: the encrypted key opened, but it is not a supported type (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519)",
+            "log:rsa-pss Error Unsupported JWK Key Type.",
+            "log:rsa-pss public Error Unsupported JWK Key Type.",
+            "log:rsa-pss encrypted ok private",
             "log:x25519 pem Error Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)",
             "log:compressed Error Unsupported key: JWK export of a compressed EC public key",
         ]
@@ -1210,7 +1210,7 @@ async fn jwt_keeps_cryptos_refusals_and_work_caps() {
             "log:rsa_camellia Error Unsupported key: an encrypted key using Camellia (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:rsa_pbes1 Error Unsupported key: an encrypted key using a PBES1 scheme (supported: PBES2 with PBKDF2 or scrypt and AES-CBC, AES-GCM or DES-EDE3-CBC)",
             "log:rsa_legacy Error Unsupported key: a legacy encrypted PEM (Proc-Type: 4,ENCRYPTED) (convert it to encrypted PKCS#8)",
-            "log:pss_enc Error Unsupported key: the encrypted key opened, but it is not a supported type (supported: RSA, ECDSA P-256, P-384 or P-521, and Ed25519)",
+            "log:pss_enc Error \"alg\" parameter for \"rsa-pss\" key type must be one of: PS256, PS384, PS512.",
         ]
         .map(String::from),
     );

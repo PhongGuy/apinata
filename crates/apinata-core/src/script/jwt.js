@@ -110,7 +110,8 @@
   const typed = (key) => {
     if (key.type === "secret") return { type: "secret", bytes: material(key.export()) };
     const bytes = key.export({ type: key.type === "private" ? "pkcs8" : "spki", format: "pem" });
-    return { type: key.type, kind: key.asymmetricKeyType, bytes, ...call("details", bytes) };
+    const pss = key.asymmetricKeyType === "rsa-pss" ? key.asymmetricKeyDetails : undefined;
+    return { type: key.type, kind: key.asymmetricKeyType, bytes, pss, ...call("details", bytes) };
   };
   const secretOf = (key) => {
     if (typeof key === "string") return { type: "secret", bytes: key };
@@ -143,8 +144,9 @@
     return secretOf(key);
   };
 
-  // Node's validateAsymmetricKey: the algorithm must suit the key type and an EC key's curve.
-  const KEY_ALGS = { ec: ["ES256", "ES384", "ES512"], rsa: ["RS256", "PS256", "RS384", "PS384", "RS512", "PS512"] };
+  // Node's validateAsymmetricKey: the algorithm must suit the key type, an EC key's curve and an
+  // RSA-PSS key's parameters.
+  const KEY_ALGS = { ec: ["ES256", "ES384", "ES512"], rsa: ["RS256", "PS256", "RS384", "PS384", "RS512", "PS512"], "rsa-pss": ["PS256", "PS384", "PS512"] };
   const CURVES = { ES256: "prime256v1", ES384: "secp384r1", ES512: "secp521r1" };
   const checkAsymmetric = (alg, key) => {
     if (!key.kind) return;
@@ -152,6 +154,15 @@
     if (!allowed) throw new Error(`Unknown key type "${key.kind}".`);
     if (!allowed.includes(alg)) throw new Error(`"alg" parameter for "${key.kind}" key type must be one of: ${allowed.join(", ")}.`);
     if (key.kind === "ec" && key.curve !== CURVES[alg]) throw new Error(`"alg" parameter "${alg}" requires curve "${CURVES[alg]}".`);
+    if (key.kind === "rsa-pss") {
+      const length = parseInt(alg.slice(-3), 10), { hashAlgorithm, mgf1HashAlgorithm, saltLength } = key.pss;
+      if (hashAlgorithm !== `sha${length}` || mgf1HashAlgorithm !== hashAlgorithm) {
+        throw new Error(`Invalid key for this operation, its RSA-PSS parameters do not meet the requirements of "alg" ${alg}.`);
+      }
+      if (saltLength !== undefined && saltLength > length >> 3) {
+        throw new Error(`Invalid key for this operation, its RSA-PSS parameter saltLength does not meet the requirements of "alg" ${alg}.`);
+      }
+    }
   };
 
   const CLAIM_OPTIONS = { audience: "aud", issuer: "iss", subject: "sub", jwtid: "jti" };

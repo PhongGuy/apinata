@@ -36,6 +36,7 @@ use super::crypto_keys::{
     OPENED_UNSUPPORTED, UNREADABLE_PUBLIC, decrypted, jwk_key_host, jwk_parts_host,
     public_readable, rsa_pkcs1_fits, rsa_pkcs8_fits, throw,
 };
+use super::crypto_pss::{self, OID_RSA_PSS, PssParams, Scheme};
 use super::engine::Installer;
 use super::jwt::{KeyInput, ec_private_curve};
 use crate::oauth1::SHA1_PREFIX;
@@ -52,10 +53,11 @@ pub(super) const MAX_SCRYPT_WORK: f64 = 33_554_432.0;
 pub(super) const MAX_SCRYPT_MEMORY: f64 = 268_435_456.0;
 
 const SIG_SUPPORTED: &str = "(supported: RSA with sha1, sha256, sha384 or sha512; RSA-PSS with sha256, sha384 or sha512; ECDSA P-256, P-384 or P-521 with sha1, sha256, sha384 or sha512; Ed25519 with null; require('crypto-js') has more)";
-const BAD_PRIVATE: &str = "Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)";
-const BAD_PUBLIC: &str =
+pub(super) const BAD_PRIVATE: &str =
+    "Unsupported key: expected a PEM private key (PKCS#8, PKCS#1 or SEC1)";
+pub(super) const BAD_PUBLIC: &str =
     "Unsupported key: expected a PEM public key (SPKI, PKCS#1 or X.509 certificate) or private key";
-/// The salt length crypto.js passes when a PSS sign names none, unlike an explicit -1.
+/// The salt a plain RSA key's PSS sign takes when the script names none, unlike an explicit -1.
 const PSS_DEFAULT_SALT: i64 = -3;
 /// The RSA modulus sizes that sign and verify, in bits.
 pub(super) const RSA_BITS: std::ops::RangeInclusive<usize> = 1024..=8192;
@@ -350,6 +352,12 @@ pub(super) enum Private {
         sec1: bool,
     },
     Ed(Ed25519KeyPair),
+    /// An RSA-PSS key with its PKCS#8 and the parameters it is held to, if any.
+    RsaPss {
+        key: Box<RsaPrivateKey>,
+        der: Vec<u8>,
+        params: Option<PssParams>,
+    },
 }
 
 /// aws-lc-rs holds the RSA keys it accepts (2048 to 8192 bits); the `rsa` crate holds the rest,
@@ -365,9 +373,14 @@ pub(super) enum Public {
     Rsa(Vec<u8>),
     Ec(Curve, Vec<u8>),
     Ed(Vec<u8>),
+    /// An RSA-PSS SubjectPublicKeyInfo and its parameters.
+    RsaPss {
+        der: Vec<u8>,
+        params: Option<PssParams>,
+    },
 }
 
-fn unsupported(what: &str) -> String {
+pub(super) fn unsupported(what: &str) -> String {
     format!("Signature algorithm not supported: \"{what}\" {SIG_SUPPORTED}")
 }
 
@@ -412,6 +425,15 @@ pub(super) fn private_from(label: &str, der: Vec<u8>) -> Result<Private, String>
         },
         _ => {
             rsa_pkcs8_fits(&der)?;
+            if let Some(found) = crypto_pss::pss_key(&der, true) {
+                let (params, pkcs1) = found.map_err(|_| BAD_PRIVATE)?;
+                let key = RsaPrivateKey::from_pkcs1_der(pkcs1).map_err(|_| BAD_PRIVATE)?;
+                return Ok(Private::RsaPss {
+                    key: Box::new(key),
+                    der,
+                    params,
+                });
+            }
             let rsa = match RsaKeyPair::from_pkcs8(&der) {
                 Ok(pair) => Some(RsaPrivate::Native(pair)),
                 Err(_) => RsaPrivateKey::from_pkcs8_der(&der)
@@ -526,6 +548,10 @@ pub(super) fn public_key(key: &KeyInput) -> Result<Public, String> {
             Ok(Public::Ec(curve, pair.public_key().as_ref().to_vec()))
         }
         Ok(Private::Ed(pair)) => Ok(Public::Ed(pair.public_key().as_ref().to_vec())),
+        Ok(Private::RsaPss { key, der, params }) => Ok(Public::RsaPss {
+            der: crypto_pss::public_spki(&der, &key)?,
+            params,
+        }),
         Err(e) if e == BAD_PRIVATE => Err(BAD_PUBLIC.into()),
         Err(e) => Err(e),
     }
@@ -574,6 +600,13 @@ pub(super) fn spki_key(der: &[u8]) -> Result<Public, String> {
     let curve = element(params).map(|(_, curve, _)| curve);
     match (oid, curve) {
         (OID_RSA, _) => Ok(Public::Rsa(der.to_vec())),
+        (OID_RSA_PSS, _) => match crypto_pss::pss_key(der, false) {
+            Some(Ok((params, _))) => Ok(Public::RsaPss {
+                der: der.to_vec(),
+                params,
+            }),
+            _ => Err(UNREADABLE_PUBLIC.into()),
+        },
         (OID_EC, Some(OID_P256)) => Ok(Public::Ec(Curve::P256, der.to_vec())),
         (OID_EC, Some(OID_P384)) => Ok(Public::Ec(Curve::P384, der.to_vec())),
         (OID_EC, Some(OID_P521)) => Ok(Public::Ec(Curve::P521, der.to_vec())),
@@ -764,9 +797,13 @@ pub(super) fn sign(
     data: &[u8],
     key: &KeyInput,
     dsa: &str,
-    padding: Padding,
+    scheme: Scheme,
 ) -> Result<Vec<u8>, String> {
+    let padding = scheme.rsa(true);
     match (private_key(key)?, padding) {
+        (Private::RsaPss { key, params, .. }, _) => {
+            crypto_pss::sign(&key, params, digest, scheme, data)
+        }
         (
             Private::Rsa {
                 key: RsaPrivate::Fallback(key),
@@ -848,17 +885,7 @@ fn pss_salt_len(key: &RsaPublicKey, sig: &[u8], hash: &'static digest::Algorithm
     }
     let (masked, h) = em[..em_len - 1].split_at(em_len - h_len - 1);
     // MGF1 over H unmasks DB; the bits above emBits are cleared, then zeros lead to the 0x01.
-    let mut db = Vec::with_capacity(masked.len() + h_len);
-    for counter in 0u32.. {
-        if db.len() >= masked.len() {
-            break;
-        }
-        let mut block = digest::Context::new(hash);
-        block.update(h);
-        block.update(&counter.to_be_bytes());
-        db.extend_from_slice(block.finish().as_ref());
-    }
-    db.truncate(masked.len());
+    let mut db = crypto_pss::mgf1(hash, h, masked.len());
     db.iter_mut().zip(masked).for_each(|(d, m)| *d ^= m);
     db[0] &= 0xff >> (8 * em_len - em_bits);
     let one = db.iter().position(|&b| b != 0)?;
@@ -941,10 +968,14 @@ pub(super) fn verify(
     key: &KeyInput,
     sig: &[u8],
     dsa: &str,
-    padding: Padding,
+    scheme: Scheme,
 ) -> Result<bool, String> {
+    let padding = scheme.rsa(false);
     let (algorithm, bytes): (&'static dyn signature::VerificationAlgorithm, Vec<u8>) =
         match (public_key(key)?, padding) {
+            (Public::RsaPss { der, params }, _) => {
+                return crypto_pss::verify(&der, params, digest, scheme, data, sig);
+            }
             (Public::Rsa(der), _) => return rsa_verify(&der, digest, data, sig, padding),
             (Public::Ec(curve, der), _) => {
                 let hashed = ec_digest(curve, digest, data)?;
@@ -973,9 +1004,29 @@ pub(super) fn verify(
         .is_ok())
 }
 
-/// The padding the shim named: `pss` is null for PKCS#1 v1.5, else the PSS salt length.
-fn padding_of(pss: Option<f64>) -> Padding {
-    pss.map_or(Padding::Pkcs1, |salt| Padding::Pss(salt as i64))
+impl Scheme {
+    /// What an RSA key makes of the script's options: PSS only when padding 6 is named, salted
+    /// as asked or else `PSS_DEFAULT_SALT` to sign and recovered from the signature to verify.
+    fn rsa(self, signing: bool) -> Padding {
+        match self.padding {
+            Some(6) => {
+                Padding::Pss(
+                    self.salt
+                        .unwrap_or(if signing { PSS_DEFAULT_SALT } else { -2 }),
+                )
+            }
+            _ => Padding::Pkcs1,
+        }
+    }
+}
+
+/// The scheme the shim passed: `[padding, saltLength]` as the script set them, each maybe null.
+fn scheme_of(options: &[Option<f64>]) -> Scheme {
+    let at = |i: usize| options.get(i).copied().flatten().map(|v| v as i64);
+    Scheme {
+        padding: at(0),
+        salt: at(1),
+    }
 }
 
 fn sign_host<'js>(
@@ -984,9 +1035,10 @@ fn sign_host<'js>(
     data: Vec<u8>,
     key: Vec<u8>,
     dsa: String,
-    pss: Option<f64>,
+    options: Vec<Option<f64>>,
 ) -> rquickjs::Result<Vec<u8>> {
-    sign(&digest, &data, &KeyInput::Bytes(key), &dsa, padding_of(pss)).map_err(|e| throw(&ctx, &e))
+    let scheme = scheme_of(&options);
+    sign(&digest, &data, &KeyInput::Bytes(key), &dsa, scheme).map_err(|e| throw(&ctx, &e))
 }
 
 fn verify_host<'js>(
@@ -996,7 +1048,7 @@ fn verify_host<'js>(
     key: Vec<u8>,
     sig: Vec<u8>,
     dsa: String,
-    pss: Option<f64>,
+    options: Vec<Option<f64>>,
 ) -> rquickjs::Result<bool> {
     verify(
         &digest,
@@ -1004,7 +1056,7 @@ fn verify_host<'js>(
         &KeyInput::Bytes(key),
         &sig,
         &dsa,
-        padding_of(pss),
+        scheme_of(&options),
     )
     .map_err(|e| throw(&ctx, &e))
 }
@@ -1046,6 +1098,7 @@ fn plain_key_object(key: &KeyInput, public: bool) -> Result<(&'static str, Vec<u
             Private::Rsa { .. } => "rsa",
             Private::Ec { .. } => "ec",
             Private::Ed(_) => "ed25519",
+            Private::RsaPss { .. } => "rsa-pss",
         };
         if pem.label == "PRIVATE KEY" {
             return Ok((kind, first_value(&pem.der).to_vec()));
@@ -1069,6 +1122,7 @@ fn plain_key_object(key: &KeyInput, public: bool) -> Result<(&'static str, Vec<u
                 .map(|d| d.as_ref().to_vec())
                 .map_err(|_| BAD_PRIVATE)?,
             Private::Ed(_) => pem.der,
+            Private::RsaPss { der, .. } => der,
         };
         return Ok((kind, der));
     }
@@ -1095,6 +1149,7 @@ fn plain_key_object(key: &KeyInput, public: bool) -> Result<(&'static str, Vec<u
                 .public_key(),
         ),
         Ok(Private::Ed(pair)) => spki_of(pair.public_key()),
+        Ok(Private::RsaPss { key, der, .. }) => crypto_pss::public_spki(&der, &key),
         Err(e) if e == BAD_PRIVATE => Err(BAD_PUBLIC),
         Err(e) => return Err(e),
     }?;
@@ -1106,6 +1161,7 @@ fn public_kind(key: &Public) -> &'static str {
         Public::Rsa(_) => "rsa",
         Public::Ec(..) => "ec",
         Public::Ed(_) => "ed25519",
+        Public::RsaPss { .. } => "rsa-pss",
     }
 }
 
@@ -1154,17 +1210,19 @@ fn curve_oid(der: &[u8], private: bool) -> Option<&[u8]> {
     element(params).map(|(_, oid, _)| oid)
 }
 
-/// `[modulus bits, exponent bytes, curve name]` for a held RSA or EC key; the unused parts are
-/// zero, empty or "". Behind the shim's `asymmetricKeyDetails`.
+/// `[modulus bits, exponent bytes, curve name, hash, MGF1 hash, salt length]` for a held RSA,
+/// RSA-PSS or EC key; the unused parts are zero, empty or "", and the salt -1 without parameters.
+/// Behind the shim's `asymmetricKeyDetails`.
 fn key_details_host<'js>(
     ctx: Ctx<'js>,
     kind: String,
     der: Vec<u8>,
     private: bool,
-) -> rquickjs::Result<List<(u32, Vec<u8>, String)>> {
+) -> rquickjs::Result<KeyDetails> {
     let bad = || throw(&ctx, BAD_PRIVATE);
+    let none = || (String::new(), String::new(), -1);
     match kind.as_str() {
-        "rsa" => {
+        "rsa" | "rsa-pss" => {
             let (n, e) = if private {
                 let parts = super::crypto_keys::rsa_private_parts(&der).ok_or_else(bad)?;
                 (
@@ -1175,7 +1233,19 @@ fn key_details_host<'js>(
                 rsa_public_parts(&der).ok_or_else(bad)?
             };
             let bits = u32::try_from(n.bits()).map_err(|_| bad())?;
-            Ok(List((bits, e.to_bytes_be(), String::new())))
+            let (hash, mgf1, salt) = match crypto_pss::pss_key(&der, private) {
+                Some(Ok((Some(p), _))) => (p.hash.to_string(), p.mgf1.to_string(), p.salt as i64),
+                Some(Err(())) => return Err(bad()),
+                _ => none(),
+            };
+            Ok(List((
+                bits,
+                e.to_bytes_be(),
+                String::new(),
+                hash,
+                mgf1,
+                salt,
+            )))
         }
         "ec" => {
             let name = match curve_oid(&der, private).ok_or_else(bad)? {
@@ -1184,8 +1254,14 @@ fn key_details_host<'js>(
                 OID_P521 => "secp521r1",
                 _ => return Err(bad()),
             };
-            Ok(List((0, Vec::new(), name.to_string())))
+            let (hash, mgf1, salt) = none();
+            Ok(List((0, Vec::new(), name.to_string(), hash, mgf1, salt)))
         }
-        _ => Ok(List((0, Vec::new(), String::new()))),
+        _ => {
+            let (hash, mgf1, salt) = none();
+            Ok(List((0, Vec::new(), String::new(), hash, mgf1, salt)))
+        }
     }
 }
+
+type KeyDetails = List<(u32, Vec<u8>, String, String, String, i64)>;

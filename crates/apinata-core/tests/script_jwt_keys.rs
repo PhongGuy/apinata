@@ -68,10 +68,11 @@ fn refused_line(line: &str) -> Option<String> {
 }
 
 /// Node's `foreign` lines open a key no crate holds, or a public key on sign; both stop here.
+/// RSA-PSS keys open here as in Node, so their other lines are Node's.
 fn foreign_line(line: &str) -> Option<String> {
     let (tag, _) = line.split_once(": ")?;
-    tag.starts_with("foreign ")
-        .then(|| format!("{tag}: {NOT_A_KEY}"))
+    let opens = tag.starts_with("foreign PSS") && !tag.ends_with("_PUB sign HS256");
+    (tag.starts_with("foreign ") && !opens).then(|| format!("{tag}: {NOT_A_KEY}"))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
