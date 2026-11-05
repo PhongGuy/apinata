@@ -412,6 +412,9 @@ impl BodyView {
         // An edit moves text under the editor-mode hits, so they are found again in place.
         let editor_edits = cx.subscribe(&editor, |this, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) && this.own_editor_find() && this.find_open {
+                // A scan already running read the old text, so its offsets must not land.
+                this.find_generation += 1;
+                this.find_task = None;
                 let timer = cx.background_executor().timer(SETTLE);
                 this.edit_settle = Some(cx.spawn(async move |this, cx| {
                     timer.await;
@@ -1220,10 +1223,9 @@ impl BodyView {
         self.find_regex || self.find_whole_word
     }
 
-    // Scans the editor's text for the bar's query off the UI thread; the result lands only if
-    // no newer query, toggle or text has started since, and `place` then picks the current
-    // hit. Each regex call covers one line, but a pathological pattern can still keep the
-    // worker busy until it finishes; its stale result is then dropped.
+    // Scans the editor's text off the UI thread; the result lands only if no newer query, toggle
+    // or edit came since, and `place` picks the current hit. A pathological pattern can still
+    // keep the worker busy, one line per regex call, until it finishes and is dropped.
     fn find_editor_hits(&mut self, place: HitPlace, cx: &mut Context<Self>) {
         let query = self.find_input.read(cx).value();
         let found = Finder::new(&query, self.find_options());
