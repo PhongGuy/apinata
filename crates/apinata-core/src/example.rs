@@ -69,6 +69,24 @@ impl RequestFile {
         }
     }
 
+    /// Replace `examples` in memory with one entry per example, each written as
+    /// [`Collection::add_example`] writes it with this file's request half; none removes the key.
+    pub(crate) fn set_examples(&mut self, examples: &[Example]) {
+        let entries = examples
+            .iter()
+            .map(|e| {
+                let name = Some(js_trim(&e.name))
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or(UNTITLED);
+                let description = e.description.as_deref().unwrap_or_default();
+                let response = e.response.clone().unwrap_or_else(ExampleResponse::empty);
+                new_entry(self, name, description, &response)
+            })
+            .collect();
+        self.document_mut()
+            .set_list(&["examples"], entries, &[order::TOP]);
+    }
+
     /// Whether an example is named `name`, trimmed as [`Collection::add_example`] trims it.
     pub fn has_example(&self, name: &str) -> bool {
         let name = js_trim(name);
@@ -269,6 +287,16 @@ impl ExampleResponse {
     pub fn new(status: u16) -> ExampleResponse {
         ExampleResponse {
             status: Some(status),
+            status_text: None,
+            headers: Vec::new(),
+            body: None,
+        }
+    }
+
+    /// No status, status text, headers or body.
+    fn empty() -> ExampleResponse {
+        ExampleResponse {
+            status: None,
             status_text: None,
             headers: Vec::new(),
             body: None,

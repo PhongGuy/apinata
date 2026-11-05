@@ -24,7 +24,7 @@ fn an_openapi_import_records_one_entry_per_operation() {
     let keys: Vec<_> = baseline.keys().collect();
     assert_eq!(keys, ["GET /legacy", "GET /users/{}", "POST /users"]);
     for key in keys {
-        assert_eq!(baseline.get(key).unwrap().iter().count(), 7, "{key}");
+        assert_eq!(baseline.get(key).unwrap().iter().count(), 8, "{key}");
     }
 }
 
@@ -111,7 +111,7 @@ fn an_import_records_the_file_of_each_operation_and_it_survives_a_reopen() {
     let again = Collection::open(c.root()).unwrap();
     assert_eq!(again.file().spec_baseline(), c.file().spec_baseline());
     // The hashes are still reported as before.
-    assert_eq!(b.get("GET /legacy").unwrap().iter().count(), 7);
+    assert_eq!(b.get("GET /legacy").unwrap().iter().count(), 8);
 }
 
 #[test]
@@ -141,5 +141,5 @@ fn a_baseline_entry_without_a_file_still_reads() {
     let b = again.file().spec_baseline().unwrap();
     assert_eq!(b.len(), 3);
     assert_eq!(b.file("GET /legacy"), None);
-    assert_eq!(b.get("GET /legacy").unwrap().iter().count(), 7);
+    assert_eq!(b.get("GET /legacy").unwrap().iter().count(), 8);
 }

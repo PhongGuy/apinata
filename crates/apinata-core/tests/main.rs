@@ -213,6 +213,7 @@ mod import_openapi_bodies;
 mod import_openapi_bodies_more;
 mod import_openapi_coverage;
 mod import_openapi_differences;
+mod import_openapi_examples;
 mod import_openapi_fixtures;
 mod import_openapi_grouping;
 mod import_openapi_hostile;

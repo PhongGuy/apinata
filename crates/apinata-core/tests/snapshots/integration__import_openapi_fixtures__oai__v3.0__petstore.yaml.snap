@@ -30,6 +30,7 @@ extensions:
           tags: e471b80291aa6e4e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 33259f5133455200
           file: pets/List all pets.yml
         GET /pets/{}:
           target: 78b23447214a8b59
@@ -39,6 +40,7 @@ extensions:
           tags: e471b80291aa6e4e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: d82b9c6c63ccc535
           file: pets/Info for a specific pet.yml
         POST /pets:
           target: 0e47e1edc3566744
@@ -48,6 +50,7 @@ extensions:
           tags: e471b80291aa6e4e
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 09e9e8df2d1f99f3
           file: pets/Create a pet.yml
 
 === pets/Create a pet.yml
@@ -78,6 +81,32 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: default Response
+    description: unexpected error
+    request:
+      url: "{{baseUrl}}/pets"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "name": "",
+            "tag": ""
+          }
+    response:
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "code": 0,
+            "message": ""
+          }
+
 === pets/Info for a specific pet.yml
 info:
   name: Info for a specific pet
@@ -102,6 +131,53 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Expected response to a valid request
+    request:
+      url: "{{baseUrl}}/pets/:petId"
+      method: GET
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: The id of the pet to retrieve
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": 0,
+            "name": "",
+            "tag": ""
+          }
+  - name: default Response
+    description: unexpected error
+    request:
+      url: "{{baseUrl}}/pets/:petId"
+      method: GET
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: The id of the pet to retrieve
+    response:
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "code": 0,
+            "message": ""
+          }
 
 === pets/List all pets.yml
 info:
@@ -128,6 +204,57 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: A paged array of pets
+    request:
+      url: "{{baseUrl}}/pets"
+      method: GET
+      params:
+        - name: limit
+          value: ""
+          type: query
+          description: How many items to return at one time (max 100)
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "tag": ""
+            }
+          ]
+  - name: default Response
+    description: unexpected error
+    request:
+      url: "{{baseUrl}}/pets"
+      method: GET
+      params:
+        - name: limit
+          value: ""
+          type: query
+          description: How many items to return at one time (max 100)
+          disabled: true
+    response:
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "code": 0,
+            "message": ""
+          }
 
 === pets/folder.yml
 info:

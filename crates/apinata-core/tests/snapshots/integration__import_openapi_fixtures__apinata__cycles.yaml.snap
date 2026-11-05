@@ -75,6 +75,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Pair.yml
         POST /nodes:
           target: 0f03f8a6c38f8c8d
@@ -84,6 +85,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 7ace431cb61584cb
           file: Create node.yml
 
 note Converted Create node.yml | paths./nodes.post.requestBody | `$ref` `#/components/schemas/Node` refers back to itself; replaced with an empty object

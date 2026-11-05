@@ -27,6 +27,34 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: pet response
+    request:
+      url: "{{baseUrl}}/pets"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "tag": ""
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "tag": "",
+            "id": 0
+          }
+
 docs: Creates a new pet in the store.  Duplicates are allowed
 
 === deletePet.yml
@@ -83,6 +111,32 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: pet response
+    request:
+      url: "{{baseUrl}}/pets/:id"
+      method: GET
+      params:
+        - name: id
+          value: ""
+          type: path
+          description: ID of pet to fetch
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "name": "",
+            "tag": "",
+            "id": 0
+          }
+
 docs: Returns a user based on a single ID, if the user does not have access to the pet
 
 === findPets.yml
@@ -113,6 +167,40 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: pet response
+    request:
+      url: "{{baseUrl}}/pets"
+      method: GET
+      params:
+        - name: tags
+          value: ""
+          type: query
+          description: tags to filter by
+          disabled: true
+        - name: limit
+          value: ""
+          type: query
+          description: maximum number of results to return
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "name": "",
+              "tag": "",
+              "id": 0
+            }
+          ]
 
 docs: |
   Returns all pets from the system that the user has access to
@@ -146,6 +234,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: d8ad8056c4645ee4
+          examples: 7ace431cb61584cb
           file: deletePet.yml
         GET /pets:
           target: 363cb9d7326c3f9f
@@ -155,6 +244,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 05698ad51424fb4d
           file: findPets.yml
         GET /pets/{}:
           target: efa2652a70a02e4e
@@ -164,6 +254,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: de7a99aefd4e07ca
           file: find pet by id.yml
         POST /pets:
           target: 0e47e1edc3566744
@@ -173,4 +264,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 0d94dc920ee31ff0
           file: addPet.yml

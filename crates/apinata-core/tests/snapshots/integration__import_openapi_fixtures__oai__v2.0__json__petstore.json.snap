@@ -30,6 +30,7 @@ extensions:
           tags: e471b80291aa6e4e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: abf0fd4a7b19042c
           file: pets/List all pets.yml
         GET /pets/{}:
           target: 78b23447214a8b59
@@ -39,6 +40,7 @@ extensions:
           tags: e471b80291aa6e4e
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 1b3f3289a6359166
           file: pets/Info for a specific pet.yml
         POST /pets:
           target: 0e47e1edc3566744
@@ -48,6 +50,7 @@ extensions:
           tags: e471b80291aa6e4e
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 7ace431cb61584cb
           file: pets/Create a pet.yml
 
 === pets/Create a pet.yml
@@ -95,6 +98,34 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Expected response to a valid request
+    request:
+      url: "{{baseUrl}}/pets/:petId"
+      method: GET
+      params:
+        - name: petId
+          value: ""
+          type: path
+          description: The id of the pet to retrieve
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "tag": ""
+            }
+          ]
+
 === pets/List all pets.yml
 info:
   name: List all pets
@@ -120,6 +151,35 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: An paged array of pets
+    request:
+      url: "{{baseUrl}}/pets"
+      method: GET
+      params:
+        - name: limit
+          value: ""
+          type: query
+          description: How many items to return at one time (max 100)
+          disabled: true
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "tag": ""
+            }
+          ]
 
 === pets/folder.yml
 info:

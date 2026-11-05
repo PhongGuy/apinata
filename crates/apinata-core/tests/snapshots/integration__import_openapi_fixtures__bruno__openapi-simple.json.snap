@@ -20,6 +20,28 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/get"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "args": {},
+            "headers": {},
+            "origin": "",
+            "url": ""
+          }
+
 docs: Test HTTP GET request
 
 === HTTP POST test.yml
@@ -45,6 +67,33 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: Successful response
+    request:
+      url: "{{baseUrl}}/post"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "data": ""
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "json": {},
+            "origin": "",
+            "url": ""
+          }
 
 docs: Test HTTP POST request
 
@@ -105,6 +154,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 0a0840b918e4fc3d
           file: HTTP GET test.yml
         GET /status/{}:
           target: 12cef18719773dd9
@@ -114,6 +164,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Return status code.yml
         POST /post:
           target: 7d18fafca450f390
@@ -123,4 +174,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: cb197c7d58321825
           file: HTTP POST test.yml

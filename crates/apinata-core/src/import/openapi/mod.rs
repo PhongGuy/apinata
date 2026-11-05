@@ -7,6 +7,7 @@ mod group;
 mod operations;
 mod params;
 mod refs;
+mod responses;
 mod sample;
 mod security;
 mod servers;

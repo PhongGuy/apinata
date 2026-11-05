@@ -176,6 +176,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Basic.yml
         GET /cookie:
           target: 0f43ce291e8957e7
@@ -185,6 +186,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Cookie.yml
         GET /inherit:
           target: 82a2e70c63a169ff
@@ -194,6 +196,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Inherit.yml
         GET /key:
           target: d232df4952743385
@@ -203,6 +206,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Key.yml
         GET /oauth:
           target: 7bd0fe8de367974d
@@ -212,6 +216,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: OAuth.yml
         GET /public:
           target: c09fb9e4af32bce5
@@ -221,6 +226,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Public.yml
 
 note Converted Key.yml | paths./key.get.security | only the first security requirement's first scheme, `keyHeader`, is used

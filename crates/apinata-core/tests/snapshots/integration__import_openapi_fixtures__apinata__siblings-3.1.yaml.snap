@@ -77,6 +77,7 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 7ace431cb61584cb
           file: Get pet.yml
         POST /pets:
           target: 0e47e1edc3566744
@@ -86,4 +87,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 7ace431cb61584cb
           file: Add pet.yml

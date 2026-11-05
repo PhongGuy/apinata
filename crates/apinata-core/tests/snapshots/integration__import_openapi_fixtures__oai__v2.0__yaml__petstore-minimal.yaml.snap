@@ -20,6 +20,29 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: A list of pets.
+    request:
+      url: "{{baseUrl}}/pets"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {
+              "id": 0,
+              "name": "",
+              "tag": ""
+            }
+          ]
+
 docs: Returns all pets from the system that the user has access to
 
 === environments/Environment.yml
@@ -54,4 +77,5 @@ extensions:
           tags: 7ace431cb61584cb
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 028ade31caadb4eb
           file: Returns all pets from the system that the user has access to.yml

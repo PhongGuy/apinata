@@ -30,6 +30,39 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: false
 
+examples:
+  - name: 200 Response
+    description: Returns a list of data sets
+    request:
+      url: "{{baseUrl}}/"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "total": 2,
+            "apis": [
+              {
+                "apiKey": "oa_citations",
+                "apiVersionNumber": "v1",
+                "apiUrl": "https://developer.uspto.gov/ds-api/oa_citations/v1/fields",
+                "apiDocumentationUrl": "https://developer.uspto.gov/ds-api-docs/index.html?url=https://developer.uspto.gov/ds-api/swagger/docs/oa_citations.json"
+              },
+              {
+                "apiKey": "cancer_moonshot",
+                "apiVersionNumber": "v1",
+                "apiUrl": "https://developer.uspto.gov/ds-api/cancer_moonshot/v1/fields",
+                "apiDocumentationUrl": "https://developer.uspto.gov/ds-api-docs/index.html?url=https://developer.uspto.gov/ds-api/swagger/docs/cancer_moonshot.json"
+              }
+            ]
+          }
+
 === metadata/Provides the general information about the API and the list of fields that can be used to query the dataset.yml
 info:
   name: Provides the general information about the API and the list of fields that can be used to query the dataset
@@ -58,6 +91,54 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: The dataset API for the given version is found and it is accessible to consume.
+    request:
+      url: "{{baseUrl}}/:dataset/:version/fields"
+      method: GET
+      params:
+        - name: dataset
+          value: oa_citations
+          type: path
+          description: Name of the dataset.
+        - name: version
+          value: v1
+          type: path
+          description: Version of the dataset.
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: '""'
+  - name: 404 Response
+    description: The combination of dataset name and version is not found in the system or it is not published yet to be consumed by public.
+    request:
+      url: "{{baseUrl}}/:dataset/:version/fields"
+      method: GET
+      params:
+        - name: dataset
+          value: oa_citations
+          type: path
+          description: Name of the dataset.
+        - name: version
+          value: v1
+          type: path
+          description: Version of the dataset.
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: '""'
 
 docs: This GET API returns the list of all the searchable field names that are in the oa_citations. Please see the 'fields' attribute which returns an array of field names. Each field or a combination of fields can be searched using the syntax options shown below.
 
@@ -100,6 +181,7 @@ extensions:
           tags: dd82c295fa1d5dcd
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: ed090d80e9004340
           file: metadata/List available data sets.yml
         GET /{}/{}/fields:
           target: 542937b614b13dde
@@ -109,6 +191,7 @@ extensions:
           tags: dd82c295fa1d5dcd
           vars: 7ace431cb61584cb
           method: bb94048e39bc5ef4
+          examples: 9eaad973caedc959
           file: metadata/Provides the general information about the API and the list of fields that can be used to query the dataset.yml
         POST /{}/{}/records:
           target: c09df23771d726cf
@@ -118,6 +201,7 @@ extensions:
           tags: 233ee12f397cf83b
           vars: 7ace431cb61584cb
           method: fde2a9b76b8de2ff
+          examples: 1ad66714722d1884
           file: search/Provides search capability for the data set with the given search criteria.yml
 
 === search/Provides search capability for the data set with the given search criteria.yml
@@ -160,6 +244,46 @@ settings:
   followRedirects: true
   maxRedirects: 5
   forwardAuthorizationHeader: false
+
+examples:
+  - name: 200 Response
+    description: successful operation
+    request:
+      url: "{{baseUrl}}/:dataset/:version/records"
+      method: POST
+      params:
+        - name: version
+          value: v1
+          type: path
+          description: Version of the dataset.
+        - name: dataset
+          value: oa_citations
+          type: path
+          description: Name of the dataset. In this case, the default value is oa_citations
+      body:
+        type: form-urlencoded
+        data:
+          - name: criteria
+            value: "*:*"
+            description: "Uses Lucene Query Syntax in the format of propertyName:value, propertyName:[num1 TO num2] and date range format: propertyName:[yyyyMMdd TO yyyyMMdd]. In the response please see the 'docs' element which has the list of record objects. Each record structure would consist of all the fields and their corresponding values."
+          - name: start
+            value: "0"
+            description: Starting record number. Default value is 0.
+          - name: rows
+            value: "100"
+            description: Specify number of rows to be returned. If you run the search with default values, in the response you will see 'numFound' attribute which will tell the number of records available in the dataset.
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          [
+            {}
+          ]
 
 docs: This API is based on Solr/Lucene Search. The data is indexed using SOLR. This GET API returns the list of all the searchable field names that are in the Solr Index. Please see the 'fields' attribute which returns an array of field names. Each field or a combination of fields can be searched using the Solr/Lucene Syntax. Please refer https://lucene.apache.org/core/3_6_2/queryparsersyntax.html#Overview for the query syntax. List of field names that are searchable can be determined using above GET api.
 

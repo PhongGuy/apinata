@@ -158,6 +158,7 @@ pub(crate) fn request_for<'a: 'o, 'o>(
     request.vars = vars;
     super::params::apply(doc, op, &mut request, &mut notes)?;
     super::body::apply(doc, op, &mut request, &mut notes)?;
+    super::responses::apply(doc, op, &mut request, &mut notes)?;
     request.auth = super::security::operation_auth(doc, op, &mut notes)?;
     super::coverage::operation_notes(doc, op, &mut notes)?;
     Ok(ImportedRequestItem {
