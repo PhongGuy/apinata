@@ -259,9 +259,9 @@ pub fn staged_change_note(
     let gained = after.difference(before).count();
     let what = match (lost, gained) {
         (0, 0) => return None,
-        (n, 0) if n == 1 => "1 file is no longer staged".to_owned(),
+        (1, 0) => "1 file is no longer staged".to_owned(),
         (n, 0) => format!("{n} files are no longer staged"),
-        (0, n) if n == 1 => "1 file is now staged".to_owned(),
+        (0, 1) => "1 file is now staged".to_owned(),
         (0, n) => format!("{n} files are now staged"),
         (l, g) => format!("{} no longer staged and {} now staged", files(l), files(g)),
     };
