@@ -371,9 +371,6 @@ fn switch(wanted: &str, collection: Option<&Path>) -> ExitCode {
     }
 }
 
-/// Exit code of a commit git or a hook refused, or that had nothing to record.
-const EXIT_GIT_FAILED: u8 = 1;
-
 fn commit(
     message: &str,
     all: bool,
@@ -425,23 +422,20 @@ fn commit(
         Ok(GitState::Repo(_)) => {}
         Ok(GitState::Unavailable) => {
             eprintln!("error: git was not found on PATH, so nothing can be committed.");
-            return ExitCode::from(EXIT_GIT_FAILED);
+            return ExitCode::from(EXIT_USAGE);
         }
         Ok(_) => {
             eprintln!("error: {} is not in a git repository.", root.display());
-            return ExitCode::from(EXIT_GIT_FAILED);
+            return ExitCode::from(EXIT_USAGE);
         }
         Err(e) => {
             eprintln!("error: {e}");
-            return ExitCode::from(EXIT_GIT_FAILED);
+            return ExitCode::from(EXIT_USAGE);
         }
     }
     if let Err(e) = apinata_core::stage(&root, &specs, &options) {
         eprintln!("error: {e}");
-        return ExitCode::from(match e {
-            apinata_core::GitError::Malformed(_) => EXIT_USAGE,
-            _ => EXIT_GIT_FAILED,
-        });
+        return ExitCode::from(EXIT_USAGE);
     }
     match apinata_core::commit(&root, message, &options) {
         Ok(done) if json => print_json(&done),
@@ -455,7 +449,7 @@ fn commit(
         }
         Err(e) => {
             eprintln!("error: {e}");
-            ExitCode::from(EXIT_GIT_FAILED)
+            ExitCode::from(EXIT_USAGE)
         }
     }
 }

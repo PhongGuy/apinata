@@ -704,14 +704,14 @@ fn commit_with_paths_stages_only_those_relative_to_the_working_directory() {
 }
 
 #[test]
-fn commit_with_nothing_staged_fails_with_exit_1() {
+fn commit_with_nothing_staged_fails_with_exit_3() {
     let sb = Sandbox::new();
     let col = clean(&sb);
     write(&col, "fresh.yml", "info:\n  name: fresh\n");
     let out = cli(&sb, &col)
         .args(["git", "commit", "-m", "m"])
         .assert()
-        .code(1);
+        .code(3);
     assert!(stderr(&out).contains("nothing"), "{}", stderr(&out));
 }
 
@@ -737,14 +737,14 @@ fn commit_all_with_paths_is_a_usage_error() {
 }
 
 #[test]
-fn commit_outside_a_repository_fails_with_exit_1() {
+fn commit_outside_a_repository_fails_with_exit_3() {
     let sb = Sandbox::new();
     let col = sb.path().join("plain");
     write(&col, "opencollection.yml", ROOT);
     let out = cli(&sb, &col)
         .args(["git", "commit", "-m", "m", "--all"])
         .assert()
-        .code(1);
+        .code(3);
     assert!(
         stderr(&out).contains("not in a git repository"),
         "{}",

@@ -163,7 +163,6 @@ enum Command {
     /// Show what changed in a collection since the last commit.
     #[command(after_help = "Exit codes:\n  \
         0  printed, or no git or no repository (a note on stderr)\n  \
-        1  commit: git or a hook refused, nothing is staged, or there is no git or repository\n  \
         3  git failed, the file is not a request file or is outside the collection, or usage or collection error (clone: bad URL or folder name, or the folder exists)\n  \
         130  a clone or fetch was cancelled with Ctrl+C")]
     Git(GitArgs),

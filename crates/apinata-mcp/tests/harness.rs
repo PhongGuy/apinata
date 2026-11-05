@@ -63,6 +63,7 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "export_postman",
             "generate_code",
             "get_collection",
+            "git_commit",
             "git_diff",
             "git_status",
             "graphql_schema",

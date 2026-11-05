@@ -317,7 +317,7 @@ the command never exits with that code.
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
 | `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors) | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, or the file could not be written |
-| `git` | printed, or no git or no repository (a note on stderr) | `commit`: git or a hook refused, nothing is staged, or no git or repository | - | git failed, the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
+| `git` | printed, or no git or no repository (a note on stderr; `commit` fails instead) | - | - | git failed (for `commit`, also a hook refusing, nothing staged, or no git or repository), the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
 | `import` | imported (notes go to stderr) | - | - | the import failed |
 | `export` | exported (notes go to stderr) | - | - | the export failed |
 | `convert` | converted, planned (`--dry-run`) or declined | - | - | the conversion failed |
