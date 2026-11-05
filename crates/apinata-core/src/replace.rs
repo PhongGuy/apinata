@@ -224,8 +224,8 @@ impl Model {
     }
 
     /// Write the touched parts back. Headers go first: they are the one setter that can fail,
-    /// so a refusal leaves nothing half applied. Params precede the URL so a changed URL
-    /// re-derives its params from the edited ones.
+    /// so a refusal leaves nothing half applied. Params precede the URL so a URL whose implied
+    /// params changed re-derives them from the edited ones.
     fn write(self, r: &mut RequestFile, t: &Touched) -> Result<(), crate::EditError> {
         if t.headers {
             r.set_headers(self.headers)?;
@@ -237,7 +237,7 @@ impl Model {
             r.set_params(self.params);
         }
         if t.url {
-            r.set_url(self.url);
+            r.replace_url(self.url);
         }
         if t.body {
             r.set_body(self.body);
@@ -271,8 +271,8 @@ impl Collection {
     /// stay as they were. In regex mode `$1`..`$99`, `${n}`, `$&` and `$$` expand in the
     /// replacement. Requests with unsaved edits are skipped and named; a request that cannot
     /// be edited or saved is reloaded from disk and reported in `failed`. Fails only for an
-    /// invalid pattern, before anything changes. Replacing inside a URL's query string makes the
-    /// URL setter re-derive the request's params, so a `params` block can appear in the file.
+    /// invalid pattern, before anything changes. A URL replace rewrites an existing `params`
+    /// block only when it changed the params the URL implies, and never adds one.
     pub fn replace(
         &mut self,
         query: &str,

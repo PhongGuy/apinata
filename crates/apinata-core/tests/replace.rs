@@ -387,3 +387,49 @@ fn changed_paths_follow_tree_order_and_exclude_skipped_and_failed() {
     assert!(paths[1].ends_with("a.yml"), "{paths:?}");
     assert!(paths[2].ends_with("z.yml"), "{paths:?}");
 }
+
+/// The file's text from its `params:` line to the end, which every request below ends with.
+fn params_block(text: &str) -> &str {
+    &text[text.find("  params:").expect("params block")..]
+}
+
+#[test]
+fn a_url_replace_keeps_an_untouched_params_block_byte_identical() {
+    // Path param first and a described query param: re-deriving would reorder and drop both.
+    let params = "  params:\n    - name: id\n      value: \"7\"\n      type: path\n    - name: q\n      value: \"1\"\n      type: query\n      description: the page\n";
+    let a = request("a", "https://old.test/u/:id?q=1", params);
+    let (d, mut c) = open(&[("a.yml", &a)]);
+    let r = c
+        .replace("old", "new", &lit(), ReplaceScope::all())
+        .unwrap();
+    assert_eq!(r.replaced, 1);
+    let text = disk(&d, "a.yml");
+    assert!(text.contains("url: https://new.test/u/:id?q=1"), "{text}");
+    assert_eq!(params_block(&text), params, "{text}");
+}
+
+#[test]
+fn a_url_replace_adds_no_params_block_to_a_file_without_one() {
+    let (d, mut c) = open(&[("a.yml", &request("a", "https://old.test/?q=1", ""))]);
+    c.replace("old", "new", &lit(), ReplaceScope::all())
+        .unwrap();
+    let text = disk(&d, "a.yml");
+    assert!(text.contains("url: https://new.test/?q=1"), "{text}");
+    assert!(!text.contains("params:"), "{text}");
+}
+
+#[test]
+fn a_replace_inside_the_query_updates_the_params_block_to_match() {
+    let params = "  params:\n    - name: q\n      value: old\n      type: query\n";
+    let a = request("a", "https://x.test/?q=old", params);
+    let (d, mut c) = open(&[("a.yml", &a)]);
+    c.replace("old", "new", &lit(), ReplaceScope::all())
+        .unwrap();
+    let text = disk(&d, "a.yml");
+    assert!(text.contains("url: https://x.test/?q=new"), "{text}");
+    assert_eq!(
+        params_block(&text),
+        "  params:\n    - name: q\n      value: new\n      type: query\n",
+        "{text}"
+    );
+}
