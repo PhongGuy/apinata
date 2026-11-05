@@ -666,7 +666,8 @@ apinata export ./my-api --format openapi --out my-api.openapi.yaml
 ```
 
 `--format html` writes one self-contained documentation page that opens
-offline, without environments or credentials from auth:
+offline. Environments are left out unless you pass `--include-environments`,
+and credentials from auth are never written:
 
 ```sh
 apinata export ./my-api --format html --out my-api.docs.html

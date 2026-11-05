@@ -99,3 +99,50 @@ fn both_flags_together_keep_the_csp_and_fetch_nothing() {
     );
     assert!(!page.contains("hunter2"), "{page}");
 }
+
+fn position(page: &str, needle: &str) -> usize {
+    page.find(needle)
+        .unwrap_or_else(|| panic!("missing {needle:?} in {page}"))
+}
+
+#[test]
+fn environment_rows_follow_file_order_with_inherited_rows_last() {
+    let base = "name: base\nvariables:\n  - name: aaa_inherited\n    value: i\n  - name: kept\n    value: base\n";
+    let dev = "name: dev\nextends: base\nvariables:\n  - name: zeta\n    value: z\n  - name: alpha\n    value: a\n  - name: kept\n    value: dev\n";
+    let (_d, c) = open(&[
+        ("opencollection.yml", ROOT),
+        ("environments/base.yml", base),
+        ("environments/dev.yml", dev),
+    ]);
+    let page = html_with(&c, &HtmlOptions::new().include_environments(true)).html;
+    let dev_part = &page[position(&page, "<caption>dev</caption>")..];
+    let order: Vec<usize> = [
+        "<td>zeta</td>",
+        "<td>alpha</td>",
+        "<td>kept</td>",
+        "<td>aaa_inherited</td>",
+    ]
+    .iter()
+    .map(|n| position(dev_part, n))
+    .collect();
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "{dev_part}");
+    assert!(dev_part.contains("<td>kept</td><td>dev</td>"), "{dev_part}");
+}
+
+#[test]
+fn an_inheritance_warning_is_noted_once() {
+    let a = "name: a\nextends: lost\nvariables:\n  - name: x\n    value: 1\n";
+    let b = "name: b\nextends: a\nvariables:\n  - name: y\n    value: 2\n";
+    let (_d, c) = open(&[
+        ("opencollection.yml", ROOT),
+        ("environments/a.yml", a),
+        ("environments/b.yml", b),
+    ]);
+    let out = html_with(&c, &HtmlOptions::new().include_environments(true));
+    let lost: Vec<_> = out
+        .notes
+        .iter()
+        .filter(|n| n.detail.contains("lost"))
+        .collect();
+    assert_eq!(lost.len(), 1, "{:?}", out.notes);
+}

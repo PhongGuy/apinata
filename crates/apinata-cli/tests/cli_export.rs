@@ -337,7 +337,7 @@ fn env_dir_with_html_is_a_usage_error() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains(
-            "--env-dir does not apply to --format html; the page leaves environments out"
+            "--env-dir does not apply to --format html; the page lists environments only with --include-environments"
         ),
         "{stderr}"
     );

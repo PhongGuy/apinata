@@ -2,7 +2,7 @@
 //! Everything is shown as written and escaped; nothing is run or resolved.
 
 use super::text::escape;
-use crate::environment::{EnvValue, resolve_environment};
+use crate::environment::{EnvValue, own_names, resolve_environment};
 use crate::export::ExportNote;
 use crate::js::{self, js_trim};
 use crate::request::RequestFile;
@@ -56,13 +56,25 @@ pub(super) fn scripts(req: &RequestFile) -> String {
 pub(super) fn environments(collection: &crate::Collection, notes: &mut Vec<ExportNote>) -> String {
     let envs = collection.environments();
     let mut out = String::new();
+    let mut warned = std::collections::HashSet::new();
     for env in envs {
         let Some(resolved) = resolve_environment(envs, env.name()) else {
             continue;
         };
-        let rows: String = resolved
+        // The file's own rows come first in file order, then the inherited ones it does not
+        // override.
+        let mut order = own_names(env);
+        order.retain(|n| resolved.vars.contains_key(n));
+        let rest: Vec<String> = resolved
             .vars
+            .keys()
+            .filter(|k| !order.contains(k))
+            .cloned()
+            .collect();
+        order.extend(rest);
+        let rows: String = order
             .iter()
+            .filter_map(|name| resolved.vars.get(name).map(|value| (name, value)))
             .map(|(name, value)| {
                 let cell = match value {
                     EnvValue::Plain(v) => escape(&js::to_text(v)),
@@ -75,7 +87,12 @@ pub(super) fn environments(collection: &crate::Collection, notes: &mut Vec<Expor
             "<table>\n<caption>{}</caption>\n<thead><tr><th>Name</th><th>Value</th></tr></thead>\n<tbody>\n{rows}</tbody>\n</table>\n",
             escape(env.name())
         ));
-        for warning in resolved.warnings {
+        // A broken chain is reported by every environment that walks it, but only once here.
+        for warning in resolved
+            .warnings
+            .into_iter()
+            .filter(|w| warned.insert(w.clone()))
+        {
             notes.push(ExportNote::new(
                 format!("environments / {}", env.name()),
                 warning,

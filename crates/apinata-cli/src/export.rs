@@ -61,7 +61,8 @@ pub fn run(args: &ExportArgs) -> ExitCode {
 
 fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
     // Only Postman writes environment files: OpenAPI carries them as servers and the HTML page
-    // leaves them out, so a separate environment directory is refused before anything is opened.
+    // lists them only with --include-environments, so a separate environment directory is
+    // refused before anything is opened.
     if args.env_dir.is_some() {
         match args.format {
             ExportFormat::Postman => {}
@@ -69,7 +70,7 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
                 "--env-dir does not apply to --format openapi; environments are carried as servers"
             ),
             ExportFormat::Html => anyhow::bail!(
-                "--env-dir does not apply to --format html; the page leaves environments out"
+                "--env-dir does not apply to --format html; the page lists environments only with --include-environments"
             ),
         }
     }
