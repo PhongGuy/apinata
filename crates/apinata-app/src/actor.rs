@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use apinata_core::import::{
-    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, UpdateOptions, UpdateSummary,
-    add_environment, apply_update, plan_update, store_request_secrets,
+    ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, UpdateOptions,
+    UpdateSummary, add_environment, apply_update, plan_update, store_request_secrets,
 };
 use apinata_core::{
     AuthSpec, Change, ChangeKind, Collection, DiskState, DropTarget, EnvOverlay, EnvWarning,
@@ -191,9 +191,10 @@ struct Actor {
     refuse_draft_from: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Where `Trash` commands send items.
     trash: Arc<dyn Trash>,
-    /// Items trashed and not yet forgotten, by the id of the command that trashed them, or for
-    /// a spec update's removals by a ticket from `prune_ticket`.
+    /// Items trashed and not yet forgotten, by the id of the command that trashed them.
     trashed: HashMap<u64, Trashed>,
+    /// Requests a spec update removed and not yet forgotten, by a ticket from `prune_ticket`.
+    pruned: HashMap<u64, PrunedRequest>,
     /// The next ticket for an item a spec update removed. They count down from the top, so they
     /// never meet the command ids a delete's tickets are, which count up from 1.
     prune_ticket: u64,
@@ -247,6 +248,7 @@ impl Actor {
             refuse_draft_from: None,
             trash: Arc::new(crate::workspace::NoTrash),
             trashed: HashMap::new(),
+            pruned: HashMap::new(),
             prune_ticket: u64::MAX,
             network_ack: None,
             network_shown: None,
@@ -918,9 +920,10 @@ impl Actor {
                 Ok(Some(NoticeKind::Deleted(item)))
             }
             TreeOp::Trash { item } => self.trash_item(id, &item),
-            TreeOp::Restore { ticket } => self.restore(ticket),
+            TreeOp::Restore { ticket } => self.restore(id, ticket),
             TreeOp::ForgetTrash { ticket } => {
                 self.trashed.remove(&ticket);
+                self.pruned.remove(&ticket);
                 Ok(None)
             }
             TreeOp::CreateDraft { parent, kind } => created(c.create_draft_of_kind(&parent, kind)),
@@ -1249,7 +1252,10 @@ impl Actor {
 
     /// Undo a trash. An unknown ticket is a no-op, since the user can only have lost it by
     /// letting the toast go; a restore never overwrites, so a taken name fails with its reason.
-    fn restore(&mut self, ticket: u64) -> Result<Option<NoticeKind>, NoticeKind> {
+    fn restore(&mut self, id: u64, ticket: u64) -> Result<Option<NoticeKind>, NoticeKind> {
+        if let Some(pruned) = self.pruned.remove(&ticket) {
+            return self.restore_pruned(id, &pruned);
+        }
         let Some(trashed) = self.trashed.remove(&ticket) else {
             return Ok(None);
         };
@@ -1258,6 +1264,24 @@ impl Actor {
             .restore_trashed(&trashed, &*self.trash)
             .map_err(|e| failed(&target, e))?;
         Ok(Some(NoticeKind::Restored(trashed.item().clone())))
+    }
+
+    /// Undo a spec update's removal of one request, which also records it as generated again.
+    fn restore_pruned(
+        &mut self,
+        id: u64,
+        pruned: &PrunedRequest,
+    ) -> Result<Option<NoticeKind>, NoticeKind> {
+        let target = self.item_target(pruned.item());
+        let warning = pruned
+            .restore(&mut self.collection, &*self.trash)
+            .map_err(|e| failed(&target, e))?;
+        self.cache.touch(&Target::Collection);
+        if let Some(text) = warning {
+            let kind = NoticeKind::Warnings(vec![text]);
+            self.notices.push(Notice { command: id, kind });
+        }
+        Ok(Some(NoticeKind::Restored(pruned.item().clone())))
     }
 
     /// Apply an import to a clone of the request's draft, kept only when every field took, since
@@ -1351,7 +1375,7 @@ impl Actor {
             );
             let ticket = self.prune_ticket;
             self.prune_ticket -= 1;
-            self.trashed.insert(ticket, trashed);
+            self.pruned.insert(ticket, trashed);
             let kind = NoticeKind::Trashed { item, ticket };
             self.notices.push(Notice { command: id, kind });
         }
