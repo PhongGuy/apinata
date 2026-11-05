@@ -94,6 +94,7 @@ fn entries_follow_the_row_kind() {
             E::PasteItem,
             E::CopyAsCurl,
             E::GenerateCode,
+            E::ConvertToGraphql,
             E::ShowInFileManager,
             E::OpenInTerminal,
             E::Rename,

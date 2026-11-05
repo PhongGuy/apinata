@@ -167,6 +167,9 @@ fn open_palette_lists_run_selected(cx: &mut TestAppContext, s: &Started) -> bool
     let items = palette_items_for(Availability {
         has_tabs,
         request_tab,
+        // Every request here is a saved HTTP file, so only Convert to GraphQL applies.
+        to_graphql: request_tab,
+        to_http: false,
         rename,
         duplicate,
         show_in_file_manager: show,
