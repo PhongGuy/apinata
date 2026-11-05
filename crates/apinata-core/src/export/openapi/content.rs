@@ -1,6 +1,7 @@
 //! Operation parameters and request bodies, with a JSON Schema inferred from JSON bodies.
 
-use crate::edit::{BodySpec, MultipartValue, ParamKind};
+use super::schemas::{Schemas, infer_schema};
+use crate::edit::{BodySpec, KeyValue, MultipartValue, ParamKind};
 use crate::export::{ExportNote, literal_credential, literal_credential_query};
 use crate::request::RequestFile;
 use serde_json::{Map, Value, json};
@@ -12,9 +13,11 @@ const IGNORED_HEADERS: [&str; 3] = ["authorization", "content-type", "accept"];
 /// The operation's `parameters`, in order path, query, header; empty means none. Path
 /// parameters take their names from `key`, the path the operation is filed under, and their
 /// examples from the request's rows named by the template at the same position in `own`.
-/// A header parameter whose example is a literal credential gets a note at `<source> / headers`.
+/// Header rows are the `inherited` ones, then the request's own; a header parameter whose
+/// example is a literal credential gets a note at `<source> / headers`.
 pub(super) fn parameters(
     req: &RequestFile,
+    inherited: &[KeyValue],
     key: &str,
     own: &str,
     source: &str,
@@ -53,8 +56,9 @@ pub(super) fn parameters(
             ));
         }
     }
-    // Header names are case-insensitive, so the first spelling stands for them all.
-    for h in req.headers() {
+    // Header names are case-insensitive, so the first spelling stands for them all. Inherited
+    // rows come first: an own row that would override one is enabled and already took it out.
+    for h in inherited.iter().cloned().chain(req.headers()) {
         let lower = h.name.to_ascii_lowercase();
         if !IGNORED_HEADERS.contains(&lower.as_str()) && seen.insert((lower, "header")) {
             if literal_credential(&h) {
@@ -108,10 +112,12 @@ fn template_names(path: &str) -> impl Iterator<Item = &str> {
         .filter_map(|piece| piece.split_once('}').map(|(name, _)| name))
 }
 
-/// The operation's `requestBody`, or `None` for no body; `notes` gets the body notes.
+/// The operation's `requestBody`, or `None` for no body; `notes` gets the body notes. A JSON
+/// body's inferred schema is hoisted into `schemas` under the request's name.
 pub(super) fn request_body(
     req: &RequestFile,
     source: &str,
+    schemas: &mut Schemas,
     notes: &mut Vec<ExportNote>,
 ) -> Option<Value> {
     let body = req.body();
@@ -138,7 +144,10 @@ pub(super) fn request_body(
     let media_type = content_type(req).unwrap_or_else(|| default.to_owned());
     let media = match &body {
         BodySpec::Json(text) => match serde_json::from_str::<Value>(text) {
-            Ok(value) => json!({"schema": infer_schema(&value), "example": value}),
+            Ok(value) => {
+                let schema = schemas.hoist(req.name(), infer_schema(&value));
+                json!({"schema": schema, "example": value})
+            }
             Err(_) => {
                 let detail = "the JSON body does not parse; it was exported as text";
                 notes.push(ExportNote::new(format!("{source} / body"), detail));
@@ -208,28 +217,4 @@ fn form_media<'a>(fields: impl Iterator<Item = (&'a str, Option<&'a str>)>) -> V
         media["example"] = example.into();
     }
     media
-}
-
-/// The JSON Schema of a parsed JSON value.
-fn infer_schema(value: &Value) -> Value {
-    match value {
-        Value::Null => json!({"type": "null"}),
-        Value::Bool(_) => json!({"type": "boolean"}),
-        Value::String(_) => json!({"type": "string"}),
-        Value::Number(n) => {
-            let integral = n.is_i64() || n.is_u64() || n.as_f64().is_some_and(|f| f.fract() == 0.0);
-            json!({"type": if integral { "integer" } else { "number" }})
-        }
-        Value::Array(items) => {
-            let items = items.first().map_or_else(|| json!({}), infer_schema);
-            json!({"type": "array", "items": items})
-        }
-        Value::Object(fields) => {
-            let properties: Map<String, Value> = fields
-                .iter()
-                .map(|(k, v)| (k.clone(), infer_schema(v)))
-                .collect();
-            json!({"type": "object", "properties": properties})
-        }
-    }
 }

@@ -147,6 +147,7 @@ mod export_ntlm;
 mod export_openapi;
 mod export_openapi_content;
 mod export_openapi_corpus;
+mod export_openapi_fidelity;
 mod export_openapi_responses;
 mod export_openapi_security;
 mod export_openapi_servers;

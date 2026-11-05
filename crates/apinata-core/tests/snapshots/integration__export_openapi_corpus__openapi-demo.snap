@@ -76,18 +76,7 @@ expression: rendered(&out)
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "body": {
-                    "type": "string"
-                  },
-                  "userId": {
-                    "type": "integer"
-                  }
-                }
+                "$ref": "#/components/schemas/create_post"
               },
               "example": {
                 "title": "Hello from Apinata",
@@ -141,21 +130,7 @@ expression: rendered(&out)
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "integer"
-                  },
-                  "title": {
-                    "type": "string"
-                  },
-                  "body": {
-                    "type": "string"
-                  },
-                  "userId": {
-                    "type": "integer"
-                  }
-                }
+                "$ref": "#/components/schemas/replace_post"
               },
               "example": {
                 "id": 1,
@@ -182,12 +157,7 @@ expression: rendered(&out)
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  }
-                }
+                "$ref": "#/components/schemas/edit_post_title"
               },
               "example": {
                 "title": "Edited"
@@ -374,6 +344,47 @@ expression: rendered(&out)
     }
   },
   "components": {
+    "schemas": {
+      "create_post": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "integer"
+          }
+        }
+      },
+      "replace_post": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "integer"
+          }
+        }
+      },
+      "edit_post_title": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "securitySchemes": {
       "digestAuth": {
         "type": "http",

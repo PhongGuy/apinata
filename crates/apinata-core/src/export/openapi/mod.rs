@@ -3,11 +3,12 @@
 
 mod content;
 mod responses;
+mod schemas;
 mod security;
 mod servers;
 mod url;
 
-use super::postman::insert_description;
+use super::postman::{inherited_rows, insert_description};
 use super::{ExportNote, OpenApiExport};
 use crate::AuthSpec;
 use crate::Collection;
@@ -16,6 +17,7 @@ use crate::js::script_code;
 use crate::request::RequestFile;
 use crate::script::ScriptPhase;
 use crate::sequence::sort_by_name_then_seq;
+use schemas::Schemas;
 use security::{Mapped, Schemes};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -26,12 +28,11 @@ const METHODS: [&str; 8] = [
 ];
 
 /// The members counted into one `collection / <kind>` note each, in note order.
-const KINDS: [&str; 5] = ["scripts", "tests", "assertions", "variables", "headers"];
+const KINDS: [&str; 4] = ["scripts", "tests", "assertions", "variables"];
 const SCRIPTS: usize = 0;
 const TESTS: usize = 1;
 const ASSERTIONS: usize = 2;
 const VARIABLES: usize = 3;
-const HEADERS: usize = 4;
 
 /// The OpenAPI 3.1 document for `collection`, with notes on everything not carried over.
 pub fn openapi(collection: &Collection) -> OpenApiExport {
@@ -50,12 +51,12 @@ pub fn openapi(collection: &Collection) -> OpenApiExport {
         servers: HashMap::new(),
         first_origin: None,
         schemes: Schemes::default(),
+        schemas: Schemas::default(),
         top: None,
         counts: [0; KINDS.len()],
     };
     let file = collection.file();
     walker.count_scripts(|phase| file.script(phase));
-    walker.count(HEADERS, !file.headers().is_empty());
     // The collection's own auth is the document-wide requirement and names the first scheme.
     for detail in security::credential_url_notes(&collection.file().auth()) {
         walker
@@ -94,8 +95,15 @@ pub fn openapi(collection: &Collection) -> OpenApiExport {
         root.insert("tags".into(), walker.tags.into_values().collect());
     }
     root.insert("paths".into(), walker.paths.into());
-    if let Some(components) = walker.schemes.into_components() {
-        root.insert("components".into(), components);
+    let mut components = Map::new();
+    if let Some(schemas) = walker.schemas.into_value() {
+        components.insert("schemas".into(), schemas);
+    }
+    if let Some(schemes) = walker.schemes.into_value() {
+        components.insert("securitySchemes".into(), schemes);
+    }
+    if !components.is_empty() {
+        root.insert("components".into(), components.into());
     }
     if let Some(top) = walker.top {
         root.insert("security".into(), json!([top]));
@@ -126,6 +134,8 @@ struct Walker<'a> {
     /// The first exported operation's origin, whose servers are the document's.
     first_origin: Option<String>,
     schemes: Schemes,
+    /// Schemas inferred from JSON bodies, referenced from the operations.
+    schemas: Schemas,
     /// The collection auth's requirement object, when it maps to a scheme.
     top: Option<Value>,
     /// Per `KINDS` entry, how many items carry that member.
@@ -159,7 +169,6 @@ impl Walker<'_> {
             self.count_scripts(|phase| file.script(phase));
             let vars = !file.vars().is_empty() || !file.post_response_vars().is_empty();
             self.count(VARIABLES, vars);
-            self.count(HEADERS, !file.headers().is_empty());
         }
         let folders =
             sort_by_name_then_seq(folder.folders().iter().collect(), |f| f.name(), |f| f.seq());
@@ -252,14 +261,29 @@ impl Walker<'_> {
         if *first != split.origin {
             op.insert("servers".into(), servers.into());
         }
-        let parameters = content::parameters(req, &path_key, &split.path, &source, &mut self.notes);
+        let inherited = inherited_rows(self.collection, req);
+        let parameters = content::parameters(
+            req,
+            &inherited,
+            &path_key,
+            &split.path,
+            &source,
+            &mut self.notes,
+        );
         if !parameters.is_empty() {
             op.insert("parameters".into(), parameters.into());
         }
-        if let Some(body) = content::request_body(req, &source, &mut self.notes) {
+        if let Some(body) = content::request_body(req, &source, &mut self.schemas, &mut self.notes)
+        {
             op.insert("requestBody".into(), body);
         }
-        let responses = responses::responses(&req.examples(), &source, &mut self.notes);
+        let responses = responses::responses(
+            &req.examples(),
+            req.name(),
+            &source,
+            &mut self.schemas,
+            &mut self.notes,
+        );
         op.insert("responses".into(), responses);
         if let Some(security) = self.security(req, &source) {
             op.insert("security".into(), security);

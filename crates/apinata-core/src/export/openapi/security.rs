@@ -173,11 +173,11 @@ impl Schemes {
     }
 
     /// The `components.securitySchemes` object, or `None` when no scheme was named.
-    pub(super) fn into_components(self) -> Option<Value> {
+    pub(super) fn into_value(self) -> Option<Value> {
         if self.0.is_empty() {
             return None;
         }
         let schemes: Map<String, Value> = self.0.into_iter().collect();
-        Some(json!({"securitySchemes": schemes}))
+        Some(schemes.into())
     }
 }
