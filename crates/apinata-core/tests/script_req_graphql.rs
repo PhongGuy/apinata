@@ -24,16 +24,28 @@ fn graphql(uri: &str, variables: &str, pre: &str, post: &str) -> String {
 
 /// Sends the request, expecting exactly `sent` as a JSON body at `/gql`.
 async fn run(variables: &str, pre: &str, post: &str, sent: &str) -> RequestResult {
+    run_typed(variables, pre, post, sent, "application/json", |t| t).await
+}
+
+/// Like `run`, with the file text passed through `edit` and `content_type` expected.
+async fn run_typed(
+    variables: &str,
+    pre: &str,
+    post: &str,
+    sent: &str,
+    content_type: &str,
+    edit: impl Fn(String) -> String,
+) -> RequestResult {
     let s = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/gql"))
-        .and(header("content-type", "application/json"))
+        .and(header("content-type", content_type))
         .and(body_string(sent))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&s)
         .await;
-    let text = graphql(&s.uri(), variables, pre, post);
+    let text = edit(graphql(&s.uri(), variables, pre, post));
     let dir = write_tree(&[("opencollection.yml", ROOT), ("g.yml", &text)]);
     let result = send(dir.path(), "g.yml", on()).await;
     assert_eq!(result.outcome, Outcome::Passed, "{:?}", result.error);
@@ -55,22 +67,23 @@ async fn get_body_shows_the_raw_query_and_variables_text_before_the_send() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn set_body_with_an_object_sends_its_json_as_is() {
+async fn set_body_with_an_object_sends_its_json_text_expanded() {
     let pre = r#"req.setBody({query: "{ a(x: \"{{id}}\") }", variables: {n: 1}});
 console.log(typeof req.getBody(), typeof req.getBody({raw: true}));"#;
-    let sent = r#"{"query":"{ a(x: \"{{id}}\") }","variables":{"n":1}}"#;
+    let set = r#"{"query":"{ a(x: \"{{id}}\") }","variables":{"n":1}}"#;
+    let sent = r#"{"query":"{ a(x: \"7\") }","variables":{"n":1}}"#;
     let result = run("{}", pre, SHOW, sent).await;
     assert_eq!(
         console(&result),
-        ["log:object string".to_owned(), format!("log:{sent}")]
+        ["log:object string".to_owned(), format!("log:{set}")]
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn set_body_with_a_string_sends_it_verbatim() {
+async fn set_body_with_a_string_sends_it_expanded() {
     let pre = r#"req.setBody("not json {{id}}");
 console.log(req.getBody());"#;
-    let result = run("{}", pre, SHOW, "not json {{id}}").await;
+    let result = run("{}", pre, SHOW, "not json 7").await;
     assert_eq!(
         console(&result),
         ["log:not json {{id}}", r#"log:"not json {{id}}""#]
@@ -90,9 +103,63 @@ async fn a_raw_object_is_interpolated_and_its_variables_parsed() {
 async fn a_round_trip_keeps_the_variables_as_text() {
     let pre =
         r#"const b = req.getBody(); b.query = b.query.replace("name", "id"); req.setBody(b);"#;
-    let sent = r#"{"query":"{ user(id: \"{{id}}\") { id } }","variables":"{\"id\": \"{{id}}\"}"}"#;
+    let set = r#"{"query":"{ user(id: \"{{id}}\") { id } }","variables":"{\"id\": \"{{id}}\"}"}"#;
+    let sent = r#"{"query":"{ user(id: \"7\") { id } }","variables":"{\"id\": \"7\"}"}"#;
     let result = run(r#"{"id": "{{id}}"}"#, pre, SHOW, sent).await;
-    assert_eq!(console(&result), [format!("log:{sent}")]);
+    assert_eq!(console(&result), [format!("log:{set}")]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn changing_the_got_body_without_set_body_changes_nothing() {
+    let pre = r#"const b = req.getBody(); b.query = "{ changed }"; b.variables = "{}";"#;
+    let result = run(r#"{"id": "{{id}}"}"#, pre, SHOW, SENT).await;
+    assert_eq!(console(&result), [format!("log:{SENT}")]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_object_under_another_content_type_stays_an_object() {
+    let pre = r#"req.setBody({query: "{ a(x: \"{{id}}\") }", variables: "{\"n\": {{id}}}"});
+console.log(typeof req.getBody());"#;
+    let sent = r#"{"query":"{ a(x: \"7\") }","variables":{"n":7}}"#;
+    let plain = |t: String| {
+        t.replace(
+            "  body:\n",
+            "  headers:\n    - name: Content-Type\n      value: text/plain\n  body:\n",
+        )
+    };
+    let result = run_typed("{}", pre, SHOW, sent, "text/plain", plain).await;
+    assert_eq!(
+        console(&result),
+        ["log:object".to_owned(), format!("log:{sent}")]
+    );
+}
+
+/// Sends the request to a server that must see nothing, returning the result.
+async fn refused(variables: &str, pre: &str) -> RequestResult {
+    let s = MockServer::start().await;
+    let text = graphql(&s.uri(), variables, pre, SHOW);
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("g.yml", &text)]);
+    let result = send(dir.path(), "g.yml", on()).await;
+    assert!(s.received_requests().await.expect("recorded").is_empty());
+    result
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unknown_name_in_a_set_body_fails_the_send() {
+    for pre in [
+        r#"req.setBody("{{nope}}");"#,
+        r#"req.setBody({query: "{{nope}}"});"#,
+    ] {
+        let result = refused("{}", pre).await;
+        assert!(
+            matches!(
+                result.error,
+                Some(RunError::Resolve(ResolveError::UndefinedVariable { .. }))
+            ),
+            "{pre}: {:?}",
+            result.error
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -101,10 +168,7 @@ async fn invalid_variables_fail_the_send_after_the_script_reads_them() {
         "console.log(req.getBody().variables);",
         r#"req.setBody({query: "{ a }", variables: "{oops"}, {raw: true}); console.log(req.getBody().variables);"#,
     ] {
-        let s = MockServer::start().await;
-        let text = graphql(&s.uri(), "{oops", pre, SHOW);
-        let dir = write_tree(&[("opencollection.yml", ROOT), ("g.yml", &text)]);
-        let result = send(dir.path(), "g.yml", on()).await;
+        let result = refused("{oops", pre).await;
         assert!(
             matches!(
                 result.error,
@@ -114,6 +178,5 @@ async fn invalid_variables_fail_the_send_after_the_script_reads_them() {
             result.error
         );
         assert_eq!(console(&result), ["log:{oops"], "{pre}");
-        assert!(s.received_requests().await.expect("recorded").is_empty());
     }
 }

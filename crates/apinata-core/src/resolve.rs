@@ -1900,7 +1900,7 @@ enum BodySpec {
         query: String,
         variables: String,
     },
-    /// A body a script gave a GraphQL request, as the script value: text is sent as is, and an
+    /// A body a script gave a GraphQL request, as the script value: text is expanded, and an
     /// object has its `query` and `variables` text expanded and the variables text parsed.
     GraphqlData(serde_json::Value),
 }
@@ -1959,8 +1959,8 @@ fn graphql_spec(body: Option<&Value>) -> BodySpec {
     }
 }
 
-/// Sends a GraphQL body. Text goes as is, never expanded; an object has its string `query` and
-/// `variables` expanded separately, and the variables text parsed only after expansion.
+/// Sends a GraphQL body. Text is expanded like a text body; an object has its string `query`
+/// and `variables` expanded separately, and the variables text parsed only after expansion.
 fn render_graphql(
     data: serde_json::Value,
     scope: &Scope,
@@ -1968,7 +1968,10 @@ fn render_graphql(
     let content_type = ContentType::Default("application/json");
     let mut object = match data {
         serde_json::Value::Object(object) => object,
-        serde_json::Value::String(text) => return Ok((Body::Text(text), content_type)),
+        // Unlike the reference, which sends script-set text unexpanded, so no `{{x}}` is sent.
+        serde_json::Value::String(text) => {
+            return Ok((Body::Text(scope.expand(&text)?), content_type));
+        }
         serde_json::Value::Null => return Ok((Body::Text(String::new()), content_type)),
         other => return Ok((Body::Text(js::stringify(&other)), content_type)),
     };
