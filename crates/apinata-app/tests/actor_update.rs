@@ -3,13 +3,13 @@
 use crate::support;
 
 use apinata_app::actor::Faults;
-use apinata_app::command::Command;
+use apinata_app::command::{Command, NoticeKind, TreeOp};
 use apinata_app::model::CollectionModel;
+use apinata_core::MemoryStore;
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, ImportBundle, UpdateSummary, parse_collections,
     write_collection,
 };
-use apinata_core::{MemoryStore, Trash, TrashHandle};
 use gpui_kit::{Entity, TestAppContext};
 use std::fs;
 use std::path::Path;
@@ -150,27 +150,63 @@ fn prune_trashes_the_orphan_and_it_can_be_restored(cx: &mut TestAppContext) {
         root.join("legacy/removeLegacy.yml").exists(),
         "a plan writes nothing"
     );
-    let mut s = apply(cx, &model, V2, true).expect("applied");
-    // The app keeps no trash record, so the applied run adds the one note a plan cannot know.
-    let from_trash = "moved to the system trash; restore it from there";
-    assert!(
-        s.notes
-            .iter()
-            .all(|n| !n.detail.contains("cannot be restored")),
-        "{:?}",
-        s.notes
-    );
-    let before = s.notes.len();
-    s.notes.retain(|n| n.detail != from_trash);
-    assert_eq!(before - s.notes.len(), 1, "{:?}", s.notes);
+    let s = apply(cx, &model, V2, true).expect("applied");
+    // The removal is undone in the app, so the applied run says nothing the plan did not.
+    assert!(s.notes.iter().all(|n| !n.detail.contains("trash")), "{s:?}");
     assert_eq!(format!("{planned:?}"), format!("{s:?}"));
     assert_eq!(s.pruned.len(), 1);
     let file = root.join("legacy/removeLegacy.yml");
+    let item = ip("legacy/removeLegacy.yml");
     assert!(!file.exists());
     assert_eq!(bin.len(), 1);
-    bin.restore(&TrashHandle::new(file.clone(), "item1".into()))
-        .expect("restores");
+    let got = notices(cx, &model);
+    let [
+        NoticeKind::Trashed {
+            item: trashed,
+            ticket,
+        },
+    ] = got.as_slice()
+    else {
+        panic!("{got:?}")
+    };
+    assert_eq!(*trashed, item);
+    send(
+        cx,
+        &model,
+        Command::Tree(TreeOp::Restore { ticket: *ticket }),
+    );
+    cx.run_until_parked();
+    assert_eq!(notices(cx, &model), [NoticeKind::Restored(item)]);
     assert!(file.exists());
+    assert_eq!(bin.len(), 0);
+}
+
+#[gpui_kit::test]
+fn undo_on_a_platform_without_restore_points_to_the_system_trash(cx: &mut TestAppContext) {
+    let parent = tempfile::tempdir().unwrap();
+    let bin = Arc::new(FakeTrash::no_restore());
+    let (model, root) = open_v1(cx, parent.path(), bin.clone());
+    apply(cx, &model, V2, true).expect("applied");
+    let got = notices(cx, &model);
+    let [NoticeKind::Trashed { ticket, .. }] = got.as_slice() else {
+        panic!("{got:?}")
+    };
+    send(
+        cx,
+        &model,
+        Command::Tree(TreeOp::Restore { ticket: *ticket }),
+    );
+    cx.run_until_parked();
+    let got = notices(cx, &model);
+    let [NoticeKind::Failed { message, .. }] = got.as_slice() else {
+        panic!("{got:?}")
+    };
+    assert!(
+        message.contains("cannot be restored from here") && message.contains("system trash"),
+        "{message}"
+    );
+    assert!(!root.join("legacy/removeLegacy.yml").exists());
+    assert_eq!(bin.len(), 1, "the request stays in the platform trash");
 }
 
 #[gpui_kit::test]

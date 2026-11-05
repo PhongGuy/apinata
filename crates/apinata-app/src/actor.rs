@@ -191,8 +191,12 @@ struct Actor {
     refuse_draft_from: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Where `Trash` commands send items.
     trash: Arc<dyn Trash>,
-    /// Items trashed and not yet forgotten, by the id of the command that trashed them.
+    /// Items trashed and not yet forgotten, by the id of the command that trashed them, or for
+    /// a spec update's removals by a ticket from `prune_ticket`.
     trashed: HashMap<u64, Trashed>,
+    /// The next ticket for an item a spec update removed. They count down from the top, so they
+    /// never meet the command ids a delete's tickets are, which count up from 1.
+    prune_ticket: u64,
     /// The record of acknowledged network settings, when the app keeps one.
     network_ack: Option<PathBuf>,
     /// What the last Network notice showed, recorded as is by Acknowledge.
@@ -243,6 +247,7 @@ impl Actor {
             refuse_draft_from: None,
             trash: Arc::new(crate::workspace::NoTrash),
             trashed: HashMap::new(),
+            prune_ticket: u64::MAX,
             network_ack: None,
             network_shown: None,
         }
@@ -362,7 +367,7 @@ impl Actor {
                 folder,
                 reply,
             } => {
-                let done = self.apply_spec_update(&bundle, prune, folder);
+                let done = self.apply_spec_update(id, &bundle, prune, folder);
                 let _ = reply.try_send(done);
                 Ok(())
             }
@@ -1313,9 +1318,11 @@ impl Actor {
     }
 
     /// Update from a spec. The actor holds the unsaved edits,
-    /// so the refusal is decided here and no caller flag is needed; pruned files go to `trash`.
+    /// so the refusal is decided here and no caller flag is needed; pruned files go to `trash`
+    /// and each is answered as a `Trashed` notice for command `id`, which an undo restores.
     fn apply_spec_update(
         &mut self,
+        id: u64,
         bundle: &ImportBundle,
         prune: bool,
         folder: Option<ItemPath>,
@@ -1336,7 +1343,19 @@ impl Actor {
             .map_err(|e| e.to_string());
         // apply_update mutates the open collection itself; only the view cache needs a nudge.
         self.cache.touch_all();
-        summary
+        let mut summary = summary?;
+        for trashed in mem::take(&mut summary.trashed) {
+            let item = trashed.item().clone();
+            self.forget(
+                |t| matches!(t, Target::Request(p) | Target::Folder(p) if is_within(p, &item)),
+            );
+            let ticket = self.prune_ticket;
+            self.prune_ticket -= 1;
+            self.trashed.insert(ticket, trashed);
+            let kind = NoticeKind::Trashed { item, ticket };
+            self.notices.push(Notice { command: id, kind });
+        }
+        Ok(summary)
     }
 
     /// The next snapshot, carrying every notice since the last one.
@@ -1877,9 +1896,8 @@ fn update_options(prune: bool, folder: Option<ItemPath>) -> UpdateOptions {
     let mut options = UpdateOptions::default();
     options.prune = prune;
     options.folder = folder;
-    // The app keeps its own undo and no trash record, so a pruned file is restored from the
-    // system trash.
-    options.restore_from_system_trash = true;
+    // The app undoes a removal in session, from the tickets its notices carry.
+    options.undo_in_session = true;
     options
 }
 

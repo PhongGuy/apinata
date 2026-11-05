@@ -31,9 +31,9 @@ pub struct UpdateOptions {
     /// Where each pruned request is recorded so a later restore can bring it back, as a
     /// delete is; `None` records nothing.
     pub trash_log: Option<crate::trash_log::TrashLog>,
-    /// The caller keeps no trash record by design (the app), so with no `trash_log` a prune's
-    /// note says to restore it from the system trash rather than that it cannot be restored.
-    pub restore_from_system_trash: bool,
+    /// The caller undoes each prune itself from the summary's `trashed`, as the app does, so a
+    /// prune with no `trash_log` needs no note on how to get it back.
+    pub undo_in_session: bool,
 }
 
 impl UpdateOptions {
@@ -77,6 +77,9 @@ pub struct UpdateSummary {
     pub orphaned: Vec<ItemPath>,
     /// Orphans removed, or that would be.
     pub pruned: Vec<ItemPath>,
+    /// Each removed orphan as the trash took it, in removal order, for a caller that undoes
+    /// the removal itself; always empty from `plan_update`.
+    pub trashed: Vec<Trashed>,
     /// Everything that needs a human's attention.
     pub notes: Vec<ImportNote>,
 }
@@ -189,9 +192,7 @@ pub fn apply_update(
                             )
                         };
                         let detail = match recorded {
-                            None if o.restore_from_system_trash => {
-                                Some("moved to the system trash; restore it from there".to_owned())
-                            }
+                            None if o.undo_in_session => None,
                             None => Some(unrestorable("no data directory")),
                             Some(Ok(None)) => None,
                             Some(Ok(Some(replaced))) => Some(replaced),
@@ -200,6 +201,7 @@ pub fn apply_update(
                         if let Some(detail) = detail {
                             summary.notes.push(note(&key, detail, Some(&path)));
                         }
+                        summary.trashed.push(trashed);
                     }
                     Err(e) => {
                         summary.pruned.retain(|p| *p != path);

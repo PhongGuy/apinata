@@ -161,6 +161,11 @@ impl Batch {
         self.generation
     }
 
+    /// Whether command `id` of the instance `generation` of `root` is one of this batch's.
+    pub fn tracks(&self, root: &Path, generation: u64, id: u64) -> bool {
+        root == self.root && generation == self.generation && self.items.contains_key(&id)
+    }
+
     /// Notes the notice when it is about a tracked command of the instance `generation` of
     /// `root`; true when it was.
     pub fn record(&mut self, root: &Path, generation: u64, notice: &Notice) -> bool {
@@ -252,6 +257,18 @@ impl Batch {
             ToastKind::Warning
         };
         Some((kind, text))
+    }
+}
+
+/// The Undo toast's text for items removed by something other than a sidebar delete, such as
+/// a spec update: the item's name, or a count when there are several.
+pub fn removed_message(trashed: &[(u64, ItemPath)]) -> String {
+    match trashed {
+        [(_, item)] => {
+            let name = item.file_name();
+            format!("Removed \"{}\"", name.strip_suffix(".yml").unwrap_or(name))
+        }
+        all => format!("Removed {}", items_label(all.len())),
     }
 }
 
