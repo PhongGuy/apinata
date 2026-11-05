@@ -21,8 +21,9 @@ const LISTED: usize = 10;
 /// Legacy roots waiting for their offer, and whether one is being shown.
 #[derive(Default)]
 pub(crate) struct Offers {
-    waiting: VecDeque<PathBuf>,
-    /// The root whose offer is on screen, if any.
+    /// Each root as `(identity, path as given)`; only the identity is compared.
+    waiting: VecDeque<(PathBuf, PathBuf)>,
+    /// The identity of the root whose offer is on screen, if any.
     showing: Option<PathBuf>,
 }
 
@@ -31,22 +32,33 @@ pub(crate) struct Offers {
 /// asks about each in turn once the previous one is resolved. A root already waiting or on
 /// screen is not queued again, since after converting it the repeat would find nothing legacy.
 pub fn offer(shell: &mut Shell, root: PathBuf, window: &mut Window, cx: &mut Context<Shell>) {
+    let id = identity(&root);
     let offers = &mut shell.legacy_offers;
-    if offers.showing.as_ref() == Some(&root) || offers.waiting.contains(&root) {
+    if offers.showing.as_ref() == Some(&id) || offers.waiting.iter().any(|(w, _)| *w == id) {
         return;
     }
-    offers.waiting.push_back(root);
+    offers.waiting.push_back((id, root));
     show_next(shell, window, cx);
+}
+
+/// The directory's identity for dedupe: canonical when it resolves, else the absolute path
+/// with `.` and trailing separators dropped, so a failure never drops an offer.
+fn identity(root: &Path) -> PathBuf {
+    if let Ok(real) = root.canonicalize() {
+        return real;
+    }
+    let abs = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    abs.components().collect()
 }
 
 fn show_next(shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) {
     if shell.legacy_offers.showing.is_some() {
         return;
     }
-    let Some(root) = shell.legacy_offers.waiting.pop_front() else {
+    let Some((id, root)) = shell.legacy_offers.waiting.pop_front() else {
         return;
     };
-    shell.legacy_offers.showing = Some(root.clone());
+    shell.legacy_offers.showing = Some(id);
     show(shell.workspace().clone(), root, window, cx);
 }
 
