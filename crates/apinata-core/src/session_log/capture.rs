@@ -352,6 +352,80 @@ mod tests {
         }
     }
 
+    const LATE_WIDE: &str = "p\u{e4}sswort-1";
+
+    fn utf16(value: &str, big: bool) -> Vec<u8> {
+        value
+            .encode_utf16()
+            .flat_map(|u| {
+                if big {
+                    u.to_be_bytes()
+                } else {
+                    u.to_le_bytes()
+                }
+            })
+            .collect()
+    }
+
+    /// A logged entry whose response echoes `LATE_WIDE` as UTF-16, followed by `tail`, with
+    /// the value learned only after the capture.
+    fn late_wide_entry(big: bool, tail: &[u8], cap: usize) -> NetworkEntry {
+        let body = [b"echo:".as_slice(), &utf16(LATE_WIDE, big), tail].concat();
+        let response = Response::new(200).with_body(body, "lossy");
+        let hops = [hop("https://api.test/a", 200, &[])];
+        let mut e =
+            NetworkEntry::capture(&Redactor::none(), &exchange(&hops, Ok(&response), &[]), cap);
+        e.rededact(&Redactor::new(&[LATE_WIDE]), cap);
+        e
+    }
+
+    /// The UTF-16 tail of `LATE_WIDE` after its non-ASCII character is in neither the dock
+    /// text nor the HAR body.
+    fn assert_no_late_fragment(e: &NetworkEntry, big: bool) {
+        let fragment = utf16("sswort-1", big);
+        let shown = e.response_body.text.as_bytes();
+        assert!(
+            !shown.windows(fragment.len()).any(|w| w == fragment),
+            "{shown:?}"
+        );
+        let har = crate::export::HarExchange::from_network_entry(e).expect("a response");
+        let body = &har.response_body;
+        assert!(
+            !body.windows(fragment.len()).any(|w| w == fragment),
+            "{body:?}"
+        );
+    }
+
+    #[test]
+    fn a_non_ascii_utf16_secret_learned_later_is_redacted_from_text_and_har() {
+        for big in [false, true] {
+            let e = late_wide_entry(big, b"", 64);
+            assert_no_late_fragment(&e, big);
+            assert_eq!(e.response_body.raw(), None);
+            assert!(e.response_body.text.starts_with("echo:"));
+            assert!(e.response_body.text.contains(&wide("[redacted]", big)));
+        }
+    }
+
+    #[test]
+    fn a_cut_body_that_could_hold_a_late_non_ascii_secret_is_replaced_whole() {
+        for big in [false, true] {
+            let e = late_wide_entry(big, &[0xff; 64], 40);
+            assert!(e.response_body.size > 40);
+            assert_no_late_fragment(&e, big);
+            assert_eq!(e.response_body.text, "[redacted]");
+        }
+    }
+
+    #[test]
+    fn a_cut_binary_body_keeps_its_text_when_the_late_value_is_ascii() {
+        let body = [PNG, b"k-secret-1", &[0xff; 64]].concat();
+        let mut e = binary_entry(&Redactor::none(), &body, 30);
+        e.rededact(&Redactor::new(&["k-secret-1"]), 30);
+        assert!(e.response_body.text.starts_with('\u{FFFD}'));
+        assert!(e.response_body.text.contains("[redacted]"));
+    }
+
     #[test]
     fn a_secret_learned_later_or_a_withhold_drops_the_bytes() {
         let body = [PNG, b"k-secret-1"].concat();

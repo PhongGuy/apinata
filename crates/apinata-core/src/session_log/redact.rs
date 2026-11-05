@@ -185,6 +185,14 @@ impl Redactor {
         crate::secret_names::redact_wide(bytes, self.values.iter().map(String::as_str))
     }
 
+    /// Whether a value has a UTF-16 copy that a lossy text cannot show whole: a non-ASCII
+    /// value long enough for `redact_wide`, whose code units may decode to U+FFFD.
+    pub(crate) fn has_non_ascii_wide(&self) -> bool {
+        self.values
+            .iter()
+            .any(|v| !v.is_ascii() && v.chars().count() >= crate::secret_names::MIN_CHARS)
+    }
+
     /// `url` with its whole userinfo dropped, then redacted. A username alone can be the
     /// credential (a token sent as the user), so a record of a send keeps none of it.
     pub(crate) fn redact_url(&self, url: &str) -> String {
