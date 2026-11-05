@@ -251,7 +251,9 @@ pub(super) fn stop_group(child: &mut Child) -> bool {
         let _ = child.wait();
         return true;
     }
-    // Without the `kill` helper (or on Windows) git is killed at once, with no grace.
+    // Without the `kill` helper, or on Windows, git is killed at once. On Windows that is
+    // TerminateProcess, which skips git's lock cleanup; the gentler ExitProcess-in-the-child
+    // stop that Git for Windows' own kill uses is not done here.
     let _ = child.kill();
     let _ = child.wait();
     true

@@ -58,6 +58,10 @@ fn busy_tells_the_user_where_the_lock_is() {
         lock: lock.to_owned(),
     }
     .to_string();
+    assert!(text.starts_with("git is busy:"), "{text}");
+    assert!(text.contains(&lock.display().to_string()), "{text}");
+    // Windows words the advice differently; the core's unit tests pin that text.
+    #[cfg(not(windows))]
     assert_eq!(
         text,
         "git is busy: another git process is using this repository \
