@@ -690,6 +690,31 @@ fn tab_keeps_each_global_control_whole_at_the_narrowest_width(cx: &mut TestAppCo
     tab_follows(cx, win, GLOBAL_SCROLL, &global_tab_stops());
 }
 
+// A variable row's controls, in Tab order.
+fn row_tab_stops() -> Vec<ElementId> {
+    vec![
+        ("env-name", 0usize).into(),
+        ("env-value", 0usize).into(),
+        ("env-secret", 0usize).into(),
+        ("env-delete", 0usize).into(),
+    ]
+}
+
+// The row is wider than the dialog's body, so each control, not the row, must come into view.
+#[gpui_kit::test]
+fn tab_keeps_each_global_row_control_whole_at_the_narrowest_width(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
+    resize(cx, win, NARROW, 400.);
+    tab_follows(cx, win, GLOBAL_SCROLL, &row_tab_stops());
+}
+
+#[gpui_kit::test]
+fn tab_keeps_each_collection_row_control_whole_at_the_narrowest_width(cx: &mut TestAppContext) {
+    let (_col, s) = collection(cx);
+    resize(cx, s.win, NARROW, 300.);
+    tab_follows(cx, s.win, SCROLL, &row_tab_stops());
+}
+
 // Where everything fits, Tab through every control leaves the page where it was.
 #[gpui_kit::test]
 fn tab_never_scrolls_a_wide_collection_editor(cx: &mut TestAppContext) {
