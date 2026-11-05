@@ -24,6 +24,7 @@ and a quick start, see the [README](README.md).
   - [Reports](#reports)
   - [Sending one request](#sending-one-request)
   - [Code generation](#code-generation)
+  - [GraphQL schema](#graphql-schema)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -302,6 +303,7 @@ the command never exits with that code.
 | `item` | created, copied, renamed, moved, removed, or a folder updated or left unchanged | - | - | usage or collection error, an unknown path, an invalid name, a move that is not allowed, no trash to remove into, a broken folder.yml, an unknown header or variable to unset, or a refused edit |
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
+| `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors) | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, or the file could not be written |
 | `git` | printed, or no git or no repository (a note on stderr) | - | - | git failed, the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
 | `import` | imported (notes go to stderr) | - | - | the import failed |
 | `export` | exported (notes go to stderr) | - | - | the export failed |
@@ -452,6 +454,16 @@ sending it:
 
 ```sh
 apinata gen ./my-api/users/get-user.yml --target python-requests --env local
+```
+
+### GraphQL schema
+
+`apinata graphql schema` fetches a GraphQL request's schema by introspection,
+resolving the request as `run` would send it, and prints the answer as JSON or,
+with `--format sdl`, as an SDL document. `--output` writes it to a file:
+
+```sh
+apinata graphql schema ./my-api/graphql/users.yml --env local --format sdl --output schema.graphql
 ```
 
 ### OAuth 2.0 and scripts
@@ -712,6 +724,11 @@ secret, and their results never repeat a value.
 The agent can write a request as code with `generate_code`, in any
 target `apinata gen` knows. Secret values come out as `<secret>`, and nothing
 is sent.
+
+`graphql_schema` fetches a GraphQL request's schema by introspection, as
+`apinata graphql schema` does, and returns it as SDL or as the JSON answer. It
+sends like `send_request`, so a host other than a local one needs the same
+approval.
 
 The agent can also start the same mock server `apinata mock` runs from the
 collection's saved examples with `mock_start`, read what it was asked with

@@ -248,6 +248,9 @@ fn oauth_target(uri: &str) -> String {
     )
 }
 
+/// An introspection answer with every root, so each optional field of the result is filled.
+const GRAPHQL_SCHEMA: &str = r#"{"data":{"__schema":{"queryType":{"name":"Q"},"mutationType":{"name":"M"},"subscriptionType":{"name":"S"},"types":[{"kind":"OBJECT","name":"Q","fields":[{"name":"a","args":[],"type":{"kind":"SCALAR","name":"Int"}}]},{"kind":"OBJECT","name":"M","fields":[{"name":"b","args":[],"type":{"kind":"SCALAR","name":"Int"}}]},{"kind":"OBJECT","name":"S","fields":[{"name":"c","args":[],"type":{"kind":"SCALAR","name":"Int"}}]},{"kind":"SCALAR","name":"Int"}]}}}"#;
+
 async fn upstream() -> MockServer {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -258,6 +261,11 @@ async fn upstream() -> MockServer {
             "expires_in": 3600,
             "refresh_token": "rt",
         })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/graphql"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(GRAPHQL_SCHEMA))
         .mount(&server)
         .await;
     Mock::given(method("GET"))
@@ -289,11 +297,16 @@ async fn every_tool_result_matches_its_output_schema() {
         .collect();
     let a = request("a", 1, "GET", "http://127.0.0.1:9/a");
     let plain = request("p", 6, "GET", &format!("{}/plain", up.uri()));
+    let graphql = format!(
+        "info:\n  name: q\n  type: graphql\n  seq: 7\ngraphql:\n  url: \"{}/graphql\"\n",
+        up.uri()
+    );
     files.extend([
         ("environments/dev.yml", DEV),
         ("r.yml", target.as_str()),
         ("o.yml", oauth.as_str()),
         ("p.yml", plain.as_str()),
+        ("q.yml", graphql.as_str()),
         (
             "f/folder.yml",
             "info:\n  name: f\n  type: folder\n  seq: 5\n",
@@ -385,6 +398,14 @@ async fn every_tool_result_matches_its_output_schema() {
     .await;
     ex.run(&server, "list_cookies", json!({})).await;
     ex.run(&server, "clear_cookies", json!({})).await;
+    ex.run(&server, "graphql_schema", json!({"path": "q.yml"}))
+        .await;
+    ex.run(
+        &server,
+        "graphql_schema",
+        json!({"path": "q.yml", "format": "json", "max_bytes": 20}),
+    )
+    .await;
     ex.run(
         &server,
         "save_example",

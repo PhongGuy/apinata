@@ -10,10 +10,10 @@ use super::SchemaError;
 use super::model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
 
 /// The scalars every schema has, appended when the document does not declare them.
-const BUILT_IN_SCALARS: [&str; 5] = ["String", "Int", "Float", "Boolean", "ID"];
+pub(super) const BUILT_IN_SCALARS: [&str; 5] = ["String", "Int", "Float", "Boolean", "ID"];
 
 /// The reason a bare `@deprecated` carries, as graphql-js reports it.
-const DEFAULT_DEPRECATION: &str = "No longer supported";
+pub(super) const DEFAULT_DEPRECATION: &str = "No longer supported";
 
 /// Parses an SDL document into a [`Schema`]; see [`Schema::from_sdl`].
 pub(super) fn parse(text: &str) -> Result<Schema, SchemaError> {

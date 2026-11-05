@@ -14,6 +14,7 @@ mod examples;
 mod gate;
 mod generate;
 mod git;
+mod graphql;
 mod import_collection;
 mod imports;
 mod items;

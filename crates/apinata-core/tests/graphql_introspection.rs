@@ -178,7 +178,7 @@ async fn bad_answers_map_to_their_errors() {
             .await;
     assert!(matches!(
         load(&errors, "", SCHEMA_BODY_LIMIT).await,
-        Err(SchemaError::NoData)
+        Err(SchemaError::Graphql { messages }) if messages == ["no"]
     ));
     let big = serve(ResponseTemplate::new(200).set_body_string(fixture())).await;
     assert!(

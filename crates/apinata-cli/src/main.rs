@@ -10,6 +10,7 @@ mod example_cmd;
 mod export;
 mod gen_cmd;
 mod git_cmd;
+mod graphql_cmd;
 mod hosts_cmd;
 mod import;
 mod item_cmd;
@@ -135,6 +136,14 @@ enum Command {
         0  printed\n  \
         3  usage, collection or resolve error")]
     Gen(GenArgs),
+    /// Work with a GraphQL request's server: fetch its schema by introspection.
+    #[command(after_help = "Exit codes:\n  \
+        0  printed or written\n  \
+        1  the server answered without a schema (an error status, not JSON, GraphQL errors)\n  \
+        2  the request or its token fetch errored (no response)\n  \
+        3  usage, collection or resolve error, not a GraphQL request, or the file could not \
+        be written")]
+    Graphql(graphql_cmd::GraphqlArgs),
     /// Export a collection, and optionally its environments, to another tool's format.
     #[command(after_help = "Exit codes:\n  \
         0  exported (notes, if any, are on stderr)\n  \
@@ -1183,6 +1192,7 @@ fn main() -> ExitCode {
         Command::SelfUpdate(args) => return self_update::run(&args),
         Command::Import(args) => return import::run(&args),
         Command::Gen(args) => return gen_cmd::run(&args),
+        Command::Graphql(args) => return graphql_cmd::run(&args),
         Command::Export(args) => return export::run(&args),
         Command::Convert(args) => return convert::run(&args),
         Command::Git(args) => return git_cmd::run(&args),
