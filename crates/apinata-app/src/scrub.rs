@@ -17,10 +17,12 @@ pub fn scrub_text(text: &str, secrets: &[String]) -> String {
     Forms::new(secrets).scrub(text)
 }
 
-/// `snap` with every url password dropped, as `DraftSnapshot::drop_url_passwords` does, and
-/// every string value scrubbed of `secrets`, building the forms once for all.
+/// `snap` with every url password dropped, as `DraftSnapshot::drop_url_passwords` does, the
+/// credentials its names and shapes reveal hidden, and every string value scrubbed of `secrets`,
+/// building the forms once for all.
 pub fn scrub_snapshot(snap: &mut apinata_core::DraftSnapshot, secrets: &[String]) {
     snap.drop_url_passwords();
+    snap.mask_credentials_by_name();
     let forms = Forms::new(secrets);
     snap.map_strings(|s| forms.scrub(s));
 }

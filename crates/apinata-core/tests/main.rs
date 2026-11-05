@@ -56,6 +56,7 @@ mod context_secrets;
 mod context_strict_secrets;
 mod cookie_jar;
 mod credential_headers;
+mod credential_names;
 mod curl_export;
 mod curl_round_trip;
 mod default_timeout;

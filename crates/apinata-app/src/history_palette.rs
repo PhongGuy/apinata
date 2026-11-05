@@ -294,6 +294,9 @@ pub const HISTORY_MAX: usize = 100;
 /// Shown when an unsaved draft's send has no request snapshot left to reopen.
 pub const DRAFT_GONE: &str = "This request can no longer be opened.";
 
+/// Shown when a reopened draft's kept copy had credentials hidden, so they are not sent as is.
+pub const DRAFT_MASKED: &str = "Credentials were hidden in this saved copy and show as [redacted]. Enter them again before sending.";
+
 /// The palette rows for `recent`, in order, without sends of requests no open collection has,
 /// at most [`HISTORY_MAX`] of them.
 pub fn history_entries(recent: &[RecentSend], ws: &Workspace, cx: &App) -> Vec<HistoryEntry> {

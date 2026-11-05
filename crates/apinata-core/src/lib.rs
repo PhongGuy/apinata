@@ -18,6 +18,7 @@ mod config_file;
 mod connect_hint;
 mod context;
 mod cookies;
+mod credential_names;
 mod curl_export;
 mod decomment;
 mod default_headers;
@@ -148,6 +149,9 @@ pub use context::{ContextOptions, SecretReadFailure, VarContext};
 pub use cookies::{
     CookieError, CookieInfo, CookieJar, CookieOutcome, CookieRejection, SetCookie,
     dropped_cookies_notice,
+};
+pub use credential_names::{
+    is_credential_name, mask_credential_query, mask_credential_shape, mask_credential_value,
 };
 pub use curl_export::to_curl;
 pub use default_headers::{DefaultHeader, default_headers};

@@ -162,6 +162,23 @@ fn enter_on_a_hop_header_eye_keeps_its_ring(cx: &mut TestAppContext) {
     );
 }
 
+#[gpui_kit::test]
+fn a_credential_named_header_eye_is_keyboard_reachable(cx: &mut TestAppContext) {
+    use crate::timeline_redaction::{row_of, shown_named};
+    let fx = shown_named(cx);
+    let row = row_of(cx, &fx, "hop-request-header", "x-api-key");
+    eye_round_trip(
+        cx,
+        fx.win,
+        ("hop-request-header-eye", row).into(),
+        (
+            ("hop-request-header-reveal", row).into(),
+            ("hop-request-header-hide", row).into(),
+        ),
+        "enter",
+    );
+}
+
 fn two_requests_started(cx: &mut TestAppContext) -> (tempfile::TempDir, Started) {
     let col = write_tree(&[
         ("opencollection.yml", ROOT),
