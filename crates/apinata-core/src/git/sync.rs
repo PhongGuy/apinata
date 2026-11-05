@@ -139,21 +139,51 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
             });
         }
     }
+    // The fetch may have run while another git process took a lock; refuse before touching it.
+    if let Some(lock) = held_lock(root, &branch, opts) {
+        return Err(SyncError::Busy { lock });
+    }
     // A fresh flag: stopping a checkout halfway would leave the tree half moved.
     match git_stream(
-        &["merge", "--ff-only", &oid],
+        &["merge", "--ff-only", "--no-autostash", &oid],
         root,
         opts,
         &CancelFlag::new(),
         &mut |_| {},
     ) {
         Ok(done) if done.success => Ok(pulled(oid)),
-        Ok(done) => Err(match run::refused_lock(&done.stderr, root) {
-            Some(lock) => SyncError::Busy { lock },
-            None => failed(redact_url(&done.stderr)),
-        }),
+        Ok(done) => Err(merge_failed(root, &upstream, &done.stderr, opts)),
         Err(StreamError::Io(e)) => Err(SyncError::Io(e)),
         Err(StreamError::Cancelled { .. }) => Err(failed("merge cancelled".to_owned())),
+    }
+}
+
+/// The first lock the fast-forward would need that some other process already holds.
+fn held_lock(root: &Path, branch: &str, opts: &GitOptions) -> Option<PathBuf> {
+    let names = [
+        "index.lock".to_owned(),
+        "HEAD.lock".to_owned(),
+        format!("refs/heads/{branch}.lock"),
+    ];
+    run::git_paths(root, opts, &names)?
+        .into_iter()
+        .find(|lock| lock.exists())
+}
+
+/// Why a failed fast-forward failed. Staged changes come first: a late lock refusal also
+/// leaves the checkout half written, and that is what the user must know about.
+fn merge_failed(root: &Path, upstream: &str, stderr: &str, opts: &GitOptions) -> SyncError {
+    let staged = run::git(&["diff", "--cached", "--quiet"], root, opts)
+        .is_ok_and(|out| out.status.code() == Some(1));
+    if staged {
+        return SyncError::Partial {
+            upstream: upstream.to_owned(),
+            stderr: redact_url(stderr),
+        };
+    }
+    match run::refused_lock(stderr, root) {
+        Some(lock) => SyncError::Busy { lock },
+        None => failed(redact_url(stderr)),
     }
 }
 

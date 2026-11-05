@@ -175,6 +175,8 @@ mod git_staged_gone;
 mod git_status;
 mod git_switch;
 mod git_sync;
+#[cfg(unix)]
+mod git_sync_merge;
 mod git_url;
 mod git_url_leaks;
 mod global_context;
