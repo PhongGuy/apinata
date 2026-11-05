@@ -380,6 +380,23 @@ pub const TAB_VIEW_MIN: Rems = ui(160.);
 pub const TAB_AREA_MIN: Rems = ui(380.);
 /// The least height the open dock keeps: its header strip and a filter row.
 pub const DOCK_MIN: Rems = ui(84.);
+/// The space above and below the dock header's tab strip.
+pub const DOCK_HEADER_PADDING: Rems = ui(3.);
+
+/// Height of the kit's underline tab strip, which steps with the kit size rather than scaling.
+pub fn tab_strip_height(zoom: f32) -> Pixels {
+    match kit_size(zoom) {
+        Size::XSmall => px(26.),
+        Size::Small => px(30.),
+        Size::Large => px(44.),
+        _ => px(36.),
+    }
+}
+
+/// The dock's header, all a collapsed dock shows: its tab strip and the padding around it.
+pub fn dock_header(zoom: f32) -> Pixels {
+    tab_strip_height(zoom) + at_zoom(DOCK_HEADER_PADDING, zoom) * 2.
+}
 
 /// The dock's height between the bars: the preferred height, at most 40% of the room and
 /// leaving the tab area its minimum, but never under the dock's own minimum, which wins in
@@ -394,6 +411,17 @@ pub fn dock_height(
         .min(between_bars * 0.4)
         .min(between_bars - tab_min)
         .max(dock_min)
+}
+
+/// Whether the open dock shows only its header: it does once the dock at its minimum would
+/// leave the tab area less than a strip, counted as one dock header, over a view's minimum.
+pub fn dock_collapses(
+    between_bars: Pixels,
+    view_min: Pixels,
+    header: Pixels,
+    dock_min: Pixels,
+) -> bool {
+    between_bars < view_min + header + dock_min
 }
 
 /// Below this window width the sidebar steps aside: three default sidebars, so it never
@@ -429,5 +457,24 @@ mod tests {
         assert_eq!(at(600.), 160., "room minus the tab minimum");
         assert_eq!(at(800.), 240., "the preferred height");
         assert_eq!(at(1080.), 240., "the preferred height");
+    }
+
+    fn collapses(height: f32, zoom: f32) -> bool {
+        let bars = at_zoom(TITLE_BAR_HEIGHT, zoom) + at_zoom(STATUS_BAR_HEIGHT, zoom);
+        dock_collapses(
+            px(height) - bars,
+            at_zoom(TAB_VIEW_MIN, zoom),
+            dock_header(zoom),
+            at_zoom(DOCK_MIN, zoom),
+        )
+    }
+
+    #[test]
+    fn the_dock_collapses_below_346_px_at_100_percent() {
+        assert!(collapses(300., 1.));
+        assert!(collapses(345., 1.));
+        assert!(!collapses(346., 1.));
+        assert!(!collapses(800., 1.));
+        assert!(collapses(500., 1.5), "the threshold follows the zoom");
     }
 }
