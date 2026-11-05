@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use apinata_core::{CancelFlag, CloneError, CloneProgress, CloneRequest, GitOptions, clone_repo};
 use gpui_kit::App;
 
+use crate::blocking::off_thread_events;
+
 /// What a running clone reports; `Finished` is always the last event.
 pub enum CloneEvent {
     /// One progress line from git.
@@ -20,19 +22,13 @@ pub struct CloneJob {
 }
 
 impl CloneJob {
-    /// Starts `clone_repo` on its own thread.
-    ///
-    /// A dedicated thread rather than `cx.background_spawn`: the call blocks for as long as git
-    /// runs, and the test executor polls background tasks on the test thread, where it would
-    /// freeze the cancel path under test.
+    /// Starts `clone_repo` on its own thread, so a slow git cannot stall the cancel path.
     pub fn start(req: CloneRequest, opts: GitOptions, _cx: &App) -> CloneJob {
-        let (tx, events) = async_channel::unbounded();
         let cancel = CancelFlag::new();
         let flag = cancel.clone();
-        std::thread::spawn(move || {
-            let progress = tx.clone();
+        let events = off_thread_events(move |tx| {
             let result = clone_repo(&req, &flag, &opts, &mut |p| {
-                let _ = progress.try_send(CloneEvent::Progress(p));
+                let _ = tx.try_send(CloneEvent::Progress(p));
             });
             let _ = tx.try_send(CloneEvent::Finished(result));
         });

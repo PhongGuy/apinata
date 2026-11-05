@@ -13,6 +13,7 @@ pub mod auth_secrets;
 pub mod auth_section;
 pub mod autosave;
 pub mod banner;
+pub mod blocking;
 pub mod body_find;
 pub mod body_node;
 pub mod body_section;

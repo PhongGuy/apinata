@@ -339,3 +339,29 @@ fn picking_a_local_only_branch_updates_the_label_without_a_notice(cx: &mut TestA
     assert_eq!(label(cx, &s).as_deref(), Some("topic"));
     assert_eq!(toasts(cx, &s), 0);
 }
+
+#[gpui_kit::test]
+fn an_unsaved_edit_refuses_a_switch_from_the_title_bar_picker(cx: &mut TestAppContext) {
+    use apinata_app::command::{Command, Edit, Target};
+    let sb = Sandbox::new();
+    let (_dir, s) = app(cx, &sb, |_| {});
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        w.send(
+            &root,
+            Command::Edit {
+                target: Target::Collection,
+                edit: Edit::Docs("draft".into()),
+            },
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    open_picker(cx, &s);
+    click_row(cx, &s, "feature");
+    wait_for(cx, "the refusal", |cx| present(cx, s.win, "branch-notice"));
+    assert!(dialog_open(cx, &s));
+    assert_eq!(label(cx, &s).as_deref(), Some("main"));
+    assert!(!s.ws.read_with(cx, |w, _| w.collections().is_empty()));
+    assert_eq!(toasts(cx, &s), 0);
+}
