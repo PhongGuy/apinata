@@ -101,38 +101,57 @@ impl Finder {
     /// Every non-empty, non-overlapping hit in `line`, left to right, as byte ranges.
     /// Empty-width pattern hits are dropped.
     pub fn find_in_line(&self, line: &str) -> Vec<Range<usize>> {
+        self.line_hits(line).collect()
+    }
+
+    // The hits of one line, produced lazily so a capped scan stops early. The folded copy a
+    // case-blind literal search needs is owned by the iterator.
+    fn line_hits<'a>(&'a self, line: &'a str) -> Box<dyn Iterator<Item = Range<usize>> + 'a> {
         match &self.0 {
             Search::Literal {
                 needle,
                 case_sensitive,
-            } => fold(line, *case_sensitive)
-                .match_indices(needle.as_str())
-                .map(|(start, _)| start..start + needle.len())
-                .collect(),
-            Search::Pattern(re) => re
-                .find_iter(line)
-                .map(|m| m.range())
-                .filter(|r| !r.is_empty())
-                .collect(),
+            } => {
+                let hay = fold(line, *case_sensitive);
+                let hits: Vec<_> = hay
+                    .match_indices(needle.as_str())
+                    .map(|(start, _)| start..start + needle.len())
+                    .collect();
+                Box::new(hits.into_iter())
+            }
+            Search::Pattern(re) => Box::new(
+                re.find_iter(line)
+                    .map(|m| m.range())
+                    .filter(|r| !r.is_empty()),
+            ),
         }
     }
 
     /// [`Finder::find_in_line`] over each `\n`-separated line of `text`, as byte ranges into
     /// it, so `^` and `$` anchor at every line.
     pub fn find_in_text(&self, text: &str) -> Vec<Range<usize>> {
+        self.find_in_text_capped(text, usize::MAX).0
+    }
+
+    /// Like [`Finder::find_in_text`], but stops after `cap` hits; the flag says more exist.
+    pub fn find_in_text_capped(&self, text: &str, cap: usize) -> (Vec<Range<usize>>, bool) {
         let mut out = Vec::new();
         let mut at = 0;
         for line in text.split('\n') {
-            out.extend(
-                self.find_in_line(line)
-                    .into_iter()
-                    .map(|r| r.start + at..r.end + at),
-            );
+            for r in self.line_hits(line) {
+                if out.len() == cap {
+                    return (out, true);
+                }
+                out.push(r.start + at..r.end + at);
+            }
             at += line.len() + 1;
         }
-        out
+        (out, false)
     }
 }
+
+/// The most hits the editor-mode find keeps; the count shows a `+` past it.
+pub const FIND_HIT_CAP: usize = 10_000;
 
 /// Every non-overlapping occurrence of `query` in each row, left to right, as (row, byte range);
 /// without `case_sensitive` letters fold case where the lowercase keeps the char's byte

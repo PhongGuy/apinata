@@ -143,3 +143,14 @@ fn chunked_rows_find_regex_hits_across_a_seam() {
     assert_eq!(found.matches, [(0, 2..4)]);
     assert_eq!(found.tails, [(0, 1, 0..2)]);
 }
+
+#[test]
+fn a_capped_scan_stops_at_the_cap_and_says_more_exist() {
+    let finder = Finder::new(".", REGEX).unwrap().unwrap();
+    let (found, more) = finder.find_in_text_capped("abc\ndef", 4);
+    assert_eq!(found, [0..1, 1..2, 2..3, 4..5]);
+    assert!(more);
+    let (found, more) = finder.find_in_text_capped("ab", 2);
+    assert_eq!(found, [0..1, 1..2]);
+    assert!(!more, "exactly the cap is not more");
+}

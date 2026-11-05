@@ -21,15 +21,16 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarMode};
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, Theme, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::app::AppState;
 use crate::body_find::{
-    CloseFindInResponse, FindInResponse, FindNextInResponse, FindOptions, FindPreviousInResponse,
-    Finder, KEY_CONTEXT, RowDown, RowFirst, RowLast, RowPageDown, RowPageUp, RowUp,
-    ToggleFindRegex, ToggleFindWholeWord, find_in_chunked_with, find_selection, match_colours,
+    CloseFindInResponse, FIND_HIT_CAP, FindInResponse, FindNextInResponse, FindOptions,
+    FindPreviousInResponse, Finder, KEY_CONTEXT, RowDown, RowFirst, RowLast, RowPageDown,
+    RowPageUp, RowUp, ToggleFindRegex, ToggleFindWholeWord, find_in_chunked_with, find_selection,
+    match_colours,
 };
 use crate::body_node::{
     ASSERT_VALUE, AssertJsonValue, CopyJsonPath, CopyJsonValue, NodeCopy, SET_VARIABLE,
@@ -209,6 +210,16 @@ pub struct BodyView {
     editor_hits: Vec<Range<usize>>,
     editor_hit: Option<usize>,
     hit_marks: Option<(RangeDecorationCollection, RangeDecorationCollection)>,
+    // The (other, current) colours the hits were last painted in.
+    mark_colours: Option<(Hsla, Hsla)>,
+    // How many editor-mode scans have started, for tests to count.
+    editor_scans: usize,
+    // The editor-mode hits stopped at the cap with more left.
+    editor_capped: bool,
+    // Where the next editor-mode scan puts the current hit, when not the first.
+    editor_place: Option<HitPlace>,
+    // An edit's rescan waiting for the typing in the editor to pause.
+    edit_settle: Option<Task<()>>,
     // A hit for the next paint to centre, with how many more frames it may wait to be laid out.
     centre_hit: Rc<RefCell<Option<PendingCentre>>>,
     // Rows-mode find: the matches in row order and the current one. The editor keeps its own,
@@ -285,6 +296,16 @@ pub struct BodyView {
     // Redraws when the editor's caret moves, so the value-actions button follows its line.
     _editor_changes: Subscription,
     _editor_edits: Subscription,
+    _theme_changes: Subscription,
+}
+
+// Where an editor-mode scan leaves the current hit when it lands: the first one, the index
+// it had, or the one at or after a byte offset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HitPlace {
+    First,
+    Keep,
+    At(usize),
 }
 
 // A hit waiting to be centred, and how many more frames it may wait to be laid out.
@@ -382,10 +403,25 @@ impl BodyView {
                 })
             });
         let editor_changes = cx.observe(&editor, |_, _, cx| cx.notify());
+        // A theme switch repaints the hits, whose colours come from the theme.
+        let theme_changes = cx.observe_global::<Theme>(|this, cx| {
+            if !this.editor_hits.is_empty() {
+                this.paint_hits(cx);
+            }
+        });
         // An edit moves text under the editor-mode hits, so they are found again in place.
         let editor_edits = cx.subscribe(&editor, |this, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) && this.own_editor_find() && this.find_open {
-                this.find_editor_hits(false, cx);
+                let timer = cx.background_executor().timer(SETTLE);
+                this.edit_settle = Some(cx.spawn(async move |this, cx| {
+                    timer.await;
+                    let rescan = |this: &mut Self, cx: &mut Context<Self>| {
+                        if this.own_editor_find() && this.find_open && !this.in_rows() {
+                            this.find_editor_hits(HitPlace::Keep, cx);
+                        }
+                    };
+                    this.update(cx, rescan).ok();
+                }));
             }
         });
         BodyView {
@@ -415,6 +451,11 @@ impl BodyView {
             editor_hits: Vec::new(),
             editor_hit: None,
             hit_marks: None,
+            mark_colours: None,
+            editor_scans: 0,
+            editor_capped: false,
+            editor_place: None,
+            edit_settle: None,
             centre_hit: Rc::default(),
             row_matches: Vec::new(),
             row_tails: Vec::new(),
@@ -460,6 +501,7 @@ impl BodyView {
             value_menu_open: Rc::default(),
             _editor_changes: editor_changes,
             _editor_edits: editor_edits,
+            _theme_changes: theme_changes,
         }
     }
 
@@ -864,8 +906,13 @@ impl BodyView {
             let matcher = &self.editor.read(cx).search_session().matcher;
             (matcher.current(), matcher.len())
         };
+        let more = if self.own_editor_find() && !self.in_rows() && self.editor_capped {
+            "+"
+        } else {
+            ""
+        };
         match current {
-            Some(ix) => format!("{} of {total}", ix + 1),
+            Some(ix) => format!("{} of {total}{more}", ix + 1),
             None => "No matches".into(),
         }
     }
@@ -1149,6 +1196,16 @@ impl BodyView {
             .map_or_else(Vec::new, |(all, _)| all.get_ranges(cx))
     }
 
+    /// The (other, current) colours the editor-mode hits were last painted in.
+    pub fn find_mark_colours(&self) -> Option<(Hsla, Hsla)> {
+        self.mark_colours
+    }
+
+    /// How many editor-mode regex or whole-word scans have started.
+    pub fn editor_find_scans(&self) -> usize {
+        self.editor_scans
+    }
+
     fn find_options(&self) -> FindOptions {
         FindOptions {
             case_sensitive: self.find_case_sensitive,
@@ -1163,24 +1220,71 @@ impl BodyView {
         self.find_regex || self.find_whole_word
     }
 
-    // Finds the editor-mode hits for the bar's query. With `reveal` the first becomes current
-    // and is centred; without, the current index stays where it was, clamped.
-    fn find_editor_hits(&mut self, reveal: bool, cx: &mut Context<Self>) {
+    // Scans the editor's text for the bar's query off the UI thread; the result lands only if
+    // no newer query, toggle or text has started since, and `place` then picks the current
+    // hit. Each regex call covers one line, but a pathological pattern can still keep the
+    // worker busy until it finishes; its stale result is then dropped.
+    fn find_editor_hits(&mut self, place: HitPlace, cx: &mut Context<Self>) {
         let query = self.find_input.read(cx).value();
         let found = Finder::new(&query, self.find_options());
         self.find_invalid = found.is_err();
-        let text = self.editor.read(cx).value();
-        self.editor_hits = found
-            .ok()
-            .flatten()
-            .map_or_else(Vec::new, |f| f.find_in_text(&text));
-        let last = self.editor_hits.len().checked_sub(1);
-        let current = if reveal { Some(0) } else { self.editor_hit };
-        self.editor_hit = last.map(|last| current.unwrap_or(0).min(last));
-        let other = Hsla {
-            s: 0.1,
-            ..find_selection(cx)
+        self.find_generation += 1;
+        self.find_task = None;
+        let Some(finder) = found.ok().flatten() else {
+            self.clear_editor_hits(cx);
+            cx.notify();
+            return;
         };
+        self.editor_scans += 1;
+        let kept = self.editor_hit;
+        if place != HitPlace::Keep {
+            self.editor_hit = None;
+        }
+        let generation = self.find_generation;
+        let text = self.editor.read(cx).value();
+        let job =
+            cx.background_spawn(async move { finder.find_in_text_capped(&text, FIND_HIT_CAP) });
+        self.find_task = Some(cx.spawn(async move |this, cx| {
+            let (hits, more) = job.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.find_generation == generation {
+                    this.land_editor_hits(hits, more, place, kept, cx);
+                }
+            });
+        }));
+        cx.notify();
+    }
+
+    fn land_editor_hits(
+        &mut self,
+        hits: Vec<Range<usize>>,
+        more: bool,
+        place: HitPlace,
+        kept: Option<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        let ix = match place {
+            HitPlace::First => Some(0),
+            HitPlace::Keep => kept,
+            HitPlace::At(at) => Some(hits.partition_point(|r| r.start < at)),
+        };
+        let last = hits.len().checked_sub(1);
+        self.editor_hits = hits;
+        self.editor_capped = more;
+        self.editor_hit = last.map(|last| ix.unwrap_or(0).min(last));
+        self.paint_hits(cx);
+        match self.editor_hit.filter(|_| place != HitPlace::Keep) {
+            Some(ix) => self.select_hit(ix, cx),
+            None => self.mark_current_hit(cx),
+        }
+        cx.notify();
+    }
+
+    // Fills every hit in the theme's faint find colour; the current one goes on top.
+    fn paint_hits(&mut self, cx: &mut Context<Self>) {
+        let current = find_selection(cx);
+        let other = Hsla { s: 0.1, ..current };
+        self.mark_colours = Some((other, current));
         let fills = self
             .editor_hits
             .iter()
@@ -1198,11 +1302,7 @@ impl BodyView {
                 self.hit_marks = Some(marks);
             }
         }
-        match self.editor_hit.filter(|_| reveal) {
-            Some(ix) => self.select_hit(ix, cx),
-            None => self.mark_current_hit(cx),
-        }
-        cx.notify();
+        self.mark_current_hit(cx);
     }
 
     // Makes hit `ix` current: it is painted over the others, selected and centred.
@@ -1229,6 +1329,7 @@ impl BodyView {
     fn clear_editor_hits(&mut self, cx: &mut Context<Self>) {
         self.editor_hits.clear();
         self.editor_hit = None;
+        self.editor_capped = false;
         self.centre_hit.borrow_mut().take();
         if let Some((all, current)) = &self.hit_marks {
             all.clear(cx);
@@ -1258,7 +1359,8 @@ impl BodyView {
         self.clear_row_matches();
         if self.own_editor_find() {
             self.editor.update(cx, |e, cx| e.close_search(cx));
-            self.find_editor_hits(true, cx);
+            let place = self.editor_place.take().unwrap_or(HitPlace::First);
+            self.find_editor_hits(place, cx);
             return;
         }
         self.find_invalid = false;
@@ -1276,15 +1378,17 @@ impl BodyView {
         cx.notify();
     }
 
-    // A rows-mode scan can cover many rows, so a typed query waits for a pause, each
+    // A rows-mode or pattern scan can be long, so a typed query waits for a pause, each
     // keystroke restarting the wait. The current match and any running scan go at once so
     // the label never pairs the new query with the old count; the old highlights stay.
     fn find_typed(&mut self, query: SharedString, cx: &mut Context<Self>) {
-        if !self.in_rows() || query.is_empty() {
+        let scans = self.in_rows() || self.own_editor_find();
+        if !scans || query.is_empty() {
             self.run_find(cx);
             return;
         }
         self.row_current = None;
+        self.editor_hit = None;
         self.find_anchor = None;
         self.find_generation += 1;
         self.find_task = None;
@@ -2382,17 +2486,10 @@ impl BodyView {
         self.clear_row_matches();
         self.chunked = Arc::default();
         self.shown = Shown::Editor;
+        // The own hits land later at the match's offset; without one the view keeps its line.
+        self.editor_place = Some(at.map_or(HitPlace::Keep, HitPlace::At));
         self.run_find(cx);
-        // The own hits keep their place by index; without a place the view keeps its line.
-        if self.own_editor_find() {
-            match at {
-                Some(at) => {
-                    let ix = self.editor_hits.partition_point(|r| r.start < at);
-                    self.select_hit(ix.min(self.editor_hits.len().saturating_sub(1)), cx);
-                }
-                None => drop(self.centre_hit.borrow_mut().take()),
-            }
-        }
+        self.editor_place = None;
         let kit_at = at.filter(|_| !self.own_editor_find());
         self.editor.update(cx, |e, cx| {
             let ranges = e.search_session().matcher.matched_ranges();

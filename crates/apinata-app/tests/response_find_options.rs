@@ -3,13 +3,16 @@
 
 use crate::support;
 
-use apinata_app::body_view::{BodyView, Shown};
+use apinata_app::body_find::{FIND_HIT_CAP, find_selection};
+use apinata_app::body_view::{BodyView, SETTLE, Shown};
+use gpui_kit::component::ThemeMode;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, Focusable as _, TestAppContext, WindowOptions, px,
-    size,
+    AnyWindowHandle, AppContext as _, Entity, Focusable as _, Hsla, TestAppContext, WindowOptions,
+    px, size,
 };
 use std::ops::Range;
+use std::time::Duration;
 use support::*;
 use wiremock::ResponseTemplate;
 
@@ -330,4 +333,152 @@ fn alt_r_and_alt_w_flip_the_toggles_from_the_field(cx: &mut TestAppContext) {
         "x",
         "the chords type nothing"
     );
+}
+
+fn wait(cx: &mut TestAppContext, by: Duration) {
+    cx.executor().advance_clock(by);
+    cx.run_until_parked();
+}
+
+fn focus_field(cx: &mut TestAppContext, win: AnyWindowHandle, view: &Entity<BodyView>) {
+    let input = view.read_with(cx, |v, _| v.find_input().clone());
+    cx.update_window(win, |_, w, cx| input.read(cx).focus_handle(cx).focus(w, cx))
+        .unwrap();
+}
+
+// A pattern typed into the field scans nothing on the keystroke itself: the count waits for
+// the typing to pause, and the scan then lands off the UI thread.
+#[gpui_kit::test]
+fn a_typed_pattern_waits_for_a_pause_before_it_scans(cx: &mut TestAppContext) {
+    let (win, view) = body(cx, XS);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    query(cx, win, &view, "");
+    focus_field(cx, win, &view);
+    let scans = view.read_with(cx, |v, _| v.editor_find_scans());
+    cx.update_window(win, |_, w, cx| w.input("x+", cx)).unwrap();
+    cx.run_until_parked();
+    assert_eq!(label(cx, &view), "No matches", "no count before the pause");
+    assert_eq!(view.read_with(cx, |v, _| v.editor_find_scans()), scans);
+    wait(cx, SETTLE - Duration::from_millis(1));
+    assert_eq!(label(cx, &view), "No matches", "one millisecond early");
+    wait(cx, Duration::from_millis(1));
+    assert_eq!(label(cx, &view), "1 of 3");
+    assert_eq!(marked(cx, &view), ["x", "X", "xx"]);
+}
+
+// Typing voids a scan still in flight, so its count never lands under the new query.
+#[gpui_kit::test]
+fn typing_voids_an_editor_scan_in_flight(cx: &mut TestAppContext) {
+    let (win, view) = body(cx, XS);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    query(cx, win, &view, "");
+    focus_field(cx, win, &view);
+    cx.update_window(win, |_, w, cx| {
+        view.update(cx, |v, cx| v.set_find_query("x", w, cx))
+    })
+    .unwrap();
+    cx.update_window(win, |_, w, cx| w.input("x", cx)).unwrap();
+    while cx.executor().tick() {
+        assert_ne!(label(cx, &view), "1 of 4", "the old scan landed");
+    }
+    wait(cx, SETTLE);
+    assert_eq!(label(cx, &view), "1 of 1");
+}
+
+#[gpui_kit::test]
+fn the_count_says_when_the_hits_reach_the_cap(cx: &mut TestAppContext) {
+    let text = format!(r#"{{"k":"{}"}}"#, "a".repeat(FIND_HIT_CAP + 5));
+    let (win, view) = body(cx, &text);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    query(cx, win, &view, "a");
+    assert_eq!(label(cx, &view), format!("1 of {FIND_HIT_CAP}+"));
+    assert_eq!(
+        view.read_with(cx, |v, cx| v.find_marks(cx).len()),
+        FIND_HIT_CAP
+    );
+    step(cx, win, &view, false);
+    assert_eq!(
+        label(cx, &view),
+        format!("{FIND_HIT_CAP} of {FIND_HIT_CAP}+"),
+        "stepping wraps within the capped hits"
+    );
+}
+
+#[gpui_kit::test]
+fn a_theme_switch_recolours_the_highlights(cx: &mut TestAppContext) {
+    let (win, view) = body(cx, XS);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    query(cx, win, &view, "x+");
+    let other = |cx: &mut TestAppContext| {
+        cx.update(|cx| Hsla {
+            s: 0.1,
+            ..find_selection(cx)
+        })
+    };
+    for mode in [ThemeMode::Light, ThemeMode::Dark] {
+        cx.update(|cx| apinata_app::theme::set_mode(mode, None, cx));
+        cx.run_until_parked();
+        let want = (other(cx), cx.update(|cx| find_selection(cx)));
+        assert_eq!(
+            view.read_with(cx, |v, _| v.find_mark_colours()),
+            Some(want),
+            "{mode:?}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn a_new_response_is_scanned_once_under_the_toggles(cx: &mut TestAppContext) {
+    let (win, view) = body(cx, XS);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    query(cx, win, &view, "x+");
+    assert_eq!(label(cx, &view), "1 of 3");
+    let next = send_once(
+        cx,
+        ResponseTemplate::new(200).set_body_raw(r#"{"q":"xxx y x"}"#, "application/json"),
+        "",
+    );
+    let scans = view.read_with(cx, |v, _| v.editor_find_scans());
+    let r = next.result.clone();
+    cx.update_window(win, |_, w, cx| {
+        view.update(cx, |v, cx| v.show(Some(r), w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, win);
+    assert_eq!(view.read_with(cx, |v, _| v.editor_find_scans()), scans + 1);
+    assert_eq!(label(cx, &view), "1 of 2");
+    assert_eq!(marked(cx, &view), ["xxx", "x"]);
+}
+
+#[gpui_kit::test]
+fn the_toggles_hold_across_the_switch_between_editor_and_rows(cx: &mut TestAppContext) {
+    let text = format!("{}needle 42{}", "x".repeat(20_500), "y".repeat(400));
+    let (win, view) = host_with(cx, ResponseTemplate::new(200).set_body_string(text));
+    assert_eq!(view.read_with(cx, |v, _| v.shown()), Shown::Editor);
+    view.update(cx, |v, cx| v.set_find_regex(true, cx));
+    query(cx, win, &view, r"needle \d+");
+    assert_eq!(label(cx, &view), "1 of 1");
+    assert_eq!(marked(cx, &view), ["needle 42"]);
+    let wrap = |cx: &mut TestAppContext, on: bool| {
+        cx.update_window(win, |_, w, cx| {
+            view.update(cx, |v, cx| v.set_wrap(on, w, cx))
+        })
+        .unwrap();
+        for _ in 0..3 {
+            frame(cx, win);
+            cx.run_until_parked();
+        }
+    };
+    wrap(cx, false);
+    assert!(matches!(
+        view.read_with(cx, |v, _| v.shown()),
+        Shown::Lines(_)
+    ));
+    assert_eq!(label(cx, &view), "1 of 1");
+    assert!(marked(cx, &view).is_empty(), "rows paint their own hits");
+    wrap(cx, true);
+    assert_eq!(view.read_with(cx, |v, _| v.shown()), Shown::Editor);
+    assert_eq!(label(cx, &view), "1 of 1");
+    assert_eq!(marked(cx, &view), ["needle 42"]);
 }
