@@ -174,6 +174,7 @@ mod git_runner;
 mod git_staged_gone;
 mod git_status;
 mod git_switch;
+mod git_sync;
 mod git_url;
 mod git_url_leaks;
 mod global_context;
