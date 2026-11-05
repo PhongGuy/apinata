@@ -1,6 +1,8 @@
 //! XPath 1.0 filtering of XML response bodies, behind an apinata-owned API.
 
-use uppsala::{Document, Element, NodeId, NodeKind, Parser, QName, XPathEvaluator, XPathValue};
+use uppsala::{
+    Document, Element, NodeId, NodeKind, Parser, QName, XPathEvaluator, XPathValue, XmlError,
+};
 
 use crate::json_filter::FilterError;
 
@@ -9,54 +11,120 @@ const XPATH_NODE_VISITS: usize = 10_000_000;
 
 /// Runs the XPath 1.0 `expression` over the XML `body`. A node set comes back one node per line
 /// in document order (elements as XML, other nodes as their string values); a scalar comes back
-/// as its XPath string value. Prefixes declared on the root element are bound for the expression.
+/// as one line holding its XPath string value. Every line ends in a newline, so no match is `""`.
+/// Prefixes declared on the root element are bound for the expression.
 pub fn filter_xml(body: &str, expression: &str) -> Result<String, FilterError> {
-    let typed = expression.trim();
-    if typed.is_empty() {
-        return Err(FilterError::Expression {
-            message: "the filter is empty".to_owned(),
-            position: 0,
-        });
+    let filter = XmlFilter::compile(expression)?;
+    filter.run(&ParsedXml::parse(body)?, || false)
+}
+
+/// An XML body parsed once, so several filters can run over it without parsing it again.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct ParsedXml {
+    doc: Document<'static>,
+}
+
+impl ParsedXml {
+    /// Parses `body`, skipping a leading byte order mark; fails with [`FilterError::Xml`].
+    pub fn parse(body: &str) -> Result<Self, FilterError> {
+        let mut doc = Parser::new()
+            .parse(body.strip_prefix('\u{feff}').unwrap_or(body))
+            .map_err(|e| FilterError::Xml {
+                message: e.to_string(),
+            })?;
+        doc.prepare_xpath();
+        Ok(ParsedXml {
+            doc: doc.into_static(),
+        })
+    }
+}
+
+/// An XPath filter, as [`filter_xml`] reads the expression.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct XmlFilter {
+    expression: String,
+}
+
+impl XmlFilter {
+    /// Takes `expression`; fails with [`FilterError::Expression`] for an empty one. The engine
+    /// parses the expression only when it runs, so other syntax errors come from [`Self::run`].
+    pub fn compile(expression: &str) -> Result<Self, FilterError> {
+        let typed = expression.trim();
+        if typed.is_empty() {
+            return Err(FilterError::Expression {
+                message: "the filter is empty".to_owned(),
+                position: 0,
+            });
+        }
+        Ok(XmlFilter {
+            expression: typed.to_owned(),
+        })
     }
 
-    let mut doc = Parser::new()
-        .parse(body.strip_prefix('\u{feff}').unwrap_or(body))
-        .map_err(|e| FilterError::Xml {
-            message: e.to_string(),
-        })?;
-    doc.prepare_xpath();
-
-    // Bind the root's prefixes so `x:id` works as written; the default namespace stays unbound,
-    // as XPath 1.0 has no way to name it.
-    let mut evaluator = XPathEvaluator::new();
-    if let Some(element) = doc.document_element().and_then(|id| doc.element(id)) {
-        for (prefix, uri) in &element.namespace_declarations {
-            if !prefix.is_empty() {
-                evaluator.add_namespace(prefix.as_ref(), uri.as_ref());
+    /// Runs the filter over `body`, printed as [`filter_xml`] prints it. `cancelled` is asked
+    /// before the evaluation and before each match written; once it says yes the run stops with
+    /// [`FilterError::Cancelled`]. The evaluation itself cannot stop midway; the work cap bounds it.
+    pub fn run(
+        &self,
+        body: &ParsedXml,
+        cancelled: impl Fn() -> bool,
+    ) -> Result<String, FilterError> {
+        if cancelled() {
+            return Err(FilterError::Cancelled);
+        }
+        let doc = &body.doc;
+        // Bind the root's prefixes so `x:id` works as written; the default namespace stays
+        // unbound, as XPath 1.0 has no way to name it.
+        let mut evaluator = XPathEvaluator::new();
+        if let Some(element) = doc.document_element().and_then(|id| doc.element(id)) {
+            for (prefix, uri) in &element.namespace_declarations {
+                if !prefix.is_empty() {
+                    evaluator.add_namespace(prefix.as_ref(), uri.as_ref());
+                }
             }
         }
-    }
-    let value = evaluator
-        .with_max_node_visits(XPATH_NODE_VISITS)
-        .evaluate(&doc, doc.root(), typed)
-        .map_err(|e| {
-            let message = e.to_string();
-            // uppsala reports a spent budget only through its message text.
-            if message.contains("exceeded maximum node visit budget") {
-                FilterError::Limit
-            } else {
-                FilterError::Invalid { message }
-            }
-        })?;
+        let value = evaluator
+            .with_max_node_visits(XPATH_NODE_VISITS)
+            .evaluate(doc, doc.root(), &self.expression)
+            .map_err(evaluation_error)?;
 
-    Ok(match &value {
-        XPathValue::NodeSet(nodes) => nodes
-            .iter()
-            .map(|&id| node_text(&doc, id))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        scalar => scalar.to_string_value(&doc),
-    })
+        // Every match is a line ending in a newline, so an empty match still prints a line and
+        // only an empty node set prints nothing.
+        let mut out = String::new();
+        match &value {
+            XPathValue::NodeSet(nodes) => {
+                for &id in nodes {
+                    if cancelled() {
+                        return Err(FilterError::Cancelled);
+                    }
+                    out.push_str(&node_text(doc, id));
+                    out.push('\n');
+                }
+            }
+            scalar => {
+                out.push_str(&scalar.to_string_value(doc));
+                out.push('\n');
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Sorts an evaluation failure. The engine gives a spent budget no error kind of its own, so it is
+/// known by the exact message it builds from this cap, which no echo of expression text can equal.
+fn evaluation_error(error: XmlError) -> FilterError {
+    match error {
+        XmlError::XPath(e) if e.message == budget_message() => FilterError::Limit,
+        other => FilterError::Invalid {
+            message: other.to_string(),
+        },
+    }
+}
+
+fn budget_message() -> String {
+    format!("XPath evaluation exceeded maximum node visit budget of {XPATH_NODE_VISITS}")
 }
 
 /// One matched node as shown: an element (or the root, standing for its document element) as XML,

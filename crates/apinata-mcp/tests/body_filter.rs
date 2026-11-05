@@ -70,7 +70,17 @@ async fn no_match_is_an_empty_array_and_xml_uses_xpath() {
             json!({"path": "r.yml", "body_filter": "//i"}),
         )
         .await;
-    assert_eq!(result["body"]["text"], "<i>x</i>\n<i>y</i>");
+    assert_eq!(result["body"]["text"], "<i>x</i>\n<i>y</i>\n");
+    let result = server
+        .ok(
+            "send_request",
+            json!({"path": "r.yml", "body_filter": "string(//nope)"}),
+        )
+        .await;
+    assert_eq!(
+        result["body"]["text"], "\n",
+        "an empty value is not no match"
+    );
 }
 
 #[tokio::test]
