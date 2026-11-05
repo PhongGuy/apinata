@@ -344,12 +344,11 @@ fn env_dir_with_html_is_a_usage_error() {
     assert!(!file.exists() && !envs.exists());
 }
 
-fn openapi_export(dir: &Path, extra: &[&str], out: &Path) -> std::process::Output {
+fn openapi_export(dir: &Path, format: &str, out: &Path) -> std::process::Output {
     apinata()
         .arg("export")
         .arg(dir)
-        .args(["--format", "openapi"])
-        .args(extra)
+        .args(["--format", format])
         .arg("--out")
         .arg(out)
         .output()
@@ -357,10 +356,10 @@ fn openapi_export(dir: &Path, extra: &[&str], out: &Path) -> std::process::Outpu
 }
 
 #[test]
-fn openapi_encoding_yaml_writes_yaml_to_any_path() {
+fn openapi_yaml_format_writes_yaml_to_any_path() {
     let col = collection();
-    let json = openapi_export(col.path(), &[], Path::new("-"));
-    let yaml = openapi_export(col.path(), &["--encoding", "yaml"], Path::new("-"));
+    let json = openapi_export(col.path(), "openapi", Path::new("-"));
+    let yaml = openapi_export(col.path(), "openapi-yaml", Path::new("-"));
     assert_eq!(yaml.status.code(), Some(0));
     let want: Value = serde_json::from_slice(&json.stdout).unwrap();
     let got: Value = yaml_serde::from_slice(&yaml.stdout).expect("YAML");
@@ -372,7 +371,7 @@ fn openapi_encoding_yaml_writes_yaml_to_any_path() {
 fn openapi_yaml_and_yml_out_paths_pick_yaml_and_json_stays_the_default() {
     let col = collection();
     let dest = tempfile::tempdir().unwrap();
-    let json = openapi_export(col.path(), &[], &dest.path().join("a.openapi.json"));
+    let json = openapi_export(col.path(), "openapi", &dest.path().join("a.openapi.json"));
     assert_eq!(json.status.code(), Some(0));
     let want: Value =
         serde_json::from_slice(&std::fs::read(dest.path().join("a.openapi.json")).unwrap())
@@ -380,7 +379,7 @@ fn openapi_yaml_and_yml_out_paths_pick_yaml_and_json_stays_the_default() {
     for name in ["a.openapi.yaml", "a.openapi.yml"] {
         let file = dest.path().join(name);
         assert_eq!(
-            openapi_export(col.path(), &[], &file).status.code(),
+            openapi_export(col.path(), "openapi", &file).status.code(),
             Some(0)
         );
         let got: Value = yaml_serde::from_slice(&std::fs::read(&file).unwrap()).expect("YAML");
@@ -389,24 +388,16 @@ fn openapi_yaml_and_yml_out_paths_pick_yaml_and_json_stays_the_default() {
 }
 
 #[test]
-fn openapi_encoding_json_overrides_a_yaml_path() {
+fn openapi_yaml_format_writes_yaml_to_a_json_named_file() {
     let col = collection();
     let dest = tempfile::tempdir().unwrap();
-    let file = dest.path().join("a.yaml");
-    let out = openapi_export(col.path(), &["--encoding", "json"], &file);
-    assert_eq!(out.status.code(), Some(0));
-    serde_json::from_slice::<Value>(&std::fs::read(&file).unwrap()).expect("JSON");
-}
-
-#[test]
-fn encoding_applies_to_openapi_only() {
-    let col = collection();
-    let out = apinata()
-        .arg("export")
-        .arg(col.path())
-        .args(["--format", "postman", "--encoding", "yaml", "--out", "-"])
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(3));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("--encoding"));
+    let file = dest.path().join("a.json");
+    assert_eq!(
+        openapi_export(col.path(), "openapi-yaml", &file)
+            .status
+            .code(),
+        Some(0)
+    );
+    let _: Value = yaml_serde::from_slice(&std::fs::read(&file).unwrap()).expect("YAML");
+    assert!(!std::fs::read(&file).unwrap().starts_with(b"{"));
 }

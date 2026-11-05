@@ -26,28 +26,19 @@ pub struct ExportArgs {
     /// The file to write, or `-` for standard output.
     #[arg(long, value_name = "FILE")]
     pub out: PathBuf,
-    /// How OpenAPI is written. Without it, a `.yaml` or `.yml` output file gets YAML, else JSON.
-    #[arg(long, value_enum)]
-    pub encoding: Option<Encoding>,
     /// Also write each environment to this directory as <name>.postman_environment.json (Postman only).
     #[arg(long, value_name = "DIR")]
     pub env_dir: Option<PathBuf>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum Encoding {
-    /// Two-space indented JSON.
-    Json,
-    /// Block-style YAML with the same keys in the same order.
-    Yaml,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
 pub enum ExportFormat {
     /// Postman v2.1 collection JSON.
     Postman,
-    /// OpenAPI 3.1 JSON or YAML; environments become servers.
+    /// OpenAPI 3.1; YAML when --out ends in .yaml or .yml, else JSON. Environments become servers.
     Openapi,
+    /// OpenAPI 3.1 as YAML whatever the output name is; environments become servers.
+    OpenapiYaml,
     /// One self-contained HTML documentation page; environments are left out.
     Html,
 }
@@ -69,16 +60,13 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
     if args.env_dir.is_some() {
         match args.format {
             ExportFormat::Postman => {}
-            ExportFormat::Openapi => anyhow::bail!(
+            ExportFormat::Openapi | ExportFormat::OpenapiYaml => anyhow::bail!(
                 "--env-dir does not apply to --format openapi; environments are carried as servers"
             ),
             ExportFormat::Html => anyhow::bail!(
                 "--env-dir does not apply to --format html; the page leaves environments out"
             ),
         }
-    }
-    if args.encoding.is_some() && !matches!(args.format, ExportFormat::Openapi) {
-        anyhow::bail!("--encoding applies only to --format openapi");
     }
     let named = collection_arg::require(
         args.path.as_deref(),
@@ -101,12 +89,10 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
             let exported = export::postman(&collection);
             (exported.json, exported.notes)
         }
-        ExportFormat::Openapi => {
+        ExportFormat::Openapi | ExportFormat::OpenapiYaml => {
             let exported = export::openapi(&collection);
-            let yaml = match args.encoding {
-                Some(encoding) => encoding == Encoding::Yaml,
-                None => export::is_yaml_path(&args.out),
-            };
+            let yaml =
+                matches!(args.format, ExportFormat::OpenapiYaml) || export::is_yaml_path(&args.out);
             let text = if yaml {
                 exported.yaml().map_err(anyhow::Error::msg)?
             } else {

@@ -639,9 +639,10 @@ as servers, so it takes no `--env-dir`:
 apinata export ./my-api --format openapi --out my-api.openapi.json
 ```
 
-A `.yaml` or `.yml` output file gets YAML with the same keys in the same order;
-`--encoding yaml` or `--encoding json` chooses for any path, including `-`
-for stdout. In the app, name the file `.yaml` in the save dialog:
+With `--format openapi`, an output file ending `.yaml` or `.yml` gets YAML with
+the same keys in the same order; any other name, and `-` for stdout, gets JSON.
+`--format openapi-yaml` writes YAML whatever the name. In the app, name the file
+`.yaml` in the save dialog:
 
 ```sh
 apinata export ./my-api --format openapi --out my-api.openapi.yaml
