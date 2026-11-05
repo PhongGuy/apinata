@@ -614,7 +614,7 @@ impl GlobalEnvEditor {
             Some(secret_lock::replaced(&typing, &stored))
         });
         cx.spawn_in(window, async move |this, cx| {
-            let go = secret_lock::replace_agreed(vec![check], cx).await;
+            let go = secret_lock::replace_agreed(vec![(String::new(), check)], cx).await;
             this.update(cx, |e, cx| {
                 e.set_checking(false, cx);
                 if go {

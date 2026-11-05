@@ -431,3 +431,27 @@ fn a_window_close_during_the_tab_prompt_asks_after_cancel(cx: &mut TestAppContex
     answer_confirm(cx, "confirm-cancel");
     assert_eq!(windows(cx), 1);
 }
+
+// A window close queued behind the tab prompt goes with the window when it closes another way,
+// rather than holding its workspace for good.
+#[gpui_kit::test]
+fn a_queued_window_close_goes_with_a_window_closed_another_way(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    dirty_a(cx, &s);
+    let area = s.shell.read_with(cx, |sh, _| sh.tab_area().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        area.update(cx, |a, cx| a.close(vec![tab], w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(!close_window(cx, &s), "held while the tab prompt shows");
+    let id = s.win.window_id();
+    assert!(cx.update(|cx| apinata_app::closing::close_queued(id, cx)));
+    cx.update_window(s.win, |_, w, _| w.remove_window())
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(windows(cx), 0);
+    assert!(!cx.update(|cx| apinata_app::closing::close_queued(id, cx)));
+}
