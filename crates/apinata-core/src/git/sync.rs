@@ -124,7 +124,7 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
     let Some(head) = verify(root, &full, opts)? else {
         return Err(failed(format!("{branch} has no commits yet; commit first")));
     };
-    let Upstream {
+    let UpstreamRef {
         remote,
         tracking,
         name: upstream,
@@ -216,6 +216,13 @@ pub fn push(
             (up.remote, up.remote_ref, up.name)
         }
     };
+    // Setting the upstream writes the config; refuse while another process holds it.
+    if set_upstream.is_some()
+        && let Some(lock) = run::git_paths(root, opts, &["config.lock"])
+            .and_then(|paths| paths.into_iter().find(|lock| lock.exists()))
+    {
+        return Err(SyncError::Busy { lock });
+    }
     let refspec = format!("{full}:{dst}");
     let mut args = vec![
         "push",
@@ -230,25 +237,48 @@ pub fn push(
     let done = match git_stream_capture(&args, root, opts, cancel, &mut |_| {}) {
         Ok(done) => done,
         Err(StreamError::Io(e)) => return Err(SyncError::Io(e)),
-        Err(StreamError::Cancelled { .. }) => return Err(SyncError::Cancelled),
+        Err(StreamError::Cancelled { killed }) => {
+            return Err(killed_push(
+                root,
+                &remote,
+                &dst,
+                set_upstream.is_some(),
+                killed,
+                opts,
+            ));
+        }
     };
-    let from = match (done.success, porcelain_ref(&done.stdout)) {
+    // The porcelain line comes first: a remote's lock refusal names a `.lock` path that a
+    // local lock lookup would mistake for one of ours.
+    let line = porcelain_ref(&done.stdout);
+    if !done.success
+        && let Some(('!', summary)) = line
+    {
+        return Err(SyncError::Rejected {
+            reason: rejection_reason(summary).to_owned(),
+            stderr: redact_url(&done.stderr),
+        });
+    }
+    let from = match (done.success, line) {
         (true, Some((' ', summary))) => {
             let Some((before, _)) = summary.split_once("..") else {
-                return Err(failed(redact_url(&done.stderr)));
+                return Err(failed("unexpected push result".to_owned()));
             };
             match verify(root, &format!("{before}^{{commit}}"), opts)? {
                 Some(oid) => Some(oid),
                 None => {
-                    return Err(failed(format!(
-                        "unknown commit {before} in the push result"
-                    )));
+                    return Err(failed("unknown commit in the push result".to_owned()));
                 }
             }
         }
         (true, Some(('=', _))) => Some(to.clone()),
         (true, Some(('*', _))) => None,
-        _ => return Err(failed(redact_url(&done.stderr))),
+        (true, _) => {
+            return Err(failed(
+                "git reported a successful push but no pushed ref".to_owned(),
+            ));
+        }
+        (false, _) => return Err(failed(redact_url(&done.stderr))),
     };
     Ok(Pushed {
         branch,
@@ -268,6 +298,41 @@ fn porcelain_ref(stdout: &str) -> Option<(char, &str)> {
     let flag = line.chars().next()?;
     let summary = line.splitn(3, '\t').nth(2)?;
     Some((flag, summary.trim()))
+}
+
+/// The text inside a rejection summary's last parentheses, such as `fetch first` in
+/// `[rejected] (fetch first)`; the whole summary when there are none.
+fn rejection_reason(summary: &str) -> &str {
+    summary
+        .rfind('(')
+        .and_then(|open| {
+            let inner = &summary[open + 1..];
+            inner.rfind(')').map(|close| &inner[..close])
+        })
+        .unwrap_or(summary)
+}
+
+/// A push stopped by the cancel flag. A killed git may have left the tracking-ref lock, or the
+/// config lock when setting the upstream; report the first one still held and never delete it.
+fn killed_push(
+    root: &Path,
+    remote: &str,
+    dst: &str,
+    set_upstream: bool,
+    killed: bool,
+    opts: &GitOptions,
+) -> SyncError {
+    if !killed {
+        return SyncError::Cancelled;
+    }
+    let name = dst.strip_prefix("refs/heads/").unwrap_or(dst);
+    let mut names = vec![format!("refs/remotes/{remote}/{name}.lock")];
+    if set_upstream {
+        names.push("config.lock".to_owned());
+    }
+    run::git_paths(root, opts, &names)
+        .and_then(|paths| paths.into_iter().find(|lock| lock.exists()))
+        .map_or(SyncError::Cancelled, |lock| SyncError::Busy { lock })
 }
 
 /// Refuse anything but the name of a configured remote, so a URL, path or option never reaches
@@ -342,7 +407,7 @@ fn verify(root: &Path, name: &str, opts: &GitOptions) -> Result<Option<String>, 
 }
 
 /// A branch's upstream as git configures it.
-struct Upstream {
+struct UpstreamRef {
     remote: String,
     /// The remote-tracking ref, such as `refs/remotes/origin/main`.
     tracking: String,
@@ -356,7 +421,7 @@ struct Upstream {
 
 /// The upstream of `branch`. A branch with no upstream, or one that tracks a local branch, has
 /// none.
-fn upstream_of(root: &Path, branch: &str, opts: &GitOptions) -> Result<Upstream, SyncError> {
+fn upstream_of(root: &Path, branch: &str, opts: &GitOptions) -> Result<UpstreamRef, SyncError> {
     let full = format!("refs/heads/{branch}");
     let format = "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00\
                   %(upstream:remoteref)%00%(upstream:track)";
@@ -376,7 +441,7 @@ fn upstream_of(root: &Path, branch: &str, opts: &GitOptions) -> Result<Upstream,
         });
     }
     let name = remote_ref.strip_prefix("refs/heads/").unwrap_or(remote_ref);
-    Ok(Upstream {
+    Ok(UpstreamRef {
         remote: remote.to_owned(),
         tracking: tracking.to_owned(),
         remote_ref: remote_ref.to_owned(),
