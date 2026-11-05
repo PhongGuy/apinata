@@ -147,7 +147,7 @@ async fn handle(shared: &Shared, req: Request<Incoming>) -> Response<Full<Bytes>
             for (name, raw) in &p.headers {
                 // A substituted value that is not a valid header keeps the recorded text.
                 let filled = fill_params(raw, &params);
-                let value = if http::HeaderValue::from_str(&filled).is_ok() {
+                let value = if http::HeaderValue::from_bytes(filled.as_bytes()).is_ok() {
                     filled
                 } else {
                     raw.clone()

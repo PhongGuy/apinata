@@ -71,7 +71,7 @@ pub(crate) fn fill_params(text: &str, params: &[(&str, &str)]) -> String {
         out.push_str(&rest[..start]);
         let after = &rest[start + 2..];
         let found = after.find("}}").and_then(|end| {
-            let name = after[..end].trim();
+            let name = &after[..end];
             let value = params.iter().find(|(n, _)| *n == name)?.1;
             Some((value, end + 2))
         });
@@ -185,10 +185,15 @@ mod tests {
     fn fill_params_substitutes_known_names_once_and_leaves_the_rest() {
         let p = [("id", "{{x}}"), ("n", "7")];
         assert_eq!(
-            fill_params("a {{id}} {{ n }} {{zz}} {{", &p),
+            fill_params("a {{id}} {{n}} {{zz}} {{", &p),
             "a {{x}} 7 {{zz}} {{"
         );
         assert_eq!(fill_params("{{n}}{{n}}", &p), "77");
+    }
+
+    #[test]
+    fn fill_params_treats_a_spaced_name_as_a_different_name() {
+        assert_eq!(fill_params("{{ n }}", &[("n", "7")]), "{{ n }}");
     }
 
     #[test]

@@ -259,3 +259,25 @@ async fn binary_bodies_are_not_templated() {
     assert_eq!(r.bytes().await.unwrap().as_ref(), b"{{id}}");
     h.stop().await;
 }
+
+#[tokio::test]
+async fn a_non_ascii_path_param_fills_headers_like_the_body() {
+    let f = req("u", 1, "GET", "/orgs/:org/users/:id", TEMPLATED);
+    let (r, h) = get_templated("/orgs/acme/users/caf%C3%A9", &[("u.yml", &f)]).await;
+    assert_eq!(r.headers()["x-id"].as_bytes(), "id-caf\u{e9}".as_bytes());
+    assert!(
+        r.text()
+            .await
+            .unwrap()
+            .starts_with("user caf\u{e9} of acme")
+    );
+    h.stop().await;
+}
+
+#[tokio::test]
+async fn a_param_that_makes_a_header_invalid_keeps_the_recorded_header() {
+    let f = req("u", 1, "GET", "/orgs/:org/users/:id", TEMPLATED);
+    let (r, h) = get_templated("/orgs/acme/users/a%0Ab", &[("u.yml", &f)]).await;
+    assert_eq!(r.headers()["x-id"], "id-{{id}}");
+    h.stop().await;
+}
