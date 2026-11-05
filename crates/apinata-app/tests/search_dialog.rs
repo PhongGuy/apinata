@@ -747,3 +747,79 @@ fn enter_after_clicking_the_summary_keeps_the_dialog(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert!(dialog_open(cx, &s), "Enter after a click keeps the dialog");
 }
+
+/// The text a replace toast carries, by its place among the toasts of one replace.
+fn note(cx: &mut TestAppContext, s: &Started, ix: usize) -> Option<String> {
+    label(cx, s, ("search-replace-note", ix))
+}
+
+#[gpui_kit::test]
+fn the_skipped_names_reach_the_toast(cx: &mut TestAppContext) {
+    let col = collection();
+    let s = started(cx, &col);
+    s.ws.update(cx, |ws, cx| {
+        ws.send(&s.root, edit_url("a.yml", "http://x/needle-edited"), cx)
+    });
+    cx.run_until_parked();
+    ready(cx, &s, "needle", "pin");
+    click_id(cx, &s, "search-replace-all");
+    wait_real(cx, |cx| note(cx, &s, 1).is_some());
+    assert_eq!(
+        note(cx, &s, 0).as_deref(),
+        Some("Replaced 2 in 1 file; skipped 1 with unsaved edits")
+    );
+    assert_eq!(
+        note(cx, &s, 1).as_deref(),
+        Some("Skipped, unsaved edits: a")
+    );
+}
+
+#[gpui_kit::test]
+fn an_invalid_regex_replace_toasts_the_actors_error(cx: &mut TestAppContext) {
+    let col = collection();
+    let s = started(cx, &col);
+    open_search(cx, &s);
+    click_id(cx, &s, "search-regex");
+    type_query(cx, &s, "needle");
+    wait_real(cx, |cx| {
+        label(cx, &s, "search-summary").as_deref() == Some("3 hits")
+    });
+    replace_toggle(cx, &s);
+    type_replacement(cx, &s, "pin");
+    // The query turns invalid and Replace all is pressed before the new search answers, so
+    // the old hits keep the button live and only the actor can refuse the pattern.
+    cx.update_window(s.win, |_, w, cx| {
+        w.click("search-input", cx);
+        w.input("(", cx);
+        w.click("search-replace-all", cx);
+    })
+    .unwrap();
+    wait_real(cx, |cx| note(cx, &s, 0).is_some());
+    let text = note(cx, &s, 0).unwrap();
+    assert!(text.starts_with("invalid regular expression"), "{text}");
+    assert!(present(cx, s.win, "toast-error"), "an error toast");
+    assert_eq!(on_disk(&s, "a.yml"), request("a", "http://x/needle"));
+    assert_eq!(on_disk(&s, "b.yml"), files()[2].1);
+}
+
+#[gpui_kit::test]
+fn a_clean_open_tab_follows_a_replace(cx: &mut TestAppContext) {
+    let col = collection();
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    cx.run_until_parked();
+    frame(cx, s.win);
+    let editor = editor_of(cx, &s, tab);
+    assert_eq!(editor.read_with(cx, |e, cx| e.url(cx)), "http://x/needle");
+    ready(cx, &s, "needle", "pin");
+    click_id(cx, &s, "search-replace-all");
+    wait_real(cx, |cx| {
+        frame(cx, s.win);
+        editor.read_with(cx, |e, cx| e.url(cx)) == "http://x/pin"
+    });
+    cx.run_until_parked();
+    assert!(
+        on_disk(&s, "a.yml").contains("http://x/pin"),
+        "the tab wrote nothing back"
+    );
+}
