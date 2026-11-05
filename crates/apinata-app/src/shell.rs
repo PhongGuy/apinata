@@ -41,7 +41,7 @@ use crate::changes_dialog::open_changes;
 use crate::closing::CloseScope;
 use crate::command::{Command, NoticeKind, Target};
 use crate::commands;
-use crate::console_dock::ConsoleDock;
+use crate::console_dock::{ConsoleDock, ExpandDock};
 use crate::cookie_jar::open_cookie_jar;
 use crate::draft_file::MAX_DRAFTS;
 use crate::draft_store::{DraftStoreEvent, Drafts, NotKeptReason};
@@ -164,6 +164,10 @@ pub struct Shell {
     // Cleared on every toggle, so the dock always opens at its initial height.
     dock_split: Entity<ResizableState>,
     dock_open: bool,
+    // In a window too short for the open dock it shows only its header, until a click on
+    // that header; the click holds until the window grows past the threshold.
+    dock_expanded_short: bool,
+    dock_collapsed: bool,
     // Whether the window was below the auto-hide width last frame, and whether the sidebar
     // is hidden because of it rather than by the user.
     narrow: bool,
@@ -351,6 +355,10 @@ impl Shell {
                 let bounds = Some(SavedBounds::from_window(window.window_bounds()));
                 this.save_session(cx, move |s| s.window = bounds);
             }),
+            cx.subscribe(&dock, |this, _, _: &ExpandDock, cx| {
+                this.dock_expanded_short = true;
+                cx.notify();
+            }),
             // A hidden sidebar reports no real width, so the saved one is kept.
             cx.subscribe(&split, |this, split, _: &ResizablePanelEvent, cx| {
                 if !this.sidebar_visible {
@@ -526,6 +534,8 @@ impl Shell {
             dock,
             dock_split,
             dock_open: false,
+            dock_expanded_short: false,
+            dock_collapsed: false,
             narrow: false,
             global_button: false,
             env_squeezed: false,
@@ -2502,8 +2512,30 @@ impl Render for Shell {
             dock_min,
         );
         // A drag keeps both minimums too; the dock one wins in a window too short for both.
-        let tab_range = tab_min.min(between_bars - dock_min)..Pixels::MAX;
-        let dock_range = dock_min..(between_bars - tab_min).max(dock_min);
+        let mut tab_range = tab_min.min(between_bars - dock_min)..Pixels::MAX;
+        let mut dock_range = dock_min..(between_bars - tab_min).max(dock_min);
+        let mut dock_height = dock_height;
+        // Collapsing is a view rule, so the open toggle is untouched; a change of layout
+        // clears the split, as a toggle does, so the panel takes its new size.
+        let header = style::resolve(style::DOCK_HEADER, window);
+        let short = style::dock_collapses(
+            between_bars,
+            style::resolve(style::TAB_VIEW_MIN, window),
+            header,
+            dock_min,
+        );
+        self.dock_expanded_short &= short;
+        let collapsed = short && !self.dock_expanded_short;
+        if collapsed != self.dock_collapsed {
+            self.dock_collapsed = collapsed;
+            self.dock_split.update(cx, |s, _| s.clear());
+        }
+        self.dock.update(cx, |d, cx| d.set_collapsed(collapsed, cx));
+        if collapsed {
+            dock_height = header;
+            dock_range = header..header;
+            tab_range = (between_bars - header).max(px(0.))..Pixels::MAX;
+        }
         div()
             .id("shell")
             .key_context(SHELL_CONTEXT)

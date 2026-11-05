@@ -176,6 +176,7 @@ mod config_scripts;
 mod confirm;
 mod console_dock;
 mod console_dock_shell;
+mod console_dock_short;
 mod console_dock_tabs;
 mod cookie_jar;
 mod cookie_jar_form_focus;

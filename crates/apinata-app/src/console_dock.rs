@@ -64,8 +64,14 @@ pub struct ConsoleDock {
     focus: FocusHandle,
     // One tab stop per dock tab, Console then Network.
     tab_focus: [FocusHandle; 2],
+    collapsed: bool,
     _subs: Vec<Subscription>,
 }
+
+/// A click on a collapsed dock's header, asking the shell to show the whole dock.
+pub struct ExpandDock;
+
+impl EventEmitter<ExpandDock> for ConsoleDock {}
 
 impl ConsoleDock {
     /// How often an open dock reads the log.
@@ -102,8 +108,22 @@ impl ConsoleDock {
                 cx.focus_handle().tab_stop(true),
                 cx.focus_handle().tab_stop(true),
             ],
+            collapsed: false,
             _subs: subs,
         }
+    }
+
+    /// Shows only the header, whose click then emits [`ExpandDock`], or the whole dock.
+    pub fn set_collapsed(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.collapsed != on {
+            self.collapsed = on;
+            cx.notify();
+        }
+    }
+
+    /// Whether only the header shows.
+    pub fn collapsed(&self) -> bool {
+        self.collapsed
     }
 
     /// Names the tab area whose request tabs the HAR export prefers over the session log.
@@ -804,10 +824,11 @@ impl Render for ConsoleDock {
                 .label("Clear")
                 .on_click(cx.listener(|d, _, _, cx| d.clear_network(cx))),
         };
-        let body = match tab {
+        let collapsed = self.collapsed;
+        let body = (!collapsed).then(|| match tab {
             DockTab::Console => self.console_tab(cx),
             DockTab::Network => self.network_tab(cx),
-        };
+        });
         v_flex()
             .id("console-dock")
             .test_support()
@@ -815,13 +836,18 @@ impl Render for ConsoleDock {
             .size_full()
             .child(
                 h_flex()
+                    .id("dock-header")
+                    .test_support()
                     .gap_2()
                     .px_2()
                     .py_1()
+                    .when(collapsed, |h| {
+                        h.on_click(cx.listener(|_, _, _, cx| cx.emit(ExpandDock)))
+                    })
                     .child(tabs)
                     .child(div().flex_1())
                     .child(clear),
             )
-            .child(body)
+            .children(body)
     }
 }
