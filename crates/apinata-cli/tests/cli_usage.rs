@@ -43,6 +43,15 @@ fn help_and_version_exit_0() {
 }
 
 #[test]
+fn help_names_the_third_party_notices_file() {
+    apinata()
+        .arg("--help")
+        .assert()
+        .code(0)
+        .stdout(contains("THIRD-PARTY-CRATES.md"));
+}
+
+#[test]
 fn unopenable_targets_exit_3_with_a_message() {
     let dir = write_tree(&[
         ("c/opencollection.yml", ROOT),

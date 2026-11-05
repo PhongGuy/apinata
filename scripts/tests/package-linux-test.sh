@@ -42,7 +42,9 @@ test_cli_archive_is_reproducible_and_complete() {
   printf 'mit\n' >"$WORK/LICENSE-MIT"
   printf 'apache\n' >"$WORK/LICENSE-APACHE"
   printf 'readme\n' >"$WORK/README.md"
-  local files=("$WORK/LICENSE-MIT" "$WORK/LICENSE-APACHE" "$WORK/README.md")
+  mkdir -p "$WORK/licenses"
+  printf 'chai\n' >"$WORK/licenses/chai-MIT.txt"
+  local files=("$WORK/LICENSE-MIT" "$WORK/LICENSE-APACHE" "$WORK/README.md" "$WORK/licenses")
   cli_archive "$WORK/apinata-bin" 9.9.9 x86_64-unknown-linux-gnu "$WORK/out1" "${files[@]}"
   touch "$WORK/README.md"
   sleep 1
@@ -50,7 +52,7 @@ test_cli_archive_is_reproducible_and_complete() {
   local a=$WORK/out1/apinata-9.9.9-x86_64-unknown-linux-gnu.tar.gz
   cmp -s "$a" "$WORK/out2/apinata-9.9.9-x86_64-unknown-linux-gnu.tar.gz" || fail "archive not reproducible"
   local listing; listing=$(tar -tzf "$a" | LC_ALL=C sort | tr '\n' ' ')
-  local want="apinata-9.9.9-x86_64-unknown-linux-gnu/ apinata-9.9.9-x86_64-unknown-linux-gnu/LICENSE-APACHE apinata-9.9.9-x86_64-unknown-linux-gnu/LICENSE-MIT apinata-9.9.9-x86_64-unknown-linux-gnu/README.md apinata-9.9.9-x86_64-unknown-linux-gnu/apinata "
+  local want="apinata-9.9.9-x86_64-unknown-linux-gnu/ apinata-9.9.9-x86_64-unknown-linux-gnu/LICENSE-APACHE apinata-9.9.9-x86_64-unknown-linux-gnu/LICENSE-MIT apinata-9.9.9-x86_64-unknown-linux-gnu/README.md apinata-9.9.9-x86_64-unknown-linux-gnu/apinata apinata-9.9.9-x86_64-unknown-linux-gnu/licenses/ apinata-9.9.9-x86_64-unknown-linux-gnu/licenses/chai-MIT.txt "
   [[ $listing == "$want" ]] || fail "archive listing: $listing"
   tar -tvzf "$a" | grep -q '^-rwxr-xr-x 0/0 .*/apinata$' || fail "binary not executable or not owned by 0/0"
 }

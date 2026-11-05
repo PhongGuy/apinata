@@ -76,6 +76,9 @@ jobs:
         run: choco install make --version=4.4.1 --no-progress -y
       - name: Install cargo-packager
         run: cargo install --locked cargo-packager --version 0.11.8
+      # Pinned to the version scripts/licenses.sh requires; the packaging steps generate the notices.
+      - name: Install cargo-about
+        run: cargo install --locked cargo-about --version 0.9.3 --features cli
       - name: Package (Linux)
         if: runner.os == 'Linux'
         env:

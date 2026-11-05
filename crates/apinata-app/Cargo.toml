@@ -63,7 +63,9 @@ icons = [
     "../../assets/icon/generated/apinata.ico",
 ]
 # Third-party licence texts for the bundled fonts and icons, installed flat beside the binary.
-resources = ["../../licenses/*.txt"]
+# The crate notices exist only after `make licenses`, which the release scripts run; a
+# missing file adds nothing, so a plain developer install still packages.
+resources = ["../../licenses/*.txt", "../../THIRD-PARTY.md", "../../THIRD-PARTY-CRATES.md"]
 
 [package.metadata.packager.deb]
 depends = ["libxcb1", "libxkbcommon0", "libxkbcommon-x11-0", "libvulkan1", "libwayland-client0", "libwayland-egl1", "libegl1"]

@@ -107,9 +107,10 @@ The `release-<version>` artifact holds every file plus `SHA256SUMS`. A non-dry r
    `crates/apinata-core/vendor/public_suffix_list.dat` and its `THIRD-PARTY.md` row
    together, then run `make check` and commit both as
    `chore(core): update the public suffix list`.
-2. Set `[workspace.package] version` in `Cargo.toml` and commit.
-3. `git tag v<version>`
-4. `git push origin v<version>`
+2. Run `make licenses-check` (needs `cargo install --locked cargo-about --version 0.9.3 --features cli`). It fails when a dependency's licence is outside the allow-list in `about.toml`; review the licence and add it there. The release scripts generate `THIRD-PARTY-CRATES.md` themselves.
+3. Set `[workspace.package] version` in `Cargo.toml` and commit.
+4. `git tag v<version>`
+5. `git push origin v<version>`
 
 The guard fails on a tag that does not match the workspace version, before any build starts.
 

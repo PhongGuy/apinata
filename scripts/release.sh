@@ -217,9 +217,7 @@ cli_zip() {
   stage=$(mktemp -d) || return 1
   install -d -m 0755 "$stage/$name"
   install -m 0755 "$binary" "$stage/$name/apinata.exe"
-  for f in "$@"; do
-    install -m 0644 "$f" "$stage/$name/$(basename "$f")"
-  done
+  stage_files "$stage/$name" "$@"
   if command -v 7z >/dev/null 2>&1; then
     (cd "$stage" && 7z a -tzip "$zip" "$name" >/dev/null) || { rm -rf -- "$stage"; return 1; }
   else
@@ -255,8 +253,10 @@ package_main() {
   version=$(workspace_version)
   target=$(rustc -vV | sed -n 's/^host: //p')
   bin_dir=${CARGO_TARGET_DIR:-$root/target}/release
+  # The notices go into the app packages too, so they are written before packaging.
+  bash "$root/scripts/licenses.sh" generate || return 1
   cargo build --release --locked -p apinata-cli -p apinata-app
-  local files=("$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$root/README.md")
+  local files=("$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$root/THIRD-PARTY-CRATES.md" "$root/THIRD-PARTY.md" "$root/licenses" "$root/README.md")
   if [[ $os == macos ]]; then
     package_app "$out" app
     TAR=gtar macos_dmg "$out" "$version" "${target%%-*}"

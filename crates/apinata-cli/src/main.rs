@@ -51,7 +51,12 @@ pub(crate) fn plural(n: usize, noun: &str) -> String {
 }
 
 #[derive(Parser)]
-#[command(name = "apinata", version, about)]
+#[command(
+    name = "apinata",
+    version,
+    about,
+    after_help = "Licences of the bundled Rust crates: THIRD-PARTY-CRATES.md, shipped with each release."
+)]
 struct Cli {
     /// Hide notices that are not errors, such as a changed-network-settings warning.
     #[arg(short = 'q', long, global = true)]
