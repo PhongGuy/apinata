@@ -1656,7 +1656,11 @@ mod held {
         stored: bool,
     ) -> (tempfile::TempDir, Started, Arc<Listing>, SecretKey) {
         let dev = format!("name: dev\n{HOST}");
-        let col = write_tree(&[("opencollection.yml", ROOT), ("environments/dev.yml", &dev)]);
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            ("a.yml", &request("a", "http://x")),
+            ("environments/dev.yml", &dev),
+        ]);
         let (store, key) = seeded(&col);
         if !stored {
             store.delete(&key).unwrap();
@@ -1832,6 +1836,44 @@ mod held {
         assert!(present(cx, s.win, "env-error"));
         store.fail_get.store(false, Ordering::SeqCst);
         assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+    }
+
+    // `app`, with a request tab opened over the environments tab, which hides it.
+    fn hidden(cx: &mut TestAppContext) -> (tempfile::TempDir, Started, Arc<Listing>, SecretKey) {
+        let (col, s, store, key) = app(cx, true);
+        let root = s.root.clone();
+        s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx))
+            .expect("a request");
+        cx.run_until_parked();
+        frame(cx, s.win);
+        assert!(
+            !present(cx, s.win, "env-editor"),
+            "the environments tab is hidden"
+        );
+        store.fail_get.store(true, Ordering::SeqCst);
+        (col, s, store, key)
+    }
+
+    // A failed read on a hidden tab brings that tab forward, so its error line says why the
+    // close stopped.
+    #[gpui_kit::test]
+    fn a_failed_read_on_a_hidden_tab_shows_why_a_window_close_stopped(cx: &mut TestAppContext) {
+        let (_col, s, store, key) = hidden(cx);
+        assert!(!close_window(cx, &s));
+        frame(cx, s.win);
+        assert_eq!(windows(cx), 1);
+        assert!(present(cx, s.win, "env-error"), "the error shows");
+        store.fail_get.store(false, Ordering::SeqCst);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+    }
+
+    #[gpui_kit::test]
+    fn a_failed_read_on_a_hidden_tab_shows_why_a_collection_close_stopped(cx: &mut TestAppContext) {
+        let (_col, s, _store, _key) = hidden(cx);
+        close_collection(cx, &s);
+        frame(cx, s.win);
+        assert_eq!(collections(cx, &s), 1);
+        assert!(present(cx, s.win, "env-error"), "the error shows");
     }
 
     #[gpui_kit::test]

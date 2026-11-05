@@ -1494,6 +1494,21 @@ impl TabArea {
         self.check_replace(editors, true, window, cx, done);
     }
 
+    // A failed store read is on its editor's error line; a hidden tab is brought to the front
+    // so the person sees why the save or close stopped.
+    fn show_failed_read(&mut self, editors: &[Entity<EnvEditor>], cx: &mut Context<Self>) {
+        let failed = (self.workspace.read(cx).tabs().entries().iter()).find(|e| {
+            (self.env_editor(e.id))
+                .is_some_and(|ed| editors.contains(ed) && ed.read(cx).error().is_some())
+        });
+        let Some(id) = failed.map(|e| e.id) else {
+            return;
+        };
+        self.tabs_action(cx, |tabs| {
+            tabs.activate(id);
+        });
+    }
+
     fn env_editors(&self, ids: &[TabId]) -> Vec<Entity<EnvEditor>> {
         ids.iter()
             .filter_map(|id| match self.editors.get(id) {
@@ -1547,6 +1562,9 @@ impl TabArea {
             this.update_in(cx, |area, window, cx| {
                 for editor in &editors {
                     editor.update(cx, |e, cx| e.end_replace_check(go, cx));
+                }
+                if !go {
+                    area.show_failed_read(&editors, cx);
                 }
                 done(go, area, window, cx);
             })
