@@ -2,7 +2,7 @@
 
 use super::model::{self, Collection, GqlRequest, Pair, Request, Text, text};
 use super::template::rewrite;
-use super::{REQUEST_VERSION, RequestKind, collection_version_note};
+use super::{GQL_REQUEST_VERSION, REQUEST_VERSION, RequestKind, collection_version_note};
 use super::{auth, body};
 use crate::edit::{AuthSpec, BodySpec, KeyValue, Param, ParamKind, VarValue, Variable};
 use crate::import::{
@@ -202,7 +202,9 @@ fn request(
     let own = raw_name(&value);
     let kind = RequestKind::of(&value);
     let newer = match kind {
-        RequestKind::GraphQl => return graphql_request(value, own, seq, trail, unwritten, budget),
+        RequestKind::GraphQl { newer } => {
+            return graphql_request(value, own, newer, seq, trail, unwritten, budget);
+        }
         RequestKind::Unknown => {
             let v = value.get("v").map(Value::to_string).unwrap_or_default();
             let detail = format!("version {v} is not a request version; not imported");
@@ -238,6 +240,7 @@ fn request(
 fn graphql_request(
     value: Value,
     own: String,
+    newer: bool,
     seq: u64,
     trail: &mut Vec<String>,
     unwritten: &mut Vec<ImportNote>,
@@ -254,7 +257,7 @@ fn graphql_request(
     budget.entry()?;
     trail.push(own);
     let mut scope = Scope::new(budget, trail);
-    let request = graphql_members(r, &mut scope);
+    let request = graphql_members(r, newer, &mut scope);
     let notes = scope.notes;
     let name = trail.pop().unwrap_or_default();
     Ok(Some(ImportedRequestItem {
@@ -267,7 +270,15 @@ fn graphql_request(
 
 /// A GraphQL request's own members. Auth missing before version 2 means none, as its
 /// migration sets it.
-fn graphql_members(r: GqlRequest, scope: &mut Scope) -> Result<ImportedRequest, DocumentError> {
+fn graphql_members(
+    r: GqlRequest,
+    newer: bool,
+    scope: &mut Scope,
+) -> Result<ImportedRequest, DocumentError> {
+    if newer {
+        let detail = format!("a newer request version; read as version {GQL_REQUEST_VERSION}");
+        scope.note("v", NoteKind::Converted, detail)?;
+    }
     scope.rest(r.rest, String::new)?;
     let url = scope.value(text(r.url), || "url".to_owned())?;
     let headers = pairs(r.headers, "headers", scope)?;

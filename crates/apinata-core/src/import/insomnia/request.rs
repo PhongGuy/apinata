@@ -63,10 +63,24 @@ pub(super) fn request(
     );
     let mut request = ImportedRequest::new(method, url);
     request.params = params;
-    request.headers = headers(source.headers, trail, notes, budget)?;
+    let header_rows = rows(source.headers, &[], trail, notes, budget)?;
+    let at: Vec<usize> = header_rows.iter().map(|row| row.index).collect();
+    request.headers = header_rows.into_iter().map(|row| row.kv).collect();
     request.body = body(source.body, trail, notes, budget)?;
     if matches!(request.body, BodySpec::Graphql { .. }) {
         request.kind = RequestKind::Graphql;
+        // The query goes out as JSON, so a GraphQL content type would mislabel it.
+        for (header, index) in request.headers.iter_mut().zip(at) {
+            if header.name.eq_ignore_ascii_case("content-type")
+                && mime(Some(&Value::String(header.value.clone()))) == "application/graphql"
+            {
+                header.value = "application/json".to_owned();
+                let path = format!("headers[{index}].value");
+                let detail =
+                    "the GraphQL body is sent as JSON, so the content type is application/json";
+                notes.push(budget.note(trail, &path, NoteKind::Converted, detail)?);
+            }
+        }
     }
     request.auth = auth(source.auth, trail, &mut request.headers, notes, budget)?;
     request.docs = member_text(source.description);
@@ -292,8 +306,8 @@ fn body(
 }
 
 /// A GraphQL body from its JSON text, templates rewritten in the query and variables. Text
-/// that is not a JSON object imports empty with a note, as does a named operation, which a
-/// request file cannot hold.
+/// that is not a JSON object with a query or variables imports empty with a note, and a named
+/// operation, which a request file cannot hold, is noted.
 fn graphql(
     content: &str,
     trail: &[String],
@@ -301,9 +315,10 @@ fn graphql(
     notes: &mut Vec<ImportNote>,
     budget: &mut Budget,
 ) -> Result<BodySpec, DocumentError> {
+    // An object with neither member holds nothing to import, like text that is not JSON.
     let parsed = serde_json::from_str::<Value>(content)
         .ok()
-        .filter(Value::is_object);
+        .filter(|v| v.get("query").is_some() || v.get("variables").is_some());
     let Some(parsed) = parsed else {
         if !content.trim().is_empty() {
             let detail = "the GraphQL body is not JSON with a query and variables; not imported";

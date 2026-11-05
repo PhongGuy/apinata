@@ -287,3 +287,114 @@ fn written_graphql_imports_match_their_snapshots() {
         insta::assert_snapshot!(name.replace('.', "_"), text);
     }
 }
+
+fn insomnia_one(request: &str) -> ImportedRequestItem {
+    let input = format!(
+        r#"{{"_type": "export", "__export_format": 4, "resources": [
+        {{"_id": "wrk", "_type": "workspace", "parentId": null, "name": "w"}},
+        {{"_id": "req", "_type": "request", "parentId": "wrk", "name": "R", "method": "POST",
+          "url": "u", {request}}}]}}"#
+    );
+    let mut bundles = parse_collections(
+        Some(CollectionFormat::Insomnia),
+        input.as_bytes(),
+        &CollectionOptions::default(),
+    )
+    .expect("parses");
+    find(&bundles.remove(0).collection.items, &["R"]).clone()
+}
+
+fn hoppscotch_one(request: &str) -> ImportedCollection {
+    let input = format!(r#"{{"v": 12, "name": "c", "folders": [], "requests": [{request}]}}"#);
+    let mut bundles = parse_collections(
+        Some(CollectionFormat::Hoppscotch),
+        input.as_bytes(),
+        &CollectionOptions::default(),
+    )
+    .expect("parses");
+    bundles.remove(0).collection
+}
+
+#[test]
+fn an_insomnia_graphql_content_type_header_is_sent_as_json() {
+    let r = insomnia_one(
+        r#""headers": [{"name": "content-type", "value": "application/graphql; charset=utf-8"},
+            {"name": "Accept", "value": "application/graphql"}],
+          "body": {"mimeType": "application/graphql", "text": "{\"query\": \"{ a }\"}"}"#,
+    );
+    assert_eq!(
+        r.request.headers,
+        [
+            KeyValue::new("content-type", "application/json"),
+            KeyValue::new("Accept", "application/graphql")
+        ]
+    );
+    assert!(
+        r.notes.iter().any(|n| n.kind == NoteKind::Converted
+            && n.source == "R / headers[0].value"
+            && n.detail.contains("application/json")),
+        "{:#?}",
+        r.notes
+    );
+    // An HTTP request keeps the header as written.
+    let http = insomnia_one(
+        r#""headers": [{"name": "Content-Type", "value": "application/graphql"}],
+          "body": {"mimeType": "text/plain", "text": "{ a }"}"#,
+    );
+    assert_eq!(
+        http.request.headers,
+        [KeyValue::new("Content-Type", "application/graphql")]
+    );
+}
+
+#[test]
+fn an_insomnia_graphql_object_without_query_or_variables_is_noted() {
+    let r = insomnia_one(r#""body": {"mimeType": "application/graphql", "text": "{}"}"#);
+    assert_eq!(r.request.body, graphql("", ""));
+    assert!(
+        r.notes.iter().any(|n| n.kind == NoteKind::Dropped
+            && n.source == "R / body.text"
+            && n.detail.contains("not JSON")),
+        "{:#?}",
+        r.notes
+    );
+}
+
+#[test]
+fn a_newer_hoppscotch_graphql_version_is_noted() {
+    let c = hoppscotch_one(r#"{"v": 11, "name": "q", "url": "u", "query": "{ a }"}"#);
+    let r = find(&c.items, &["q"]);
+    assert_eq!(r.request.kind, RequestKind::Graphql);
+    assert!(
+        r.notes
+            .iter()
+            .any(|n| n.kind == NoteKind::Converted && n.source == "q / v"),
+        "{:#?}",
+        r.notes
+    );
+    let known = hoppscotch_one(r#"{"v": 10, "name": "q", "url": "u", "query": "{ a }"}"#);
+    assert!(find(&known.items, &["q"]).notes.is_empty());
+    let odd = hoppscotch_one(r#"{"v": 1.5, "name": "q", "url": "u", "query": "{ a }"}"#);
+    assert!(odd.items.is_empty());
+    assert!(
+        odd.unwritten
+            .iter()
+            .any(|n| n.kind == NoteKind::Dropped && n.source == "q"),
+        "{:#?}",
+        odd.unwritten
+    );
+}
+
+#[test]
+fn a_graphql_request_can_inherit_its_auth() {
+    let c = hoppscotch_one(
+        r#"{"v": 10, "name": "q", "url": "u", "query": "{ a }",
+            "auth": {"authType": "inherit", "authActive": true}}"#,
+    );
+    assert_eq!(find(&c.items, &["q"]).request.auth, AuthSpec::Inherit);
+    let r = insomnia_one(
+        r#""authentication": {}, "body": {"mimeType": "application/graphql", "text": "{\"query\": \"{ a }\"}"}"#,
+    );
+    assert_eq!(r.request.kind, RequestKind::Graphql);
+    assert_eq!(r.request.auth, AuthSpec::Inherit);
+}
