@@ -107,15 +107,12 @@ fn a_held_config_lock_refuses_set_upstream_before_pushing() {
     );
 }
 
-/// Options whose `git push` ignores TERM, creates `.git/<lock>` (when given), marks
+/// Options whose `git push` ignores TERM, creates each `.git/<lock>` in `locks`, marks
 /// `<bin>/started` and hangs; every other call is the real git.
 #[cfg(target_os = "linux")]
-fn stubborn_push(
-    sb: &Sandbox,
-    root: &Path,
-    lock: Option<&str>,
-) -> (GitOptions, std::path::PathBuf) {
-    let take = lock
+fn stubborn_push(sb: &Sandbox, root: &Path, locks: &[&str]) -> (GitOptions, std::path::PathBuf) {
+    let take: String = locks
+        .iter()
         .map(|l| {
             let p = root.join(".git").join(l);
             format!(
@@ -124,7 +121,7 @@ fn stubborn_push(
                 p.display()
             )
         })
-        .unwrap_or_default();
+        .collect();
     let body = format!(
         "#!/bin/sh\ndir=${{0%/*}}\ncase \"$*\" in *\" push \"*) trap '' TERM; {take}: > \"$dir/started\"; sleep 30; exit 1 ;; esac\nexec '{}' \"$@\"\n",
         real_git().display()
@@ -172,11 +169,25 @@ fn a_killed_push_reports_the_lock_it_left_or_is_cancelled() {
             sb.git(&root, &["switch", "-q", "-c", branch]);
         }
         local_commit(&sb, &root, "d.txt");
-        let (opts, started) = stubborn_push(&sb, &root, name);
+        let (opts, started) = stubborn_push(&sb, &root, name.as_slice());
         let r = cancelled_push(&root, set, &opts, &started);
         match name {
             Some(name) => busy_at(r, &root.join(".git").join(name)),
             None => assert!(matches!(r, Err(SyncError::Cancelled)), "{r:?}"),
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_killed_push_reports_the_tracking_lock_before_the_config_lock() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    sb.git(&root, &["switch", "-q", "-c", "topic"]);
+    local_commit(&sb, &root, "t.txt");
+    let tracking = "refs/remotes/origin/topic.lock";
+    let (opts, started) = stubborn_push(&sb, &root, &[tracking, "config.lock"]);
+    let r = cancelled_push(&root, Some("origin"), &opts, &started);
+    busy_at(r, &root.join(".git").join(tracking));
+    assert!(root.join(".git/config.lock").exists());
 }

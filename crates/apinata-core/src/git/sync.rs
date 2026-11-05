@@ -195,13 +195,14 @@ pub fn push(
     let Some(to) = verify(root, &format!("{full}^{{commit}}"), opts)? else {
         return Err(failed(format!("{branch} has no commits yet; commit first")));
     };
-    let (remote, dst, upstream) = match set_upstream {
+    let (remote, dst, upstream, tracking) = match set_upstream {
         Some(remote) => {
             configured_remote(root, remote, opts)?;
             (
                 remote.to_owned(),
                 full.clone(),
                 format!("{remote}/{branch}"),
+                format!("refs/remotes/{remote}/{branch}"),
             )
         }
         None => {
@@ -213,7 +214,7 @@ pub fn push(
                 });
             }
             configured_remote(root, &up.remote, opts)?;
-            (up.remote, up.remote_ref, up.name)
+            (up.remote, up.remote_ref, up.name, up.tracking)
         }
     };
     // Setting the upstream writes the config; refuse while another process holds it.
@@ -240,8 +241,7 @@ pub fn push(
         Err(StreamError::Cancelled { killed }) => {
             return Err(killed_push(
                 root,
-                &remote,
-                &dst,
+                &tracking,
                 set_upstream.is_some(),
                 killed,
                 opts,
@@ -300,24 +300,24 @@ fn porcelain_ref(stdout: &str) -> Option<(char, &str)> {
     Some((flag, summary.trim()))
 }
 
-/// The text inside a rejection summary's last parentheses, such as `fetch first` in
-/// `[rejected] (fetch first)`; the whole summary when there are none.
+/// The parenthesized reason after a rejection summary's status, such as `fetch first` in
+/// `[rejected] (fetch first)`; the whole summary when there is none.
 fn rejection_reason(summary: &str) -> &str {
-    summary
-        .rfind('(')
-        .and_then(|open| {
-            let inner = &summary[open + 1..];
-            inner.rfind(')').map(|close| &inner[..close])
-        })
-        .unwrap_or(summary)
+    // The reason may hold parentheses itself, so read from the first `(` after the bracketed
+    // status to the final `)`.
+    let after = summary.find(']').map_or(0, |close| close + 1);
+    let Some(open) = summary[after..].find('(') else {
+        return summary;
+    };
+    let inner = &summary[after + open + 1..];
+    inner.strip_suffix(')').unwrap_or(inner)
 }
 
 /// A push stopped by the cancel flag. A killed git may have left the tracking-ref lock, or the
 /// config lock when setting the upstream; report the first one still held and never delete it.
 fn killed_push(
     root: &Path,
-    remote: &str,
-    dst: &str,
+    tracking: &str,
     set_upstream: bool,
     killed: bool,
     opts: &GitOptions,
@@ -325,8 +325,7 @@ fn killed_push(
     if !killed {
         return SyncError::Cancelled;
     }
-    let name = dst.strip_prefix("refs/heads/").unwrap_or(dst);
-    let mut names = vec![format!("refs/remotes/{remote}/{name}.lock")];
+    let mut names = vec![format!("{tracking}.lock")];
     if set_upstream {
         names.push("config.lock".to_owned());
     }
@@ -499,5 +498,25 @@ fn from_fetch(e: FetchError) -> SyncError {
         FetchError::Busy { lock } => SyncError::Busy { lock },
         FetchError::Failed { stderr } => SyncError::Failed { stderr },
         FetchError::Io(e) => SyncError::Io(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rejection_reason;
+
+    #[test]
+    fn a_rejection_reason_keeps_nested_parentheses() {
+        assert_eq!(
+            rejection_reason("[remote rejected] (declined (policy))"),
+            "declined (policy)"
+        );
+        assert_eq!(rejection_reason("[rejected] (fetch first)"), "fetch first");
+    }
+
+    #[test]
+    fn a_rejection_reason_without_brackets_is_read_from_the_first_parenthesis() {
+        assert_eq!(rejection_reason("(a (b) c)"), "a (b) c");
+        assert_eq!(rejection_reason("no reason"), "no reason");
     }
 }
