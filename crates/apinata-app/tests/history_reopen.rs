@@ -15,6 +15,8 @@ use support::*;
 const KEY: &str = "untitled-17600000000000000001.draft";
 const GONE: &str = "untitled-17600000000000000002.draft";
 const BAD: &str = "untitled-17600000000000000003.draft";
+const MASKED: &str = "untitled-17600000000000000004.draft";
+const MASKED_SNAP: &str = r#"{"info":{"name":"Masked","type":"http","seq":1},"http":{"method":"GET","url":"http://127.0.0.1:9/m","headers":[{"name":"X-API-Key","value":"[redacted]"}]}}"#;
 const SNAP: &str = r#"{"info":{"name":"Kept draft","type":"http","seq":1},"http":{"method":"POST","url":"http://127.0.0.1:9/kept"}}"#;
 
 fn kept(item: &str, status: u16) -> RequestResult {
@@ -48,6 +50,7 @@ fn seeded(cx: &mut TestAppContext, col: &tempfile::TempDir) -> Started {
         save(KEY, 202, 2_000, Some(SNAP));
         save(GONE, 203, 3_000, None);
         save(BAD, 204, 4_000, Some("not json"));
+        save(MASKED, 205, 5_000, Some(MASKED_SNAP));
     })
 }
 
@@ -149,4 +152,42 @@ fn a_saved_entry_still_opens_its_file(cx: &mut TestAppContext) {
     });
     choose(cx, &s, "a.yml", 0);
     wait_real(cx, |cx| tab_names(cx, &s.ws) == ["a.yml"]);
+}
+
+// The kept copy lost its credentials, so the reopened draft says they must be entered again
+// rather than letting the placeholder go out unnoticed.
+#[gpui_kit::test]
+fn a_draft_entry_with_hidden_credentials_opens_and_says_to_enter_them(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    let before = toasts(cx, &s);
+    choose(cx, &s, MASKED, 0);
+    wait_real(cx, |cx| {
+        s.ws.read_with(cx, |w, _| {
+            w.tabs()
+                .active()
+                .and_then(|e| e.item().cloned())
+                .is_some_and(|p| p.is_draft())
+        })
+    });
+    wait_real(cx, |cx| toasts(cx, &s) == before + 1);
+    assert!(apinata_app::history_palette::DRAFT_MASKED.contains("[redacted]"));
+}
+
+#[gpui_kit::test]
+fn a_draft_entry_without_hidden_credentials_opens_quietly(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    let before = toasts(cx, &s);
+    choose(cx, &s, KEY, 0);
+    wait_real(cx, |cx| {
+        s.ws.read_with(cx, |w, _| {
+            w.tabs()
+                .active()
+                .and_then(|e| e.item().cloned())
+                .is_some_and(|p| p.is_draft())
+        })
+    });
+    cx.run_until_parked();
+    assert_eq!(toasts(cx, &s), before);
 }

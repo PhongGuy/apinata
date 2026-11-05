@@ -953,9 +953,18 @@ impl Shell {
             let json = answer.recv().await.ok().flatten();
             let snap = json.and_then(|json| DraftSnapshot::from_json(&json).ok());
             let _ = this.update_in(cx, |this, window, cx| match snap {
-                Some(snap) => drop(
-                    (this.workspace).update(cx, |w, cx| w.reopen_draft(&root, path, seq, snap, cx)),
-                ),
+                Some(snap) => {
+                    // A hidden credential would go out as its placeholder, so the user is told.
+                    let masked = crate::scrub::holds_placeholder(&snap.to_json());
+                    let opened = (this.workspace)
+                        .update(cx, |w, cx| w.reopen_draft(&root, path, seq, snap, cx));
+                    if masked && opened.is_some() {
+                        window.push_notification(
+                            Notification::warning(crate::history_palette::DRAFT_MASKED),
+                            cx,
+                        );
+                    }
+                }
                 None => window.push_notification(
                     Notification::warning(crate::history_palette::DRAFT_GONE),
                     cx,

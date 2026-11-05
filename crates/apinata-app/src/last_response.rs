@@ -1237,9 +1237,10 @@ fn remasked_snapshot(json: &str) -> Option<String> {
 }
 
 /// A sent url as a kept response records it: no userinfo at all, since a username alone can be
-/// a token, and every secret scrubbed.
+/// a token, every credential-named query value hidden and every secret scrubbed.
 fn kept_url(url: &str, secrets: &[String]) -> String {
-    scrub_url(&apinata_core::redact_url_userinfo(url), secrets)
+    let url = apinata_core::mask_credential_query(&apinata_core::redact_url_userinfo(url));
+    scrub_url(&url, secrets)
 }
 
 /// Renames `from` to `to`; a `from` that is already gone counts as done.

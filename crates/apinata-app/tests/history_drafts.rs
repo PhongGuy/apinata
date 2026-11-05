@@ -11,7 +11,7 @@ use apinata_app::request_editor::{RequestEditor, SendRequest};
 use apinata_app::save_draft::{self, SaveAs};
 use apinata_app::tabs::TabId;
 use apinata_app::workspace::Workspace;
-use apinata_core::{AuthSpec, ItemPath, MemoryStore, SecretStore as _};
+use apinata_core::{AuthSpec, ItemPath, KeyValue, MemoryStore, SecretStore as _};
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use support::*;
 use wiremock::ResponseTemplate;
@@ -90,6 +90,50 @@ fn a_draft_send_keeps_its_request_with_literal_credentials_blanked(cx: &mut Test
         "{:?}",
         leaks(store.dir(), TOKEN)
     );
+}
+
+// Literals no secret list knows are still hidden when their name or shape says credential.
+#[gpui_kit::test]
+fn a_draft_snapshot_hides_credentials_found_by_name_and_shape(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200));
+    let col = collection_for(&server.uri(), "");
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    cx.update(|cx| install(store.clone(), cx));
+    let (tab, draft) = draft_tab(cx, &ws, &root);
+    let url = format!("{}/d?api_key=Lit-Query-5&page=2", server.uri());
+    ws.update(cx, |w, cx| w.send(&root, edit_url(&draft, &url), cx));
+    let headers = Command::Edit {
+        target: Target::Request(ip(&draft)),
+        edit: Edit::Headers(vec![
+            KeyValue::new("X-API-Key", "Lit-Header-6"),
+            KeyValue::new("X-Session-Token", "Lit-Header-7"),
+            KeyValue::new("X-Forward", "Bearer Lit-Bearer-8"),
+            KeyValue::new("X-Keyboard", "qwerty-kept"),
+        ]),
+    };
+    ws.update(cx, |w, cx| w.send(&root, headers, cx));
+    cx.run_until_parked();
+    let (win, editor) = editor_for(cx, &ws, &root, &draft, false);
+    send_from(cx, win, &editor);
+    let key = key_of(cx, &ws, tab);
+    wait_real(cx, |_| store.request_json(&root, &key, 0).is_some());
+    let json = store.request_json(&root, &key, 0).unwrap();
+    assert!(json.contains("qwerty-kept"), "{json}");
+    assert!(json.contains("page=2"), "{json}");
+    for literal in [
+        "Lit-Query-5",
+        "Lit-Header-6",
+        "Lit-Header-7",
+        "Lit-Bearer-8",
+    ] {
+        assert!(
+            leaks(store.dir(), literal).is_empty(),
+            "{literal}: {:?}",
+            leaks(store.dir(), literal)
+        );
+    }
 }
 
 #[gpui_kit::test]
