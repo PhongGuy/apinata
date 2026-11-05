@@ -92,6 +92,19 @@ impl RunPlan {
             .retain(|e| kept.iter().any(|k| affects(e.path(), k)));
         self
     }
+
+    /// The plan narrowed to exactly the requests in `requests`, kept in the plan's run order
+    /// whatever order or repeats they are given in. An id the plan does not hold (a folder, a
+    /// request outside it or one that no longer exists) fails with [`SelectError::NotPlanned`].
+    pub fn choose(self, requests: &[ItemPath]) -> Result<RunPlan, SelectError> {
+        if let Some(item) = requests
+            .iter()
+            .find(|i| !self.requests.iter().any(|(p, _, _)| p == *i))
+        {
+            return Err(SelectError::NotPlanned { item: item.clone() });
+        }
+        Ok(self.retain_items(requests))
+    }
 }
 
 /// Shows item paths and an error count only, since request files hold header values and bodies.
@@ -120,6 +133,12 @@ pub enum SelectError {
     NotAnItem {
         /// The path that was given.
         path: PathBuf,
+    },
+    /// A chosen request id is not one of the plan's requests.
+    #[error("{item} is not a request in this run")]
+    NotPlanned {
+        /// The id that was given.
+        item: ItemPath,
     },
 }
 
