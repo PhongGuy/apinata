@@ -1,8 +1,9 @@
 //! GraphQL schema introspection: the introspection request, its fetch, the schema model
-//! parsed from the answer and the errors a schema load can end in.
+//! parsed from the answer or from an SDL file, and the errors a schema load can end in.
 
 mod complete;
 mod model;
+mod sdl;
 
 pub use complete::{Completion, CompletionKind};
 pub use model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
@@ -75,6 +76,26 @@ pub async fn fetch_schema(
     Schema::from_json(response.text())
 }
 
+impl Schema {
+    /// Parses an SDL schema document such as `type Query { me: User }`.
+    ///
+    /// Roots follow a `schema` block, else the types named Query, Mutation and Subscription;
+    /// the built-in scalars are present even when undeclared. Fails with [`SchemaError::Sdl`].
+    pub fn from_sdl(text: &str) -> Result<Schema, SchemaError> {
+        sdl::parse(text)
+    }
+
+    /// Parses a schema file: introspection JSON when the text starts with `{`, SDL otherwise.
+    pub fn from_text(text: &str) -> Result<Schema, SchemaError> {
+        let body = text.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
+        if body.starts_with('{') {
+            Schema::from_json(body)
+        } else {
+            Schema::from_sdl(text)
+        }
+    }
+}
+
 /// Why a GraphQL schema could not be loaded or parsed.
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
@@ -111,6 +132,16 @@ pub enum SchemaError {
     /// The JSON holds no `__schema` object.
     #[error("no schema in the response")]
     NoData,
+    /// The text is not a valid SDL schema document.
+    #[error("the schema is not valid SDL at line {line}, column {column}: {detail}")]
+    Sdl {
+        /// The 1-based line of the problem.
+        line: usize,
+        /// The 1-based column of the problem, in characters.
+        column: usize,
+        /// What is wrong.
+        detail: String,
+    },
     /// The `__schema` object does not have the introspection shape.
     #[error("the schema is malformed: {detail}")]
     Invalid {

@@ -183,6 +183,7 @@ mod graphql_introspection;
 mod graphql_load;
 mod graphql_parity;
 mod graphql_schema_model;
+mod graphql_schema_sdl;
 mod host_overrides;
 mod ignore_open;
 mod ignore_reload;

@@ -9,10 +9,10 @@ use super::SchemaError;
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Schema {
-    query_type: Option<String>,
-    mutation_type: Option<String>,
-    subscription_type: Option<String>,
-    types: Vec<SchemaType>,
+    pub(super) query_type: Option<String>,
+    pub(super) mutation_type: Option<String>,
+    pub(super) subscription_type: Option<String>,
+    pub(super) types: Vec<SchemaType>,
 }
 
 /// The kind of a named GraphQL type.
@@ -37,52 +37,52 @@ pub enum TypeKind {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct SchemaType {
-    name: String,
-    kind: TypeKind,
-    description: Option<String>,
-    fields: Vec<Field>,
-    input_fields: Vec<InputValue>,
-    enum_values: Vec<EnumValue>,
-    interfaces: Vec<String>,
-    possible_types: Vec<String>,
+    pub(super) name: String,
+    pub(super) kind: TypeKind,
+    pub(super) description: Option<String>,
+    pub(super) fields: Vec<Field>,
+    pub(super) input_fields: Vec<InputValue>,
+    pub(super) enum_values: Vec<EnumValue>,
+    pub(super) interfaces: Vec<String>,
+    pub(super) possible_types: Vec<String>,
 }
 
 /// A field of an object or interface type.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Field {
-    name: String,
-    description: Option<String>,
-    args: Vec<InputValue>,
-    ty: TypeRef,
-    deprecation: Option<String>,
+    pub(super) name: String,
+    pub(super) description: Option<String>,
+    pub(super) args: Vec<InputValue>,
+    pub(super) ty: TypeRef,
+    pub(super) deprecation: Option<String>,
 }
 
 /// An argument or an input object field.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct InputValue {
-    name: String,
-    description: Option<String>,
-    ty: TypeRef,
-    default_value: Option<String>,
+    pub(super) name: String,
+    pub(super) description: Option<String>,
+    pub(super) ty: TypeRef,
+    pub(super) default_value: Option<String>,
 }
 
 /// One value of an enum type.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct EnumValue {
-    name: String,
-    description: Option<String>,
-    deprecation: Option<String>,
+    pub(super) name: String,
+    pub(super) description: Option<String>,
+    pub(super) deprecation: Option<String>,
 }
 
 /// A reference to a type with its list and non-null wrappers, such as `[User!]!`.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct TypeRef {
-    named: String,
-    display: String,
+    pub(super) named: String,
+    pub(super) display: String,
 }
 
 impl Schema {

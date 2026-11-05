@@ -1,0 +1,53 @@
+"The root query."
+type Query {
+  "One user by id."
+  user(
+    "The user id."
+    id: ID!
+    active: Boolean = true
+  ): User
+  users(first: Int = 10, role: Role): [User!]!
+  oldUsers: [User] @deprecated(reason: "Use users")
+  node(id: ID!): Node
+  search(term: String!): [SearchResult!]!
+}
+
+type Mutation {
+  addUser(input: NewUser!): User
+}
+
+"Anything with an id."
+interface Node {
+  id: ID!
+}
+
+"""
+A person.
+"""
+type User implements Node {
+  id: ID!
+  "Display name."
+  name: String
+  legacyName: String @deprecated(reason: "")
+  role: Role
+  "Friends of the user."
+  friends: [User!]
+}
+
+type Post {
+  title: String
+}
+
+union SearchResult = User | Post
+
+enum Role {
+  "Full access."
+  ADMIN
+  MEMBER
+  GUEST @deprecated(reason: "Gone")
+}
+
+input NewUser {
+  name: String!
+  role: Role = MEMBER
+}
