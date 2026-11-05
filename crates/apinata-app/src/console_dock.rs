@@ -126,6 +126,11 @@ impl ConsoleDock {
         self.collapsed
     }
 
+    /// Whether focus is in the dock but not on a header tab, as last drawn.
+    pub fn body_focused(&self, window: &Window, cx: &App) -> bool {
+        self.focus.contains_focused(window, cx) && self.focused_tab(window).is_none()
+    }
+
     /// Names the tab area whose request tabs the HAR export prefers over the session log.
     pub fn set_tab_area(&mut self, area: WeakEntity<TabArea>) {
         self.tab_area = Some(area);
@@ -800,6 +805,9 @@ impl Render for ConsoleDock {
             .on_action(cx.listener(|d, _: &ui::ActivateSegment, window, cx| {
                 if let Some(ix) = d.focused_tab(window) {
                     d.set_tab(DockTab::at(ix), cx);
+                    if d.collapsed {
+                        cx.emit(ExpandDock);
+                    }
                 }
             }))
             .on_action(cx.listener(|d, _: &ui::NextSegment, window, cx| d.step_tab(window, cx)))
@@ -838,15 +846,17 @@ impl Render for ConsoleDock {
                 h_flex()
                     .id("dock-header")
                     .test_support()
+                    .flex_none()
+                    .h(style::dock_header(crate::zoom::current(cx)))
                     .gap_2()
                     .px_2()
-                    .py_1()
                     .when(collapsed, |h| {
                         h.on_click(cx.listener(|_, _, _, cx| cx.emit(ExpandDock)))
                     })
                     .child(tabs)
                     .child(div().flex_1())
-                    .child(clear),
+                    // The log is out of sight while collapsed, so Clear is too.
+                    .when(!collapsed, |h| h.child(clear)),
             )
             .children(body)
     }
