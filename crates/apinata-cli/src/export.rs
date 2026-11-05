@@ -35,8 +35,10 @@ pub struct ExportArgs {
 pub enum ExportFormat {
     /// Postman v2.1 collection JSON.
     Postman,
-    /// OpenAPI 3.1 JSON; environments become servers.
+    /// OpenAPI 3.1; YAML when --out ends in .yaml or .yml, else JSON. Environments become servers.
     Openapi,
+    /// OpenAPI 3.1 as YAML whatever the output name is; environments become servers.
+    OpenapiYaml,
     /// One self-contained HTML documentation page; environments are left out.
     Html,
 }
@@ -58,7 +60,7 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
     if args.env_dir.is_some() {
         match args.format {
             ExportFormat::Postman => {}
-            ExportFormat::Openapi => anyhow::bail!(
+            ExportFormat::Openapi | ExportFormat::OpenapiYaml => anyhow::bail!(
                 "--env-dir does not apply to --format openapi; environments are carried as servers"
             ),
             ExportFormat::Html => anyhow::bail!(
@@ -87,9 +89,16 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
             let exported = export::postman(&collection);
             (exported.json, exported.notes)
         }
-        ExportFormat::Openapi => {
+        ExportFormat::Openapi | ExportFormat::OpenapiYaml => {
             let exported = export::openapi(&collection);
-            (exported.json, exported.notes)
+            let yaml =
+                matches!(args.format, ExportFormat::OpenapiYaml) || export::is_yaml_path(&args.out);
+            let text = if yaml {
+                exported.yaml().map_err(anyhow::Error::msg)?
+            } else {
+                exported.json
+            };
+            (text, exported.notes)
         }
         ExportFormat::Html => {
             let exported = export::html(&collection);

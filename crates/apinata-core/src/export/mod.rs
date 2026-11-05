@@ -111,6 +111,13 @@ pub struct PostmanExport {
     pub notes: Vec<ExportNote>,
 }
 
+/// Whether `path` names a YAML file by its extension (`.yaml` or `.yml`, any case).
+pub fn is_yaml_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("yaml") || e.eq_ignore_ascii_case("yml"))
+}
+
 /// A collection exported as an OpenAPI 3.1 document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -119,6 +126,16 @@ pub struct OpenApiExport {
     pub json: String,
     /// What was dropped or degraded, in tree order.
     pub notes: Vec<ExportNote>,
+}
+
+impl OpenApiExport {
+    /// The same document as block-style YAML with a trailing newline, keys in the JSON's order.
+    pub fn yaml(&self) -> Result<String, String> {
+        // Re-reading the text we just wrote keeps one source of truth for the document's shape.
+        let value: serde_json::Value =
+            serde_json::from_str(&self.json).map_err(|e| e.to_string())?;
+        yaml_serde::to_string(&value).map_err(|e| e.to_string())
+    }
 }
 
 /// A collection exported as one HTML documentation page.

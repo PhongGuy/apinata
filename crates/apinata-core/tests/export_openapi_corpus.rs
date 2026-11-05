@@ -117,3 +117,65 @@ fn every_corpus_export_round_trips_through_the_openapi_importer() {
         assert_eq!(theirs, ours, "{label}");
     }
 }
+
+#[test]
+fn yaml_output_imports_to_the_same_collection_as_the_json() {
+    for (label, root) in corpus() {
+        let out = openapi(&Collection::open(&root).expect("opens"));
+        let yaml = out.yaml().unwrap_or_else(|e| panic!("{label}: {e}"));
+        assert!(yaml.ends_with('\n'), "{label}");
+        let import = |format, text: &str| {
+            let bundles =
+                parse_collections(Some(format), text.as_bytes(), &CollectionOptions::default())
+                    .unwrap_or_else(|e| panic!("{label}: {e:?}"));
+            format!("{:?}", bundles[0].collection)
+        };
+        assert_eq!(
+            import(CollectionFormat::OpenApi, &yaml),
+            import(CollectionFormat::OpenApi, &out.json),
+            "{label}"
+        );
+        assert!(!yaml.trim_start().starts_with('{'), "{label}");
+    }
+}
+
+#[test]
+fn yaml_output_keeps_the_json_key_order() {
+    let (_d, c) = open(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &http("a", "GET", "https://x.test/a", INHERIT)),
+    ]);
+    let out = openapi(&c);
+    let yaml = out.yaml().unwrap();
+    let keys = |text: &str| -> Vec<String> {
+        text.lines()
+            .filter(|l| !l.starts_with([' ', '-']) && l.contains(':'))
+            .map(|l| {
+                l.trim_start_matches('"')
+                    .split(['"', ':'])
+                    .next()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect()
+    };
+    let json_keys: Vec<String> = serde_json::from_str::<Value>(&out.json)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(keys(&yaml), json_keys);
+}
+
+#[test]
+fn only_yaml_and_yml_paths_ask_for_yaml() {
+    use apinata_core::export::is_yaml_path;
+    use std::path::Path;
+    assert!(is_yaml_path(Path::new("a.openapi.yaml")));
+    assert!(is_yaml_path(Path::new("A.YML")));
+    assert!(!is_yaml_path(Path::new("a.openapi.json")));
+    assert!(!is_yaml_path(Path::new("-")));
+    assert!(!is_yaml_path(Path::new("yaml")));
+}

@@ -17,7 +17,7 @@ use crate::workspace::Workspace;
 pub enum ExportFormat {
     /// Postman v2.1 collection JSON.
     Postman,
-    /// OpenAPI 3.1 JSON.
+    /// OpenAPI 3.1, JSON or YAML by the chosen file's extension.
     OpenApi,
     /// One HTML documentation page.
     Html,
@@ -124,7 +124,13 @@ pub fn export_collection(
                     }
                     ExportFormat::OpenApi => {
                         let out = apinata_core::export::openapi(&collection);
-                        (out.json, out.notes.len())
+                        // The chosen file name decides the syntax, so renaming to .yaml is enough.
+                        let text = if apinata_core::export::is_yaml_path(&path) {
+                            out.yaml()?
+                        } else {
+                            out.json.clone()
+                        };
+                        (text, out.notes.len())
                     }
                     ExportFormat::Html => {
                         let out = apinata_core::export::html(&collection);
