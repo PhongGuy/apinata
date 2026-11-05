@@ -1,7 +1,9 @@
 //! A newer build may write a kind this one does not know in any list or enum position of
 //! `session.json`; only that entry is lost and every other field loads.
 
-use apinata_app::session::{SavedExample, SavedRunnerOptions, Session, WindowMode};
+use apinata_app::session::{
+    SavedExample, SavedExampleTab, SavedRunnerOptions, Session, WindowMode,
+};
 use std::path::Path;
 
 const BASE: &str = r#"{
@@ -51,7 +53,7 @@ fn an_unknown_example_entry_is_dropped_alone() {
         item: "a.yml".into(),
         index: 0,
     };
-    assert_eq!(examples, &[kept]);
+    assert_eq!(examples, &[SavedExampleTab::from(kept)]);
     assert_rest(&s);
 }
 

@@ -69,7 +69,7 @@ pub struct CollectionSession {
         skip_serializing_if = "Vec::is_empty",
         deserialize_with = "lenient::list"
     )]
-    pub examples: Vec<SavedExample>,
+    pub examples: Vec<SavedExampleTab>,
     /// Open settings, environments, runner and run-selection tabs with their tab position;
     /// kept apart from `tabs` so older session files load.
     #[serde(
@@ -199,6 +199,43 @@ impl SavedPanelKind {
     }
 }
 
+impl CollectionSession {
+    /// Every saved tab in saved tab order. Panels and examples with a position claim that
+    /// index; requests fill the other slots in order, each followed by its examples saved
+    /// without a position, and examples of an unsaved request go last.
+    pub fn saved_order(&self) -> Vec<SavedTab> {
+        let mut placed: Vec<(usize, SavedTab)> = (self.panels.iter())
+            .map(|p| (p.position, SavedTab::Panel(p.kind.clone())))
+            .chain(self.examples.iter().filter_map(|e| {
+                e.position
+                    .map(|at| (at, SavedTab::Example(e.example.clone())))
+            }))
+            .collect();
+        placed.sort_by_key(|(at, _)| *at);
+        let loose: Vec<&SavedExample> = (self.examples.iter())
+            .filter(|e| e.position.is_none())
+            .map(|e| &e.example)
+            .collect();
+        let flowing = self.tabs.iter().flat_map(|name| {
+            let examples = (loose.iter()).filter(move |e| e.item == *name);
+            std::iter::once(SavedTab::Request(name.clone()))
+                .chain(examples.map(|e| SavedTab::Example((*e).clone())))
+        });
+        let mut placed = placed.into_iter().peekable();
+        let mut order = Vec::new();
+        for tab in flowing {
+            while let Some((_, t)) = placed.next_if(|(at, _)| *at <= order.len()) {
+                order.push(t);
+            }
+            order.push(tab);
+        }
+        order.extend(placed.map(|(_, t)| t));
+        let orphans = loose.into_iter().filter(|e| !self.tabs.contains(&e.item));
+        order.extend(orphans.map(|e| SavedTab::Example(e.clone())));
+        order
+    }
+}
+
 /// An open panel tab and where it sat among the root's saved tabs (requests, examples and
 /// panels together, in tab order).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,6 +253,27 @@ pub struct SavedExample {
     pub item: String,
     /// The example's position in the request's `examples`.
     pub index: usize,
+}
+
+/// An open example tab and where it sat among the root's saved tabs; files saved before the
+/// position was kept restore the tab after its request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedExampleTab {
+    /// The example the tab shows.
+    #[serde(flatten)]
+    pub example: SavedExample,
+    /// Its index among the root's saved tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<usize>,
+}
+
+impl From<SavedExample> for SavedExampleTab {
+    fn from(example: SavedExample) -> Self {
+        SavedExampleTab {
+            example,
+            position: None,
+        }
+    }
 }
 
 /// A window's restore bounds and mode, in a form that serializes.

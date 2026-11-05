@@ -2,7 +2,7 @@ use crate::support;
 
 use apinata_app::command::{Command, Field, Target, TreeOp};
 use apinata_app::session::{
-    CollectionSession, SavedExample, SavedPanel, SavedPanelKind, SavedTab, Session,
+    CollectionSession, SavedExample, SavedExampleTab, SavedPanel, SavedPanelKind, SavedTab, Session,
 };
 use apinata_app::snapshot::DiskState;
 use apinata_app::tabs::TabKind;
@@ -268,21 +268,30 @@ fn example_tabs_are_saved_in_the_session_and_restored(cx: &mut TestAppContext) {
     assert_eq!(saved.tabs, ["a.yml"]);
     assert_eq!(
         saved.examples,
-        [SavedExample {
-            item: "a.yml".into(),
-            index: 1,
+        [SavedExampleTab {
+            example: SavedExample {
+                item: "a.yml".into(),
+                index: 1,
+            },
+            position: Some(1),
         }]
     );
 
     let mut stale = saved.clone();
-    stale.examples.push(SavedExample {
-        item: "a.yml".into(),
-        index: 7,
-    });
-    stale.examples.push(SavedExample {
-        item: "gone.yml".into(),
-        index: 0,
-    });
+    stale.examples.push(
+        SavedExample {
+            item: "a.yml".into(),
+            index: 7,
+        }
+        .into(),
+    );
+    stale.examples.push(
+        SavedExample {
+            item: "gone.yml".into(),
+            index: 0,
+        }
+        .into(),
+    );
     let state = tempfile::tempdir().unwrap();
     let mut start = Session {
         open: vec![root.clone()],
@@ -374,10 +383,13 @@ fn a_restored_example_sits_after_its_request_and_the_saved_active_tab_returns(
     let state = tempfile::tempdir().unwrap();
     let saved = CollectionSession {
         tabs: vec!["a.yml".into(), "b.yml".into()],
-        examples: vec![SavedExample {
-            item: "a.yml".into(),
-            index: 1,
-        }],
+        examples: vec![
+            SavedExample {
+                item: "a.yml".into(),
+                index: 1,
+            }
+            .into(),
+        ],
         active: Some(SavedTab::Example(SavedExample {
             item: "a.yml".into(),
             index: 1,
@@ -418,10 +430,13 @@ fn a_restored_example_without_its_request_tab_sits_at_the_end(cx: &mut TestAppCo
     let state = tempfile::tempdir().unwrap();
     let saved = CollectionSession {
         tabs: vec!["b.yml".into()],
-        examples: vec![SavedExample {
-            item: "a.yml".into(),
-            index: 0,
-        }],
+        examples: vec![
+            SavedExample {
+                item: "a.yml".into(),
+                index: 0,
+            }
+            .into(),
+        ],
         ..CollectionSession::default()
     };
     let mut start = Session {
@@ -466,7 +481,7 @@ fn a_root_without_a_saved_active_tab_leaves_the_restored_one_active(cx: &mut Tes
             a.clone(),
             CollectionSession {
                 tabs: vec!["a.yml".into()],
-                examples: vec![example.clone()],
+                examples: vec![example.clone().into()],
                 active: Some(SavedTab::Example(example.clone())),
                 ..CollectionSession::default()
             },
@@ -546,7 +561,7 @@ fn a_saved_active_example_that_no_longer_exists_restores_the_requests_without_it
     };
     let saved = CollectionSession {
         tabs: vec!["a.yml".into(), "b.yml".into()],
-        examples: vec![gone.clone()],
+        examples: vec![gone.clone().into()],
         active: Some(SavedTab::Example(gone)),
         ..CollectionSession::default()
     };
@@ -760,9 +775,10 @@ fn a_panel_tab_whose_folder_is_gone_is_dropped_silently(cx: &mut TestAppContext)
     let again = workspace(cx, &stored);
     again.update(cx, |w, cx| w.restore(cx));
     cx.run_until_parked();
+    // The runner was saved third and the request fourth, so the runner stays first.
     assert_eq!(
         kinds(cx, &again),
-        [TabKind::Request(ip("a.yml")), TabKind::Runner(ip(""))]
+        [TabKind::Runner(ip("")), TabKind::Request(ip("a.yml"))]
     );
 }
 
@@ -919,4 +935,103 @@ fn a_selection_tab_whose_members_are_all_gone_is_dropped(cx: &mut TestAppContext
         "panels": [{"kind": {"selection": ["gone.yml", "lost"]}, "position": 1}]}"#;
     let (_state, again) = restored(cx, &col, saved);
     assert_eq!(kinds(cx, &again), [TabKind::Request(ip("a.yml"))]);
+}
+
+// Every order of two requests, an example and a panel survives a save and a restore, so an
+// example dragged away from its request comes back where it was and the panel with it.
+#[gpui_kit::test]
+fn restore_order_equals_saved_order_for_any_drag_layout(cx: &mut TestAppContext) {
+    let col = with_examples_and_b();
+    let example = TabKind::Example {
+        item: ip("a.yml"),
+        index: 1,
+    };
+    let all = [
+        TabKind::Request(ip("a.yml")),
+        TabKind::Request(ip("b.yml")),
+        example,
+        TabKind::Environments,
+    ];
+    let mut layouts = Vec::new();
+    for i in 0..4 {
+        for j in 0..4 {
+            for k in 0..4 {
+                let l = 6usize.saturating_sub(i + j + k);
+                if i != j && j != k && i != k && i + j + k <= 6 && l != i && l != j && l != k {
+                    layouts.push([i, j, k, l].map(|n| all[n].clone()));
+                }
+            }
+        }
+    }
+    assert_eq!(layouts.len(), 24);
+    for layout in layouts {
+        let (_state, ws, root) = open_dir(cx, &col);
+        let ids: Vec<_> = ws.update(cx, |w, cx| {
+            w.update_tabs(cx, |t| {
+                let ids: Vec<_> = (all.iter())
+                    .map(|k| t.open(&root, k.clone(), false))
+                    .collect();
+                let find = |kind: &TabKind| ids[all.iter().position(|k| k == kind).unwrap()];
+                for pair in layout.windows(2) {
+                    t.move_after(find(&pair[1]), find(&pair[0]));
+                }
+                ids
+            })
+        });
+        assert_eq!(ids.len(), 4);
+        cx.run_until_parked();
+        assert_eq!(kinds(cx, &ws), layout, "the layout before the save");
+        let session = ws.read_with(cx, |w, _| w.session().clone());
+        let saved = session_value(cx, &session).collections[&root].clone();
+        let saved = serde_json::to_string(&saved).unwrap();
+        let (_again_state, again) = restored(cx, &col, &saved);
+        assert_eq!(kinds(cx, &again), layout, "saved as {saved}");
+    }
+}
+
+// Tabs whose targets vanished since the save drop out without shifting the rest: the panel
+// keeps its place between the requests instead of moving behind the preview.
+#[gpui_kit::test]
+fn tabs_dropped_on_restore_leave_the_rest_in_saved_order(cx: &mut TestAppContext) {
+    let col = with_folder();
+    let saved = r#"{"tabs": ["gone.yml", "a.yml", "b.yml"], "preview": "b.yml",
+        "panels": [{"kind": {"folder": "lost"}, "position": 1},
+                   {"kind": "environments", "position": 3}]}"#;
+    let (_state, again) = restored(cx, &col, saved);
+    assert_eq!(
+        kinds(cx, &again),
+        [
+            TabKind::Request(ip("a.yml")),
+            TabKind::Environments,
+            TabKind::Request(ip("b.yml")),
+        ]
+    );
+    assert_eq!(
+        previews(cx, &again),
+        [("a.yml".to_owned(), false), ("b.yml".to_owned(), true)]
+    );
+}
+
+// A saved active panel whose folder is gone falls back to the tab a restore without a saved
+// active tab would pick.
+#[gpui_kit::test]
+fn a_saved_active_panel_whose_folder_is_gone_falls_back_to_the_usual_choice(
+    cx: &mut TestAppContext,
+) {
+    let col = with_folder();
+    let active = |cx: &mut TestAppContext, saved: &str| {
+        let (_state, again) = restored(cx, &col, saved);
+        again.read_with(cx, |w, _| w.tabs().active().map(|e| e.kind.clone()))
+    };
+    let plain = active(
+        cx,
+        r#"{"tabs": ["a.yml", "b.yml"], "panels": [{"kind": {"folder": "lost"}, "position": 0}]}"#,
+    );
+    let gone = active(
+        cx,
+        r#"{"tabs": ["a.yml", "b.yml"], "panels": [{"kind": {"folder": "lost"}, "position": 0}],
+            "active": {"panel": {"folder": "lost"}}}"#,
+    );
+    assert_eq!(plain, Some(TabKind::Request(ip("b.yml"))));
+    assert_eq!(gone, plain);
 }

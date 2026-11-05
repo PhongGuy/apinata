@@ -1,5 +1,7 @@
 use apinata_app::persist::{Loaded, Paths, load_json, save_json};
-use apinata_app::session::{CollectionSession, RECENT_LIMIT, SavedBounds, SavedExample, Session};
+use apinata_app::session::{
+    CollectionSession, RECENT_LIMIT, SavedBounds, SavedExample, SavedExampleTab, Session,
+};
 use apinata_app::settings::{Orientation, Settings, ThemeChoice};
 use gpui_kit::{Bounds, Pixels, WindowBounds, point, px, size};
 use std::path::PathBuf;
@@ -146,9 +148,12 @@ fn session_round_trips_with_per_collection_state() {
         tabs: vec!["users/list.yml".into()],
         environment: Some("dev".into()),
         preview: Some("users/list.yml".into()),
-        examples: vec![SavedExample {
-            item: "users/list.yml".into(),
-            index: 0,
+        examples: vec![SavedExampleTab {
+            example: SavedExample {
+                item: "users/list.yml".into(),
+                index: 0,
+            },
+            position: Some(1),
         }],
         panels: vec![],
         pinned: vec![],
