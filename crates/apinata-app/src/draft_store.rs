@@ -70,6 +70,8 @@ struct Tracked {
     // The context generation of the secret list that build used; a later generation may
     // have changed which values are secret.
     built_gen: u64,
+    // That list itself: a later generation with an equal list leaves the file as it is.
+    built_list: Vec<String>,
     outcome: Outcome,
     file: Option<Entity<Persisted<DraftFile>>>,
     _failed: Option<Subscription>,
@@ -110,6 +112,7 @@ pub struct DraftStore {
     // Drafts already reported as not kept, so each is reported once.
     warned: HashSet<ItemPath>,
     fetches: u64,
+    writes: u64,
     _observe: Option<Subscription>,
 }
 
@@ -148,6 +151,7 @@ impl DraftStore {
             roots: HashMap::new(),
             warned: HashSet::new(),
             fetches: 0,
+            writes: 0,
             _observe: None,
         }
     }
@@ -244,6 +248,7 @@ impl DraftStore {
                     built_from: file.snapshot().map(Arc::new),
                     built_blanks: false,
                     built_gen: 0,
+                    built_list: Vec::new(),
                     outcome: Outcome::Written,
                     file: Some(p),
                     _failed: Some(failed),
@@ -277,6 +282,11 @@ impl DraftStore {
     /// How many secret lists the store has asked for; for tests and logs.
     pub fn fetches(&self) -> u64 {
         self.fetches
+    }
+
+    /// How many draft files the store has built and handed to be written; for tests and logs.
+    pub fn writes(&self) -> u64 {
+        self.writes
     }
 
     // Asks each open root with stale drafts for its secret list, one fetch per root at a time.
@@ -474,6 +484,18 @@ impl DraftStore {
             .and_then(|r| r.list.as_ref())
             .map_or(0, |(g, _)| *g);
         for stale in self.stale(ws, root, cx) {
+            // Only the context generation moved and the secret list came out the same: the
+            // file on hand is already right, so record the new generation without a write.
+            if let Some(list) = list
+                && let Some(t) = self.tracked.get_mut(&(stale.key.clone(), stale.slot))
+                && t.outcome == Outcome::Written
+                && t.built_from.as_ref() == Some(&stale.snapshot)
+                && t.built_blanks == stale.blanks
+                && t.built_list == list
+            {
+                t.built_gen = built_gen;
+                continue;
+            }
             let outcome = match list {
                 None => Outcome::NoSecrets,
                 Some(list) => self.write(root, &stale, list, cx),
@@ -485,10 +507,12 @@ impl DraftStore {
                     built_from: None,
                     built_blanks: false,
                     built_gen: 0,
+                    built_list: Vec::new(),
                     outcome,
                     file: None,
                     _failed: None,
                 });
+            t.built_list = list.map(<[String]>::to_vec).unwrap_or_default();
             t.built_from = Some(stale.snapshot);
             t.built_blanks = stale.blanks;
             t.built_gen = built_gen;
@@ -677,6 +701,7 @@ impl DraftStore {
             built_from: None,
             built_blanks: false,
             built_gen: 0,
+            built_list: Vec::new(),
             outcome: Outcome::Written,
             file: None,
             _failed: None,
@@ -691,6 +716,7 @@ impl DraftStore {
             }
         };
         persisted.update(cx, |p, cx| p.update(cx, |v| *v = file));
+        self.writes += 1;
         Outcome::Written
     }
 
@@ -975,5 +1001,89 @@ mod tests {
             settled,
             "the refetch loops"
         );
+    }
+
+    // A context change that leaves the secret list as it was must not rewrite the file; one that
+    // changes the list must.
+    #[gpui_kit::test]
+    fn a_context_change_with_the_same_secret_list_writes_nothing(cx: &mut TestAppContext) {
+        let col = tempfile::tempdir().unwrap();
+        std::fs::write(
+            col.path().join("opencollection.yml"),
+            "opencollection: 1.0.0\ninfo:\n  name: c\n",
+        )
+        .unwrap();
+        std::fs::create_dir(col.path().join("environments")).unwrap();
+        std::fs::write(col.path().join("environments/dev.yml"), DEV).unwrap();
+        std::fs::write(
+            col.path().join("environments/dev2.yml"),
+            DEV.replace("dev", "dev2"),
+        )
+        .unwrap();
+        let secrets = Arc::new(MemoryStore::new());
+        let c = Collection::open(col.path()).unwrap();
+        for env in ["dev", "dev2"] {
+            secrets
+                .set(&c.secret_key(env, "token"), "env-token-value-1")
+                .unwrap();
+        }
+
+        let files = tempfile::tempdir().unwrap();
+        let paths = Paths::in_dir(files.path());
+        let mut settings = Settings::default();
+        settings.proxy.mode = ProxyMode::Off;
+        save_json(&paths.settings, &settings).unwrap();
+        let session = Session {
+            open: vec![col.path().to_path_buf()],
+            ..Default::default()
+        };
+        save_json(&paths.session, &session).unwrap();
+        let _lock = crate::draft_file::lock(&paths.drafts).expect("the drafts lock is free");
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::theme::install(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (win, shell) = cx
+            .update(|cx| crate::app::start(&paths, secrets, Vec::new(), cx))
+            .unwrap();
+        cx.run_until_parked();
+        cx.update_window(win, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+        let ws = shell.read_with(cx, |s, _| s.workspace().clone());
+        let root = col.path().to_path_buf();
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = cx.new(|cx| DraftStore::open(dir.path().to_path_buf(), cx));
+        store.update(cx, |s, cx| s.attach(&ws, cx));
+        ws.update(cx, |w, cx| w.new_draft(&root, ItemPath::root(), cx))
+            .expect("open");
+        cx.run_until_parked();
+        let item = ws.read_with(cx, |w, _| {
+            w.tabs()
+                .active()
+                .expect("the draft tab")
+                .item()
+                .expect("a request")
+                .clone()
+        });
+        let edit = Command::Edit {
+            target: Target::Request(item),
+            edit: Edit::Url("http://127.0.0.1:9/env-token-value-1".into()),
+        };
+        ws.update(cx, |w, cx| w.send(&root, edit, cx));
+        let select = |name: Option<&str>, cx: &mut TestAppContext| {
+            ws.update(cx, |w, cx| {
+                w.select_environment(&root, name.map(Into::into), cx)
+            });
+            cx.run_until_parked();
+            store.update(cx, |s, cx| s.flush_now(None, cx));
+            cx.run_until_parked();
+            store.read_with(cx, |s, _| s.writes())
+        };
+        select(Some("dev"), cx);
+        let written = store.read_with(cx, |s, _| s.writes());
+        assert_eq!(select(Some("dev2"), cx), written, "same list, rewritten");
+        assert!(select(None, cx) > written, "a changed list was not written");
     }
 }
