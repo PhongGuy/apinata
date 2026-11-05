@@ -369,11 +369,21 @@ impl CloneView {
     }
 
     // A clone that finished after Cancel: delete the folder this job made, and nothing else.
+    // Both sides are compared canonicalized (core may report a resolved root), but the
+    // created path itself must be a real directory, so a link is never followed.
     fn discard(&self, root: &Path) {
-        let ours = self.created.as_deref() == Some(root);
-        let real_dir = std::fs::symlink_metadata(root).is_ok_and(|m| m.is_dir());
-        if ours && real_dir {
-            let _ = std::fs::remove_dir_all(root);
+        let Some(created) = self.created.as_deref() else {
+            return;
+        };
+        let real_dir = |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_dir());
+        if !real_dir(created) {
+            return;
+        }
+        let (Ok(created), Ok(root)) = (created.canonicalize(), root.canonicalize()) else {
+            return;
+        };
+        if created == root && real_dir(&root) {
+            let _ = std::fs::remove_dir_all(&root);
         }
     }
 
