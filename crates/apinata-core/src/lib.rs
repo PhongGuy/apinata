@@ -292,4 +292,4 @@ pub use variable_set::{ScopedVariable, VarScope, VariableInfo, VariableSet};
 pub use workspace_file::{
     WorkspaceCollection, WorkspaceError, WorkspaceFile, WorkspaceSpec, is_workspace_dir,
 };
-pub use xml_filter::filter_xml;
+pub use xml_filter::{ParsedXml, XmlFilter, filter_xml};

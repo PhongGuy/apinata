@@ -57,13 +57,18 @@ fn xml_types_use_xpath() {
     ] {
         assert_eq!(
             filter_body(Some(ct), XML, "//i/@id").unwrap(),
-            "1\n2",
+            "1\n2\n",
             "{ct}"
         );
     }
     assert_eq!(
         filter_body(Some("application/xml"), XML, "//nope").unwrap(),
         ""
+    );
+    assert_eq!(
+        filter_body(Some("application/xml"), "<a b=\"\"/>", "//@b").unwrap(),
+        "\n",
+        "an empty match is a line, not no match"
     );
 }
 

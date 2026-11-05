@@ -113,6 +113,8 @@ async fn an_xml_body_is_filtered_by_xpath() {
     let none = run(dir.path(), &["--body", "--filter", "//nope"]);
     assert_eq!(none.status.code(), Some(0));
     assert_eq!(stdout(&none), "");
+    let empty = run(dir.path(), &["--body", "--filter", "string(//nope)"]);
+    assert_eq!(stdout(&empty), "\n", "an empty value prints an empty line");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -1,6 +1,6 @@
 //! XPath filtering of XML response bodies.
 
-use apinata_core::{FilterError, filter_xml};
+use apinata_core::{FilterError, ParsedXml, XmlFilter, filter_xml};
 
 const BODY: &str = r#"<?xml version="1.0"?>
 <store><book id="1" lang="en"><title>Alpha</title><price>12.5</price></book><book id="2"><title>Beta &amp; Gamma</title><price>3</price></book><!--note--></store>"#;
@@ -13,26 +13,26 @@ fn ok(expression: &str) -> String {
 
 #[test]
 fn attributes_come_back_as_their_values_in_document_order() {
-    assert_eq!(ok("//book/@id"), "1\n2");
+    assert_eq!(ok("//book/@id"), "1\n2\n");
 }
 
 #[test]
 fn text_nodes_come_back_unescaped() {
-    assert_eq!(ok("//title/text()"), "Alpha\nBeta & Gamma");
+    assert_eq!(ok("//title/text()"), "Alpha\nBeta & Gamma\n");
 }
 
 #[test]
 fn a_comment_comes_back_as_its_text() {
-    assert_eq!(ok("//comment()"), "note");
+    assert_eq!(ok("//comment()"), "note\n");
 }
 
 #[test]
 fn scalars_use_their_xpath_string_values() {
-    assert_eq!(ok("count(//book)"), "2");
-    assert_eq!(ok("sum(//price)"), "15.5");
-    assert_eq!(ok("count(//book) > 1"), "true");
-    assert_eq!(ok("string(//title)"), "Alpha");
-    assert_eq!(ok("1 div 0"), "Infinity");
+    assert_eq!(ok("count(//book)"), "2\n");
+    assert_eq!(ok("sum(//price)"), "15.5\n");
+    assert_eq!(ok("count(//book) > 1"), "true\n");
+    assert_eq!(ok("string(//title)"), "Alpha\n");
+    assert_eq!(ok("1 div 0"), "Infinity\n");
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn no_match_is_an_empty_result() {
 
 #[test]
 fn the_expression_is_trimmed() {
-    assert_eq!(ok("  //book/@id \n"), "1\n2");
+    assert_eq!(ok("  //book/@id \n"), "1\n2\n");
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn a_json_body_is_not_xml() {
 
 #[test]
 fn a_leading_byte_order_mark_is_skipped() {
-    assert_eq!(filter_xml("\u{feff}<a x=\"1\"/>", "/a/@x").unwrap(), "1");
+    assert_eq!(filter_xml("\u{feff}<a x=\"1\"/>", "/a/@x").unwrap(), "1\n");
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn deep_nesting_fails_closed() {
 fn prefixes_declared_on_the_root_are_bound() {
     assert_eq!(
         filter_xml(ATOM, "//*[local-name()='entry']/@x:id").unwrap(),
-        "e1"
+        "e1\n"
     );
 }
 
@@ -127,7 +127,7 @@ fn unprefixed_names_do_not_match_a_default_namespace() {
     assert_eq!(filter_xml(ATOM, "//title").unwrap(), "");
     assert_eq!(
         filter_xml(ATOM, "//*[local-name()='title']/text()").unwrap(),
-        "Feed\nOne"
+        "Feed\nOne\n"
     );
 }
 
@@ -148,7 +148,7 @@ fn a_large_body_fits_the_work_budget() {
     // A predicate over 20,000 rows needs more node visits than uppsala's default of 100,000.
     assert_eq!(
         filter_xml(&rows(20_000), "count(//item[v > 5])").unwrap(),
-        "19994"
+        "19994\n"
     );
 }
 
@@ -166,7 +166,7 @@ fn a_runaway_expression_hits_the_work_limit() {
 fn an_element_comes_back_as_its_xml() {
     assert_eq!(
         ok("//title"),
-        "<title>Alpha</title>\n<title>Beta &amp; Gamma</title>"
+        "<title>Alpha</title>\n<title>Beta &amp; Gamma</title>\n"
     );
 }
 
@@ -175,7 +175,10 @@ fn an_element_keeps_its_attributes_children_and_escapes() {
     let body = r#"<r><e a="x &quot;y&quot; &lt;z&gt;" b='1'>t &lt; u &gt; v<c/><!--k--><?p d?><![CDATA[<raw>]]></e></r>"#;
     assert_eq!(
         filter_xml(body, "/r/e").unwrap(),
-        r#"<e a="x &quot;y&quot; &lt;z&gt;" b="1">t &lt; u &gt; v<c/><!--k--><?p d?><![CDATA[<raw>]]></e>"#
+        concat!(
+            r#"<e a="x &quot;y&quot; &lt;z&gt;" b="1">t &lt; u &gt; v<c/><!--k--><?p d?><![CDATA[<raw>]]></e>"#,
+            "\n"
+        )
     );
 }
 
@@ -183,7 +186,7 @@ fn an_element_keeps_its_attributes_children_and_escapes() {
 fn the_root_node_comes_back_as_the_document_element() {
     assert_eq!(
         filter_xml("<!--c--><a><b/></a>", "/").unwrap(),
-        "<a><b/></a>"
+        "<a><b/></a>\n"
     );
 }
 
@@ -191,7 +194,7 @@ fn the_root_node_comes_back_as_the_document_element() {
 fn source_whitespace_is_kept() {
     assert_eq!(
         filter_xml("<r>\n  <a>x</a>\n</r>", "/r").unwrap(),
-        "<r>\n  <a>x</a>\n</r>"
+        "<r>\n  <a>x</a>\n</r>\n"
     );
 }
 
@@ -199,7 +202,10 @@ fn source_whitespace_is_kept() {
 fn a_matched_element_declares_the_namespaces_it_uses() {
     assert_eq!(
         filter_xml(ATOM, "//*[local-name()='entry']").unwrap(),
-        r#"<entry xmlns="http://www.w3.org/2005/Atom" xmlns:x="urn:x" x:id="e1"><title>One</title></entry>"#
+        concat!(
+            r#"<entry xmlns="http://www.w3.org/2005/Atom" xmlns:x="urn:x" x:id="e1"><title>One</title></entry>"#,
+            "\n"
+        )
     );
 }
 
@@ -208,7 +214,7 @@ fn unused_namespaces_are_not_declared() {
     let body = r#"<r xmlns:u="urn:u" xmlns:v="urn:v"><a><v:b/></a></r>"#;
     assert_eq!(
         filter_xml(body, "/r/a").unwrap(),
-        r#"<a xmlns:v="urn:v"><v:b/></a>"#
+        concat!(r#"<a xmlns:v="urn:v"><v:b/></a>"#, "\n")
     );
 }
 
@@ -217,18 +223,75 @@ fn declarations_inside_the_match_stay_where_they_were() {
     let body = r#"<r xmlns="urn:d"><a xmlns:p="urn:p"><p:b/><c xmlns=""/></a></r>"#;
     assert_eq!(
         filter_xml(body, "/*/*").unwrap(),
-        r#"<a xmlns="urn:d" xmlns:p="urn:p"><p:b/><c xmlns=""/></a>"#
+        concat!(
+            r#"<a xmlns="urn:d" xmlns:p="urn:p"><p:b/><c xmlns=""/></a>"#,
+            "\n"
+        )
     );
 }
 
 #[test]
 fn whitespace_character_references_survive_a_round_trip() {
     let body = r#"<r><e a="x&#9;y&#10;z"/><t>a&#13;b</t></r>"#;
-    assert_eq!(filter_xml(body, "/r/e/@a").unwrap(), "x\ty\nz");
-    assert_eq!(filter_xml(body, "/r/t/text()").unwrap(), "a\rb");
+    assert_eq!(filter_xml(body, "/r/e/@a").unwrap(), "x\ty\nz\n");
+    assert_eq!(filter_xml(body, "/r/t/text()").unwrap(), "a\rb\n");
     assert_eq!(
         filter_xml(body, "/r/e").unwrap(),
-        r#"<e a="x&#9;y&#10;z"/>"#
+        concat!(r#"<e a="x&#9;y&#10;z"/>"#, "\n")
     );
-    assert_eq!(filter_xml(body, "/r/t").unwrap(), "<t>a&#13;b</t>");
+    assert_eq!(filter_xml(body, "/r/t").unwrap(), "<t>a&#13;b</t>\n");
+}
+
+#[test]
+fn an_empty_attribute_match_is_one_empty_line() {
+    assert_eq!(filter_xml(r#"<a b=""/>"#, "//@b").unwrap(), "\n");
+    assert_eq!(
+        filter_xml(r#"<r><a b=""/><a b=""/></r>"#, "//@b").unwrap(),
+        "\n\n"
+    );
+}
+
+#[test]
+fn an_empty_element_match_is_a_match() {
+    assert_eq!(filter_xml("<r><a></a></r>", "string(//a)").unwrap(), "\n");
+}
+
+#[test]
+fn an_empty_scalar_is_a_result_not_no_match() {
+    assert_eq!(ok("string(//missing)"), "\n");
+}
+
+#[test]
+fn expression_text_naming_the_budget_is_not_the_work_limit() {
+    let e = filter_xml("<a/>", "1 'exceeded maximum node visit budget'").unwrap_err();
+    assert!(matches!(e, FilterError::Invalid { .. }), "{e:?}");
+}
+
+#[test]
+fn a_raised_cancel_stops_the_run() {
+    let filter = XmlFilter::compile("//book/@id").unwrap();
+    let parsed = ParsedXml::parse(BODY).unwrap();
+    assert_eq!(filter.run(&parsed, || true), Err(FilterError::Cancelled));
+}
+
+#[test]
+fn a_cancel_raised_while_writing_matches_stops_the_run() {
+    let filter = XmlFilter::compile("//item").unwrap();
+    let parsed = ParsedXml::parse(&rows(50)).unwrap();
+    let asked = std::cell::Cell::new(0);
+    let late = || {
+        asked.set(asked.get() + 1);
+        asked.get() > 5
+    };
+    assert_eq!(filter.run(&parsed, late), Err(FilterError::Cancelled));
+    assert!(asked.get() < 50, "stopped early, asked {}", asked.get());
+}
+
+#[test]
+fn one_parse_serves_several_filters() {
+    let parsed = ParsedXml::parse(BODY).unwrap();
+    let run = |e: &str| XmlFilter::compile(e).unwrap().run(&parsed, || false);
+    assert_eq!(run("//book/@id").unwrap(), "1\n2\n");
+    assert_eq!(run("count(//book)").unwrap(), "2\n");
+    assert_eq!(run("//missing").unwrap(), "");
 }

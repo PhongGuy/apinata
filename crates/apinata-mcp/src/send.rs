@@ -49,7 +49,8 @@ pub(crate) struct SendArgs {
     /// Narrow the returned body text to what this expression matches: a JSONPath (RFC 9535) for
     /// a JSON response, an XPath 1.0 for an XML one, by content type. A path that can match
     /// only one value, such as `$[0].name`, returns that value; other JSONPaths return an array
-    /// (`[]` for none), and an XPath one node per line. `max_body_bytes` then cuts the matches,
+    /// (`[]` for none), and an XPath one line per match, each ending in a newline (empty text
+    /// for none). `max_body_bytes` then cuts the matches,
     /// `truncated` says whether it did, and `total_bytes` stays the whole body's size. A body
     /// that is neither JSON nor XML, or a response truncated at capture that no longer parses,
     /// returns no text and `filter_error`. A bad expression is an
