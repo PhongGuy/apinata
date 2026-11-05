@@ -1487,6 +1487,7 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) {
         self.finish_cuts(root, generation, notices, cx);
+        self.record_outside_trash(root, generation, notices, window, cx);
         if self.batches.is_empty() {
             return;
         }
@@ -1532,6 +1533,42 @@ impl Sidebar {
                 crate::undo_toast::undo_toast(batch.trashed_message(), entry, move |_, cx| {
                     sidebar.update(cx, |s, cx| s.undo_entry(entry, cx)).ok();
                 });
+            window.push_notification(toast, cx);
+        }
+    }
+
+    // A removal into the trash the sidebar did not send, such as a spec update's, is undone as
+    // a delete is: one entry and Undo toast for each command's items.
+    fn record_outside_trash(
+        &mut self,
+        root: &Path,
+        generation: u64,
+        notices: &[crate::command::Notice],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut by_command: Vec<(u64, Vec<(u64, ItemPath)>)> = Vec::new();
+        for notice in notices {
+            let NoticeKind::Trashed { item, ticket } = &notice.kind else {
+                continue;
+            };
+            let ours = |b: &Batch| b.tracks(root, generation, notice.command);
+            if self.batches.iter().any(ours) {
+                continue;
+            }
+            let entry = (*ticket, item.clone());
+            match by_command.iter_mut().find(|(id, _)| *id == notice.command) {
+                Some((_, trashed)) => trashed.push(entry),
+                None => by_command.push((notice.command, vec![entry])),
+            }
+        }
+        for (_, trashed) in by_command {
+            let message = batch::removed_message(&trashed);
+            let entry = self.push_delete(root.to_path_buf(), generation, trashed, cx);
+            let sidebar = cx.weak_entity();
+            let toast = crate::undo_toast::undo_toast(message, entry, move |_, cx| {
+                sidebar.update(cx, |s, cx| s.undo_entry(entry, cx)).ok();
+            });
             window.push_notification(toast, cx);
         }
     }

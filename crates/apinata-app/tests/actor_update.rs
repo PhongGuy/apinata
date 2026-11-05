@@ -3,13 +3,13 @@
 use crate::support;
 
 use apinata_app::actor::Faults;
-use apinata_app::command::Command;
+use apinata_app::command::{Command, NoticeKind, TreeOp};
 use apinata_app::model::CollectionModel;
+use apinata_core::MemoryStore;
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, ImportBundle, UpdateSummary, parse_collections,
     write_collection,
 };
-use apinata_core::{MemoryStore, Trash, TrashHandle};
 use gpui_kit::{Entity, TestAppContext};
 use std::fs;
 use std::path::Path;
@@ -36,7 +36,17 @@ fn open_v1(
     parent: &Path,
     bin: Arc<FakeTrash>,
 ) -> (Entity<CollectionModel>, std::path::PathBuf) {
-    let b = bundle(V1);
+    open_spec(cx, parent, bin, V1)
+}
+
+/// A collection imported from `spec`, opened with a fake trash.
+fn open_spec(
+    cx: &mut TestAppContext,
+    parent: &Path,
+    bin: Arc<FakeTrash>,
+    spec: &[u8],
+) -> (Entity<CollectionModel>, std::path::PathBuf) {
+    let b = bundle(spec);
     let (c, _) = write_collection(parent, &b.collection, &b.environments, &MemoryStore::new())
         .expect("writes");
     let root = c.root().to_path_buf();
@@ -150,27 +160,63 @@ fn prune_trashes_the_orphan_and_it_can_be_restored(cx: &mut TestAppContext) {
         root.join("legacy/removeLegacy.yml").exists(),
         "a plan writes nothing"
     );
-    let mut s = apply(cx, &model, V2, true).expect("applied");
-    // The app keeps no trash record, so the applied run adds the one note a plan cannot know.
-    let from_trash = "moved to the system trash; restore it from there";
-    assert!(
-        s.notes
-            .iter()
-            .all(|n| !n.detail.contains("cannot be restored")),
-        "{:?}",
-        s.notes
-    );
-    let before = s.notes.len();
-    s.notes.retain(|n| n.detail != from_trash);
-    assert_eq!(before - s.notes.len(), 1, "{:?}", s.notes);
+    let s = apply(cx, &model, V2, true).expect("applied");
+    // The removal is undone in the app, so the applied run says nothing the plan did not.
+    assert!(s.notes.iter().all(|n| !n.detail.contains("trash")), "{s:?}");
     assert_eq!(format!("{planned:?}"), format!("{s:?}"));
     assert_eq!(s.pruned.len(), 1);
     let file = root.join("legacy/removeLegacy.yml");
+    let item = ip("legacy/removeLegacy.yml");
     assert!(!file.exists());
     assert_eq!(bin.len(), 1);
-    bin.restore(&TrashHandle::new(file.clone(), "item1".into()))
-        .expect("restores");
+    let got = notices(cx, &model);
+    let [
+        NoticeKind::Trashed {
+            item: trashed,
+            ticket,
+        },
+    ] = got.as_slice()
+    else {
+        panic!("{got:?}")
+    };
+    assert_eq!(*trashed, item);
+    send(
+        cx,
+        &model,
+        Command::Tree(TreeOp::Restore { ticket: *ticket }),
+    );
+    cx.run_until_parked();
+    assert_eq!(notices(cx, &model), [NoticeKind::Restored(item)]);
     assert!(file.exists());
+    assert_eq!(bin.len(), 0);
+}
+
+#[gpui_kit::test]
+fn undo_on_a_platform_without_restore_points_to_the_system_trash(cx: &mut TestAppContext) {
+    let parent = tempfile::tempdir().unwrap();
+    let bin = Arc::new(FakeTrash::no_restore());
+    let (model, root) = open_v1(cx, parent.path(), bin.clone());
+    apply(cx, &model, V2, true).expect("applied");
+    let got = notices(cx, &model);
+    let [NoticeKind::Trashed { ticket, .. }] = got.as_slice() else {
+        panic!("{got:?}")
+    };
+    send(
+        cx,
+        &model,
+        Command::Tree(TreeOp::Restore { ticket: *ticket }),
+    );
+    cx.run_until_parked();
+    let got = notices(cx, &model);
+    let [NoticeKind::Failed { message, .. }] = got.as_slice() else {
+        panic!("{got:?}")
+    };
+    assert!(
+        message.contains("cannot be restored from here") && message.contains("system trash"),
+        "{message}"
+    );
+    assert!(!root.join("legacy/removeLegacy.yml").exists());
+    assert_eq!(bin.len(), 1, "the request stays in the platform trash");
 }
 
 #[gpui_kit::test]
@@ -222,4 +268,89 @@ fn a_broken_trash_refuses_a_prune_before_writing(cx: &mut TestAppContext) {
         apply(cx, &model, V2, false).is_ok(),
         "no prune needs no trash"
     );
+}
+
+/// Three requests in one folder; `ONE` drops the first and last, `THREE_DOCS` changes the
+/// first one's description.
+const THREE: &[u8] = br#"{"openapi":"3.0.3","info":{"title":"Shop","version":"1"},"paths":{
+ "/legacy/a":{"get":{"tags":["legacy"],"operationId":"legacyA","responses":{"200":{"description":"ok"}}}},
+ "/legacy/b":{"get":{"tags":["legacy"],"operationId":"legacyB","responses":{"200":{"description":"ok"}}}},
+ "/legacy/c":{"get":{"tags":["legacy"],"operationId":"legacyC","responses":{"200":{"description":"ok"}}}}}}"#;
+const ONE: &[u8] = br#"{"openapi":"3.0.3","info":{"title":"Shop","version":"2"},"paths":{
+ "/legacy/b":{"get":{"tags":["legacy"],"operationId":"legacyB","responses":{"200":{"description":"ok"}}}}}}"#;
+const THREE_DOCS: &[u8] = br#"{"openapi":"3.0.3","info":{"title":"Shop","version":"3"},"paths":{
+ "/legacy/a":{"get":{"tags":["legacy"],"operationId":"legacyA","description":"Now documented.","responses":{"200":{"description":"ok"}}}},
+ "/legacy/b":{"get":{"tags":["legacy"],"operationId":"legacyB","responses":{"200":{"description":"ok"}}}},
+ "/legacy/c":{"get":{"tags":["legacy"],"operationId":"legacyC","responses":{"200":{"description":"ok"}}}}}}"#;
+
+/// Applies `ONE` with removal to the open `THREE` collection; the tickets, newest removal first,
+/// the order an undo restores them in.
+fn prune_two(cx: &mut TestAppContext, model: &Entity<CollectionModel>) -> Vec<u64> {
+    apply(cx, model, ONE, true).expect("applied");
+    let mut tickets: Vec<u64> = notices(cx, model)
+        .into_iter()
+        .filter_map(|n| match n {
+            NoticeKind::Trashed { ticket, .. } => Some(ticket),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tickets.len(), 2);
+    tickets.reverse();
+    tickets
+}
+
+fn restore(cx: &mut TestAppContext, model: &Entity<CollectionModel>, ticket: u64) {
+    send(cx, model, Command::Tree(TreeOp::Restore { ticket }));
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn an_undone_removal_is_refreshed_by_a_later_update_as_generated(cx: &mut TestAppContext) {
+    let parent = tempfile::tempdir().unwrap();
+    let (model, _) = open_spec(cx, parent.path(), Arc::new(FakeTrash::new()), THREE);
+    for ticket in prune_two(cx, &model) {
+        restore(cx, &model, ticket);
+    }
+    let got = notices(cx, &model);
+    assert!(
+        got.iter().all(|n| matches!(n, NoticeKind::Restored(_))),
+        "{got:?}"
+    );
+    let s = apply(cx, &model, THREE_DOCS, false).expect("applied");
+    let changed: Vec<&str> = s.changed.iter().map(|c| c.path.as_str()).collect();
+    assert_eq!(changed, ["legacy/legacyA.yml"], "{s:?}");
+    assert!(
+        s.notes.iter().all(|n| !n.detail.contains("not generated")),
+        "{:?}",
+        s.notes
+    );
+}
+
+#[gpui_kit::test]
+fn undo_after_a_later_update_re_added_the_request_never_overwrites_it(cx: &mut TestAppContext) {
+    let parent = tempfile::tempdir().unwrap();
+    let bin = Arc::new(FakeTrash::new());
+    let (model, root) = open_spec(cx, parent.path(), bin.clone(), THREE);
+    let tickets = prune_two(cx, &model);
+    let s = apply(cx, &model, THREE_DOCS, false).expect("applied");
+    assert_eq!(s.added.len(), 2, "{s:?}");
+    let files = ["legacy/legacyA.yml", "legacy/legacyC.yml"];
+    let re_added: Vec<Vec<u8>> = files
+        .iter()
+        .map(|f| fs::read(root.join(f)).unwrap())
+        .collect();
+    for ticket in tickets {
+        restore(cx, &model, ticket);
+        let got = notices(cx, &model);
+        assert!(
+            matches!(got.as_slice(), [NoticeKind::Failed { .. }]),
+            "the restore is refused: {got:?}"
+        );
+    }
+    let now: Vec<Vec<u8>> = files
+        .iter()
+        .map(|f| fs::read(root.join(f)).unwrap())
+        .collect();
+    assert_eq!(now, re_added, "the re-added files are untouched");
+    assert_eq!(bin.len(), 2, "the removed ones stay in the trash");
 }

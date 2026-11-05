@@ -60,9 +60,14 @@ pub(crate) fn rig(cx: &mut TestAppContext) -> Rig {
 impl Rig {
     /// Writes a collection imported from the v1 spec and opens it.
     pub(crate) fn open_v1(&self, cx: &mut TestAppContext) -> PathBuf {
+        self.open_spec(cx, V1)
+    }
+
+    /// Writes a collection imported from `spec` and opens it.
+    pub(crate) fn open_spec(&self, cx: &mut TestAppContext, spec: &[u8]) -> PathBuf {
         let mut all = parse_collections(
             Some(CollectionFormat::OpenApi),
-            V1,
+            spec,
             &CollectionOptions::default(),
         )
         .unwrap();
@@ -264,7 +269,7 @@ fn a_spec_with_several_collections_is_rejected(cx: &mut TestAppContext) {
     );
 }
 
-fn applied(cx: &mut TestAppContext, d: &Entity<ImportLinkDialog>) {
+pub(crate) fn applied(cx: &mut TestAppContext, d: &Entity<ImportLinkDialog>) {
     wait_for(cx, "the result", |cx| {
         matches!(phase(cx, d), Phase::Done(_))
     });

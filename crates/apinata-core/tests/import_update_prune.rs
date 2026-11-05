@@ -417,3 +417,27 @@ fn a_prune_whose_record_cannot_be_written_is_a_note_not_a_failure() {
         s.notes
     );
 }
+
+#[test]
+fn a_failed_save_after_a_prune_still_returns_the_trashed_items_with_a_note() {
+    let dir = TempDir::new().unwrap();
+    let mut c = imported(dir.path(), "update-v1.json");
+    // An edit made elsewhere after loading makes saving the baseline a conflict.
+    let root_file = c.root().join("opencollection.yml");
+    let mut text = fs::read_to_string(&root_file).unwrap();
+    text.push_str("# edited elsewhere\n");
+    fs::write(&root_file, &text).unwrap();
+    let bin = FakeBin::new(true);
+    let s = apply_update(&mut c, &v2(), &prune(), Some(&bin as &dyn Trash))
+        .expect("the removal is reported, not lost");
+    assert_eq!(paths(&s.pruned), ["legacy/removeLegacy.yml"]);
+    assert_eq!(s.trashed.len(), 1);
+    assert!(
+        s.notes
+            .iter()
+            .any(|n| n.detail.contains("could not be saved")),
+        "{:?}",
+        s.notes
+    );
+    assert_eq!(fs::read_to_string(&root_file).unwrap(), text);
+}

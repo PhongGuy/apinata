@@ -287,6 +287,7 @@ mod import_link_layout;
 mod import_update;
 mod import_update_folder;
 mod import_update_source;
+mod import_update_undo;
 mod inherited_headers_editor;
 mod inherited_headers_section;
 mod input_focus_ring;

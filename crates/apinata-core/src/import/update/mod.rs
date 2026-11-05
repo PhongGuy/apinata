@@ -31,9 +31,9 @@ pub struct UpdateOptions {
     /// Where each pruned request is recorded so a later restore can bring it back, as a
     /// delete is; `None` records nothing.
     pub trash_log: Option<crate::trash_log::TrashLog>,
-    /// The caller keeps no trash record by design (the app), so with no `trash_log` a prune's
-    /// note says to restore it from the system trash rather than that it cannot be restored.
-    pub restore_from_system_trash: bool,
+    /// The caller undoes each prune itself from the summary's `trashed`, as the app does, so a
+    /// prune with no `trash_log` needs no note on how to get it back.
+    pub undo_in_session: bool,
 }
 
 impl UpdateOptions {
@@ -77,8 +77,72 @@ pub struct UpdateSummary {
     pub orphaned: Vec<ItemPath>,
     /// Orphans removed, or that would be.
     pub pruned: Vec<ItemPath>,
+    /// Each removed orphan as the trash took it, in removal order, for a caller that undoes
+    /// the removal itself; always empty from `plan_update`.
+    pub trashed: Vec<PrunedRequest>,
     /// Everything that needs a human's attention.
     pub notes: Vec<ImportNote>,
+}
+
+/// A request an update moved to the trash, with the spec record the update dropped for it, so
+/// an in-session undo can put back both.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct PrunedRequest {
+    trashed: Trashed,
+    scope: ItemPath,
+    key: String,
+    hashes: FieldHashes,
+    file: Option<String>,
+}
+
+impl PrunedRequest {
+    /// Where the request was in the collection.
+    pub fn item(&self) -> &ItemPath {
+        self.trashed.item()
+    }
+
+    /// The trashed file, as [`Collection::trash`] reported it.
+    pub fn trashed(&self) -> &Trashed {
+        &self.trashed
+    }
+
+    /// Put the request back as [`Collection::restore_trashed`] does, failing the same way, then
+    /// record it as generated again so later updates refresh it. The record is left alone when
+    /// the operation is recorded again already or the scope lost its baseline; when it cannot be
+    /// saved, or the root file holds unsaved edits it would save too, the returned warning says
+    /// so and the request stays restored.
+    pub fn restore(
+        &self,
+        c: &mut Collection,
+        bin: &dyn Trash,
+    ) -> Result<Option<String>, crate::error::TreeError> {
+        c.restore_trashed(&self.trashed, bin)?;
+        let Some(mut baseline) = scope_baseline(c, &self.scope) else {
+            return Ok(None);
+        };
+        if baseline.get(&self.key).is_some() {
+            return Ok(None);
+        }
+        let lost = "restored, but later updates will leave it alone: its spec record";
+        if c.file().is_dirty() {
+            return Ok(Some(format!(
+                "{lost} was not put back, since the collection settings have unsaved edits"
+            )));
+        }
+        let before = baseline.clone();
+        baseline.insert(self.key.clone(), self.hashes.clone());
+        if let Some(file) = &self.file {
+            baseline.set_file(self.key.clone(), file.clone());
+        }
+        c.file_mut().set_spec_baseline_in(&self.scope, &baseline);
+        if let Err(e) = c.file_mut().save() {
+            // Back to the saved record, so the root file is not left with an unsaved edit.
+            c.file_mut().set_spec_baseline_in(&self.scope, &before);
+            return Ok(Some(format!("{lost} could not be saved: {e}")));
+        }
+        Ok(None)
+    }
 }
 
 /// Report what updating `c` from `bundle` would do, without writing anything.
@@ -172,6 +236,8 @@ pub fn apply_update(
                 }
                 match prune_one(c, &path, bin) {
                     Ok(trashed) => {
+                        let hashes = baseline.get(&key).cloned().unwrap_or_default();
+                        let file = baseline.file(&key).map(str::to_owned);
                         baseline.remove(&key);
                         if let Some(why) = trashed.renumber_failure() {
                             let detail =
@@ -189,9 +255,7 @@ pub fn apply_update(
                             )
                         };
                         let detail = match recorded {
-                            None if o.restore_from_system_trash => {
-                                Some("moved to the system trash; restore it from there".to_owned())
-                            }
+                            None if o.undo_in_session => None,
                             None => Some(unrestorable("no data directory")),
                             Some(Ok(None)) => None,
                             Some(Ok(Some(replaced))) => Some(replaced),
@@ -200,6 +264,13 @@ pub fn apply_update(
                         if let Some(detail) = detail {
                             summary.notes.push(note(&key, detail, Some(&path)));
                         }
+                        summary.trashed.push(PrunedRequest {
+                            trashed,
+                            scope: scope.clone(),
+                            key: key.clone(),
+                            hashes,
+                            file,
+                        });
                     }
                     Err(e) => {
                         summary.pruned.retain(|p| *p != path);
@@ -218,8 +289,16 @@ pub fn apply_update(
     if baseline != c.file().spec_baseline_in(&scope).unwrap_or_default() {
         c.file_mut().set_spec_baseline_in(&scope, &baseline);
     }
-    if c.file().is_dirty() {
-        c.file_mut().save()?;
+    if c.file().is_dirty()
+        && let Err(e) = c.file_mut().save()
+    {
+        // Files already went to the trash, so the summary must still reach the caller that
+        // can undo them; otherwise the failure is the result, as before.
+        if summary.trashed.is_empty() {
+            return Err(e.into());
+        }
+        let detail = format!("updated, but the spec record could not be saved: {e}");
+        summary.notes.push(note("opencollection.yml", detail, None));
     }
     Ok(summary)
 }
