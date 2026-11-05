@@ -3387,7 +3387,8 @@ fn saved_tab_of(kind: &TabKind) -> Option<SavedTab> {
 // The collection-relative paths with something in the index, or `None` when git cannot say.
 fn staged_paths(dir: &Path, options: &GitOptions) -> Option<std::collections::BTreeSet<PathBuf>> {
     match collection_status_with(dir, options).ok()? {
-        GitState::Repo(r) => Some(
+        // A cut listing keeps a path-order window that a hook can shift, so it cannot be compared.
+        GitState::Repo(r) if !r.truncated => Some(
             r.stage
                 .into_iter()
                 .filter(|(_, s)| *s != StageState::Unstaged)

@@ -165,6 +165,34 @@ fn a_hook_that_unstages_files_is_named_beside_its_output(cx: &mut TestAppContext
 
 #[cfg(unix)]
 #[gpui_kit::test]
+fn a_truncated_listing_adds_no_staged_note(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = changed(&sb);
+    h::hook(
+        col.path(),
+        "pre-commit",
+        "#!/bin/sh\ngit reset -q\necho 'hook says no' >&2\nexit 1\n",
+    );
+    sb.git(col.path(), &["add", "-A"]);
+    let s = started(cx, &col);
+    let options = sb.options().file_cap(1);
+    s.ws.update(cx, |w, cx| w.set_git(Some(options), cx));
+    frame(cx, s.win);
+    open_on(cx, &s, col.path());
+    set_message(cx, &s, "Edit a");
+    click(cx, &s, "changes-commit");
+    idle(cx, &s);
+    match notice(cx) {
+        Some(Notice::Failed(text)) => {
+            assert!(text.contains("hook says no"), "{text}");
+            assert!(!text.contains("changed what is staged"), "{text}");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
 fn a_hook_that_leaves_the_index_alone_adds_no_staged_note(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = changed(&sb);

@@ -263,7 +263,13 @@ pub fn staged_change_note(
         (n, 0) => format!("{n} files are no longer staged"),
         (0, 1) => "1 file is now staged".to_owned(),
         (0, n) => format!("{n} files are now staged"),
-        (l, g) => format!("{} no longer staged and {} now staged", files(l), files(g)),
+        (l, g) => format!(
+            "{} {} no longer staged and {} {} now staged",
+            files(l),
+            if l == 1 { "is" } else { "are" },
+            files(g),
+            if g == 1 { "is" } else { "are" },
+        ),
     };
     Some(format!("The commit hook changed what is staged: {what}."))
 }
