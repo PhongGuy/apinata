@@ -83,7 +83,10 @@ fn redact_url_drops_userinfo_inside_brackets() {
         ("https://[u:s3cr3t@h]:80/x", "https://[h]:80/x"),
         ("https://[u:s3/cr3t@h]/x", "https://[h]/x"),
         ("https://[u:s3cr3t@h/x", "https://[h/x"),
-        ("see 'https://[u:s3cr3t@h]/x' now", "see 'https://[h]/x' now"),
+        (
+            "see 'https://[u:s3cr3t@h]/x' now",
+            "see 'https://[h]/x' now",
+        ),
         // A real IPv6 host keeps its path '@'.
         ("https://[::1]:80/a@b", "https://[::1]:80/a@b"),
         ("https://u:s3cr3t@[::1]:80/a", "https://[::1]:80/a"),
