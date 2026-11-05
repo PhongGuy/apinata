@@ -12,13 +12,13 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, SharedString, Styled as _, Subscription,
-    TestSupportExt as _, Window, canvas, div,
+    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, PathPromptOptions, Render,
+    SharedString, Styled as _, Subscription, TestSupportExt as _, Window, canvas, div,
 };
 
 use crate::command::Command;
-use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, resolve};
+use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, SPACE_1, resolve};
 use crate::tabs::TabKind;
 use crate::ui::ring_overlay;
 use crate::workspace::Workspace;
@@ -48,10 +48,13 @@ pub fn option_id(item: &str) -> SharedString {
 pub struct EnvItem(
     /// The environment name, or one of the fixed entries.
     pub SharedString,
+    /// The environment's colour, drawn as a dot beside the name.
+    pub Option<Hsla>,
 );
 
 // The kit draws select rows without `.test_support()`, so the row content registers itself
-// under `option_id`; a click on it bubbles to the kit row's confirm handler.
+// under `option_id`; a click on it bubbles to the kit row's confirm handler. The colour dot is
+// presentation only: the title, and so the accessible value, stays the bare name.
 impl SelectItem for EnvItem {
     type Value = SharedString;
 
@@ -59,16 +62,31 @@ impl SelectItem for EnvItem {
         self.0.clone()
     }
 
+    fn display_title(&self) -> Option<AnyElement> {
+        let fill = self.1?;
+        Some(dotted("env-trigger-dot", fill, self.0.clone()).into_any_element())
+    }
+
     fn value(&self) -> &SharedString {
         &self.0
     }
 
     fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        div()
-            .id(option_id(&self.0))
-            .test_support()
-            .child(self.0.clone())
+        let row = div().id(option_id(&self.0)).test_support();
+        match self.1 {
+            Some(fill) => row.child(dotted("env-row-dot", fill, self.0.clone())),
+            None => row.child(self.0.clone()),
+        }
     }
+}
+
+// The name led by a dot of `fill`, kept on one line so a long name still ellipsizes.
+fn dotted(dot_id: &'static str, fill: Hsla, name: SharedString) -> impl IntoElement {
+    h_flex()
+        .min_w_0()
+        .gap(SPACE_1)
+        .child(crate::env_color::dot(dot_id, fill))
+        .child(div().min_w_0().truncate().child(name))
 }
 
 /// A select over the current collection's environments that picks its selected one.
@@ -77,6 +95,8 @@ pub struct EnvSelector {
     select: Entity<SelectState<Vec<EnvItem>>>,
     root: Option<PathBuf>,
     listed: Vec<SharedString>,
+    // The dot colour of each `listed` entry.
+    dots: Vec<Option<Hsla>>,
     shown: Option<SharedString>,
     last_import: Option<ImportReport>,
     // Whether the control's last laid-out room was too small to show the select.
@@ -108,6 +128,7 @@ impl EnvSelector {
             select,
             root: None,
             listed: Vec::new(),
+            dots: Vec::new(),
             shown: None,
             last_import: None,
             squeezed: Rc::default(),
@@ -150,6 +171,12 @@ impl EnvSelector {
     pub fn open_menu(&self, window: &mut Window, cx: &mut App) {
         self.select.update(cx, |s, cx| s.focus(window, cx));
         window.dispatch_action(Box::new(SelectDown), cx);
+    }
+
+    /// The colour of the dot drawn beside `item`, if any.
+    pub fn dot(&self, item: &str) -> Option<Hsla> {
+        let ix = self.listed.iter().position(|l| l.as_ref() == item)?;
+        self.dots.get(ix).copied().flatten()
     }
 
     /// The item the select shows.
@@ -259,10 +286,28 @@ impl EnvSelector {
             items.push(MANAGE_ENVIRONMENTS.into());
             items.push(IMPORT_ENVIRONMENT.into());
         }
-        if root != self.root || items != self.listed {
+        let dots: Vec<Option<Hsla>> = {
+            let workspace = self.workspace.read(cx);
+            (items.iter())
+                .map(|item| {
+                    let fixed = [NO_ENVIRONMENT, MANAGE_ENVIRONMENTS, IMPORT_ENVIRONMENT];
+                    if fixed.contains(&item.as_ref()) {
+                        return None;
+                    }
+                    let r = root.as_deref()?;
+                    let color = workspace.environment_color(r, item, cx);
+                    crate::env_color::env_fill(color.as_deref())
+                })
+                .collect()
+        };
+        if root != self.root || items != self.listed || dots != self.dots {
             self.root = root.clone();
-            let rows = items.iter().cloned().map(EnvItem).collect();
+            let rows = (items.iter().cloned())
+                .zip(dots.iter().copied())
+                .map(|(name, dot)| EnvItem(name, dot))
+                .collect();
             self.listed = items;
+            self.dots = dots;
             self.select
                 .update(cx, |s, cx| s.set_items(rows, window, cx));
             self.shown = None;

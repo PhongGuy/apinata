@@ -1287,6 +1287,17 @@ impl Workspace {
         })
     }
 
+    /// The colour text of the environment `name` of the collection at `root`, if it sets one.
+    pub fn environment_color(&self, root: &Path, name: &str, cx: &App) -> Option<String> {
+        let snapshot = self.snapshot(root, cx)?;
+        let env = snapshot
+            .content
+            .environments
+            .iter()
+            .find(|e| e.name == name)?;
+        env.color.clone()
+    }
+
     /// The active environment of the collection at `root` in its latest snapshot.
     pub fn selected_environment(&self, root: &Path, cx: &App) -> Option<String> {
         self.snapshot(root, cx)?.selected_environment.clone()

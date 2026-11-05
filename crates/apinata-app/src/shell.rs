@@ -27,10 +27,11 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     Action, AnyElement, App, AppContext, AsyncWindowContext, ClickEvent, Context, Decorations,
-    DragMoveEvent, Entity, ExternalPaths, FocusHandle, Focusable, FontWeight, Image, ImageFormat,
-    InteractiveElement, IntoElement, MouseButton, ParentElement, PathPromptOptions, Pixels, Rems,
-    Render, Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription,
-    TestSupportExt, WeakEntity, Window, WindowControls, actions, canvas, div, img, px,
+    DragMoveEvent, Entity, ExternalPaths, FocusHandle, Focusable, FontWeight, Hsla, Image,
+    ImageFormat, InteractiveElement, IntoElement, MouseButton, ParentElement, PathPromptOptions,
+    Pixels, Rems, Render, Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
+    Subscription, TestSupportExt, WeakEntity, Window, WindowControls, actions, canvas, div, img,
+    px,
 };
 
 use crate::app::{AppState, window_decorations};
@@ -641,6 +642,14 @@ impl Shell {
     /// The title bar's environment selector.
     pub fn env_selector(&self) -> &Entity<EnvSelector> {
         &self.env_selector
+    }
+
+    /// The colour of the stripe drawn along the window's top edge, if any.
+    pub fn env_stripe(&self, cx: &App) -> Option<Hsla> {
+        let workspace = self.workspace.read(cx);
+        let root = workspace.current_root()?;
+        let name = workspace.selected_environment(&root, cx)?;
+        crate::env_color::env_fill(workspace.environment_color(&root, &name, cx).as_deref())
     }
 
     /// The title bar's global environment picker.
@@ -2846,6 +2855,19 @@ impl Render for Shell {
             .flex()
             .flex_col()
             .child(title_bar)
+            // A decorative stripe in the active environment's colour, laid over the bar's top
+            // edge so the layout below never moves when it comes or goes.
+            .children(self.env_stripe(cx).map(|fill| {
+                div()
+                    .id("env-stripe")
+                    .test_support()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(style::ENV_STRIPE_HEIGHT)
+                    .bg(fill)
+            }))
             .when(self.drop_hover, |root| {
                 root.child(crate::window_drop::overlay(cx))
             })
