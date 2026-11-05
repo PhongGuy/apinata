@@ -177,6 +177,7 @@ mod git_switch;
 mod git_sync;
 #[cfg(unix)]
 mod git_sync_merge;
+mod git_sync_push;
 mod git_url;
 mod git_url_leaks;
 mod global_context;

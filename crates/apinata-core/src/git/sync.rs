@@ -1,4 +1,4 @@
-//! Pull (fetch, then fast-forward only) for the branch HEAD is on.
+//! Pull (fetch, then fast-forward only) and push (never forced) for the branch HEAD is on.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use super::branch::{self, SwitchError, lines};
-use super::stream::{CancelFlag, StreamError, git_stream};
+use super::stream::{CancelFlag, StreamError, git_stream, git_stream_capture};
 use super::{FetchError, GitError, GitOptions, busy_message, check_root, redact_url, run};
 
 /// What a pull did to the current branch.
@@ -23,6 +23,22 @@ pub struct Pulled {
     pub to: String,
     /// How many local commits the upstream does not have.
     pub ahead: usize,
+}
+
+/// What a push sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct Pushed {
+    /// The local branch pushed.
+    pub branch: String,
+    /// Where it went, as `<remote>/<branch>`.
+    pub upstream: String,
+    /// The remote branch's id before; `None` for a new branch, equal to `to` when up to date.
+    pub from: Option<String>,
+    /// The full id pushed.
+    pub to: String,
+    /// Whether `--set-upstream` made it the branch's upstream.
+    pub upstream_set: bool,
 }
 
 /// Why a pull did not finish.
@@ -108,7 +124,12 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
     let Some(head) = verify(root, &full, opts)? else {
         return Err(failed(format!("{branch} has no commits yet; commit first")));
     };
-    let (remote, tracking, upstream) = upstream_of(root, &branch, opts)?;
+    let Upstream {
+        remote,
+        tracking,
+        name: upstream,
+        ..
+    } = upstream_of(root, &branch, opts)?;
     branch::ready(root, opts).map_err(from_switch)?;
     branch::fetch(root, &remote, cancel, opts).map_err(from_fetch)?;
     if cancel.is_cancelled() {
@@ -156,6 +177,113 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
         Err(StreamError::Io(e)) => Err(SyncError::Io(e)),
         Err(StreamError::Cancelled { .. }) => Err(failed("merge cancelled".to_owned())),
     }
+}
+
+/// Push the branch HEAD is on to its upstream, or with `set_upstream` to the same name on that
+/// remote and make it the upstream. The refspec carries no `+`, so a push is never forced; a
+/// detached HEAD, an unborn branch, a missing or gone upstream or an unknown remote refuses
+/// before git pushes. Uncommitted changes do not matter.
+pub fn push(
+    root: &Path,
+    set_upstream: Option<&str>,
+    cancel: &CancelFlag,
+    opts: &GitOptions,
+) -> Result<Pushed, SyncError> {
+    check_root(root).map_err(from_git)?;
+    let branch = current_branch(root, opts)?;
+    let full = format!("refs/heads/{branch}");
+    let Some(to) = verify(root, &format!("{full}^{{commit}}"), opts)? else {
+        return Err(failed(format!("{branch} has no commits yet; commit first")));
+    };
+    let (remote, dst, upstream) = match set_upstream {
+        Some(remote) => {
+            configured_remote(root, remote, opts)?;
+            (
+                remote.to_owned(),
+                full.clone(),
+                format!("{remote}/{branch}"),
+            )
+        }
+        None => {
+            let up = upstream_of(root, &branch, opts)?;
+            if up.gone {
+                return Err(SyncError::NoUpstream {
+                    branch,
+                    gone: Some(up.name),
+                });
+            }
+            configured_remote(root, &up.remote, opts)?;
+            (up.remote, up.remote_ref, up.name)
+        }
+    };
+    let refspec = format!("{full}:{dst}");
+    let mut args = vec![
+        "push",
+        "--porcelain",
+        "--no-recurse-submodules",
+        "--no-follow-tags",
+    ];
+    if set_upstream.is_some() {
+        args.push("--set-upstream");
+    }
+    args.extend(["--", &remote, &refspec]);
+    let done = match git_stream_capture(&args, root, opts, cancel, &mut |_| {}) {
+        Ok(done) => done,
+        Err(StreamError::Io(e)) => return Err(SyncError::Io(e)),
+        Err(StreamError::Cancelled { .. }) => return Err(SyncError::Cancelled),
+    };
+    let from = match (done.success, porcelain_ref(&done.stdout)) {
+        (true, Some((' ', summary))) => {
+            let Some((before, _)) = summary.split_once("..") else {
+                return Err(failed(redact_url(&done.stderr)));
+            };
+            match verify(root, &format!("{before}^{{commit}}"), opts)? {
+                Some(oid) => Some(oid),
+                None => {
+                    return Err(failed(format!(
+                        "unknown commit {before} in the push result"
+                    )));
+                }
+            }
+        }
+        (true, Some(('=', _))) => Some(to.clone()),
+        (true, Some(('*', _))) => None,
+        _ => return Err(failed(redact_url(&done.stderr))),
+    };
+    Ok(Pushed {
+        branch,
+        upstream,
+        from,
+        to,
+        upstream_set: set_upstream.is_some(),
+    })
+}
+
+/// The flag and summary of the one ref line in `push --porcelain` output: the line whose second
+/// byte is a tab. The `To` and tracking lines are skipped.
+fn porcelain_ref(stdout: &str) -> Option<(char, &str)> {
+    let line = stdout
+        .lines()
+        .find(|l| l.as_bytes().get(1) == Some(&b'\t'))?;
+    let flag = line.chars().next()?;
+    let summary = line.splitn(3, '\t').nth(2)?;
+    Some((flag, summary.trim()))
+}
+
+/// Refuse anything but the name of a configured remote, so a URL, path or option never reaches
+/// git as one.
+fn configured_remote(root: &Path, remote: &str, opts: &GitOptions) -> Result<(), SyncError> {
+    if remote.is_empty() || remote.starts_with('-') {
+        return Err(failed("invalid remote name".to_owned()));
+    }
+    let configured = branch::remotes(root, opts).map_err(from_git)?;
+    if !configured.iter().any(|name| name == remote) {
+        return Err(failed(format!(
+            "{} is not a configured remote",
+            redact_url(remote)
+        )));
+    }
+    Ok(())
 }
 
 /// The first lock the fast-forward would need that some other process already holds.
@@ -213,13 +341,22 @@ fn verify(root: &Path, name: &str, opts: &GitOptions) -> Result<Option<String>, 
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned()))
 }
 
-/// The upstream of `branch` as (remote, tracking ref, `<remote>/<branch>`). A branch with no
-/// upstream, or one that tracks a local branch, has none.
-fn upstream_of(
-    root: &Path,
-    branch: &str,
-    opts: &GitOptions,
-) -> Result<(String, String, String), SyncError> {
+/// A branch's upstream as git configures it.
+struct Upstream {
+    remote: String,
+    /// The remote-tracking ref, such as `refs/remotes/origin/main`.
+    tracking: String,
+    /// The branch on the remote, such as `refs/heads/main`.
+    remote_ref: String,
+    /// `<remote>/<branch>`, such as `origin/main`.
+    name: String,
+    /// Whether the remote-tracking ref no longer exists.
+    gone: bool,
+}
+
+/// The upstream of `branch`. A branch with no upstream, or one that tracks a local branch, has
+/// none.
+fn upstream_of(root: &Path, branch: &str, opts: &GitOptions) -> Result<Upstream, SyncError> {
     let full = format!("refs/heads/{branch}");
     let format = "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00\
                   %(upstream:remoteref)%00%(upstream:track)";
@@ -231,7 +368,7 @@ fn upstream_of(
         .find(|f| f.first() == Some(&full.as_str()))
         .unwrap_or_default();
     let field = |i: usize| fields.get(i).copied().unwrap_or("");
-    let (tracking, remote, remote_ref) = (field(1), field(2), field(3));
+    let (tracking, remote, remote_ref, track) = (field(1), field(2), field(3), field(4));
     if tracking.is_empty() || remote.is_empty() || remote == "." {
         return Err(SyncError::NoUpstream {
             branch: branch.to_owned(),
@@ -239,11 +376,13 @@ fn upstream_of(
         });
     }
     let name = remote_ref.strip_prefix("refs/heads/").unwrap_or(remote_ref);
-    Ok((
-        remote.to_owned(),
-        tracking.to_owned(),
-        format!("{remote}/{name}"),
-    ))
+    Ok(Upstream {
+        remote: remote.to_owned(),
+        tracking: tracking.to_owned(),
+        remote_ref: remote_ref.to_owned(),
+        name: format!("{remote}/{name}"),
+        gone: track == "[gone]",
+    })
 }
 
 /// Commits only on `full` (ahead) and only on `oid` (behind).

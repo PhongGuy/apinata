@@ -54,7 +54,6 @@ pub(crate) struct Streamed {
     /// The last `KEPT_LINES` stderr lines joined by newlines.
     pub(crate) stderr: String,
     /// The first `STDOUT_CAP` bytes of stdout (lossy UTF-8); empty for the plain form.
-    #[allow(dead_code)]
     pub(crate) stdout: String,
 }
 
@@ -219,7 +218,6 @@ pub(crate) fn git_stream<S: AsRef<OsStr>>(
 }
 
 /// Like `git_stream`, but also returns the first `STDOUT_CAP` bytes of stdout.
-#[allow(dead_code)]
 pub(crate) fn git_stream_capture<S: AsRef<OsStr>>(
     args: &[S],
     cwd: &Path,
