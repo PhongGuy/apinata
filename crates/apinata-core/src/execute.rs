@@ -1121,8 +1121,12 @@ impl Executor {
                 message: "the OS random generator failed, so no WSSE nonce".to_owned(),
             })?;
             headers.retain(|(n, _)| !n.eq_ignore_ascii_case("x-wsse"));
-            let value = wsse::header(username, password, &nonce, &wsse::created_now());
+            let created = wsse::created_now();
+            let value = wsse::header(username, password, &nonce, &created);
+            // The digest and nonce are derived from the password, so each is redacted on its own.
             buf.place(&value);
+            buf.place(&wsse::password_digest(password, &nonce, &created));
+            buf.place(&nonce);
             headers.push(("X-WSSE".to_owned(), value));
         }
         let limit = if req.follow_redirects() {

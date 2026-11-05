@@ -9,12 +9,17 @@ use crate::digest::hex;
 /// `UsernameToken Username="<u>", PasswordDigest="<d>", Nonce="<n>", Created="<c>"`, with
 /// d = base64(hex(sha1(nonce + created + password))); the username is not escaped.
 pub(crate) fn header(username: &str, password: &str, nonce: &str, created: &str) -> String {
-    // The reference base64-encodes the hex text of the hash, not the raw hash bytes.
-    let sha = sha1::Sha1::digest(format!("{nonce}{created}{password}").as_bytes());
-    let digest = base64::engine::general_purpose::STANDARD.encode(hex(&sha));
+    let digest = password_digest(password, nonce, created);
     format!(
         "UsernameToken Username=\"{username}\", PasswordDigest=\"{digest}\", Nonce=\"{nonce}\", Created=\"{created}\""
     )
+}
+
+/// The PasswordDigest value alone, which a server may echo without the rest of the header.
+pub(crate) fn password_digest(password: &str, nonce: &str, created: &str) -> String {
+    // The reference base64-encodes the hex text of the hash, not the raw hash bytes.
+    let sha = sha1::Sha1::digest(format!("{nonce}{created}{password}").as_bytes());
+    base64::engine::general_purpose::STANDARD.encode(hex(&sha))
 }
 
 /// 16 OS-random bytes as lowercase hex; `None` when the OS generator fails.

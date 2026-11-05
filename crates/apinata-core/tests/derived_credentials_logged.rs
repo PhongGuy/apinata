@@ -80,3 +80,57 @@ async fn ntlm_values_are_hidden_in_the_log_and_kept_in_the_timeline() {
         assert_absent(&log, v);
     }
 }
+
+/// Answers 200 with only the named part of the request's X-WSSE value as the body.
+struct EchoWsseField(&'static str);
+
+impl wiremock::Respond for EchoWsseField {
+    fn respond(&self, req: &wiremock::Request) -> wiremock::ResponseTemplate {
+        let header = req.headers.get("x-wsse").and_then(|v| v.to_str().ok());
+        let marker = format!("{}=\"", self.0);
+        let value = header
+            .and_then(|h| h.split(marker.as_str()).nth(1))
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or("");
+        wiremock::ResponseTemplate::new(200).set_body_string(value)
+    }
+}
+
+/// Sends a WSSE request to a server echoing only `field`; returns the response, the log and
+/// the echoed value.
+async fn wsse_field_echo(field: &'static str) -> (Response, apinata_core::SessionLog, String) {
+    let s = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(EchoWsseField(field))
+        .mount(&s)
+        .await;
+    let (exec, log) = logged(ExecOptions::new());
+    let res = exec
+        .send(&resolved_one("GET", &format!("{}/v", s.uri()), WSSE, ""))
+        .await
+        .expect("sent");
+    let echoed = res.text().to_owned();
+    assert!(!echoed.is_empty(), "the server echoes {field}");
+    (res, log, echoed)
+}
+
+#[tokio::test]
+async fn an_echoed_wsse_digest_or_nonce_is_hidden_in_the_log_the_derived_list_and_an_example() {
+    for field in ["PasswordDigest", "Nonce"] {
+        let (res, log, echoed) = wsse_field_echo(field).await;
+        assert!(
+            res.derived_credentials().contains(&echoed),
+            "{field} not derived: {:?}",
+            res.derived_credentials()
+        );
+        assert_absent(&log, &echoed);
+
+        // Saved examples and MCP results scrub with the same list.
+        let mut example = apinata_core::ExampleResponse::from_response(&res);
+        example.scrub(Some(&apinata_core::derived_secrets(
+            res.derived_credentials(),
+        )));
+        let body = example.body.map(|b| b.data).unwrap_or_default();
+        assert!(!body.contains(&echoed), "{field} kept in the example");
+    }
+}

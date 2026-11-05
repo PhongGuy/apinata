@@ -88,11 +88,12 @@ async fn sigv4_derives_the_authorization_value_and_the_bare_signature() {
 }
 
 #[tokio::test]
-async fn wsse_derives_its_whole_header_value() {
+async fn wsse_derives_its_whole_header_value_its_digest_and_its_nonce() {
     let res = send(WSSE).await;
     let derived = checked(&res);
-    assert_eq!(derived.len(), 1);
+    assert_eq!(derived.len(), 3);
     assert!(derived[0].starts_with("UsernameToken "));
+    assert!(derived[1..].iter().all(|v| derived[0].contains(v.as_str())));
 }
 
 #[tokio::test]
@@ -133,7 +134,7 @@ async fn a_value_placed_before_a_redirect_is_still_listed() {
         .await
         .expect("sent");
     assert_eq!(res.timeline().len(), 2);
-    assert_eq!(checked(&res).len(), 1);
+    assert_eq!(checked(&res).len(), 3);
 }
 
 #[tokio::test]
