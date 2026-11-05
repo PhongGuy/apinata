@@ -20,6 +20,7 @@ mod derived_credentials;
 mod empty_url;
 mod env_not_found;
 mod env_ops;
+mod export_har;
 mod generate_code;
 mod git_tools;
 mod global_env;

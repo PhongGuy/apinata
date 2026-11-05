@@ -412,6 +412,8 @@ async fn every_tool_result_matches_its_output_schema() {
         json!({"path": "r.yml", "name": "one"}),
     )
     .await;
+    ex.run(&server, "export_har", json!({"path": "r.yml"}))
+        .await;
     ex.run(&server, "run_folder", json!({"path": ""})).await;
     ex.run(&server, "run_folder", json!({"path": "f"})).await;
     for action in ["status", "fetch", "status", "refresh", "clear"] {

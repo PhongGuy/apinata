@@ -278,6 +278,92 @@ mod tests {
         );
     }
 
+    const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 0x00, 0xff, 0xfe, 0x10];
+
+    fn binary_entry(r: &Redactor, body: &[u8], cap: usize) -> NetworkEntry {
+        let response = Response::new(200).with_body(body.to_vec(), "lossy");
+        NetworkEntry::capture(r, &exchange(&[], Ok(&response), &[]), cap)
+    }
+
+    #[test]
+    fn a_whole_binary_body_keeps_its_bytes() {
+        let e = binary_entry(&Redactor::new(&["k-secret-1"]), PNG, 64);
+        assert_eq!(e.response_body.raw(), Some(PNG));
+        assert!(e.accounted_bytes() >= PNG.len());
+    }
+
+    #[test]
+    fn a_text_body_keeps_no_separate_bytes() {
+        let e = binary_entry(&Redactor::none(), b"plain text", 64);
+        assert_eq!(e.response_body.raw(), None);
+    }
+
+    #[test]
+    fn a_binary_body_past_the_cap_keeps_no_bytes() {
+        let e = binary_entry(&Redactor::none(), PNG, 4);
+        assert_eq!(e.response_body.raw(), None);
+    }
+
+    #[test]
+    fn a_binary_body_holding_a_secret_keeps_no_bytes() {
+        let body = [PNG, b"k-secret-1"].concat();
+        let e = binary_entry(&Redactor::new(&["k-secret-1"]), &body, 64);
+        assert_eq!(e.response_body.raw(), None);
+        let wide: Vec<u8> = "k-secret-1"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let body = [PNG, &wide].concat();
+        let e = binary_entry(&Redactor::new(&["k-secret-1"]), &body, 64);
+        assert_eq!(e.response_body.raw(), None, "a UTF-16 copy counts too");
+    }
+
+    fn wide(value: &str, big: bool) -> String {
+        let bytes: Vec<u8> = value
+            .encode_utf16()
+            .flat_map(|u| {
+                if big {
+                    u.to_be_bytes()
+                } else {
+                    u.to_le_bytes()
+                }
+            })
+            .collect();
+        String::from_utf8(bytes).expect("ASCII as UTF-16 is valid UTF-8")
+    }
+
+    #[test]
+    fn a_utf16_secret_is_redacted_from_the_stored_text() {
+        for big in [false, true] {
+            let body = format!("echo:{}", wide("k-secret-1", big));
+            let e = binary_entry(&Redactor::new(&["k-secret-1"]), body.as_bytes(), 64);
+            assert!(!e.response_body.text.contains(&wide("k-secret-1", big)));
+            assert!(e.response_body.text.contains(&wide("[redacted]", big)));
+        }
+    }
+
+    #[test]
+    fn a_utf16_secret_learned_later_is_redacted_from_the_stored_text() {
+        for big in [false, true] {
+            let body = format!("echo:{}", wide("k-secret-1", big));
+            let mut e = binary_entry(&Redactor::none(), body.as_bytes(), 64);
+            e.rededact(&Redactor::new(&["k-secret-1"]), 64);
+            assert!(!e.response_body.text.contains(&wide("k-secret-1", big)));
+        }
+    }
+
+    #[test]
+    fn a_secret_learned_later_or_a_withhold_drops_the_bytes() {
+        let body = [PNG, b"k-secret-1"].concat();
+        let mut e = binary_entry(&Redactor::none(), &body, 64);
+        assert!(e.response_body.raw().is_some());
+        e.rededact(&Redactor::new(&["k-secret-1"]), 64);
+        assert_eq!(e.response_body.raw(), None);
+        let mut e = binary_entry(&Redactor::none(), PNG, 64);
+        e.withhold("[withheld]");
+        assert_eq!(e.response_body.raw(), None);
+    }
+
     #[test]
     #[ignore = "measurement; run in release with --nocapture"]
     fn redaction_cost() {

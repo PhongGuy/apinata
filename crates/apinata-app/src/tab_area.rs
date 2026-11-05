@@ -1245,13 +1245,14 @@ impl TabArea {
         let Some(response) = result.response.as_ref() else {
             return;
         };
-        let Some(exchange) = har_export::exchange_for_response(response, send.ended_at()) else {
+        if response.timeline().is_empty() {
             window.push_notification(ui::info_toast(har_export::NO_REQUEST), cx);
             return;
-        };
+        }
+        let (response, ended) = (response.clone(), send.ended_at());
         let derived = response.derived_credentials().to_vec();
         let secrets = save_example::request_secrets(&self.workspace, &entry, &derived, cx);
-        har_export::save_redacted(exchange, secrets, window, cx);
+        har_export::save_sent(response, ended, secrets, window, cx);
     }
 
     /// Exports the open request tab whose shown response is the exchange `net` logged, through
@@ -1285,13 +1286,13 @@ impl TabArea {
             if !same {
                 continue;
             }
-            let Some(exchange) = har_export::exchange_for_response(response, send.ended_at())
-            else {
+            if response.timeline().is_empty() {
                 continue;
-            };
+            }
+            let (response, ended) = (response.clone(), send.ended_at());
             let derived = response.derived_credentials().to_vec();
             let secrets = save_example::request_secrets(&self.workspace, &entry, &derived, cx);
-            har_export::save_redacted(exchange, secrets, window, cx);
+            har_export::save_sent(response, ended, secrets, window, cx);
             return true;
         }
         false

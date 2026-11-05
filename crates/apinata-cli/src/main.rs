@@ -11,6 +11,7 @@ mod export;
 mod gen_cmd;
 mod git_cmd;
 mod graphql_cmd;
+mod har_cmd;
 mod hosts_cmd;
 mod import;
 mod item_cmd;
@@ -1081,6 +1082,12 @@ pub struct RunArgs {
     /// masked and a binary body holding a secret is left out.
     #[arg(long, value_name = "NAME", conflicts_with = "watch")]
     pub save_example: Option<String>,
+    /// Also write every exchange the run sent to this file as one HAR 1.2 log, each request as
+    /// it was sent with secret values, credential headers and derived credentials (OAuth 2.0
+    /// tokens, signatures) replaced by `[redacted]`. A send whose binary body holds a secret is
+    /// left out and named on stderr. With --watch the file is rewritten on every run.
+    #[arg(long, value_name = "FILE")]
+    pub har: Option<PathBuf>,
     /// With --save-example, keep the response exactly as received, secret values included.
     #[arg(long, requires = "save_example")]
     pub keep_secrets: bool,

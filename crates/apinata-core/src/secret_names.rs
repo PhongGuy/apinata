@@ -149,6 +149,21 @@ impl NamedSecret {
         &self.value
     }
 
+    /// This secret with `[redacted]` as its stand-in, for a record of what was sent.
+    pub(crate) fn unnamed_copy(&self) -> NamedSecret {
+        unnamed(&self.label, &self.value)
+    }
+
+    /// A secret that came from the variable `name`, as resolving a request would find it.
+    #[cfg(test)]
+    pub(crate) fn variable(name: &str, value: &str) -> NamedSecret {
+        NamedSecret {
+            label: name.to_owned(),
+            placeholder: format!("{{{{{name}}}}}"),
+            value: value.to_owned(),
+        }
+    }
+
     fn named(&self) -> bool {
         self.placeholder != REDACTED
     }
@@ -310,6 +325,53 @@ fn candidates(req: &RequestFile, ctx: &VarContext) -> Vec<(String, String)> {
         candidates.extend(render(value, &vars).map(|text| (format!("process.env.{key}"), text)));
     }
     candidates
+}
+
+/// `bytes` with every UTF-16LE and UTF-16BE copy of each value of at least the minimum
+/// length replaced by `[redacted]` in the same encoding, or `None` when there is none. Text
+/// redaction cannot see such a copy, though ASCII written as UTF-16 is valid UTF-8.
+pub(crate) fn redact_wide<'a>(
+    bytes: &[u8],
+    values: impl IntoIterator<Item = &'a str>,
+) -> Option<Vec<u8>> {
+    let mut out: Option<Vec<u8>> = None;
+    for value in values {
+        if value.chars().count() < MIN_CHARS {
+            continue;
+        }
+        for big in [false, true] {
+            let encode = |s: &str| -> Vec<u8> {
+                s.encode_utf16()
+                    .flat_map(|u| {
+                        if big {
+                            u.to_be_bytes()
+                        } else {
+                            u.to_le_bytes()
+                        }
+                    })
+                    .collect()
+            };
+            let needle = encode(value);
+            let hay = out.as_deref().unwrap_or(bytes);
+            if !contains_bytes(hay, &needle) {
+                continue;
+            }
+            let marker = encode(REDACTED);
+            let mut next = Vec::with_capacity(hay.len());
+            let mut i = 0;
+            while i < hay.len() {
+                if hay[i..].starts_with(&needle) {
+                    next.extend_from_slice(&marker);
+                    i += needle.len();
+                } else {
+                    next.push(hay[i]);
+                    i += 1;
+                }
+            }
+            out = Some(next);
+        }
+    }
+    out
 }
 
 /// Whether any of `secrets` appears in `bytes`.

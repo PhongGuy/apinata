@@ -15,7 +15,7 @@ pub use environment::{
     EnvironmentFile, postman_environment, postman_environment_files, postman_global_environment,
     postman_global_environment_files,
 };
-pub use har::{HarExchange, har};
+pub use har::{HarExchange, HarRefusal, har, har_log, sent_exchange};
 pub use html::html;
 pub use openapi::openapi;
 pub use postman::postman;

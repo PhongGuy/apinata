@@ -162,6 +162,29 @@ impl Redactor {
         }
     }
 
+    /// Whether `bytes` hold any value: a form in their lossy text, or a UTF-16 copy, which no
+    /// replacement inside the bytes could hide.
+    pub(crate) fn holds(&self, bytes: &[u8]) -> bool {
+        let lossy = String::from_utf8_lossy(bytes);
+        if self.redact(&lossy) != lossy {
+            return true;
+        }
+        self.values.iter().any(|v| {
+            let units: Vec<u16> = v.encode_utf16().collect();
+            let le: Vec<u8> = units.iter().flat_map(|u| u.to_le_bytes()).collect();
+            let be: Vec<u8> = units.iter().flat_map(|u| u.to_be_bytes()).collect();
+            [le, be]
+                .iter()
+                .any(|n| bytes.windows(n.len()).any(|w| w == n.as_slice()))
+        })
+    }
+
+    /// `bytes` with each value's UTF-16 copies replaced by `[redacted]` in the same encoding,
+    /// or `None` when they hold none.
+    pub(crate) fn redact_wide(&self, bytes: &[u8]) -> Option<Vec<u8>> {
+        crate::secret_names::redact_wide(bytes, self.values.iter().map(String::as_str))
+    }
+
     /// `url` with its whole userinfo dropped, then redacted. A username alone can be the
     /// credential (a token sent as the user), so a record of a send keeps none of it.
     pub(crate) fn redact_url(&self, url: &str) -> String {
