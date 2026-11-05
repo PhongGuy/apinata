@@ -139,7 +139,13 @@ pub(crate) struct TimedResolve(pub(crate) Arc<dyn Resolve>);
 
 impl Resolve for TimedResolve {
     fn resolve(&self, name: Name) -> Resolving {
-        let recorder = CURRENT.try_with(Arc::clone).ok();
+        // A SOCKS connect hands even an IP literal to the resolver; no lookup happens, so no
+        // DNS phase is recorded for it.
+        let host = name.as_str().trim_start_matches('[').trim_end_matches(']');
+        let recorder = match host.parse::<std::net::IpAddr>() {
+            Ok(_) => None,
+            Err(_) => CURRENT.try_with(Arc::clone).ok(),
+        };
         let started = Instant::now();
         let fut = self.0.resolve(name);
         Box::pin(async move {

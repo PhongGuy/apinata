@@ -2251,7 +2251,7 @@ impl ResponsePane {
                 .overflow_hidden()
                 .bg(theme.border)
                 .children(parts)
-                .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                .tooltip(ui::text_tooltip("response-timing-tooltip", tip))
                 .into_any_element(),
         )
     }
