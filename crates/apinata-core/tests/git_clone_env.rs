@@ -15,7 +15,7 @@ fn parent(sb: &Sandbox) -> PathBuf {
 /// An ambient GIT_SSH or GIT_SSH_COMMAND changes what the runner wraps, and a test cannot unset
 /// a variable through `GitOptions`. So the calling test re-runs itself in a child without
 /// them; returns true when it did, and the caller then returns.
-fn rerun_without_ambient_ssh() -> bool {
+pub fn rerun_without_ambient_ssh() -> bool {
     if std::env::var_os("GIT_SSH").is_none() && std::env::var_os("GIT_SSH_COMMAND").is_none() {
         return false;
     }
