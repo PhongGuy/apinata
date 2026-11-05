@@ -2,7 +2,7 @@
 //! encoding it accepts but DER forbids (long-form lengths, padded integers, unused bits) exports
 //! as the canonical one, and the crates, which read DER strictly, see that form too.
 
-use super::crypto::element;
+use super::crypto::{OID_ED25519, OID_RSA, element};
 
 pub(super) const SEQUENCE: u8 = 0x30;
 const INTEGER: u8 = 0x02;
@@ -13,16 +13,22 @@ const CONSTRUCTED: u8 = 0x20;
 
 /// One DER value with a minimal length.
 pub(super) fn tlv(tag: u8, body: &[u8]) -> Vec<u8> {
-    let len = body.len().to_be_bytes();
+    let mut out = head(tag, body.len());
+    out.extend_from_slice(body);
+    out
+}
+
+/// A tag and the minimal encoding of a length.
+fn head(tag: u8, length: usize) -> Vec<u8> {
+    let len = length.to_be_bytes();
     let skip = len.iter().take_while(|&&b| b == 0).count();
     let mut out = vec![tag];
-    if body.len() < 0x80 {
-        out.push(body.len() as u8);
+    if length < 0x80 {
+        out.push(length as u8);
     } else {
         out.push(0x80 | (len.len() - skip) as u8);
         out.extend_from_slice(&len[skip..]);
     }
-    out.extend_from_slice(body);
     out
 }
 
@@ -94,9 +100,17 @@ pub(super) fn spki_parts(der: &[u8]) -> Option<SpkiParts<'_>> {
     })
 }
 
+/// How deep OpenSSL's decoder follows constructed values before it gives up.
+const MAX_NESTING: usize = 30;
+
 /// `der`'s first value re-encoded with minimal lengths and integers, going into constructed
-/// values only, so primitive key bytes stay as they are; None when it does not parse.
+/// values only, so primitive key bytes stay as they are. None when it does not parse or nests
+/// past `MAX_NESTING`, which also bounds the stack and the copying to that depth.
 pub(super) fn canonical(der: &[u8]) -> Option<Vec<u8>> {
+    canonical_within(der, MAX_NESTING)
+}
+
+fn canonical_within(der: &[u8], depth: usize) -> Option<Vec<u8>> {
     let (tag, body, _) = element(der)?;
     let body = match tag {
         INTEGER => {
@@ -112,11 +126,12 @@ pub(super) fn canonical(der: &[u8]) -> Option<Vec<u8>> {
             value.to_vec()
         }
         tag if tag & CONSTRUCTED != 0 => {
+            let depth = depth.checked_sub(1)?;
             let mut rest = body;
             let mut out = Vec::with_capacity(body.len());
             while !rest.is_empty() {
                 let (.., after) = element(rest)?;
-                out.extend(canonical(rest)?);
+                out.extend(canonical_within(rest, depth)?);
                 rest = after;
             }
             out
@@ -126,27 +141,46 @@ pub(super) fn canonical(der: &[u8]) -> Option<Vec<u8>> {
     Some(tlv(tag, &body))
 }
 
-/// `canonical` for a PrivateKeyInfo, which also goes into the DER key its third member wraps.
+/// A PrivateKeyInfo as OpenSSL writes it again: version 0, the identifier, and the key it wraps
+/// in canonical form. Attributes and a v2 public key are dropped and RSA parameters, which
+/// OpenSSL never reads, become NULL, so none of them is walked and their depth does not matter.
 pub(super) fn canonical_pkcs8(der: &[u8]) -> Option<Vec<u8>> {
     let (SEQUENCE, body, _) = element(der)? else {
         return None;
     };
-    let mut rest = body;
-    let mut out = Vec::with_capacity(body.len());
-    for index in 0.. {
-        if rest.is_empty() {
-            break;
-        }
-        let (tag, value, after) = element(rest)?;
-        let wraps_one = element(value).is_some_and(|(.., tail)| tail.is_empty());
-        if index == 2 && tag == OCTET_STRING && wraps_one {
-            out.extend(tlv(OCTET_STRING, &canonical(value)?));
-        } else {
-            out.extend(canonical(rest)?);
-        }
-        rest = after;
+    let (INTEGER, [0 | 1], rest) = element(body)? else {
+        return None;
+    };
+    let (SEQUENCE, _, after) = element(rest)? else {
+        return None;
+    };
+    let identifier = &rest[..rest.len() - after.len()];
+    let (OCTET_STRING, key, mut tail) = element(after)? else {
+        return None;
+    };
+    while !tail.is_empty() {
+        let (0xa0 | 0x81 | 0xa1, _, next) = element(tail)? else {
+            return None;
+        };
+        tail = next;
     }
-    Some(tlv(SEQUENCE, &out))
+    let (_, inside, _) = element(identifier)?;
+    let (OID, oid, params) = element(inside)? else {
+        return None;
+    };
+    let identifier = match oid {
+        OID_RSA => algorithm(OID_RSA, Some(&[0x05, 0x00])),
+        OID_ED25519 if params.is_empty() => algorithm(OID_ED25519, None),
+        _ => canonical(identifier)?,
+    };
+    let key = match element(key) {
+        Some((.., [])) => canonical(key)?,
+        _ => key.to_vec(),
+    };
+    Some(tlv(
+        SEQUENCE,
+        &[uint(&[]), identifier, tlv(OCTET_STRING, &key)].concat(),
+    ))
 }
 
 #[cfg(test)]
@@ -167,6 +201,28 @@ mod tests {
         let long = [0x30, 0x82, 0, 4, 2, 0x81, 1, 7];
         assert_eq!(canonical(&long), Some(vec![0x30, 3, 2, 1, 7]));
         assert_eq!(canonical(&[0x30, 3, 2, 1]), None);
+    }
+
+    /// Nests `depth` SEQUENCEs around NULL in one pass, outermost header first.
+    fn nested(depth: usize) -> Vec<u8> {
+        let mut heads = Vec::with_capacity(depth);
+        let mut length = 2;
+        for _ in 0..depth {
+            let header = head(SEQUENCE, length);
+            length += header.len();
+            heads.push(header);
+        }
+        heads.reverse();
+        [heads.concat(), vec![5, 0]].concat()
+    }
+
+    #[test]
+    fn nesting_stops_at_openssls_depth() {
+        assert!(canonical(&nested(MAX_NESTING)).is_some());
+        assert_eq!(canonical(&nested(MAX_NESTING + 1)), None);
+        let started = std::time::Instant::now();
+        assert_eq!(canonical(&nested(100_000)), None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

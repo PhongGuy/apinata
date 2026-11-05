@@ -273,3 +273,38 @@ for (const pw of ["right", "wrong", "w218", "w189647"]) {
   show(`padding ${pw} public`, () => message(() => crypto.createPublicKey({ key: K.ec_iter1, passphrase: pw })));
   show(`padding ${pw} sign`, () => message(() => ({ type: crypto.sign("sha256", m, { key: K.ec_iter1, passphrase: pw }).length > 0 })));
 }
+
+// 16. A compressed P-521 point, whose JWK needs the full point.
+const ec521Der = spkiDer(EC521_PUB), [ec521Alg] = members(ec521Der), pt521 = bitsOf(ec521Der);
+pub("compressed p521", spki(ec521Alg, compressed(pt521)), { digest: "sha512", real: EC521 });
+exported("export compressed p521", spki(ec521Alg, compressed(pt521)));
+
+// 17. Deep nesting where OpenSSL keeps nothing (RSA parameters, attributes) opens at any depth,
+// and a PKCS#8 export drops attributes and a v2 public key. Built in one pass: O(depth).
+const nested = (depth, core = b(5, 0)) => {
+  const heads = [];
+  for (let i = 0, length = core.length; i < depth; i++) { const head = Buffer.concat([b(0x30), size3(length)]); heads.push(head); length += head.length; }
+  return Buffer.concat([...heads.reverse(), core]);
+};
+const size3 = (n) => Buffer.from(n < 128 ? [n] : n < 256 ? [0x81, n] : n < 65536 ? [0x82, n >> 8, n & 255] : [0x83, n >> 16, (n >> 8) & 255, n & 255]);
+const big = (tag, ...parts) => { const c = Buffer.concat(parts); return Buffer.concat([b(tag), size3(c.length), c]); };
+const rsaPkcs8 = pkcs8Der(RSA), [rsaVersion, rsaKeyAlg, rsaKeyBits] = members(rsaPkcs8), [rsaKeyOid] = members(rsaKeyAlg);
+const deepKey = (tag, key) => {
+  const o = { key, format: "der", type: "pkcs8" };
+  show(`${tag} der`, () => pkcs8Der(o).equals(rsaPkcs8));
+  show(`${tag} pem`, () => pkcs8Der(pemOf(key, "PRIVATE KEY")).equals(rsaPkcs8));
+  show(`${tag} sign`, () => crypto.verify("sha256", m, RSA_PUB, crypto.sign("sha256", m, o)));
+};
+for (const depth of [1, 29, 30, 31, 100000]) {
+  deepKey(`deep params ${depth}`, big(0x30, rsaVersion, big(0x30, rsaKeyOid, nested(depth)), rsaKeyBits));
+  deepKey(`deep attribute ${depth}`, big(0x30, rsaVersion, rsaKeyAlg, rsaKeyBits, big(0xa0, big(0x30, tlv(6, b(0x2a, 3)), big(0x31, nested(depth))))));
+}
+const rsaInner = rsaKeyBits.subarray(4);
+for (const depth of [1, 100000]) {
+  const key = big(0x30, rsaVersion, rsaKeyAlg, big(4, big(0x30, ...members(rsaInner), nested(depth))));
+  show(`deep inner ${depth}`, () => crypto.createPrivateKey({ key, format: "der", type: "pkcs8" }).type);
+}
+show("deep spki", () => crypto.createPublicKey({ key: big(0x30, big(0x30, rsaKeyOid, nested(100000)), tlv(3, b(0), pkcs1)), format: "der", type: "spki" }).export({ type: "spki", format: "der" }).equals(rsaDer));
+const edPkcs8 = pkcs8Der(ED_PRIV), [, edKeyAlg, edKeyBits] = members(edPkcs8);
+show("ed v2 export", () => pkcs8Der({ key: tlv(0x30, b(2, 1, 1), edKeyAlg, edKeyBits, tlv(0x81, b(0), edKey)), format: "der", type: "pkcs8" }).equals(edPkcs8));
+show("ec attribute export", () => { const d = pkcs8Der(EC256_SEC1), [v, a, k] = members(d); return pkcs8Der({ key: tlv(0x30, v, a, k, tlv(0xa0, tlv(0x30, tlv(6, b(0x2a, 3)), tlv(0x31, b(5, 0))))), format: "der", type: "pkcs8" }).equals(d); });
