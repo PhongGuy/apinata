@@ -5,9 +5,9 @@ use std::ffi::{OsStr, OsString};
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -41,6 +41,9 @@ impl CancelFlag {
     }
 }
 
+/// The most stdout a capturing call keeps; the rest is read and dropped.
+pub(crate) const STDOUT_CAP: usize = 64 * 1024;
+
 /// One environment change: `None` removes the variable.
 pub(crate) type EnvChange = (OsString, Option<OsString>);
 
@@ -50,6 +53,9 @@ pub(crate) struct Streamed {
     pub(crate) success: bool,
     /// The last `KEPT_LINES` stderr lines joined by newlines.
     pub(crate) stderr: String,
+    /// The first `STDOUT_CAP` bytes of stdout (lossy UTF-8); empty for the plain form.
+    #[allow(dead_code)]
+    pub(crate) stdout: String,
 }
 
 /// Why a streamed call did not finish.
@@ -71,6 +77,7 @@ impl From<io::Error> for StreamError {
 /// Run `program` with `args` in `cwd`, handing each stderr line (split on `\r` and `\n`, blank
 /// lines dropped) to `on_line` on this thread. The child leads its own process group so a cancel
 /// takes its helpers down too. There is no time limit; only `cancel` stops it early.
+#[allow(dead_code)]
 pub(crate) fn stream_program(
     program: &OsStr,
     args: &[OsString],
@@ -79,6 +86,32 @@ pub(crate) fn stream_program(
     cancel: &CancelFlag,
     on_line: &mut dyn FnMut(&str),
 ) -> Result<Streamed, StreamError> {
+    stream_body(program, args, cwd, env, cancel, on_line, false)
+}
+
+/// Like `stream_program`, but also keeps the first `STDOUT_CAP` bytes of stdout. Stdout is read
+/// to the end even past the cap, so a chatty child never blocks on a full pipe.
+#[allow(dead_code)]
+pub(crate) fn stream_program_capture(
+    program: &OsStr,
+    args: &[OsString],
+    cwd: &Path,
+    env: &[EnvChange],
+    cancel: &CancelFlag,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<Streamed, StreamError> {
+    stream_body(program, args, cwd, env, cancel, on_line, true)
+}
+
+fn stream_body(
+    program: &OsStr,
+    args: &[OsString],
+    cwd: &Path,
+    env: &[EnvChange],
+    cancel: &CancelFlag,
+    on_line: &mut dyn FnMut(&str),
+    capture: bool,
+) -> Result<Streamed, StreamError> {
     if cancel.is_cancelled() {
         return Err(StreamError::Cancelled { killed: false });
     }
@@ -86,7 +119,11 @@ pub(crate) fn stream_program(
     cmd.args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(if capture {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stderr(Stdio::piped());
     for (key, value) in env {
         match value {
@@ -99,6 +136,7 @@ pub(crate) fn stream_program(
 
     let mut child = cmd.spawn()?;
     let rx = read_lines(child.stderr.take());
+    let out = capture.then(|| read_capped(child.stdout.take()));
 
     let mut tail: VecDeque<String> = VecDeque::new();
     let mut keep = |line: String, on_line: &mut dyn FnMut(&str)| {
@@ -132,10 +170,42 @@ pub(crate) fn stream_program(
     while let Ok(line) = rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
         keep(line, on_line);
     }
+    // Same deadline for stdout; the thread is not joined, the buffer is read as it stands.
+    let stdout = out.map_or_else(String::new, |(buf, done)| {
+        let _ = done.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+        let bytes = buf.lock().unwrap_or_else(|e| e.into_inner());
+        String::from_utf8_lossy(&bytes).into_owned()
+    });
     Ok(Streamed {
         success: status.success(),
         stderr: tail.into_iter().collect::<Vec<_>>().join("\n"),
+        stdout,
     })
+}
+
+/// Read `pipe` to EOF on a thread, keeping the first `STDOUT_CAP` bytes. The receiver gets a
+/// message (or disconnects) when the thread is done.
+fn read_capped(
+    pipe: Option<impl Read + Send + 'static>,
+) -> (Arc<Mutex<Vec<u8>>>, mpsc::Receiver<()>) {
+    let buf = Arc::new(Mutex::new(Vec::new()));
+    let (tx, rx) = mpsc::channel();
+    if let Some(mut pipe) = pipe {
+        let keep = Arc::clone(&buf);
+        thread::spawn(move || {
+            let mut chunk = [0u8; 8192];
+            while let Ok(n) = pipe.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                let mut held = keep.lock().unwrap_or_else(|e| e.into_inner());
+                let room = STDOUT_CAP.saturating_sub(held.len());
+                held.extend_from_slice(&chunk[..n.min(room)]);
+            }
+            let _ = tx.send(());
+        });
+    }
+    (buf, rx)
 }
 
 /// Run `git` with `args` in `cwd` under the fixed flags and a prompt-closing environment, handing
@@ -147,6 +217,29 @@ pub(crate) fn git_stream<S: AsRef<OsStr>>(
     cancel: &CancelFlag,
     on_line: &mut dyn FnMut(&str),
 ) -> Result<Streamed, StreamError> {
+    git_stream_body(args, cwd, options, cancel, on_line, false)
+}
+
+/// Like `git_stream`, but also returns the first `STDOUT_CAP` bytes of stdout.
+#[allow(dead_code)]
+pub(crate) fn git_stream_capture<S: AsRef<OsStr>>(
+    args: &[S],
+    cwd: &Path,
+    options: &GitOptions,
+    cancel: &CancelFlag,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<Streamed, StreamError> {
+    git_stream_body(args, cwd, options, cancel, on_line, true)
+}
+
+fn git_stream_body<S: AsRef<OsStr>>(
+    args: &[S],
+    cwd: &Path,
+    options: &GitOptions,
+    cancel: &CancelFlag,
+    on_line: &mut dyn FnMut(&str),
+    capture: bool,
+) -> Result<Streamed, StreamError> {
     let argv: Vec<OsString> = PREFIX
         .iter()
         .map(OsString::from)
@@ -156,7 +249,15 @@ pub(crate) fn git_stream<S: AsRef<OsStr>>(
         env_value(options, "GIT_SSH_COMMAND").or_else(|| global_ssh_command(cwd, options));
     let ssh = ssh_command(configured, env_value(options, "GIT_SSH").is_some());
     let env = hardened_env(options, ssh);
-    stream_program(OsStr::new("git"), &argv, cwd, &env, cancel, on_line)
+    stream_body(
+        OsStr::new("git"),
+        &argv,
+        cwd,
+        &env,
+        cancel,
+        on_line,
+        capture,
+    )
 }
 
 /// The last `options.env` entry for `key`, else the process environment.
@@ -570,5 +671,97 @@ mod tests {
             .env("APINATA_K", "b");
         assert_eq!(env_value(&options, "APINATA_K").as_deref(), Some("b"));
         assert_eq!(env_value(&options, "APINATA_UNSET_KEY"), None);
+    }
+
+    fn sh_capture(script: &str, on_line: &mut dyn FnMut(&str)) -> Result<Streamed, StreamError> {
+        let argv: Vec<OsString> = vec!["-c".into(), script.into()];
+        stream_program_capture(
+            OsStr::new("sh"),
+            &argv,
+            Path::new("/"),
+            &[],
+            &CancelFlag::new(),
+            on_line,
+        )
+    }
+
+    #[test]
+    fn the_capturing_form_keeps_stdout_and_still_streams_stderr() {
+        let mut lines = Vec::new();
+        let out = sh_capture("printf 'one\\ntwo\\n'; echo err >&2", &mut |l| {
+            lines.push(l.to_owned())
+        })
+        .unwrap();
+        assert!(out.success);
+        assert_eq!(out.stdout, "one\ntwo\n");
+        assert_eq!(lines, ["err"]);
+        assert_eq!(out.stderr, "err");
+    }
+
+    #[test]
+    fn captured_stdout_is_capped_and_a_large_write_never_blocks() {
+        let started = Instant::now();
+        let out = sh_capture(
+            "head -c 300000 /dev/zero | tr '\\0' x; echo done >&2",
+            &mut |_| {},
+        )
+        .unwrap();
+        assert!(out.success);
+        assert_eq!(out.stdout.len(), STDOUT_CAP);
+        assert!(out.stdout.bytes().all(|b| b == b'x'));
+        assert_eq!(out.stderr, "done");
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn the_plain_form_still_captures_nothing() {
+        let out = sh("echo out", &[], &[], &CancelFlag::new(), &mut |_| {}).unwrap();
+        assert!(out.success);
+        assert_eq!(out.stdout, "");
+    }
+
+    #[test]
+    fn a_grandchild_holding_stdout_does_not_hold_the_capturing_call() {
+        let started = Instant::now();
+        let out = sh_capture("echo out; sleep 5 &", &mut |_| {}).unwrap();
+        assert_eq!(out.stdout, "out\n");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn the_capturing_form_honours_a_flag_set_before_the_call() {
+        let cancel = CancelFlag::new();
+        cancel.cancel();
+        let argv: Vec<OsString> = vec!["-c".into(), "sleep 30".into()];
+        let r = stream_program_capture(
+            OsStr::new("sh"),
+            &argv,
+            Path::new("/"),
+            &[],
+            &cancel,
+            &mut |_| {},
+        );
+        assert!(
+            matches!(r, Err(StreamError::Cancelled { killed: false })),
+            "{r:?}"
+        );
+    }
+
+    #[test]
+    fn git_stream_capture_returns_what_git_printed() {
+        let out = git_stream_capture(
+            &["--version"],
+            Path::new("/"),
+            &GitOptions::new(),
+            &CancelFlag::new(),
+            &mut |_| {},
+        )
+        .unwrap();
+        assert!(out.success);
+        assert!(out.stdout.starts_with("git version "), "{}", out.stdout);
     }
 }
