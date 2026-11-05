@@ -511,18 +511,35 @@ fn regex_end(b: &[u8], i: usize) -> Option<usize> {
     None
 }
 
+thread_local!(static NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
+
+/// One level of template nesting; dropping it, also while unwinding, gives the level back.
+struct NestingGuard;
+
+impl NestingGuard {
+    fn enter() -> Option<NestingGuard> {
+        let depth = NESTING.get();
+        (depth < MAX_DEPTH).then(|| {
+            NESTING.set(depth + 1);
+            NestingGuard
+        })
+    }
+}
+
+impl Drop for NestingGuard {
+    fn drop(&mut self) {
+        NESTING.set(NESTING.get().saturating_sub(1));
+    }
+}
+
 /// End of the template literal starting at `i`, descending into `${}` holes.
 fn template_end(src: &str, i: usize) -> usize {
-    thread_local!(static NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
     // Templates nested through `${}` recurse via find_close; past the cap the rest of
     // the input is taken as one opaque template.
-    if NESTING.get() >= MAX_DEPTH {
+    let Some(_level) = NestingGuard::enter() else {
         return src.len();
-    }
-    NESTING.set(NESTING.get() + 1);
-    let end = template_scan(src, i);
-    NESTING.set(NESTING.get() - 1);
-    end
+    };
+    template_scan(src, i)
 }
 
 fn template_scan(src: &str, i: usize) -> usize {
@@ -614,7 +631,11 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
     // here. A nested chunk is an expression, so it starts as if after `(`.
     let mut last: Option<u8> = if cx.depth > 1 { Some(b'(') } else { None };
     let mut after_kw = false;
+    // Open `return` statements without a `;`: where the argument ends, and where it began in
+    // the source and the output. One whose argument changed is reprinted with its `;`.
+    let mut returns: Vec<(usize, usize, usize)> = Vec::new();
     while i < b.len() {
+        close_returns(&mut returns, src, i, &mut out);
         if b[i] == b'`' {
             (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
             i = copy_template(src, i, &mut out, cx);
@@ -639,6 +660,13 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             }
             out.push_str(&src[i..end]);
             after_kw = matches!(&src[i..end], "else" | "do") && !is_property_access(b, i);
+            if &src[i..end] == "return"
+                && !is_property_access(b, i)
+                && returns.len() < MAX_OPEN_RETURNS
+                && let Some(arg_end) = unterminated_return(src, end, cx)
+            {
+                returns.push((arg_end, end, out.len()));
+            }
             last = Some(b[end - 1]);
             i = end;
         } else {
@@ -650,8 +678,80 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             i += 1;
         }
     }
+    close_returns(&mut returns, src, usize::MAX, &mut out);
     (cx.await_ok, cx.fid) = (base, base_fid);
     out
+}
+
+/// Most `return` statements tracked inside one another, so nesting keeps the scan linear.
+const MAX_OPEN_RETURNS: usize = 8;
+
+/// Ends the open `return` statements whose argument ends by `at`, adding the `;` the
+/// reference's printer gives a changed one.
+fn close_returns(returns: &mut Vec<(usize, usize, usize)>, src: &str, at: usize, out: &mut String) {
+    while let Some(&(end, src_from, out_from)) = returns.last()
+        && end <= at
+    {
+        returns.pop();
+        let upto = at.min(src.len());
+        if out[out_from..] != src[src_from..upto] {
+            out.push(';');
+        }
+    }
+}
+
+/// Where the argument of a `return` whose keyword ends at `from` ends, when the statement
+/// has an argument and no `;`. Line breaks end it as automatic semicolon insertion does.
+fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
+    let b = src.as_bytes();
+    let (mut i, mut end, mut after_op) = (from, None, false);
+    loop {
+        let ws = i;
+        i = skip_ws(b, i);
+        let broke = src[ws..i].contains('\n');
+        let Some(&c) = b.get(i) else {
+            return end;
+        };
+        if c == b'/' && matches!(b.get(i + 1), Some(b'/' | b'*')) {
+            if broke && end.is_none() {
+                return None;
+            }
+            i = skip_opaque(src, i)?;
+            continue;
+        }
+        if broke {
+            let continues = b".([`?&|,=+-*/%<>:".contains(&c);
+            match end {
+                Some(e) if !after_op && !continues => return Some(e),
+                None => return None,
+                Some(_) => {}
+            }
+        }
+        match c {
+            b';' => return None,
+            b')' | b']' | b'}' => return end,
+            b':' if end.is_none() => return None,
+            b'(' | b'[' | b'{' => {
+                i = cx.find_close(src, i)? + 1;
+                after_op = false;
+            }
+            _ if is_ident_byte(c) => {
+                i = ident_end(b, i);
+                after_op = false;
+            }
+            _ => match skip_opaque(src, i) {
+                Some(e) => {
+                    i = e;
+                    after_op = false;
+                }
+                None => {
+                    i += 1;
+                    after_op = true;
+                }
+            },
+        }
+        end = Some(i);
+    }
 }
 
 /// Copy a template literal, translating only its `${}` holes.
@@ -1146,21 +1246,55 @@ fn rewrite_tests_bracket(
     Some((text, next))
 }
 
-/// The first `pm.`/`postman.` member chain in `code`, as the run-time error names it.
+/// The first `pm.`/`postman.` member chain in `code`.
 pub(crate) fn first_pm_chain(code: &str) -> Option<String> {
     let mut found = Vec::new();
     collect_unsupported(code, &mut found, &mut HashSet::new());
     found.into_iter().next()
 }
 
+/// The `pm.`/`postman.` member chain that runs at the 1-based `line` and `column` of `code`, as
+/// the run-time error names it: the last chain on that line starting at or before the column,
+/// else the line's first chain, else the first in the code.
+pub(crate) fn pm_chain_at(code: &str, line: u32, column: Option<u32>) -> Option<String> {
+    let mut on_line: Vec<(usize, String)> = Vec::new();
+    each_pm_chain(code, 0, &mut |at, chain| {
+        let before = &code[..at];
+        let row = before.matches('\n').count() + 1;
+        if row == line as usize {
+            let col = before[before.rfind('\n').map_or(0, |n| n + 1)..]
+                .chars()
+                .count()
+                + 1;
+            on_line.push((col, chain));
+        }
+    });
+    let at_column = column.and_then(|c| {
+        let k = on_line.iter().rposition(|(col, _)| *col <= c as usize)?;
+        Some(on_line.swap_remove(k).1)
+    });
+    at_column
+        .or_else(|| on_line.into_iter().next().map(|(_, chain)| chain))
+        .or_else(|| first_pm_chain(code))
+}
+
 /// Collect the distinct `pm.`/`postman.` member chains that survive translation.
 fn collect_unsupported(code: &str, found: &mut Vec<String>, seen: &mut HashSet<String>) {
+    each_pm_chain(code, 0, &mut |_, chain| {
+        if seen.insert(chain.clone()) {
+            found.push(chain);
+        }
+    });
+}
+
+/// Every `pm.`/`postman.` member chain in `code`, in source order, with its offset plus `base`.
+fn each_pm_chain(code: &str, base: usize, each: &mut dyn FnMut(usize, String)) {
     let b = code.as_bytes();
     let mut i = 0;
     while i < b.len() {
         if let Some(end) = skip_opaque(code, i) {
             if b[i] == b'`' {
-                collect_template_holes(code, i, end, found, seen);
+                template_holes(code, i, end, base, each);
             }
             i = end;
         } else if is_ident_byte(b[i]) {
@@ -1176,8 +1310,8 @@ fn collect_unsupported(code: &str, found: &mut Vec<String>, seen: &mut HashSet<S
                     chain.push_str(&code[next..e]);
                     next = e;
                 }
-                if chain.contains('.') && seen.insert(chain.clone()) {
-                    found.push(chain);
+                if chain.contains('.') {
+                    each(base + i, chain);
                 }
             }
             i = next;
@@ -1187,12 +1321,12 @@ fn collect_unsupported(code: &str, found: &mut Vec<String>, seen: &mut HashSet<S
     }
 }
 
-fn collect_template_holes(
+fn template_holes(
     code: &str,
     start: usize,
     end: usize,
-    found: &mut Vec<String>,
-    seen: &mut HashSet<String>,
+    base: usize,
+    each: &mut dyn FnMut(usize, String),
 ) {
     let b = code.as_bytes();
     let mut i = start + 1;
@@ -1203,7 +1337,7 @@ fn collect_template_holes(
                 let Some(close) = find_close(code, i + 1) else {
                     return;
                 };
-                collect_unsupported(&code[i + 2..close], found, seen);
+                each_pm_chain(&code[i + 2..close], base + i + 2, each);
                 i = close + 1;
             }
             _ => i += 1,
@@ -1856,6 +1990,313 @@ mod tests {
             "pm.sendRequest('u', function (e, res) { `${".to_string() + &"`${".repeat(k)
         });
     }
+    /// Outputs below were produced by the reference on the same input.
+    #[test]
+    fn response_access_follows_hoisting_named_functions_and_ternaries() {
+        let wrap = |body: &str| format!("pm.sendRequest('u', function (e, res) {{\n{body}\n}});");
+        let want = |body: &str| {
+            format!("await bru.sendRequest('u', async function(e, res) {{\n{body}\n}});")
+        };
+        for (body, out) in [
+            // A `var` or function declared after its use still binds the whole function.
+            (
+                "  function f() {\n    return res.code;\n    var res = 1;\n  }\n  console.log(res.code);",
+                "  function f() {\n    return res.code;\n    var res = 1;\n  }\n  console.log(res.status);",
+            ),
+            (
+                "  function f() {\n    console.log(res.code);\n    function res() {}\n  }\n  console.log(res.code);",
+                "  function f() {\n    console.log(res.code);\n    function res() {}\n  }\n  console.log(res.status);",
+            ),
+            (
+                "  [1].map(function () {\n    console.log(res.code);\n    if (true) {\n      var res = 2;\n    }\n  });\n  console.log(res.code);",
+                "  [1].map(function () {\n    console.log(res.code);\n    if (true) {\n      var res = 2;\n    }\n  });\n  console.log(res.status);",
+            ),
+            // A named function expression binds its name inside itself only.
+            (
+                "  setTimeout(function res() {\n    console.log(res.code);\n  }, 1);\n  console.log(res.code);",
+                "  setTimeout(function res() {\n    console.log(res.code);\n  }, 1);\n  console.log(res.status);",
+            ),
+            (
+                "  const g = function res() {\n    return res.code;\n  };\n  console.log(res.code);",
+                "  const g = function res() {\n    return res.code;\n  };\n  console.log(res.status);",
+            ),
+            (
+                "  function g() {\n    console.log(res.code);\n    const x = function res() {};\n  }\n  console.log(res.code);",
+                "  function g() {\n    console.log(res.status);\n    const x = function res() {};\n  }\n  console.log(res.status);",
+            ),
+            // An arrow's parameter shadows its concise body, which ends at the ternary's `:`.
+            (
+                "  const f = ok ? res => res.code : res.code;",
+                "  const f = ok ? res => res.code : res.status;",
+            ),
+            (
+                "  const f = ok ? (res) => res.code : res.code;",
+                "  const f = ok ? (res) => res.code : res.status;",
+            ),
+            (
+                "  const f = ok ? res => a ? res.code : 1 : res.code;",
+                "  const f = ok ? res => a ? res.code : 1 : res.status;",
+            ),
+            (
+                "  const f = ok ? res => a?.b ?? res.code : res.code;",
+                "  const f = ok ? res => a?.b ?? res.code : res.status;",
+            ),
+            (
+                "  const o = { a: ok ? res => res.code : res.code };",
+                "  const o = { a: ok ? res => res.code : res.status };",
+            ),
+            // A declaration in the callback's own scope does not count, even in its own body.
+            (
+                "  function res2() {}\n  function res() {\n    return res.code;\n  }\n  console.log(res.code);",
+                "  function res2() {}\n  function res() {\n    return res.status;\n  }\n  console.log(res.status);",
+            ),
+            (
+                "  function g() {\n    return () => res.code;\n    var res;\n  }",
+                "  function g() {\n    return () => res.code;\n    var res;\n  }",
+            ),
+            (
+                "  f(async function* res() { res.code; });\n  res.code;",
+                "  f(async function* res() { res.code; });\n  res.status;",
+            ),
+        ] {
+            assert_eq!(t(&wrap(body)), want(out), "{body}");
+        }
+    }
+
+    /// The `await` an arrow's concise body cannot hold ends with that body at a ternary's `:`.
+    #[test]
+    fn a_concise_arrow_body_ends_at_the_ternary_colon() {
+        assert_eq!(
+            t("const f = ok ? () => pm.sendRequest('u') : pm.sendRequest('v');"),
+            "const f = ok ? () => bru.sendRequest('u') : await bru.sendRequest('v');"
+        );
+    }
+
+    /// Outputs below were produced by the reference on the same input: removing an alias
+    /// reprints its statement list, and a changed `return` is reprinted with its `;`.
+    #[test]
+    fn reprints_follow_the_reference() {
+        for (src, want) in [
+            (
+                "const r = pm.response;\na(); b();\nr.json();",
+                "a();b();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\na(); r.json();",
+                "a();res.getBody();",
+            ),
+            (
+                "const r = pm.response;\nr.json(); b();",
+                "res.getBody();b();",
+            ),
+            (
+                "function f() {\n  const r = pm.response;\n  return r.json()\n}",
+                "function f() {\n  return res.getBody();\n}",
+            ),
+            ("const r = pm.response;;\nr.json();", "res.getBody();"),
+            (
+                "const r = pm.response;\nfoo()\nr.json()",
+                "foo()\nres.getBody()",
+            ),
+            ("const r = pm.response; a(); b();", "a();b();"),
+            (
+                "a(); const r = pm.response; b(); r.json();",
+                "a();b();res.getBody();",
+            ),
+            (
+                "const r = pm.response;\nconst x = r.json()\nconsole.log(x)",
+                "const x = res.getBody()\nconsole.log(x)",
+            ),
+            (
+                "const r = pm.response;\nfunction f() { return r.code }",
+                "function f() { return res.getStatus(); }",
+            ),
+            (
+                "const r = pm.response;\nif (x) { a(); b(); }\nr.json();",
+                "if (x) { a(); b(); }\nres.getBody();",
+            ),
+            ("const r = pm.response;;;\nr.json();", "res.getBody();"),
+            (
+                "const r = pm.response;\nlet y = 1;;\nr.json();",
+                "let y = 1;\nres.getBody();",
+            ),
+            (
+                "function f() { return pm.response.code }",
+                "function f() { return res.getStatus(); }",
+            ),
+            (
+                "function f() { return pm.environment.get('a') }",
+                "function f() { return bru.getEnvVar('a'); }",
+            ),
+            (
+                "function f() { return pm.response.json().id }",
+                "function f() { return res.getBody().id; }",
+            ),
+            (
+                "const r = pm.response;\nconst f = () => { return r.code }",
+                "const f = () => { return res.getStatus(); }",
+            ),
+            (
+                "const r = pm.response;\nfunction f() { if (x) return r.code\n  return 1 }",
+                "function f() { if (x) return res.getStatus();\n  return 1 }",
+            ),
+            (
+                "function f() { return responseBody }",
+                "function f() { return res.getBody(); }",
+            ),
+            (
+                "a(); b();\nconst r = pm.response;\nc(); d();\nr.json();",
+                "a();b();\nc();d();\nres.getBody();",
+            ),
+            (
+                "function f() {\n  a(); b();\n  const r = pm.response;\n  c(); ;\n  return r.json();\n}\ng(); h();",
+                "function f() {\n  a();b();\n  c();\n  return res.getBody();\n}\ng(); h();",
+            ),
+            (
+                "const r = pm.response;\nif (x) {} b();\nr.json();",
+                "if (x) {}b();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\na() // c\nb(); /* d */ c();\nr.json();",
+                "a() // c\nb();/* d */ c();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\nfor (;;) { a(); b(); }\n;\nr.json();",
+                "for (;;) { a(); b(); }\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\nlet o = {a: 1}; b();\nr.json();",
+                "let o = {a: 1};b();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\na();\t b();\nr.json();",
+                "a();b();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\na(); b()\nr.json();",
+                "a();b()\nres.getBody();",
+            ),
+            (
+                "const r = pm.response, x = 1; a(); b();\nr.json();",
+                "const x = 1; a(); b();\nres.getBody();",
+            ),
+            // Nothing removed and no `return` changed: the spacing stays.
+            (
+                "a();pm.environment.set('x', 1);b()",
+                "a();bru.setEnvVar('x', 1);b()",
+            ),
+            ("pm.environment.set('x', 1);;", "bru.setEnvVar('x', 1);;"),
+            (
+                "a(); b(); pm.environment.set('x', 1);",
+                "a(); b(); bru.setEnvVar('x', 1);",
+            ),
+        ] {
+            assert_eq!(t(src), want, "input {src:?}");
+        }
+    }
+
+    /// Reprinting never touches what is not a statement boundary of the changed list.
+    #[test]
+    fn reprints_keep_what_they_must() {
+        for (src, want) in [
+            (
+                "const r = pm.response;\nif (a) {} else {}\nr.json();",
+                "if (a) {} else {}\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\ntry {} catch (e) {} finally {}\nr.json();",
+                "try {} catch (e) {} finally {}\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\ndo {} while (x); a();\nr.json();",
+                "do {} while (x);a();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\nif (x) ;\nr.json();",
+                "if (x) ;\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\nx = {};\nr.json();",
+                "x = {};\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\na(); // c\nr.json();",
+                "a(); // c\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\nconst s = 'a; b'; `${1}; ${2}`;\nr.json();",
+                "const s = 'a; b';`${1}; ${2}`;\nres.getBody();",
+            ),
+            (
+                "function f() { return }\nfunction g() { return pm.x }",
+                "function f() { return }\nfunction g() { return pm.x }",
+            ),
+            (
+                "const r = pm.response;\nwhile (x) {}; a();\nr.json();",
+                "while (x) {}a();\nres.getBody();",
+            ),
+            (
+                "const r = pm.response;\nfunction g() {}; a();\nr.json();",
+                "function g() {}a();\nres.getBody();",
+            ),
+            (
+                "function f() { return pm.response.code; }",
+                "function f() { return res.getStatus(); }",
+            ),
+            (
+                "function f() {\n  return pm.response.code // why\n}",
+                "function f() {\n  return res.getStatus(); // why\n}",
+            ),
+        ] {
+            assert_eq!(t(src), want, "input {src:?}");
+        }
+    }
+
+    #[test]
+    fn reprints_and_scope_rules_stay_linear() {
+        linear(40_000, |k| "return (".repeat(k));
+        linear(20_000, |k| {
+            "function f() { return ".repeat(k) + &"pm.environment.get('a') }".repeat(k)
+        });
+        linear(40_000, |k| {
+            "function f() { return pm.environment.get('a') }\n".repeat(k)
+        });
+        linear(40_000, |k| {
+            "const r = pm.response;\n".to_string() + &"a(); ;".repeat(k) + "r.json();"
+        });
+        linear(30_000, |k| {
+            "const r = pm.response;\n".to_string() + &"if (x) {} ".repeat(k) + "r.json();"
+        });
+        linear(20_000, |k| {
+            "pm.sendRequest('u', function (e, res) {".to_string()
+                + &"ok ? res => res.code : ".repeat(k)
+                + "1 });"
+        });
+        linear(20_000, |k| {
+            "pm.sendRequest('u', function (e, res) {".to_string()
+                + &"function f() { res.code; var res; ".repeat(k)
+                + "});"
+        });
+        linear(20_000, |k| {
+            "pm.sendRequest('u', function (e, res) {".to_string()
+                + &"f(function res() { res.code; ".repeat(k)
+                + "});"
+        });
+    }
+
+    #[test]
+    fn template_nesting_is_released_when_a_scan_panics() {
+        let caught = std::panic::catch_unwind(|| {
+            let _level = NestingGuard::enter();
+            panic!("a scan failed mid-template");
+        });
+        assert!(caught.is_err());
+        assert_eq!(NESTING.get(), 0);
+        let deep =
+            "`${".repeat(MAX_DEPTH - 2) + "pm.environment.get('a')" + &"}`".repeat(MAX_DEPTH - 2);
+        assert!(t(&deep).contains("bru.getEnvVar('a')"));
+    }
+
     #[test]
     fn translated_helpers_are_not_reported_but_untranslated_ones_are() {
         let r = translate(

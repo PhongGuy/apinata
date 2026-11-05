@@ -6,7 +6,7 @@ mod env;
 mod model;
 mod notes;
 mod script;
-pub(crate) use script::first_pm_chain;
+pub(crate) use script::pm_chain_at;
 
 use super::load::json_error_offset;
 use super::{

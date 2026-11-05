@@ -23,6 +23,8 @@ struct Frame {
     ok: bool,
     /// The function this frame lies in.
     fid: u32,
+    /// Conditional `?`s in this frame still waiting for their `:`.
+    pending_colons: u32,
 }
 
 pub(super) struct Scope {
@@ -72,7 +74,13 @@ impl Scope {
     }
 
     fn push(&mut self, open: u8, pre: Pre, ok: bool, fid: u32) {
-        self.frames.push(Frame { open, pre, ok, fid });
+        self.frames.push(Frame {
+            open,
+            pre,
+            ok,
+            fid,
+            pending_colons: 0,
+        });
     }
 
     /// An expression-bodied arrow ends at a comma, a semicolon or the closing bracket.
@@ -108,6 +116,24 @@ impl Scope {
                 }
             }
             b',' | b';' => self.pop_concise(),
+            b'?' if super::send_request::is_conditional(b, i) => {
+                if let Some(f) = self.frames.last_mut() {
+                    f.pending_colons += 1;
+                }
+            }
+            // The `:` of a conditional ends the concise arrow bodies opened since its `?`.
+            b':' => {
+                while self
+                    .frames
+                    .last()
+                    .is_some_and(|f| f.open == b'>' && f.pending_colons == 0)
+                {
+                    self.frames.pop();
+                }
+                if let Some(f) = self.frames.last_mut() {
+                    f.pending_colons = f.pending_colons.saturating_sub(1);
+                }
+            }
             // An expression-bodied arrow; a block body is handled when its brace opens.
             b'>' if i > 0 && b[i - 1] == b'=' && b.get(skip_ws(b, i + 1)) != Some(&b'{') => {
                 *ids += 1;
