@@ -36,7 +36,8 @@ use crate::cookies::{self, ClearArgs, Cleared, CookieList};
 use crate::dto::{ConfigDoc, EnvironmentDoc, RequestDoc};
 use crate::envs::{self, DeletedEnv, EnvNameResult, RenameEnvArgs, UpdateEnvArgs};
 use crate::examples::{
-    self, LastSend, LastSends, SaveExampleArgs, SavedExample, ScrubArgs, ScrubbedUserinfo,
+    self, ExportHarArgs, ExportedHar, LastSend, LastSends, SaveExampleArgs, SavedExample,
+    ScrubArgs, ScrubbedUserinfo,
 };
 use crate::generate::{self, GenerateArgs, GeneratedCode};
 use crate::git::{self, GitDiffDoc, GitStatusDoc};
@@ -1283,6 +1284,7 @@ impl ApinataServer {
             let last = LastSend {
                 response: response.clone(),
                 secrets,
+                ended: std::time::SystemTime::now(),
             };
             (self.last_sends.lock().unwrap_or_else(|e| e.into_inner())).insert(path, last);
             let mut sent = send::send_result(
@@ -1343,6 +1345,22 @@ impl ApinataServer {
             }))
         })
         .await
+    }
+
+    #[tool(
+        description = "Return the exchange the last send_request of `path` made this session as \
+                       a HAR 1.2 document with one entry, as the app's Export as HAR writes it: \
+                       the request as sent, with every secret value, credential header and \
+                       derived credential (OAuth 2.0 tokens, signatures) replaced by \
+                       `[redacted]`. Errors when the request was not sent this session or its \
+                       binary response body holds a secret.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn export_har(
+        &self,
+        Parameters(args): Parameters<ExportHarArgs>,
+    ) -> Result<Json<ExportedHar>, String> {
+        examples::export_har(&self.last_sends, args).map(Json)
     }
 
     #[tool(

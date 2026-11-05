@@ -58,6 +58,7 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "delete_environment",
             "delete_item",
             "duplicate_environment",
+            "export_har",
             "generate_code",
             "get_collection",
             "git_diff",
