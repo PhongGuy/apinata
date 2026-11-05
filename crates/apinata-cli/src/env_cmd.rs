@@ -365,7 +365,8 @@ fn gone_roots(json: bool, store: &dyn SecretStore) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Each root, a tab, and the command that lists its secrets, the path single-quoted for a shell.
+/// Each root, a tab, and the command that lists its secrets, the path single-quoted for a POSIX
+/// shell; a root with control characters shows escaped, so its command names no real path.
 /// A root is untrusted text from the store, so both go through [`shown`].
 fn root_lines(roots: &[PathBuf]) -> Vec<String> {
     let line = |root: &PathBuf| {
