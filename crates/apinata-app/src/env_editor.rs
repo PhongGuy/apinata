@@ -872,8 +872,13 @@ impl EnvEditor {
         if self.selected.as_deref() != Some(env) {
             return LockStep::Stop;
         }
+        // A read that answers ends whatever an earlier failed read put on the error line.
         let stored = match read {
-            Ok(Ok(stored)) => stored,
+            Ok(Ok(stored)) => {
+                self.error = None;
+                cx.notify();
+                stored
+            }
             Ok(Err(message)) => {
                 self.error = Some(message);
                 cx.notify();
@@ -970,6 +975,11 @@ impl EnvEditor {
                     Err(_) => return None,
                 }
             }
+            this.update(cx, |e, cx| {
+                e.error = None;
+                cx.notify();
+            })
+            .ok();
             Some(secret_lock::replaced(&typing, &stored))
         })
     }

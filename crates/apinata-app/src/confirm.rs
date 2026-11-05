@@ -268,12 +268,12 @@ pub fn discard_twin_ask(names: &[String]) -> Ask {
     )
 }
 
-/// Moving the stored value of `name` to the file: `[Cancel, Make plain]`, Cancel the default.
+/// Moving the value of `name` into the file: `[Cancel, Make plain]`, Cancel the default.
 pub fn move_secret_ask(name: &str) -> Ask {
     careful_ask(
-        format!("Move the stored value of \"{name}\" to the file?"),
-        "It leaves the secret store and is written to this environment's file as plain text, \
-         where git can see it.",
+        format!("Move the value of \"{name}\" into the file?"),
+        "It is written to this environment's file as plain text, where git can see it, and \
+         leaves the secret store.",
         "confirm-make-plain",
         "Make plain",
     )

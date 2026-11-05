@@ -510,7 +510,10 @@ impl GlobalEnvEditor {
             return LockStep::Stop;
         }
         let stored = match read {
-            Ok(stored) => stored,
+            Ok(stored) => {
+                self.clear_read_error(cx);
+                stored
+            }
             Err(message) => {
                 self.error = Some(message);
                 cx.notify();
@@ -531,8 +534,8 @@ impl GlobalEnvEditor {
     }
 
     // A toggle first saves the table as it stands, so the reload after it keeps other rows'
-    // typing and a row not yet in the file exists; it drops typing for the toggled variable,
-    // since the toggle moves the stored value itself.
+    // typing and a row not yet in the file exists. The toggled variable's typing is stored with
+    // that Save, so the toggle moves it, as the collection editor does.
     fn toggle_lock(
         &mut self,
         env: String,
@@ -547,11 +550,15 @@ impl GlobalEnvEditor {
             if e.selected.as_deref() != Some(env.as_str()) {
                 return;
             }
-            e.table.update(cx, |t, cx| {
+            let typed = e.table.update(cx, |t, cx| {
                 t.confirm_typing(&variable, cx);
                 t.take_typing(&variable, cx)
             });
-            e.secrets.retain(|(v, _)| *v != variable);
+            // The newest typing replaces any the variable committed earlier.
+            if let Some(text) = typed {
+                e.secrets.retain(|(v, _)| *v != variable);
+                e.secrets.push((variable.clone(), text));
+            }
             let _ = e.save(cx);
             let outcome = e.send(
                 GlobalOp::SetSecret {
@@ -603,6 +610,7 @@ impl GlobalEnvEditor {
                     }
                 }
             }
+            this.update(cx, |e, cx| e.clear_read_error(cx)).ok();
             Some(secret_lock::replaced(&typing, &stored))
         });
         cx.spawn_in(window, async move |this, cx| {
@@ -696,6 +704,15 @@ impl GlobalEnvEditor {
         let outcome = self.workspace.update(cx, |w, cx| w.edit_globals(op, cx));
         cx.notify();
         outcome
+    }
+
+    // A read that answers ends an earlier failed read's error; the duplicate-names refusal is
+    // the only other error this editor holds, and it stays while the names still collide.
+    fn clear_read_error(&mut self, cx: &mut Context<Self>) {
+        if self.error.as_deref() != Some(DUPLICATE_SECRET_NAMES) {
+            self.error = None;
+            cx.notify();
+        }
     }
 
     // Drops both error sources, the workspace's and this editor's own.

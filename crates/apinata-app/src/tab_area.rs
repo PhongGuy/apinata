@@ -1431,9 +1431,18 @@ impl TabArea {
     }
 
     /// Saves every dirty request that has an open tab.
+    /// A no on the Replace check keeps only the environment tabs it asked about unsaved.
     pub fn save_all(&mut self, _: &SaveAll, window: &mut Window, cx: &mut Context<Self>) {
         let ids: Vec<TabId> = self.editors.keys().copied().collect();
-        self.after_replace_check(&ids.clone(), window, cx, move |area, window, cx| {
+        let asked: Vec<TabId> = (ids.iter().copied())
+            .filter(|id| match self.editors.get(id) {
+                Some((_, TabView::Env(editor))) => editor.read(cx).owes_replace_check(true, cx),
+                _ => false,
+            })
+            .collect();
+        self.save_check(&ids.clone(), window, cx, move |go, area, window, cx| {
+            let kept = |id: &TabId| go || !asked.contains(id);
+            let ids: Vec<TabId> = ids.into_iter().filter(kept).collect();
             let owed = area.store_pending_secrets(&ids, true, cx);
             area.warn_unsaved(&ids, window, cx);
             let dirty: Vec<TabEntry> = area
@@ -1442,6 +1451,7 @@ impl TabArea {
                 .tabs()
                 .entries()
                 .iter()
+                .filter(|e| kept(&e.id))
                 .filter(|e| owed.contains(&e.id) || area.is_dirty(e, cx))
                 .cloned()
                 .collect();

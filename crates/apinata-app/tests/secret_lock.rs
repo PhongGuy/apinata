@@ -305,7 +305,7 @@ fn move_asks_and_cancel_keeps(cx: &mut TestAppContext, kind: Kind) {
     click_lock(cx, f.win, 1);
     assert_eq!(
         title(cx).as_deref(),
-        Some("Move the stored value of \"old\" to the file?")
+        Some("Move the value of \"old\" into the file?")
     );
     answer_confirm(cx, CANCEL);
     assert_eq!(f.held().as_deref(), Some("s3cret"));
@@ -482,9 +482,9 @@ both!(
     cancel_keeps_typing_out_of_the_store_in_a_global
 );
 
-#[gpui_kit::test]
-fn confirming_sends_the_typing_to_the_file_in_a_collection(cx: &mut TestAppContext) {
-    let f = fix(cx, Kind::Collection, SECRET);
+// Over a stored value, Make plain writes what was typed, not the value it replaces.
+fn confirming_sends_the_typing_to_the_file(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, SECRET);
     frame(cx, f.win);
     type_at_end(cx, f.win, None, ("env-value", 1usize), "typed");
     cx.run_until_parked();
@@ -494,6 +494,11 @@ fn confirming_sends_the_typing_to_the_file_in_a_collection(cx: &mut TestAppConte
     assert!(!f.bytes().contains("s3cret"), "{}", f.bytes());
     assert_eq!(f.held(), None);
 }
+both!(
+    confirming_sends_the_typing_to_the_file,
+    confirming_sends_the_typing_to_the_file_in_a_collection,
+    confirming_sends_the_typing_to_the_file_in_a_global
+);
 
 #[gpui_kit::test]
 fn typing_over_nothing_stored_reaches_the_file_unasked(cx: &mut TestAppContext) {
@@ -505,19 +510,6 @@ fn typing_over_nothing_stored_reaches_the_file_unasked(cx: &mut TestAppContext) 
     click_lock(cx, f.win, 1);
     assert!(!confirm_open(cx));
     assert!(f.bytes().contains("typed"), "{}", f.bytes());
-}
-
-#[gpui_kit::test]
-fn confirming_discards_the_typing_and_moves_the_stored_value_in_a_global(cx: &mut TestAppContext) {
-    let f = fix(cx, Kind::Global, SECRET);
-    frame(cx, f.win);
-    type_at_end(cx, f.win, None, ("env-value", 1usize), "typed");
-    cx.run_until_parked();
-    click_lock(cx, f.win, 1);
-    answer_confirm(cx, MAKE_PLAIN);
-    assert!(f.bytes().contains("s3cret"), "{}", f.bytes());
-    assert!(!f.bytes().contains("typed"), "{}", f.bytes());
-    assert_eq!(f.held(), None);
 }
 
 #[gpui_kit::test]
@@ -1471,7 +1463,7 @@ fn a_switch_names_a_draft_row_in_its_prompt(cx: &mut TestAppContext) {
     assert_eq!(f.store.get(&f.two).unwrap().as_deref(), Some("second"));
 }
 
-// The toggle drops the row's typing and moves the stored value, so nothing is replaced.
+// The toggle moves the row's typing itself, so its Move prompt is the only question.
 #[gpui_kit::test]
 fn a_global_lock_does_not_name_the_row_it_toggles(cx: &mut TestAppContext) {
     let f = fix(cx, Kind::Global, HOST);
@@ -1479,10 +1471,104 @@ fn a_global_lock_does_not_name_the_row_it_toggles(cx: &mut TestAppContext) {
     click_lock(cx, f.win, 1);
     answer_confirm(cx, MAKE_PLAIN);
     assert!(!confirm_open(cx), "one question");
-    assert!(f.bytes().contains("s3cret"), "{}", f.bytes());
-    assert!(!f.bytes().contains("typed"), "{}", f.bytes());
+    assert!(f.bytes().contains("typed"), "{}", f.bytes());
+    assert!(!f.bytes().contains("s3cret"), "{}", f.bytes());
     assert_eq!(f.held(), None);
 }
+
+// With nothing stored, Make plain keeps what was typed, as the collection editor does.
+#[gpui_kit::test]
+fn typing_over_nothing_stored_reaches_the_file_unasked_in_a_global(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Global, SECRET);
+    f.store.delete(&f.key).unwrap();
+    frame(cx, f.win);
+    type_at_end(cx, f.win, None, ("env-value", 1usize), "typed");
+    cx.run_until_parked();
+    click_lock(cx, f.win, 1);
+    assert!(!confirm_open(cx));
+    assert!(f.bytes().contains("typed"), "{}", f.bytes());
+    assert!(!f.bytes().contains("secret: true"), "{}", f.bytes());
+    assert_eq!(f.held(), None);
+}
+
+fn a_lock_check_that_reads_clears_the_failed_reads_error(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, SECRET);
+    f.store.fail_get.store(true, Ordering::SeqCst);
+    click_lock(cx, f.win, 1);
+    assert!(f.shows_error(cx));
+    f.store.fail_get.store(false, Ordering::SeqCst);
+    click_lock(cx, f.win, 1);
+    answer_confirm(cx, CANCEL);
+    assert!(!f.shows_error(cx), "the error outlived a read that worked");
+}
+both!(
+    a_lock_check_that_reads_clears_the_failed_reads_error,
+    a_lock_check_that_reads_clears_the_error_in_a_collection,
+    a_lock_check_that_reads_clears_the_error_in_a_global
+);
+
+fn a_save_check_that_reads_clears_the_failed_reads_error(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, HOST);
+    f.draft(cx, 1, "old", "typed");
+    f.store.fail_get.store(true, Ordering::SeqCst);
+    f.click_save(cx);
+    assert!(f.shows_error(cx));
+    f.store.fail_get.store(false, Ordering::SeqCst);
+    f.click_save(cx);
+    answer_confirm(cx, CANCEL);
+    assert!(!f.shows_error(cx), "the error outlived a read that worked");
+}
+both!(
+    a_save_check_that_reads_clears_the_failed_reads_error,
+    a_save_check_that_reads_clears_the_error_in_a_collection,
+    a_save_check_that_reads_clears_the_error_in_a_global
+);
+
+// A read that answers ends only a failed read's error; a refusal still in force stays.
+#[gpui_kit::test]
+fn a_lock_check_keeps_the_duplicate_names_refusal_in_a_global(cx: &mut TestAppContext) {
+    let f = fix(cx, Kind::Global, SECRET);
+    f.draft(cx, 2, "twin", "a");
+    f.draft(cx, 3, "twin", "b");
+    f.click_save(cx);
+    assert!(!confirm_open(cx));
+    assert!(f.shows_error(cx), "the save is refused");
+    click_lock(cx, f.win, 1);
+    answer_confirm(cx, CANCEL);
+    assert!(
+        f.shows_error(cx),
+        "the refusal went with a read that worked"
+    );
+}
+
+// The text row `ix`'s value input shows.
+fn shown_value(f: &Fix, cx: &mut TestAppContext, ix: usize) -> String {
+    cx.update(|cx| {
+        let table = match &f.ed {
+            Ed::Collection(e) => e.read(cx).table().clone(),
+            Ed::Global(e) => e.read(cx).table().clone(),
+        };
+        let input = table.read(cx).value_input(ix).unwrap().clone();
+        input.read(cx).value().to_string()
+    })
+}
+
+fn reveal_on_an_emptied_row_shows_the_stored_value(cx: &mut TestAppContext, kind: Kind) {
+    let f = fix(cx, kind, HOST);
+    f.hold(cx);
+    f.empty_the_row(cx);
+    frame(cx, f.win);
+    cx.update_window(f.win, |_, w, cx| w.click(("env-eye", 1usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(shown_value(&f, cx, 1), "s3cret");
+    assert_eq!(f.held().as_deref(), Some("s3cret"));
+}
+both!(
+    reveal_on_an_emptied_row_shows_the_stored_value,
+    reveal_on_an_emptied_row_shows_the_stored_value_in_a_collection,
+    reveal_on_an_emptied_row_shows_the_stored_value_in_a_global
+);
 
 mod held {
     use super::*;
@@ -1696,6 +1782,45 @@ mod tabs {
     #[gpui_kit::test]
     fn save_all_asks(cx: &mut TestAppContext) {
         cancel_then_confirm(cx, SaveAll);
+    }
+
+    // A Cancel on the Replace prompt keeps only the environment unsaved; a dirty request tab the
+    // prompt does not touch is saved anyway.
+    #[gpui_kit::test]
+    fn a_cancelled_save_all_still_saves_the_other_tabs(cx: &mut TestAppContext) {
+        let dev = format!("name: dev\n{HOST}");
+        let col = write_tree(&[
+            ("opencollection.yml", ROOT),
+            ("a.yml", &request("a", "http://x")),
+            ("environments/dev.yml", &dev),
+        ]);
+        let (store, key) = seeded(&col);
+        let s = started_with_store(cx, &col, store.clone());
+        open_tab(cx, &s.ws, &s.root, "a.yml");
+        let root = s.root.clone();
+        s.ws.update(cx, |w, cx| w.send(&root, edit_url("a.yml", "http://y"), cx));
+        cx.run_until_parked();
+        cx.update_window(s.win, |_, w, cx| {
+            w.within("title-bar").click("environments", cx)
+        })
+        .unwrap();
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-name", 1usize), "old");
+        cx.run_until_parked();
+        click_lock(cx, s.win, 1);
+        frame(cx, s.win);
+        type_at_end(cx, s.win, None, ("env-value", 1usize), "typed");
+        cx.run_until_parked();
+        let before = file(&col);
+        cx.dispatch_action(s.win, SaveAll);
+        cx.run_until_parked();
+        answer_confirm(cx, CANCEL);
+        cx.run_until_parked();
+        let request = std::fs::read_to_string(col.path().join("a.yml")).unwrap();
+        assert!(request.contains("http://y"), "{request}");
+        assert_eq!(file(&col), before);
+        assert_eq!(store.get(&key).unwrap().as_deref(), Some("s3cret"));
+        assert!(typing(cx, &s), "the typing stays");
     }
 
     #[gpui_kit::test]

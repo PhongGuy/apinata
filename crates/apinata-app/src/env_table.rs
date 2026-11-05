@@ -1058,7 +1058,10 @@ impl EnvVarTable {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(row) = (self.rows.get_mut(ix)).filter(|r| r.guarded()) else {
+        // An emptied row the file has holds no typing to show, so its Reveal reads the store.
+        let emptied = |r: &Row| !r.meta.unsaved && r.value.read(cx).value().is_empty();
+        let Some(row) = (self.rows.get_mut(ix)).filter(|r| r.guarded() && (masked || !emptied(r)))
+        else {
             return false;
         };
         row.value.update(cx, |state, cx| {
