@@ -327,33 +327,22 @@ fn candidates(req: &RequestFile, ctx: &VarContext) -> Vec<(String, String)> {
     candidates
 }
 
-/// `bytes` with every UTF-16LE and UTF-16BE copy of each value of at least the minimum
-/// length replaced by `[redacted]` in the same encoding, or `None` when there is none. Text
+/// `bytes` with every UTF-16LE and UTF-16BE copy of each searched value (see
+/// [`wide_searched`]) replaced by `[redacted]` in the same encoding, or `None` when there is none. Text
 /// redaction cannot see such a copy, though ASCII written as UTF-16 is valid UTF-8.
 pub(crate) fn redact_wide<'a>(
     bytes: &[u8],
     values: impl IntoIterator<Item = &'a str>,
 ) -> Option<Vec<u8>> {
-    let encode = |s: &str, big: bool| -> Vec<u8> {
-        s.encode_utf16()
-            .flat_map(|u| {
-                if big {
-                    u.to_be_bytes()
-                } else {
-                    u.to_le_bytes()
-                }
-            })
-            .collect()
-    };
     // Every copy of every value in both orders is found in the original bytes, then
     // overlapping copies merge into one span, so no copy can split another or leave a tail.
     let mut spans: Vec<(usize, usize, bool)> = Vec::new();
     for value in values {
-        if value.chars().count() < MIN_CHARS {
+        if !wide_searched(value) {
             continue;
         }
         for big in [false, true] {
-            let needle = encode(value, big);
+            let needle = utf16_bytes(value, big);
             for_each_match(bytes, &needle, |start| {
                 spans.push((start, start + needle.len(), big));
                 true
@@ -377,7 +366,7 @@ pub(crate) fn redact_wide<'a>(
             spans.next();
         }
         out.extend_from_slice(&bytes[kept..start]);
-        out.extend_from_slice(&encode(REDACTED, big));
+        out.extend_from_slice(&utf16_bytes(REDACTED, big));
         kept = end;
     }
     out.extend_from_slice(&bytes[kept..]);
@@ -397,16 +386,34 @@ pub fn bytes_hold_secret(bytes: &[u8], secrets: &[NamedSecret]) -> bool {
     }
     secrets
         .iter()
-        .filter(|s| s.value.chars().count() >= MIN_CHARS)
+        .filter(|s| wide_searched(&s.value))
         .any(|s| {
-            let units: Vec<u16> = s.value.encode_utf16().collect();
-            let le: Vec<u8> = units.iter().flat_map(|u| u.to_le_bytes()).collect();
-            let be: Vec<u8> = units.iter().flat_map(|u| u.to_be_bytes()).collect();
-            contains_bytes(bytes, &le) || contains_bytes(bytes, &be)
+            contains_bytes(bytes, &utf16_bytes(&s.value, false))
+                || contains_bytes(bytes, &utf16_bytes(&s.value, true))
         })
 }
 
-fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+/// `value` as UTF-16 bytes in big or little endian order.
+pub(crate) fn utf16_bytes(value: &str, big: bool) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .flat_map(|u| {
+            if big {
+                u.to_be_bytes()
+            } else {
+                u.to_le_bytes()
+            }
+        })
+        .collect()
+}
+
+/// Whether a value gets UTF-16 copies searched: any non-ASCII value, as its narrow forms are,
+/// and an ASCII one only from the minimum length, since a short one matches unrelated text.
+pub(crate) fn wide_searched(value: &str) -> bool {
+    !value.is_ascii() || value.chars().count() >= MIN_CHARS
+}
+
+pub(crate) fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     let mut found = false;
     for_each_match(haystack, needle, |_| {
         found = true;
@@ -976,18 +983,7 @@ mod shadowed_secret_tests {
         check(&req, &ctx);
     }
 
-    fn utf16(value: &str, big: bool) -> Vec<u8> {
-        value
-            .encode_utf16()
-            .flat_map(|u| {
-                if big {
-                    u.to_be_bytes()
-                } else {
-                    u.to_le_bytes()
-                }
-            })
-            .collect()
-    }
+    use super::utf16_bytes as utf16;
 
     #[test]
     fn redact_wide_finds_copies_at_odd_offsets_in_either_order() {
@@ -1006,5 +1002,17 @@ mod shadowed_secret_tests {
             assert_eq!(out, [utf16(REDACTED, big), b"!".to_vec()].concat());
         }
         assert_eq!(redact_wide(b"plain", ["abab"]), None);
+    }
+
+    #[test]
+    fn redact_wide_covers_a_short_non_ascii_value_but_not_a_short_ascii_one() {
+        for big in [false, true] {
+            let body = [b"x".as_slice(), &utf16("\u{e9}t", big), b"y"].concat();
+            let out = redact_wide(&body, ["\u{e9}t"]).expect("a copy");
+            assert_eq!(out, [b"x".as_slice(), &utf16(REDACTED, big), b"y"].concat());
+            let body = utf16("\u{e9}", big);
+            assert_eq!(redact_wide(&body, ["\u{e9}"]), Some(utf16(REDACTED, big)));
+            assert_eq!(redact_wide(&utf16("ab", big), ["ab"]), None);
+        }
     }
 }

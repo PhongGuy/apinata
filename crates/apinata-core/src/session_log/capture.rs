@@ -309,27 +309,15 @@ mod tests {
         let body = [PNG, b"k-secret-1"].concat();
         let e = binary_entry(&Redactor::new(&["k-secret-1"]), &body, 64);
         assert_eq!(e.response_body.raw(), None);
-        let wide: Vec<u8> = "k-secret-1"
-            .encode_utf16()
-            .flat_map(u16::to_le_bytes)
-            .collect();
-        let body = [PNG, &wide].concat();
+        let body = [PNG, &utf16("k-secret-1", false)].concat();
         let e = binary_entry(&Redactor::new(&["k-secret-1"]), &body, 64);
         assert_eq!(e.response_body.raw(), None, "a UTF-16 copy counts too");
     }
 
+    use crate::secret_names::utf16_bytes as utf16;
+
     fn wide(value: &str, big: bool) -> String {
-        let bytes: Vec<u8> = value
-            .encode_utf16()
-            .flat_map(|u| {
-                if big {
-                    u.to_be_bytes()
-                } else {
-                    u.to_le_bytes()
-                }
-            })
-            .collect();
-        String::from_utf8(bytes).expect("ASCII as UTF-16 is valid UTF-8")
+        String::from_utf8(utf16(value, big)).expect("ASCII as UTF-16 is valid UTF-8")
     }
 
     #[test]
@@ -353,19 +341,6 @@ mod tests {
     }
 
     const LATE_WIDE: &str = "p\u{e4}sswort-1";
-
-    fn utf16(value: &str, big: bool) -> Vec<u8> {
-        value
-            .encode_utf16()
-            .flat_map(|u| {
-                if big {
-                    u.to_be_bytes()
-                } else {
-                    u.to_le_bytes()
-                }
-            })
-            .collect()
-    }
 
     /// A logged entry whose response echoes `LATE_WIDE` as UTF-16, followed by `tail`, with
     /// the value learned only after the capture.
