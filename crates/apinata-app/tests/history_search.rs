@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use apinata_app::history_palette::{
     HISTORY_MAX, HistoryEntry, HistoryMatch, HistorySearch, UNSAVED_TAG, filter_history,
@@ -224,28 +224,35 @@ fn the_search_answers_the_query_it_is_asked() {
     assert_eq!(search.matches("").len(), 5);
 }
 
-// 5000 sends, three terms, every row compared, best of five runs. The bound is generous so
-// a loaded machine never flakes; it catches a search gone quadratic.
+// Sends cost the same each, so ten times the sends should cost about ten times the time. The
+// two sizes are timed in turn, best of many, so machine load slows both alike; the bound is
+// far below the hundredfold a quadratic search would show.
 #[test]
-fn filtering_five_thousand_sends_stays_fast() {
-    let many: Vec<HistoryEntry> = (0..5000)
-        .map(|i| {
-            entry(
-                &format!("Request number {i}"),
-                ["GET", "POST", "PUT"][i % 3],
-                &format!("https://api.example.com/v1/things/{i}?page={}", i % 7),
-                [200, 404, 500][i % 3],
-            )
-        })
-        .collect();
-    let took = (0..5)
-        .map(|_| {
-            let start = Instant::now();
-            assert!(filter_history(&many, "things 5xx post").is_empty());
-            start.elapsed()
-        })
-        .min()
-        .unwrap();
-    eprintln!("filter over 5000 sends took {took:?}");
-    assert!(took.as_millis() < 100, "took {took:?}");
+fn filtering_cost_grows_in_line_with_the_sends() {
+    let sends = |n: usize| -> Vec<HistoryEntry> {
+        (0..n)
+            .map(|i| {
+                entry(
+                    &format!("Request number {i}"),
+                    ["GET", "POST", "PUT"][i % 3],
+                    &format!("https://api.example.com/v1/things/{i}?page={}", i % 7),
+                    [200, 404, 500][i % 3],
+                )
+            })
+            .collect()
+    };
+    let (small, large) = (sends(500), sends(5000));
+    let time = |entries: &[HistoryEntry]| {
+        let start = Instant::now();
+        assert!(filter_history(entries, "things 5xx post").is_empty());
+        start.elapsed()
+    };
+    let (mut best_small, mut best_large) = (Duration::MAX, Duration::MAX);
+    for _ in 0..30 {
+        best_small = best_small.min(time(&small));
+        best_large = best_large.min(time(&large));
+    }
+    let ratio = best_large.as_secs_f64() / best_small.as_secs_f64();
+    eprintln!("500 sends {best_small:?}, 5000 sends {best_large:?}, ratio {ratio:.1}");
+    assert!(ratio < 30.0, "ten times the sends cost {ratio:.1} times");
 }
