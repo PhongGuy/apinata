@@ -36,6 +36,94 @@ actions!(
     ]
 );
 
+/// The find bar's toggles.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FindOptions {
+    /// Letters match only in the query's case.
+    pub case_sensitive: bool,
+    /// The query is an ECMAScript pattern.
+    pub regex: bool,
+    /// A hit counts only between non-word characters; ignored while `regex` is on.
+    pub whole_word: bool,
+}
+
+/// The find query is a pattern that does not compile.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvalidPattern;
+
+/// A find query compiled under its options, searched one line at a time.
+#[derive(Debug)]
+pub struct Finder(Search);
+
+#[derive(Debug)]
+enum Search {
+    Literal { needle: String, case_sensitive: bool },
+    Pattern(regress::Regex),
+}
+
+// An ASCII word character, as ECMAScript's `\w` and `\b` count them.
+const NOT_WORD_BEFORE: &str = "(?<![A-Za-z0-9_])";
+const NOT_WORD_AFTER: &str = "(?![A-Za-z0-9_])";
+
+impl Finder {
+    /// Compiles `query`: `Ok(None)` for an empty query, `Err` for a regex that does not
+    /// compile. Whole-word wraps the escaped query in non-word lookarounds.
+    pub fn new(query: &str, options: FindOptions) -> Result<Option<Self>, InvalidPattern> {
+        if query.is_empty() {
+            return Ok(None);
+        }
+        let pattern = if options.regex {
+            query.to_owned()
+        } else if options.whole_word {
+            format!("{NOT_WORD_BEFORE}{}{NOT_WORD_AFTER}", regress::escape(query))
+        } else {
+            return Ok(Some(Finder(Search::Literal {
+                needle: fold(query, options.case_sensitive),
+                case_sensitive: options.case_sensitive,
+            })));
+        };
+        let flags = if options.case_sensitive { "" } else { "i" };
+        regress::Regex::with_flags(&pattern, flags)
+            .map(|re| Some(Finder(Search::Pattern(re))))
+            .map_err(|_| InvalidPattern)
+    }
+
+    /// Every non-empty, non-overlapping hit in `line`, left to right, as byte ranges.
+    /// Empty-width pattern hits are dropped.
+    pub fn find_in_line(&self, line: &str) -> Vec<Range<usize>> {
+        match &self.0 {
+            Search::Literal {
+                needle,
+                case_sensitive,
+            } => fold(line, *case_sensitive)
+                .match_indices(needle.as_str())
+                .map(|(start, _)| start..start + needle.len())
+                .collect(),
+            Search::Pattern(re) => re
+                .find_iter(line)
+                .map(|m| m.range())
+                .filter(|r| !r.is_empty())
+                .collect(),
+        }
+    }
+
+    /// [`Finder::find_in_line`] over each `\n`-separated line of `text`, as byte ranges into
+    /// it, so `^` and `$` anchor at every line.
+    pub fn find_in_text(&self, text: &str) -> Vec<Range<usize>> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        for line in text.split('\n') {
+            out.extend(
+                self.find_in_line(line)
+                    .into_iter()
+                    .map(|r| r.start + at..r.end + at),
+            );
+            at += line.len() + 1;
+        }
+        out
+    }
+}
+
 /// Every non-overlapping occurrence of `query` in each row, left to right, as (row, byte range);
 /// without `case_sensitive` letters fold case where the lowercase keeps the char's byte
 /// length. An empty query matches nothing.
@@ -89,11 +177,19 @@ pub struct RowMatches {
 /// Like [`find_matches`] over `chunked`, but a line cut into several rows is searched whole,
 /// so a match straddling a seam is found once.
 pub fn find_in_chunked(chunked: &Chunked, query: &str, case_sensitive: bool) -> RowMatches {
-    let mut out = RowMatches::default();
-    if query.is_empty() {
-        return out;
+    let options = FindOptions {
+        case_sensitive,
+        ..FindOptions::default()
+    };
+    match Finder::new(query, options) {
+        Ok(Some(finder)) => find_in_chunked_with(chunked, &finder),
+        _ => RowMatches::default(),
     }
-    let needle = fold(query, case_sensitive);
+}
+
+/// Like [`find_in_chunked`], with a compiled [`Finder`].
+pub fn find_in_chunked_with(chunked: &Chunked, finder: &Finder) -> RowMatches {
+    let mut out = RowMatches::default();
     let rows = &chunked.rows;
     let mut first = 0;
     while first < rows.len() {
@@ -101,13 +197,10 @@ pub fn find_in_chunked(chunked: &Chunked, query: &str, case_sensitive: bool) -> 
         while chunked.line_nos.get(end).is_some_and(|n| *n == 0) {
             end += 1;
         }
-        let hay = fold(
-            &rows[first..end]
-                .iter()
-                .map(|r| r.as_ref())
-                .collect::<String>(),
-            case_sensitive,
-        );
+        let hay = rows[first..end]
+            .iter()
+            .map(|r| r.as_ref())
+            .collect::<String>();
         // Where each row of the line starts within it.
         let mut starts = Vec::with_capacity(end - first + 1);
         let mut at = 0;
@@ -116,8 +209,7 @@ pub fn find_in_chunked(chunked: &Chunked, query: &str, case_sensitive: bool) -> 
             at += row.len();
         }
         starts.push(at);
-        for (start, _) in hay.match_indices(needle.as_str()) {
-            let stop = start + needle.len();
+        for Range { start, end: stop } in finder.find_in_line(&hay) {
             let piece =
                 |k: usize| starts[k].max(start) - starts[k]..starts[k + 1].min(stop) - starts[k];
             let k = starts.partition_point(|s| *s <= start) - 1;

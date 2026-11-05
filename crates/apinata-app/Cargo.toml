@@ -11,6 +11,7 @@ autotests = false
 [dependencies]
 apinata-core = { path = "../apinata-core", features = ["update"] }
 ryu-js.workspace = true
+regress.workspace = true
 gpui-kit.workspace = true
 async-channel.workspace = true
 tree-sitter-c-sharp.workspace = true
