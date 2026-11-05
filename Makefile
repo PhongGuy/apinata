@@ -5,7 +5,7 @@ CARGO ?= cargo
 .DEFAULT_GOAL := install
 export PREFIX DESTDIR DEMO_DRY_RUN
 
-.PHONY: check fmt fmt-check lint test pilot-check package package-release clean icons-check windows-check workflows-lint readme-images-check install uninstall demo
+.PHONY: check fmt fmt-check lint test pilot-check package package-release clean icons-check windows-check workflows-lint licenses licenses-check readme-images-check install uninstall demo
 
 check: fmt-check lint test readme-images-check
 
@@ -59,6 +59,13 @@ windows-check:
 
 workflows-lint:
 	scripts/actionlint.sh
+
+# Not part of `make check`, which must not need cargo-about; run both before a release.
+licenses:
+	bash scripts/licenses.sh generate
+
+licenses-check:
+	bash scripts/licenses.sh check
 
 # Every local image the README names must exist once assets/screenshots/ does.
 readme-images-check:

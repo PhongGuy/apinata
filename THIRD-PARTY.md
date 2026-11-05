@@ -3,6 +3,8 @@
 Code and data vendored into `apinata-core`: JavaScript evaluated in the script sandbox, and the
 public suffix list the cookie jar consults. Each SHA-256 is of the committed file, header included.
 
+The Rust crates linked into the binaries are listed with their licence texts in `THIRD-PARTY-CRATES.md`, generated at release time by `make licenses` and shipped in every archive and package.
+
 | File | Version | Licence | Source | SHA-256 |
 | --- | --- | --- | --- | --- |
 | `crates/apinata-core/src/script/vendor/chai-4.5.0.js` | chai 4.5.0 | MIT, `licenses/chai-MIT.txt` | https://unpkg.com/chai@4.5.0/chai.js (359,860 bytes, SHA-256 `bdc229d660afad0313fc10d6afb5a339956a18c4c6e819d3eb5d8b94f314c202`), with a header comment prepended | `509dd5e2cbf1db570f85e19ec6075f4e7e81d9eaa8c2c625ec611b14a38c62a2` |

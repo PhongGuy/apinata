@@ -321,10 +321,12 @@ main() {
   export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
   bin_dir=${CARGO_TARGET_DIR:-$root/target}/release
 
+  # The notices go into the app packages too, so they are written before packaging.
+  bash "$root/scripts/licenses.sh" generate || return 1
   cargo build --release --locked -p apinata-cli -p apinata-app
   package_app "$out"
   cli_archive "$bin_dir/apinata" "$version" "$target" "$out" \
-    "$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$root/README.md"
+    "$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$root/THIRD-PARTY-CRATES.md" "$root/README.md"
   cli_raw "$bin_dir/apinata" "$version" "$target" "$out"
   rm -rf -- "$out/.cargo-packager"
   verify_packages "$out" "$version" "$target"

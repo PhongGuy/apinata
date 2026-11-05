@@ -103,7 +103,7 @@ fn the_desktop_template_names_the_window_class() {
 fn resources_ship_every_licence_text() {
     let resources = config()["resources"].clone();
     let list = resources.as_array().expect("resources is a list");
-    assert_eq!(list.len(), 1);
+    assert_eq!(list.len(), 2);
     let glob = PathBuf::from(list[0].as_str().unwrap());
     assert_eq!(glob.file_name().unwrap(), "*.txt");
     let dir = glob.parent().unwrap();
@@ -142,4 +142,13 @@ fn resources_ship_every_licence_text() {
             "tv4-LICENSE.txt"
         ]
     );
+}
+
+#[test]
+fn resources_ship_the_generated_crate_notices() {
+    let resources = config()["resources"].clone();
+    let notices = PathBuf::from(resources[1].as_str().expect("second resource is a glob"));
+    assert_eq!(notices.file_name().unwrap(), "THIRD-PARTY-CRATES.*");
+    // The release scripts write the file at the repository root, next to LICENSE-MIT.
+    assert!(notices.parent().unwrap().join("LICENSE-MIT").is_file());
 }

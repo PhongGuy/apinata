@@ -1,0 +1,33 @@
+# Licences accepted for crates linked into the shipped binaries. A dependency under any other
+# licence fails `make licenses-check` until a person reviews it and adds it here.
+accepted = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "bzip2-1.0.6",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+# Only what the binaries link: no dev-dependencies and no build scripts.
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+# The workspace crates are ours, with their own licence files.
+private = { ignore = true }
+# The platforms the release archives are built for.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+# This crate declares no licence field; its LICENSE file is the MIT text.
+[tree-sitter-graphql]
+clarify = { license = "MIT", files = [{ path = "LICENSE", checksum = "5ea7d9ec06cb21ca0a800b69cd954e346bafba94620eb115c4b1fead3f3b30f8" }] }

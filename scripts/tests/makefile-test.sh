@@ -38,6 +38,8 @@ test_single_targets_print_their_one_command() {
   expect 'cargo xtask icons --check' icons-check
   expect 'cargo xtask check-windows --require' windows-check
   expect 'scripts/actionlint.sh' workflows-lint
+  expect 'bash scripts/licenses.sh generate' licenses
+  expect 'bash scripts/licenses.sh check' licenses-check
 }
 
 test_targets_run_even_when_a_file_has_their_name() {

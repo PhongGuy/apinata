@@ -198,7 +198,7 @@ test_package_stops_at_the_first_failed_step() {
   out=$root/target/release-test-$$
   mkdir -p "$fake"
   printf '#!/usr/bin/env bash\necho Darwin\n' >"$fake/uname"
-  printf '#!/usr/bin/env bash\nif [[ $1 == pkgid ]]; then echo "x#apinata-cli@1.2.3"; exit 0; fi\necho "cargo $*" >>"%s/fail.log"\nexit 1\n' "$WORK" >"$fake/cargo"
+  printf '#!/usr/bin/env bash\nif [[ $1 == pkgid ]]; then echo "x#apinata-cli@1.2.3"; exit 0; fi\nif [[ $1 == about ]]; then [[ $2 == --version ]] && echo cargo-about 0.9.3; exit 0; fi\necho "cargo $*" >>"%s/fail.log"\nexit 1\n' "$WORK" >"$fake/cargo"
   local t
   for t in codesign hdiutil gtar; do
     printf '#!/usr/bin/env bash\necho "%s $*" >>"%s/fail.log"\n' "$t" "$WORK" >"$fake/$t"
