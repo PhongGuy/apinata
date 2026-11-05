@@ -384,26 +384,7 @@ fn wheeling_to_the_end_swaps_the_fades(cx: &mut TestAppContext) {
 // strip stays filled.
 #[gpui_kit::test]
 fn at_double_zoom_no_request_tab_shows_clipped(cx: &mut TestAppContext) {
-    use apinata_app::app::AppState;
-    let files: Vec<(String, String)> = (0..6)
-        .map(|i| {
-            (
-                format!("r{i}.yml"),
-                request(&format!("Request number {i}"), "http://x/"),
-            )
-        })
-        .collect();
-    let mut refs: Vec<(&str, &str)> = vec![("opencollection.yml", ROOT)];
-    refs.extend(files.iter().map(|(p, t)| (p.as_str(), t.as_str())));
-    let col = write_tree(&refs);
-    let s = started(cx, &col);
-    for i in 0..6 {
-        open_tab(cx, &s.ws, &s.root, &format!("r{i}.yml"));
-    }
-    cx.update(|cx| {
-        let p = cx.global::<AppState>().settings.clone();
-        p.update(cx, |p, cx| p.update(cx, |s| s.zoom = 2.0));
-    });
+    let (_col, s) = double_zoom(cx, 6, 1280.);
     for width in [1280., 1000., 800., 640.] {
         gpui_kit::VisualTestContext::from_window(s.win, cx)
             .simulate_resize(size(px(width), px(800.)));
@@ -448,29 +429,8 @@ fn at_double_zoom_no_request_tab_shows_clipped(cx: &mut TestAppContext) {
 // the strip still shows it, label and underline, truncating its own name.
 #[gpui_kit::test]
 fn an_active_tab_wider_than_the_strip_still_shows(cx: &mut TestAppContext) {
-    use apinata_app::app::AppState;
     use gpui_kit::component::ActiveTheme as _;
-    let files: Vec<(String, String)> = (0..6)
-        .map(|i| {
-            (
-                format!("r{i}.yml"),
-                request(&format!("Request number {i}"), "http://x/"),
-            )
-        })
-        .collect();
-    let mut refs: Vec<(&str, &str)> = vec![("opencollection.yml", ROOT)];
-    refs.extend(files.iter().map(|(p, t)| (p.as_str(), t.as_str())));
-    let col = write_tree(&refs);
-    let s = started(cx, &col);
-    for i in 0..6 {
-        open_tab(cx, &s.ws, &s.root, &format!("r{i}.yml"));
-    }
-    cx.update(|cx| {
-        let p = cx.global::<AppState>().settings.clone();
-        p.update(cx, |p, cx| p.update(cx, |s| s.zoom = 2.0));
-    });
-    gpui_kit::VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(360.), px(800.)));
-    frames(cx, s.win, 3);
+    let (_col, s) = double_zoom(cx, 6, 360.);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         assert!(
@@ -498,28 +458,7 @@ fn an_active_tab_wider_than_the_strip_still_shows(cx: &mut TestAppContext) {
 // tab or tabs reaching into the strip are all drawn and the strip is never blank.
 #[gpui_kit::test]
 fn a_wide_tab_wheeled_part_way_leaves_the_strip_filled(cx: &mut TestAppContext) {
-    use apinata_app::app::AppState;
-    let files: Vec<(String, String)> = (0..6)
-        .map(|i| {
-            (
-                format!("r{i}.yml"),
-                request(&format!("Request number {i}"), "http://x/"),
-            )
-        })
-        .collect();
-    let mut refs: Vec<(&str, &str)> = vec![("opencollection.yml", ROOT)];
-    refs.extend(files.iter().map(|(p, t)| (p.as_str(), t.as_str())));
-    let col = write_tree(&refs);
-    let s = started(cx, &col);
-    for i in 0..6 {
-        open_tab(cx, &s.ws, &s.root, &format!("r{i}.yml"));
-    }
-    cx.update(|cx| {
-        let p = cx.global::<AppState>().settings.clone();
-        p.update(cx, |p, cx| p.update(cx, |s| s.zoom = 2.0));
-    });
-    gpui_kit::VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(360.), px(800.)));
-    frames(cx, s.win, 3);
+    let (_col, s) = double_zoom(cx, 6, 360.);
     for step in 0..6 {
         cx.update_window(s.win, |_, w, cx| {
             w.render_frame(cx);

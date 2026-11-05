@@ -806,6 +806,7 @@ impl Render for AssertionsSection {
                 kv_head("as-head", columns())
                     .grip_column()
                     .check_column()
+                    .shared_band()
                     .action(None),
             )
             .children(rows)

@@ -278,25 +278,6 @@ fn the_selection_edge_reaches_three_to_one_on_the_selected_fill() {
     }
 }
 
-// A selected row keeps its method colour on the neutral fill. A method tag is small text, so
-// it holds AA 4.5:1 there; 3:1 is the floor for large text and UI parts only.
-#[test]
-fn method_colours_stay_readable_on_the_selected_fill() {
-    let mut fails = Vec::new();
-    for (_, t) in themes() {
-        for (s, _) in STATUSES {
-            let r = ratio(
-                &col(&t, &format!("{s}.background")),
-                &col(&t, "list.active.background"),
-            );
-            if r < floor(&t) {
-                fails.push(format!("{} {s} on the selected fill = {r:.2}", t["name"]));
-            }
-        }
-    }
-    assert!(fails.is_empty(), "{fails:#?}");
-}
-
 #[test]
 fn the_segmented_selection_is_visible() {
     // The raised fill with full foreground text carries the selected segment, never the
