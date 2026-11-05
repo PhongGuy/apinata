@@ -470,6 +470,12 @@ impl Sidebar {
                 .is_some_and(|n| menu_entries(n.kind).contains(&entry))
     }
 
+    // A request row's kind, as its collection's snapshot holds it.
+    fn request_kind(&self, node: &Node, cx: &App) -> Option<RequestKind> {
+        let ws = self.workspace.read(cx);
+        ws.request(&node.root, &node.path, cx).map(|v| v.kind)
+    }
+
     fn key_of(&self, id: &SharedString) -> Option<SelKey> {
         SelKey::of(self.rows.get(id)?)
     }
@@ -1333,6 +1339,14 @@ impl Sidebar {
             }
             MenuEntry::GenerateCode => {
                 crate::generate_code::open_generate_code(&self.workspace, &root, path, window, cx)
+            }
+            MenuEntry::ConvertToGraphql | MenuEntry::ConvertToHttp => {
+                let to = if entry == MenuEntry::ConvertToGraphql {
+                    RequestKind::Graphql
+                } else {
+                    RequestKind::Http
+                };
+                crate::convert_kind::convert(&self.workspace, &root, path, to, window, cx);
             }
             // The popup restores focus after its click handler, so the input is focused later.
             MenuEntry::Rename => {
@@ -2962,7 +2976,17 @@ impl Render for Sidebar {
                                 let changed = node.kind == NodeKind::Request
                                     && git_change(&menu_git, node).is_some();
                                 let extra = changed.then_some(MenuEntry::ShowChanges);
+                                let request_kind = (node.kind == NodeKind::Request)
+                                    .then(|| {
+                                        menu_view
+                                            .read_with(cx, |s, cx| s.request_kind(node, cx))
+                                            .ok()
+                                            .flatten()
+                                    })
+                                    .flatten();
                                 for &choice in menu_entries(node.kind).iter().chain(&extra) {
+                                    let choice = request_kind
+                                        .map_or(choice, |k| menu::for_request_kind(choice, k));
                                     let (view, node) = (menu_view.clone(), node.clone());
                                     // Pasting a folder into itself is refused, so the entry greys out.
                                     let blocked = (choice == MenuEntry::PasteItem

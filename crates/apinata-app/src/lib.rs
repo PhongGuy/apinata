@@ -38,6 +38,7 @@ pub mod config_editor;
 pub mod confirm;
 pub mod console_dock;
 mod context_cache;
+pub mod convert_kind;
 pub mod cookie_jar;
 pub mod copy_curl;
 pub mod default_headers_section;

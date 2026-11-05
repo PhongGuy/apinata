@@ -451,6 +451,22 @@ impl Actor {
                 let _ = reply.try_send(values);
                 Ok(())
             }
+            Command::ConvertKind { item, kind, reply } => {
+                self.cache.touch_all();
+                let done = self.collection.convert_request(&item, kind);
+                let _ = reply.try_send(done.map_err(|e| e.to_string()));
+                Ok(())
+            }
+            Command::UndoConvert {
+                item,
+                conversion,
+                reply,
+            } => {
+                self.cache.touch_all();
+                let done = self.collection.undo_conversion(&item, &conversion);
+                let _ = reply.try_send(done.map_err(|e| e.to_string()));
+                Ok(())
+            }
             Command::CopyOut { items, reply } => {
                 let copies = items
                     .into_iter()
@@ -737,6 +753,20 @@ impl Actor {
             },
             Command::Plan { item, reply } => Command::Plan {
                 item: p(item),
+                reply,
+            },
+            Command::ConvertKind { item, kind, reply } => Command::ConvertKind {
+                item: p(item),
+                kind,
+                reply,
+            },
+            Command::UndoConvert {
+                item,
+                conversion,
+                reply,
+            } => Command::UndoConvert {
+                item: p(item),
+                conversion,
                 reply,
             },
             Command::PlanSaved { item, reply } => Command::PlanSaved {

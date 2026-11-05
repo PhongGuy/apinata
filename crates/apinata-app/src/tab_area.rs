@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use apinata_core::{ItemPath, NetworkEntry, RequestResult, SendSource};
+use apinata_core::{ItemPath, NetworkEntry, RequestKind, RequestResult, SendSource};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem};
@@ -95,7 +95,11 @@ actions!(
         /// Exports the active request tab's shown response, with its request, as a HAR file.
         ExportHar,
         /// Opens the Compare tab on the active request's shown response.
-        Compare
+        Compare,
+        /// Rewrites the active saved HTTP request as a GraphQL request.
+        ConvertToGraphql,
+        /// Rewrites the active saved GraphQL request as an HTTP request.
+        ConvertToHttp
     ]
 );
 
@@ -177,6 +181,8 @@ pub(crate) struct TabPaletteFlags {
     pub beautify: bool,
     pub has_tabs: bool,
     pub request_tab: bool,
+    pub to_graphql: bool,
+    pub to_http: bool,
     pub close_all: bool,
     pub pin: bool,
     pub unpin: bool,
@@ -970,6 +976,8 @@ impl TabArea {
             beautify: editor.is_some_and(|e| e.read(cx).can_reformat_body(cx)),
             has_tabs: active.is_some(),
             request_tab: editor.is_some(),
+            to_graphql: self.active_converts_to(RequestKind::Graphql, cx),
+            to_http: self.active_converts_to(RequestKind::Http, cx),
             close_all: tabs.entries().iter().any(|e| !e.pinned),
             pin: active.is_some_and(|a| !a.pinned),
             unpin: active.is_some_and(|a| a.pinned),
@@ -1009,6 +1017,52 @@ impl TabArea {
         if let Some(item) = entry.item().cloned() {
             crate::copy_curl::copy_as_curl(&self.workspace, &entry.root, item, window, cx);
         }
+    }
+
+    /// Converts the active saved HTTP request to GraphQL; any other tab does nothing.
+    pub fn convert_active_to_graphql(
+        &mut self,
+        _: &ConvertToGraphql,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.convert_active(RequestKind::Graphql, window, cx);
+    }
+
+    /// Converts the active saved GraphQL request to HTTP; any other tab does nothing.
+    pub fn convert_active_to_http(
+        &mut self,
+        _: &ConvertToHttp,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.convert_active(RequestKind::Http, window, cx);
+    }
+
+    fn convert_active(&mut self, to: RequestKind, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.active_converts_to(to, cx) {
+            return;
+        }
+        let Some(entry) = self.workspace.read(cx).tabs().active().cloned() else {
+            return;
+        };
+        if let Some(item) = entry.item().cloned() {
+            crate::convert_kind::convert(&self.workspace, &entry.root, item, to, window, cx);
+        }
+    }
+
+    // Whether the active tab is a saved request of the other kind, which converts to `to`; a
+    // draft has no file to rewrite.
+    fn active_converts_to(&self, to: RequestKind, cx: &App) -> bool {
+        let ws = self.workspace.read(cx);
+        let Some(entry) = ws.tabs().active() else {
+            return false;
+        };
+        let Some(item) = entry.item().filter(|i| !i.is_draft()) else {
+            return false;
+        };
+        ws.request(&entry.root, item, cx)
+            .is_some_and(|v| v.kind == crate::convert_kind::other_kind(to))
     }
 
     /// Copies the JSON value at the active request's response body caret.

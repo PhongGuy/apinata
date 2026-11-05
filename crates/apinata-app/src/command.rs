@@ -360,6 +360,26 @@ pub enum Command {
         /// Where the result goes.
         reply: async_channel::Sender<Result<Planned, PlanError>>,
     },
+    /// Rewrite the saved request `item` as a request of `kind`; the conversion, or why it was
+    /// refused, goes on `reply`.
+    ConvertKind {
+        /// The request to convert.
+        item: ItemPath,
+        /// The kind it becomes.
+        kind: RequestKind,
+        /// Where the conversion, or why it was refused, goes.
+        reply: async_channel::Sender<Result<apinata_core::KindConversion, String>>,
+    },
+    /// Put back the file `conversion` rewrote, unless `item` changed since; why not goes on
+    /// `reply`.
+    UndoConvert {
+        /// The converted request.
+        item: ItemPath,
+        /// The conversion to undo.
+        conversion: apinata_core::KindConversion,
+        /// Where why it could not be undone, if so, goes.
+        reply: async_channel::Sender<Result<(), String>>,
+    },
     /// Take the saved content of each of `items` (see `Collection::paste_source`) and send it,
     /// item by item, on `reply`. Changes nothing.
     CopyOut {
