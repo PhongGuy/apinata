@@ -296,7 +296,7 @@ impl EnvEditor {
         self.selected.as_deref()
     }
 
-    /// The selected environment as a prompt over several collections names it: "dev of Shop".
+    /// How a prompt over several collections names the selected environment: "dev of Shop".
     pub fn place(&self, cx: &App) -> String {
         let snapshot = self.workspace.read(cx).snapshot(&self.root, cx);
         let name = snapshot
