@@ -114,7 +114,11 @@ impl RenderOnce for Followed {
                 move |bounds, _, _| marks.marks.borrow_mut().push((handle, bounds)),
                 |_, _, _, _| {},
             )
+            // Pinned to the wrapper's corner: left at its static place, it would sit below
+            // the child and report bounds one child height too low.
             .absolute()
+            .top_0()
+            .left_0()
             .size_full()
         };
         div()
