@@ -42,7 +42,7 @@ use crate::examples::{
 };
 use crate::export::{self, ExportDoc, ExportOpenapiArgs, ExportPostmanArgs};
 use crate::generate::{self, GenerateArgs, GeneratedCode};
-use crate::git::{self, GitDiffDoc, GitStatusDoc};
+use crate::git::{self, CommitArgs, CommitDoc, GitDiffDoc, GitStatusDoc};
 use crate::graphql::{self, GraphqlSchemaArgs, GraphqlSchemaDoc};
 use crate::import_collection::{
     self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, NoSecrets,
@@ -85,6 +85,7 @@ const NO_FILE_WRITES: &[&str] = &[
     "graphql_schema",
     "set_runtime_variable",
     "clear_runtime_variables",
+    "git_commit",
 ];
 
 /// Tools that write collection files and so announce a resource change after every call. Only
@@ -1048,6 +1049,27 @@ impl ApinataServer {
         let options = self.options.git_options().clone();
         self.with_collection(move |collection| {
             git::diff(collection.root(), &args.path, &options).map(Json)
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Commit collection changes to the local repository; nothing is pushed. \
+                       Send `paths` (collection-relative files or folders, `[\".\"]` for \
+                       everything) to stage them first, or leave it out to commit what is \
+                       already staged. Refused when `paths` is given and other files are \
+                       already staged. The repository's git hooks run, and a hook failure is \
+                       returned as the error. Returns the new commit's `short_id` and \
+                       `subject`.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn git_commit(
+        &self,
+        Parameters(args): Parameters<CommitArgs>,
+    ) -> Result<Json<CommitDoc>, String> {
+        let options = self.options.git_options().clone();
+        self.with_collection(move |collection| {
+            git::commit_paths(collection.root(), &args, &options).map(Json)
         })
         .await
     }

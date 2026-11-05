@@ -1,13 +1,14 @@
-//! The read-only `git_status` and `git_diff` tools: core's git state and file diff, passed
-//! through unchanged so the agent sees the same JSON as `apinata git --json`.
+//! The `git_status` and `git_diff` tools, which pass core's git state and file diff through
+//! unchanged, and the local `git_commit` tool, so the agent sees the same JSON as `apinata git`.
 
 use std::path::{Component, Path, PathBuf};
 
 use apinata_core::{
-    FileDiff, GitError, GitOptions, GitState, collection_status_with, file_diff_with,
+    FileDiff, FileStatus, GitError, GitOptions, GitState, StageState, collection_status_with,
+    commit, file_diff_with, stage,
 };
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The collection's git state, serialized exactly as core does.
 #[derive(Serialize)]
@@ -80,4 +81,111 @@ pub(crate) fn diff(root: &Path, path: &str, options: &GitOptions) -> Result<GitD
         Ok(GitState::NotARepo) => format!("{} is not in a git repository.", root.display()),
         _ => e.to_string(),
     })
+}
+
+/// Arguments of `git_commit`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CommitArgs {
+    /// The commit message; its first line is the subject.
+    pub message: String,
+    /// Collection-relative files or folders to stage first, `["."]` for everything. Leave out to
+    /// commit what is already staged.
+    #[serde(default)]
+    pub paths: Option<Vec<String>>,
+}
+
+/// The commit that was recorded.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct CommitDoc {
+    /// The abbreviated id of the new commit.
+    pub short_id: String,
+    /// The first line of the message.
+    pub subject: String,
+}
+
+/// Stage `args.paths` (when given) and commit what is staged. Refuses before staging when the
+/// paths would not be the whole commit, because other files are already staged.
+pub(crate) fn commit_paths(
+    root: &Path,
+    args: &CommitArgs,
+    options: &GitOptions,
+) -> Result<CommitDoc, String> {
+    if args.message.trim().is_empty() {
+        return Err("the commit message is empty".to_owned());
+    }
+    let state = collection_status_with(root, options).map_err(|e| e.to_string())?;
+    let repo = match state {
+        GitState::Repo(repo) => repo,
+        GitState::Unavailable => {
+            return Err("git was not found on PATH, so nothing can be committed.".to_owned());
+        }
+        _ => return Err(format!("{} is not in a git repository.", root.display())),
+    };
+    if let Some(paths) = &args.paths {
+        if paths.is_empty() {
+            return Err("paths must not be empty; omit it to commit what is staged".to_owned());
+        }
+        if repo.truncated {
+            return Err(
+                "too many changes to check for other staged files; commit them in \
+                        the app or a terminal"
+                    .to_owned(),
+            );
+        }
+        let wanted: Vec<PathBuf> = paths.iter().map(|p| plain(p)).collect();
+        let named = |file: &Path| {
+            wanted
+                .iter()
+                .any(|w| w == Path::new(".") || file.starts_with(w))
+        };
+        // A staged rename also removes its original path, so that must be named too.
+        let others: Vec<String> = repo
+            .stage
+            .iter()
+            .filter(|(_, s)| !matches!(s, StageState::Unstaged))
+            .filter(|(file, _)| {
+                let from = match repo.files.get(*file) {
+                    Some(FileStatus::Renamed { from }) => Some(from),
+                    _ => None,
+                };
+                !named(file) || from.is_some_and(|f| !named(f))
+            })
+            .map(|(file, _)| match repo.files.get(file) {
+                Some(FileStatus::Renamed { from }) if !named(from) => {
+                    format!("{} (renamed from {})", file.display(), from.display())
+                }
+                _ => file.display().to_string(),
+            })
+            .collect();
+        if !others.is_empty() {
+            return Err(format!(
+                "other files are already staged and would be committed too: {}. Commit them \
+                 first, unstage them, or leave out `paths`.",
+                others.join(", ")
+            ));
+        }
+        stage(root, &wanted, options).map_err(|e| e.to_string())?;
+    }
+    // A file staged between the status read and the commit would still be committed; the window
+    // is narrow and the commit only ever holds collection files.
+    let done = commit(root, &args.message, options).map_err(|e| e.to_string())?;
+    Ok(CommitDoc {
+        short_id: done.short_id,
+        subject: done.subject,
+    })
+}
+
+/// `path` rebuilt without a leading `./` or doubled slashes, as the diff tool reads it. The
+/// collection itself stays `.`.
+fn plain(path: &str) -> PathBuf {
+    let rebuilt: PathBuf = Path::new(path)
+        .components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .collect();
+    if rebuilt.as_os_str().is_empty() && !path.is_empty() {
+        PathBuf::from(".")
+    } else {
+        rebuilt
+    }
 }

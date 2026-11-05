@@ -655,3 +655,129 @@ fn git_help_says_exit_3_also_covers_a_refused_file() {
     assert!(line.contains("git failed"), "{line}");
     assert!(line.contains("outside the collection"), "{line}");
 }
+
+/// The subject of the newest commit in `repo`.
+fn head_subject(sb: &Sandbox, repo: &Path) -> String {
+    sb.git(repo, &["log", "-1", "--format=%s"])
+        .trim()
+        .to_owned()
+}
+
+#[test]
+fn commit_records_what_is_staged_and_prints_the_short_id_and_subject() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    sb.git(&col, &["add", "users/get.yml"]);
+    let out = cli(&sb, &col)
+        .args(["git", "commit", "-m", "edit url\n\nlonger body"])
+        .assert()
+        .code(0);
+    let head = sb.short_head(&col);
+    assert_eq!(stdout(&out), format!("{head} edit url\n"));
+    assert_eq!(head_subject(&sb, &col), "edit url");
+}
+
+#[test]
+fn commit_all_stages_the_whole_collection() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    cli(&sb, &col)
+        .args(["git", "commit", "-m", "all", "--all"])
+        .assert()
+        .code(0);
+    assert_eq!(sb.git(&col, &["status", "--porcelain"]), "");
+}
+
+#[test]
+fn commit_with_paths_stages_only_those_relative_to_the_working_directory() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    cli(&sb, &col.join("users"))
+        .args(["git", "commit", "-m", "one", "--collection"])
+        .arg(&col)
+        .arg("get.yml")
+        .assert()
+        .code(0);
+    let left = sb.git(&col, &["status", "--porcelain"]);
+    assert!(!left.contains("get.yml"), "{left}");
+    assert!(left.contains("fresh.yml"), "{left}");
+}
+
+#[test]
+fn commit_with_nothing_staged_fails_with_exit_3() {
+    let sb = Sandbox::new();
+    let col = clean(&sb);
+    write(&col, "fresh.yml", "info:\n  name: fresh\n");
+    let out = cli(&sb, &col)
+        .args(["git", "commit", "-m", "m"])
+        .assert()
+        .code(3);
+    assert!(stderr(&out).contains("nothing"), "{}", stderr(&out));
+}
+
+#[test]
+fn commit_with_an_empty_message_is_a_usage_error() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    cli(&sb, &col)
+        .args(["git", "commit", "-m", "  ", "--all"])
+        .assert()
+        .code(3);
+    assert_eq!(head_subject(&sb, &col), "base");
+}
+
+#[test]
+fn commit_all_with_paths_is_a_usage_error() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    cli(&sb, &col)
+        .args(["git", "commit", "-m", "m", "--all", "users/get.yml"])
+        .assert()
+        .code(3);
+}
+
+#[test]
+fn commit_outside_a_repository_fails_with_exit_3() {
+    let sb = Sandbox::new();
+    let col = sb.path().join("plain");
+    write(&col, "opencollection.yml", ROOT);
+    let out = cli(&sb, &col)
+        .args(["git", "commit", "-m", "m", "--all"])
+        .assert()
+        .code(3);
+    assert!(
+        stderr(&out).contains("not in a git repository"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn commit_json_has_the_short_id_and_subject() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    let out = cli(&sb, &col)
+        .args(["git", "commit", "-m", "json", "--all", "--json"])
+        .assert()
+        .code(0);
+    let value: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(
+        value,
+        json!({"short_id": sb.short_head(&col), "subject": "json"})
+    );
+}
+
+#[test]
+fn commit_refuses_a_parent_or_absolute_path_outside_the_collection() {
+    let sb = Sandbox::new();
+    let col = dirty(&sb);
+    let elsewhere = sb.path().display().to_string();
+    for path in ["../x.yml", elsewhere.as_str()] {
+        let out = cli(&sb, &col)
+            .args(["git", "commit", "-m", "m", path])
+            .assert()
+            .code(3);
+        assert!(stderr(&out).contains("outside the collection"), "{path}");
+    }
+    assert_eq!(head_subject(&sb, &col), "base");
+}

@@ -736,6 +736,25 @@ pub enum GitAction {
         #[arg(long)]
         collection: Option<PathBuf>,
     },
+    /// Commit collection changes locally, running the repository's hooks; nothing is pushed.
+    Commit {
+        /// The commit message; its first line is the subject.
+        #[arg(short, long)]
+        message: String,
+        /// Stage the whole collection first.
+        #[arg(long, conflicts_with = "paths")]
+        all: bool,
+        /// Files or folders to stage first, relative to the working directory. With neither these
+        /// nor --all, what is already staged is committed.
+        #[arg(value_name = "PATH")]
+        paths: Vec<PathBuf>,
+        /// The collection directory or a directory inside it; defaults to the working directory.
+        #[arg(long)]
+        collection: Option<PathBuf>,
+        /// Print the new commit as JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(clap::Args)]

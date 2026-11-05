@@ -365,6 +365,12 @@ async fn every_tool_result_matches_its_output_schema() {
     ex.run(&server, "git_status", json!({})).await;
     ex.run(&server, "git_diff", json!({"path": "f/a.yml"}))
         .await;
+    ex.run(
+        &server,
+        "git_commit",
+        json!({"message": "edit", "paths": ["f/a.yml"]}),
+    )
+    .await;
 
     // The mock, idle and then with a hit.
     let started = ex
