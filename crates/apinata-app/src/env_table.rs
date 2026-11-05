@@ -275,7 +275,8 @@ impl EnvVarTable {
         self.typed
     }
 
-    /// Reports each row's bounds to `follow`, the watch of the scroll area holding the table.
+    /// Reports each row control's bounds, and each row's, to `follow`, the watch of the scroll
+    /// area holding the table.
     pub fn set_follow(&mut self, follow: FocusFollow) {
         self.follow = follow;
     }
@@ -1082,17 +1083,22 @@ impl EnvVarTable {
         let slot =
             |real: &'static str, hidden: &'static str| (if blank { hidden } else { real }, ix);
         let name_locked = row.meta.secret && !row.meta.unsaved;
+        // Each Tab stop reports its own bounds: the row is wider than a narrow area, and
+        // following the row keeps only its left edge in view.
+        let follow = &self.follow;
+        let followed = |id: &'static str, child: AnyElement| Followed::new((id, ix), follow, child);
         // Each input sits borderless in a shared-look cell whose edge shows on hover or focus;
         // the minimum sits on the cell, so the lock and eye never eat into it.
-        let cell = |input: &Entity<InputState>, field, edge: &'static str, cx: &App| {
+        let cell = |input: &Entity<InputState>,
+                    field,
+                    (edge, id): (&'static str, &'static str),
+                    cx: &App| {
             let focused = input.focus_handle(cx).contains_focused(window, cx);
-            div().flex_1().min_w(ENV_CELL_MIN).child(kv_grid::kv_cell(
-                (edge, ix),
-                field,
-                input,
-                focused,
-                cx,
-            ))
+            let cell = kv_grid::kv_cell((edge, ix), field, input, focused, cx);
+            div()
+                .flex_1()
+                .min_w(ENV_CELL_MIN)
+                .child(followed(id, cell.into_any_element()))
         };
         let handle = (!blank).then(|| {
             DraggedRow::new(
@@ -1172,7 +1178,7 @@ impl EnvVarTable {
                     cx,
                 )
                 .id(("env-name", ix)),
-                "env-name-edge",
+                ("env-name-edge", "env-name-follow"),
                 cx,
             ))
             .child(
@@ -1184,10 +1190,10 @@ impl EnvVarTable {
                     .child(cell(
                         &row.value,
                         ui::table_input(&row.value, false, window, cx).id(("env-value", ix)),
-                        "env-value-edge",
+                        ("env-value-edge", "env-value-follow"),
                         cx,
                     ))
-                    .child(self.render_lock(ix, cx))
+                    .child(followed("env-secret-follow", self.render_lock(ix, cx)))
                     .child(self.render_action_slot(ix, cx)),
             )
             .child(
@@ -1195,17 +1201,23 @@ impl EnvVarTable {
                     .flex_none()
                     .track_focus(&row.remove)
                     .when(blank, |d| d.invisible())
-                    .child(kv_grid::button_focusing(
-                        ui::icon_button(
-                            slot("env-delete", "env-slot-delete"),
-                            IconName::Close,
-                            "Remove variable",
-                            None,
+                    .child(followed(
+                        "env-delete-follow",
+                        kv_grid::button_focusing(
+                            ui::icon_button(
+                                slot("env-delete", "env-slot-delete"),
+                                IconName::Close,
+                                "Remove variable",
+                                None,
+                            )
+                            .tab_stop(!blank)
+                            .on_click(
+                                cx.listener(move |t, _, window, cx| t.delete(ix, window, cx)),
+                            ),
+                            (!blank && self.take_control_focus(ix, Control::Remove))
+                                .then(|| ("env-delete", ix).into()),
                         )
-                        .tab_stop(!blank)
-                        .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
-                        (!blank && self.take_control_focus(ix, Control::Remove))
-                            .then(|| ("env-delete", ix).into()),
+                        .into_any_element(),
                     )),
             );
         let refused = (self.name_note.as_ref())
