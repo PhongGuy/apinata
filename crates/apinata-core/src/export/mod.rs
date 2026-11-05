@@ -16,7 +16,7 @@ pub use environment::{
     postman_global_environment_files,
 };
 pub use har::{HarExchange, HarRefusal, har, har_log, sent_exchange};
-pub use html::html;
+pub use html::{html, html_with};
 pub use openapi::openapi;
 pub use postman::postman;
 
@@ -149,6 +149,43 @@ pub struct HtmlExport {
     pub html: String,
     /// What was left out or degraded, in tree order.
     pub notes: Vec<ExportNote>,
+}
+
+/// Which optional sections the HTML documentation page includes; both are off by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct HtmlOptions {
+    include_scripts: bool,
+    include_environments: bool,
+}
+
+impl HtmlOptions {
+    /// No optional sections.
+    pub fn new() -> HtmlOptions {
+        HtmlOptions::default()
+    }
+
+    /// Show each request's assertions and scripts as escaped code; nothing is run.
+    pub fn include_scripts(mut self, on: bool) -> HtmlOptions {
+        self.include_scripts = on;
+        self
+    }
+
+    /// List each environment's variables as stored, with secret values masked.
+    pub fn include_environments(mut self, on: bool) -> HtmlOptions {
+        self.include_environments = on;
+        self
+    }
+
+    /// Whether requests show their assertions and scripts.
+    pub fn scripts(&self) -> bool {
+        self.include_scripts
+    }
+
+    /// Whether the page lists the environments.
+    pub fn environments(&self) -> bool {
+        self.include_environments
+    }
 }
 
 /// Something an export left out or could not carry over unchanged.

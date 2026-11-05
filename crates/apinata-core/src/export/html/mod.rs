@@ -4,9 +4,10 @@
 mod examples;
 mod parts;
 mod request;
+mod sections;
 mod text;
 
-use super::{ExportNote, HtmlExport};
+use super::{ExportNote, HtmlExport, HtmlOptions};
 use crate::collection::{Collection, Folder};
 use crate::resolve::is_pass_through;
 use crate::sequence::sort_by_name_then_seq;
@@ -21,6 +22,11 @@ const CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
 
 /// The HTML documentation page for `collection`, with notes on everything not carried over.
 pub fn html(collection: &Collection) -> HtmlExport {
+    html_with(collection, &HtmlOptions::new())
+}
+
+/// [`html`] with the optional sections `options` asks for.
+pub fn html_with(collection: &Collection, options: &HtmlOptions) -> HtmlExport {
     let name = escape(collection.name());
     let mut page = String::new();
     page.push_str("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
@@ -45,11 +51,20 @@ pub fn html(collection: &Collection) -> HtmlExport {
     credential_notes(&headers, "collection", &mut notes);
     let mut walk = Walk {
         collection,
+        options,
         nav: String::new(),
         main: String::new(),
         notes,
     };
     walk.folder(collection.tree(), &[], &[]);
+    if options.environments() {
+        let section = sections::environments(collection, &mut walk.notes);
+        if !section.is_empty() {
+            walk.nav
+                .push_str("<li><a href=\"#environments\">Environments</a></li>\n");
+            walk.main.push_str(&section);
+        }
+    }
     page.push_str("<nav>\n<h2>Contents</h2>\n<ul>\n");
     page.push_str(&walk.nav);
     page.push_str("</ul>\n</nav>\n<main>\n");
@@ -64,6 +79,7 @@ pub fn html(collection: &Collection) -> HtmlExport {
 /// The contents list and the sections, written side by side in the Postman exporter's order.
 struct Walk<'c> {
     collection: &'c Collection,
+    options: &'c HtmlOptions,
     nav: String,
     main: String,
     notes: Vec<ExportNote>,
@@ -115,7 +131,14 @@ impl Walk<'_> {
             self.nav
                 .push_str(&format!("<li><a href=\"#{id}\">{badge} {name}</a></li>\n"));
             let source = [path, &[req.name()]].concat().join(" / ");
-            let article = request::article(self.collection, req, &id, &source, &mut self.notes);
+            let article = request::article(
+                self.collection,
+                self.options,
+                req,
+                &id,
+                &source,
+                &mut self.notes,
+            );
             self.main.push_str(&article);
         }
         for opaque in folder.opaque_items() {

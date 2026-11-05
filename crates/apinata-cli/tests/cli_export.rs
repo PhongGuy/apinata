@@ -337,7 +337,7 @@ fn env_dir_with_html_is_a_usage_error() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains(
-            "--env-dir does not apply to --format html; the page leaves environments out"
+            "--env-dir does not apply to --format html; the page lists environments only with --include-environments"
         ),
         "{stderr}"
     );
@@ -400,4 +400,64 @@ fn openapi_yaml_format_writes_yaml_to_a_json_named_file() {
     );
     let _: Value = yaml_serde::from_slice(&std::fs::read(&file).unwrap()).expect("YAML");
     assert!(!std::fs::read(&file).unwrap().starts_with(b"{"));
+}
+
+fn html_with_flag(flag: &str) -> (String, String, Option<i32>) {
+    let col = collection();
+    std::fs::write(col.path().join(".env"), "token=dotenv-secret-value\n").unwrap();
+    let out = apinata()
+        .arg("export")
+        .arg(col.path())
+        .args(["--format", "html", "--out", "-", flag])
+        .output()
+        .expect("runs");
+    (
+        String::from_utf8(out.stdout).expect("UTF-8"),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+        out.status.code(),
+    )
+}
+
+#[test]
+fn html_include_scripts_adds_the_assertions() {
+    let (page, stderr, code) = html_with_flag("--include-scripts");
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(
+        page.contains("<li><code>res.status eq 200</code></li>"),
+        "{page}"
+    );
+    assert!(!page.contains("id=\"environments\""), "{page}");
+}
+
+#[test]
+fn html_include_environments_masks_secrets() {
+    let (page, stderr, code) = html_with_flag("--include-environments");
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(
+        page.contains("<tr><td>host</td><td>http://x.test</td></tr>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<tr><td>token</td><td><span class=\"tag\">secret</span></td></tr>"),
+        "{page}"
+    );
+    assert!(!page.contains("dotenv-secret-value"), "{page}");
+    assert!(!page.contains("res.status"), "{page}");
+}
+
+#[test]
+fn html_section_flags_are_a_usage_error_for_other_formats() {
+    let col = collection();
+    let out = apinata()
+        .arg("export")
+        .arg(col.path())
+        .args(["--format", "postman", "--out", "-", "--include-scripts"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("--include-scripts does not apply"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }

@@ -88,6 +88,16 @@ pub(crate) fn resolve_environment(envs: &[Environment], name: &str) -> Option<Re
     })
 }
 
+/// The names of `env`'s own usable rows in file order, repeats kept once.
+pub(crate) fn own_names(env: &Environment) -> Vec<String> {
+    let mut seen = HashSet::new();
+    rows(env)
+        .into_iter()
+        .filter(|r| seen.insert(r.name.clone()))
+        .map(|r| r.name)
+        .collect()
+}
+
 /// Inserts like a JavaScript `Map.set`: an existing name keeps its position and takes the new row.
 fn upsert(map: &mut Vec<Row>, row: Row) {
     match map.iter_mut().find(|r| r.name == row.name) {

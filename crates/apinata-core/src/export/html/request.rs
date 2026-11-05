@@ -5,10 +5,11 @@ use super::parts::{
     auth_label, body, credential_notes, kv_table, method_badge, params_table,
     query_credential_notes, url_credential_notes,
 };
+use super::sections::scripts;
 use super::text::{docs, escape};
 use crate::collection::Collection;
 use crate::edit::{AuthSpec, ParamKind};
-use crate::export::ExportNote;
+use crate::export::{ExportNote, HtmlOptions};
 use crate::js::js_trim;
 use crate::request::RequestFile;
 
@@ -17,6 +18,7 @@ use crate::request::RequestFile;
 /// request's name trail.
 pub(super) fn article(
     collection: &Collection,
+    options: &HtmlOptions,
     req: &RequestFile,
     id: &str,
     source: &str,
@@ -60,6 +62,9 @@ pub(super) fn article(
         own => auth_label(&own),
     };
     out.push_str(&format!("<p class=\"auth\">Auth: {}</p>\n", escape(&label)));
+    if options.scripts() {
+        out.push_str(&scripts(req));
+    }
     out.push_str(&examples(&req.examples(), source, notes));
     out.push_str("</article>\n");
     out
