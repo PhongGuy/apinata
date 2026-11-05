@@ -207,3 +207,77 @@ async fn startup_warnings_and_routes_are_reported() {
     assert_eq!(h.warnings().len(), 1);
     h.stop().await;
 }
+
+const TEMPLATED: &str = "examples:\n  - name: ok\n    response:\n      status: 200\n      headers:\n        - name: X-Id\n          value: 'id-{{id}}'\n        - name: X-Tok\n          value: '{{token}}'\n      body:\n        type: text\n        data: 'user {{id}} of {{org}} {{token}} {{nope}} {{'\n";
+
+async fn get_templated(
+    path: &str,
+    files: &[(&str, &str)],
+) -> (reqwest::Response, apinata_core::mock::MockHandle) {
+    let (_d, c, _) = open(files);
+    let mut o = ContextOptions::new();
+    o = o.env_var("token", "SECRET");
+    let ctx = VarContext::new(&c, o).unwrap();
+    let h = start(&c, &ctx, options()).await.unwrap();
+    let r = client()
+        .get(format!("http://{}{path}", h.addr()))
+        .send()
+        .await
+        .unwrap();
+    (r, h)
+}
+
+#[tokio::test]
+async fn path_params_fill_the_body_and_headers_and_nothing_else() {
+    let f = req("u", 1, "GET", "/orgs/:org/users/:id", TEMPLATED);
+    let (r, h) = get_templated("/orgs/acme/users/7", &[("u.yml", &f)]).await;
+    assert_eq!(r.headers()["x-id"], "id-7");
+    assert_eq!(r.headers()["x-tok"], "{{token}}");
+    let len = r.content_length();
+    let body = r.text().await.unwrap();
+    assert_eq!(body, "user 7 of acme {{token}} {{nope}} {{");
+    assert_eq!(len, Some(body.len() as u64), "length follows the new body");
+    h.stop().await;
+}
+
+#[tokio::test]
+async fn path_param_values_are_percent_decoded_and_not_expanded_again() {
+    let f = req("u", 1, "GET", "/orgs/:org/users/:id", TEMPLATED);
+    let (r, h) = get_templated("/orgs/a%20b/users/%7B%7Btoken%7D%7D", &[("u.yml", &f)]).await;
+    assert_eq!(
+        r.text().await.unwrap(),
+        "user {{token}} of a b {{token}} {{nope}} {{"
+    );
+    h.stop().await;
+}
+
+#[tokio::test]
+async fn binary_bodies_are_not_templated() {
+    let ex = "examples:\n  - name: ok\n    response:\n      status: 200\n      body:\n        type: binary\n        data: e3tpZH19\n";
+    let f = req("u", 1, "GET", "/u/:id", ex);
+    let (r, h) = get_templated("/u/7", &[("u.yml", &f)]).await;
+    assert_eq!(r.bytes().await.unwrap().as_ref(), b"{{id}}");
+    h.stop().await;
+}
+
+#[tokio::test]
+async fn a_non_ascii_path_param_fills_headers_like_the_body() {
+    let f = req("u", 1, "GET", "/orgs/:org/users/:id", TEMPLATED);
+    let (r, h) = get_templated("/orgs/acme/users/caf%C3%A9", &[("u.yml", &f)]).await;
+    assert_eq!(r.headers()["x-id"].as_bytes(), "id-caf\u{e9}".as_bytes());
+    assert!(
+        r.text()
+            .await
+            .unwrap()
+            .starts_with("user caf\u{e9} of acme")
+    );
+    h.stop().await;
+}
+
+#[tokio::test]
+async fn a_param_that_makes_a_header_invalid_keeps_the_recorded_header() {
+    let f = req("u", 1, "GET", "/orgs/:org/users/:id", TEMPLATED);
+    let (r, h) = get_templated("/orgs/acme/users/a%0Ab", &[("u.yml", &f)]).await;
+    assert_eq!(r.headers()["x-id"], "id-{{id}}");
+    h.stop().await;
+}

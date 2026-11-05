@@ -12,8 +12,8 @@ use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 
 use super::pick::{Candidate, Overrides, Pick, parse_query, pick};
-use super::respond::{HitLog, miss_body};
-use super::routes::RouteTable;
+use super::respond::{HitLog, fill_params, miss_body};
+use super::routes::{RouteTable, path_segments};
 use super::{HitHook, MockHit};
 
 /// Largest request body read before answering 413.
@@ -134,12 +134,34 @@ async fn handle(shared: &Shared, req: Request<Incoming>) -> Response<Full<Bytes>
     match picked {
         Pick::Hit { entry, fallback } => {
             let p = &entry.prepared;
+            // Path params fill `{{name}}` in the example; no other variable is ever resolved.
+            let decoded = path_segments(&path);
+            let params: Vec<(&str, &str)> = route
+                .iter()
+                .flat_map(|r| &r.segments)
+                .zip(&decoded)
+                .filter(|(t, _)| t.len() > 1 && t.starts_with(':'))
+                .map(|(t, v)| (&t[1..], v.as_str()))
+                .collect();
             let mut builder = Response::builder().status(p.status);
-            for (name, value) in &p.headers {
-                builder = builder.header(name.as_str(), value.as_str());
+            for (name, raw) in &p.headers {
+                // A substituted value that is not a valid header keeps the recorded text.
+                let filled = fill_params(raw, &params);
+                let value = if http::HeaderValue::from_bytes(filled.as_bytes()).is_ok() {
+                    filled
+                } else {
+                    raw.clone()
+                };
+                builder = builder.header(name.as_str(), value);
             }
+            let body = match std::str::from_utf8(&p.body) {
+                Ok(text) if !p.binary && !params.is_empty() => {
+                    fill_params(text, &params).into_bytes()
+                }
+                _ => p.body.clone(),
+            };
             let mut response = builder
-                .body(Full::new(Bytes::from(p.body.clone())))
+                .body(Full::new(Bytes::from(body)))
                 .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())));
             if let Some(reason) = p
                 .reason
