@@ -265,7 +265,7 @@ enum Os {
     Other,
 }
 
-/// Which lock is held, and when it is safe to delete it. On Windows a timed-out git can only be
+/// Which lock is held, and when it is safe to delete it. On Windows a timed-out git is
 /// terminated outright, so the lock may be a leftover rather than another git's.
 fn busy_text(lock: &Path, os: Os) -> String {
     let lock = lock.display();
@@ -276,8 +276,8 @@ fn busy_text(lock: &Path, os: Os) -> String {
         ),
         Os::Windows => format!(
             "git is busy: {lock} exists. Another git process may be using this repository, or a \
-             git stopped at its time limit left it behind, because Windows gives a stopped git \
-             no chance to clean up. Once no git.exe is running (check Task Manager), delete \
+             git stopped at its time limit left it behind. That stop gives git no chance to \
+             clean up. Once no git.exe is running (check Task Manager), delete \
              {lock} and try again."
         ),
     }
@@ -526,8 +526,8 @@ mod tests {
         assert_eq!(
             busy_text(Path::new("C:/r/.git/index.lock"), Os::Windows),
             "git is busy: C:/r/.git/index.lock exists. Another git process may be using this \
-              repository, or a git stopped at its time limit left it behind, because Windows \
-              gives a stopped git no chance to clean up. Once no git.exe is running (check Task \
+              repository, or a git stopped at its time limit left it behind. That stop gives git \
+              no chance to clean up. Once no git.exe is running (check Task \
               Manager), delete C:/r/.git/index.lock and try again."
         );
     }
