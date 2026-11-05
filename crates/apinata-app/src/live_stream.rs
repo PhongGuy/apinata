@@ -181,6 +181,8 @@ pub struct EventRow {
     pub name: String,
     /// The event id, when it sent one.
     pub id: Option<String>,
+    /// The reconnect delay in milliseconds, when the event sent one.
+    pub retry: Option<u64>,
     /// The first lines of the data, cut short with an ellipsis.
     pub preview: String,
 }
@@ -208,6 +210,11 @@ pub fn preview(data: &str) -> String {
     text
 }
 
+/// The muted note for an event's reconnect delay; none when it sent no `retry`.
+pub fn retry_label(retry: Option<u64>) -> Option<String> {
+    retry.map(|ms| format!("retry {ms} ms"))
+}
+
 /// The rows for `events`, in order.
 pub fn event_rows(events: &[SseEvent]) -> Vec<EventRow> {
     events
@@ -219,6 +226,7 @@ pub fn event_rows(events: &[SseEvent]) -> Vec<EventRow> {
                 .filter(|n| !n.is_empty())
                 .unwrap_or_else(|| "message".to_owned()),
             id: e.id.clone(),
+            retry: e.retry,
             preview: preview(&e.data),
         })
         .collect()

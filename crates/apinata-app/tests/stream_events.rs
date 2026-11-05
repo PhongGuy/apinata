@@ -1,7 +1,7 @@
 use crate::support;
 use crate::support::sse_server::{Script, Step, event};
 use crate::support::*;
-use apinata_app::live_stream::{EventRow, PREVIEW_CHARS, event_rows, preview};
+use apinata_app::live_stream::{EventRow, PREVIEW_CHARS, event_rows, preview, retry_label};
 use apinata_app::response_pane::{ResponsePane, ResponseTab};
 use apinata_core::sse::SseEvent;
 use apinata_core::{Outcome, RequestResult, Response};
@@ -29,6 +29,7 @@ fn rows_name_the_event_and_keep_its_id() {
     let events = vec![
         SseEvent::new("hi").with_event("tick").with_id("7"),
         SseEvent::new("plain"),
+        SseEvent::new("slow").with_retry(3000),
     ];
     assert_eq!(
         event_rows(&events),
@@ -36,15 +37,29 @@ fn rows_name_the_event_and_keep_its_id() {
             EventRow {
                 name: "tick".into(),
                 id: Some("7".into()),
+                retry: None,
                 preview: "hi".into()
             },
             EventRow {
                 name: "message".into(),
                 id: None,
+                retry: None,
                 preview: "plain".into()
+            },
+            EventRow {
+                name: "message".into(),
+                id: None,
+                retry: Some(3000),
+                preview: "slow".into()
             },
         ]
     );
+}
+
+#[test]
+fn retry_shows_in_milliseconds_only_when_sent() {
+    assert_eq!(retry_label(Some(3000)).as_deref(), Some("retry 3000 ms"));
+    assert_eq!(retry_label(None), None);
 }
 
 fn open_pane(
