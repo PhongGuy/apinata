@@ -1,5 +1,6 @@
 //! Redaction of secret values, in every form they take on the wire, before logging.
 
+use crate::secret_names::{contains_bytes, utf16_bytes};
 use crate::{FormKind, FormPolicy, redact_base64_runs, wire_forms};
 
 /// The placeholder that replaces a redacted value.
@@ -170,12 +171,9 @@ impl Redactor {
             return true;
         }
         self.values.iter().any(|v| {
-            let units: Vec<u16> = v.encode_utf16().collect();
-            let le: Vec<u8> = units.iter().flat_map(|u| u.to_le_bytes()).collect();
-            let be: Vec<u8> = units.iter().flat_map(|u| u.to_be_bytes()).collect();
-            [le, be]
-                .iter()
-                .any(|n| bytes.windows(n.len()).any(|w| w == n.as_slice()))
+            [false, true]
+                .into_iter()
+                .any(|big| contains_bytes(bytes, &utf16_bytes(v, big)))
         })
     }
 
@@ -186,11 +184,9 @@ impl Redactor {
     }
 
     /// Whether a value has a UTF-16 copy that a lossy text cannot show whole: a non-ASCII
-    /// value long enough for `redact_wide`, whose code units may decode to U+FFFD.
+    /// value, whose code units may decode to U+FFFD.
     pub(crate) fn has_non_ascii_wide(&self) -> bool {
-        self.values
-            .iter()
-            .any(|v| !v.is_ascii() && v.chars().count() >= crate::secret_names::MIN_CHARS)
+        self.values.iter().any(|v| !v.is_ascii())
     }
 
     /// `url` with its whole userinfo dropped, then redacted. A username alone can be the
@@ -218,6 +214,28 @@ mod tests {
         .remove(b'~');
     /// The unreserved set with `/` also literal.
     const PATH: &AsciiSet = &UNRESERVED.remove(b'/');
+
+    #[test]
+    fn holds_finds_a_value_in_a_large_input_either_way() {
+        let r = Redactor::new(&["ab\u{e9}"]);
+        let filler = vec![b'a'; 200_000];
+        assert!(!r.holds(&filler));
+        let wide = crate::secret_names::utf16_bytes("ab\u{e9}", true);
+        assert!(r.holds(&[filler.as_slice(), &wide].concat()));
+        assert!(r.holds(&[filler.as_slice(), "ab\u{e9}".as_bytes()].concat()));
+    }
+
+    #[test]
+    fn a_short_non_ascii_value_counts_as_wide_but_a_short_ascii_one_does_not() {
+        assert!(Redactor::new(&["\u{e9}"]).has_non_ascii_wide());
+        assert!(!Redactor::new(&["ab"]).has_non_ascii_wide());
+        let r = Redactor::new(&["\u{e9}t"]);
+        let body = crate::secret_names::utf16_bytes("\u{e9}t", false);
+        assert_eq!(
+            r.redact_wide(&body),
+            Some(crate::secret_names::utf16_bytes("[redacted]", false))
+        );
+    }
 
     #[test]
     fn query_and_path_segment_encodings_are_redacted() {
