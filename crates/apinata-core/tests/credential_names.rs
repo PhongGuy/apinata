@@ -43,6 +43,12 @@ fn a_name_ending_in_a_credential_word_on_a_boundary_matches() {
         "accessToken",
         "clientSecret",
         "userPassword",
+        // An upper-case run ends where a capitalised or all-caps final word begins.
+        "APIKey",
+        "ApiKEY",
+        "apiKEY",
+        "AccessTOKEN",
+        "ClientSecret",
     ] {
         assert!(is_credential_name(name), "{name}");
     }
@@ -66,6 +72,9 @@ fn near_misses_do_not_match() {
         "x-cookie-policy",
         "authorization-hint",
         "",
+        // No visible word boundary, so these stay unmatched to spare `hotkey` and `monkey`.
+        "apikey",
+        "X-APIKEY",
     ] {
         assert!(!is_credential_name(name), "{name}");
     }
@@ -132,6 +141,19 @@ fn query_values_under_credential_names_are_hidden() {
         mask_credential_query("https://h/token/p?q=1"),
         "https://h/token/p?q=1"
     );
+    // A Bearer or Basic credential is hidden under any name, encoded or not.
+    assert_eq!(
+        mask_credential_query("https://h/?auth=Bearer%20abc123&x=1"),
+        "https://h/?auth=[redacted]&x=1"
+    );
+    assert_eq!(
+        mask_credential_query("https://h/?h=basic+dXNlcjpwdw=="),
+        "https://h/?h=[redacted]"
+    );
+    assert_eq!(
+        mask_credential_query("https://h/?h=Bearer+{{t}}&q=basically"),
+        "https://h/?h=Bearer+{{t}}&q=basically"
+    );
     // A percent-encoded name is read decoded.
     assert_eq!(
         mask_credential_query("https://h/?api%5Fkey=k1"),
@@ -153,13 +175,15 @@ const SNAP: &str = r#"{
     "params": [
       {"name": "api_key", "value": "lit-key-1", "type": "query"},
       {"name": "id", "value": "7", "type": "path"},
-      {"name": "page", "value": "2", "type": "query"}
+      {"name": "page", "value": "2", "type": "query"},
+      {"name": "auth", "value": "Basic lit-basic-5", "type": "query"}
     ],
     "body": {
       "type": "form-urlencoded",
       "data": [
         {"name": "password", "value": "lit-pass-4"},
-        {"name": "user", "value": "joe"}
+        {"name": "user", "value": "joe"},
+        {"name": "note", "value": "Bearer lit-bearer-6"}
       ]
     }
   }
@@ -170,7 +194,14 @@ fn a_snapshot_hides_named_headers_query_and_form_values() {
     let mut snap = DraftSnapshot::from_json(SNAP).unwrap();
     assert!(snap.mask_credentials_by_name());
     let json = snap.to_json();
-    for literal in ["lit-key-1", "lit-key-2", "lit-token-3", "lit-pass-4"] {
+    for literal in [
+        "lit-key-1",
+        "lit-key-2",
+        "lit-token-3",
+        "lit-pass-4",
+        "lit-basic-5",
+        "lit-bearer-6",
+    ] {
         assert!(!json.contains(literal), "{literal} in {json}");
     }
     for kept in ["{{session}}", "qwerty", "\"joe\"", "page=2", "\"7\""] {

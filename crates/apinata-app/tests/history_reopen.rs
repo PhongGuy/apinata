@@ -9,6 +9,7 @@ use apinata_app::last_response::{Limits, ResponseStore, SendExtra};
 use apinata_app::send_model::SendState;
 use apinata_core::{Outcome, RequestResult, Response};
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Focusable as _, TestAppContext, VisualTestContext};
 use support::*;
 
@@ -171,7 +172,17 @@ fn a_draft_entry_with_hidden_credentials_opens_and_says_to_enter_them(cx: &mut T
         })
     });
     wait_real(cx, |cx| toasts(cx, &s) == before + 1);
-    assert!(apinata_app::history_palette::DRAFT_MASKED.contains("[redacted]"));
+    frame(cx, s.win);
+    let text = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("toast-draft-masked")
+                .label()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .unwrap();
+    assert_eq!(text, apinata_app::history_palette::DRAFT_MASKED);
 }
 
 #[gpui_kit::test]

@@ -25,9 +25,9 @@ const SUFFIXES: [&str; 4] = ["token", "secret", "key", "password"];
 const SCHEMES: [&str; 2] = ["bearer", "basic"];
 
 /// Whether a header, query or form field `name` holds a credential: one of the listed header
-/// names, or a name whose last word is token, secret, key or password. A word ends at `-`, `_`
-/// or a lower-to-upper camelCase step, so `X-Auth-Token` and `apiKey` match but `monkey` and
-/// `X-Keyboard` do not. Case is ignored except for the camelCase step.
+/// names, or a name whose last word is token, secret, key or password. That word starts after
+/// `-` or `_`, as a capitalised word (`apiKey`, `APIKey`) or as an all-caps word after a
+/// lower-case letter or digit (`apiKEY`), so `monkey`, `X-APIKEY` and `X-Keyboard` do not match.
 pub fn is_credential_name(name: &str) -> bool {
     let name = name.trim();
     if NAMES.iter().any(|n| name.eq_ignore_ascii_case(n)) {
@@ -43,11 +43,14 @@ pub fn is_credential_name(name: &str) -> bool {
         }
         match head.last() {
             None | Some(b'-' | b'_') => true,
-            // A camelCase step: the word starts upper-case after a lower-case letter or digit.
+            // A case step: a capitalised word after any letter or digit, or an all-caps word
+            // after a lower-case letter or digit; an all-caps run alone shows no boundary.
             Some(prev) => {
-                (prev.is_ascii_lowercase() || prev.is_ascii_digit())
-                    && tail[0].is_ascii_uppercase()
-                    && tail[1..].iter().all(u8::is_ascii_lowercase)
+                let capitalised =
+                    tail[0].is_ascii_uppercase() && tail[1..].iter().all(u8::is_ascii_lowercase);
+                let all_caps = tail.iter().all(u8::is_ascii_uppercase);
+                (capitalised && prev.is_ascii_alphanumeric())
+                    || (all_caps && (prev.is_ascii_lowercase() || prev.is_ascii_digit()))
             }
         }
     })
@@ -104,8 +107,9 @@ pub fn mask_credential_shape(value: &str) -> String {
     out
 }
 
-/// `url` with the value of each query pair whose name (percent-decoded) is a credential name
-/// replaced by `[redacted]`, unless it is empty or a single `{{var}}` placeholder.
+/// `url` with the value of each query pair replaced by `[redacted]` when its name (decoded) is a
+/// credential name and the value is not empty or only placeholders, or when the decoded value
+/// holds a Bearer or Basic credential.
 pub fn mask_credential_query(url: &str) -> String {
     let (before, fragment) = match url.split_once('#') {
         Some((before, fragment)) => (before, Some(fragment)),
@@ -118,10 +122,15 @@ pub fn mask_credential_query(url: &str) -> String {
         .split('&')
         .map(|pair| match pair.split_once('=') {
             Some((name, value)) => {
-                let decoded = percent_decode_str(&name.replace('+', " "))
-                    .decode_utf8_lossy()
-                    .into_owned();
-                if is_credential_name(&decoded) && holds_literal(value) {
+                let decode = |text: &str| {
+                    percent_decode_str(&text.replace('+', " "))
+                        .decode_utf8_lossy()
+                        .into_owned()
+                };
+                let shaped = decode(value);
+                if (is_credential_name(&decode(name)) && holds_literal(value))
+                    || mask_credential_shape(&shaped) != shaped
+                {
                     format!("{name}={REDACTED}")
                 } else {
                     pair.to_owned()
@@ -141,7 +150,7 @@ pub fn mask_credential_query(url: &str) -> String {
 impl DraftSnapshot {
     /// Hides literal credentials found by name and shape: credential-named header, query
     /// parameter and form field values, query values in the url, and any Bearer or Basic
-    /// credential in a header value. Whether anything changed.
+    /// credential in any of those values. Whether anything changed.
     pub fn mask_credentials_by_name(&mut self) -> bool {
         let key = self.request_key();
         let Some(Value::Mapping(request)) = self.root_mut().get_mut(key) else {
@@ -159,17 +168,10 @@ impl DraftSnapshot {
             set(url, masked);
         }
         for_rows(request.get_mut("headers"), |name, value| {
-            let named = if is_credential_name(name) {
-                mask_credential_value(value)
-            } else {
-                value.clone()
-            };
-            set(value, mask_credential_shape(&named));
+            set(value, mask_named_or_shaped(name, value));
         });
         for_rows(request.get_mut("params"), |name, value| {
-            if is_credential_name(name) {
-                set(value, mask_credential_value(value));
-            }
+            set(value, mask_named_or_shaped(name, value));
         });
         // Path parameters are rows too, but only a query row's value reaches the query string.
         let form = request.get_mut("body").and_then(|body| {
@@ -179,12 +181,20 @@ impl DraftSnapshot {
                 .flatten()
         });
         for_rows(form, |name, value| {
-            if is_credential_name(name) {
-                set(value, mask_credential_value(value));
-            }
+            set(value, mask_named_or_shaped(name, value));
         });
         changed
     }
+}
+
+// A field's value with its name rule and then the Bearer or Basic shape rule applied.
+fn mask_named_or_shaped(name: &str, value: &str) -> String {
+    let named = if is_credential_name(name) {
+        mask_credential_value(value)
+    } else {
+        value.to_owned()
+    };
+    mask_credential_shape(&named)
 }
 
 // Calls `f` with the name and string value of each row in a sequence of name/value rows,

@@ -320,9 +320,10 @@ struct HopMasks {
 /// What a header whose name marks it a credential shows in the Timeline until revealed.
 pub const NAME_MASK: &str = crate::env_table::SECRET_HIDDEN;
 
-// The credential header names revealed in the Timeline; they stay revealed for the session.
+// The credential header names revealed in the Timeline, by collection root; they stay revealed
+// for the session but never carry into another collection.
 #[derive(Default)]
-struct NamedReveals(BTreeSet<String>);
+struct NamedReveals(BTreeSet<(Option<PathBuf>, String)>);
 
 impl Global for NamedReveals {}
 
@@ -2737,8 +2738,14 @@ impl ResponsePane {
             ResponseTab::Timeline => {
                 let hops = response.map(|r| r.timeline()).unwrap_or_default();
                 let (masks, revealed) = self.timeline_masks(result);
+                let shown_root = self.send.read(cx).root().map(Path::to_path_buf);
                 let named_reveals: BTreeSet<String> = (cx.try_global::<NamedReveals>())
-                    .map(|g| g.0.clone())
+                    .map(|g| {
+                        (g.0.iter())
+                            .filter(|(root, _)| *root == shown_root)
+                            .map(|(_, name)| name.clone())
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let muted = cx.theme().muted_foreground;
                 let mono = cx.theme().mono_font_family.clone();
@@ -3184,11 +3191,13 @@ impl ResponsePane {
         cx.notify();
     }
 
-    // Flips every Timeline header named `name` between masked and revealed, for the session.
+    // Flips every Timeline header named `name` in the shown collection between masked and
+    // revealed, for the session.
     fn toggle_named_reveal(&mut self, name: String, cx: &mut Context<Self>) {
+        let key = (self.send.read(cx).root().map(Path::to_path_buf), name);
         let set = &mut cx.default_global::<NamedReveals>().0;
-        if !set.remove(&name) {
-            set.insert(name);
+        if !set.remove(&key) {
+            set.insert(key);
         }
         cx.notify();
     }

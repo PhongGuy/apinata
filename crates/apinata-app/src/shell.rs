@@ -959,10 +959,16 @@ impl Shell {
                     let opened = (this.workspace)
                         .update(cx, |w, cx| w.reopen_draft(&root, path, seq, snap, cx));
                     if masked && opened.is_some() {
-                        window.push_notification(
-                            Notification::warning(crate::history_palette::DRAFT_MASKED),
-                            cx,
-                        );
+                        let text = crate::history_palette::DRAFT_MASKED;
+                        // An empty marker carries the text, since the kit cannot read a toast's.
+                        let toast = Notification::warning(text).content(move |_, _, _| {
+                            div()
+                                .id("toast-draft-masked")
+                                .test_support()
+                                .aria_label(text)
+                                .into_any_element()
+                        });
+                        window.push_notification(toast, cx);
                     }
                 }
                 None => window.push_notification(

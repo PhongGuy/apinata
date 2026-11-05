@@ -150,6 +150,9 @@ pub use cookies::{
     CookieError, CookieInfo, CookieJar, CookieOutcome, CookieRejection, SetCookie,
     dropped_cookies_notice,
 };
+pub use credential_names::{
+    is_credential_name, mask_credential_query, mask_credential_shape, mask_credential_value,
+};
 pub use curl_export::to_curl;
 pub use default_headers::{DefaultHeader, default_headers};
 pub use digest_key::DigestKey;
@@ -163,9 +166,6 @@ pub use edit::{
     TokenPlacement, TokenSource, VarValue, Variable, collection_relative, parse_auth_json,
 };
 // The auth JSON parser's two paths, for the test that holds them equal.
-pub use credential_names::{
-    is_credential_name, mask_credential_query, mask_credential_shape, mask_credential_value,
-};
 #[doc(hidden)]
 pub use edit::auth_json_paths;
 pub use env_file::EnvVariable;

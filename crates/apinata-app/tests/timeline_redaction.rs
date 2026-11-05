@@ -371,3 +371,24 @@ fn a_credential_name_reveal_lasts_across_results(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(again.redact_header(name, value), "lit-api-key-1");
 }
+
+#[gpui_kit::test]
+fn a_credential_name_reveal_stays_in_its_collection(cx: &mut TestAppContext) {
+    let fx = shown_named(cx);
+    let row = row_of(cx, &fx, REQ, "x-api-key");
+    reveal_named(cx, &fx, row);
+    assert_eq!(label(cx, &fx, (value_id(REQ), row)), "lit-api-key-1");
+    let (root, model) = (fx._keep.2.root.clone(), fx.model.clone());
+    let other = tempfile::tempdir().unwrap();
+    model.update(cx, |m, cx| m.show_at(other.path(), fx.result.clone(), cx));
+    frame(cx, fx.win);
+    let row = row_of(cx, &fx, REQ, "x-api-key");
+    assert_eq!(
+        label(cx, &fx, (value_id(REQ), row)),
+        apinata_app::response_pane::NAME_MASK
+    );
+    model.update(cx, |m, cx| m.show_at(&root, fx.result.clone(), cx));
+    frame(cx, fx.win);
+    let row = row_of(cx, &fx, REQ, "x-api-key");
+    assert_eq!(label(cx, &fx, (value_id(REQ), row)), "lit-api-key-1");
+}
