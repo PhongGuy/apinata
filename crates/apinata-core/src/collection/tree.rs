@@ -697,7 +697,8 @@ impl Collection {
             .iter()
             .filter_map(|t| {
                 let own = list.iter().find(|n| n.path == t.item)?.item.seq;
-                // Records from before the tail was exact also name siblings ahead of the item.
+                // Records from before the first release follow load order and also name siblings
+                // ahead of the item.
                 let after = |old: &u64| own.is_none_or(|own| *old >= own);
                 let tail = t.renumbered.iter().filter(|(_, old, _)| after(old));
                 let tail = tail.map(|(p, ..)| p.clone());

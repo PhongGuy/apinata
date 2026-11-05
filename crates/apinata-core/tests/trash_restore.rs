@@ -1223,22 +1223,35 @@ impl Draw {
     }
 }
 
-/// A random folder in the table notation and a few of its items to delete, in order.
-fn drawn_case(seed: u64) -> (String, String) {
+/// A random folder in the table notation and a few of its items to delete, in order. A
+/// canonical folder holds only requests and folders numbered 1..n, each number once, though an
+/// item may store no number at all.
+fn drawn_case(seed: u64, canonical: bool) -> (String, String) {
     let mut draw = Draw(seed);
     let count = 3 + draw.below(4);
+    let mut free: Vec<u64> = (1..=count).collect();
     let tokens: Vec<String> = (0..count)
         .map(|i| {
             let name = char::from(b'a' + u8::try_from(i).expect("small"));
             let kind = match draw.below(10) {
-                0 => "!",
-                1..=3 => "/",
+                0 if !canonical => "!",
+                0..=3 => "/",
                 _ => "",
             };
-            let seq = match draw.below(count + 3) {
-                0 => "-".to_owned(),
-                1 => "0".to_owned(),
-                n => (n - 1).min(6).to_string(),
+            let seq = if canonical {
+                let at = usize::try_from(draw.below(free.len() as u64)).expect("small");
+                let seq = free.remove(at);
+                if draw.below(3) == 0 {
+                    "-".to_owned()
+                } else {
+                    seq.to_string()
+                }
+            } else {
+                match draw.below(count + 3) {
+                    0 => "-".to_owned(),
+                    1 => "0".to_owned(),
+                    n => (n - 1).min(6).to_string(),
+                }
             };
             format!("{name}{kind}{seq}")
         })
@@ -1255,13 +1268,11 @@ fn drawn_case(seed: u64) -> (String, String) {
     (tokens.join(" "), deleted.join(" "))
 }
 
-#[test]
-fn undoing_random_deletes_loses_the_old_order_no_more_often() {
-    // Some folders cannot get their order back, such as one whose app item holds a number past a
-    // gap; the ceiling is the count of those today, so a change that loses order elsewhere fails.
+/// Every run over `seeds` whose undo leaves the folder in another order than it started in.
+fn lost_orders(seeds: std::ops::Range<u64>, canonical: bool) -> Vec<String> {
     let mut differ = Vec::new();
-    for seed in 0..400 {
-        let (start, deleted) = drawn_case(seed);
+    for seed in seeds {
+        let (start, deleted) = drawn_case(seed, canonical);
         for batch in [false, true] {
             let got = after_undo(&start, &deleted, batch);
             if listed_order(&got) != listed_order(&start) {
@@ -1269,8 +1280,27 @@ fn undoing_random_deletes_loses_the_old_order_no_more_often() {
             }
         }
     }
+    differ
+}
+
+#[test]
+fn undoing_random_deletes_loses_the_old_order_no_more_often() {
+    // Some folders cannot get their order back, such as one whose app item holds a number past a
+    // gap; the ceiling is the count of those today, so a change that loses order elsewhere fails.
+    let differ = lost_orders(0..400, false);
     assert!(
         differ.len() <= 148,
+        "{} differ:\n{}",
+        differ.len(),
+        differ.join("\n")
+    );
+}
+
+#[test]
+fn undoing_random_deletes_in_a_folder_numbered_one_to_n_keeps_the_old_order() {
+    let differ = lost_orders(0..400, true);
+    assert!(
+        differ.is_empty(),
         "{} differ:\n{}",
         differ.len(),
         differ.join("\n")
