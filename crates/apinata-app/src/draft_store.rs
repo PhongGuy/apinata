@@ -964,5 +964,16 @@ mod tests {
         store.update(cx, |s, cx| s.flush_now(None, cx));
         let after = std::fs::read_to_string(&path).expect("the draft is still there");
         assert!(!after.contains("env-token-value-1"), "leaked: {after}");
+
+        // The draft is parked now: nothing may ask for another list.
+        let settled = store.read_with(cx, |s, _| s.fetches());
+        cx.run_until_parked();
+        store.update(cx, |s, cx| s.flush_now(None, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            store.read_with(cx, |s, _| s.fetches()),
+            settled,
+            "the refetch loops"
+        );
     }
 }
