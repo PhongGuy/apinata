@@ -200,6 +200,7 @@ mod import_environment;
 mod import_fetch;
 mod import_fields;
 mod import_format;
+mod import_graphql;
 mod import_har;
 mod import_har_fixtures;
 mod import_hoppscotch;

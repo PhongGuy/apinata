@@ -253,33 +253,6 @@ fn unique(taken: &mut HashSet<String>, base: String) -> String {
     name
 }
 
-/// A GraphQL body as the reference reads `body.graphql`: text is parsed as JSON first, and
-/// anything unreadable leaves both fields empty. Non-text variables become indented JSON.
-fn graphql_body(source: Option<&Value>) -> BodySpec {
-    let parsed;
-    let source = match source {
-        Some(Value::String(text)) => match serde_json::from_str::<Value>(text) {
-            Ok(value) => {
-                parsed = value;
-                Some(&parsed)
-            }
-            Err(_) => None,
-        },
-        other => other,
-    };
-    let member = |key: &str| source.and_then(|s| s.get(key));
-    let query = match member("query") {
-        Some(Value::String(q)) => q.clone(),
-        _ => String::new(),
-    };
-    let variables = match member("variables") {
-        Some(Value::String(v)) => v.clone(),
-        None | Some(Value::Null) => String::new(),
-        Some(other) => js::stringify_pretty(other),
-    };
-    BodySpec::Graphql { query, variables }
-}
-
 /// One request. An `Err` is the detail of an input the reference fails on, which drops the
 /// whole item.
 fn http_request(
@@ -320,7 +293,8 @@ fn http_request(
     let headers = normalize_headers(source.header.as_ref())?;
     if body.mode.as_ref().and_then(Value::as_str) == Some("graphql") {
         out.kind = RequestKind::Graphql;
-        out.body = graphql_body(body.graphql.as_ref());
+        let (query, variables) = super::request::graphql_parts(body.graphql.as_ref());
+        out.body = BodySpec::Graphql { query, variables };
     } else {
         out.body = request_body(body, &headers)?;
     }

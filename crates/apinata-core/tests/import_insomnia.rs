@@ -5,7 +5,7 @@ use apinata_core::import::{
     ImportedCollection, ImportedEnvironment, ImportedFolder, ImportedItem, ImportedRequestItem,
     NoteKind, parse_collections,
 };
-use apinata_core::{ApiKeyPlacement, AuthSpec};
+use apinata_core::{ApiKeyPlacement, AuthSpec, RequestKind};
 use apinata_core::{
     BodySpec, FileEntry, KeyValue, MultipartField, Param, ParamKind, RequestSettings, Timeout,
     VarValue, Variable,
@@ -435,14 +435,16 @@ fn file_parts_other_mime_types_and_graphql_are_noted() {
         json!({"method": "POST", "body": {"mimeType": "application/yaml", "text": "a: 1"}}),
     );
     assert!(converted(&yaml, "R / body.mimeType"), "{:#?}", yaml.notes);
-    let c = v4_one(
+    let gql = v4_request(
         json!({"method": "POST", "body": {"mimeType": "application/graphql", "text": "{\"query\":\"{ a }\"}"}}),
     );
-    assert!(c.items.is_empty());
-    assert!(
-        c.unwritten.iter().any(|n| n.source == "R"),
-        "{:#?}",
-        c.unwritten
+    assert_eq!(gql.request.kind, RequestKind::Graphql);
+    assert_eq!(
+        gql.request.body,
+        BodySpec::Graphql {
+            query: "{ a }".into(),
+            variables: String::new()
+        }
     );
 }
 

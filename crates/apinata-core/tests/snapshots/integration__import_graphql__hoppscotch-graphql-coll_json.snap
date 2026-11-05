@@ -1,0 +1,100 @@
+---
+source: crates/apinata-core/tests/import_graphql.rs
+expression: text
+---
+== Legacy query.yml
+info:
+  name: Legacy query
+  type: graphql
+  seq: 2
+
+graphql:
+  method: POST
+  url: https://api.example.test/graphql
+  headers:
+    - name: Accept
+      value: application/json
+  body:
+    query: "{ status }"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Scripted.yml
+info:
+  name: Scripted
+  type: graphql
+  seq: 3
+
+graphql:
+  method: POST
+  url: https://api.example.test/graphql
+  body:
+    query: "{ me { id } }"
+    variables: "{}"
+  auth:
+    type: basic
+    username: ann
+    password: "{{pw}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Users/User by id.yml
+info:
+  name: User by id
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: "{{baseUrl}}/graphql"
+  headers:
+    - name: X-Trace
+      value: on
+      disabled: true
+  body:
+    query: "query User($id: ID!) { user(id: $id) { id name } }"
+    variables: |-
+      {
+        "id": "{{userId}}"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+
+docs: Looks up one user
+== Users/folder.yml
+info:
+  name: Users
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: GraphQL Hoppscotch
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped Scripted / preRequestScript: scripts are not imported

@@ -1,0 +1,62 @@
+{
+  "v": 12,
+  "name": "GraphQL Hoppscotch",
+  "folders": [
+    {
+      "v": 12,
+      "name": "Users",
+      "folders": [],
+      "requests": [
+        {
+          "v": 9,
+          "name": "User by id",
+          "url": "<<baseUrl>>/graphql",
+          "headers": [
+            { "key": "X-Trace", "value": "on", "active": false, "description": "" }
+          ],
+          "query": "query User($id: ID!) { user(id: $id) { id name } }",
+          "variables": "{\n  \"id\": \"<<userId>>\"\n}",
+          "auth": { "authType": "bearer", "token": "<<token>>", "authActive": true },
+          "description": "Looks up one user",
+          "responses": {},
+          "preRequestScript": "",
+          "testScript": ""
+        }
+      ],
+      "auth": { "authType": "inherit", "authActive": true },
+      "headers": [],
+      "variables": [],
+      "description": null,
+      "preRequestScript": "",
+      "testScript": ""
+    }
+  ],
+  "requests": [
+    {
+      "name": "Legacy query",
+      "url": "https://api.example.test/graphql",
+      "headers": [{ "key": "Accept", "value": "application/json", "active": true }],
+      "query": "{ status }",
+      "variables": ""
+    },
+    {
+      "v": 10,
+      "name": "Scripted",
+      "url": "https://api.example.test/graphql",
+      "headers": [],
+      "query": "{ me { id } }",
+      "variables": "{}",
+      "auth": { "authType": "basic", "username": "ann", "password": "<<pw>>", "authActive": true },
+      "description": null,
+      "responses": {},
+      "preRequestScript": "pw.env.set(\"x\", \"1\")",
+      "testScript": ""
+    }
+  ],
+  "auth": { "authType": "none", "authActive": true },
+  "headers": [],
+  "variables": [],
+  "description": null,
+  "preRequestScript": "",
+  "testScript": ""
+}

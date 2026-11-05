@@ -3,6 +3,47 @@ source: crates/apinata-core/tests/import_hoppscotch_fixtures.rs
 expression: text
 ---
 ### collection 0: Mixed REST GQL Suite
+== GQL env templated header.yml
+info:
+  name: GQL env templated header
+  type: graphql
+  seq: 3
+
+graphql:
+  method: POST
+  url: https://echo.hoppscotch.io/graphql
+  headers:
+    - name: x-hopp-greeting
+      value: "{{greeting}}"
+  body:
+    query: query GreetingEcho { headers { key value } }
+    variables: "{}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Inherited/GQL nested in folder.yml
+info:
+  name: GQL nested in folder
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: https://echo.hoppscotch.io/graphql
+  body:
+    query: "{ method }"
+    variables: "{}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
 == Inherited/folder.yml
 info:
   name: Inherited
@@ -39,6 +80,6 @@ extensions:
       - node_modules
       - .git
 == report
+Dropped Inherited / GQL nested in folder / testScript: scripts are not imported (Inherited/GQL nested in folder.yml)
 Dropped REST echo / testScript: scripts are not imported (REST echo.yml)
-Dropped Inherited / GQL nested in folder: GraphQL requests are not imported (-)
-Dropped GQL env templated header: GraphQL requests are not imported (-)
+Dropped GQL env templated header / testScript: scripts are not imported (GQL env templated header.yml)

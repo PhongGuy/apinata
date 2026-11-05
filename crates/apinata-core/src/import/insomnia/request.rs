@@ -7,7 +7,9 @@ use super::{Budget, Crumbs};
 use crate::edit::{
     AuthSpec, BodySpec, FileEntry, KeyValue, MultipartField, Param, ParamKind, RequestSettings,
 };
+use crate::import::request::graphql_parts;
 use crate::import::{DocumentError, ImportNote, ImportedRequest, NoteKind};
+use crate::request::RequestKind;
 use crate::url_params::{build_query_string, split_on_first};
 use serde_json::{Map, Value};
 
@@ -63,6 +65,9 @@ pub(super) fn request(
     request.params = params;
     request.headers = headers(source.headers, trail, notes, budget)?;
     request.body = body(source.body, trail, notes, budget)?;
+    if matches!(request.body, BodySpec::Graphql { .. }) {
+        request.kind = RequestKind::Graphql;
+    }
     request.auth = auth(source.auth, trail, &mut request.headers, notes, budget)?;
     request.docs = member_text(source.description);
     request.settings = settings(source.encode_url.as_ref(), source.follow_redirects.as_ref());
@@ -89,12 +94,6 @@ pub(super) fn folder_parts(
     scripts(source.scripts, trail, notes, budget)?;
     budget.unread(trail, source.unread, notes)?;
     Ok((member_text(source.description), headers, auth))
-}
-
-/// Whether the request is GraphQL, which has no counterpart.
-pub(super) fn is_graphql(source: &RequestSource) -> bool {
-    let body = source.body.as_ref().map(|b| &b.value);
-    mime(body.and_then(|b| b.get("mimeType"))) == "application/graphql"
 }
 
 /// A body's MIME type without parameters, trimmed and lower-cased.
@@ -246,6 +245,7 @@ fn body(
             }
             BodySpec::Multipart(parts)
         }
+        "application/graphql" => graphql(&content, trail, &text_at, notes, budget)?,
         "text/plain" => BodySpec::Text(templated(notes, budget)?),
         "application/xml" | "text/xml" => BodySpec::Xml(templated(notes, budget)?),
         "application/octet-stream" if !file_name.is_empty() => {
@@ -272,7 +272,7 @@ fn body(
             "text",
             matches!(
                 spec,
-                BodySpec::Json(_) | BodySpec::Text(_) | BodySpec::Xml(_)
+                BodySpec::Json(_) | BodySpec::Text(_) | BodySpec::Xml(_) | BodySpec::Graphql { .. }
             ),
         ),
         ("fileName", matches!(spec, BodySpec::File(_))),
@@ -289,6 +289,45 @@ fn body(
     rest_paths(&body, &format!("{path}."), &skip, &mut unread);
     budget.unread(trail, unread, notes)?;
     Ok(spec)
+}
+
+/// A GraphQL body from its JSON text, templates rewritten in the query and variables. Text
+/// that is not a JSON object imports empty with a note, as does a named operation, which a
+/// request file cannot hold.
+fn graphql(
+    content: &str,
+    trail: &[String],
+    text_at: &str,
+    notes: &mut Vec<ImportNote>,
+    budget: &mut Budget,
+) -> Result<BodySpec, DocumentError> {
+    let parsed = serde_json::from_str::<Value>(content)
+        .ok()
+        .filter(Value::is_object);
+    let Some(parsed) = parsed else {
+        if !content.trim().is_empty() {
+            let detail = "the GraphQL body is not JSON with a query and variables; not imported";
+            notes.push(budget.note(trail, text_at, NoteKind::Dropped, detail)?);
+        }
+        return Ok(BodySpec::Graphql {
+            query: String::new(),
+            variables: String::new(),
+        });
+    };
+    if let Some(Value::String(name)) = parsed.get("operationName")
+        && !name.is_empty()
+    {
+        let detail =
+            format!("the operation name `{name}` is not imported; the request is sent without one");
+        notes.push(budget.note(trail, text_at, NoteKind::Dropped, detail)?);
+    }
+    let (query, variables) = graphql_parts(Some(&parsed));
+    // Indenting nested variables can outgrow the input, so their text is charged.
+    budget.charge(variables.len())?;
+    Ok(BodySpec::Graphql {
+        query: apply(&query, trail, text_at, notes, budget)?,
+        variables: apply(&variables, trail, text_at, notes, budget)?,
+    })
 }
 
 /// Whether a leftover member holds anything: not `null`, nor an empty string, list or object.

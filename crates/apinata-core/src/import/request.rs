@@ -6,8 +6,10 @@ use crate::edit::{AuthSpec, BodySpec};
 use crate::env_file::EnvVariable;
 use crate::error::{EditError, TreeError};
 use crate::item_path::ItemPath;
+use crate::js;
 use crate::request::{RequestFile, RequestKind};
 use crate::secrets::SecretStore;
+use serde_json::Value;
 
 /// Create `name` under `parent`, apply `request`, save. When applying or saving fails, the new
 /// file is deleted again and that error returned. Fails with `Tree` for an unknown parent or
@@ -199,4 +201,31 @@ impl ImportedRequest {
 // An HTTP import has no query to give a GraphQL request, so that request's body stays.
 fn keeps_body(target: RequestKind, source: RequestKind) -> bool {
     target == RequestKind::Graphql && source != RequestKind::Graphql
+}
+
+/// A GraphQL query and variables from `{query, variables}`, or from its JSON text: anything
+/// unreadable leaves both empty. Non-text variables become indented JSON.
+pub(super) fn graphql_parts(source: Option<&Value>) -> (String, String) {
+    let parsed;
+    let source = match source {
+        Some(Value::String(text)) => match serde_json::from_str::<Value>(text) {
+            Ok(value) => {
+                parsed = value;
+                Some(&parsed)
+            }
+            Err(_) => None,
+        },
+        other => other,
+    };
+    let member = |key: &str| source.and_then(|s| s.get(key));
+    let query = match member("query") {
+        Some(Value::String(q)) => q.clone(),
+        _ => String::new(),
+    };
+    let variables = match member("variables") {
+        Some(Value::String(v)) => v.clone(),
+        None | Some(Value::Null) => String::new(),
+        Some(other) => js::stringify_pretty(other),
+    };
+    (query, variables)
 }

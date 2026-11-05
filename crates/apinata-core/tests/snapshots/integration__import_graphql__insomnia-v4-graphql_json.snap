@@ -1,0 +1,94 @@
+---
+source: crates/apinata-core/tests/import_graphql.rs
+expression: text
+---
+== Broken body.yml
+info:
+  name: Broken body
+  type: graphql
+  seq: 2
+
+graphql:
+  method: POST
+  url: https://api.example.test/graphql
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Plain JSON.yml
+info:
+  name: Plain JSON
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: https://api.example.test/items
+  body:
+    type: json
+    data: '{"a": 1}'
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Users/User by id.yml
+info:
+  name: User by id
+  type: graphql
+  seq: 1
+
+graphql:
+  method: POST
+  url: "{{base_url}}/graphql"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: X-Trace
+      value: on
+      disabled: true
+  body:
+    query: "query User($id: ID!) { user(id: $id) { id name } }"
+    variables: |-
+      {
+        "id": "{{user_id}}"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: inherit
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
+== Users/folder.yml
+info:
+  name: Users
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+== opencollection.yml
+opencollection: 1.0.0
+
+info:
+  name: GraphQL v4
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+== report
+Dropped Users / User by id / body.text: the operation name `User` is not imported; the request is sent without one
+Dropped Broken body / body.text: the GraphQL body is not JSON with a query and variables; not imported

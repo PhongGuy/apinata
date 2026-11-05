@@ -98,7 +98,7 @@ enum RequestKind {
     Legacy,
     /// A version 1 or later request; `newer` when its version is past the newest known.
     Rest { newer: bool },
-    /// A GraphQL request, which is not imported.
+    /// A GraphQL request.
     GraphQl,
     /// A `v` that names no request version.
     Unknown,

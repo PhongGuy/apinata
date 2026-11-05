@@ -458,10 +458,6 @@ pub(super) fn items(
             continue;
         };
         match node.kind {
-            Kind::Request(source) if request::is_graphql(&source) => {
-                let detail = "GraphQL requests are not imported";
-                unwritten.push(budget.note(trail, &source.name, NoteKind::Dropped, detail)?);
-            }
             Kind::Request(mut source) => {
                 // The name joins the trail so the request's notes are sourced under it.
                 budget.entry()?;
