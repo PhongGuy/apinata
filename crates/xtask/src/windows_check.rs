@@ -71,6 +71,8 @@ pub fn cargo_args() -> Vec<String> {
     for package in PACKAGES {
         args.extend(["-p".to_owned(), package.to_owned()]);
     }
+    // Test targets too, so unix-only test code cannot break the Windows build unnoticed.
+    args.push("--tests".to_owned());
     args
 }
 

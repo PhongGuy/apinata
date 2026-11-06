@@ -53,7 +53,8 @@ fn cargo_args_check_the_three_headless_crates() {
             "-p",
             "apinata-cli",
             "-p",
-            "apinata-mcp"
+            "apinata-mcp",
+            "--tests"
         ]
     );
 }
