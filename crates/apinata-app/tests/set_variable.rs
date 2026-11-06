@@ -367,3 +367,24 @@ fn enter_on_the_focused_target_select_opens_it_without_writing(cx: &mut TestAppC
     assert_eq!(open, Some(true), "Enter opens the targets");
     assert_eq!(read(&root, "environments/dev.yml"), before);
 }
+
+#[gpui_kit::test]
+fn space_on_the_focused_target_select_opens_it_without_writing(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    selected(cx, &ws, &root);
+    let before = read(&root, "environments/dev.yml");
+    let (win, _form) = dialog(cx, &ws, &root);
+    cx.update(apinata_app::keymap::init);
+    key_on(cx, win, "set-variable-target", "space");
+    frame(cx, win);
+    assert!(
+        present(cx, win, "set-variable-dialog"),
+        "the dialog stays open"
+    );
+    let open = cx
+        .update_window(win, |_, w, _| w.find("set-variable-target").expanded())
+        .unwrap();
+    assert_eq!(open, Some(true), "Space opens the targets");
+    assert_eq!(read(&root, "environments/dev.yml"), before);
+}

@@ -487,6 +487,16 @@ pub fn enter_on(
     win: gpui_kit::AnyWindowHandle,
     id: impl Into<gpui_kit::ElementId>,
 ) {
+    key_on(cx, win, id, "enter");
+}
+
+/// `enter_on` with any `key`: Tabs to element `id`, then presses `key` on it.
+pub fn key_on(
+    cx: &mut gpui_kit::TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    id: impl Into<gpui_kit::ElementId>,
+    key: &str,
+) {
     use gpui_kit::AppContext as _;
     use gpui_kit::test::TestWindowExt as _;
     let id: gpui_kit::ElementId = id.into();
@@ -506,8 +516,7 @@ pub fn enter_on(
             .unwrap();
     }
     assert!(on(cx), "Tab reaches {id}");
-    cx.update_window(win, |_, w, cx| w.press("enter", cx))
-        .unwrap();
+    cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
     cx.run_until_parked();
 }
 

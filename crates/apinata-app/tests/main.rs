@@ -465,6 +465,7 @@ mod section_counts;
 mod section_snapshots;
 mod segment_keys;
 mod select_open_fill;
+mod select_space;
 mod send_anywhere;
 mod send_model;
 mod send_stream;

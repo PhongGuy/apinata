@@ -41,6 +41,7 @@ const NOT_LISTED: &[&str] = &[
     "apinata::FocusPreviousControl",
     "input::Redo",
     "dialog_select::OpenSelect",
+    "ui::Confirm",
     "segmented::ActivateSegment",
     "segmented::NextSegment",
     "segmented::PrevSegment",
