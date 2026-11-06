@@ -222,11 +222,7 @@ fn clone(url: &str, dir: Option<&Path>) -> ExitCode {
             } else {
                 eprintln!("error: {}", unseen.join("\n"));
             }
-            if AUTH_MARKERS.iter().any(|m| stderr.contains(m)) {
-                eprintln!(
-                    "hint: set up a credential helper or ssh-agent, then retry; to accept a new host key, connect once with ssh."
-                );
-            }
+            auth_hint(&stderr);
             ExitCode::from(EXIT_USAGE)
         }
         Err(e) => {
@@ -244,6 +240,15 @@ const AUTH_MARKERS: [&str; 5] = [
     "Permission denied",
     "Host key verification failed",
 ];
+
+/// Print the credential hint when git's `stderr` shows a refused login or host key.
+fn auth_hint(stderr: &str) {
+    if AUTH_MARKERS.iter().any(|m| stderr.contains(m)) {
+        eprintln!(
+            "hint: set up a credential helper or ssh-agent, then retry; to accept a new host key, connect once with ssh."
+        );
+    }
+}
 
 /// The parent folder and the new folder's name for `clone`, or the usage message.
 fn clone_target(url: &str, dir: Option<&Path>) -> Result<(PathBuf, String), String> {
@@ -382,32 +387,87 @@ fn short(id: &str) -> &str {
     id.get(..7).unwrap_or(id)
 }
 
-/// Print a finished sync result, or its error with the matching exit code.
+/// Which sync command ran, for the hints and notes that differ between them.
+#[derive(Clone, Copy, PartialEq)]
+enum Sync {
+    Pull,
+    Push,
+}
+
+/// The note for a push whose outcome Ctrl+C left unknown.
+const MAY_HAVE_PUSHED: &str = "the push may already have reached the remote";
+
+/// Print a finished sync result, or its error with the matching exit code. `cancelled` is
+/// whether Ctrl+C arrived, which the work reports beside its result.
 fn finish<T: Serialize>(
     result: Result<(Result<T, SyncError>, bool), std::io::Error>,
     json: bool,
+    kind: Sync,
     show: impl FnOnce(&T),
 ) -> ExitCode {
     match result {
-        Ok((Ok(done), _)) => {
-            if json {
-                return print_json(&done);
+        Ok((Ok(done), cancelled)) => {
+            let code = if json {
+                print_json(&done)
+            } else {
+                show(&done);
+                ExitCode::SUCCESS
+            };
+            // Core finishes a fast-forward it has started rather than leave the files half moved.
+            if cancelled && kind == Sync::Pull {
+                eprintln!("note: Ctrl+C came after the fast-forward had started; it finished");
             }
-            show(&done);
-            ExitCode::SUCCESS
+            code
         }
         Ok((Err(SyncError::Cancelled), _)) => {
-            eprintln!("cancelled");
+            match kind {
+                Sync::Pull => eprintln!("cancelled"),
+                Sync::Push => eprintln!("cancelled; {MAY_HAVE_PUSHED}"),
+            }
             ExitCode::from(EXIT_CANCELLED)
         }
-        Ok((Err(e), _)) => {
+        Ok((Err(e), cancelled)) => {
             eprintln!("error: {e}");
+            explain(&e, kind, cancelled);
             ExitCode::from(EXIT_USAGE)
         }
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::from(EXIT_USAGE)
         }
+    }
+}
+
+/// The lines after a sync error that say what happened remotely or what to run next.
+fn explain(error: &SyncError, kind: Sync, cancelled: bool) {
+    match error {
+        SyncError::Diverged { .. } => {
+            eprintln!("hint: merge or rebase in a terminal, then run apinata git push");
+        }
+        SyncError::Rejected { reason, stderr } => {
+            for line in stderr.lines().filter(|l| l.starts_with("remote:")) {
+                eprintln!("{line}");
+            }
+            if reason == "non-fast-forward" || reason == "fetch first" {
+                eprintln!("hint: run apinata git pull first, then push again");
+            }
+        }
+        SyncError::NoUpstream { branch, gone } if kind == Sync::Push => match gone {
+            None => {
+                eprintln!("hint: run apinata git push --set-upstream <REMOTE> to publish {branch}")
+            }
+            Some(u) => {
+                eprintln!("hint: run apinata git push --set-upstream <REMOTE> to re-create {u}")
+            }
+        },
+        SyncError::Partial { upstream, .. } => eprintln!(
+            "note: the files hold {upstream}, but the branch did not move; run git reset --merge HEAD to restore a clean tree, then apinata git pull again"
+        ),
+        SyncError::Failed { stderr } => auth_hint(stderr),
+        SyncError::Busy { .. } if cancelled && kind == Sync::Push => {
+            eprintln!("note: {MAY_HAVE_PUSHED}");
+        }
+        _ => {}
     }
 }
 
@@ -427,7 +487,7 @@ fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
         let done = apinata_core::pull(&root, cancel, &GitOptions::new());
         (done, cancel.is_cancelled())
     });
-    finish(result, json, |p| {
+    finish(result, json, Sync::Pull, |p| {
         let (b, u) = (&p.branch, &p.upstream);
         if p.from == p.to {
             outln!("{b} is up to date with {u}");
@@ -456,7 +516,7 @@ fn push(collection: Option<&Path>, set_upstream: Option<&str>, json: bool) -> Ex
         let done = apinata_core::push(&root, remote.as_deref(), cancel, &GitOptions::new());
         (done, cancel.is_cancelled())
     });
-    finish(result, json, |p| {
+    finish(result, json, Sync::Push, |p| {
         let (b, u) = (&p.branch, &p.upstream);
         let mut line = match &p.from {
             None => format!("Pushed {b} to {u} (new branch)"),
