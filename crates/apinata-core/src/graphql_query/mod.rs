@@ -4,13 +4,11 @@
 //! offset reported here points into the caller's original text.
 
 mod format;
-// The validator calls the rest of masking.
-#[allow(dead_code)]
 mod mask;
 mod validate;
 
 pub use format::format_query;
-pub use validate::CompiledSchema;
+pub use validate::{CompiledSchema, validate_query};
 
 use std::ops::Range;
 
@@ -48,8 +46,6 @@ impl QueryDiagnostic {
         &self.message
     }
 
-    // The validator builds these.
-    #[allow(dead_code)]
     pub(crate) fn new(
         range: Range<usize>,
         severity: QuerySeverity,

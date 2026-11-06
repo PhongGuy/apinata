@@ -197,6 +197,7 @@ pub use global_env::GlobalEnvironments;
 pub use graphql_query::{
     CompiledSchema, MAX_FORMAT_OUTPUT_BYTES, QUERY_DIAGNOSTIC_LIMIT, QUERY_FORMAT_LIMIT,
     QUERY_VALIDATE_LIMIT, QueryDiagnostic, QuerySeverity, QuerySyntaxError, format_query,
+    validate_query,
 };
 pub use graphql_schema::{
     Completion, CompletionKind, EnumValue, Field, INTROSPECTION_QUERY, InputValue, IntrospectError,
