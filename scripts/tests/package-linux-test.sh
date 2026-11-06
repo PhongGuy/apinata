@@ -54,7 +54,8 @@ test_cli_archive_is_reproducible_and_complete() {
   local listing; listing=$(tar -tzf "$a" | LC_ALL=C sort | tr '\n' ' ')
   local want="apinata-9.9.9-x86_64-unknown-linux-gnu/ apinata-9.9.9-x86_64-unknown-linux-gnu/LICENSE-APACHE apinata-9.9.9-x86_64-unknown-linux-gnu/LICENSE-MIT apinata-9.9.9-x86_64-unknown-linux-gnu/README.md apinata-9.9.9-x86_64-unknown-linux-gnu/apinata apinata-9.9.9-x86_64-unknown-linux-gnu/licenses/ apinata-9.9.9-x86_64-unknown-linux-gnu/licenses/chai-MIT.txt "
   [[ $listing == "$want" ]] || fail "archive listing: $listing"
-  tar -tvzf "$a" | grep -q '^-rwxr-xr-x 0/0 .*/apinata$' || fail "binary not executable or not owned by 0/0"
+  local verbose; verbose=$(tar -tvzf "$a")
+  grep -q '^-rwxr-xr-x 0/0 .*/apinata$' <<<"$verbose" || fail "binary not executable or not owned by 0/0"
 }
 
 test_write_sums_covers_artifacts_by_bare_name() {
