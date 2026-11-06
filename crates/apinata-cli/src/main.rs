@@ -11,6 +11,7 @@ mod export;
 mod gen_cmd;
 mod git_cmd;
 mod graphql_cmd;
+mod graphql_query_cmd;
 mod har_cmd;
 mod hosts_cmd;
 mod import;
