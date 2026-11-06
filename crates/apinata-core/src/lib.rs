@@ -41,6 +41,7 @@ mod execute;
 pub mod export;
 mod git;
 mod global_env;
+mod graphql_query;
 mod graphql_schema;
 #[cfg(test)]
 mod hang_guard;
@@ -193,6 +194,10 @@ pub use git::{
     switch_branch, switch_to_remote, text_hunks, unstage, validate_clone_url, validate_folder_name,
 };
 pub use global_env::GlobalEnvironments;
+pub use graphql_query::{
+    QUERY_DIAGNOSTIC_LIMIT, QUERY_FORMAT_LIMIT, QUERY_VALIDATE_LIMIT, QueryDiagnostic,
+    QuerySeverity, QuerySyntaxError,
+};
 pub use graphql_schema::{
     Completion, CompletionKind, EnumValue, Field, INTROSPECTION_QUERY, InputValue, IntrospectError,
     IntrospectGuard, IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT, SCHEMA_TIMEOUT, Schema,

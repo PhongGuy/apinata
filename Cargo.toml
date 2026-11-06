@@ -71,7 +71,9 @@ tree-sitter-c-sharp = "=0.23.5"
 # The kit links this grammar with an empty highlights query; the app registers one.
 tree-sitter-graphql = "=0.1.0"
 # Parses GraphQL SDL schema files in core; error-tolerant, with byte offsets for positions.
-apollo-parser = "=0.8.6"
+apollo-parser = "=0.8.7"
+# Validates GraphQL queries; exact, since a diagnostic filter matches its unstable_error_name.
+apollo-compiler = "=1.33.1"
 # Same version gpui-kit links, so its completion types are ours.
 lsp-types = "=0.97.0"
 # Exact: the seeded dynamic-variable sequence is part of core tests.
