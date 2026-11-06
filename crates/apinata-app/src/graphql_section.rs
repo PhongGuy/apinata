@@ -260,9 +260,11 @@ impl GraphqlSection {
     // result, and only to the text it was computed from.
     fn start_check(&mut self, cx: &mut Context<Self>) {
         let lookup = graphql_schema_store::compiled(&self.schema_url, cx);
-        // Pending forgets the last key, so whatever key the store settles on reschedules.
+        // Pending forgets the last key, so whatever key the store settles on reschedules, and a
+        // check still running against the old schema must not apply meanwhile.
         let Some(key) = lookup.key() else {
             self.checked_key = None;
+            self.running_check = None;
             return;
         };
         self.checked_key = Some(key);
