@@ -175,3 +175,25 @@ async fn validate_caps_the_list_and_refuses_a_bad_schema() {
         .await;
     assert!(err.contains("`schema`"), "{err}");
 }
+
+#[tokio::test]
+async fn positions_count_chars_and_crlf_lines_not_bytes() {
+    let server = TestServer::start(&[("opencollection.yml", ROOT)]).await;
+    // Line 1 holds multibyte text and ends in CRLF; the finding on line 2 follows more of it.
+    let query = "# æøå\r\n{ me(x: \"æøå\") { nmae } }";
+    let got = server
+        .ok("graphql_validate", json!({"query": query, "schema": SDL}))
+        .await;
+    let hit = got["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["message"].as_str().unwrap().contains("`nmae`"))
+        .expect("nmae finding");
+    let start = query.find("nmae").unwrap();
+    assert_eq!(hit["start"], json!(start));
+    assert_eq!(
+        (hit["line"].clone(), hit["column"].clone()),
+        (json!(2), json!(18))
+    );
+}
