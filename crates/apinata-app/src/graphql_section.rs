@@ -5,14 +5,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use apinata_core::{BodySpec, VariableSet, validate_query};
+use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, format_query, validate_query};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::command::Edit;
-use crate::graphql_check::{CHECK_DELAY, CheckBasis, Jobs, editor_diagnostics};
+use crate::graphql_check::{
+    CHECK_DELAY, CheckBasis, FORMAT_OFF_THREAD_BYTES, Jobs, editor_diagnostics, syntax_message,
+};
 use crate::graphql_complete::SchemaCompletions;
 use crate::graphql_docs::DocsPanel;
 use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
@@ -44,6 +46,9 @@ pub struct GraphqlSection {
     running_check: Option<Task<()>>,
     checked_key: Option<CheckKey>,
     basis: Option<CheckBasis>,
+    // The last refused Beautify, and the off-thread format a second Beautify replaces.
+    beautify_error: Option<String>,
+    beautify_task: Option<Task<()>>,
     _subs: Vec<Subscription>,
 }
 
@@ -79,6 +84,9 @@ impl GraphqlSection {
             cx.subscribe(&query, on_change),
             cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    if this.beautify_error.take().is_some() {
+                        cx.notify();
+                    }
                     this.schedule_check(cx);
                 }
             }),
@@ -105,6 +113,8 @@ impl GraphqlSection {
             running_check: None,
             checked_key: None,
             basis: None,
+            beautify_error: None,
+            beautify_task: None,
             _subs: subs,
         }
     }
@@ -176,6 +186,66 @@ impl GraphqlSection {
     /// What the last finished query check was measured against.
     pub fn check_basis(&self) -> Option<&CheckBasis> {
         self.basis.as_ref()
+    }
+
+    /// Formats the query as one undoable `replace_all`; off the UI thread above FORMAT_OFF_THREAD_BYTES.
+    pub fn beautify_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.beautify_task = None;
+        let text = self.query.read(cx).value().to_string();
+        // Blank text has nothing to lay out; it is neither an error nor an edit.
+        if text.trim().is_empty() {
+            self.beautify_error = None;
+            cx.notify();
+            return;
+        }
+        if text.len() < FORMAT_OFF_THREAD_BYTES {
+            let result = format_query(&text);
+            self.apply_beautify(&text, result, window, cx);
+            return;
+        }
+        let snapshot = text.clone();
+        let run = cx.background_spawn(async move { format_query(&text) });
+        self.beautify_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = run.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.apply_beautify(&snapshot, result, window, cx)
+            });
+        }));
+    }
+
+    /// Whether the query has non-blank text to format.
+    pub fn can_beautify_query(&self, cx: &App) -> bool {
+        !self.query.read(cx).value().trim().is_empty()
+    }
+
+    /// The last refused Beautify, cleared by the next query edit.
+    pub fn beautify_error(&self) -> Option<&str> {
+        self.beautify_error.as_deref()
+    }
+
+    // Applies a format result only to the text it was computed from, so an edit made while an
+    // off-thread format ran is never overwritten.
+    fn apply_beautify(
+        &mut self,
+        snapshot: &str,
+        result: Result<String, QuerySyntaxError>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if *self.query.read(cx).value() != *snapshot {
+            return;
+        }
+        match result {
+            Ok(laid_out) => {
+                self.beautify_error = None;
+                if laid_out != snapshot {
+                    self.query
+                        .update(cx, |q, cx| q.replace_all(laid_out, window, cx));
+                }
+            }
+            Err(err) => self.beautify_error = Some(syntax_message(snapshot, &err)),
+        }
+        cx.notify();
     }
 
     // Restart the typing pause; dropping the previous timer task cancels it.
@@ -372,6 +442,14 @@ impl GraphqlSection {
 
 impl Render for GraphqlSection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let beautify_error = self.beautify_error.clone().map(|message| {
+            div()
+                .id("graphql-beautify-error")
+                .test_support()
+                .text_xs()
+                .text_color(cx.theme().danger)
+                .child(message)
+        });
         let editors = v_flex()
             .flex_1()
             .min_w_0()
@@ -382,6 +460,7 @@ impl Render for GraphqlSection {
                 self.editor("graphql-query", "Query", &self.query)
                     .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             )
+            .children(beautify_error)
             .child(self.editor("graphql-variables", "Variables", &self.variables));
         // The panel carries the `graphql-docs` id itself, so the wrapper only sizes it.
         let docs = self.docs_open.then(|| {
