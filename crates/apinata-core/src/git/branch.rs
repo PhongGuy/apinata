@@ -76,7 +76,7 @@ pub enum FetchError {
 }
 
 /// Run `git <args>` in `root` and return its stdout, or the failure.
-fn lines(root: &Path, args: &[&str], opts: &GitOptions) -> Result<String, GitError> {
+pub(super) fn lines(root: &Path, args: &[&str], opts: &GitOptions) -> Result<String, GitError> {
     let out = run::git(args, root, opts)?;
     if !out.status.success() {
         return Err(out.failed(args));
@@ -324,7 +324,7 @@ pub fn switch_branch(
 /// path gone from disk and missing from `HEAD` is no change: git switches over it, and refuses
 /// in its own words if the target holds that path. A staged new file gone from disk (`AD`) is a
 /// change with a row in the status, so it counts.
-fn ready(root: &Path, opts: &GitOptions) -> Result<(), SwitchError> {
+pub(super) fn ready(root: &Path, opts: &GitOptions) -> Result<(), SwitchError> {
     check_root(root).map_err(from_git)?;
     let args = ["status", "--porcelain=v1", "-z"];
     let status = run::git(&args, root, opts).map_err(from_git)?;

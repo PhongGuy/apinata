@@ -162,9 +162,9 @@ enum Command {
     Convert(convert::ConvertArgs),
     /// Show what changed in a collection since the last commit.
     #[command(after_help = "Exit codes:\n  \
-        0  printed, or no git or no repository (a note on stderr)\n  \
+        0  printed, or no git or no repository (a note on stderr; commit, pull and push exit 3 instead)\n  \
         3  git failed, the file is not a request file or is outside the collection, or usage or collection error (clone: bad URL or folder name, or the folder exists)\n  \
-        130  a clone or fetch was cancelled with Ctrl+C")]
+        130  a clone, fetch, pull or push was cancelled with Ctrl+C")]
     Git(GitArgs),
     /// Search the text of a collection's requests.
     #[command(after_help = "Exit codes:\n  \
@@ -735,6 +735,27 @@ pub enum GitAction {
         /// The collection directory or a directory inside it; defaults to the working directory.
         #[arg(long)]
         collection: Option<PathBuf>,
+    },
+    /// Fetch the upstream, then fast-forward the current branch; never merges or rebases.
+    Pull {
+        /// The collection directory or a directory inside it; defaults to the working directory.
+        #[arg(long)]
+        collection: Option<PathBuf>,
+        /// Print the result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Push the current branch to its upstream; never forces.
+    Push {
+        /// The collection directory or a directory inside it; defaults to the working directory.
+        #[arg(long)]
+        collection: Option<PathBuf>,
+        /// Publish the branch under its own name on REMOTE and track it.
+        #[arg(long, value_name = "REMOTE")]
+        set_upstream: Option<String>,
+        /// Print the result as JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Commit collection changes locally, running the repository's hooks; nothing is pushed.
     Commit {

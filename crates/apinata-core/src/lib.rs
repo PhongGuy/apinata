@@ -186,11 +186,11 @@ pub use execute::{ConnectCause, ExecError, ExecOptions, Executor, NtlmCause};
 pub use git::{
     Branch, CancelFlag, CloneError, CloneProgress, CloneRequest, CloneUrlKind, CommitError,
     CommitOutcome, DiffLine, FetchError, FileDiff, FileStatus, GIT_FILE_CAP, GIT_TIMEOUT, GitError,
-    GitOptions, GitState, Hunk, LineKind, RemoteBranch, RepoStatus, Section, StageState,
-    SwitchError, Switched, Upstream, branches, clone_repo, collection_status,
-    collection_status_with, commit, default_folder_name, fetch, file_diff, file_diff_with,
-    redact_url, redact_url_userinfo, remote_branches, remotes, stage, switch_branch,
-    switch_to_remote, text_hunks, unstage, validate_clone_url, validate_folder_name,
+    GitOptions, GitState, Hunk, LineKind, Pulled, Pushed, RemoteBranch, RepoStatus, Section,
+    StageState, SwitchError, Switched, SyncError, Upstream, branches, clone_repo,
+    collection_status, collection_status_with, commit, default_folder_name, fetch, file_diff,
+    file_diff_with, pull, push, redact_url, redact_url_userinfo, remote_branches, remotes, stage,
+    switch_branch, switch_to_remote, text_hunks, unstage, validate_clone_url, validate_folder_name,
 };
 pub use global_env::GlobalEnvironments;
 pub use graphql_schema::{

@@ -31,6 +31,8 @@ mod cli_flag_interleave;
 mod cli_gen;
 mod cli_git;
 mod cli_git_clone;
+mod cli_git_sync;
+mod cli_git_sync_errors;
 mod cli_global_env;
 mod cli_graphql;
 mod cli_graphql_schema;

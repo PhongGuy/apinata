@@ -1,6 +1,6 @@
-//! `apinata git status`, `diff`, `clone`, `branches`, `switch` and `commit`: print what core
-//! reports about a collection's changes and branches, clone repositories with progress, and
-//! commit. Nothing here runs git itself.
+//! `apinata git status`, `diff`, `clone`, `branches`, `switch`, `commit`, `pull` and `push`: print
+//! what core reports about a collection's changes and branches, clone repositories with progress,
+//! commit, and fast-forward or push the current branch. Nothing here runs git itself.
 
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use anyhow::Context;
 use apinata_core::{
     CancelFlag, CloneError, CloneProgress, CloneRequest, FetchError, FileDiff, FileStatus,
-    GitOptions, GitState, LineKind, RemoteBranch, RepoStatus, SwitchError, Upstream,
+    GitOptions, GitState, LineKind, RemoteBranch, RepoStatus, SwitchError, SyncError, Upstream,
 };
 use serde::Serialize;
 
@@ -39,6 +39,12 @@ pub fn run(args: &GitArgs) -> ExitCode {
             collection,
             json,
         } => commit(message, *all, paths, collection.as_deref(), *json),
+        GitAction::Pull { collection, json } => pull(collection.as_deref(), *json),
+        GitAction::Push {
+            collection,
+            set_upstream,
+            json,
+        } => push(collection.as_deref(), set_upstream.as_deref(), *json),
     }
 }
 
@@ -216,11 +222,7 @@ fn clone(url: &str, dir: Option<&Path>) -> ExitCode {
             } else {
                 eprintln!("error: {}", unseen.join("\n"));
             }
-            if AUTH_MARKERS.iter().any(|m| stderr.contains(m)) {
-                eprintln!(
-                    "hint: set up a credential helper or ssh-agent, then retry; to accept a new host key, connect once with ssh."
-                );
-            }
+            auth_hint(&stderr);
             ExitCode::from(EXIT_USAGE)
         }
         Err(e) => {
@@ -238,6 +240,15 @@ const AUTH_MARKERS: [&str; 5] = [
     "Permission denied",
     "Host key verification failed",
 ];
+
+/// Print the credential hint when git's `stderr` shows a refused login or host key.
+fn auth_hint(stderr: &str) {
+    if AUTH_MARKERS.iter().any(|m| stderr.contains(m)) {
+        eprintln!(
+            "hint: set up a credential helper or ssh-agent, then retry; to accept a new host key, connect once with ssh."
+        );
+    }
+}
 
 /// The parent folder and the new folder's name for `clone`, or the usage message.
 fn clone_target(url: &str, dir: Option<&Path>) -> Result<(PathBuf, String), String> {
@@ -369,6 +380,168 @@ fn switch(wanted: &str, collection: Option<&Path>) -> ExitCode {
             ExitCode::from(EXIT_USAGE)
         }
     }
+}
+
+/// Cut a commit id to the 7 characters shown to people.
+fn short(id: &str) -> &str {
+    id.get(..7).unwrap_or(id)
+}
+
+/// Which sync command ran, for the hints and notes that differ between them.
+#[derive(Clone, Copy, PartialEq)]
+enum Sync {
+    Pull,
+    Push,
+}
+
+/// The note for a push whose outcome Ctrl+C left unknown.
+const MAY_HAVE_PUSHED: &str = "the push may already have reached the remote";
+
+/// Print a finished sync result, or its error with the matching exit code. The work reports
+/// beside its result whether Ctrl+C arrived; `moved` says whether a pull changed the branch.
+fn finish<T: Serialize>(
+    result: Result<(Result<T, SyncError>, bool), std::io::Error>,
+    json: bool,
+    kind: Sync,
+    moved: impl FnOnce(&T) -> bool,
+    show: impl FnOnce(&T),
+) -> ExitCode {
+    match result {
+        Ok((Ok(done), cancelled)) => {
+            let late = cancelled && kind == Sync::Pull && moved(&done);
+            let code = if json {
+                print_json(&done)
+            } else {
+                show(&done);
+                ExitCode::SUCCESS
+            };
+            // Core finishes a fast-forward it has started rather than leave the files half moved.
+            if late {
+                eprintln!("note: Ctrl+C came after the fast-forward had started; it finished");
+            }
+            code
+        }
+        Ok((Err(SyncError::Cancelled), _)) => {
+            match kind {
+                Sync::Pull => eprintln!("cancelled"),
+                Sync::Push => eprintln!("cancelled; {MAY_HAVE_PUSHED}"),
+            }
+            ExitCode::from(EXIT_CANCELLED)
+        }
+        Ok((Err(e), cancelled)) => {
+            eprintln!("error: {e}");
+            explain(&e, kind, cancelled);
+            ExitCode::from(EXIT_USAGE)
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::from(EXIT_USAGE)
+        }
+    }
+}
+
+/// The lines after a sync error that say what happened remotely or what to run next.
+fn explain(error: &SyncError, kind: Sync, cancelled: bool) {
+    match error {
+        SyncError::Diverged { .. } => {
+            eprintln!("hint: merge or rebase in a terminal, then run apinata git push");
+        }
+        SyncError::Rejected { reason, stderr } => {
+            for line in stderr.lines().filter(|l| l.starts_with("remote:")) {
+                eprintln!("{line}");
+            }
+            if reason == "non-fast-forward" || reason == "fetch first" {
+                eprintln!("hint: run apinata git pull first, then push again");
+            }
+        }
+        SyncError::NoUpstream { branch, gone } if kind == Sync::Push => match gone {
+            None => {
+                eprintln!("hint: run apinata git push --set-upstream <REMOTE> to publish {branch}")
+            }
+            Some(u) => {
+                eprintln!("hint: run apinata git push --set-upstream <REMOTE> to re-create {u}")
+            }
+        },
+        SyncError::Partial { upstream, .. } => eprintln!(
+            "note: the files hold {upstream}, but the branch did not move; run git reset --merge HEAD to restore a clean tree, then apinata git pull again"
+        ),
+        SyncError::Failed { stderr } => auth_hint(stderr),
+        SyncError::Busy { .. } if cancelled && kind == Sync::Push => {
+            eprintln!("note: {MAY_HAVE_PUSHED}");
+        }
+        _ => {}
+    }
+}
+
+fn sync_root(collection: Option<&Path>) -> Result<PathBuf, anyhow::Error> {
+    collection_arg::with_hint(
+        trust::collection_root(collection),
+        "pass the collection with --collection <DIR>",
+    )
+}
+
+fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
+    let root = match sync_root(collection) {
+        Ok(root) => root,
+        Err(e) => return usage(&e),
+    };
+    let result = with_interrupt(move |cancel| {
+        let done = apinata_core::pull(&root, cancel, &GitOptions::new());
+        (done, cancel.is_cancelled())
+    });
+    finish(
+        result,
+        json,
+        Sync::Pull,
+        |p| p.from != p.to,
+        |p| {
+            let (b, u) = (&p.branch, &p.upstream);
+            if p.from == p.to {
+                outln!("{b} is up to date with {u}");
+            } else {
+                outln!(
+                    "Fast-forwarded {b} to {u} ({}..{})",
+                    short(&p.from),
+                    short(&p.to)
+                );
+            }
+            if p.from == p.to && p.ahead > 0 {
+                let n = p.ahead;
+                let noun = if n > 1 { "commits" } else { "commit" };
+                eprintln!("note: {b} is {n} {noun} ahead of {u}");
+            }
+        },
+    )
+}
+
+fn push(collection: Option<&Path>, set_upstream: Option<&str>, json: bool) -> ExitCode {
+    let root = match sync_root(collection) {
+        Ok(root) => root,
+        Err(e) => return usage(&e),
+    };
+    let remote = set_upstream.map(str::to_owned);
+    let result = with_interrupt(move |cancel| {
+        let done = apinata_core::push(&root, remote.as_deref(), cancel, &GitOptions::new());
+        (done, cancel.is_cancelled())
+    });
+    finish(
+        result,
+        json,
+        Sync::Push,
+        |_| false,
+        |p| {
+            let (b, u) = (&p.branch, &p.upstream);
+            let mut line = match &p.from {
+                None => format!("Pushed {b} to {u} (new branch)"),
+                Some(from) if *from == p.to => format!("{u} is up to date"),
+                Some(from) => format!("Pushed {b} to {u} ({}..{})", short(from), short(&p.to)),
+            };
+            if p.upstream_set {
+                line.push_str(&format!("; {b} now tracks {u}"));
+            }
+            outln!("{line}");
+        },
+    )
 }
 
 fn commit(

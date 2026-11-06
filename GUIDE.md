@@ -59,10 +59,11 @@ no collection is found, the error says which forms that command takes.
 | `ls` | `[COLLECTION] [PATH]` | `--collection <DIR>` |
 | `search` | `[COLLECTION] <QUERY>` | `--collection <DIR>` |
 | `replace` | `[COLLECTION] <PATTERN> <REPLACEMENT>` | `--collection <DIR>` |
-| `env`, `trust`, `git switch`, `git commit` | none | `--collection <DIR>` |
+| `env`, `trust`, `git switch`, `git commit`, `git pull`, `git push` | none | `--collection <DIR>` |
 
-`env`, `trust`, `git switch` and `git commit` take their own arguments first, so a leading
-collection would be ambiguous and only the flag exists. In `ls`, one argument
+`env`, `trust`, `git switch`, `git commit`, `git pull` and `git push` take
+their own arguments first, so a leading collection would be ambiguous and only
+the flag exists. In `ls`, one argument
 is the folder to list, unless it is a directory holding
 `opencollection.yml` that the working directory's collection has no folder of;
 then it is the collection. Add a second argument, or use `--collection`, to
@@ -85,7 +86,9 @@ apinata git diff users/get-user.yml
 Without git, or outside a repository, both print a short note and exit 0 (see
 the [exit codes](#exit-codes)). `apinata git clone` clones a repository into a
 new folder, `apinata git branches` lists the remote branches and
-`apinata git switch` checks one out.
+`apinata git switch` checks one out. `apinata git pull` fetches and
+fast-forwards the current branch, and `apinata git push` pushes it to its
+upstream; neither merges, rebases or forces.
 
 `apinata git commit -m <MESSAGE>` commits locally and prints the new short id
 and subject (`--json` prints `{"short_id", "subject"}`). Name files or folders
@@ -317,7 +320,7 @@ the command never exits with that code.
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
 | `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors) | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, or the file could not be written |
-| `git` | printed, or no git or no repository (a note on stderr; `commit` fails instead) | - | - | git failed (for `commit`, also a hook refusing, nothing staged, or no git or repository), the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
+| `git` | printed, or no git or no repository (a note on stderr; `commit`, `pull` and `push` fail instead) | - | - | git failed (for `commit`, also a hook refusing or nothing staged; for `commit`, `pull` and `push`, also no git or repository), the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
 | `import` | imported (notes go to stderr) | - | - | the import failed |
 | `export` | exported (notes go to stderr) | - | - | the export failed |
 | `convert` | converted, planned (`--dry-run`) or declined | - | - | the conversion failed |
@@ -326,9 +329,9 @@ the command never exits with that code.
 | `self-update` | up to date, installed, declined or not replaceable | - | `--check` found an update | an error |
 | `completions` | script printed | - | - | usage error, such as an unknown shell |
 
-One more code exists. `130` is a `git clone` or `git branches --fetch`
-stopped with Ctrl+C, and a `run --watch` stopped with Ctrl+C before any run
-finished. A usage error from the argument parser (an unknown flag, a missing
+One more code exists. `130` is a `git clone`, `git branches --fetch`,
+`git pull` or `git push` stopped with Ctrl+C, and a `run --watch` stopped with
+Ctrl+C before any run finished. A usage error from the argument parser (an unknown flag, a missing
 value) exits 3 for every command, not clap's usual 2. `--help` and `--version`
 exit 0.
 
