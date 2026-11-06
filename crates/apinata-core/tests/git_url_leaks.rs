@@ -1,4 +1,5 @@
 //! No credential in a git URL reaches an error, a progress line or a redacted display string.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use crate::git_branch::cloned;
 use crate::git_support;
@@ -173,6 +174,7 @@ fn invalid_url_reasons_never_echo_the_url() {
     }
 }
 
+#[cfg(unix)]
 fn fake_git_printing(sb: &Sandbox, real: &Path, words: &str, on: &str) -> PathBuf {
     let body = format!(
         "#!/bin/sh\ncase \"$*\" in *\" config \"*) exit 1 ;; esac\ncase \"$*\" in *{on}*) ;; *) exec {real} \"$@\" ;; esac\nfor last; do :; done\nmkdir -p \"$last\" 2>/dev/null\nprintf '%s\\n' \"{words}\" >&2\nprintf '%s\\n' \"{words}\"\nexit 128\n",

@@ -1,5 +1,6 @@
 //! Paths the index holds while they are gone from disk: every path a commit records has a row a
 //! person can stage or unstage. Each form below runs against a real repository.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use crate::git_support;
 

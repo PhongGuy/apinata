@@ -1,4 +1,5 @@
 //! `collection_status` against real repositories built by the git CLI in a sandbox.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use crate::git_support;
 

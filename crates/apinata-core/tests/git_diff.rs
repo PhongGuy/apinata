@@ -1,5 +1,6 @@
 //! `file_diff` against sandbox repositories: both sides, status, hunks, sections, the path
 //! guard and the partial-clone no-fetch rule.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use crate::git_support;
 

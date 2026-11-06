@@ -1,3 +1,5 @@
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 use crate::git_branch::cloned;
 use crate::git_support;
 
