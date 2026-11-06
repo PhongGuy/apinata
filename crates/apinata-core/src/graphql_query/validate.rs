@@ -1,9 +1,7 @@
 //! Schema compilation, `validate_query` and the panic guard for query validation.
 
-use std::cell::Cell;
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Once;
 
 use apollo_compiler::ExecutableDocument;
 use apollo_compiler::diagnostic::ToCliReport;
@@ -45,7 +43,7 @@ impl CompiledSchema {
 fn build(
     compile: impl FnOnce() -> Valid<apollo_compiler::Schema>,
 ) -> Option<Valid<apollo_compiler::Schema>> {
-    quietly(compile)
+    catch_unwind(AssertUnwindSafe(compile)).ok()
 }
 
 impl fmt::Debug for CompiledSchema {
@@ -166,35 +164,13 @@ fn against_schema(
 
 /// Runs `check`, turning a panic into one Warning `the query could not be checked` at 0..0.
 pub(crate) fn guarded(check: impl FnOnce() -> Vec<QueryDiagnostic>) -> Vec<QueryDiagnostic> {
-    quietly(check).unwrap_or_else(|| {
+    catch_unwind(AssertUnwindSafe(check)).unwrap_or_else(|_| {
         vec![QueryDiagnostic::new(
             0..0,
             QuerySeverity::Warning,
             "the query could not be checked",
         )]
     })
-}
-
-thread_local! {
-    static QUIET: Cell<bool> = const { Cell::new(false) };
-}
-
-/// Catches a panic in `f` without printing it. The hook is wrapped once and stays process-wide,
-/// but only silences the thread inside this call; every other panic reaches the previous hook.
-fn quietly<T>(f: impl FnOnce() -> T) -> Option<T> {
-    static INSTALL: Once = Once::new();
-    INSTALL.call_once(|| {
-        let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            if !QUIET.try_with(Cell::get).unwrap_or(false) {
-                previous(info);
-            }
-        }));
-    });
-    let outer = QUIET.replace(true);
-    let result = catch_unwind(AssertUnwindSafe(f)).ok();
-    QUIET.set(outer);
-    result
 }
 
 #[cfg(test)]
@@ -237,32 +213,5 @@ mod tests {
             ]
         );
         assert_eq!(validate_query("  ", Some(&c)), vec![]);
-    }
-
-    /// Runs in a child with `--nocapture`, so the panic hook writes straight to stderr.
-    #[test]
-    #[ignore = "run by the parent test in a child process"]
-    fn child_guarded_panics_are_quiet() {
-        guarded(|| panic!("guarded-boom"));
-        let _ = build(|| panic!("build-boom"));
-        let _ = std::thread::spawn(|| panic!("loud-boom")).join();
-    }
-
-    #[test]
-    fn guarded_panics_print_nothing_but_others_still_do() {
-        let out = std::process::Command::new(std::env::current_exe().expect("exe"))
-            .args([
-                "graphql_query::validate::tests::child_guarded_panics_are_quiet",
-                "--exact",
-                "--ignored",
-                "--nocapture",
-            ])
-            .output()
-            .expect("child");
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        assert!(out.status.success(), "{stderr}");
-        assert!(!stderr.contains("guarded-boom"), "{stderr}");
-        assert!(!stderr.contains("build-boom"), "{stderr}");
-        assert!(stderr.contains("loud-boom"), "{stderr}");
     }
 }

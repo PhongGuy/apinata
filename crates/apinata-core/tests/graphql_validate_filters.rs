@@ -183,3 +183,17 @@ fn past_two_hundred_a_summary_comes_last() {
     assert_eq!(got[199].0, 398..399);
     assert_eq!(got[200], (0..0, Info, "and 100 more".to_owned()));
 }
+
+#[test]
+fn a_note_comes_before_a_syntax_error_at_offset_zero() {
+    assert_eq!(
+        check("} { me { {{f}} } }"),
+        vec![
+            (0..0, Info, SKIPPED.to_owned()),
+            e(
+                0..1,
+                "syntax error: expected a StringValue, Name or OperationDefinition"
+            ),
+        ]
+    );
+}

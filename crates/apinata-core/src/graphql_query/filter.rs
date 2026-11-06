@@ -42,9 +42,10 @@ pub(crate) fn filled_fields(tree: &SyntaxTree) -> HashSet<usize> {
         .collect()
 }
 
-/// Stable sort by range start, exact duplicates removed, cut to QUERY_DIAGNOSTIC_LIMIT plus a final `and N more` (Info, 0..0).
+/// Stable sort by range start then end, exact duplicates removed, cut to
+/// QUERY_DIAGNOSTIC_LIMIT plus a final `and N more` (Info, 0..0).
 pub(crate) fn finish(mut diags: Vec<QueryDiagnostic>) -> Vec<QueryDiagnostic> {
-    diags.sort_by_key(|d| d.range.start);
+    diags.sort_by_key(|d| (d.range.start, d.range.end));
     let mut seen = HashSet::new();
     diags.retain(|d| seen.insert(d.clone()));
     if diags.len() > QUERY_DIAGNOSTIC_LIMIT {
