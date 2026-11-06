@@ -77,7 +77,7 @@ pub fn load_from_server(
 /// Reads a schema file from `path` in the background and stores it under `url`: introspection
 /// JSON (with or without its `data` wrapper) or an SDL document, told apart by content.
 pub fn load_from_file(url: String, path: PathBuf, cx: &mut App) {
-    let generation = cx.default_global::<SchemaStore>().begin(&url);
+    let generation = cx.default_global::<SchemaStore>().begin_file(&url, &path);
     let read = cx.background_spawn(async move {
         let text = std::fs::read_to_string(&path)
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
