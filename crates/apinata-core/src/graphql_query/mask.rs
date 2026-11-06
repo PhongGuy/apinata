@@ -22,7 +22,7 @@ pub(crate) fn mask(text: &str) -> Masked {
     for span in &spans {
         bytes[span.clone()].fill(b'_');
     }
-    let text = String::from_utf8(bytes).unwrap_or_else(|_| "_".repeat(text.len()));
+    let text = String::from_utf8(bytes).expect("placeholder edges are char boundaries");
     Masked { text, spans }
 }
 
@@ -113,6 +113,25 @@ mod tests {
         let adjacent = mask("{ a(x: {{a}}{{b}}) }");
         assert_eq!(adjacent.spans, vec![7..12, 12..17]);
         assert_eq!(adjacent.text, "{ a(x: __________) }");
+    }
+
+    #[test]
+    fn a_placeholder_inside_a_block_string_is_masked_in_place() {
+        let text = "{ a(t: \"\"\"x {{v}} y\"\"\") }";
+        let m = mask(text);
+        assert_eq!(m.spans, vec![12..17]);
+        assert_eq!(m.text, "{ a(t: \"\"\"x _____ y\"\"\") }");
+        assert!(!any_structural(&parse(&m.text), &m.spans));
+    }
+
+    #[test]
+    fn multibyte_text_next_to_a_placeholder_keeps_its_bytes() {
+        let text = "\u{f8}{{x}}\u{f8}";
+        let m = mask(text);
+        assert_eq!(m.spans, vec![2..7]);
+        assert_eq!(m.text.as_bytes(), "\u{f8}_____\u{f8}".as_bytes());
+        assert_eq!(&m.text[..2], "\u{f8}");
+        assert_eq!(&m.text[7..], "\u{f8}");
     }
 
     #[test]
