@@ -129,6 +129,9 @@ impl GraphqlSection {
         // editor fires no change event for a programmatic set, so nothing is emitted; a changed
         // query is checked anyway.
         if *self.query.read(cx).value() != *query {
+            // A programmatic set fires no change event, so the old text's error is cleared here.
+            self.beautify_error = None;
+            self.beautify_task = None;
             self.schedule_check(cx);
         }
         for (editor, text) in [(&self.query, query), (&self.variables, variables)] {

@@ -135,3 +135,18 @@ fn an_edit_during_an_off_thread_format_wins(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(query(cx, &s), "{ b }");
 }
+
+#[gpui_kit::test]
+fn loading_another_request_clears_the_beautify_error(cx: &mut TestAppContext) {
+    let (win, _host, s) = section(cx, "{ me { id }");
+    beautify(cx, win, &s);
+    assert!(s.read_with(cx, |s, _| s.beautify_error().is_some()));
+    let spec = BodySpec::Graphql {
+        query: "{ other }".into(),
+        variables: String::new(),
+    };
+    cx.update_window(win, |_, w, cx| s.update(cx, |s, cx| s.load(&spec, w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(s.read_with(cx, |s, _| s.beautify_error().is_none()));
+}
