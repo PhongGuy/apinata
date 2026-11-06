@@ -10,7 +10,9 @@ use apollo_compiler::diagnostic::ToCliReport;
 use apollo_compiler::validation::Valid;
 use apollo_parser::SyntaxTree;
 
-use super::mask::{any_structural, is_blank, mask, parse, snap};
+use super::deprecation::deprecations;
+use super::filter::{filled_fields, finish, keep};
+use super::mask::{Masked, any_structural, is_blank, mask, parse, snap};
 use super::{QUERY_FORMAT_LIMIT, QUERY_VALIDATE_LIMIT, QueryDiagnostic, QuerySeverity};
 use crate::{Schema, SchemaError};
 
@@ -57,6 +59,10 @@ impl fmt::Debug for CompiledSchema {
 /// Over [`QUERY_FORMAT_LIMIT`] nothing is parsed; over [`QUERY_VALIDATE_LIMIT`], or when a
 /// `{{placeholder}}` stands for query structure, only syntax is checked.
 pub fn validate_query(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryDiagnostic> {
+    finish(unsorted(text, schema))
+}
+
+fn unsorted(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryDiagnostic> {
     if text.len() > QUERY_FORMAT_LIMIT {
         return vec![QueryDiagnostic::new(
             0..0,
@@ -99,7 +105,7 @@ pub fn validate_query(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryD
         ));
         return out;
     }
-    guarded(|| against_schema(text, masked.text, apollo))
+    guarded(|| against_schema(text, masked, &tree, apollo))
 }
 
 /// The parser's errors, as apollo-compiler words them, located in the original text.
@@ -116,32 +122,46 @@ fn syntax(text: &str, tree: &SyntaxTree) -> Vec<QueryDiagnostic> {
         .collect()
 }
 
-/// Apollo's diagnostics for the masked query, skipping any located in the schema's sources.
+/// Apollo's diagnostics for the masked query, minus the filtered ones and any located in the
+/// schema's sources, plus the deprecation warnings.
 fn against_schema(
     text: &str,
-    masked: String,
+    masked: Masked,
+    tree: &SyntaxTree,
     schema: &Valid<apollo_compiler::Schema>,
 ) -> Vec<QueryDiagnostic> {
-    let Err(with_errors) = ExecutableDocument::parse_and_validate(schema, masked, "query.graphql")
-    else {
-        return Vec::new();
-    };
-    with_errors
-        .errors
+    let (doc, errors) =
+        match ExecutableDocument::parse_and_validate(schema, masked.text, "query.graphql") {
+            Ok(valid) => (valid.into_inner(), None),
+            Err(e) => (e.partial, Some(e.errors)),
+        };
+    let filled = filled_fields(tree);
+    let mut out: Vec<QueryDiagnostic> = errors
         .iter()
+        .flat_map(|list| list.iter())
         .filter_map(|d| {
             let location = d.error.location();
             if location.is_some_and(|loc| schema.sources.contains_key(&loc.file_id())) {
                 return None;
             }
             let range = location.map_or(0..0, |loc| loc.offset()..loc.end_offset());
-            Some(QueryDiagnostic::new(
-                snap(text, range),
-                QuerySeverity::Error,
-                d.error.to_string(),
-            ))
+            keep(
+                d.error.unstable_error_name(),
+                &range,
+                &masked.spans,
+                &filled,
+            )
+            .then(|| {
+                QueryDiagnostic::new(snap(text, range), QuerySeverity::Error, d.error.to_string())
+            })
         })
-        .collect()
+        .collect();
+    out.extend(
+        deprecations(&doc, schema)
+            .into_iter()
+            .map(|d| QueryDiagnostic::new(snap(text, d.range()), d.severity(), d.message())),
+    );
+    out
 }
 
 /// Runs `check`, turning a panic into one Warning `the query could not be checked` at 0..0.

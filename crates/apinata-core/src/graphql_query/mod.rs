@@ -3,6 +3,8 @@
 //! Placeholders are masked to same-length identifiers before parsing, so every byte
 //! offset reported here points into the caller's original text.
 
+mod deprecation;
+mod filter;
 mod format;
 mod mask;
 mod validate;

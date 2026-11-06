@@ -198,6 +198,7 @@ mod graphql_schema_model;
 mod graphql_schema_sdl;
 mod graphql_sdl_print;
 mod graphql_validate;
+mod graphql_validate_filters;
 mod host_overrides;
 mod ignore_open;
 mod ignore_reload;
