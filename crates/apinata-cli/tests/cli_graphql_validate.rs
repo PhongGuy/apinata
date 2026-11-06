@@ -5,7 +5,7 @@ use crate::common;
 use common::{ROOT, apinata, write_tree};
 use predicates::str::contains;
 
-use crate::cli_graphql_fmt::request;
+use crate::cli_graphql_fmt::{oversized, request};
 
 const SDL: &str = "type Query { me: User users(filter: Filter): [User] }\ntype User { id: ID! name: String old: String @deprecated(reason: \"use name\") }\ninput Filter { name: String }\n";
 const JSON: &str = r#"{"data":{"__schema":{"queryType":{"name":"Query"},"mutationType":null,"subscriptionType":null,"types":[{"kind":"OBJECT","name":"Query","fields":[{"name":"me","args":[],"type":{"kind":"SCALAR","name":"String"},"isDeprecated":false}]},{"kind":"SCALAR","name":"String"}]}}}"#;
@@ -42,9 +42,16 @@ fn validate_with_an_sdl_schema() {
         ("w.graphql", "{ me { old } }"),
     ]);
     let (q, w) = (dir.path().join("q.graphql"), dir.path().join("w.graphql"));
-    apinata().args(["graphql", "validate"]).arg(&q).arg("--schema-file").arg(dir.path().join("s.graphql")).assert().code(1)
+    apinata()
+        .args(["graphql", "validate"])
+        .arg(&q)
+        .arg("--schema-file")
+        .arg(dir.path().join("s.graphql"))
+        .assert()
+        .code(1)
         .stdout(format!(
-            "{q}:1:8: error: type `User` does not have a field `nmae`\n{q}:1:13: warning: `User.old` is deprecated: use name\n",
+            "{q}:1:8: error: type `User` does not have a field `nmae`\n\
+             {q}:1:13: warning: `User.old` is deprecated: use name\n",
             q = q.display()
         ));
     apinata()
@@ -172,4 +179,40 @@ fn control_characters_in_messages_are_replaced() {
         text.contains("\u{FFFD}") && !text.contains('\u{7}'),
         "{text:?}"
     );
+}
+
+#[test]
+fn a_lone_cr_and_a_crlf_each_end_one_line() {
+    let dir = write_tree(&[
+        ("cr.graphql", "{\r me { id }"),
+        ("crlf.graphql", "{\r\n me { id }"),
+    ]);
+    for name in ["cr.graphql", "crlf.graphql"] {
+        let path = dir.path().join(name);
+        apinata()
+            .args(["graphql", "validate"])
+            .arg(&path)
+            .assert()
+            .code(1)
+            .stdout(format!(
+                "{}:2:11: error: syntax error: expected R_CURLY, got EOF\n",
+                path.display()
+            ));
+    }
+}
+
+#[test]
+fn an_oversized_query_file_is_not_read() {
+    let dir = write_tree(&[]);
+    let path = dir.path().join("big.graphql");
+    oversized(&path);
+    apinata()
+        .args(["graphql", "validate"])
+        .arg(&path)
+        .assert()
+        .code(0)
+        .stdout(format!(
+            "{}:1:1: warning: The query is larger than 4 MiB and was not checked\n",
+            path.display()
+        ));
 }

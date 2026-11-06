@@ -2,10 +2,18 @@
 
 use crate::common;
 
-use apinata_core::{BodySpec, RequestFile, format_query};
+use apinata_core::{BodySpec, QUERY_FORMAT_LIMIT, RequestFile, format_query};
 use common::{ROOT, apinata, write_tree};
 use predicates::str::contains;
 use std::fs;
+
+/// Write a query file just over the format limit whose bytes are not UTF-8, so a check that read
+/// it would fail differently from one that only looked at its size.
+pub(crate) fn oversized(path: &std::path::Path) {
+    fs::write(path, [0xFF]).unwrap();
+    let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.set_len(QUERY_FORMAT_LIMIT as u64 + 1).unwrap();
+}
 
 /// A GraphQL request file holding `query`.
 pub(crate) fn request(query: &str) -> String {
@@ -133,4 +141,20 @@ fn fmt_refuses_a_request_that_is_not_graphql_and_a_missing_file() {
         .arg(dir.path().join("nope.graphql"))
         .assert()
         .code(3);
+}
+
+#[test]
+fn fmt_refuses_an_oversized_file_by_size_with_its_path() {
+    let dir = write_tree(&[]);
+    let path = dir.path().join("big.graphql");
+    oversized(&path);
+    apinata()
+        .args(["graphql", "fmt"])
+        .arg(&path)
+        .assert()
+        .code(1)
+        .stderr(format!(
+            "error: {}: the query is larger than the 4 MiB format limit\n",
+            path.display()
+        ));
 }

@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use apinata_core::{
-    BodySpec, CompiledSchema, QuerySeverity, QuerySyntaxError, RequestFile, RequestKind,
-    SCHEMA_BODY_LIMIT, Schema, format_query, validate_query,
+    BodySpec, CompiledSchema, QUERY_FORMAT_LIMIT, QuerySeverity, QuerySyntaxError, RequestFile,
+    RequestKind, SCHEMA_BODY_LIMIT, Schema, format_query, validate_query,
 };
 
 use crate::EXIT_USAGE;
@@ -34,14 +34,17 @@ pub struct ValidateArgs {
     pub schema_file: Option<PathBuf>,
 }
 
-/// The 1-based line and char column of byte `offset` in `text`.
+/// The 1-based line and char column of byte `offset` in `text`; `\n`, `\r\n` and a lone `\r`
+/// each end one line, as the GraphQL lexer counts them.
 pub(crate) fn position(text: &str, offset: usize) -> (usize, usize) {
     let (mut line, mut col) = (1, 1);
-    for (i, c) in text.char_indices() {
+    let mut chars = text.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
         if i >= offset {
             break;
         }
-        if c == '\n' {
+        let lone_cr = c == '\r' && chars.peek().is_none_or(|&(_, next)| next != '\n');
+        if c == '\n' || lone_cr {
             line += 1;
             col = 1;
         } else {
@@ -67,28 +70,50 @@ fn usage(message: impl std::fmt::Display) -> u8 {
     EXIT_USAGE
 }
 
-/// Print a formatter failure with its position (`prefix` ends with the position's colon form).
-fn report(error: &QuerySyntaxError, text: &str, locate: impl Fn(usize, usize) -> String) -> u8 {
+/// Print a formatter failure after the file it is in, with the position when it has one.
+fn report(error: &QuerySyntaxError, text: &str, locate: &Locate) -> u8 {
     match error {
         QuerySyntaxError::Syntax { range, .. } => {
             let (line, col) = position(text, range.start);
-            eprintln!("error: {} {error}", locate(line, col));
+            eprintln!("error: {} {error}", locate.at(line, col));
         }
-        other => eprintln!("error: {other}"),
+        other => eprintln!("error: {} {other}", locate.whole()),
     }
     EXIT_FINDING
+}
+
+/// The text of query file `path`, or `None` when it is over the input limit and so is not read.
+fn read_query_file(path: &Path) -> Result<Option<String>, u8> {
+    let shown = path.display();
+    let len = std::fs::metadata(path)
+        .map_err(|e| usage(format!("cannot read {shown}: {e}")))?
+        .len();
+    if len > QUERY_FORMAT_LIMIT as u64 {
+        return Ok(None);
+    }
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) => Err(usage(format!("cannot read {shown}: {e}"))),
+    }
 }
 
 fn run_fmt(args: &FmtArgs) -> u8 {
     let shown = args.path.display();
     if is_query_file(&args.path) {
-        let text = match std::fs::read_to_string(&args.path) {
-            Ok(text) => text,
-            Err(e) => return usage(format!("cannot read {shown}: {e}")),
+        let locate = Locate::File(shown.to_string());
+        let text = match read_query_file(&args.path) {
+            Ok(Some(text)) => text,
+            Ok(None) => {
+                let error = QuerySyntaxError::TooLarge {
+                    limit: QUERY_FORMAT_LIMIT,
+                };
+                return report(&error, "", &locate);
+            }
+            Err(code) => return code,
         };
         let formatted = match format_query(&text) {
             Ok(formatted) => formatted,
-            Err(e) => return report(&e, &text, |l, c| format!("{shown}:{l}:{c}:")),
+            Err(e) => return report(&e, &text, &locate),
         };
         if formatted == text {
             return 0;
@@ -115,7 +140,7 @@ fn run_fmt(args: &FmtArgs) -> u8 {
     };
     let formatted = match format_query(&query) {
         Ok(formatted) => formatted,
-        Err(e) => return report(&e, &query, |l, c| format!("{shown} (query) {l}:{c}:")),
+        Err(e) => return report(&e, &query, &Locate::Request(shown.to_string())),
     };
     if formatted == query {
         return 0;
@@ -138,19 +163,17 @@ pub fn validate(args: &ValidateArgs) -> ExitCode {
     ExitCode::from(run_validate(args))
 }
 
-/// The query text of `path` and how a position in it is shown, or the exit code of a refusal.
-fn load_query(path: &Path) -> Result<(String, Locate), u8> {
+/// The query text of `path` (`None` for a query file over the input limit) and how a position in
+/// it is shown, or the exit code of a refusal.
+fn load_query(path: &Path) -> Result<(Option<String>, Locate), u8> {
     let shown = path.display().to_string();
     if is_query_file(path) {
-        return match std::fs::read_to_string(path) {
-            Ok(text) => Ok((text, Locate::File(shown))),
-            Err(e) => Err(usage(format!("cannot read {shown}: {e}"))),
-        };
+        return Ok((read_query_file(path)?, Locate::File(shown)));
     }
     let file = RequestFile::load(path).map_err(|e| usage(format!("cannot open {shown}: {e}")))?;
     match file.body() {
         BodySpec::Graphql { query, .. } if file.kind() == RequestKind::Graphql => {
-            Ok((query, Locate::Request(shown)))
+            Ok((Some(query), Locate::Request(shown)))
         }
         _ => Err(usage(format!("{shown} is not a GraphQL request"))),
     }
@@ -167,6 +190,14 @@ impl Locate {
         match self {
             Locate::File(shown) => format!("{shown}:{line}:{col}:"),
             Locate::Request(shown) => format!("{shown} (query) {line}:{col}:"),
+        }
+    }
+
+    /// The file without a position, for a failure of the whole query.
+    fn whole(&self) -> String {
+        match self {
+            Locate::File(shown) => format!("{shown}:"),
+            Locate::Request(shown) => format!("{shown} (query):"),
         }
     }
 }
@@ -211,6 +242,15 @@ fn run_validate(args: &ValidateArgs) -> u8 {
     let schema = match args.schema_file.as_deref().map(load_schema).transpose() {
         Ok(schema) => schema.flatten(),
         Err(code) => return code,
+    };
+    // A usable schema file is still required; an oversized query file gets core's not-checked warning without being read.
+    let Some(text) = text else {
+        let mib = QUERY_FORMAT_LIMIT / (1024 * 1024);
+        outln!(
+            "{} warning: The query is larger than {mib} MiB and was not checked",
+            locate.at(1, 1)
+        );
+        return 0;
     };
     let diagnostics = validate_query(&text, schema.as_ref());
     let mut code = 0;
