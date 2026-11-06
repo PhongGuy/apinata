@@ -106,3 +106,9 @@ fn a_comment_in_an_operation_before_its_variables() {
         "query Q # c4\n($v: Int) {\n  a\n}\n",
     );
 }
+
+#[test]
+fn a_lone_carriage_return_ends_a_line() {
+    assert_canonical("# a\r# b\n{ a }", "# a\n# b\n{\n  a\n}\n");
+    assert_canonical("{ a\r# c\r b }", "{\n  a\n  # c\n  b\n}\n");
+}

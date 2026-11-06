@@ -16,6 +16,8 @@ use std::ops::Range;
 pub const QUERY_VALIDATE_LIMIT: usize = 256 * 1024;
 /// Largest query, in bytes, that is formatted or parsed at all.
 pub const QUERY_FORMAT_LIMIT: usize = 4 * 1024 * 1024;
+/// Largest formatted output, in bytes; deep nesting multiplies indentation past the input.
+pub const MAX_FORMAT_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// Most diagnostics returned for one query; the rest are summarised in one line.
 pub const QUERY_DIAGNOSTIC_LIMIT: usize = 200;
 
@@ -86,6 +88,12 @@ pub enum QuerySyntaxError {
     /// The query exceeds the format size limit.
     #[error("the query is larger than the {} MiB format limit", limit / (1024 * 1024))]
     TooLarge {
+        /// The limit in bytes.
+        limit: usize,
+    },
+    /// The formatted query would exceed the output size limit.
+    #[error("the formatted query would be larger than the {} MiB output limit", limit / (1024 * 1024))]
+    OutputTooLarge {
         /// The limit in bytes.
         limit: usize,
     },

@@ -1,6 +1,8 @@
 //! `format_query`: the canonical layout, placeholders, strings, limits and the two invariants.
 
-use apinata_core::{QUERY_FORMAT_LIMIT, QuerySyntaxError, format_query, placeholders};
+use apinata_core::{
+    MAX_FORMAT_OUTPUT_BYTES, QUERY_FORMAT_LIMIT, QuerySyntaxError, format_query, placeholders,
+};
 use apollo_parser::cst::CstNode;
 use apollo_parser::{Parser, SyntaxKind};
 
@@ -151,6 +153,37 @@ fn input_over_the_limit_is_refused_before_parsing() {
     assert_eq!(
         err.to_string(),
         "the query is larger than the 4 MiB format limit"
+    );
+}
+
+#[test]
+fn output_that_indentation_would_blow_past_the_cap_is_refused() {
+    // Each leaf 400 levels deep prints about 800 bytes, so a 70 KB query would print 24 MiB.
+    let depth = 400;
+    let leaves = 30_000;
+    let text = format!(
+        "{}{}{}",
+        "{a".repeat(depth),
+        " b".repeat(leaves),
+        "}".repeat(depth)
+    );
+    assert!(text.len() < QUERY_FORMAT_LIMIT);
+    let err = std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(move || format_query(&text))
+        .unwrap()
+        .join()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        err,
+        QuerySyntaxError::OutputTooLarge {
+            limit: MAX_FORMAT_OUTPUT_BYTES
+        }
+    );
+    assert_eq!(
+        err.to_string(),
+        "the formatted query would be larger than the 16 MiB output limit"
     );
 }
 

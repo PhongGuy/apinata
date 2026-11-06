@@ -6,14 +6,15 @@ use apollo_parser::cst::CstNode;
 use apollo_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 
 use super::mask::{is_blank, mask, parse, snap};
-use super::{QUERY_FORMAT_LIMIT, QuerySyntaxError};
+use super::{MAX_FORMAT_OUTPUT_BYTES, QUERY_FORMAT_LIMIT, QuerySyntaxError};
 
 /// Formats GraphQL query text into the canonical layout, keeping `{{placeholders}}`,
 /// strings and comments as written. Blank input comes back unchanged.
 ///
 /// # Errors
 /// [`QuerySyntaxError::TooLarge`] over [`QUERY_FORMAT_LIMIT`] bytes, otherwise
-/// [`QuerySyntaxError::Syntax`] for the first parse error.
+/// [`QuerySyntaxError::Syntax`] for the first parse error, and
+/// [`QuerySyntaxError::OutputTooLarge`] when the result would pass [`MAX_FORMAT_OUTPUT_BYTES`].
 pub fn format_query(text: &str) -> Result<String, QuerySyntaxError> {
     if text.len() > QUERY_FORMAT_LIMIT {
         return Err(QuerySyntaxError::TooLarge {
@@ -33,7 +34,7 @@ pub fn format_query(text: &str) -> Result<String, QuerySyntaxError> {
         });
     }
     let root = tree.document().syntax().clone();
-    Ok(Printer::new(text, &root).print(&root))
+    Printer::new(text, &root).print(&root)
 }
 
 fn significant(tok: &SyntaxToken) -> bool {
@@ -136,8 +137,9 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// Walks the tokens iteratively, so nesting depth never touches the call stack.
-    fn print(&self, root: &SyntaxNode) -> String {
+    /// Walks the tokens iteratively, so nesting depth never touches the call stack, and
+    /// stops once indentation has grown the output past the cap.
+    fn print(&self, root: &SyntaxNode) -> Result<String, QuerySyntaxError> {
         let mut out = String::with_capacity(self.text.len() + self.text.len() / 4);
         let mut indent = 0usize;
         // Open blocks that indent their contents: true for a selection set, false for a
@@ -199,6 +201,11 @@ impl<'a> Printer<'a> {
             } else {
                 out.push_str(source);
             }
+            if out.len() > MAX_FORMAT_OUTPUT_BYTES {
+                return Err(QuerySyntaxError::OutputTooLarge {
+                    limit: MAX_FORMAT_OUTPUT_BYTES,
+                });
+            }
             if opens_selection || (is_opener(kind) && self.broken.contains(&start)) {
                 indent += 1;
                 blocks.push(opens_selection);
@@ -206,7 +213,7 @@ impl<'a> Printer<'a> {
             prev = Some(tok);
         }
         out.push('\n');
-        out
+        Ok(out)
     }
 
     /// Whether the token at `start` begins a new line: after a comment or a block opener,
@@ -233,10 +240,14 @@ impl<'a> Printer<'a> {
                 .is_some_and(|open| self.broken.contains(open))
     }
 
-    /// Line breaks in the source between `prev` and the token at `start`.
+    /// Line ends in the source between `prev` and the token at `start`, counted as the
+    /// lexer does: `\n`, `\r\n` and a lone `\r` each end one line.
     fn newlines_between(&self, prev: &SyntaxToken, start: usize) -> usize {
-        let gap = usize::from(prev.text_range().end())..start;
-        self.text[gap].bytes().filter(|&b| b == b'\n').count()
+        let gap = &self.text.as_bytes()[usize::from(prev.text_range().end())..start];
+        gap.iter()
+            .enumerate()
+            .filter(|&(i, &b)| b == b'\n' || (b == b'\r' && gap.get(i + 1) != Some(&b'\n')))
+            .count()
     }
 }
 
