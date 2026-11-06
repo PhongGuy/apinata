@@ -158,6 +158,31 @@ async fn validate_with_a_schema_by_query_and_by_path() {
 }
 
 #[tokio::test]
+async fn schema_checked_says_whether_the_schema_checks_ran() {
+    let server = TestServer::start(&[("opencollection.yml", ROOT)]).await;
+    let checked = |got: Value| got["schema_checked"].clone();
+    let plain = server
+        .ok(
+            "graphql_validate",
+            json!({"query": "{ me { name } }", "schema": SDL}),
+        )
+        .await;
+    assert_eq!(checked(plain), json!(true));
+    let placeholder = server
+        .ok(
+            "graphql_validate",
+            json!({"query": "{ me { {{f}} } }", "schema": SDL}),
+        )
+        .await;
+    assert_eq!(checked(placeholder), json!(false));
+    let big = "{ me { name } }".to_owned() + &" ".repeat(apinata_core::QUERY_VALIDATE_LIMIT);
+    let large = server
+        .ok("graphql_validate", json!({"query": big, "schema": SDL}))
+        .await;
+    assert_eq!(checked(large), json!(false));
+}
+
+#[tokio::test]
 async fn validate_caps_the_list_and_refuses_a_bad_schema() {
     let server = TestServer::start(&[("opencollection.yml", ROOT)]).await;
     let got = server
