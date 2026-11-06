@@ -1,4 +1,4 @@
-//! Schema compilation, `validate_query` and the panic guard for query validation.
+//! Schema compilation, `check_query`, `validate_query` and the panic guard for query validation.
 
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -52,26 +52,103 @@ impl fmt::Debug for CompiledSchema {
     }
 }
 
+/// The note added when a `{{placeholder}}` stands for query structure and schema checks are skipped.
+pub const SCHEMA_SKIP_NOTE: &str =
+    "Schema checks skipped: a {{placeholder}} stands for query structure";
+
+/// How a query check used the schema it was given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SchemaUse {
+    /// The schema checks ran; a blank query with a schema counts as checked.
+    Checked,
+    /// No schema was passed, so only syntax was checked.
+    NotGiven,
+    /// The query is over [`QUERY_VALIDATE_LIMIT`] or [`QUERY_FORMAT_LIMIT`].
+    TooLarge,
+    /// A `{{placeholder}}` stands for query structure.
+    Placeholder,
+    /// The compiled schema's build failed.
+    Unusable,
+    /// The check against the schema panicked.
+    Failed,
+}
+
+/// A query check's findings and whether the schema checks actually ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct QueryCheck {
+    diagnostics: Vec<QueryDiagnostic>,
+    schema_use: SchemaUse,
+}
+
+impl QueryCheck {
+    fn new(diagnostics: Vec<QueryDiagnostic>, schema_use: SchemaUse) -> Self {
+        Self {
+            diagnostics,
+            schema_use,
+        }
+    }
+
+    /// The findings, sorted and capped as [`validate_query`] returns them.
+    pub fn diagnostics(&self) -> &[QueryDiagnostic] {
+        &self.diagnostics
+    }
+
+    /// The findings, by value.
+    pub fn into_diagnostics(self) -> Vec<QueryDiagnostic> {
+        self.diagnostics
+    }
+
+    /// How the schema was used.
+    pub fn schema_use(&self) -> SchemaUse {
+        self.schema_use
+    }
+
+    /// Whether the schema checks ran.
+    pub fn schema_checked(&self) -> bool {
+        self.schema_use == SchemaUse::Checked
+    }
+}
+
 /// Checks `text` for syntax and, given a schema, against it. Ranges index the original text.
 ///
 /// Over [`QUERY_FORMAT_LIMIT`] nothing is parsed; over [`QUERY_VALIDATE_LIMIT`], or when a
 /// `{{placeholder}}` stands for query structure, only syntax is checked.
 pub fn validate_query(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryDiagnostic> {
-    finish(unsorted(text, schema))
+    check_query(text, schema).into_diagnostics()
 }
 
-fn unsorted(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryDiagnostic> {
+/// Like [`validate_query`], and also says whether the schema checks ran or why they did not.
+pub fn check_query(text: &str, schema: Option<&CompiledSchema>) -> QueryCheck {
+    let check = unsorted(text, schema);
+    QueryCheck::new(finish(check.diagnostics), check.schema_use)
+}
+
+fn unsorted(text: &str, schema: Option<&CompiledSchema>) -> QueryCheck {
+    // A size limit only explains a skipped schema check when there was a schema to skip.
+    let too_large = if schema.is_some() {
+        SchemaUse::TooLarge
+    } else {
+        SchemaUse::NotGiven
+    };
     if text.len() > QUERY_FORMAT_LIMIT {
-        return vec![QueryDiagnostic::new(
+        let note = QueryDiagnostic::new(
             0..0,
             QuerySeverity::Warning,
             "The query is larger than 4 MiB and was not checked",
-        )];
+        );
+        return QueryCheck::new(vec![note], too_large);
     }
     let masked = mask(text);
     let tree = parse(&masked.text);
     if is_blank(&tree) {
-        return Vec::new();
+        let schema_use = match schema {
+            None => SchemaUse::NotGiven,
+            Some(CompiledSchema { schema: None }) => SchemaUse::Unusable,
+            Some(_) => SchemaUse::Checked,
+        };
+        return QueryCheck::new(Vec::new(), schema_use);
     }
     if text.len() > QUERY_VALIDATE_LIMIT {
         let mut out = vec![QueryDiagnostic::new(
@@ -80,10 +157,10 @@ fn unsorted(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryDiagnostic>
             "The query is larger than 256 KiB: only syntax is checked",
         )];
         out.extend(syntax(text, &tree));
-        return out;
+        return QueryCheck::new(out, too_large);
     }
     let Some(compiled) = schema else {
-        return syntax(text, &tree);
+        return QueryCheck::new(syntax(text, &tree), SchemaUse::NotGiven);
     };
     let Some(apollo) = &compiled.schema else {
         let mut out = vec![QueryDiagnostic::new(
@@ -92,16 +169,16 @@ fn unsorted(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryDiagnostic>
             SCHEMA_UNUSABLE,
         )];
         out.extend(syntax(text, &tree));
-        return out;
+        return QueryCheck::new(out, SchemaUse::Unusable);
     };
     if any_structural(&tree, &masked.spans) {
         let mut out = syntax(text, &tree);
         out.push(QueryDiagnostic::new(
             0..0,
             QuerySeverity::Info,
-            "Schema checks skipped: a {{placeholder}} stands for query structure",
+            SCHEMA_SKIP_NOTE,
         ));
-        return out;
+        return QueryCheck::new(out, SchemaUse::Placeholder);
     }
     guarded(|| against_schema(text, masked, &tree, apollo))
 }
@@ -162,15 +239,20 @@ fn against_schema(
     out
 }
 
-/// Runs `check`, turning a panic into one Warning `the query could not be checked` at 0..0.
-pub(crate) fn guarded(check: impl FnOnce() -> Vec<QueryDiagnostic>) -> Vec<QueryDiagnostic> {
-    catch_unwind(AssertUnwindSafe(check)).unwrap_or_else(|_| {
-        vec![QueryDiagnostic::new(
-            0..0,
-            QuerySeverity::Warning,
-            "the query could not be checked",
-        )]
-    })
+/// Runs the schema `check`, turning a panic into one Warning `the query could not be checked`
+/// at 0..0 and [`SchemaUse::Failed`].
+pub(crate) fn guarded(check: impl FnOnce() -> Vec<QueryDiagnostic>) -> QueryCheck {
+    match catch_unwind(AssertUnwindSafe(check)) {
+        Ok(found) => QueryCheck::new(found, SchemaUse::Checked),
+        Err(_) => {
+            let note = QueryDiagnostic::new(
+                0..0,
+                QuerySeverity::Warning,
+                "the query could not be checked",
+            );
+            QueryCheck::new(vec![note], SchemaUse::Failed)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -182,13 +264,34 @@ mod tests {
     fn a_panic_becomes_one_warning() {
         let got = guarded(|| panic!("boom"));
         assert_eq!(
-            got,
-            vec![QueryDiagnostic::new(
+            got.diagnostics(),
+            [QueryDiagnostic::new(
                 0..0,
                 QuerySeverity::Warning,
                 "the query could not be checked"
             )]
         );
+    }
+
+    #[test]
+    fn a_panicking_check_reports_failed() {
+        let got = guarded(|| panic!("boom"));
+        assert_eq!(got.schema_use(), SchemaUse::Failed);
+        assert!(!got.schema_checked());
+        let fine = guarded(Vec::new);
+        assert_eq!(fine.schema_use(), SchemaUse::Checked);
+    }
+
+    #[test]
+    fn a_schema_whose_build_panicked_reports_unusable() {
+        let c = CompiledSchema {
+            schema: build(|| panic!("schema boom")),
+        };
+        for text in ["{ me { nmae } }", "  "] {
+            let got = check_query(text, Some(&c));
+            assert_eq!(got.schema_use(), SchemaUse::Unusable, "{text:?}");
+            assert!(!got.schema_checked());
+        }
     }
 
     #[test]
