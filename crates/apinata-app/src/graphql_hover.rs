@@ -63,13 +63,13 @@ pub fn hover(schema: &Schema, text: &Rope, offset: usize) -> Option<Hover> {
         _ => return None,
     };
     let (signature, description, deprecation) = parts;
-    let mut sections = vec![format!("`{signature}`")];
-    sections.extend(description.filter(|d| !d.is_empty()).map(str::to_owned));
+    let mut sections = vec![code_span(&signature)];
+    sections.extend(description.filter(|d| !d.is_empty()).map(plain));
     if let Some(reason) = deprecation {
         sections.push(if reason.is_empty() {
             "Deprecated".to_owned()
         } else {
-            format!("Deprecated: {reason}")
+            format!("Deprecated: {}", plain(reason))
         });
     }
     Some(Hover {
@@ -117,6 +117,38 @@ pub fn docs_view(uri: &str) -> Option<DocsView> {
         _ => false,
     };
     named.then_some(view)
+}
+
+// Schema text shown as plain text, as the Docs panel does: every ASCII punctuation character is
+// backslash-escaped so no image, link or HTML renders and nothing contacts a remote host.
+fn plain(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_ascii_punctuation() {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+// An inline code span that survives backticks inside: the fence is one longer than the longest
+// run, with padding when the content touches a backtick, and newlines become spaces.
+fn code_span(content: &str) -> String {
+    let content = content.replace(['\r', '\n'], " ");
+    let mut longest = 0;
+    let mut run = 0;
+    for c in content.chars() {
+        run = if c == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    let fence = "`".repeat(longest + 1);
+    let pad = if content.starts_with('`') || content.ends_with('`') {
+        " "
+    } else {
+        ""
+    };
+    format!("{fence}{pad}{content}{pad}{fence}")
 }
 
 // `name: Type = default`, without the default when there is none.

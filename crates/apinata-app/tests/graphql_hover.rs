@@ -59,18 +59,18 @@ fn hover_shows_the_signature_description_and_deprecation() {
     assert_eq!(
         hover_at(Q, 3),
         Some((
-            "`Query.user(id: ID!, active: Boolean = true): User`\n\nOne user by id.".into(),
+            "`Query.user(id: ID!, active: Boolean = true): User`\n\nOne user by id\\.".into(),
             r(0, 2, 0, 6)
         ))
     );
     assert_eq!(
         hover_at(Q, 8),
-        Some(("`id: ID!`\n\nThe user id.".into(), r(0, 7, 0, 9)))
+        Some(("`id: ID!`\n\nThe user id\\.".into(), r(0, 7, 0, 9)))
     );
     assert_eq!(
         hover_at(Q, 18),
         Some((
-            "`User.name: String`\n\nDisplay name.".into(),
+            "`User.name: String`\n\nDisplay name\\.".into(),
             r(0, 16, 0, 20)
         ))
     );
@@ -100,7 +100,7 @@ fn hover_shows_the_signature_description_and_deprecation() {
 fn hover_names_a_type_by_its_kind() {
     assert_eq!(
         hover_at("{ node(id: 1) { ... on User { id } } }", 24),
-        Some(("`type User`\n\nA person.".into(), r(0, 23, 0, 27)))
+        Some(("`type User`\n\nA person\\.".into(), r(0, 23, 0, 27)))
     );
     let v = "query Q($n: NewUser, $r: Role, $i: ID) { user(id: $i) { id } }";
     assert_eq!(
@@ -112,7 +112,7 @@ fn hover_names_a_type_by_its_kind() {
     let s = "{ search(term: \"x\") { ... on Node { id } ... on SearchResult { __typename } } }";
     assert_eq!(
         hover_at(s, 30).map(|h| h.0).as_deref(),
-        Some("`interface Node`\n\nAnything with an id.")
+        Some("`interface Node`\n\nAnything with an id\\.")
     );
     let union = s.find("SearchResult").unwrap() + 1;
     assert_eq!(
@@ -206,4 +206,58 @@ fn the_providers_answer_only_while_the_schema_is_loaded(cx: &mut TestAppContext)
         store.finish(url, g, Err("boom".into()));
     });
     assert_eq!(answer(cx), (false, 0), "nothing after a failed load");
+}
+
+// A one-field schema whose texts carry markup, so hover must show them as plain text.
+fn hostile() -> Schema {
+    let text = r#"{"data":{"__schema":{"queryType":{"name":"Query"},"types":[
+      {"kind":"OBJECT","name":"Query","description":null,"interfaces":[],"fields":[
+        {"name":"f","description":"![x](https://h/x.png) <img src=x> **bold** [link](u)",
+         "args":[
+           {"name":"a","description":null,"type":{"kind":"SCALAR","name":"String"},"defaultValue":"a`b\nc"},
+           {"name":"b","description":null,"type":{"kind":"SCALAR","name":"String"},"defaultValue":"x`"}],
+         "type":{"kind":"SCALAR","name":"String"},"isDeprecated":false,"deprecationReason":null},
+        {"name":"g","description":"Line one\nline two","args":[],
+         "type":{"kind":"SCALAR","name":"String"},"isDeprecated":true,"deprecationReason":"Use <b>f</b>"}]},
+      {"kind":"SCALAR","name":"String","description":null}]}}}"#;
+    Schema::from_json(text).unwrap()
+}
+
+fn hostile_hover(text: &str, offset: usize) -> String {
+    let h = hover(&hostile(), &Rope::from(text), offset).expect("a hover");
+    let HoverContents::Markup(m) = h.contents else {
+        panic!("not markup")
+    };
+    m.value
+}
+
+#[test]
+fn schema_text_is_escaped_to_plain_text() {
+    let md = hostile_hover("{ f(a: 1, b: 2) }", 3);
+    assert!(
+        md.ends_with(
+            "\n\n\\!\\[x\\]\\(https\\:\\/\\/h\\/x\\.png\\) \\<img src\\=x\\> \\*\\*bold\\*\\* \\[link\\]\\(u\\)"
+        ),
+        "{md}"
+    );
+}
+
+#[test]
+fn description_comes_before_deprecation_and_keeps_line_breaks() {
+    assert_eq!(
+        hostile_hover("{ g }", 2),
+        "`Query.g: String`\n\nLine one\nline two\n\nDeprecated: Use \\<b\\>f\\<\\/b\\>"
+    );
+}
+
+#[test]
+fn signature_code_spans_survive_backticks_and_newlines() {
+    assert_eq!(
+        hostile_hover("{ f(a: 1, b: 2) }", 4),
+        "``a: String = a`b c``"
+    );
+    assert_eq!(
+        hostile_hover("{ f(a: 1, b: 2) }", 10),
+        "`` b: String = x` ``"
+    );
 }
