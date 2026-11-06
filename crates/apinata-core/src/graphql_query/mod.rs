@@ -6,7 +6,7 @@
 mod deprecation;
 mod filter;
 mod format;
-mod mask;
+pub(crate) mod mask;
 mod validate;
 
 pub use format::format_query;

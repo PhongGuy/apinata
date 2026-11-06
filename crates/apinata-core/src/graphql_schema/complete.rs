@@ -133,7 +133,7 @@ impl Schema {
     }
 
     /// The type named `name` when a selection set can be written on it.
-    fn selectable(&self, name: &str) -> Option<&SchemaType> {
+    pub(super) fn selectable(&self, name: &str) -> Option<&SchemaType> {
         self.type_named(name).filter(|t| {
             matches!(
                 t.kind(),
@@ -167,7 +167,7 @@ fn starts_with_ignore_case(name: &str, prefix: &str) -> bool {
 }
 
 /// What the scanner found at the cursor.
-enum Context {
+pub(super) enum Context {
     Nothing,
     Fields(String),
     Args { parent: String, field: String },
@@ -218,7 +218,7 @@ enum Frame {
     Value,
 }
 
-struct Scanner<'s> {
+pub(super) struct Scanner<'s> {
     schema: &'s Schema,
     stack: Vec<Frame>,
     /// The root a top-level `{` opens: the operation's root or a fragment's type condition.
@@ -228,7 +228,7 @@ struct Scanner<'s> {
 }
 
 impl<'s> Scanner<'s> {
-    fn new(schema: &'s Schema) -> Self {
+    pub(super) fn new(schema: &'s Schema) -> Self {
         Scanner {
             schema,
             stack: Vec::new(),
@@ -239,7 +239,7 @@ impl<'s> Scanner<'s> {
 
     /// Lexes `text` (everything before the typed prefix) and judges the cursor context;
     /// `None` when the text ends inside a string or comment.
-    fn run(mut self, text: &str) -> Option<Context> {
+    pub(super) fn run(mut self, text: &str) -> Option<Context> {
         let b = text.as_bytes();
         let mut i = 0;
         while i < b.len() {
