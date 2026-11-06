@@ -265,7 +265,7 @@ pub fn compiled(url: &str, cx: &mut App) -> Lookup {
         catch_unwind(AssertUnwindSafe(|| {
             CompiledSchema::new(&schema).map_err(|e| e.to_string())
         }))
-        .unwrap_or_else(|_| Err("the schema could not be prepared".to_owned()))
+        .unwrap_or_else(|_| Err("it could not be prepared".to_owned()))
     });
     let url = url.to_owned();
     cx.spawn(async move |cx| {

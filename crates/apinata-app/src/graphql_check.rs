@@ -64,9 +64,7 @@ impl CheckBasis {
                 SchemaUse::NotGiven => CheckBasis::NoSchema,
                 SchemaUse::TooLarge => CheckBasis::TooLarge,
                 SchemaUse::Placeholder => CheckBasis::Skipped,
-                SchemaUse::Unusable => {
-                    CheckBasis::Unusable("the schema could not be prepared".to_string())
-                }
+                SchemaUse::Unusable => CheckBasis::Unusable("it could not be prepared".to_string()),
                 // A reason core may add later still means the schema checks did not run.
                 _ => CheckBasis::Failed,
             },

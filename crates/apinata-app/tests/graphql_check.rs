@@ -130,7 +130,7 @@ fn a_ready_schema_that_was_not_used_names_why() {
     );
     assert_eq!(
         CheckBasis::of(&ready, "f.graphqls", SchemaUse::Unusable),
-        CheckBasis::Unusable("the schema could not be prepared".into())
+        CheckBasis::Unusable("it could not be prepared".into())
     );
     assert_eq!(
         CheckBasis::of(&ready, "f.graphqls", SchemaUse::Failed),
@@ -161,8 +161,8 @@ fn labels_name_what_the_check_used() {
         "Syntax only: the query is too large to check against the schema"
     );
     assert_eq!(
-        CheckBasis::Unusable("the schema could not be prepared".into()).label(),
-        "Syntax only: the schema cannot be used for checking (the schema could not be prepared)"
+        CheckBasis::Unusable("it could not be prepared".into()).label(),
+        "Syntax only: the schema cannot be used for checking (it could not be prepared)"
     );
     assert_eq!(
         CheckBasis::Failed.label(),

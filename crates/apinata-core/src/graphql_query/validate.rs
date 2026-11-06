@@ -64,7 +64,8 @@ pub enum SchemaUse {
     Checked,
     /// No schema was passed, so only syntax was checked.
     NotGiven,
-    /// The query is over [`QUERY_VALIDATE_LIMIT`] or [`QUERY_FORMAT_LIMIT`].
+    /// The query is over [`QUERY_VALIDATE_LIMIT`] or [`QUERY_FORMAT_LIMIT`]; without a schema
+    /// this is reported as `NotGiven`.
     TooLarge,
     /// A `{{placeholder}}` stands for query structure.
     Placeholder,
