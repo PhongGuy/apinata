@@ -1,7 +1,9 @@
 //! Schema compilation, `validate_query` and the panic guard for query validation.
 
+use std::cell::Cell;
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::Once;
 
 use apollo_compiler::ExecutableDocument;
 use apollo_compiler::diagnostic::ToCliReport;
@@ -15,20 +17,33 @@ use crate::{Schema, SchemaError};
 /// A schema prepared for checking queries; build it once and share it across threads.
 #[non_exhaustive]
 pub struct CompiledSchema {
-    schema: Valid<apollo_compiler::Schema>,
+    /// `None` when building the schema panicked; queries then get syntax checks only.
+    schema: Option<Valid<apollo_compiler::Schema>>,
 }
+
+const SCHEMA_UNUSABLE: &str = "The schema could not be prepared: only syntax is checked";
 
 impl CompiledSchema {
     /// Prints `schema` as SDL and builds it leniently; fails only when `to_sdl` fails.
     pub fn new(schema: &Schema) -> Result<CompiledSchema, SchemaError> {
         let sdl = schema.to_sdl()?;
         // A schema the spec rejects (a missing interface field, say) still checks queries.
-        let schema = match apollo_compiler::Schema::parse_and_validate(sdl, "schema.graphql") {
-            Ok(valid) => valid,
-            Err(e) => Valid::assume_valid(e.partial),
-        };
+        let schema =
+            build(
+                || match apollo_compiler::Schema::parse_and_validate(sdl, "schema.graphql") {
+                    Ok(valid) => valid,
+                    Err(e) => Valid::assume_valid(e.partial),
+                },
+            );
         Ok(CompiledSchema { schema })
     }
+}
+
+/// Runs a schema build, turning a panic into `None` so it never reaches the caller.
+fn build(
+    compile: impl FnOnce() -> Valid<apollo_compiler::Schema>,
+) -> Option<Valid<apollo_compiler::Schema>> {
+    quietly(compile)
 }
 
 impl fmt::Debug for CompiledSchema {
@@ -66,6 +81,15 @@ pub fn validate_query(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryD
     let Some(compiled) = schema else {
         return syntax(text, &tree);
     };
+    let Some(apollo) = &compiled.schema else {
+        let mut out = vec![QueryDiagnostic::new(
+            0..0,
+            QuerySeverity::Warning,
+            SCHEMA_UNUSABLE,
+        )];
+        out.extend(syntax(text, &tree));
+        return out;
+    };
     if any_structural(&tree, &masked.spans) {
         let mut out = syntax(text, &tree);
         out.push(QueryDiagnostic::new(
@@ -75,7 +99,7 @@ pub fn validate_query(text: &str, schema: Option<&CompiledSchema>) -> Vec<QueryD
         ));
         return out;
     }
-    guarded(|| against_schema(text, masked.text, &compiled.schema))
+    guarded(|| against_schema(text, masked.text, apollo))
 }
 
 /// The parser's errors, as apollo-compiler words them, located in the original text.
@@ -122,13 +146,35 @@ fn against_schema(
 
 /// Runs `check`, turning a panic into one Warning `the query could not be checked` at 0..0.
 pub(crate) fn guarded(check: impl FnOnce() -> Vec<QueryDiagnostic>) -> Vec<QueryDiagnostic> {
-    catch_unwind(AssertUnwindSafe(check)).unwrap_or_else(|_| {
+    quietly(check).unwrap_or_else(|| {
         vec![QueryDiagnostic::new(
             0..0,
             QuerySeverity::Warning,
             "the query could not be checked",
         )]
     })
+}
+
+thread_local! {
+    static QUIET: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Catches a panic in `f` without printing it. The hook is wrapped once and stays process-wide,
+/// but only silences the thread inside this call; every other panic reaches the previous hook.
+fn quietly<T>(f: impl FnOnce() -> T) -> Option<T> {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !QUIET.try_with(Cell::get).unwrap_or(false) {
+                previous(info);
+            }
+        }));
+    });
+    let outer = QUIET.replace(true);
+    let result = catch_unwind(AssertUnwindSafe(f)).ok();
+    QUIET.set(outer);
+    result
 }
 
 #[cfg(test)]
@@ -147,5 +193,56 @@ mod tests {
                 "the query could not be checked"
             )]
         );
+    }
+
+    #[test]
+    fn a_panicking_schema_build_checks_syntax_only_with_one_warning() {
+        let c = CompiledSchema {
+            schema: build(|| panic!("schema boom")),
+        };
+        let warning = QueryDiagnostic::new(0..0, QuerySeverity::Warning, SCHEMA_UNUSABLE);
+        assert_eq!(
+            validate_query("{ me { nmae } }", Some(&c)),
+            vec![warning.clone()]
+        );
+        assert_eq!(
+            validate_query("{ me { id } } }", Some(&c)),
+            vec![
+                warning,
+                QueryDiagnostic::new(
+                    14..15,
+                    QuerySeverity::Error,
+                    "syntax error: expected a StringValue, Name or OperationDefinition"
+                )
+            ]
+        );
+        assert_eq!(validate_query("  ", Some(&c)), vec![]);
+    }
+
+    /// Runs in a child with `--nocapture`, so the panic hook writes straight to stderr.
+    #[test]
+    #[ignore = "run by the parent test in a child process"]
+    fn child_guarded_panics_are_quiet() {
+        guarded(|| panic!("guarded-boom"));
+        let _ = build(|| panic!("build-boom"));
+        let _ = std::thread::spawn(|| panic!("loud-boom")).join();
+    }
+
+    #[test]
+    fn guarded_panics_print_nothing_but_others_still_do() {
+        let out = std::process::Command::new(std::env::current_exe().expect("exe"))
+            .args([
+                "graphql_query::validate::tests::child_guarded_panics_are_quiet",
+                "--exact",
+                "--ignored",
+                "--nocapture",
+            ])
+            .output()
+            .expect("child");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{stderr}");
+        assert!(!stderr.contains("guarded-boom"), "{stderr}");
+        assert!(!stderr.contains("build-boom"), "{stderr}");
+        assert!(stderr.contains("loud-boom"), "{stderr}");
     }
 }

@@ -280,3 +280,24 @@ fn deep_nesting_is_a_diagnostic_not_an_overflow() {
         got.len()
     );
 }
+
+#[test]
+fn the_syntax_only_paths_still_report_syntax_errors() {
+    let big = "{ me { id } } }".to_owned() + &" ".repeat(QUERY_VALIDATE_LIMIT);
+    let got = validate_query(&big, Some(compiled()));
+    assert_eq!(got.len(), 2, "{:?}", plain(&got));
+    assert!(has(&got, 0..0, Warning, "larger than 256 KiB"));
+    assert!(has(&got, 14..15, Error, "syntax error: expected"));
+
+    let got = validate_query("{ me { {{f}} } } }", Some(compiled()));
+    assert_eq!(got.len(), 2, "{:?}", plain(&got));
+    assert!(has(&got, 0..0, Info, SKIPPED));
+    assert!(has(&got, 17..18, Error, "syntax error: expected"));
+}
+
+#[test]
+fn blank_input_over_the_validate_limit_has_no_diagnostics() {
+    let blank = " \n".repeat(QUERY_VALIDATE_LIMIT);
+    assert_eq!(validate_query(&blank, Some(compiled())), vec![]);
+    assert_eq!(validate_query(&blank, None), vec![]);
+}
