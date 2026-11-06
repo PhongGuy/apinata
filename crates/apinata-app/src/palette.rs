@@ -31,10 +31,10 @@ use crate::sidebar::{
 use crate::snapshot::RowKind;
 use crate::style;
 use crate::tab_area::{
-    ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, CloseAllTabs, CloseOtherTabs,
-    CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, ConvertToGraphql, ConvertToHttp,
-    CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab, RevealInSidebar,
-    SaveAll, SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
+    ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, BeautifyQuery, CloseAllTabs,
+    CloseOtherTabs, CloseSavedTabs, CloseTab, CloseTabsToTheRight, Compare, ConvertToGraphql,
+    ConvertToHttp, CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab,
+    RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
 };
 use crate::workspace::Workspace;
 use crate::zoom;
@@ -189,6 +189,8 @@ pub struct Availability {
     pub save_all: bool,
     /// "Beautify" and "Minify": the active body is non-empty JSON or XML.
     pub beautify: bool,
+    /// "Beautify query": the active request is GraphQL with a non-blank query.
+    pub beautify_query: bool,
     /// "Close tab", Save, Undo and Redo: some tab is open.
     pub has_tabs: bool,
     /// Send, the copy and export commands and the JSON caret commands: the active tab is a
@@ -237,6 +239,7 @@ impl Availability {
             discard: true,
             save_all: true,
             beautify: true,
+            beautify_query: true,
             has_tabs: true,
             request_tab: true,
             to_graphql: true,
@@ -312,6 +315,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.save_all, SaveAll.name()),
         (available.beautify, BeautifyBody.name()),
         (available.beautify, MinifyBody.name()),
+        (available.beautify_query, BeautifyQuery.name()),
         (available.has_tabs, CloseTab.name()),
         (available.has_tabs, SaveActive.name()),
         (available.has_tabs, UndoActive.name()),
@@ -493,6 +497,7 @@ fn availability_now(
         discard: tabs.is_none_or(|t| t.discard),
         save_all: tabs.is_none_or(|t| t.save_all),
         beautify: tabs.is_none_or(|t| t.beautify),
+        beautify_query: tabs.is_none_or(|t| t.beautify_query),
         has_tabs: tabs.is_none_or(|t| t.has_tabs),
         request_tab: tabs.is_none_or(|t| t.request_tab),
         to_graphql: tabs.is_none_or(|t| t.to_graphql),

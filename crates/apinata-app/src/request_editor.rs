@@ -926,6 +926,24 @@ impl RequestEditor {
         }
     }
 
+    /// Formats the query of a GraphQL request; an HTTP request has no query, so it does nothing.
+    pub fn beautify_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .view(cx)
+            .is_some_and(|v| v.kind == RequestKind::Graphql)
+        {
+            self.graphql
+                .update(cx, |g, cx| g.beautify_query(window, cx));
+        }
+    }
+
+    /// Whether Beautify query would do anything: a GraphQL request with a non-blank query.
+    pub fn can_beautify_query(&self, cx: &App) -> bool {
+        self.view(cx)
+            .is_some_and(|v| v.kind == RequestKind::Graphql)
+            && self.graphql.read(cx).can_beautify_query(cx)
+    }
+
     /// The Query section of a GraphQL request.
     pub fn graphql(&self) -> &Entity<GraphqlSection> {
         &self.graphql

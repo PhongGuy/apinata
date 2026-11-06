@@ -16,6 +16,7 @@ mod gate;
 mod generate;
 mod git;
 mod graphql;
+mod graphql_query;
 mod import_collection;
 mod imports;
 mod items;

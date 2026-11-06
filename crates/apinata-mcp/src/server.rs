@@ -44,6 +44,9 @@ use crate::export::{self, ExportDoc, ExportOpenapiArgs, ExportPostmanArgs};
 use crate::generate::{self, GenerateArgs, GeneratedCode};
 use crate::git::{self, CommitArgs, CommitDoc, GitDiffDoc, GitStatusDoc};
 use crate::graphql::{self, GraphqlSchemaArgs, GraphqlSchemaDoc};
+use crate::graphql_query::{
+    self, GraphqlFormatArgs, GraphqlFormatDoc, GraphqlValidateArgs, GraphqlValidateDoc, Source,
+};
 use crate::import_collection::{
     self, FETCH_LABEL, ImportCollectionArgs, ImportedCollections, NoSecrets,
 };
@@ -92,6 +95,7 @@ const NO_FILE_WRITES: &[&str] = &[
 /// the policy test reads it: any other non-read-only tool notifies by default.
 #[cfg(test)]
 const WRITES_FILES: &[&str] = &[
+    "graphql_format",
     "replace",
     "update_request",
     "update_folder",
@@ -969,6 +973,69 @@ impl ApinataServer {
                 &seen,
             )),
         }
+    }
+
+    #[tool(
+        description = "Format a GraphQL query. Give exactly one of `path` (a GraphQL request: \
+                       its saved query is rewritten in place, keeping the variables, and only \
+                       when the text changes; returns `changed`) or `query` (raw text; \
+                       returns the formatted `query`, nothing is saved). A query that does not \
+                       parse is an error and nothing is written. Nothing is sent and no \
+                       approval is needed.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn graphql_format(
+        &self,
+        Parameters(args): Parameters<GraphqlFormatArgs>,
+    ) -> Result<Json<GraphqlFormatDoc>, String> {
+        match graphql_query::source(args.path, args.query)? {
+            Source::Path(item) => self
+                .with_collection(move |c| graphql_query::format_saved(c, &item))
+                .await
+                .map(Json),
+            Source::Query(text) => {
+                tokio::task::spawn_blocking(move || graphql_query::format_text(&text))
+                    .await
+                    .map_err(|_| PANICKED.to_owned())?
+                    .map(Json)
+            }
+        }
+    }
+
+    #[tool(
+        description = "Check a GraphQL query and list its findings with byte offsets and 1-based \
+                       line and column. Give exactly one of `path` (a GraphQL request's saved \
+                       query) or `query` (raw text). Without `schema` only syntax is checked; \
+                       with `schema` (SDL or an introspection JSON answer) the query is also \
+                       checked against it, and a deprecated field is a warning. A directive \
+                       name typo is not reported. At most 200 findings are returned, then an \
+                       `info` entry counting the rest. Nothing is sent and no approval is \
+                       needed.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn graphql_validate(
+        &self,
+        Parameters(args): Parameters<GraphqlValidateArgs>,
+    ) -> Result<Json<GraphqlValidateDoc>, String> {
+        let source = graphql_query::source(args.path, args.query)?;
+        let schema = args.schema;
+        let text = match source {
+            Source::Path(item) => {
+                self.with_collection(move |c| graphql_query::saved_query(c, &item))
+                    .await?
+            }
+            Source::Query(text) => text,
+        };
+        tokio::task::spawn_blocking(move || {
+            let compiled = schema.as_deref().map(graphql_query::compile).transpose()?;
+            Ok(Json(graphql_query::validate(&text, compiled.as_ref())))
+        })
+        .await
+        .map_err(|_| PANICKED.to_owned())?
     }
 
     #[tool(

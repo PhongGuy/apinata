@@ -412,6 +412,16 @@ async fn every_tool_result_matches_its_output_schema() {
         json!({"path": "q.yml", "format": "json", "max_bytes": 20}),
     )
     .await;
+    ex.run(&server, "graphql_format", json!({"query": "{ a }"}))
+        .await;
+    ex.run(&server, "graphql_format", json!({"path": "q.yml"}))
+        .await;
+    ex.run(
+        &server,
+        "graphql_validate",
+        json!({"query": "{ a { b }", "schema": "type Query { a: Int }"}),
+    )
+    .await;
     ex.run(
         &server,
         "save_example",

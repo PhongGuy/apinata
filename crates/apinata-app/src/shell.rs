@@ -2890,6 +2890,7 @@ impl Render for Shell {
             .on_action(cx.listener(to_tabs(TabArea::convert_active_to_http)))
             .on_action(cx.listener(to_tabs(TabArea::beautify_active_body)))
             .on_action(cx.listener(to_tabs(TabArea::minify_active_body)))
+            .on_action(cx.listener(to_tabs(TabArea::beautify_active_query)))
             .on_action(cx.listener(to_tabs(TabArea::copy_caret_json_value)))
             .on_action(cx.listener(to_tabs(TabArea::copy_caret_json_path)))
             .on_action(cx.listener(to_tabs(TabArea::set_caret_json_variable)))

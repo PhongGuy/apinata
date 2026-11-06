@@ -2,12 +2,16 @@
 
 use crate::support;
 
-use apinata_app::graphql_schema_store::{SchemaState, SchemaStore, state};
+use apinata_app::graphql_schema_store::{
+    CheckKey, Lookup, SchemaState, SchemaStore, compiled, state,
+};
 use apinata_app::request_editor::Section;
 use apinata_app::schema_load::load_from_file;
-use apinata_core::Schema;
+use apinata_core::{CompiledSchema, Schema};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
+use std::path::Path;
+use std::sync::Arc;
 use support::*;
 use wiremock::ResponseTemplate;
 
@@ -197,4 +201,107 @@ fn an_sdl_file_picked_in_the_section_loads_docs_and_completion(cx: &mut TestAppC
         .map(|i| i.label)
         .collect();
     assert_eq!(labels, ["viewer"]);
+}
+
+const SDL_A: &str = "type Query { me: User }\ntype User { name: String }\n";
+
+fn sdl(text: &str) -> Schema {
+    Schema::from_sdl(text).unwrap()
+}
+
+#[test]
+fn compiled_schemas_are_keyed_by_the_loaded_generation() {
+    let mut s = SchemaStore::default();
+    assert!(matches!(s.lookup("u"), Lookup::NoSchema));
+    assert!(s.claim_build("u").is_none());
+    let g = s.begin("u");
+    assert!(matches!(s.lookup("u"), Lookup::Pending));
+    assert!(
+        s.claim_build("u").is_none(),
+        "nothing to build while loading"
+    );
+    assert!(s.finish("u", g, Ok(sdl(SDL_A))));
+    assert!(matches!(s.lookup("u"), Lookup::Pending));
+    let (claimed, schema) = s.claim_build("u").expect("a loaded schema to build");
+    assert_eq!(claimed, g);
+    assert!(s.claim_build("u").is_none(), "one build per generation");
+    assert!(s.store_compiled("u", g, Ok(CompiledSchema::new(&schema).unwrap())));
+    let Lookup::Ready {
+        generation,
+        schema: first,
+    } = s.lookup("u")
+    else {
+        panic!("not ready")
+    };
+    assert_eq!(generation, g);
+    let Lookup::Ready { schema: again, .. } = s.lookup("u") else {
+        panic!("not ready")
+    };
+    assert!(Arc::ptr_eq(&first, &again));
+    assert_eq!(s.lookup("u").key(), Some(CheckKey::Ready(g)));
+    // A reload replaces the build, and the old generation can no longer be stored.
+    let g2 = s.begin("u");
+    assert!(s.lookup("u").key().is_none());
+    assert!(!s.store_compiled("u", g, Err("late".into())));
+    assert!(s.finish("u", g2, Ok(sdl(SDL_A))));
+    assert_eq!(s.claim_build("u").unwrap().0, g2);
+    assert!(s.store_compiled("u", g2, Err("cannot print".into())));
+    assert!(matches!(
+        s.lookup("u"),
+        Lookup::Unusable { generation, ref reason } if generation == g2 && reason == "cannot print"
+    ));
+    assert_eq!(s.lookup("u").key(), Some(CheckKey::Unusable(g2)));
+    // A failed load checks syntax only.
+    let g3 = s.begin("u");
+    assert!(s.finish("u", g3, Err("boom".into())));
+    assert_eq!(s.lookup("u").key(), Some(CheckKey::NoSchema));
+}
+
+#[test]
+fn a_restored_schema_builds_under_its_own_generation() {
+    let mut s = SchemaStore::default();
+    assert!(s.restore("u", sdl(SDL_A)));
+    let (g, _) = s.claim_build("u").expect("restored schemas build too");
+    assert!(s.store_compiled("u", g, Err("x".into())));
+    assert!(matches!(s.lookup("u"), Lookup::Unusable { .. }));
+}
+
+#[test]
+fn the_source_names_a_schema_file_until_the_next_load() {
+    let mut s = SchemaStore::default();
+    let g = s.begin_file("u", Path::new("/tmp/s.graphqls"));
+    assert!(s.finish("u", g, Ok(sdl(SDL_A))));
+    assert_eq!(s.source("u"), Some("/tmp/s.graphqls"));
+    s.begin("u");
+    assert_eq!(s.source("u"), None);
+}
+
+#[test]
+fn the_shared_types_cross_threads() {
+    fn send_sync<T: Send + Sync>() {}
+    send_sync::<Schema>();
+    send_sync::<CompiledSchema>();
+}
+
+#[gpui_kit::test]
+fn compiled_builds_once_off_the_ui_thread_and_is_shared(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        let s = cx.default_global::<SchemaStore>();
+        let g = s.begin("u");
+        s.finish("u", g, Ok(sdl(SDL_A)));
+    });
+    assert!(matches!(cx.update(|cx| compiled("u", cx)), Lookup::Pending));
+    assert!(matches!(cx.update(|cx| compiled("u", cx)), Lookup::Pending));
+    cx.run_until_parked();
+    let Lookup::Ready { schema: a, .. } = cx.update(|cx| compiled("u", cx)) else {
+        panic!("not built")
+    };
+    let Lookup::Ready { schema: b, .. } = cx.update(|cx| compiled("u", cx)) else {
+        panic!("not built")
+    };
+    assert!(Arc::ptr_eq(&a, &b));
+    assert!(matches!(
+        cx.update(|cx| compiled("none", cx)),
+        Lookup::NoSchema
+    ));
 }

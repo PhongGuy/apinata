@@ -5,16 +5,19 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use apinata_core::{BodySpec, VariableSet};
+use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, format_query, validate_query};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::command::Edit;
+use crate::graphql_check::{
+    CHECK_DELAY, CheckBasis, FORMAT_OFF_THREAD_BYTES, Jobs, editor_diagnostics, syntax_message,
+};
 use crate::graphql_complete::SchemaCompletions;
 use crate::graphql_docs::DocsPanel;
-use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
+use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
 use crate::schema_load::load_from_file;
 use crate::section::SectionEdit;
 use crate::style;
@@ -36,6 +39,16 @@ pub struct GraphqlSection {
     completion_url: Rc<RefCell<String>>,
     docs: Entity<DocsPanel>,
     docs_open: bool,
+    // Live check: job numbers, the typing-pause timer, the running validation, the schema
+    // key the last check started against, and what the last finished check used.
+    jobs: Jobs,
+    pending_check: Option<Task<()>>,
+    running_check: Option<Task<()>>,
+    checked_key: Option<CheckKey>,
+    basis: Option<CheckBasis>,
+    // The last refused Beautify, and the off-thread format a second Beautify replaces.
+    beautify_error: Option<String>,
+    beautify_task: Option<Task<()>>,
     _subs: Vec<Subscription>,
 }
 
@@ -69,8 +82,23 @@ impl GraphqlSection {
                 cx.emit(SchemaAction::Load)
             }),
             cx.subscribe(&query, on_change),
+            cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    if this.beautify_error.take().is_some() {
+                        cx.notify();
+                    }
+                    this.schedule_check(cx);
+                }
+            }),
             cx.subscribe(&variables, on_change),
-            cx.observe_global::<SchemaStore>(|_, cx| cx.notify()),
+            // A schema that settles on a key other than the last check's gets a new check.
+            cx.observe_global::<SchemaStore>(|this, cx| {
+                let key = graphql_schema_store::compiled(&this.schema_url, cx).key();
+                if key.is_some() && key != this.checked_key {
+                    this.schedule_check(cx);
+                }
+                cx.notify();
+            }),
         ];
         GraphqlSection {
             query,
@@ -80,6 +108,13 @@ impl GraphqlSection {
             completion_url,
             docs,
             docs_open: false,
+            jobs: Jobs::default(),
+            pending_check: None,
+            running_check: None,
+            checked_key: None,
+            basis: None,
+            beautify_error: None,
+            beautify_task: None,
             _subs: subs,
         }
     }
@@ -91,7 +126,14 @@ impl GraphqlSection {
             _ => ("", ""),
         };
         // Only differing text is set, so an echo of the user's typing keeps the caret. The
-        // editor fires no change event for a programmatic set, so nothing is emitted.
+        // editor fires no change event for a programmatic set, so nothing is emitted; a changed
+        // query is checked anyway.
+        if *self.query.read(cx).value() != *query {
+            // A programmatic set fires no change event, so the old text's error is cleared here.
+            self.beautify_error = None;
+            self.beautify_task = None;
+            self.schedule_check(cx);
+        }
         for (editor, text) in [(&self.query, query), (&self.variables, variables)] {
             crate::ui::sync_editor_text(editor, text, window, cx);
         }
@@ -139,8 +181,138 @@ impl GraphqlSection {
                 crate::schema_load::load_from_cache(url.clone(), cx);
             }
             self.schema_url = url;
+            self.schedule_check(cx);
             cx.notify();
         }
+    }
+
+    /// What the last finished query check was measured against.
+    pub fn check_basis(&self) -> Option<&CheckBasis> {
+        self.basis.as_ref()
+    }
+
+    /// Formats the query as one undoable `replace_all`; off the UI thread above FORMAT_OFF_THREAD_BYTES.
+    pub fn beautify_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.beautify_task = None;
+        let text = self.query.read(cx).value().to_string();
+        // Blank text has nothing to lay out; it is neither an error nor an edit.
+        if text.trim().is_empty() {
+            self.beautify_error = None;
+            cx.notify();
+            return;
+        }
+        if text.len() < FORMAT_OFF_THREAD_BYTES {
+            let result = format_query(&text);
+            self.apply_beautify(&text, result, window, cx);
+            return;
+        }
+        let snapshot = text.clone();
+        let run = cx.background_spawn(async move { format_query(&text) });
+        self.beautify_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = run.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.apply_beautify(&snapshot, result, window, cx)
+            });
+        }));
+    }
+
+    /// Whether the query has non-blank text to format.
+    pub fn can_beautify_query(&self, cx: &App) -> bool {
+        !self.query.read(cx).value().trim().is_empty()
+    }
+
+    /// The last refused Beautify, cleared by the next query edit.
+    pub fn beautify_error(&self) -> Option<&str> {
+        self.beautify_error.as_deref()
+    }
+
+    // Applies a format result only to the text it was computed from, so an edit made while an
+    // off-thread format ran is never overwritten.
+    fn apply_beautify(
+        &mut self,
+        snapshot: &str,
+        result: Result<String, QuerySyntaxError>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if *self.query.read(cx).value() != *snapshot {
+            return;
+        }
+        match result {
+            Ok(laid_out) => {
+                self.beautify_error = None;
+                if laid_out != snapshot {
+                    self.query
+                        .update(cx, |q, cx| q.replace_all(laid_out, window, cx));
+                }
+            }
+            Err(err) => self.beautify_error = Some(syntax_message(snapshot, &err)),
+        }
+        cx.notify();
+    }
+
+    // Restart the typing pause; dropping the previous timer task cancels it.
+    fn schedule_check(&mut self, cx: &mut Context<Self>) {
+        self.pending_check = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(CHECK_DELAY).await;
+            let _ = this.update(cx, |this, cx| this.start_check(cx));
+        }));
+    }
+
+    // Snapshot the text and the schema, validate off the UI thread, apply only the newest
+    // result, and only to the text it was computed from.
+    fn start_check(&mut self, cx: &mut Context<Self>) {
+        let lookup = graphql_schema_store::compiled(&self.schema_url, cx);
+        // Pending forgets the last key, so whatever key the store settles on reschedules, and a
+        // check still running against the old schema must not apply meanwhile.
+        let Some(key) = lookup.key() else {
+            self.checked_key = None;
+            self.running_check = None;
+            return;
+        };
+        self.checked_key = Some(key);
+        let schema = match &lookup {
+            Lookup::Ready { schema, .. } => Some(schema.clone()),
+            _ => None,
+        };
+        let source = self.schema_source(cx);
+        let text = self.query.read(cx).value().to_string();
+        let job = self.jobs.start();
+        let run = cx.background_spawn(async move {
+            let found = validate_query(&text, schema.as_deref());
+            (text, found)
+        });
+        self.running_check = Some(cx.spawn(async move |this, cx| {
+            let (text, found) = run.await;
+            let _ = this.update(cx, |this, cx| {
+                if !this.jobs.is_latest(job) {
+                    return;
+                }
+                this.query.update(cx, |e, cx| {
+                    if *e.value() != *text {
+                        return;
+                    }
+                    let rope = e.text().clone();
+                    if let Some(set) = e.diagnostics_mut() {
+                        set.reset(&rope);
+                        set.extend(editor_diagnostics(&rope, &found));
+                    }
+                    cx.notify();
+                });
+                this.basis = Some(CheckBasis::of(&lookup, &source, &found));
+                cx.notify();
+            });
+        }));
+    }
+
+    // The schema file's name while a load from it is in place, else the URL; a failed file
+    // load still records its file, so the name only counts once the schema loaded.
+    fn schema_source(&self, cx: &App) -> String {
+        match graphql_schema_store::state(cx, &self.schema_url) {
+            Some(SchemaState::Loaded(_)) => graphql_schema_store::source(cx, &self.schema_url),
+            _ => None,
+        }
+        .unwrap_or_else(|| self.schema_url.clone())
     }
 
     /// The raw URL the schema row is keyed on.
@@ -224,6 +396,14 @@ impl GraphqlSection {
         let file = Button::new("graphql-schema-file")
             .label("Load schema from file")
             .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx)));
+        let status = self.basis.as_ref().map(|basis| {
+            div()
+                .id("graphql-check-status")
+                .test_support()
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(basis.label())
+        });
         h_flex()
             .flex_wrap()
             .gap_2()
@@ -232,6 +412,7 @@ impl GraphqlSection {
             .child(file)
             .child(toggle)
             .children(error)
+            .children(status)
     }
 
     fn emit(&mut self, cx: &mut Context<Self>) {
@@ -266,6 +447,14 @@ impl GraphqlSection {
 
 impl Render for GraphqlSection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let beautify_error = self.beautify_error.clone().map(|message| {
+            div()
+                .id("graphql-beautify-error")
+                .test_support()
+                .text_xs()
+                .text_color(cx.theme().danger)
+                .child(message)
+        });
         let editors = v_flex()
             .flex_1()
             .min_w_0()
@@ -276,6 +465,7 @@ impl Render for GraphqlSection {
                 self.editor("graphql-query", "Query", &self.query)
                     .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             )
+            .children(beautify_error)
             .child(self.editor("graphql-variables", "Variables", &self.variables));
         // The panel carries the `graphql-docs` id itself, so the wrapper only sizes it.
         let docs = self.docs_open.then(|| {

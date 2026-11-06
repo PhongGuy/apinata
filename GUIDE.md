@@ -781,6 +781,13 @@ is sent.
 sends like `send_request`, so a host other than a local one needs the same
 approval.
 
+`graphql_format` and `graphql_validate` format and check a GraphQL query, as
+`apinata graphql fmt` and `apinata graphql validate` do. Each takes either a
+GraphQL request's `path` or raw `query` text. `graphql_format` rewrites a
+request's saved query in place, only when it changes; `graphql_validate` checks
+syntax, and with a `schema` (SDL or an introspection answer) the query against
+it. Nothing is sent and no approval is needed.
+
 The agent can also start the same mock server `apinata mock` runs from the
 collection's saved examples with `mock_start`, read what it was asked with
 `mock_hits`, and stop it with `mock_stop`. The mock always listens on

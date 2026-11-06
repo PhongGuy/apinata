@@ -47,6 +47,7 @@ const IDS: &[&str] = &[
     "request.convert_to_http",
     "request.beautify_body",
     "request.minify_body",
+    "request.beautify_query",
     "request.save_as_example",
     "request.export_har",
     "request.compare_response",
@@ -227,6 +228,7 @@ fn today() -> Vec<Triple> {
         (secondary("alt-right"), "apinata::NextSection", s),
         (secondary("alt-left"), "apinata::PreviousSection", s),
         (secondary("alt-r"), "apinata::FocusResponse", s),
+        ("alt-shift-f".into(), "apinata::BeautifyQuery", s),
         ("ctrl-tab".into(), "apinata::FocusNextControl", "CodeEditor"),
         (
             "ctrl-shift-tab".into(),
