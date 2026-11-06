@@ -5,16 +5,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use apinata_core::{BodySpec, VariableSet};
+use apinata_core::{BodySpec, VariableSet, validate_query};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::command::Edit;
+use crate::graphql_check::{CHECK_DELAY, CheckBasis, Jobs, editor_diagnostics};
 use crate::graphql_complete::SchemaCompletions;
 use crate::graphql_docs::DocsPanel;
-use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
+use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
 use crate::schema_load::load_from_file;
 use crate::section::SectionEdit;
 use crate::style;
@@ -36,6 +37,13 @@ pub struct GraphqlSection {
     completion_url: Rc<RefCell<String>>,
     docs: Entity<DocsPanel>,
     docs_open: bool,
+    // Live check: job numbers, the typing-pause timer, the running validation, the schema
+    // key the last check started against, and what the last finished check used.
+    jobs: Jobs,
+    pending_check: Option<Task<()>>,
+    running_check: Option<Task<()>>,
+    checked_key: Option<CheckKey>,
+    basis: Option<CheckBasis>,
     _subs: Vec<Subscription>,
 }
 
@@ -69,8 +77,20 @@ impl GraphqlSection {
                 cx.emit(SchemaAction::Load)
             }),
             cx.subscribe(&query, on_change),
+            cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.schedule_check(cx);
+                }
+            }),
             cx.subscribe(&variables, on_change),
-            cx.observe_global::<SchemaStore>(|_, cx| cx.notify()),
+            // A schema that settles on a key other than the last check's gets a new check.
+            cx.observe_global::<SchemaStore>(|this, cx| {
+                let key = graphql_schema_store::compiled(&this.schema_url, cx).key();
+                if key.is_some() && key != this.checked_key {
+                    this.schedule_check(cx);
+                }
+                cx.notify();
+            }),
         ];
         GraphqlSection {
             query,
@@ -80,6 +100,11 @@ impl GraphqlSection {
             completion_url,
             docs,
             docs_open: false,
+            jobs: Jobs::default(),
+            pending_check: None,
+            running_check: None,
+            checked_key: None,
+            basis: None,
             _subs: subs,
         }
     }
@@ -91,7 +116,11 @@ impl GraphqlSection {
             _ => ("", ""),
         };
         // Only differing text is set, so an echo of the user's typing keeps the caret. The
-        // editor fires no change event for a programmatic set, so nothing is emitted.
+        // editor fires no change event for a programmatic set, so nothing is emitted; a changed
+        // query is checked anyway.
+        if *self.query.read(cx).value() != *query {
+            self.schedule_check(cx);
+        }
         for (editor, text) in [(&self.query, query), (&self.variables, variables)] {
             crate::ui::sync_editor_text(editor, text, window, cx);
         }
@@ -139,8 +168,76 @@ impl GraphqlSection {
                 crate::schema_load::load_from_cache(url.clone(), cx);
             }
             self.schema_url = url;
+            self.schedule_check(cx);
             cx.notify();
         }
+    }
+
+    /// What the last finished query check was measured against.
+    pub fn check_basis(&self) -> Option<&CheckBasis> {
+        self.basis.as_ref()
+    }
+
+    // Restart the typing pause; dropping the previous timer task cancels it.
+    fn schedule_check(&mut self, cx: &mut Context<Self>) {
+        self.pending_check = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(CHECK_DELAY).await;
+            let _ = this.update(cx, |this, cx| this.start_check(cx));
+        }));
+    }
+
+    // Snapshot the text and the schema, validate off the UI thread, apply only the newest
+    // result, and only to the text it was computed from.
+    fn start_check(&mut self, cx: &mut Context<Self>) {
+        let lookup = graphql_schema_store::compiled(&self.schema_url, cx);
+        // Pending forgets the last key, so whatever key the store settles on reschedules.
+        let Some(key) = lookup.key() else {
+            self.checked_key = None;
+            return;
+        };
+        self.checked_key = Some(key);
+        let schema = match &lookup {
+            Lookup::Ready { schema, .. } => Some(schema.clone()),
+            _ => None,
+        };
+        let source = self.schema_source(cx);
+        let text = self.query.read(cx).value().to_string();
+        let job = self.jobs.start();
+        let run = cx.background_spawn(async move {
+            let found = validate_query(&text, schema.as_deref());
+            (text, found)
+        });
+        self.running_check = Some(cx.spawn(async move |this, cx| {
+            let (text, found) = run.await;
+            let _ = this.update(cx, |this, cx| {
+                if !this.jobs.is_latest(job) {
+                    return;
+                }
+                this.query.update(cx, |e, cx| {
+                    if *e.value() != *text {
+                        return;
+                    }
+                    let rope = e.text().clone();
+                    if let Some(set) = e.diagnostics_mut() {
+                        set.reset(&rope);
+                        set.extend(editor_diagnostics(&rope, &found));
+                    }
+                    cx.notify();
+                });
+                this.basis = Some(CheckBasis::of(&lookup, &source, &found));
+                cx.notify();
+            });
+        }));
+    }
+
+    // The schema file's name while a load from it is in place, else the URL; a failed file
+    // load still records its file, so the name only counts once the schema loaded.
+    fn schema_source(&self, cx: &App) -> String {
+        match graphql_schema_store::state(cx, &self.schema_url) {
+            Some(SchemaState::Loaded(_)) => graphql_schema_store::source(cx, &self.schema_url),
+            _ => None,
+        }
+        .unwrap_or_else(|| self.schema_url.clone())
     }
 
     /// The raw URL the schema row is keyed on.
@@ -224,6 +321,14 @@ impl GraphqlSection {
         let file = Button::new("graphql-schema-file")
             .label("Load schema from file")
             .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx)));
+        let status = self.basis.as_ref().map(|basis| {
+            div()
+                .id("graphql-check-status")
+                .test_support()
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(basis.label())
+        });
         h_flex()
             .flex_wrap()
             .gap_2()
@@ -232,6 +337,7 @@ impl GraphqlSection {
             .child(file)
             .child(toggle)
             .children(error)
+            .children(status)
     }
 
     fn emit(&mut self, cx: &mut Context<Self>) {

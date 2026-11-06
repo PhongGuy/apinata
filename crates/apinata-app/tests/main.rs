@@ -256,6 +256,7 @@ mod graphql_complete;
 mod graphql_docs;
 mod graphql_editor;
 mod graphql_highlight;
+mod graphql_live_check;
 mod graphql_schema_store;
 mod graphql_section;
 mod har_export;
