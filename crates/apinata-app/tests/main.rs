@@ -258,6 +258,7 @@ mod graphql_docs;
 mod graphql_editor;
 mod graphql_highlight;
 mod graphql_hover;
+mod graphql_jump;
 mod graphql_live_check;
 mod graphql_schema_store;
 mod graphql_section;
