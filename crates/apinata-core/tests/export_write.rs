@@ -1,6 +1,7 @@
 //! `export::write_atomic`: the atomic, shareable file write behind every export.
 
 use apinata_core::export::write_atomic;
+#[cfg(unix)]
 use std::path::Path;
 
 #[test]

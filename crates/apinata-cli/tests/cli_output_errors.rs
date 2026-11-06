@@ -1,4 +1,5 @@
 //! A failed write to stdout exits 3 with one `error:` line; a closed pipe exits 0 quietly.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use std::path::Path;
 use std::process::{Command, Stdio};

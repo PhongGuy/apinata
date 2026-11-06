@@ -128,6 +128,7 @@ fn folder_needs_an_existing_collection_and_creates_no_directory() {
     assert!(!target.exists());
 }
 
+#[cfg(unix)]
 #[test]
 fn a_symlinked_folder_is_refused() {
     let parent = tempfile::tempdir().unwrap();

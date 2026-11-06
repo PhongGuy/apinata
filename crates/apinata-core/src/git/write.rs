@@ -355,6 +355,7 @@ fn run_write(args: &[OsString], root: &Path, options: &GitOptions) -> Result<(),
 
 #[cfg(test)]
 mod tests {
+    #[cfg_attr(not(unix), allow(unused_imports))]
     use super::{GitOptions, cap_output, stage, unstage, write_timeout};
     use std::time::Duration;
 
@@ -384,6 +385,7 @@ mod tests {
 
     /// Sleeps one second in `add` and `reset`; answers the reads stage and unstage make first,
     /// the rule probes among them, at once.
+    #[cfg(unix)]
     const SLOW_WRITE_GIT: &str = r#"#!/bin/sh
 case "$*" in
   *rev-parse*) printf '\n' ;;

@@ -3,6 +3,7 @@
 use crate::tree_support;
 
 use apinata_core::{ItemPath, TreeError};
+#[cfg(unix)]
 use std::fs;
 use tree_support::{
     BROKEN, ROOT, disk_seq, exists, folder, ip, item, open, read, reload, request, tree_parity,
