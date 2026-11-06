@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use gpui_kit::base::actions::Confirm as SelectConfirm;
-use gpui_kit::component::input::Redo as EditorRedo;
+use gpui_kit::component::input::{GoToDefinition, Redo as EditorRedo};
 use gpui_kit::{
     Action, App, DummyKeyboardMapper, Global, KeyBinding, KeyBindingContextPredicate, NoAction,
     actions,
@@ -18,6 +18,7 @@ use crate::body_find::{
 };
 use crate::changes_dialog::{CommitChanges, MESSAGE_CONTEXT};
 use crate::commands::registry;
+use crate::graphql_section::GRAPHQL_QUERY_CONTEXT;
 use crate::preferences::{
     ClearPreferencesSearch, FocusPreferencesSearch, KEY_CONTEXT as PREFERENCES,
 };
@@ -192,6 +193,12 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("enter", OpenSelected, tree),
         KeyBinding::new("space", PreviewSelected, tree),
         KeyBinding::new("f2", RenameSelected, tree),
+        // F12 follows a name in the GraphQL query editor to its Docs page.
+        KeyBinding::new(
+            "f12",
+            GoToDefinition,
+            Some(format!("{GRAPHQL_QUERY_CONTEXT} > Input").as_str()),
+        ),
         KeyBinding::new("shift-enter", RunSelected, tree),
         KeyBinding::new("escape", ClearSelection, tree),
         KeyBinding::new("shift-up", ExtendUp, tree),

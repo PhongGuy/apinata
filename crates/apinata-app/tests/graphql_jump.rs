@@ -6,6 +6,7 @@ use apinata_app::graphql_docs::DocsView;
 use apinata_app::graphql_schema_store::SchemaStore;
 use apinata_app::graphql_section::GraphqlSection;
 use apinata_core::{BodySpec, Schema};
+use gpui_kit::component::input::Position;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use lsp_types::ShowDocumentParams;
 use support::*;
@@ -109,4 +110,47 @@ fn the_show_document_handler_takes_only_docs_uris(cx: &mut TestAppContext) {
         .unwrap();
     assert!(shown);
     assert_eq!(docs(cx, &s), (true, DocsView::Type("User".into())));
+}
+
+// Puts the caret at `column` of the query's only line, then presses F12 there.
+fn f12_at(cx: &mut TestAppContext, win: AnyWindowHandle, s: &Entity<GraphqlSection>, column: u32) {
+    use gpui_kit::test::TestWindowExt as _;
+    let query = s.read_with(cx, |s, _| s.query().clone());
+    cx.update_window(win, |_, w, cx| {
+        query.update(cx, |q, cx| {
+            q.set_cursor_position(Position::new(0, column), w, cx)
+        });
+        w.render_frame(cx);
+        w.press("f12", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn f12_on_a_name_opens_its_docs_page(cx: &mut TestAppContext) {
+    let (win, s) = section(cx);
+    cx.update(apinata_app::keymap::init);
+    f12_at(cx, win, &s, 14);
+    assert_eq!(docs(cx, &s), (false, DocsView::Root), "no name before `{{`");
+    f12_at(cx, win, &s, 18);
+    assert_eq!(
+        docs(cx, &s),
+        (
+            true,
+            DocsView::Field {
+                owner: "User".into(),
+                field: "name".into()
+            }
+        )
+    );
+    f12_at(cx, win, &s, 8);
+    assert_eq!(
+        docs(cx, &s).1,
+        DocsView::Field {
+            owner: "Query".into(),
+            field: "user".into()
+        },
+        "an argument jumps to its field"
+    );
 }
