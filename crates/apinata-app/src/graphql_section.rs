@@ -81,9 +81,11 @@ impl GraphqlSection {
             cx.subscribe(&docs, |_, _, _: &SchemaAction, cx| {
                 cx.emit(SchemaAction::Load)
             }),
-            cx.subscribe(&query, on_change),
+            // A query edit is emitted like a variables edit, then drops a stale format error and
+            // schedules a check.
             cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    this.emit(cx);
                     if this.beautify_error.take().is_some() {
                         cx.notify();
                     }
@@ -127,9 +129,8 @@ impl GraphqlSection {
         };
         // Only differing text is set, so an echo of the user's typing keeps the caret. The
         // editor fires no change event for a programmatic set, so nothing is emitted; a changed
-        // query is checked anyway.
+        // query is checked anyway and its old format error is cleared here.
         if *self.query.read(cx).value() != *query {
-            // A programmatic set fires no change event, so the old text's error is cleared here.
             self.beautify_error = None;
             self.beautify_task = None;
             self.schedule_check(cx);
