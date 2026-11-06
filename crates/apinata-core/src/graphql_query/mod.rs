@@ -3,9 +3,12 @@
 //! Placeholders are masked to same-length identifiers before parsing, so every byte
 //! offset reported here points into the caller's original text.
 
-// Only the unit tests call into masking until the formatter and validator land.
+mod format;
+// The validator calls the rest of masking.
 #[allow(dead_code)]
 mod mask;
+
+pub use format::format_query;
 
 use std::ops::Range;
 

@@ -188,6 +188,7 @@ mod graphql_body;
 mod graphql_completion;
 mod graphql_create;
 mod graphql_fetch;
+mod graphql_format;
 mod graphql_introspection;
 mod graphql_load;
 mod graphql_parity;
