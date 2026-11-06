@@ -5,6 +5,7 @@ use crate::support;
 
 use apinata_app::command::Edit;
 use apinata_app::graphql_section::GraphqlSection;
+use apinata_app::request_editor::RequestEditor;
 use apinata_core::BodySpec;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use support::*;
@@ -149,4 +150,36 @@ fn loading_another_request_clears_the_beautify_error(cx: &mut TestAppContext) {
         .unwrap();
     cx.run_until_parked();
     assert!(s.read_with(cx, |s, _| s.beautify_error().is_none()));
+}
+
+fn gql_with(query: &str) -> String {
+    format!(
+        "info:\n  name: g\n  type: graphql\n  seq: 1\ngraphql:\n  url: \"http://localhost/graphql\"\n  body:\n    query: {}\n",
+        serde_json::to_string(query).unwrap()
+    )
+}
+
+fn editor_query(cx: &mut TestAppContext, e: &Entity<RequestEditor>) -> String {
+    let s = e.read_with(cx, |e, _| e.graphql().clone());
+    query(cx, &s)
+}
+
+#[gpui_kit::test]
+fn the_request_command_beautifies_only_graphql_requests(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("g.yml", &gql_with("{ me { id } }")),
+        ("h.yml", &request("h", "http://localhost/h")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, g) = editor_for(cx, &ws, &root, "g.yml", false);
+    assert!(g.read_with(cx, |e, cx| e.can_beautify_query(cx)));
+    cx.update_window(win, |_, w, cx| {
+        g.update(cx, |e, cx| e.beautify_query(w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(editor_query(cx, &g), PRETTY);
+    let (_win, h) = editor_for(cx, &ws, &root, "h.yml", false);
+    assert!(!h.read_with(cx, |e, cx| e.can_beautify_query(cx)));
 }

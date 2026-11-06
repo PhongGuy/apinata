@@ -90,6 +90,8 @@ actions!(
         BeautifyBody,
         /// Strips the whitespace from the active request's JSON or XML body.
         MinifyBody,
+        /// Formats the active GraphQL request's query.
+        BeautifyQuery,
         /// Saves the active request tab's shown response as an example of that request.
         SaveAsExample,
         /// Exports the active request tab's shown response, with its request, as a HAR file.
@@ -179,6 +181,7 @@ pub(crate) struct TabPaletteFlags {
     pub discard: bool,
     pub save_all: bool,
     pub beautify: bool,
+    pub beautify_query: bool,
     pub has_tabs: bool,
     pub request_tab: bool,
     pub to_graphql: bool,
@@ -974,6 +977,7 @@ impl TabArea {
             discard: active.is_some_and(|a| self.discardable(a, cx)),
             save_all: tabs.entries().iter().any(|e| self.is_dirty(e, cx)),
             beautify: editor.is_some_and(|e| e.read(cx).can_reformat_body(cx)),
+            beautify_query: editor.is_some_and(|e| e.read(cx).can_beautify_query(cx)),
             has_tabs: active.is_some(),
             request_tab: editor.is_some(),
             to_graphql: self.active_converts_to(RequestKind::Graphql, cx),
@@ -1159,6 +1163,22 @@ impl TabArea {
         };
         if let Some(editor) = self.editor(id).cloned() {
             editor.update(cx, |e, cx| e.minify_body(window, cx));
+        }
+    }
+
+    /// Formats the active GraphQL request's query; with any other request or no request tab it
+    /// does nothing.
+    pub fn beautify_active_query(
+        &mut self,
+        _: &BeautifyQuery,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) else {
+            return;
+        };
+        if let Some(editor) = self.editor(id).cloned() {
+            editor.update(cx, |e, cx| e.beautify_query(window, cx));
         }
     }
 
