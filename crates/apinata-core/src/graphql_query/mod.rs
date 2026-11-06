@@ -10,7 +10,9 @@ mod mask;
 mod validate;
 
 pub use format::format_query;
-pub use validate::{CompiledSchema, validate_query};
+pub use validate::{
+    CompiledSchema, QueryCheck, SCHEMA_SKIP_NOTE, SchemaUse, check_query, validate_query,
+};
 
 use std::ops::Range;
 

@@ -2,9 +2,12 @@
 
 use std::sync::Arc;
 
-use apinata_app::graphql_check::{CheckBasis, Jobs, SKIP_NOTE, editor_diagnostics, syntax_message};
+use apinata_app::graphql_check::{CheckBasis, Jobs, editor_diagnostics, syntax_message};
 use apinata_app::graphql_schema_store::Lookup;
-use apinata_core::{CompiledSchema, QUERY_FORMAT_LIMIT, Schema, format_query, validate_query};
+use apinata_core::{
+    CompiledSchema, QUERY_FORMAT_LIMIT, QUERY_VALIDATE_LIMIT, SCHEMA_SKIP_NOTE, Schema, SchemaUse,
+    check_query, format_query, validate_query,
+};
 use gpui_kit::base::input::DiagnosticSeverity;
 use gpui_kit::component::input::{Position, Rope};
 
@@ -76,26 +79,30 @@ fn the_summary_entry_is_sorted_in_and_zero_width_ranges_widen() {
 fn the_skip_note_sets_the_basis_and_stays_out_of_the_editor() {
     let c = Arc::new(compiled());
     let text = "{ me { {{f}} } }";
-    let found = validate_query(text, Some(c.as_ref()));
-    assert!(found.iter().any(|d| d.message() == SKIP_NOTE), "{found:?}");
-    assert!(editor_diagnostics(&Rope::from(text), &found).is_empty());
+    let check = check_query(text, Some(c.as_ref()));
+    let found = check.diagnostics();
+    assert!(
+        found.iter().any(|d| d.message() == SCHEMA_SKIP_NOTE),
+        "{found:?}"
+    );
+    assert!(editor_diagnostics(&Rope::from(text), found).is_empty());
     let ready = Lookup::Ready {
         generation: 1,
         schema: c.clone(),
     };
     assert_eq!(
-        CheckBasis::of(&ready, "f.graphqls", &found),
+        CheckBasis::of(&ready, "f.graphqls", check.schema_use()),
         CheckBasis::Skipped
     );
-    let plain = validate_query("{ me { name } }", Some(c.as_ref()));
+    let plain = check_query("{ me { name } }", Some(c.as_ref())).schema_use();
     assert_eq!(
-        CheckBasis::of(&ready, "f.graphqls", &plain),
+        CheckBasis::of(&ready, "f.graphqls", plain),
         CheckBasis::Schema {
             source: "f.graphqls".into()
         }
     );
     assert_eq!(
-        CheckBasis::of(&Lookup::NoSchema, "u", &plain),
+        CheckBasis::of(&Lookup::NoSchema, "u", SchemaUse::NotGiven),
         CheckBasis::NoSchema
     );
     let bad = Lookup::Unusable {
@@ -103,8 +110,31 @@ fn the_skip_note_sets_the_basis_and_stays_out_of_the_editor() {
         reason: "bad".into(),
     };
     assert_eq!(
-        CheckBasis::of(&bad, "u", &plain),
+        CheckBasis::of(&bad, "u", SchemaUse::NotGiven),
         CheckBasis::Unusable("bad".into())
+    );
+}
+
+#[test]
+fn a_ready_schema_that_was_not_used_names_why() {
+    let c = Arc::new(compiled());
+    let ready = Lookup::Ready {
+        generation: 1,
+        schema: c.clone(),
+    };
+    let big = "{ me { name } }".to_owned() + &" ".repeat(QUERY_VALIDATE_LIMIT);
+    let large = check_query(&big, Some(c.as_ref())).schema_use();
+    assert_eq!(
+        CheckBasis::of(&ready, "f.graphqls", large),
+        CheckBasis::TooLarge
+    );
+    assert_eq!(
+        CheckBasis::of(&ready, "f.graphqls", SchemaUse::Unusable),
+        CheckBasis::Unusable("it could not be prepared".into())
+    );
+    assert_eq!(
+        CheckBasis::of(&ready, "f.graphqls", SchemaUse::Failed),
+        CheckBasis::Failed
     );
 }
 
@@ -125,7 +155,19 @@ fn labels_name_what_the_check_used() {
         CheckBasis::Unusable("bad".into()).label(),
         "Syntax only: the schema cannot be used for checking (bad)"
     );
-    assert_eq!(CheckBasis::Skipped.label(), SKIP_NOTE);
+    assert_eq!(CheckBasis::Skipped.label(), SCHEMA_SKIP_NOTE);
+    assert_eq!(
+        CheckBasis::TooLarge.label(),
+        "Syntax only: the query is too large to check against the schema"
+    );
+    assert_eq!(
+        CheckBasis::Unusable("it could not be prepared".into()).label(),
+        "Syntax only: the schema cannot be used for checking (it could not be prepared)"
+    );
+    assert_eq!(
+        CheckBasis::Failed.label(),
+        "Syntax only: the query could not be checked against the schema"
+    );
 }
 
 #[test]

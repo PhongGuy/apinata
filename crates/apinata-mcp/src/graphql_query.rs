@@ -2,8 +2,8 @@
 //! or from a GraphQL request's saved query. Nothing is sent.
 
 use apinata_core::{
-    BodySpec, Collection, CompiledSchema, QueryDiagnostic, QuerySeverity, QuerySyntaxError,
-    RequestKind, SCHEMA_BODY_LIMIT, Schema, format_query, validate_query,
+    BodySpec, Collection, CompiledSchema, QuerySeverity, QuerySyntaxError, RequestKind,
+    SCHEMA_BODY_LIMIT, Schema, check_query, format_query,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -199,8 +199,9 @@ fn severity(s: QuerySeverity) -> &'static str {
 
 /// Check `text` against `schema` and shape the findings; core already caps the list.
 pub(crate) fn validate(text: &str, schema: Option<&CompiledSchema>) -> GraphqlValidateDoc {
-    let found: Vec<QueryDiagnostic> = validate_query(text, schema);
-    let diagnostics: Vec<QueryDiagnosticDoc> = found
+    let check = check_query(text, schema);
+    let diagnostics: Vec<QueryDiagnosticDoc> = check
+        .diagnostics()
         .iter()
         .map(|d| {
             let range = d.range();
@@ -216,7 +217,7 @@ pub(crate) fn validate(text: &str, schema: Option<&CompiledSchema>) -> GraphqlVa
         })
         .collect();
     GraphqlValidateDoc {
-        schema_checked: schema.is_some(),
+        schema_checked: check.schema_checked(),
         diagnostics,
     }
 }

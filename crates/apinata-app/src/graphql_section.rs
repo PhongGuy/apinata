@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, format_query, validate_query};
+use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_query};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -81,9 +81,11 @@ impl GraphqlSection {
             cx.subscribe(&docs, |_, _, _: &SchemaAction, cx| {
                 cx.emit(SchemaAction::Load)
             }),
-            cx.subscribe(&query, on_change),
+            // A query edit is emitted like a variables edit, then drops a stale format error and
+            // schedules a check.
             cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    this.emit(cx);
                     if this.beautify_error.take().is_some() {
                         cx.notify();
                     }
@@ -127,9 +129,8 @@ impl GraphqlSection {
         };
         // Only differing text is set, so an echo of the user's typing keeps the caret. The
         // editor fires no change event for a programmatic set, so nothing is emitted; a changed
-        // query is checked anyway.
+        // query is checked anyway and its old format error is cleared here.
         if *self.query.read(cx).value() != *query {
-            // A programmatic set fires no change event, so the old text's error is cleared here.
             self.beautify_error = None;
             self.beautify_task = None;
             self.schedule_check(cx);
@@ -279,11 +280,11 @@ impl GraphqlSection {
         let text = self.query.read(cx).value().to_string();
         let job = self.jobs.start();
         let run = cx.background_spawn(async move {
-            let found = validate_query(&text, schema.as_deref());
-            (text, found)
+            let check = check_query(&text, schema.as_deref());
+            (text, check)
         });
         self.running_check = Some(cx.spawn(async move |this, cx| {
-            let (text, found) = run.await;
+            let (text, check) = run.await;
             let _ = this.update(cx, |this, cx| {
                 if !this.jobs.is_latest(job) {
                     return;
@@ -295,11 +296,11 @@ impl GraphqlSection {
                     let rope = e.text().clone();
                     if let Some(set) = e.diagnostics_mut() {
                         set.reset(&rope);
-                        set.extend(editor_diagnostics(&rope, &found));
+                        set.extend(editor_diagnostics(&rope, check.diagnostics()));
                     }
                     cx.notify();
                 });
-                this.basis = Some(CheckBasis::of(&lookup, &source, &found));
+                this.basis = Some(CheckBasis::of(&lookup, &source, check.schema_use()));
                 cx.notify();
             });
         }));
