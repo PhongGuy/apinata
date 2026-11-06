@@ -25,6 +25,7 @@ mod export_tools;
 mod generate_code;
 mod git_tools;
 mod global_env;
+mod graphql_query;
 mod graphql_requests;
 mod graphql_schema;
 mod harness;
