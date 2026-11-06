@@ -246,3 +246,16 @@ fn ctrl_c_after_the_fast_forward_started_still_pulls_with_a_note() {
     );
     assert_eq!(head(&sb, &col), tip);
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn ctrl_c_after_the_fetch_of_an_up_to_date_pull_gives_no_fast_forward_note() {
+    let sb = Sandbox::new();
+    let col = cloned(&sb);
+    let before = head(&sb, &col);
+    let bin = fake_on(&sb, "rev-list", ": > \"$dir/counting\"; sleep 1");
+    let (code, err) = interrupted(&sb, &col, &["git", "pull"], &bin, &bin.join("counting"));
+    assert_eq!(code, Some(0), "{err}");
+    assert!(!err.contains("fast-forward had started"), "{err}");
+    assert_eq!(head(&sb, &col), before);
+}

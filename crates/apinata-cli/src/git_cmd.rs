@@ -397,16 +397,18 @@ enum Sync {
 /// The note for a push whose outcome Ctrl+C left unknown.
 const MAY_HAVE_PUSHED: &str = "the push may already have reached the remote";
 
-/// Print a finished sync result, or its error with the matching exit code. `cancelled` is
-/// whether Ctrl+C arrived, which the work reports beside its result.
+/// Print a finished sync result, or its error with the matching exit code. The work reports
+/// beside its result whether Ctrl+C arrived; `moved` says whether a pull changed the branch.
 fn finish<T: Serialize>(
     result: Result<(Result<T, SyncError>, bool), std::io::Error>,
     json: bool,
     kind: Sync,
+    moved: impl FnOnce(&T) -> bool,
     show: impl FnOnce(&T),
 ) -> ExitCode {
     match result {
         Ok((Ok(done), cancelled)) => {
+            let late = cancelled && kind == Sync::Pull && moved(&done);
             let code = if json {
                 print_json(&done)
             } else {
@@ -414,7 +416,7 @@ fn finish<T: Serialize>(
                 ExitCode::SUCCESS
             };
             // Core finishes a fast-forward it has started rather than leave the files half moved.
-            if cancelled && kind == Sync::Pull {
+            if late {
                 eprintln!("note: Ctrl+C came after the fast-forward had started; it finished");
             }
             code
@@ -487,23 +489,29 @@ fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
         let done = apinata_core::pull(&root, cancel, &GitOptions::new());
         (done, cancel.is_cancelled())
     });
-    finish(result, json, Sync::Pull, |p| {
-        let (b, u) = (&p.branch, &p.upstream);
-        if p.from == p.to {
-            outln!("{b} is up to date with {u}");
-        } else {
-            outln!(
-                "Fast-forwarded {b} to {u} ({}..{})",
-                short(&p.from),
-                short(&p.to)
-            );
-        }
-        if p.from == p.to && p.ahead > 0 {
-            let n = p.ahead;
-            let noun = if n > 1 { "commits" } else { "commit" };
-            eprintln!("note: {b} is {n} {noun} ahead of {u}");
-        }
-    })
+    finish(
+        result,
+        json,
+        Sync::Pull,
+        |p| p.from != p.to,
+        |p| {
+            let (b, u) = (&p.branch, &p.upstream);
+            if p.from == p.to {
+                outln!("{b} is up to date with {u}");
+            } else {
+                outln!(
+                    "Fast-forwarded {b} to {u} ({}..{})",
+                    short(&p.from),
+                    short(&p.to)
+                );
+            }
+            if p.from == p.to && p.ahead > 0 {
+                let n = p.ahead;
+                let noun = if n > 1 { "commits" } else { "commit" };
+                eprintln!("note: {b} is {n} {noun} ahead of {u}");
+            }
+        },
+    )
 }
 
 fn push(collection: Option<&Path>, set_upstream: Option<&str>, json: bool) -> ExitCode {
@@ -516,18 +524,24 @@ fn push(collection: Option<&Path>, set_upstream: Option<&str>, json: bool) -> Ex
         let done = apinata_core::push(&root, remote.as_deref(), cancel, &GitOptions::new());
         (done, cancel.is_cancelled())
     });
-    finish(result, json, Sync::Push, |p| {
-        let (b, u) = (&p.branch, &p.upstream);
-        let mut line = match &p.from {
-            None => format!("Pushed {b} to {u} (new branch)"),
-            Some(from) if *from == p.to => format!("{u} is up to date"),
-            Some(from) => format!("Pushed {b} to {u} ({}..{})", short(from), short(&p.to)),
-        };
-        if p.upstream_set {
-            line.push_str(&format!("; {b} now tracks {u}"));
-        }
-        outln!("{line}");
-    })
+    finish(
+        result,
+        json,
+        Sync::Push,
+        |_| false,
+        |p| {
+            let (b, u) = (&p.branch, &p.upstream);
+            let mut line = match &p.from {
+                None => format!("Pushed {b} to {u} (new branch)"),
+                Some(from) if *from == p.to => format!("{u} is up to date"),
+                Some(from) => format!("Pushed {b} to {u} ({}..{})", short(from), short(&p.to)),
+            };
+            if p.upstream_set {
+                line.push_str(&format!("; {b} now tracks {u}"));
+            }
+            outln!("{line}");
+        },
+    )
 }
 
 fn commit(
