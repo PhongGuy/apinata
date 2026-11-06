@@ -315,6 +315,12 @@ fn today() -> Vec<Triple> {
             "dialog_select::OpenSelect",
             "DialogSelect > Select",
         ),
+        ("space".into(), "ui::Confirm", "Select"),
+        (
+            "space".into(),
+            "dialog_select::OpenSelect",
+            "DialogSelect > Select",
+        ),
         ("enter".into(), "segmented::ActivateSegment", "Segmented"),
         ("space".into(), "segmented::ActivateSegment", "Segmented"),
         ("right".into(), "segmented::NextSegment", "Segmented"),

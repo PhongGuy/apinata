@@ -4,6 +4,7 @@
 
 use std::rc::Rc;
 
+use gpui_kit::base::actions::Confirm as SelectConfirm;
 use gpui_kit::component::input::Redo as EditorRedo;
 use gpui_kit::{
     Action, App, DummyKeyboardMapper, Global, KeyBinding, KeyBindingContextPredicate, NoAction,
@@ -170,6 +171,13 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         // A kit select in a dialog opens on Enter; its own Confirm would reach the dialog too.
         KeyBinding::new(
             "enter",
+            OpenSelect,
+            Some(format!("{DIALOG_SELECT_CONTEXT} > Select").as_str()),
+        ),
+        // The kit select binds only Enter; Space does the same, as on a native select.
+        KeyBinding::new("space", SelectConfirm { secondary: false }, Some("Select")),
+        KeyBinding::new(
+            "space",
             OpenSelect,
             Some(format!("{DIALOG_SELECT_CONTEXT} > Select").as_str()),
         ),
