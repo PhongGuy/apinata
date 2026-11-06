@@ -251,6 +251,7 @@ mod global_env_edit;
 mod global_env_rename;
 mod global_env_selector;
 mod global_env_workspace;
+mod graphql_check;
 mod graphql_complete;
 mod graphql_docs;
 mod graphql_editor;
