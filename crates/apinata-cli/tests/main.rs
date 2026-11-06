@@ -37,6 +37,7 @@ mod cli_global_env;
 mod cli_graphql;
 mod cli_graphql_fmt;
 mod cli_graphql_schema;
+mod cli_graphql_validate;
 mod cli_har;
 mod cli_http_version;
 mod cli_import;

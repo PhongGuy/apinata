@@ -25,6 +25,7 @@ and a quick start, see the [README](README.md).
   - [Sending one request](#sending-one-request)
   - [Code generation](#code-generation)
   - [GraphQL schema](#graphql-schema)
+  - [GraphQL queries](#graphql-queries)
   - [OAuth 2.0 and scripts](#oauth-20-and-scripts)
   - [Timeouts, streams and body size](#timeouts-streams-and-body-size)
   - [Reading responses](#reading-responses)
@@ -319,7 +320,7 @@ the command never exits with that code.
 | `item` | created, copied, renamed, moved, removed, or a folder updated or left unchanged | - | - | usage or collection error, an unknown path, an invalid name, a move that is not allowed, no trash to remove into, a broken folder.yml, an unknown header or variable to unset, or a refused edit |
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
-| `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors) | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, or the file could not be written |
+| `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors), a syntax error, a validation error, or `fmt --check` found a change | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, the file could not be written, or an unreadable query or schema file |
 | `git` | printed, or no git or no repository (a note on stderr; `commit`, `pull` and `push` fail instead) | - | - | git failed (for `commit`, also a hook refusing or nothing staged; for `commit`, `pull` and `push`, also no git or repository), the file is not a request file or is outside the collection, or a usage or collection error; for `clone`, a bad URL or folder name, or the folder exists |
 | `import` | imported (notes go to stderr) | - | - | the import failed |
 | `export` | exported (notes go to stderr) | - | - | the export failed |
@@ -480,6 +481,27 @@ with `--format sdl`, as an SDL document. `--output` writes it to a file:
 
 ```sh
 apinata graphql schema ./my-api/graphql/users.yml --env local --format sdl --output schema.graphql
+```
+
+### GraphQL queries
+
+`apinata graphql fmt` formats a query file (`.graphql` or `.gql`) or a GraphQL
+request's query in place; `--check` writes nothing and exits 1 if the file
+would change. `{{variables}}` in the query are kept as written:
+
+```sh
+apinata graphql fmt ./my-api/graphql/users.yml --check
+```
+
+`apinata graphql validate` checks a query and prints one line per finding:
+its position, `error`, `warning` or `info`, and the message. Without
+`--schema-file` only syntax is checked; with it, given as SDL or an
+introspection JSON answer, fields, arguments and types are checked too, and
+uses of deprecated fields and enum values are warned about. It exits 1 when
+any finding is an error:
+
+```sh
+apinata graphql validate ./my-api/graphql/users.yml --schema-file schema.graphql
 ```
 
 ### OAuth 2.0 and scripts

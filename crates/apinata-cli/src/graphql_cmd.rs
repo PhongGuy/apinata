@@ -38,6 +38,9 @@ pub enum GraphqlAction {
     Schema(Box<SchemaArgs>),
     /// Format a GraphQL query file (`.graphql`, `.gql`) or a GraphQL request's query in place.
     Fmt(crate::graphql_query_cmd::FmtArgs),
+    /// Check a GraphQL query file (`.graphql`, `.gql`) or a GraphQL request's query, against a
+    /// schema file when one is given, and print one line per finding.
+    Validate(crate::graphql_query_cmd::ValidateArgs),
 }
 
 #[derive(clap::Args)]
@@ -80,6 +83,7 @@ pub fn run(args: &GraphqlArgs) -> ExitCode {
     match &args.action {
         GraphqlAction::Schema(args) => ExitCode::from(schema(args)),
         GraphqlAction::Fmt(args) => crate::graphql_query_cmd::fmt(args),
+        GraphqlAction::Validate(args) => crate::graphql_query_cmd::validate(args),
     }
 }
 
