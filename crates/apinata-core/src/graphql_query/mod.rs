@@ -7,8 +7,10 @@ mod format;
 // The validator calls the rest of masking.
 #[allow(dead_code)]
 mod mask;
+mod validate;
 
 pub use format::format_query;
+pub use validate::CompiledSchema;
 
 use std::ops::Range;
 

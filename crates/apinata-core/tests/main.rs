@@ -185,6 +185,7 @@ mod git_url_leaks;
 mod global_context;
 mod global_environments;
 mod graphql_body;
+mod graphql_compiled_schema;
 mod graphql_completion;
 mod graphql_create;
 mod graphql_fetch;
