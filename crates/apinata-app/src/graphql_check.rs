@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use apinata_core::{QueryDiagnostic, QuerySeverity, QuerySyntaxError};
+use apinata_core::{QueryDiagnostic, QuerySeverity, QuerySyntaxError, SCHEMA_SKIP_NOTE, SchemaUse};
 use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
 use gpui_kit::component::input::{Position, Rope, RopeExt};
 
@@ -13,8 +13,6 @@ use crate::graphql_schema_store::Lookup;
 pub const CHECK_DELAY: Duration = Duration::from_millis(250);
 /// Queries at least this large are formatted off the UI thread.
 pub const FORMAT_OFF_THREAD_BYTES: usize = 64 * 1024;
-/// Core's note for a structural placeholder.
-pub const SKIP_NOTE: &str = "Schema checks skipped: a {{placeholder}} stands for query structure";
 
 /// Numbers background jobs so a stale result can be recognised and dropped.
 #[derive(Debug, Default)]
@@ -49,17 +47,28 @@ pub enum CheckBasis {
     Unusable(String),
     /// Schema checks were skipped because a placeholder stands for structure.
     Skipped,
+    /// Syntax only: the query is over core's size limit for schema checks.
+    TooLarge,
+    /// Syntax only: the check against the schema failed.
+    Failed,
 }
 
 impl CheckBasis {
-    /// Derives the basis from the schema lookup and core's findings.
-    pub fn of(lookup: &Lookup, source: &str, found: &[QueryDiagnostic]) -> CheckBasis {
+    /// Derives the basis from the schema lookup and how core's check used the schema.
+    pub fn of(lookup: &Lookup, source: &str, used: SchemaUse) -> CheckBasis {
         match lookup {
-            Lookup::Ready { .. } if found.iter().any(|d| d.message() == SKIP_NOTE) => {
-                CheckBasis::Skipped
-            }
-            Lookup::Ready { .. } => CheckBasis::Schema {
-                source: source.to_string(),
+            Lookup::Ready { .. } => match used {
+                SchemaUse::Checked => CheckBasis::Schema {
+                    source: source.to_string(),
+                },
+                SchemaUse::NotGiven => CheckBasis::NoSchema,
+                SchemaUse::TooLarge => CheckBasis::TooLarge,
+                SchemaUse::Placeholder => CheckBasis::Skipped,
+                SchemaUse::Unusable => {
+                    CheckBasis::Unusable("the schema could not be prepared".to_string())
+                }
+                // A reason core may add later still means the schema checks did not run.
+                _ => CheckBasis::Failed,
             },
             Lookup::Unusable { reason, .. } => CheckBasis::Unusable(reason.clone()),
             _ => CheckBasis::NoSchema,
@@ -74,7 +83,13 @@ impl CheckBasis {
             CheckBasis::Unusable(reason) => {
                 format!("Syntax only: the schema cannot be used for checking ({reason})")
             }
-            CheckBasis::Skipped => SKIP_NOTE.to_string(),
+            CheckBasis::Skipped => SCHEMA_SKIP_NOTE.to_string(),
+            CheckBasis::TooLarge => {
+                "Syntax only: the query is too large to check against the schema".to_string()
+            }
+            CheckBasis::Failed => {
+                "Syntax only: the query could not be checked against the schema".to_string()
+            }
         }
     }
 }
@@ -85,7 +100,7 @@ pub fn editor_diagnostics(text: &Rope, found: &[QueryDiagnostic]) -> Vec<Diagnos
     let plain = text.to_string();
     let mut out: Vec<Diagnostic> = found
         .iter()
-        .filter(|d| d.message() != SKIP_NOTE)
+        .filter(|d| d.message() != SCHEMA_SKIP_NOTE)
         .map(|d| {
             let range = d.range();
             let start = range.start.min(plain.len());
