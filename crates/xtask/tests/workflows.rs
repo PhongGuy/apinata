@@ -377,7 +377,7 @@ fn each_build_uploads_its_platform_directory_flat() {
 
 #[test]
 fn the_draft_uses_generated_notes_from_full_history() {
-    // The notes list commits since the previous tag, so the checkout needs every
+    // The notes count commits since the previous tag, so the checkout needs every
     // commit and tag, and the draft takes the generated file instead of GitHub's.
     let rel = load("release.yml");
     let all = steps(&rel, "checksums");
