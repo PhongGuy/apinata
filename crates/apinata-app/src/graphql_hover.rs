@@ -181,7 +181,7 @@ fn input_signature(v: &apinata_core::InputValue) -> String {
     }
 }
 
-fn lsp_range(text: &Rope, range: &std::ops::Range<usize>) -> Range {
+pub(crate) fn lsp_range(text: &Rope, range: &std::ops::Range<usize>) -> Range {
     Range::new(
         text.offset_to_position(range.start),
         text.offset_to_position(range.end),

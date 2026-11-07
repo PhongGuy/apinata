@@ -5,15 +5,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use apinata_core::{Schema, VariableCompletionKind, variable_completions, variable_hover};
+use gpui_kit::component::Rope;
 use gpui_kit::component::input::{CompletionProvider, EditorState, HoverProvider};
-use gpui_kit::component::{Rope, RopeExt as _};
 use gpui_kit::{App, Result, Task, WeakEntity, Window};
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit,
-    Documentation, Hover, HoverContents, MarkupContent, MarkupKind, Range, TextEdit,
+    Documentation, Hover, HoverContents, MarkupContent, MarkupKind, TextEdit,
 };
 
-use crate::graphql_hover::{code_span, plain};
+use crate::graphql_hover::{code_span, lsp_range, plain};
 use crate::graphql_schema_store::{self, SchemaState};
 use crate::var_complete;
 
@@ -26,7 +26,7 @@ pub fn items(
     offset: usize,
 ) -> Vec<CompletionItem> {
     let source = text.to_string();
-    if source.is_char_boundary(offset) && var_complete::query_at(&source, offset).is_some() {
+    if var_complete::query_at(&source, offset).is_some() {
         return Vec::new();
     }
     variable_completions(query, &source, offset, schema)
@@ -58,7 +58,7 @@ pub fn hover(query: &str, schema: Option<&Schema>, text: &Rope, offset: usize) -
     sections.extend(
         found
             .description
-            .filter(|d| !d.is_empty())
+            .filter(|d| !d.trim().is_empty())
             .map(|d| plain(&d)),
     );
     sections.extend(found.default.map(|d| format!("Default: {}", code_span(&d))));
@@ -69,13 +69,6 @@ pub fn hover(query: &str, schema: Option<&Schema>, text: &Rope, offset: usize) -
         }),
         range: Some(lsp_range(text, &found.range)),
     })
-}
-
-fn lsp_range(text: &Rope, range: &std::ops::Range<usize>) -> Range {
-    Range::new(
-        text.offset_to_position(range.start),
-        text.offset_to_position(range.end),
-    )
 }
 
 /// The variables editor's completion and hover provider: the query editor's current text, and

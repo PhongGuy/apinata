@@ -148,3 +148,19 @@ fn hover_shows_signature_description_and_default() {
     );
     assert_eq!(markdown(Q, None, "{\"id\": 1}", 7), None);
 }
+
+#[test]
+fn hover_skips_a_blank_description() {
+    let blank =
+        Schema::from_sdl("type Query { a: Int }\ninput F {\n  \"   \"\n  x: Int\n}").unwrap();
+    assert_eq!(
+        markdown(
+            "query Q($f: F) { a }",
+            Some(&blank),
+            "{\"f\": {\"x\": 1}}",
+            8
+        )
+        .map(|(m, _)| m),
+        Some("`F.x: Int`".into())
+    );
+}
