@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# Runs for one ref queue behind each other; a release stopped halfway could leave a
+# signed manifest without its draft.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   LINUX_BUILD_DEPS: pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libvulkan1 libegl1

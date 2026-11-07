@@ -566,3 +566,10 @@ fn the_toolchain_action_is_pinned_to_its_master_branch() {
         }
     }
 }
+
+#[test]
+fn a_release_run_is_never_cancelled_halfway() {
+    let rel = load("release.yml");
+    assert!(!str_of(&rel["concurrency"]["group"]).is_empty());
+    assert_eq!(rel["concurrency"]["cancel-in-progress"], Value::Bool(false));
+}
