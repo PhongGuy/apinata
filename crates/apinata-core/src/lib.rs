@@ -43,6 +43,7 @@ mod git;
 mod global_env;
 mod graphql_query;
 mod graphql_schema;
+mod graphql_variables;
 #[cfg(test)]
 mod hang_guard;
 mod header_check;
