@@ -43,7 +43,9 @@ pub(crate) fn locate(text: &str, offset: usize) -> Option<Place> {
     let mut found: Option<(Place, usize)> = None;
     for token in tokens(text) {
         if found.is_none() {
-            let place = if token.contains(offset) {
+            // The first token that decides the cursor's position answers from the state
+            // there; a position that takes no key or value is None, never a later state.
+            let decided = if token.contains(offset) {
                 let in_placeholder = token.kind == Kind::Placeholder
                     || token
                         .inner
@@ -56,18 +58,20 @@ pub(crate) fn locate(text: &str, offset: usize) -> Option<Place> {
                     Kind::Str { .. } => (token.span.start + 1).min(offset),
                     _ => token.span.start,
                 };
-                Some(scan.place(token.span.clone(), &text[from..offset])?)
+                Some(scan.place(token.span.clone(), &text[from..offset]))
             } else if offset < token.span.start
                 || (offset == token.span.start && token.kind.is_punctuation())
             {
-                Some(scan.place(offset..offset, "")?)
+                Some(scan.place(offset..offset, ""))
             } else {
                 None
             };
-            match place {
-                Some(place) if place.role == Role::Value => return Some(place),
-                Some(place) => found = Some((place, scan.stack.len())),
-                None => {}
+            if let Some(place) = decided {
+                let place = place?;
+                if place.role == Role::Value {
+                    return Some(place);
+                }
+                found = Some((place, scan.stack.len()));
             }
         }
         let key = scan.step(&token, text);
@@ -84,6 +88,7 @@ pub(crate) fn locate(text: &str, offset: usize) -> Option<Place> {
             break;
         }
     }
+    // Every token ended before the cursor, so the state at the end of the text answers.
     match found {
         Some((place, _)) => Some(place),
         None => scan.place(offset..offset, ""),
@@ -459,6 +464,15 @@ mod tests {
         );
         check("{\"i|\n}", Role::Key, &[], 1..3, "i", &[]);
         check("{\"a\": \"x\n, \"|\"}", Role::Key, &[], 11..13, "", &["a"]);
+        check("{\"i|\r\n}", Role::Key, &[], 1..3, "i", &[]);
+        check(
+            "{\"a\": \"x\r\n, \"|\"}",
+            Role::Key,
+            &[],
+            12..14,
+            "",
+            &["a"],
+        );
     }
 
     #[test]
@@ -544,6 +558,10 @@ mod tests {
             "|{}",
             "{\"a\": \"x\"|}",
             "|",
+            "{\"a\": 1 |,",
+            "{\"a\": 1 |, \"b\": ",
+            "|{",
+            "|{\n\"a\": 1",
         ] {
             assert_eq!(at(marked), None, "{marked:?}");
         }
