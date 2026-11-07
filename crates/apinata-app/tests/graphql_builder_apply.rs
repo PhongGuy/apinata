@@ -167,3 +167,25 @@ fn broken_text_ignores_ticks(cx: &mut TestAppContext) {
     tick(cx, &o, "Query.users");
     assert_eq!(query(cx, &o), "{ users {");
 }
+
+#[gpui_kit::test]
+fn a_tick_keeps_the_editor_scroll(cx: &mut TestAppContext) {
+    let filler: String = (0..200).map(|i| format!("  # line {i}\n")).collect();
+    let text = format!("{{\n{filler}  users {{\n    id\n  }}\n}}");
+    let o = open(cx, &text, &["Query", "Query.users"]);
+    set_caret(cx, &o, 0);
+    let q = o.s.read_with(cx, |s, _| s.query().clone());
+    q.update(cx, |e, cx| {
+        e.set_scroll_offset(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(-400.)), cx)
+    });
+    frame(cx, o.win);
+    let before = q.read_with(cx, |e, _| e.scroll_offset());
+    assert!(
+        before.y < gpui_kit::px(0.),
+        "the editor scrolled away from the caret"
+    );
+    tick(cx, &o, "Query.users.name");
+    assert!(query(cx, &o).contains("    name\n"));
+    assert_eq!(caret(cx, &o), 0);
+    assert_eq!(q.read_with(cx, |e, _| e.scroll_offset()), before);
+}

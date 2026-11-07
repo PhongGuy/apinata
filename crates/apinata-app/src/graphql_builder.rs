@@ -267,7 +267,8 @@ impl BuilderPanel {
     }
 
     /// Applies `edit` to the query editor as one undoable replacement, only when the editor
-    /// still holds `snapshot`; restores the caret per `caret_after`. False when dropped.
+    /// still holds `snapshot`; restores the caret per `caret_after` and keeps the scroll.
+    /// False when dropped.
     pub fn apply(
         &mut self,
         snapshot: &str,
@@ -279,10 +280,13 @@ impl BuilderPanel {
             if *e.value() != *snapshot {
                 return false;
             }
+            // Selecting the edit range scrolls to it, so the view the user left is put back.
+            let scroll = e.scroll_offset();
             let caret = caret_after(e.cursor(), edit.range.clone(), edit.text.len());
             e.set_selected_range(edit.range, cx);
             e.replace(edit.text, window, cx);
             e.set_selected_range(caret..caret, cx);
+            e.set_scroll_offset(scroll, cx);
             true
         })
     }
