@@ -20,6 +20,7 @@ use gpui_kit::{
     AnyElement, App, Div, Entity, Focusable, Hsla, Rems, ScrollHandle, Subscription,
     TestSupportExt, Window, div, px, rems,
 };
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 // The name column both row kinds share, so their value columns start at one x.
@@ -425,39 +426,34 @@ impl RuntimeVarsView {
             let text = self.field_text(row);
             let hidden = row.masked && text.is_empty();
             let holder = if hidden { SECRET_HIDDEN } else { "" };
-            if !self.fields.contains_key(&key) {
-                let input = cx.new(|cx| {
-                    InputState::new(window, cx)
-                        .placeholder(holder)
-                        .default_value(text.clone())
-                });
-                let at = key.clone();
-                let sub = cx.subscribe_in(
-                    &input,
-                    window,
-                    move |this: &mut RuntimeVarsView, _, event: &InputEvent, window, cx| {
-                        if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                            this.commit(&at, window, cx);
-                        }
-                    },
-                );
-                self.fields.insert(
-                    key.clone(),
-                    Field {
+            // A row seen for the first time gets its input and Enter/blur subscription here.
+            let field = match self.fields.entry(key.clone()) {
+                Entry::Occupied(slot) => slot.into_mut(),
+                Entry::Vacant(slot) => {
+                    let input = cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .placeholder(holder)
+                            .default_value(text.clone())
+                    });
+                    let at = key.clone();
+                    let sub = cx.subscribe_in(
+                        &input,
+                        window,
+                        move |this: &mut RuntimeVarsView, _, event: &InputEvent, window, cx| {
+                            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                                this.commit(&at, window, cx);
+                            }
+                        },
+                    );
+                    slot.insert(Field {
                         input,
                         holder,
                         synced: text.clone(),
                         _sub: sub,
-                    },
-                );
-            }
+                    })
+                }
+            };
             // Writing an input notifies it, so only touch what differs or every frame is dirty.
-            // A missing key was inserted just above.
-            #[allow(clippy::expect_used)]
-            let field = self
-                .fields
-                .get_mut(&key)
-                .expect("a missing field was inserted above");
             let input = field.input.clone();
             let fresh_holder = field.holder != holder;
             field.holder = holder;
