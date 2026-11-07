@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Release helpers for the release workflow: the tag guard and build matrix,
-# macOS ad-hoc signing, SHA256SUMS, the update manifest and the release notes. Must stay bash 3.2 safe, since
-# macOS runners run /bin/bash 3.2.
+# macOS ad-hoc signing, SHA256SUMS, the update manifest and the release notes.
+# Must stay bash 3.2 safe, since macOS runners run /bin/bash 3.2.
 # Sourcing this file only defines functions; running it dispatches a subcommand.
 source "$(dirname "${BASH_SOURCE[0]}")/package-linux.sh"
 set -euo pipefail
