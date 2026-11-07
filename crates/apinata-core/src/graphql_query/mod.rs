@@ -8,10 +8,12 @@ mod filter;
 mod format;
 pub(crate) mod mask;
 mod outline;
+mod toggle;
 mod validate;
 
 pub use format::format_query;
 pub use outline::{FieldPath, Lock, QueryOutline, query_outline};
+pub use toggle::{QueryEdit, toggle_field};
 pub use validate::{
     CompiledSchema, QueryCheck, SCHEMA_SKIP_NOTE, SchemaUse, check_query, validate_query,
 };

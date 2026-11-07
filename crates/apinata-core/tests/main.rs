@@ -199,6 +199,7 @@ mod graphql_format_comments;
 mod graphql_introspection;
 mod graphql_load;
 mod graphql_parity;
+mod graphql_query_insert;
 mod graphql_query_outline;
 mod graphql_schema_model;
 mod graphql_schema_sdl;
