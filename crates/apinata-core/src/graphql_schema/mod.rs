@@ -9,6 +9,7 @@ mod symbol;
 
 pub use complete::{Completion, CompletionKind};
 pub use model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
+pub(crate) use sdl::BUILT_IN_SCALARS;
 pub use symbol::{SchemaSymbol, SymbolAt};
 
 use std::sync::Arc;

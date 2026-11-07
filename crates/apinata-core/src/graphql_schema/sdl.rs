@@ -10,7 +10,7 @@ use super::SchemaError;
 use super::model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
 
 /// The scalars every schema has, appended when the document does not declare them.
-pub(super) const BUILT_IN_SCALARS: [&str; 5] = ["String", "Int", "Float", "Boolean", "ID"];
+pub(crate) const BUILT_IN_SCALARS: [&str; 5] = ["String", "Int", "Float", "Boolean", "ID"];
 
 /// The reason a bare `@deprecated` carries, as graphql-js reports it.
 pub(super) const DEFAULT_DEPRECATION: &str = "No longer supported";

@@ -9,6 +9,7 @@ use std::ops::Range;
 use apollo_parser::cst::{self, CstNode};
 
 use crate::graphql_query::mask::{mask, parse};
+use crate::graphql_schema::BUILT_IN_SCALARS;
 use crate::{QUERY_VALIDATE_LIMIT, Schema, TypeKind};
 use locate::{Place, Role, locate};
 
@@ -259,8 +260,6 @@ fn value_candidates(
     }
     out
 }
-
-const BUILT_IN_SCALARS: [&str; 5] = ["Int", "Float", "String", "Boolean", "ID"];
 
 /// A variables key explained for hover.
 #[non_exhaustive]

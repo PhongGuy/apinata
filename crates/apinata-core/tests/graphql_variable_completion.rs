@@ -204,6 +204,7 @@ fn nothing_off_the_query_or_the_schema() {
         (Q_SDL, "{\"roles\": {\"|\"}}"),
         (Q_SDL, "[|]"),
         (Q_SDL, "{\"filter\": {{f|}}}"),
+        ("query ($x: Mystery) { a }", "{\"x\": |}"),
         ("{ a }", "{\"|\"}"),
         ("", "{\"|\"}"),
     ] {
