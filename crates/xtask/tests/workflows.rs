@@ -518,3 +518,21 @@ fn windows_builds_are_never_code_signed() {
     let text = std::fs::read_to_string(workflow_path("release.yml")).unwrap();
     assert!(!text.contains("WINDOWS_CERTIFICATE"), "release.yml");
 }
+
+#[test]
+fn ci_audits_the_workflows_with_a_pinned_zizmor() {
+    let ci = load("ci.yml");
+    let audit = steps(&ci, "zizmor")
+        .into_iter()
+        .find(|s| str_of(&s["uses"]).starts_with("zizmorcore/zizmor-action@"))
+        .expect("a zizmor step");
+    let with = &audit["with"];
+    let version = str_of(&with["version"]);
+    assert!(
+        semver::Version::parse(version).is_ok(),
+        "zizmor version {version:?} is not exact"
+    );
+    assert_eq!(str_of(&with["inputs"]), ".github/workflows");
+    // Findings fail the job in the log; uploading SARIF would need security-events: write.
+    assert_eq!(with["advanced-security"], Value::Bool(false));
+}
