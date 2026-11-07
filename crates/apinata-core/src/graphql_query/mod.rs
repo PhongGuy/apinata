@@ -7,9 +7,11 @@ mod deprecation;
 mod filter;
 mod format;
 pub(crate) mod mask;
+mod outline;
 mod validate;
 
 pub use format::format_query;
+pub use outline::{FieldPath, Lock, QueryOutline, query_outline};
 pub use validate::{
     CompiledSchema, QueryCheck, SCHEMA_SKIP_NOTE, SchemaUse, check_query, validate_query,
 };

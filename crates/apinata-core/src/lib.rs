@@ -196,9 +196,10 @@ pub use git::{
 };
 pub use global_env::GlobalEnvironments;
 pub use graphql_query::{
-    CompiledSchema, MAX_FORMAT_OUTPUT_BYTES, QUERY_DIAGNOSTIC_LIMIT, QUERY_FORMAT_LIMIT,
-    QUERY_VALIDATE_LIMIT, QueryCheck, QueryDiagnostic, QuerySeverity, QuerySyntaxError,
-    SCHEMA_SKIP_NOTE, SchemaUse, check_query, format_query, validate_query,
+    CompiledSchema, FieldPath, Lock, MAX_FORMAT_OUTPUT_BYTES, QUERY_DIAGNOSTIC_LIMIT,
+    QUERY_FORMAT_LIMIT, QUERY_VALIDATE_LIMIT, QueryCheck, QueryDiagnostic, QueryOutline,
+    QuerySeverity, QuerySyntaxError, SCHEMA_SKIP_NOTE, SchemaUse, check_query, format_query,
+    query_outline, validate_query,
 };
 pub use graphql_schema::{
     Completion, CompletionKind, Directive, EnumValue, Field, INTROSPECTION_QUERY, InputValue,
