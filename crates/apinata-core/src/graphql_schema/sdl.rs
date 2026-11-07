@@ -116,7 +116,7 @@ impl Reader<'_> {
         self.members(def)
     }
 
-    /// Reads one directive definition; a malformed piece skips it rather than failing the load.
+    /// Reads one directive definition. A missing name skips it; argument types are left to `admit`.
     fn directive(&mut self, d: &cst::DirectiveDefinition) -> Result<(), SchemaError> {
         let Some(name) = d.name().map(|n| n.text().to_string()) else {
             return Ok(());
