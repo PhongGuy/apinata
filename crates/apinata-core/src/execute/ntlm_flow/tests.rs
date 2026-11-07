@@ -12,7 +12,7 @@ async fn server(close: bool) -> (u16, Arc<AtomicUsize>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let accepted = Arc::new(AtomicUsize::new(0));
-    let count = accepted.clone();
+    let count = Arc::clone(&accepted);
     tokio::spawn(async move {
         while let Ok((mut s, _)) = listener.accept().await {
             count.fetch_add(1, Ordering::SeqCst);

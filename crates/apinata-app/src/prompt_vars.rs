@@ -133,7 +133,7 @@ fn open(
     // A one-slot channel and try_send: whichever answer lands first wins, later ones drop.
     let (tx, rx) = async_channel::bounded(1);
     let slot = Rc::new(RefCell::new(None));
-    let opened = slot.clone();
+    let opened = Rc::clone(&slot);
     window.defer(cx, move |window, cx| {
         // Nobody waits for an answer any more, so the dialog never opens.
         if tx.is_closed() {

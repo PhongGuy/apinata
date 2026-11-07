@@ -105,7 +105,7 @@ pub fn authorize_options(cx: &App) -> AuthorizeOptions {
             ..
         }) => options.authorizer(Arc::new(AppAuthorizer {
             messages: messages.clone(),
-            next_id: next_id.clone(),
+            next_id: Arc::clone(next_id),
         })),
         _ => options,
     }
@@ -386,7 +386,7 @@ mod tests {
             })
             .unwrap();
         let opened = Arc::new(AtomicU64::new(0));
-        let seen = opened.clone();
+        let seen = Arc::clone(&opened);
         cx.update(|cx| {
             install(win, cx);
             set_opener(

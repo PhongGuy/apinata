@@ -1350,7 +1350,7 @@ mod tests {
         let keys: Arc<dyn SecretStore> = Arc::new(crate::MemoryStore::new());
         let key = sealed::file_key(&*keys, KEY_NAME, LABEL).unwrap();
         sealed::write(&path, &key, &dropping_fixture(), LABEL).unwrap();
-        assert_eq!(CookieJar::open(&path, keys.clone()).load(), 3);
+        assert_eq!(CookieJar::open(&path, Arc::clone(&keys)).load(), 3);
         let on_disk: Vec<SavedCookie> = sealed::read(&path, &key).unwrap();
         let names: Vec<String> = on_disk.into_iter().map(|c| c.name).collect();
         assert_eq!(names, ["kept"]);

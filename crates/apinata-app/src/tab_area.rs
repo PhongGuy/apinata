@@ -1228,7 +1228,7 @@ impl TabArea {
             return;
         }
         let result = match editor.read(cx).send_model().read(cx).state() {
-            SendState::Done(result) => result.clone(),
+            SendState::Done(result) => Arc::clone(result),
             _ => return,
         };
         let Some(response) = result

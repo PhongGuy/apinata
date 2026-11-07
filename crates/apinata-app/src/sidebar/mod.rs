@@ -2316,7 +2316,7 @@ impl Sidebar {
 impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.renders += 1;
-        let rows = self.rows.clone();
+        let rows = Rc::clone(&self.rows);
         let collections = self.workspace.read(cx).listed_collections(cx).len();
         while self.button_focus.len() < collections {
             self.button_focus.push(cx.focus_handle());
@@ -2328,11 +2328,11 @@ impl Render for Sidebar {
                 .iter()
                 .any(|f| f.contains_focused(window, cx));
         let button_focus = self.button_focus.clone();
-        let menu_rows = self.rows.clone();
+        let menu_rows = Rc::clone(&self.rows);
         self.tag_paints.borrow_mut().clear();
-        let paints = self.tag_paints.clone();
-        let (git, menu_git) = (self.git.clone(), self.git.clone());
-        let rollup = self.rollup.clone();
+        let paints = Rc::clone(&self.tag_paints);
+        let (git, menu_git) = (Rc::clone(&self.git), Rc::clone(&self.git));
+        let rollup = Rc::clone(&self.rollup);
         let hovered = self.hovered.clone();
         let busy: Vec<bool> = self
             .workspace
@@ -2344,7 +2344,7 @@ impl Render for Sidebar {
         // The hint names the key bound in this view's own context, wherever focus is.
         // It steps aside when the field is too narrow for it; the field's width does not
         // depend on the hint, so a crossing settles in one extra frame.
-        let cramped = self.filter_cramped.clone();
+        let cramped = Rc::clone(&self.filter_cramped);
         let was_cramped = cramped.get();
         let filter_hint = Kbd::binding_for_action(&FocusFilter, Some(KEY_CONTEXT), window)
             .filter(|_| !was_cramped);
@@ -2362,7 +2362,7 @@ impl Render for Sidebar {
             });
         let multi_on = !members.is_empty();
         let drag_set = self.drag_set(cx);
-        let menu_members = members.clone();
+        let menu_members = Rc::clone(&members);
         let list_active = cx.theme().list_active;
         let muted = cx.theme().muted_foreground;
         // The scratch pad is listed: say what it is, since it looks like a collection.

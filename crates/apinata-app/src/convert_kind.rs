@@ -175,7 +175,7 @@ fn converted(
         .id::<ConvertToast>()
         .message(message)
         .action(move |_, _, cx| {
-            let (undo, this) = (undo.clone(), cx.entity());
+            let (undo, this) = (Rc::clone(&undo), cx.entity());
             Button::new("undo-convert")
                 .ghost()
                 .label("Undo")

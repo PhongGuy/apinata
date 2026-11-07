@@ -3,6 +3,9 @@
 //! Each file beside this one is a module of this single binary, so the
 //! suite links once. A new test file must be declared below, or it never runs.
 
+// Fixtures are shared by plain `.clone()` here; the explicit form only matters in shipped code.
+#![allow(clippy::clone_on_ref_ptr)]
+
 mod common;
 #[path = "../../apinata-core/tests/git_support/mod.rs"]
 mod git_support;

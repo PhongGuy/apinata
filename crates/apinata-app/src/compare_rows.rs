@@ -131,7 +131,7 @@ fn header_eye(ix: usize, name: &str, eye: HeaderEye, actions: &RowActions, cx: &
     let button = match eye {
         HeaderEye::Locked => button.lock(true, cx),
         _ => {
-            let (reveal, name) = (actions.reveal.clone(), name.to_owned());
+            let (reveal, name) = (Rc::clone(&actions.reveal), name.to_owned());
             button.on_click(move |_, window, cx| reveal(&name, window, cx))
         }
     };
@@ -201,7 +201,7 @@ pub fn compare_row(
                 .cursor_pointer()
                 .text_color(p.muted)
                 .on_click({
-                    let toggle = actions.toggle.clone();
+                    let toggle = Rc::clone(&actions.toggle);
                     move |_, window, cx| toggle(window, cx)
                 })
                 .child(label)

@@ -14,6 +14,7 @@ use gpui_kit::{
 };
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::command::{Command, TreeOp};
 use crate::snapshot::{Content, RowKind};
@@ -210,7 +211,7 @@ impl SaveDraftForm {
         };
         let workspace = choice.workspace.clone();
         // The seam, when set, answers in place of the native prompt.
-        let seam = cx.try_global::<FolderPickSeam>().map(|s| s.0.clone());
+        let seam = cx.try_global::<FolderPickSeam>().map(|s| Rc::clone(&s.0));
         let native = seam.is_none().then(|| {
             cx.prompt_for_paths(PathPromptOptions {
                 files: false,

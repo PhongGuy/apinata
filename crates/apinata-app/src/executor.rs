@@ -189,15 +189,16 @@ pub fn save_cookies(jar: &CookieJar) {
 
 /// The shared executor, or `None` when `install` has not succeeded.
 pub fn shared(cx: &App) -> Option<Arc<Executor>> {
-    cx.try_global::<SharedExecutor>().map(|s| s.0.clone())
+    cx.try_global::<SharedExecutor>().map(|s| Arc::clone(&s.0))
 }
 
 /// The schema-load executor, or `None` when `install` has not succeeded.
 pub fn schema(cx: &App) -> Option<Arc<Executor>> {
-    cx.try_global::<SchemaExecutor>().map(|s| s.0.clone())
+    cx.try_global::<SchemaExecutor>().map(|s| Arc::clone(&s.0))
 }
 
 /// The executor for downloads (no session log), or `None` when `install` has not succeeded.
 pub fn unlogged(cx: &App) -> Option<Arc<Executor>> {
-    cx.try_global::<UnloggedExecutor>().map(|s| s.0.clone())
+    cx.try_global::<UnloggedExecutor>()
+        .map(|s| Arc::clone(&s.0))
 }

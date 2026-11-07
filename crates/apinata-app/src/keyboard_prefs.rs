@@ -347,7 +347,7 @@ fn answer(
 ) -> impl IntoElement {
     let wrapper = SharedString::from(format!("key-{id}-{what}"));
     let on_press = Rc::new(on_press);
-    let on_key = on_press.clone();
+    let on_key = Rc::clone(&on_press);
     div()
         .id(wrapper.clone())
         .test_support()

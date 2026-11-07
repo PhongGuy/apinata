@@ -97,7 +97,7 @@ pub async fn run_actor(
             actor.refuse_draft_from = faults.refuse_draft_from.clone();
             actor.network_ack = network_ack;
             if let Some(trash) = &faults.trash {
-                actor.trash = trash.clone();
+                actor.trash = Arc::clone(trash);
             }
             actor
         }
@@ -1412,7 +1412,7 @@ impl Actor {
             context_generation: self.context.generation(),
             dotenv_seq: self.dotenv_seq,
             network_notice: self.network_notice(),
-            stale: self.stale.clone(),
+            stale: Arc::clone(&self.stale),
             notices: mem::take(&mut self.notices).into(),
         })
     }

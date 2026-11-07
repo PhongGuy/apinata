@@ -248,7 +248,7 @@ pub fn open(
                 }
             };
             let answering = |id: &'static str, label: &'static str, choice: Choice| {
-                let (state, answer) = (state.clone(), answer.clone());
+                let (state, answer) = (state.clone(), Rc::clone(&answer));
                 Button::new(id).label(label).on_click(move |_, window, cx| {
                     state.update(cx, |d, _| d.open = false);
                     answer(choice, window, cx);

@@ -264,7 +264,7 @@ impl PreferencesView {
         });
         let keyboard = cx.new(KeyboardPrefs::new);
         let updates = cx.try_global::<AppState>().map(|s| s.updates.clone());
-        let secrets = cx.try_global::<AppState>().map(|s| s.secrets.clone());
+        let secrets = cx.try_global::<AppState>().map(|s| Arc::clone(&s.secrets));
         let mut subs = vec![
             cx.observe(&keyboard, |_, _, cx| cx.notify()),
             // A key or scroll zoom changes the zoom while the dialog is open; refill each

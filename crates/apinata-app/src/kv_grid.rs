@@ -688,7 +688,7 @@ impl RenderOnce for KvView {
                                     }
                                     None => (reveal.ids.1, IconName::Eye, "Show value"),
                                 };
-                                let f = reveal.on_toggle.clone();
+                                let f = Rc::clone(&reveal.on_toggle);
                                 // One button across the flip, so a keyboard press keeps focus.
                                 let eye = ui::swap_icon_button(
                                     (reveal.ids.0, ix),
@@ -758,7 +758,7 @@ impl RenderOnce for KvView {
                 .line_height(KV_VIEW_LINE_HEIGHT)
                 .children(cells)
                 .when_some(self.copy.as_ref(), |row, (id, tooltip, f)| {
-                    let f = f.clone();
+                    let f = Rc::clone(f);
                     row.child(
                         h_flex()
                             .id(("kv-copy-slot", ix))
@@ -772,7 +772,7 @@ impl RenderOnce for KvView {
                     )
                 })
                 .when_some(self.delete.as_ref(), |row, (id, tooltip, f)| {
-                    let f = f.clone();
+                    let f = Rc::clone(f);
                     row.child(
                         h_flex()
                             .id(("kv-delete-slot", ix))

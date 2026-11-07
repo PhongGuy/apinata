@@ -27,7 +27,7 @@ pub fn undo_toast(
         .id1::<UndoToast>(toast_key(entry))
         .message(message)
         .action(move |_, _, cx| {
-            let on_undo = on_undo.clone();
+            let on_undo = Rc::clone(&on_undo);
             let this = cx.entity();
             Button::new("undo-delete")
                 .ghost()

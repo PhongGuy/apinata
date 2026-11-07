@@ -164,7 +164,7 @@ impl RunnerView {
             let action = OpenRunResult {
                 root: model.root().to_path_buf(),
                 path: path.clone(),
-                result: result.clone(),
+                result: Arc::clone(result),
             };
             window.dispatch_action(action.boxed_clone(), cx);
         }

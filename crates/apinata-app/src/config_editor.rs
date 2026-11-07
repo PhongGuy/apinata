@@ -593,7 +593,7 @@ impl ConfigEditor {
         let snapshot = self.workspace.read(cx).snapshot(&self.root, cx)?;
         match &self.target {
             ConfigTarget::Folder(path) => snapshot.content.folders.get(path).cloned(),
-            ConfigTarget::Collection => Some(snapshot.content.collection.clone()),
+            ConfigTarget::Collection => Some(Arc::clone(&snapshot.content.collection)),
         }
     }
 

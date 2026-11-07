@@ -601,7 +601,7 @@ impl gpui_kit::Element for PaddedInput {
         };
         let held = std::rc::Rc::new(std::cell::RefCell::new(Held::default()));
         window.on_mouse_event({
-            let held = held.clone();
+            let held = Rc::clone(&held);
             move |e: &gpui_kit::MouseMoveEvent, _, _, _| {
                 let mut held = held.borrow_mut();
                 if held.pending && e.pressed_button == Some(MouseButton::Left) {
@@ -610,7 +610,7 @@ impl gpui_kit::Element for PaddedInput {
             }
         });
         window.on_mouse_event({
-            let held = held.clone();
+            let held = Rc::clone(&held);
             move |e: &gpui_kit::MouseUpEvent, _, _, _| {
                 let mut held = held.borrow_mut();
                 if held.pending && e.button == MouseButton::Left {
@@ -978,7 +978,7 @@ impl MethodTag {
 
     /// Writes the colour this tag applies into `paints` under `id`, from its own render.
     pub fn record(mut self, paints: &TagPaints, id: SharedString) -> Self {
-        self.record = Some((paints.clone(), id));
+        self.record = Some((Rc::clone(paints), id));
         self
     }
 }
@@ -1395,7 +1395,7 @@ pub fn strip_overflow(
                 menu = menu.scrollable(true);
                 start_on(&menu, selected, window, cx);
                 for (ix, label) in labels.iter().enumerate() {
-                    let on_pick = on_pick.clone();
+                    let on_pick = Rc::clone(&on_pick);
                     menu = menu.item(
                         PopupMenuItem::new(label.clone())
                             .checked(ix == selected)
@@ -1464,7 +1464,7 @@ pub fn select(
             menu = menu.scrollable(true);
             start_on(&menu, selected, window, cx);
             for (ix, label) in labels.iter().enumerate() {
-                let on_pick = on_pick.clone();
+                let on_pick = Rc::clone(&on_pick);
                 menu = menu.item(
                     PopupMenuItem::new(label.clone())
                         .checked(ix == selected)
@@ -1735,7 +1735,7 @@ impl Reveal {
     /// The marker that keeps item `ix` of the strip `scroll` tracks in view; draw it after
     /// the strip so the strip is measured first.
     pub fn watch(&self, scroll: &ScrollHandle, ix: usize) -> impl IntoElement + use<> {
-        let (seen, scroll) = (self.0.clone(), scroll.clone());
+        let (seen, scroll) = (Rc::clone(&self.0), scroll.clone());
         canvas(
             move |_, window, _| {
                 let viewport = scroll.bounds();
@@ -1847,7 +1847,7 @@ impl StripFades {
         let edges = hidden_edges(scroll, items);
         // The marker measures the wrapper and redraws once when it or the edges changed
         // after this render, so a resize or a reveal is not left a frame behind.
-        let (cell, handle) = (self.0.clone(), scroll.clone());
+        let (cell, handle) = (Rc::clone(&self.0), scroll.clone());
         let view = scroll.bounds();
         let drawn = FadeLayout {
             view,
@@ -2062,13 +2062,16 @@ impl RenderOnce for Segmented {
         let (fg, muted) = (t.foreground, t.muted_foreground);
         let track = t.muted;
         let focused = {
-            let handles = handles.clone();
+            let handles = Rc::clone(&handles);
             move |window: &Window| handles.iter().position(|h| h.is_focused(window))
         };
         // An arrow steps from the focused segment, wrapping, then chooses and focuses it.
         let step = {
-            let (handles, on_select, focused) =
-                (handles.clone(), self.on_select.clone(), focused.clone());
+            let (handles, on_select, focused) = (
+                Rc::clone(&handles),
+                Rc::clone(&self.on_select),
+                focused.clone(),
+            );
             move |forward: bool, window: &mut Window, cx: &mut App| {
                 let n = handles.len();
                 let Some(ix) = focused(window) else { return };
@@ -2089,7 +2092,7 @@ impl RenderOnce for Segmented {
             .enumerate()
             .map(|(ix, (label, id))| {
                 let sel = ix == self.selected;
-                let on_select = self.on_select.clone();
+                let on_select = Rc::clone(&self.on_select);
                 // `selected` stops the kit painting its hover over the current choice.
                 let button = Button::new(id)
                     .ghost()
@@ -2104,8 +2107,8 @@ impl RenderOnce for Segmented {
                 }
             });
         // The track hugs its segments; `form-control` is a flex row, so it keeps its content width.
-        let on_select = self.on_select.clone();
-        let (next, prev) = (step.clone(), step);
+        let on_select = Rc::clone(&self.on_select);
+        let (next, prev) = (Rc::clone(&step), step);
         h_flex()
             .id(self.id)
             .test_support()
@@ -2725,10 +2728,11 @@ pub fn narrower_than(
     window: &mut Window,
     cx: &mut App,
 ) -> (bool, impl IntoElement + use<>) {
-    let narrow = window
-        .use_keyed_state(id, cx, |_, _| Rc::new(Cell::new(false)))
-        .read(cx)
-        .clone();
+    let narrow = Rc::clone(
+        window
+            .use_keyed_state(id, cx, |_, _| Rc::new(Cell::new(false)))
+            .read(cx),
+    );
     let was = narrow.get();
     let watch = canvas(
         move |bounds, window, _| {

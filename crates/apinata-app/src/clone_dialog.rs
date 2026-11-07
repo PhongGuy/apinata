@@ -495,7 +495,7 @@ impl CloneView {
             ),
         };
         // A changed room redraws the form once the frame is done.
-        let (cell, me) = (self.parent_room.clone(), cx.entity().downgrade());
+        let (cell, me) = (Rc::clone(&self.parent_room), cx.entity().downgrade());
         let measure = canvas(
             move |bounds, window, cx| {
                 let size = window.text_style().font_size.to_pixels(window.rem_size());

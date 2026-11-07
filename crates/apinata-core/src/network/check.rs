@@ -377,7 +377,7 @@ fn serial(store: &Path, root: &Path) -> Arc<tokio::sync::Mutex<()>> {
     static LOCKS: LazyLock<Mutex<Turns>> = LazyLock::new(Mutex::default);
     let mut locks = LOCKS.lock().unwrap_or_else(PoisonError::into_inner);
     let key = (store.to_path_buf(), root_key(root));
-    locks.entry(key).or_default().clone()
+    Arc::clone(locks.entry(key).or_default())
 }
 
 // The differences between the collection's view of this request and the send's, each marked

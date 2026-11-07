@@ -1025,7 +1025,7 @@ impl ChangesView {
                 row.child(div().id("changes-sections-spacer").test_support().h(chip))
             });
         let body = match (&doc.body, doc.note()) {
-            (DiffBody::Lines(_), _) => self.lines(self.rows.clone(), window, cx),
+            (DiffBody::Lines(_), _) => self.lines(Arc::clone(&self.rows), window, cx),
             (_, Some(note)) => div()
                 .id("changes-note")
                 .test_support()

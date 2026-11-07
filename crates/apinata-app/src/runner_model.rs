@@ -954,7 +954,7 @@ impl RunnerModel {
                 self.retrying = None;
                 let ix = at(index, self);
                 if result.response.is_some() {
-                    self.record(result.clone(), cx);
+                    self.record(Arc::clone(&result), cx);
                 }
                 if let Some(row) = self.rows.get_mut(ix) {
                     row.state = RowState::Done(result);

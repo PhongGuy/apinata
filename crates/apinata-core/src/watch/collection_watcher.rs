@@ -51,7 +51,7 @@ impl CollectionWatcher {
         });
         let watch = notify_factory()(handler)?;
         let stopped = Arc::new(AtomicBool::new(false));
-        let flag = stopped.clone();
+        let flag = Arc::clone(&stopped);
         let _ = inputs.send(Input::Dirs(dirs));
         std::thread::Builder::new()
             .name("collection-watcher".into())

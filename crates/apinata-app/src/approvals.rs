@@ -541,7 +541,7 @@ fn script_prompt(
         .map(|env| {
             let mut options = ContextOptions::new();
             if let Some(store) = secrets {
-                options = options.secrets(store.clone());
+                options = options.secrets(Arc::clone(store));
             }
             if let Some(name) = env {
                 options = options.env(name);

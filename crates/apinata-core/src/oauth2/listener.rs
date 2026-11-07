@@ -232,6 +232,7 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use std::sync::Arc;
 
     const LONG: Duration = Duration::from_secs(10);
 
@@ -464,7 +465,7 @@ mod tests {
     #[tokio::test]
     async fn a_persistent_accept_error_backs_off_instead_of_spinning() {
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counted = calls.clone();
+        let counted = Arc::clone(&calls);
         let listener = bound("http://127.0.0.1/callback")
             .await
             .with_accept(move |inner| Failing {
@@ -483,7 +484,7 @@ mod tests {
     #[tokio::test]
     async fn the_callback_still_arrives_after_accept_errors() {
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counted = calls.clone();
+        let counted = Arc::clone(&calls);
         let listener = bound("http://127.0.0.1/callback").await;
         let addr = listener.local_addr();
         let listener = listener.with_accept(move |inner| Failing {

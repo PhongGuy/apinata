@@ -65,7 +65,7 @@ impl<O: PartOwner> Render for Part<O> {
             .unwrap_or_else(|_| Empty.into_any_element());
         // The marker reads the size the content took; a change after a cached draw asks for
         // another frame, which the owner then lays out by content again.
-        let (cell, by_content) = (self.size.clone(), self.by_content);
+        let (cell, by_content) = (Rc::clone(&self.size), self.by_content);
         let measure = canvas(
             move |bounds, window, _| {
                 let old = cell.replace(Some(bounds.size));
@@ -196,7 +196,7 @@ impl<T> Same<T> {
 
 impl<T> Clone for Same<T> {
     fn clone(&self) -> Self {
-        Same(self.0.clone())
+        Same(std::sync::Weak::clone(&self.0))
     }
 }
 

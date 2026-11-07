@@ -445,7 +445,7 @@ pub fn open_with(
         let key = (dialog_state.read(cx).query(cx), available, rem, cap);
         let command = rows_key.render(&dialog_state, key, || {
             palette(&dialog_state, &requests, available, rem, cap, cx).on_confirm({
-                let (target, requests) = (target.clone(), requests.clone());
+                let (target, requests) = (target.clone(), Rc::clone(&requests));
                 let (sidebar, workspace) = (sidebar.clone(), workspace.clone());
                 let tab_area = tab_area.clone();
                 move |path, window, cx| {

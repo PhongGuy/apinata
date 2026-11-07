@@ -204,7 +204,7 @@ impl TokenCache {
         self.inner
             .loaded
             .get_or_init(|| async {
-                let inner = self.inner.clone();
+                let inner = Arc::clone(&self.inner);
                 if let Err(e) = tokio::task::spawn_blocking(move || inner.load_blocking()).await {
                     self.inner.state().persistence = Persistence::MemoryOnly {
                         reason: format!("the token cache could not be loaded: {e}"),
@@ -304,7 +304,7 @@ impl TokenCache {
     /// The flight that callers hold while fetching the token for `key`, one per key.
     pub(crate) fn flight(&self, key: &CacheKey) -> Arc<Flight> {
         let mut flights = self.inner.flights.lock().unwrap_or_else(|e| e.into_inner());
-        flights.entry(key.clone()).or_default().clone()
+        Arc::clone(flights.entry(key.clone()).or_default())
     }
 
     /// Applies `change` to the entry list after loading, merging with the file when encrypted.
@@ -313,7 +313,7 @@ impl TokenCache {
         change: impl FnOnce(&mut Vec<Entry>) -> R + Send + 'static,
     ) -> R {
         self.load().await;
-        let inner = self.inner.clone();
+        let inner = Arc::clone(&self.inner);
         match tokio::task::spawn_blocking(move || inner.update_blocking(change)).await {
             Ok(result) => result,
             Err(e) => std::panic::resume_unwind(e.into_panic()),
@@ -459,7 +459,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let keys: Arc<dyn SecretStore> = Arc::new(MemoryStore::new());
         let k = key("https://id.test/token", "main", Some("dev"));
-        opened(&dir, keys.clone())
+        opened(&dir, Arc::clone(&keys))
             .await
             .store(fresh(k.clone()))
             .await;
@@ -554,8 +554,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let keys: Arc<dyn SecretStore> = Arc::new(MemoryStore::new());
         let (a, b) = (
-            opened(&dir, keys.clone()).await,
-            opened(&dir, keys.clone()).await,
+            opened(&dir, Arc::clone(&keys)).await,
+            opened(&dir, Arc::clone(&keys)).await,
         );
         let (ka, kb) = (
             key("https://a.test/t", "a", None),
@@ -571,7 +571,7 @@ mod tests {
     async fn clear_removes_one_credentials_id_across_token_urls() {
         let dir = TempDir::new().unwrap();
         let keys: Arc<dyn SecretStore> = Arc::new(MemoryStore::new());
-        let cache = opened(&dir, keys.clone()).await;
+        let cache = opened(&dir, Arc::clone(&keys)).await;
         let gone = [
             key("https://a.test/t", "main", Some("dev")),
             key("https://b.test/t", "main", Some("dev")),

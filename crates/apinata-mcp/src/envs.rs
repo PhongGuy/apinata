@@ -441,7 +441,7 @@ mod tests {
         std::fs::write(root.join("environments/prod.yml"), env).expect("write");
         let mut c = Collection::open(root).expect("opens");
         let hung = Arc::new(Hung::default());
-        let store = TimeoutStore::new(hung.clone(), Duration::from_millis(200));
+        let store = TimeoutStore::new(Arc::<Hung>::clone(&hung), Duration::from_millis(200));
         let warnings = c
             .rename_environment("prod", "live", &store)
             .expect("the rename stands");

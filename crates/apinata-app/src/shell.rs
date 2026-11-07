@@ -507,7 +507,7 @@ impl Shell {
         // then goes back to what held it before a key or press, or to the active tab.
         let stand_in = Rc::new(StandIn::default());
         subscriptions.push(cx.on_focus(&focus, window, {
-            let stand_in = stand_in.clone();
+            let stand_in = Rc::clone(&stand_in);
             move |this, window, cx| {
                 if window.has_active_dialog(cx) {
                     return;
@@ -519,7 +519,7 @@ impl Shell {
         }));
         let me = window.window_handle();
         subscriptions.push(cx.intercept_keystrokes({
-            let (stand_in, shell) = (stand_in.clone(), focus.clone());
+            let (stand_in, shell) = (Rc::clone(&stand_in), focus.clone());
             move |_, window, cx| {
                 if window.window_handle() == me {
                     stand_in.hold(&shell, window, cx);
@@ -1097,7 +1097,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let store = self.workspace.read(cx).store().clone();
+        let store = Arc::clone(self.workspace.read(cx).store());
         cx.spawn_in(window, async move |this, cx| {
             place_bundles(&this, bundles, store, cx).await
         })
@@ -1108,7 +1108,7 @@ impl Shell {
     // file fails at once; cancelling either prompt does nothing. A failed write keeps and opens
     // the collections before it.
     pub(crate) fn browse_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let store = self.workspace.read(cx).store().clone();
+        let store = Arc::clone(self.workspace.read(cx).store());
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -1140,7 +1140,7 @@ impl Shell {
     fn files_dropped(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_hover = false;
         cx.notify();
-        let store = self.workspace.read(cx).store().clone();
+        let store = Arc::clone(self.workspace.read(cx).store());
         cx.spawn_in(window, async move |this, cx| {
             let sniffed = cx
                 .background_spawn(
@@ -1156,7 +1156,7 @@ impl Shell {
                         let _ = this.update(cx, |this, cx| this.draft_from_drop(*request, cx));
                     }
                     Dropped::Collections(bundles) => {
-                        place_bundles(&this, bundles, store.clone(), cx).await;
+                        place_bundles(&this, bundles, Arc::clone(&store), cx).await;
                     }
                     Dropped::Refused(message) => {
                         let _ = this.update_in(cx, |_, window, cx| {
@@ -1944,7 +1944,7 @@ impl Shell {
         let has_name = self.branch.is_some();
         let count_hidden = hidden || (has_name && self.changes_clipped.get());
         let measure_at = |cell: &Rc<Cell<bool>>, least: Rems| {
-            let cell = cell.clone();
+            let cell = Rc::clone(cell);
             canvas(
                 move |bounds, window, _| {
                     let now = bounds.size.width < rem(least, window);
@@ -1964,7 +1964,7 @@ impl Shell {
         let whole = self.count_natural.get();
         let box_room: Rc<Cell<Option<Pixels>>> = Rc::default();
         let measure_whole = || {
-            let room = box_room.clone();
+            let room = Rc::clone(&box_room);
             canvas(
                 move |bounds, _, _| room.set(Some(bounds.size.width)),
                 |_, _, _, _| {},
@@ -1973,8 +1973,11 @@ impl Shell {
             .size_full()
         };
         let whole_copy = |text: String| {
-            let (natural, clipped) = (self.count_natural.clone(), self.changes_clipped.clone());
-            let room = box_room.clone();
+            let (natural, clipped) = (
+                Rc::clone(&self.count_natural),
+                Rc::clone(&self.changes_clipped),
+            );
+            let room = Rc::clone(&box_room);
             div()
                 .absolute()
                 .top_0()
@@ -2035,7 +2038,10 @@ impl Shell {
         // and this frame's width, which the whole copy measured before it, so a grown text that
         // no longer fits is not shown for a frame.
         let count_probe = || {
-            let (clipped, natural) = (self.changes_clipped.clone(), self.count_natural.clone());
+            let (clipped, natural) = (
+                Rc::clone(&self.changes_clipped),
+                Rc::clone(&self.count_natural),
+            );
             div()
                 .id("git-count-probe")
                 .relative()
@@ -2516,8 +2522,8 @@ impl Shell {
                             .child(Self::app_menu_slot(
                                 crate::app_menu::app_menu(
                                     self.focus.clone(),
-                                    self.stand_in.clone(),
-                                    self.app_menu_open.clone(),
+                                    Rc::clone(&self.stand_in),
+                                    Rc::clone(&self.app_menu_open),
                                     scratch_only,
                                     cx,
                                 ),
@@ -2679,7 +2685,7 @@ impl Render for Shell {
             .key_context(SHELL_CONTEXT)
             .track_focus(&self.focus)
             .capture_any_mouse_down({
-                let stand_in = self.stand_in.clone();
+                let stand_in = Rc::clone(&self.stand_in);
                 let shell = self.focus.clone();
                 move |_, window, cx| stand_in.hold(&shell, window, cx)
             })
@@ -2842,7 +2848,7 @@ impl Render for Shell {
                 let tab = (this.workspace)
                     .update(cx, |w, cx| w.open_item(&a.root, a.path.clone(), false, cx));
                 if let Some(tab) = tab {
-                    let result = a.result.clone();
+                    let result = Arc::clone(&a.result);
                     (this.tab_area).update(cx, |t, cx| t.show_result(tab, result, window, cx));
                 }
             }))
@@ -3015,7 +3021,7 @@ impl Render for Shell {
             // Painted last, so its capture listener runs after the response body's: a
             // ctrl+scroll the body did not take zooms the app.
             .child({
-                let pending = self.scroll_pending.clone();
+                let pending = Rc::clone(&self.scroll_pending);
                 canvas(
                     |_, _, _| {},
                     move |_, _, window, _| {

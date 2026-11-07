@@ -375,7 +375,7 @@ impl DraftStore {
                     key: id.0.clone(),
                     slot: id.1,
                     name: view.name.clone(),
-                    snapshot: snapshot.clone(),
+                    snapshot: Arc::clone(snapshot),
                     blanks: view.blanks_credentials,
                 });
             }

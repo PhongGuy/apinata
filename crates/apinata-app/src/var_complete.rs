@@ -295,11 +295,11 @@ fn cached_choices(
         && Arc::ptr_eq(v, vars)
         && *r == revision
     {
-        return c.clone();
+        return Rc::clone(c);
     }
     let found: Rc<[Choice]> = choices(vars).into();
     state.update(cx, |s, _| {
-        s.choices = Some((vars.clone(), revision, found.clone()))
+        s.choices = Some((Arc::clone(vars), revision, Rc::clone(&found)))
     });
     found
 }
@@ -473,7 +473,7 @@ fn with_list(
         shown, selected, ..
     } = open;
     let accept_with = {
-        let (state, source, shown) = (state.clone(), source.clone(), shown.clone());
+        let (state, source, shown) = (state.clone(), source.clone(), Rc::clone(&shown));
         Rc::new(move |window: &mut Window, cx: &mut App| {
             accept_selected(&state, &source, &shown, mode, window, cx)
         })
@@ -507,7 +507,7 @@ fn with_list(
         };
         // A click selects the row and accepts it; stopping the event keeps the field's focus.
         let on_click = {
-            let (state, accept_with) = (state.clone(), accept_with.clone());
+            let (state, accept_with) = (state.clone(), Rc::clone(&accept_with));
             move |_: &MouseDownEvent, window: &mut Window, cx: &mut App| {
                 state.update(cx, |s, _| {
                     if let Some(m) = &mut s.menu {
@@ -564,8 +564,8 @@ fn with_list(
         .text_color(cx.theme().popover_foreground)
         .text_size(style::TEXT_SMALL)
         .children(rows);
-    let (down, up) = ((state.clone(), shown.clone()), (state.clone(), shown));
-    let (enter, tab) = (accept_with.clone(), accept_with);
+    let (down, up) = ((state.clone(), Rc::clone(&shown)), (state.clone(), shown));
+    let (enter, tab) = (Rc::clone(&accept_with), accept_with);
     let esc = state.clone();
     root.capture_action(move |_: &MoveDown, _, cx| {
         step(&down.0, &down.1, true, mode, cx);

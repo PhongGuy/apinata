@@ -1986,7 +1986,7 @@ impl Inherited {
                 &snap.content.environments,
                 snap.selected_environment.clone(),
             ),
-            globals: effective.as_ref().map(|(g, _)| g.clone()),
+            globals: effective.as_ref().map(|(g, _)| Arc::clone(g)),
             selected_global: effective.map(|(_, n)| n),
             dotenv_seq: snap.dotenv_seq,
         }
