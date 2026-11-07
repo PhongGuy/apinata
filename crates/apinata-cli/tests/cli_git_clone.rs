@@ -4,12 +4,16 @@ use crate::common;
 use crate::git_support;
 
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
 use common::apinata;
-use git_support::{HANG_GIT, SCRUBBED, Sandbox, path_with, wait_gone, write};
+#[cfg(target_os = "linux")]
+use git_support::{HANG_GIT, wait_gone};
+use git_support::{SCRUBBED, Sandbox, path_with, write};
 use predicates::str::contains;
 
 /// Drop ambient git and ssh overrides and ignore the system git config, so a run is hermetic.

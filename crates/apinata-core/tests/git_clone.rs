@@ -6,7 +6,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use apinata_core::{CancelFlag, CloneError, CloneProgress, CloneRequest, GitOptions, clone_repo};
-use git_support::{HANG_GIT, Sandbox, path_with, wait_gone};
+#[cfg(target_os = "linux")]
+use git_support::{HANG_GIT, wait_gone};
+use git_support::{Sandbox, path_with};
 
 fn parent(sb: &Sandbox) -> PathBuf {
     let p = sb.path().join("dest");
@@ -30,6 +32,7 @@ fn run(
     (r, seen)
 }
 
+#[cfg(target_os = "linux")]
 fn pid(bin: &Path) -> u32 {
     fs::read_to_string(bin.join("pid"))
         .unwrap()
