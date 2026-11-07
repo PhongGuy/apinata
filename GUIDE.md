@@ -863,8 +863,8 @@ check your downloads with:
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-Files built without the project's signing certificate carry `-unsigned` in
-their names, such as `apinata-app_<v>_x64-setup-unsigned.exe`. The macOS and
+To check that this project's release workflow built a file, run
+`gh attestation verify <file> --repo PhongGuy/apinata`. The macOS and
 Windows signing notes are in the [README](README.md#signing-and-checksums) and
 [RELEASING.md](RELEASING.md).
 

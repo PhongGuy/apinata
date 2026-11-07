@@ -15,10 +15,9 @@ use serde_json::{Map, Value};
 pub const PACKAGE: &str = "apinata-app";
 /// Environment variable holding the macOS code-signing identity.
 pub const MACOS_IDENTITY_VAR: &str = "APINATA_MACOS_SIGNING_IDENTITY";
-/// Environment variable holding the Windows sign command.
-pub const WINDOWS_SIGN_COMMAND_VAR: &str = "APINATA_WINDOWS_SIGN_COMMAND";
 
-/// Every spelling cargo-packager accepts for a signing setting, by section.
+/// Every spelling cargo-packager accepts for a signing setting, by section; Windows ships
+/// unsigned, so its settings are refused in the committed metadata too.
 const SECRET_KEYS: &[(&str, &[&str])] = &[
     (
         "macos",
@@ -41,17 +40,15 @@ const SECRET_KEYS: &[(&str, &[&str])] = &[
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Signing {
     pub macos_identity: Option<String>,
-    pub windows_sign_command: Option<String>,
 }
 
 impl Signing {
-    /// Reads both variables through `get`; an unset or blank value means unsigned, since an
+    /// Reads the variable through `get`; an unset or blank value means unsigned, since an
     /// absent CI secret expands to an empty string.
     pub fn from_vars(get: impl Fn(&str) -> Option<String>) -> Signing {
         let present = |name: &str| get(name).filter(|value| !value.trim().is_empty());
         Signing {
             macos_identity: present(MACOS_IDENTITY_VAR),
-            windows_sign_command: present(WINDOWS_SIGN_COMMAND_VAR),
         }
     }
 }
@@ -146,12 +143,6 @@ pub fn packager_config(
         "macos",
         "signingIdentity",
         &signing.macos_identity,
-    );
-    add_setting(
-        &mut config,
-        "windows",
-        "signCommand",
-        &signing.windows_sign_command,
     );
     Ok(Value::Object(config))
 }

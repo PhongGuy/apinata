@@ -79,79 +79,11 @@ test_sums_fails_when_nothing_is_hashed() {
   if bash "$RELEASE_SH" sums "$WORK/none" 2>/dev/null; then fail "sums passed with no artifacts"; fi
 }
 
-# Set the named variables to VALUE, as a workflow step's env does with secrets.
-set_vars() {
-  local value=$1 v
-  shift
-  for v in "$@"; do export "$v=$value"; done
-}
-
-test_windows_signing_mode_needs_both_or_neither_secret() {
-  set_vars "" WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD
-  [[ $(windows_signing_mode) == unsigned ]] || fail "blank secrets not unsigned"
-  set_vars "  " WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD
-  [[ $(windows_signing_mode) == unsigned ]] || fail "whitespace secrets not unsigned"
-  unset WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD
-  [[ $(windows_signing_mode) == unsigned ]] || fail "unset secrets not unsigned"
-  set_vars x WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD
-  [[ $(windows_signing_mode) == signed ]] || fail "both secrets not signed"
-  export WINDOWS_CERTIFICATE_PASSWORD=""
-  local msg
-  if msg=$(windows_signing_mode 2>&1); then fail "certificate without password accepted"; fi
-  [[ $msg == *WINDOWS_CERTIFICATE_PASSWORD* && $msg != *"WINDOWS_CERTIFICATE "* ]] || fail "message: $msg"
-  unset WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD
-}
-
-test_prepare_windows_signing_unsets_blank_secrets_when_unsigned() {
-  set_vars "" WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD APINATA_WINDOWS_SIGN_COMMAND
-  prepare_windows_signing unsigned "$WORK/keys-u"
-  local v
-  for v in WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD APINATA_WINDOWS_SIGN_COMMAND; do
-    [[ -z ${!v+set} ]] || fail "$v still set after an unsigned prepare"
-  done
-  [[ ! -e $WORK/keys-u ]] || fail "key directory created for an unsigned build"
-}
-
-test_prepare_windows_signing_writes_a_private_certificate_and_sign_command() {
-  printf 'pfx bytes' >"$WORK/cert.pfx"
-  export WINDOWS_CERTIFICATE=$(base64 -w0 "$WORK/cert.pfx") WINDOWS_CERTIFICATE_PASSWORD='pw with space'
-  prepare_windows_signing signed "$WORK/keys-s"
-  cmp -s "$WORK/keys-s/apinata.pfx" "$WORK/cert.pfx" || fail "certificate not decoded"
-  [[ $(stat -c %a "$WORK/keys-s/apinata.pfx") == 600 ]] || fail "certificate mode $(stat -c %a "$WORK/keys-s/apinata.pfx")"
-  [[ $(stat -c %a "$WORK/keys-s") == 700 ]] || fail "key dir mode $(stat -c %a "$WORK/keys-s")"
-  [[ -z ${WINDOWS_CERTIFICATE+set} ]] || fail "certificate still in the environment"
-  [[ ${APINATA_WINDOWS_SIGN_COMMAND:-} == "bash $WORK/keys-s/sign.sh %1" ]] || fail "sign command: ${APINATA_WINDOWS_SIGN_COMMAND:-}"
-  # Match the password value and signtool's flag, not a substring a mktemp path can hold.
-  [[ $APINATA_WINDOWS_SIGN_COMMAND != *"$WINDOWS_CERTIFICATE_PASSWORD"* && $APINATA_WINDOWS_SIGN_COMMAND != *" /p "* ]] \
-    || fail "password in the sign command"
-
-  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >"%s/signtool.args"\n' "$WORK" >"$WORK/signtool"
-  chmod +x "$WORK/signtool"
-  SIGNTOOL=$WORK/signtool bash "$WORK/keys-s/sign.sh" 'C:\out\apinata-app.exe' || fail "sign.sh failed"
-  local want; want=$(printf '%s\n' sign /fd SHA256 /f "$WORK/keys-s/apinata.pfx" /p 'pw with space' /d Apinata 'C:\out\apinata-app.exe')
-  [[ $(cat "$WORK/signtool.args") == "$want" ]] || fail "signtool args: $(tr '\n' '|' <"$WORK/signtool.args")"
-  unset WINDOWS_CERTIFICATE_PASSWORD APINATA_WINDOWS_SIGN_COMMAND
-}
-
-test_prepare_windows_signing_refuses_a_bad_certificate_or_a_spaced_path() {
-  export WINDOWS_CERTIFICATE='not base64!' WINDOWS_CERTIFICATE_PASSWORD=pw
-  if (prepare_windows_signing signed "$WORK/keys-bad") 2>/dev/null; then fail "undecodable certificate accepted"; fi
-  export WINDOWS_CERTIFICATE=$(printf x | base64)
-  if (prepare_windows_signing signed "$WORK/with space") 2>/dev/null; then fail "key dir with a space accepted"; fi
-  if (SIGN_SHELL='C:/Program Files/Git/usr/bin/bash.exe' prepare_windows_signing signed "$WORK/keys-sp") 2>/dev/null; then
-    fail "sign shell with a space accepted"
+# Windows has no trusted certificate, so the build neither signs nor renames its files.
+test_windows_is_never_signed_or_renamed() {
+  if grep -nE 'WINDOWS_CERTIFICATE|signtool|-unsigned' "$RELEASE_SH"; then
+    fail "release.sh still handles Windows signing"
   fi
-  unset WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD
-}
-
-test_mark_unsigned_renames_only_windows_artifacts() {
-  local d=$WORK/marks
-  mkdir -p "$d"
-  touch "$d/apinata-app_1.0.0_x64-setup.exe" "$d/apinata-1.0.0-x86_64-pc-windows-msvc.zip" "$d/Apinata_1.0.0_aarch64.dmg"
-  mark_unsigned "$d"
-  local got; got=$(ls "$d" | LC_ALL=C sort | tr '\n' ' ')
-  [[ $got == "Apinata_1.0.0_aarch64.dmg apinata-1.0.0-x86_64-pc-windows-msvc-unsigned.zip apinata-app_1.0.0_x64-setup-unsigned.exe " ]] \
-    || fail "after mark_unsigned: $got"
 }
 
 test_macos_dmg_ad_hoc_signs_then_wraps_the_app() {
@@ -244,11 +176,11 @@ test_update_map_lists_present_artifacts_by_target() {
   local d=$WORK/map
   mkdir -p "$d"
   touch "$d/apinata-app_1.2.3_x86_64.AppImage" "$d/Apinata_1.2.3_aarch64.app.tar.gz" \
-    "$d/apinata-app_1.2.3_x64-setup-unsigned.exe" "$d/apinata-1.2.3-x86_64-unknown-linux-gnu" \
+    "$d/apinata-app_1.2.3_x64-setup.exe" "$d/apinata-1.2.3-x86_64-unknown-linux-gnu" \
     "$d/apinata-1.2.3-x86_64-pc-windows-msvc.exe" "$d/apinata-1.2.3-x86_64-unknown-linux-gnu.tar.gz"
   local want="app-linux-x86_64 apinata-app_1.2.3_x86_64.AppImage
 app-macos-aarch64 Apinata_1.2.3_aarch64.app.tar.gz
-app-windows-x86_64 apinata-app_1.2.3_x64-setup-unsigned.exe
+app-windows-x86_64 apinata-app_1.2.3_x64-setup.exe
 cli-linux-x86_64 apinata-1.2.3-x86_64-unknown-linux-gnu
 cli-windows-x86_64 apinata-1.2.3-x86_64-pc-windows-msvc.exe"
   [[ $(update_map "$d" 1.2.3 | LC_ALL=C sort) == "$want" ]] || fail "map: $(update_map "$d" 1.2.3)"
@@ -277,7 +209,7 @@ test_stable_copies_names_each_platform_without_the_version() {
   for f in apinata-app_1.2.3_x86_64.AppImage apinata-app_1.2.3_aarch64.AppImage \
     apinata-app_1.2.3_amd64.deb apinata-app_1.2.3_arm64.deb \
     Apinata_1.2.3_aarch64.dmg Apinata_1.2.3_x86_64.dmg Apinata_1.2.3_x86_64.app.tar.gz \
-    apinata-app_1.2.3_x64-setup-unsigned.exe apinata-1.2.3-x86_64-pc-windows-msvc.exe \
+    apinata-app_1.2.3_x64-setup.exe apinata-1.2.3-x86_64-pc-windows-msvc.exe \
     apinata-1.2.3-x86_64-unknown-linux-gnu.tar.gz SHA256SUMS; do
     printf '%s' "$f" >"$d/$f"
   done
@@ -290,9 +222,9 @@ apinata-macos-aarch64.dmg
 apinata-macos-x86_64.dmg
 apinata-windows-setup.exe"
   [[ $(ls "$out" | LC_ALL=C sort) == "$want" ]] || fail "names: $(ls "$out")"
-  cmp -s "$out/apinata-windows-setup.exe" "$d/apinata-app_1.2.3_x64-setup-unsigned.exe" || fail "bytes differ"
+  cmp -s "$out/apinata-windows-setup.exe" "$d/apinata-app_1.2.3_x64-setup.exe" || fail "bytes differ"
   [[ $(ls "$d" | wc -l) -eq 11 ]] || fail "dist was changed"
-  # A signed installer name works the same, and an absent platform is skipped.
+  # An absent platform is skipped.
   rm -rf "$out" "$d"; mkdir -p "$d"
   touch "$d/apinata-app_1.2.3_x64-setup.exe"
   stable_copies "$d" "$out" || fail "windows-only failed"
