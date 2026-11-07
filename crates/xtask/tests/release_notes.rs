@@ -51,24 +51,62 @@ fn history(subjects: &[&str]) -> TempDir {
     t
 }
 
-/// Draft the notes for TAG with DIST holding FILES, and return them.
-fn notes(t: &TempDir, tag: &str, files: &[&str]) -> String {
+/// What GitHub's generate-notes returns as `.body` for a release with two pull requests.
+const GENERATED: &str = "## What's Changed\n### New features\n* Add a sidebar filter by @dev in https://github.com/example/apinata/pull/7\n### Fixes\n* Keep the cookie jar on reload by @dev in https://github.com/example/apinata/pull/8\n\n\n**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0";
+
+/// A fake `gh` in T that logs its arguments to `gh.log`, one per line, and prints
+/// `gh-body.md` (GENERATED unless a test wrote one); `gh-fail` makes it fail.
+fn fake_gh(t: &TempDir) -> std::path::PathBuf {
+    let body = t.path().join("gh-body.md");
+    if !body.exists() {
+        std::fs::write(&body, GENERATED).unwrap();
+    }
+    let gh = t.path().join("gh");
+    std::fs::write(
+        &gh,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" >>'{dir}/gh.log'\nif [ -e '{dir}/gh-fail' ]; then echo 'HTTP 404: Not Found' >&2; exit 1; fi\ncat '{dir}/gh-body.md'\n",
+            dir = t.path().display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+    gh
+}
+
+/// Run `release.sh notes` for TAG with DIST holding FILES and a fake `gh`.
+fn run_notes(t: &TempDir, tag: &str, files: &[&str]) -> std::process::Output {
     let dist = t.path().join("dist");
     std::fs::create_dir_all(&dist).unwrap();
     for f in files {
         std::fs::write(dist.join(f), b"x").unwrap();
     }
-    let out_file = t.path().join("notes.md");
     let repo = t.path().join("repo");
-    let out = isolated("bash", &repo, &t.path().join("home"))
+    isolated("bash", &repo, &t.path().join("home"))
         .arg(xtask::workspace_root().join("scripts/release.sh"))
         .args(["notes", tag, REPO])
         .arg(&dist)
-        .arg(&out_file)
+        .arg(t.path().join("notes.md"))
+        .env("GH", fake_gh(t))
         .output()
-        .unwrap();
+        .unwrap()
+}
+
+/// Draft the notes for TAG with DIST holding FILES, and return them.
+fn notes(t: &TempDir, tag: &str, files: &[&str]) -> String {
+    let out = run_notes(t, tag, files);
     assert!(out.status.success(), "{out:?}");
-    std::fs::read_to_string(out_file).unwrap()
+    std::fs::read_to_string(t.path().join("notes.md")).unwrap()
+}
+
+/// The arguments the fake `gh` was called with, one per line.
+fn gh_args(t: &TempDir) -> Vec<String> {
+    std::fs::read_to_string(t.path().join("gh.log"))
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// The section between HEADING and the next `## ` heading.
@@ -105,7 +143,67 @@ fn sections_follow_the_intro_in_order() {
 }
 
 #[test]
-fn whats_changed_keeps_feat_and_fix_since_the_previous_tag() {
+fn whats_changed_is_the_generated_list_of_merged_pull_requests() {
+    let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
+    let text = notes(&t, "v0.2.0", &[]);
+    assert_eq!(
+        gh_args(&t),
+        [
+            "api",
+            "repos/example/apinata/releases/generate-notes",
+            "-f",
+            "tag_name=v0.2.0",
+            "-f",
+            "previous_tag_name=v0.1.0",
+            "--jq",
+            ".body"
+        ]
+    );
+    let changed = section(&text, "What's Changed");
+    assert_eq!(
+        changed,
+        "## What's Changed\n\n### New features\n* Add a sidebar filter by @dev in https://github.com/example/apinata/pull/7\n### Fixes\n* Keep the cookie jar on reload by @dev in https://github.com/example/apinata/pull/8\n\n**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0\n\n",
+    );
+    assert_eq!(text.matches("## What's Changed").count(), 1, "{text}");
+}
+
+#[test]
+fn an_empty_generated_list_reads_as_maintenance_only() {
+    let t = history(&["feat: first", "tag:v0.1.0", "chore: tidy", "tag:v0.2.0"]);
+    std::fs::write(
+        t.path().join("gh-body.md"),
+        "**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0",
+    )
+    .unwrap();
+    let changed = section(&notes(&t, "v0.2.0", &[]), "What's Changed").to_owned();
+    assert_eq!(
+        changed,
+        "## What's Changed\n\n- Maintenance only.\n\n**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0\n\n",
+    );
+}
+
+#[test]
+fn a_failing_gh_fails_the_notes_and_writes_nothing() {
+    let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
+    std::fs::write(t.path().join("gh-fail"), "").unwrap();
+    let out = run_notes(&t, "v0.2.0", &[]);
+    assert!(!out.status.success(), "{out:?}");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("generate-notes"), "{err}");
+    assert!(!t.path().join("notes.md").exists());
+}
+
+#[test]
+fn an_empty_gh_reply_fails_the_notes() {
+    let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
+    std::fs::write(t.path().join("gh-body.md"), "").unwrap();
+    let out = run_notes(&t, "v0.2.0", &[]);
+    assert!(!out.status.success(), "{out:?}");
+    assert!(!t.path().join("notes.md").exists());
+}
+
+#[test]
+fn the_intro_skips_housekeeping_since_the_previous_tag() {
     let t = history(&[
         "feat: before the last tag",
         "tag:v0.1.0",
@@ -125,35 +223,34 @@ fn whats_changed_keeps_feat_and_fix_since_the_previous_tag() {
         "feat: after the tag",
     ]);
     let text = notes(&t, "v0.2.0", &[]);
-    let changed = section(&text, "What's Changed");
-    let items: Vec<&str> = changed.lines().filter(|l| l.starts_with("- ")).collect();
-    assert_eq!(
-        items,
-        [
-            "- add a sidebar filter",
-            "- keep the cookie jar on reload",
-            "- refuse a bad header"
-        ],
-        "{changed}"
-    );
     assert!(
         text.starts_with("This release adds 1 feature and fixes 2 bugs.\n"),
         "{text}"
     );
-    assert!(
-        changed.contains(
-            "**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0"
-        ),
-        "{changed}"
-    );
 }
 
 #[test]
-fn the_first_release_lists_everything_without_a_compare_link() {
+fn the_first_release_asks_without_a_previous_tag_and_has_no_changelog_link() {
     let t = history(&["feat: the first feature", "chore: setup", "tag:v0.1.0"]);
+    std::fs::write(
+        t.path().join("gh-body.md"),
+        "## What's Changed\n* The first feature by @dev in https://github.com/example/apinata/pull/1\n\n**Full Changelog**: https://github.com/example/apinata/commits/v0.1.0",
+    )
+    .unwrap();
     let text = notes(&t, "v0.1.0", &[]);
+    assert_eq!(
+        gh_args(&t),
+        [
+            "api",
+            "repos/example/apinata/releases/generate-notes",
+            "-f",
+            "tag_name=v0.1.0",
+            "--jq",
+            ".body"
+        ]
+    );
     let changed = section(&text, "What's Changed");
-    assert!(changed.contains("- the first feature\n"), "{changed}");
+    assert!(changed.contains("* The first feature by @dev"), "{changed}");
     assert!(
         text.starts_with("The first release of Apinata.\n"),
         "{text}"
@@ -250,10 +347,15 @@ fn a_pre_release_tag_is_not_the_previous_release() {
         "tag:v0.2.0",
     ]);
     let text = notes(&t, "v0.2.0", &[]);
-    let changed = section(&text, "What's Changed");
-    let items: Vec<&str> = changed.lines().filter(|l| l.starts_with("- ")).collect();
-    assert_eq!(items, ["- two", "- three"], "{changed}");
-    assert!(changed.contains("compare/v0.1.0...v0.2.0"), "{changed}");
+    assert!(gh_args(&t).contains(&"previous_tag_name=v0.1.0".to_owned()));
+    assert!(
+        text.starts_with("This release adds 2 features.\n"),
+        "{text}"
+    );
+    assert!(
+        section(&text, "What's Changed").contains("compare/v0.1.0...v0.2.0"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -267,11 +369,7 @@ fn housekeeping_scopes_are_left_out_inside_a_comma_list() {
         "tag:v0.2.0",
     ]);
     let text = notes(&t, "v0.2.0", &[]);
-    let items: Vec<&str> = section(&text, "What's Changed")
-        .lines()
-        .filter(|l| l.starts_with("- "))
-        .collect();
-    assert_eq!(items, ["- y"]);
+    assert!(text.starts_with("This release fixes 1 bug.\n"), "{text}");
 }
 
 #[test]

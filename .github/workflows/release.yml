@@ -109,7 +109,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Full history and tags, so the release notes can list commits since the previous tag.
+      # Full history and tags, so the release notes find the previous tag and count its commits.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
