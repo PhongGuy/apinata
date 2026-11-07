@@ -728,7 +728,11 @@ esac
         fs::write(held, "").unwrap();
         match repo.write(&["commit", "-q", "-m", "x"]) {
             Err(GitError::Busy { lock }) => {
-                assert_eq!(lock.canonicalize().unwrap(), held.canonicalize().unwrap())
+                assert_eq!(
+                    lock.canonicalize().unwrap(),
+                    held.canonicalize().unwrap(),
+                    "Busy names a different lock"
+                );
             }
             other => panic!("expected Busy, got {:?}", other.map(|o| o.status)),
         }
