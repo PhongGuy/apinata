@@ -255,7 +255,7 @@ fn extended_texts(value: &str) -> Vec<String> {
 
 // The value as the `url` crate writes it into a path, query, fragment, username or password.
 fn url_crate_forms(value: &str) -> Vec<String> {
-    // A literal URL that parses.
+    // A fixed base URL, so parsing it cannot fail.
     #[allow(clippy::expect_used)]
     let base = || Url::parse("http://h.test/").expect("a literal URL parses");
     let mut out = Vec::new();

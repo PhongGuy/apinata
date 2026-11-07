@@ -283,8 +283,7 @@ impl RuntimeVarsView {
             .collect()
     }
 
-    // The script rows and then the global rows as shown, each with whether it is masked,
-    // from one overlay read.
+    // The script rows and then the global rows as shown, from one overlay read.
     fn shown_entries(&self) -> ShownRows {
         let (mut script, mut global) = (Vec::new(), Vec::new());
         for r in self.all_rows() {
