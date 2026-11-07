@@ -154,3 +154,38 @@ fn protected_and_unselected_paths_give_none() {
         assert_eq!(untick(q, path), None, "{q:?} {path}");
     }
 }
+
+#[test]
+fn a_selected_union_can_be_unticked_but_never_ticked() {
+    check(&[(
+        "{ search { ... on User { id } } version }",
+        "Query.search",
+        "{ version }",
+    )]);
+    let s = Schema::from_sdl(SDL).unwrap();
+    assert_eq!(
+        toggle_field("{ version }", &s, &p("Query.search"), true),
+        None
+    );
+}
+
+#[test]
+fn a_last_field_before_an_inline_closer_takes_its_line_break() {
+    check(&[
+        (
+            "{\n  version\n  me {\n    id\n  } }",
+            "Query.me",
+            "{\n  version }",
+        ),
+        (
+            "{\r\n  version\r\n  me {\r\n    id\r\n  } }",
+            "Query.me",
+            "{\r\n  version }",
+        ),
+        (
+            "{\n  version # c\n  me {\n    id\n  } }",
+            "Query.me",
+            "{\n  version # c\n }",
+        ),
+    ]);
+}

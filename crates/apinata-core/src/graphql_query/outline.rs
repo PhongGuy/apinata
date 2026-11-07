@@ -144,7 +144,9 @@ impl<'s> QueryOutline<'s> {
         {
             return Some(Lock::SubscriptionField);
         }
-        if let Some(fields) = resolve(self.schema, path)
+        // A union field cannot be built by ticks, but one already selected may be unticked.
+        if !self.selects(path)
+            && let Some(fields) = resolve(self.schema, path)
             && let Some(last) = fields.last()
             && self
                 .schema
