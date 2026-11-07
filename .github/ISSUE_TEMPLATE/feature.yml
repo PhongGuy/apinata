@@ -1,0 +1,42 @@
+name: Feature
+description: A new ability, or a change to how something works.
+title: "Feature: "
+labels: [feature]
+assignees: [PhongGuy]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Desktop app
+        - CLI (apinata)
+        - MCP server
+        - Collection format
+        - Importing or exporting
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The task or problem, not the solution yet.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed
+      description: How it could work. Sketches and examples from other tools are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and workarounds
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: How we will know it works.

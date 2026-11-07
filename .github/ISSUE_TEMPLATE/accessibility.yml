@@ -1,0 +1,40 @@
+name: Accessibility barrier
+description: Something that is hard or impossible to use with a keyboard, screen reader, zoom, contrast settings or other assistive technology.
+title: "Accessibility: "
+labels: [accessibility]
+assignees: [PhongGuy]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Where in the app
+    validations:
+      required: true
+  - type: textarea
+    id: barrier
+    attributes:
+      label: The barrier
+      description: What you tried to do and what stopped you.
+    validations:
+      required: true
+  - type: input
+    id: tech
+    attributes:
+      label: Assistive technology
+      placeholder: e.g. Orca 46, NVDA 2025.1, VoiceOver, keyboard only, 200% scale, high contrast
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version

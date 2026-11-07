@@ -1,0 +1,36 @@
+name: Looks wrong or feels clunky
+description: Layout, wording, focus, keyboard flow or anything that works but is awkward.
+title: "UX: "
+labels: [ux]
+assignees: [PhongGuy]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Where in the app
+      placeholder: e.g. the GraphQL query editor's Docs panel
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What feels wrong
+      description: A screenshot or a short recording helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What would feel right
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+  - type: input
+    id: version
+    attributes:
+      label: Version
