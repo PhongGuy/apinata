@@ -203,6 +203,7 @@ mod graphql_validate;
 mod graphql_validate_filters;
 mod graphql_variable_completion;
 mod graphql_variable_defs;
+mod graphql_variable_hover;
 mod host_overrides;
 mod ignore_open;
 mod ignore_reload;

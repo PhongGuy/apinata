@@ -261,3 +261,65 @@ fn value_candidates(
 }
 
 const BUILT_IN_SCALARS: [&str; 5] = ["Int", "Float", "String", "Boolean", "ID"];
+
+/// A variables key explained for hover.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariableHover {
+    /// The key, quotes included.
+    pub range: Range<usize>,
+    /// `$id: ID!` at the root, `UserFilter.name: String` inside an input object.
+    pub signature: String,
+    /// The schema description of the input field.
+    pub description: Option<String>,
+    /// The query's or the schema's default, as source text.
+    pub default: Option<String>,
+}
+
+/// The key under byte `offset` of `variables`, explained. None off a key, for an unknown key,
+/// inside a placeholder, over `QUERY_VALIDATE_LIMIT`, or off a char boundary.
+pub fn variable_hover(
+    query: &str,
+    variables: &str,
+    offset: usize,
+    schema: Option<&Schema>,
+) -> Option<VariableHover> {
+    if query.len() > QUERY_VALIDATE_LIMIT || variables.len() > QUERY_VALIDATE_LIMIT {
+        return None;
+    }
+    let place = locate(variables, offset)?;
+    // Only an offset on the key's own token explains it; a gap or a value has no key here.
+    let token = variables.get(place.token.clone())?;
+    if place.role != Role::Key || !place.token.contains(&offset) || !token.starts_with('"') {
+        return None;
+    }
+    let body = &token[1..];
+    let name = body.strip_suffix('"').unwrap_or(body);
+    if name.is_empty() {
+        return None;
+    }
+    let defs = variable_definitions(query);
+    if place.path.is_empty() {
+        let def = defs.iter().find(|d| d.name == name)?;
+        return Some(VariableHover {
+            range: place.token,
+            signature: format!("${}: {}", def.name, def.ty),
+            description: None,
+            default: def.default.clone(),
+        });
+    }
+    let display = walk::type_at(&defs, schema, &place.path)?;
+    let object = walk::input_object(schema?, &display)?;
+    let field = object.input_fields().iter().find(|f| f.name() == name)?;
+    Some(VariableHover {
+        range: place.token,
+        signature: format!(
+            "{}.{}: {}",
+            object.name(),
+            field.name(),
+            field.ty().display()
+        ),
+        description: field.description().map(str::to_owned),
+        default: field.default_value().map(str::to_owned),
+    })
+}

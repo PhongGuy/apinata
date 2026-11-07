@@ -207,8 +207,8 @@ pub use graphql_schema::{
     fetch_schema, introspect, introspection_request,
 };
 pub use graphql_variables::{
-    VariableCompletion, VariableCompletionKind, VariableDefinition, variable_completions,
-    variable_definitions,
+    VariableCompletion, VariableCompletionKind, VariableDefinition, VariableHover,
+    variable_completions, variable_definitions, variable_hover,
 };
 pub use header_check::{HeaderNameProblem, invalid_header_name};
 pub use header_hints::{header_names, header_values};
