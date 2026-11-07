@@ -75,18 +75,12 @@ fn fake_gh(t: &TempDir) -> std::path::PathBuf {
     gh
 }
 
-/// Run `release.sh notes` for TAG with DIST holding FILES and a fake `gh`.
-fn run_notes(t: &TempDir, tag: &str, files: &[&str]) -> std::process::Output {
-    let dist = t.path().join("dist");
-    std::fs::create_dir_all(&dist).unwrap();
-    for f in files {
-        std::fs::write(dist.join(f), b"x").unwrap();
-    }
+/// Run `release.sh notes` for TAG with a fake `gh`.
+fn run_notes(t: &TempDir, tag: &str) -> std::process::Output {
     let repo = t.path().join("repo");
     isolated("bash", &repo, &t.path().join("home"))
         .arg(xtask::workspace_root().join("scripts/release.sh"))
         .args(["notes", tag, REPO])
-        .arg(&dist)
         .arg(t.path().join("notes.md"))
         .env("GH", fake_gh(t))
         .output()
@@ -94,8 +88,8 @@ fn run_notes(t: &TempDir, tag: &str, files: &[&str]) -> std::process::Output {
 }
 
 /// Draft the notes for TAG with DIST holding FILES, and return them.
-fn notes(t: &TempDir, tag: &str, files: &[&str]) -> String {
-    let out = run_notes(t, tag, files);
+fn notes(t: &TempDir, tag: &str) -> String {
+    let out = run_notes(t, tag);
     assert!(out.status.success(), "{out:?}");
     std::fs::read_to_string(t.path().join("notes.md")).unwrap()
 }
@@ -122,7 +116,7 @@ fn section<'a>(text: &'a str, heading: &str) -> &'a str {
 #[test]
 fn sections_follow_the_intro_in_order() {
     let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
-    let text = notes(&t, "v0.2.0", &[]);
+    let text = notes(&t, "v0.2.0");
     assert!(!text.starts_with('#'), "the intro comes first: {text}");
     assert!(
         text.starts_with("This release fixes 1 bug.\n\n## What's Changed\n"),
@@ -145,7 +139,7 @@ fn sections_follow_the_intro_in_order() {
 #[test]
 fn whats_changed_is_the_generated_list_of_merged_pull_requests() {
     let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
-    let text = notes(&t, "v0.2.0", &[]);
+    let text = notes(&t, "v0.2.0");
     assert_eq!(
         gh_args(&t),
         [
@@ -175,7 +169,7 @@ fn an_empty_generated_list_reads_as_maintenance_only() {
         "**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0",
     )
     .unwrap();
-    let changed = section(&notes(&t, "v0.2.0", &[]), "What's Changed").to_owned();
+    let changed = section(&notes(&t, "v0.2.0"), "What's Changed").to_owned();
     assert_eq!(
         changed,
         "## What's Changed\n\n- Maintenance only.\n\n**Full Changelog**: https://github.com/example/apinata/compare/v0.1.0...v0.2.0\n\n",
@@ -186,7 +180,7 @@ fn an_empty_generated_list_reads_as_maintenance_only() {
 fn a_failing_gh_fails_the_notes_and_writes_nothing() {
     let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
     std::fs::write(t.path().join("gh-fail"), "").unwrap();
-    let out = run_notes(&t, "v0.2.0", &[]);
+    let out = run_notes(&t, "v0.2.0");
     assert!(!out.status.success(), "{out:?}");
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("generate-notes"), "{err}");
@@ -197,7 +191,7 @@ fn a_failing_gh_fails_the_notes_and_writes_nothing() {
 fn an_empty_gh_reply_fails_the_notes() {
     let t = history(&["feat: first", "tag:v0.1.0", "fix: second", "tag:v0.2.0"]);
     std::fs::write(t.path().join("gh-body.md"), "").unwrap();
-    let out = run_notes(&t, "v0.2.0", &[]);
+    let out = run_notes(&t, "v0.2.0");
     assert!(!out.status.success(), "{out:?}");
     assert!(!t.path().join("notes.md").exists());
 }
@@ -222,7 +216,7 @@ fn the_intro_skips_housekeeping_since_the_previous_tag() {
         "tag:v0.2.0",
         "feat: after the tag",
     ]);
-    let text = notes(&t, "v0.2.0", &[]);
+    let text = notes(&t, "v0.2.0");
     assert!(
         text.starts_with("This release adds 1 feature and fixes 2 bugs.\n"),
         "{text}"
@@ -237,7 +231,7 @@ fn the_first_release_asks_without_a_previous_tag_and_has_no_changelog_link() {
         "## What's Changed\n* The first feature by @dev in https://github.com/example/apinata/pull/1\n\n**Full Changelog**: https://github.com/example/apinata/commits/v0.1.0",
     )
     .unwrap();
-    let text = notes(&t, "v0.1.0", &[]);
+    let text = notes(&t, "v0.1.0");
     assert_eq!(
         gh_args(&t),
         [
@@ -277,7 +271,7 @@ fn the_intro_counts_features_and_fixes_and_omits_a_zero_part() {
         let mut subjects = vec!["feat: base", "tag:v0.1.0"];
         subjects.extend_from_slice(commits);
         subjects.push("tag:v0.2.0");
-        let text = notes(&history(&subjects), "v0.2.0", &[]);
+        let text = notes(&history(&subjects), "v0.2.0");
         assert!(
             text.starts_with(&format!("{intro}\n\n")),
             "{commits:?}: {text}"
@@ -286,10 +280,10 @@ fn the_intro_counts_features_and_fixes_and_omits_a_zero_part() {
 }
 
 #[test]
-fn downloads_carry_the_version_and_mark_an_unsigned_windows_build() {
+fn downloads_carry_the_version_and_how_to_check_a_file() {
     let t = history(&["feat: one", "tag:v1.4.2"]);
-    let unsigned = notes(&t, "v1.4.2", &["apinata-app_1.4.2_x64-setup-unsigned.exe"]);
-    let table = section(&unsigned, "Downloads");
+    let text = notes(&t, "v1.4.2");
+    let table = section(&text, "Downloads");
     assert!(
         table.contains(
             "| Linux x86_64 | `apinata-app_1.4.2_amd64.deb` or `apinata-app_1.4.2_x86_64.AppImage` | `apinata-1.4.2-x86_64-unknown-linux-gnu.tar.gz` |"
@@ -298,29 +292,25 @@ fn downloads_carry_the_version_and_mark_an_unsigned_windows_build() {
     );
     assert!(
         table.contains(
-            "| Windows x86_64 | `apinata-app_1.4.2_x64-setup-unsigned.exe` | `apinata-1.4.2-x86_64-pc-windows-msvc-unsigned.zip` |"
+            "| Windows x86_64 | `apinata-app_1.4.2_x64-setup.exe` | `apinata-1.4.2-x86_64-pc-windows-msvc.zip` |"
         ),
         "{table}"
     );
     assert!(table.contains("Check a download with `sha256sum -c SHA256SUMS`."));
-
-    let t = history(&["feat: one", "tag:v1.4.2"]);
-    let signed = notes(&t, "v1.4.2", &["apinata-app_1.4.2_x64-setup.exe"]);
     assert!(
-        section(&signed, "Downloads").contains(
-            "| Windows x86_64 | `apinata-app_1.4.2_x64-setup.exe` | `apinata-1.4.2-x86_64-pc-windows-msvc.zip` |"
-        ),
-        "{signed}"
+        table.contains(&format!("`gh attestation verify <file> --repo {REPO}`")),
+        "{table}"
     );
 }
 
 #[test]
 fn before_you_install_and_updates_cover_each_platform() {
     let t = history(&["feat: one", "tag:v1.0.0"]);
-    let text = notes(&t, "v1.0.0", &[]);
+    let text = notes(&t, "v1.0.0");
     let before = section(&text, "Before you install");
+    assert!(!before.contains("certificate"), "{before}");
     for needle in [
-        "**Windows:**",
+        "**Windows:** the installer and the zip are not code-signed",
         "SmartScreen",
         "**macOS:**",
         "xattr -dr com.apple.quarantine /Applications/Apinata.app",
@@ -346,7 +336,7 @@ fn a_pre_release_tag_is_not_the_previous_release() {
         "feat: three",
         "tag:v0.2.0",
     ]);
-    let text = notes(&t, "v0.2.0", &[]);
+    let text = notes(&t, "v0.2.0");
     assert!(gh_args(&t).contains(&"previous_tag_name=v0.1.0".to_owned()));
     assert!(
         text.starts_with("This release adds 2 features.\n"),
@@ -368,7 +358,7 @@ fn housekeeping_scopes_are_left_out_inside_a_comma_list() {
         "fix(app, core): y",
         "tag:v0.2.0",
     ]);
-    let text = notes(&t, "v0.2.0", &[]);
+    let text = notes(&t, "v0.2.0");
     assert!(text.starts_with("This release fixes 1 bug.\n"), "{text}");
 }
 

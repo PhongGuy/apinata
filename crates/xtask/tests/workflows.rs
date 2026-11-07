@@ -328,8 +328,6 @@ fn secrets_reach_only_the_signing_step_env_and_are_documented() {
     assert_eq!(
         names,
         [
-            "WINDOWS_CERTIFICATE",
-            "WINDOWS_CERTIFICATE_PASSWORD",
             "CARGO_PACKAGER_SIGN_PRIVATE_KEY",
             "CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD"
         ]
@@ -345,7 +343,7 @@ fn secrets_reach_only_the_signing_step_env_and_are_documented() {
             if env.contains("secrets.") {
                 let run = str_of(&step["run"]);
                 assert!(
-                    run == "make package-release" || run.contains("signer sign update/latest.json"),
+                    run.contains("signer sign update/latest.json"),
                     "{job:?} passes secrets to another step"
                 );
             }
@@ -451,7 +449,9 @@ fn the_draft_uses_generated_notes_from_full_history() {
         .find(|r| r.contains("gh release create"))
         .unwrap();
     let notes = draft
-        .find(r#"scripts/release.sh notes "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" dist release-notes.md"#)
+        .find(
+            r#"scripts/release.sh notes "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" release-notes.md"#,
+        )
         .expect("drafts the notes");
     let create = draft.find("gh release create").unwrap();
     assert!(notes < create, "{draft}");
@@ -473,4 +473,48 @@ fn release_jobs_restore_no_cache() {
             assert!(step["with"].get("cache").is_none(), "{job:?} {uses} caches");
         }
     }
+}
+
+#[test]
+fn the_signing_job_ends_by_attesting_every_release_file() {
+    let rel = load("release.yml");
+    let all = steps(&rel, "sign");
+    let last = all.last().unwrap();
+    assert_eq!(
+        str_of(&last["uses"]),
+        "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
+    );
+    let subjects: Vec<&str> = str_of(&last["with"]["subject-path"]).lines().collect();
+    assert_eq!(subjects, ["dist/*", "update/*"]);
+    // Attesting needs an OIDC token and write access to attestations; only this job has it.
+    for (job, body) in rel["jobs"].as_mapping().unwrap() {
+        let perms = &body["permissions"];
+        let attests = ["id-token", "attestations", "artifact-metadata"]
+            .iter()
+            .any(|p| perms.get(p).is_some());
+        assert_eq!(attests, str_of(job) == "sign", "{job:?} permissions");
+    }
+    let perms = &rel["jobs"]["sign"]["permissions"];
+    let mut got: Vec<(&str, &str)> = perms
+        .as_mapping()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (str_of(k), str_of(v)))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("artifact-metadata", "write"),
+            ("attestations", "write"),
+            ("contents", "read"),
+            ("id-token", "write")
+        ]
+    );
+}
+
+#[test]
+fn windows_builds_are_never_code_signed() {
+    let text = std::fs::read_to_string(workflow_path("release.yml")).unwrap();
+    assert!(!text.contains("WINDOWS_CERTIFICATE"), "release.yml");
 }

@@ -72,6 +72,13 @@ not the fixed names the links above use, so check the versioned files:
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
+Every file also carries a build attestation, which proves this project's
+release workflow built it. Check one with the GitHub CLI:
+
+```sh
+gh attestation verify <file> --repo PhongGuy/apinata
+```
+
 **macOS:** Gatekeeper blocks the first open. Right-click the app and choose
 Open, or clear the quarantine flag:
 
@@ -79,8 +86,8 @@ Open, or clear the quarantine flag:
 xattr -dr com.apple.quarantine /Applications/Apinata.app
 ```
 
-**Windows:** SmartScreen warns before the installer runs. Files built without
-the project's signing certificate carry `-unsigned` in their names.
+**Windows:** SmartScreen warns before the installer runs. Choose "More info",
+then "Run anyway".
 
 The macOS and Windows packages have not yet been tested on those systems.
 

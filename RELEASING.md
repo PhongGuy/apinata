@@ -18,18 +18,7 @@ For the CLI, run `xattr -d com.apple.quarantine apinata`.
 
 ### Windows
 
-Windows artifacts are signed with a self-signed code-signing certificate, created once on the maintainer's machine. With OpenSSL:
-
-```sh
-openssl req -x509 -newkey rsa:3072 -sha256 -days 1825 -noenc -subj "/CN=Apinata" -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" -keyout apinata-code.key -out apinata-code.crt
-openssl pkcs12 -export -inkey apinata-code.key -in apinata-code.crt -name Apinata -out apinata-code.pfx
-base64 -w0 apinata-code.pfx | gh secret set WINDOWS_CERTIFICATE
-gh secret set WINDOWS_CERTIFICATE_PASSWORD
-```
-
-The last command prompts for the export password. On Windows, `New-SelfSignedCertificate -Type CodeSigningCert` plus `Export-PfxCertificate` does the same. Keep the key and the `.pfx` offline.
-
-SmartScreen still warns, because the certificate chains to no trusted root. Without both secrets, the installer and the `.zip` carry `-unsigned` in their names; with only one of them set, the job fails.
+The installer and the `.zip` are not code-signed: Authenticode needs a certificate from a trusted CA, and a self-signed one would not quiet SmartScreen either. SmartScreen warns on first run; choose "More info", then "Run anyway". The build attestation below proves where the files came from instead.
 
 ### Linux
 
@@ -39,9 +28,17 @@ Linux has no OS signing. Verify downloads with:
 sha256sum -c SHA256SUMS
 ```
 
+### Build attestations
+
+The `sign` job ends by attesting every release file with `actions/attest`, so anyone can check that this repository's release workflow built a file:
+
+```sh
+gh attestation verify <file> --repo PhongGuy/apinata
+```
+
 ## Stable download names
 
-The draft also carries version-free copies of the installers, so `https://github.com/PhongGuy/apinata/releases/latest/download/<name>` works for every release: `apinata-linux-x86_64.AppImage`, `apinata-linux-aarch64.AppImage`, `apinata-linux-amd64.deb`, `apinata-linux-arm64.deb`, `apinata-macos-aarch64.dmg`, `apinata-macos-x86_64.dmg` and `apinata-windows-setup.exe` (also for an `-unsigned` installer). They are copies with the same bytes as the versioned files, built by `scripts/release.sh stable dist stable` and uploaded after everything else. They are not in `SHA256SUMS` (verify the versioned file instead), and the updater and `latest.json` use only the versioned names.
+The draft also carries version-free copies of the installers, so `https://github.com/PhongGuy/apinata/releases/latest/download/<name>` works for every release: `apinata-linux-x86_64.AppImage`, `apinata-linux-aarch64.AppImage`, `apinata-linux-amd64.deb`, `apinata-linux-arm64.deb`, `apinata-macos-aarch64.dmg`, `apinata-macos-x86_64.dmg` and `apinata-windows-setup.exe`. They are copies with the same bytes as the versioned files, built by `scripts/release.sh stable dist stable` and uploaded after everything else. They are not in `SHA256SUMS` (verify the versioned file instead), and the updater and `latest.json` use only the versioned names.
 
 ## Updates
 
@@ -88,11 +85,11 @@ The release job drafts the notes with `scripts/release.sh notes`, in this order:
 
 1. A one-line intro counting the changes, such as "This release adds 3 features and fixes 5 bugs." For the first release it reads "The first release of Apinata." Reword it in the draft before publishing.
 2. `## What's Changed`: the `feat` and `fix` subjects since the previous `v*` tag, without the type prefix; test, CI, release, build and dependency commits are left out. A `**Full Changelog**` compare link follows, except on the first release.
-3. `## Downloads`: the versioned file names per platform, marked `-unsigned` when the Windows build is, and how to check them against `SHA256SUMS`.
+3. `## Downloads`: the versioned file names per platform, and how to check them against `SHA256SUMS` and with `gh attestation verify`.
 4. `## Before you install`: SmartScreen on Windows, Gatekeeper and the `xattr` commands on macOS, nothing extra on Linux.
 5. `## Updates`: in-place signed updates, and that macOS may ask for keychain access on first launch after one, since the update replaces the app bundle.
 
-Read and reword the draft before publishing it. Preview the notes locally with `scripts/release.sh notes v<version> <owner>/<repo> <dist dir> notes.md`.
+Read and reword the draft before publishing it. Preview the notes locally with `scripts/release.sh notes v<version> <owner>/<repo> notes.md`.
 
 ## Rehearsal
 
@@ -123,7 +120,7 @@ The guard fails on a tag that does not match the workspace version, before any b
 
 1. Download the draft's files and run `sha256sum -c SHA256SUMS`.
 2. Mount the `.dmg` and run `codesign -v` on the `.app`.
-3. Check the Windows installer's signature, or its `-unsigned` name.
+3. Run `gh attestation verify` on one file per platform.
 4. Install the `.deb` on stock Ubuntu 24.04.
 5. Publish the release in the GitHub UI.
 

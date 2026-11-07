@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Release helpers for the release workflow: the tag guard and build matrix,
-# Windows and macOS signing, and SHA256SUMS. Must stay bash 3.2 safe, since
+# macOS ad-hoc signing, SHA256SUMS, the update manifest and the release notes. Must stay bash 3.2 safe, since
 # macOS runners run /bin/bash 3.2.
 # Sourcing this file only defines functions; running it dispatches a subcommand.
 source "$(dirname "${BASH_SOURCE[0]}")/package-linux.sh"
@@ -72,108 +72,6 @@ select_targets() {
   echo "{\"include\":[${rows[*]}]}"
 }
 
-# Windows signing is driven by these two secrets; a missing GitHub secret
-# expands to an empty string, so blank (empty or whitespace) counts as unset.
-WINDOWS_SIGNING_VARS="WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD"
-
-# Print the name of each named variable that is unset, empty or whitespace only.
-blank_vars() {
-  local v val
-  for v in "$@"; do
-    val=${!v:-}
-    if [[ -z ${val//[[:space:]]/} ]]; then echo "$v"; fi
-  done
-}
-
-# Print signed when both signing secrets are present and unsigned when both are
-# blank; with only one present, fail and name the blank one (never a value).
-windows_signing_mode() {
-  local blank total
-  blank=$(blank_vars $WINDOWS_SIGNING_VARS)
-  set -- $WINDOWS_SIGNING_VARS
-  total=$#
-  set -- $blank
-  if (($# == 0)); then
-    echo signed
-  elif (($# == total)); then
-    echo unsigned
-  else
-    echo "release: set both Windows signing secrets or neither; blank: $*" >&2
-    return 1
-  fi
-}
-
-# The shell cargo-packager starts for signCommand: Git Bash's own bash.exe as
-# an 8.3 path, so a bare bash never resolves to WSL's System32\bash.exe.
-sign_shell() {
-  if command -v cygpath >/dev/null 2>&1; then
-    cygpath -m -s "$(command -v bash)"
-  else
-    echo bash
-  fi
-}
-
-# Write KEYDIR/sign.sh, which signtool-signs one file with KEYDIR/apinata.pfx.
-# The password is read from the environment so it never enters signCommand.
-write_sign_script() {
-  cat >"$1/sign.sh" <<'SIGN'
-#!/usr/bin/env bash
-# Signs one file with the release's self-signed certificate; cargo-packager runs it per file.
-set -euo pipefail
-export MSYS2_ARG_CONV_EXCL='*'
-pfx=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/apinata.pfx
-if command -v cygpath >/dev/null; then pfx=$(cygpath -w "$pfx"); fi
-tool=${SIGNTOOL:-$(ls "/c/Program Files (x86)/Windows Kits/10/bin/"10.*/x64/signtool.exe | sort -V | tail -n 1)}
-exec "$tool" sign /fd SHA256 /f "$pfx" /p "$WINDOWS_CERTIFICATE_PASSWORD" /d Apinata "$1"
-SIGN
-  chmod 700 "$1/sign.sh"
-}
-
-# Set up Windows signing in the caller's shell. Unsigned clears the secrets;
-# signed decodes the certificate into a private KEYDIR and exports the
-# signCommand. Every step returns explicitly, since callers may run it where
-# set -e is suspended.
-prepare_windows_signing() {
-  local mode=$1 keydir=$2 shell
-  case $mode in
-    unsigned)
-      unset WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD APINATA_WINDOWS_SIGN_COMMAND
-      return 0
-      ;;
-    signed) ;;
-    *) echo "release: unknown Windows signing mode '$mode'" >&2; return 1 ;;
-  esac
-
-  # cargo-packager splits signCommand on spaces, so neither part may hold one.
-  shell=${SIGN_SHELL:-$(sign_shell)} || return 1
-  if [[ $shell == *' '* || $keydir == *' '* ]]; then
-    echo "release: the sign shell ($shell) and key directory ($keydir) must not contain a space" >&2
-    return 1
-  fi
-
-  (umask 077 && mkdir -p "$keydir") || return 1
-  chmod 700 "$keydir" || return 1
-  if ! (umask 077 && printf '%s' "$WINDOWS_CERTIFICATE" | base64 -d >"$keydir/apinata.pfx") 2>/dev/null; then
-    rm -f "$keydir/apinata.pfx"
-    echo "release: WINDOWS_CERTIFICATE is not valid base64" >&2
-    return 1
-  fi
-  write_sign_script "$keydir" || return 1
-  export APINATA_WINDOWS_SIGN_COMMAND="$shell $keydir/sign.sh %1"
-  unset WINDOWS_CERTIFICATE
-}
-
-# Rename the Windows installer and CLI zip directly in DIR to carry -unsigned.
-mark_unsigned() {
-  local f ext
-  for f in "$1"/*-setup.exe "$1"/*.zip; do
-    [[ -e $f ]] || continue
-    case $f in *-unsigned.*) continue ;; esac
-    ext=${f##*.}
-    mv "$f" "${f%.*}-unsigned.$ext" || return 1
-  done
-}
-
 # Ad-hoc sign PATH (no Apple identity) and check the signature holds.
 adhoc_sign() {
   "${CODESIGN:-codesign}" --force --deep --sign - "$1" || return 1
@@ -227,7 +125,7 @@ cli_zip() {
 }
 
 # Build the CLI archive and the app installer on macOS or Windows into OUT_DIR (default
-# target/dist/<os>). macOS is always ad-hoc signed; Windows is signed only with both secrets.
+# target/dist/<os>). macOS is ad-hoc signed; Windows ships unsigned.
 package_main() {
   local os
   case $(uname -s) in
@@ -237,18 +135,12 @@ package_main() {
   esac
   # BSD realpath has no -m; prepare_out_dir needs it.
   realpath -m / >/dev/null 2>&1 || realpath() { portable_realpath "$@"; }
-  local root out mode=unsigned version target bin_dir
+  local root out version target bin_dir
   root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   out=${OUT_DIR:-$root/target/dist/$os}
   prepare_out_dir "$root" "$out" || return 1
   out=$(realpath -m -- "$out")
-  if [[ $os == windows ]]; then mode=$(windows_signing_mode) || return 1; fi
-  KEYDIR=$(mktemp -d)
-  trap 'rm -rf -- "$KEYDIR"' EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
-  prepare_windows_signing "$mode" "$KEYDIR/keys" || return 1
-  unset APINATA_MACOS_SIGNING_IDENTITY
+  unset APINATA_MACOS_SIGNING_IDENTITY APINATA_WINDOWS_SIGN_COMMAND
   cd "$root"
   version=$(workspace_version)
   target=$(rustc -vV | sed -n 's/^host: //p')
@@ -265,13 +157,11 @@ package_main() {
     TAR=gtar cli_archive "$bin_dir/apinata" "$version" "$target" "$out" "${files[@]}"
   else
     package_app "$out" nsis
-    if [[ $mode == signed ]]; then bash "$KEYDIR/keys/sign.sh" "$(cygpath -w "$bin_dir/apinata.exe")"; fi
     cli_zip "$bin_dir/apinata.exe" "$version" "$target" "$out" "${files[@]}"
     cli_raw "$bin_dir/apinata.exe" "$version" "$target" "$out" .exe
   fi
   rm -rf -- "$out/.cargo-packager"
-  if [[ $mode == unsigned && $os == windows ]]; then mark_unsigned "$out"; fi
-  echo "release: $os artifacts in $out ($([[ $os == macos ]] && echo ad-hoc signed || echo "$mode"))"
+  echo "release: $os artifacts in $out"
 }
 
 # Print "<target-id> <file>" for each update artifact of VERSION present in DIR.
@@ -287,9 +177,8 @@ update_map() {
     f=apinata-$v-$arch-apple-darwin
     [[ -f $dir/$f ]] && echo "cli-macos-$arch $f"
   done
-  for f in apinata-app_${v}_x64-setup.exe apinata-app_${v}_x64-setup-unsigned.exe; do
-    if [[ -f $dir/$f ]]; then echo "app-windows-x86_64 $f"; break; fi
-  done
+  f=apinata-app_${v}_x64-setup.exe
+  [[ -f $dir/$f ]] && echo "app-windows-x86_64 $f"
   f=apinata-$v-x86_64-pc-windows-msvc.exe
   [[ -f $dir/$f ]] && echo "cli-windows-x86_64 $f"
   return 0
@@ -330,7 +219,7 @@ stable_copies() {
     'apinata-linux-arm64.deb|apinata-app_*_arm64.deb' \
     'apinata-macos-aarch64.dmg|Apinata_*_aarch64.dmg' \
     'apinata-macos-x86_64.dmg|Apinata_*_x86_64.dmg' \
-    'apinata-windows-setup.exe|apinata-app_*_x64-setup*.exe'; do
+    'apinata-windows-setup.exe|apinata-app_*_x64-setup.exe'; do
     name=${pair%%|*}
     pattern=${pair#*|}
     n=0
@@ -399,12 +288,11 @@ generated_changes() {
 
 # Write OUT, the draft notes for TAG in REPO (owner/name): the intro, What's
 # Changed as the pull requests merged since the previous v* tag, Downloads
-# named from the tag's version, and the install and update notes. DIST tells a
-# signed Windows build from an unsigned one. Runs in the repository, which
-# needs full history and tags.
+# named from the tag's version, and the install and update notes. Runs in the
+# repository, which needs full history and tags.
 release_notes() {
-  local tag=$1 repo=$2 dist=$3 out=$4
-  local v=${tag#v} prev="" range=$tag first=true subjects changes feats fixes win="" f
+  local tag=$1 repo=$2 out=$3
+  local v=${tag#v} prev="" range=$tag first=true subjects changes feats fixes
   # A pre-release tag (v1.0.0-rc.1) is never the base of a release.
   if prev=$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$tag^" 2>/dev/null); then
     range=$prev..$tag
@@ -414,9 +302,6 @@ release_notes() {
   changes=$(generated_changes "$tag" "$repo" "$prev") || return 1
   feats=$(printf '%s\n' "$subjects" | grep -c '^feat	' || true)
   fixes=$(printf '%s\n' "$subjects" | grep -c '^fix	' || true)
-  for f in "$dist"/*-setup-unsigned.exe; do
-    [[ -e $f ]] && win=-unsigned
-  done
   {
     notes_intro "$feats" "$fixes" "$first"
     echo
@@ -441,19 +326,16 @@ release_notes() {
 | Linux arm64 | \`apinata-app_${v}_arm64.deb\` or \`apinata-app_${v}_aarch64.AppImage\` | \`apinata-$v-aarch64-unknown-linux-gnu.tar.gz\` |
 | macOS Apple silicon | \`Apinata_${v}_aarch64.dmg\` | \`apinata-$v-aarch64-apple-darwin.tar.gz\` |
 | macOS Intel | \`Apinata_${v}_x86_64.dmg\` | \`apinata-$v-x86_64-apple-darwin.tar.gz\` |
-| Windows x86_64 | \`apinata-app_${v}_x64-setup$win.exe\` | \`apinata-$v-x86_64-pc-windows-msvc$win.zip\` |
+| Windows x86_64 | \`apinata-app_${v}_x64-setup.exe\` | \`apinata-$v-x86_64-pc-windows-msvc.zip\` |
 
 Check a download with \`sha256sum -c SHA256SUMS\`.
+Check that this project's release workflow built it with \`gh attestation verify <file> --repo $repo\`.
 
 ## Before you install
 
 NOTES
-    if [[ -n $win ]]; then
-      echo '- **Windows:** the installer and the zip are not code-signed, so SmartScreen warns on first run. Choose "More info", then "Run anyway".'
-    else
-      echo '- **Windows:** the installer and the zip are signed with a certificate Windows does not trust yet, so SmartScreen warns on first run. Choose "More info", then "Run anyway".'
-    fi
     cat <<'NOTES'
+- **Windows:** the installer and the zip are not code-signed, so SmartScreen warns on first run. Choose "More info", then "Run anyway".
 - **macOS:** the app is not notarised, so Gatekeeper blocks the first open. Right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Apinata.app`. For the command line, run `xattr -d com.apple.quarantine apinata`.
 - **Linux:** no extra steps.
 
@@ -467,7 +349,7 @@ NOTES
 }
 
 usage() {
-  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO DIST OUT" >&2
+  echo "usage: release.sh guard TYPE NAME DRY [PLATFORMS] | package | sums DIR | manifest DIR VERSION BASE_URL TAG OUT | stable DIST OUT | notes TAG REPO OUT" >&2
   exit 2
 }
 
@@ -501,8 +383,8 @@ main() {
       stable_copies "$2" "$3"
       ;;
     notes)
-      (($# == 5)) || usage
-      release_notes "$2" "$3" "$4" "$5"
+      (($# == 4)) || usage
+      release_notes "$2" "$3" "$4"
       ;;
     *) usage ;;
   esac
