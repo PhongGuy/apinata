@@ -507,7 +507,6 @@ fn the_signing_job_ends_by_attesting_every_release_file() {
         [
             ("artifact-metadata", "write"),
             ("attestations", "write"),
-            ("contents", "read"),
             ("id-token", "write")
         ]
     );

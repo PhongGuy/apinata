@@ -150,8 +150,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release
+    # No contents access: it downloads this run's artifacts, which needs no token scope.
     permissions:
-      contents: read
       id-token: write # the attestation's signing certificate
       attestations: write # store the attestations
       artifact-metadata: write # link them to the release files
