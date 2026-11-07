@@ -3,8 +3,10 @@
 
 use std::collections::HashSet;
 
-use apinata_app::graphql_builder::{BROKEN_NOTE, BuilderRow, RowKind, caret_after, rows};
-use apinata_core::{FieldPath, Schema, query_outline};
+use apinata_app::graphql_builder::{
+    BROKEN_NOTE, BuilderRow, RowKind, TOO_LARGE_NOTE, caret_after, rows, unavailable_note,
+};
+use apinata_core::{FieldPath, QUERY_VALIDATE_LIMIT, Schema, query_outline};
 
 fn schema() -> Schema {
     let text = std::fs::read_to_string(concat!(
@@ -65,7 +67,12 @@ fn collapsed_roots_only() {
     let s = schema();
     let o = query_outline("{ users { name } }", &s);
     assert_eq!(
-        seen(&rows(&s, o.as_ref(), &HashSet::new(), false)),
+        seen(&rows(
+            &s,
+            o.as_ref().ok_or(BROKEN_NOTE),
+            &HashSet::new(),
+            false
+        )),
         [
             row(0, "query: Query", "", RowKind::Root, false, None),
             row(
@@ -80,9 +87,14 @@ fn collapsed_roots_only() {
     );
     let blank = query_outline("", &s);
     assert!(
-        rows(&s, blank.as_ref(), &HashSet::new(), false)
-            .iter()
-            .all(|r| r.lock.is_none())
+        rows(
+            &s,
+            blank.as_ref().ok_or(BROKEN_NOTE),
+            &HashSet::new(),
+            false
+        )
+        .iter()
+        .all(|r| r.lock.is_none())
     );
 }
 
@@ -91,7 +103,12 @@ fn expanded_paths_list_fields_with_checked_states() {
     use RowKind::*;
     let s = schema();
     let o = query_outline("{ users { name } }", &s);
-    let all = rows(&s, o.as_ref(), &open(&["Query", "Query.users"]), false);
+    let all = rows(
+        &s,
+        o.as_ref().ok_or(BROKEN_NOTE),
+        &open(&["Query", "Query.users"]),
+        false,
+    );
     assert_eq!(
         seen(&all),
         [
@@ -116,7 +133,12 @@ fn expanded_paths_list_fields_with_checked_states() {
     );
     assert!(all[0].expanded && all[2].expanded && !all[1].expanded);
     assert_eq!(all[4].path, p("Query.users.name"));
-    let with = rows(&s, o.as_ref(), &open(&["Query", "Query.users"]), true);
+    let with = rows(
+        &s,
+        o.as_ref().ok_or(BROKEN_NOTE),
+        &open(&["Query", "Query.users"]),
+        true,
+    );
     let old: Vec<_> = with
         .iter()
         .filter(|r| r.deprecated)
@@ -129,31 +151,81 @@ fn expanded_paths_list_fields_with_checked_states() {
 fn protected_parents_and_broken_text_lock_rows() {
     let s = schema();
     let o = query_outline("{ user(id: 1) { name } }", &s);
-    let r = rows(&s, o.as_ref(), &open(&["Query", "Query.user"]), false);
+    let r = rows(
+        &s,
+        o.as_ref().ok_or(BROKEN_NOTE),
+        &open(&["Query", "Query.user"]),
+        false,
+    );
     let name = r.iter().find(|r| r.path == p("Query.user.name")).unwrap();
     assert_eq!(
         name.lock.as_deref(),
         Some("Last field of `user`; untick `user` to remove it")
     );
     let o = query_outline("query Q { users { name } }", &s);
-    let r = rows(&s, o.as_ref(), &open(&["Query", "Query.users"]), false);
+    let r = rows(
+        &s,
+        o.as_ref().ok_or(BROKEN_NOTE),
+        &open(&["Query", "Query.users"]),
+        false,
+    );
     let name = r.iter().find(|r| r.path == p("Query.users.name")).unwrap();
     assert_eq!(
         name.lock.as_deref(),
         Some("Last field of operation `Q`; edit the query to remove it")
     );
     let o = query_outline("query user { user(id: 1) { name } }", &s);
-    let r = rows(&s, o.as_ref(), &open(&["Query", "Query.user"]), false);
+    let r = rows(
+        &s,
+        o.as_ref().ok_or(BROKEN_NOTE),
+        &open(&["Query", "Query.user"]),
+        false,
+    );
     let name = r.iter().find(|r| r.path == p("Query.user.name")).unwrap();
     assert_eq!(
         name.lock.as_deref(),
         Some("Last field of `user`; untick `user` to remove it")
     );
-    let r = rows(&s, None, &open(&["Query", "Query.users"]), false);
-    assert!(
-        r.iter()
-            .all(|r| r.lock.as_deref() == Some(BROKEN_NOTE) && !r.checked)
+    // The panel shows the note once at the top, so roots carry no copy; fields keep it on
+    // their disabled boxes.
+    let r = rows(
+        &s,
+        Err(BROKEN_NOTE),
+        &open(&["Query", "Query.users"]),
+        false,
     );
+    assert!(r.iter().all(|r| !r.checked));
+    assert!(r.iter().all(|r| match r.kind {
+        RowKind::Root => r.lock.is_none(),
+        _ => r.lock.as_deref() == Some(BROKEN_NOTE),
+    }));
+}
+
+#[test]
+fn a_selected_deprecated_field_shows_while_deprecated_fields_are_hidden() {
+    let s = schema();
+    let o = query_outline("{ oldUsers { name } }", &s);
+    let r = rows(
+        &s,
+        o.as_ref().ok_or(BROKEN_NOTE),
+        &open(&["Query", "Query.users"]),
+        false,
+    );
+    let shown: Vec<_> = r
+        .iter()
+        .filter(|r| r.deprecated)
+        .map(|r| (r.label.as_str(), r.checked))
+        .collect();
+    assert_eq!(shown, [("oldUsers", true)]);
+}
+
+#[test]
+fn oversized_text_gets_its_own_note() {
+    let small = "{ users {";
+    let big = format!("{{ users {{ id }} }}{}", " ".repeat(QUERY_VALIDATE_LIMIT));
+    assert_eq!(unavailable_note(small), BROKEN_NOTE);
+    assert_eq!(unavailable_note(&big), TOO_LARGE_NOTE);
+    assert_eq!(TOO_LARGE_NOTE, "Too large to edit here");
 }
 
 #[test]

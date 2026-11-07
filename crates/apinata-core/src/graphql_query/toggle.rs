@@ -103,6 +103,20 @@ fn removal_range(text: &str, node: Range<usize>) -> Range<usize> {
     if alone_before && (after.is_empty() || after.starts_with('#')) {
         return line_start..(line_end + 1).min(text.len());
     }
+    // Alone on its line but followed by a closer: take the preceding line break instead, so
+    // the closer joins the previous line rather than keeping a stray indent. Skipped when the
+    // previous line may end in a comment, which would swallow the closer.
+    let prev_start = text[..line_start.saturating_sub(1)]
+        .rfind('\n')
+        .map_or(0, |i| i + 1);
+    if alone_before
+        && after.starts_with('}')
+        && line_start > 0
+        && !text[prev_start..line_start].contains('#')
+    {
+        let crlf = line_start >= 2 && b[line_start - 2] == b'\r';
+        return line_start - if crlf { 2 } else { 1 }..e;
+    }
     let skip = |mut j: usize| {
         while j < b.len() && matches!(b[j], b' ' | b'\t') {
             j += 1;

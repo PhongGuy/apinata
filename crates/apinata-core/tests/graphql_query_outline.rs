@@ -170,3 +170,12 @@ fn the_last_child_of_a_protected_node_is_locked() {
     assert_eq!(lock("query Q { me version }", "Query.me"), None);
     assert_eq!(lock("{ version }", "Query.version"), None);
 }
+
+#[test]
+fn a_selected_union_is_unlocked_and_an_unselected_one_stays_locked() {
+    let s = schema();
+    let picked = query_outline("{ search { ... on User { id } } version }", &s).unwrap();
+    assert_eq!(picked.locked(&p("Query.search")), None);
+    let bare = query_outline("{ version }", &s).unwrap();
+    assert_eq!(bare.locked(&p("Query.search")), Some(Lock::Union));
+}
