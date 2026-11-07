@@ -4,6 +4,7 @@ exclude = ["tools/apinata-pilot"]
 resolver = "3"
 
 [workspace.lints.clippy]
+ref_option = "warn"
 
 [workspace.package]
 version = "0.1.0"

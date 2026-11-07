@@ -414,7 +414,7 @@ impl<'s> Scanner<'s> {
                 else {
                     unreachable!("the top frame is a selection");
                 };
-                let opened = self.step_selection(token, &parent, &mut pending, directive);
+                let opened = self.step_selection(token, parent.as_deref(), &mut pending, directive);
                 match opened {
                     Step::Close if self.stack.is_empty() => {
                         self.root = self.schema.query_type().map(str::to_owned);
@@ -486,7 +486,7 @@ impl<'s> Scanner<'s> {
     fn step_selection(
         &self,
         token: &Token,
-        parent: &Option<String>,
+        parent: Option<&str>,
         pending: &mut Pending,
         directive: Option<String>,
     ) -> Step {
@@ -505,7 +505,7 @@ impl<'s> Scanner<'s> {
                 *pending = Pending::Fragment(Some(n.clone()));
             }
             Token::Name(n) => *pending = Pending::Field(n.clone()),
-            Token::Spread => *pending = Pending::Fragment(parent.clone()),
+            Token::Spread => *pending = Pending::Fragment(parent.map(str::to_owned)),
             // After an alias, the next name is the field.
             Token::Punct(b':') => *pending = Pending::None,
             Token::Punct(b'(') => {
@@ -517,13 +517,13 @@ impl<'s> Scanner<'s> {
                     _ => None,
                 };
                 return Step::Open(Frame::Args {
-                    parent: parent.clone(),
+                    parent: parent.map(str::to_owned),
                     field,
                 });
             }
             Token::Punct(b'{') => {
                 let child = match std::mem::replace(pending, Pending::None) {
-                    Pending::Field(f) => self.schema.field_type(parent.as_deref(), &f),
+                    Pending::Field(f) => self.schema.field_type(parent, &f),
                     Pending::Fragment(t) => t,
                     Pending::None => None,
                 };

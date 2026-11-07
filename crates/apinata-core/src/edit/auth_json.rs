@@ -24,7 +24,7 @@ pub struct Position {
 }
 
 /// ` (line L, column C)` for a known position, nothing otherwise.
-fn at(position: &Option<Position>) -> String {
+fn at(position: Option<&Position>) -> String {
     position
         .map(|p| format!(" (line {}, column {})", p.line, p.column))
         .unwrap_or_default()
@@ -36,13 +36,13 @@ fn at(position: &Option<Position>) -> String {
 #[non_exhaustive]
 pub enum AuthJsonError {
     /// The text is not well-formed JSON.
-    #[error("the auth JSON is not well-formed{}", at(position))]
+    #[error("the auth JSON is not well-formed{}", at(position.as_ref()))]
     Malformed {
         /// Where the text stops being JSON.
         position: Option<Position>,
     },
     /// `type` names no auth mode.
-    #[error("unknown auth type `{mode}`{}", at(position))]
+    #[error("unknown auth type `{mode}`{}", at(position.as_ref()))]
     UnknownType {
         /// The `type` given.
         mode: String,
@@ -50,7 +50,7 @@ pub enum AuthJsonError {
         position: Option<Position>,
     },
     /// A key the mode does not take.
-    #[error("unknown auth field `{field}`{}", at(position))]
+    #[error("unknown auth field `{field}`{}", at(position.as_ref()))]
     UnknownField {
         /// The key given.
         field: String,
@@ -58,7 +58,7 @@ pub enum AuthJsonError {
         position: Option<Position>,
     },
     /// A key the mode requires is absent.
-    #[error("the auth JSON lacks the field `{field}`{}", at(position))]
+    #[error("the auth JSON lacks the field `{field}`{}", at(position.as_ref()))]
     MissingField {
         /// The key required.
         field: String,
@@ -72,7 +72,7 @@ pub enum AuthJsonError {
         "{}an auth JSON value has the wrong type or is not an allowed value{}{}",
         field.as_ref().map(|f| format!("`{f}`: ")).unwrap_or_default(),
         expected.as_ref().map(|e| format!(", expected {e}")).unwrap_or_default(),
-        at(position)
+        at(position.as_ref())
     )]
     InvalidValue {
         /// The key path of the value.
