@@ -7,6 +7,7 @@ use apollo_parser::cst::{self, CstNode};
 use apollo_parser::{Parser, SyntaxKind, SyntaxNode};
 
 use super::SchemaError;
+use super::directive;
 use super::model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
 
 /// The scalars every schema has, appended when the document does not declare them.
@@ -376,11 +377,14 @@ impl Reader<'_> {
                 self.index.contains_key(default).then(|| default.to_owned())
             }
         };
+        let (directives, own_directives) = directive::with_built_ins(Vec::new());
         Ok(Schema {
             query_type: root(Root::Query, "Query"),
             mutation_type: root(Root::Mutation, "Mutation"),
             subscription_type: root(Root::Subscription, "Subscription"),
             types: self.types,
+            directives,
+            own_directives,
         })
     }
 }

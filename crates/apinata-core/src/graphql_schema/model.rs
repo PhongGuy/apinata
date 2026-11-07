@@ -4,6 +4,7 @@
 use serde_json::{Map, Value};
 
 use super::SchemaError;
+use super::directive;
 
 /// A GraphQL schema as read from an introspection answer, types in introspection order.
 #[derive(Debug, Clone, PartialEq)]
@@ -13,6 +14,8 @@ pub struct Schema {
     pub(super) mutation_type: Option<String>,
     pub(super) subscription_type: Option<String>,
     pub(super) types: Vec<SchemaType>,
+    pub(super) directives: Vec<Directive>,
+    pub(super) own_directives: usize,
 }
 
 /// The kind of a named GraphQL type.
@@ -31,6 +34,17 @@ pub enum TypeKind {
     Enum,
     /// An input object used as an argument.
     InputObject,
+}
+
+/// A directive definition, such as `@include(if: Boolean!) on FIELD`.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Directive {
+    pub(super) name: String,
+    pub(super) description: Option<String>,
+    pub(super) args: Vec<InputValue>,
+    pub(super) locations: Vec<String>,
+    pub(super) repeatable: bool,
 }
 
 /// One named type of the schema.
@@ -102,11 +116,20 @@ impl Schema {
         let Some(types) = schema.get("types").and_then(Value::as_array) else {
             return Err(invalid("types is not a list"));
         };
+        let types: Vec<SchemaType> = types.iter().map(parse_type).collect::<Result<_, _>>()?;
+        let candidates = match schema.get("directives") {
+            Some(Value::Array(items)) => items.iter().filter_map(parse_directive).collect(),
+            _ => Vec::new(),
+        };
+        let own = directive::admit(candidates, |name| types.iter().any(|t| t.name == name));
+        let (directives, own_directives) = directive::with_built_ins(own);
         Ok(Schema {
             query_type: root_name(schema, "queryType"),
             mutation_type: root_name(schema, "mutationType"),
             subscription_type: root_name(schema, "subscriptionType"),
-            types: types.iter().map(parse_type).collect::<Result<_, _>>()?,
+            types,
+            directives,
+            own_directives,
         })
     }
 
@@ -133,6 +156,43 @@ impl Schema {
     /// The type with this exact name.
     pub fn type_named(&self, name: &str) -> Option<&SchemaType> {
         self.types.iter().find(|t| t.name == name)
+    }
+
+    /// Every directive: the schema's own in source order, then the built-ins core added.
+    pub fn directives(&self) -> &[Directive] {
+        &self.directives
+    }
+
+    /// The directive with this exact name, without the `@`.
+    pub fn directive_named(&self, name: &str) -> Option<&Directive> {
+        self.directives.iter().find(|d| d.name == name)
+    }
+}
+
+impl Directive {
+    /// The directive's name, without the `@`.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The directive's description.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// The directive's arguments.
+    pub fn args(&self) -> &[InputValue] {
+        &self.args
+    }
+
+    /// Where the directive may appear, as spec location names such as `FIELD`.
+    pub fn locations(&self) -> &[String] {
+        &self.locations
+    }
+
+    /// Whether the directive may appear more than once at one location.
+    pub fn is_repeatable(&self) -> bool {
+        self.repeatable
     }
 }
 
@@ -393,6 +453,34 @@ fn parse_input(value: &Value, owner: &str) -> Result<InputValue, SchemaError> {
         default_value: str_of(object, "defaultValue"),
         name,
         ty,
+    })
+}
+
+/// A directive entry read leniently: `None` skips a malformed entry instead of failing the load.
+/// An absent `args` means no arguments; one that is present but not a list skips the entry.
+fn parse_directive(value: &Value) -> Option<Directive> {
+    let object = value.as_object()?;
+    let name = str_of(object, "name")?;
+    let locations = object
+        .get("locations")?
+        .as_array()?
+        .iter()
+        .map(|l| l.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()?;
+    let args = match object.get("args") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|a| parse_input(a, &name).ok())
+            .collect::<Option<Vec<_>>>()?,
+        Some(_) => return None,
+    };
+    Some(Directive {
+        description: str_of(object, "description"),
+        repeatable: object.get("isRepeatable").and_then(Value::as_bool) == Some(true),
+        name,
+        args,
+        locations,
     })
 }
 

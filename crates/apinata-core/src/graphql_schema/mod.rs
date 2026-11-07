@@ -2,13 +2,14 @@
 //! parsed from the answer or from an SDL file, and the errors a schema load can end in.
 
 mod complete;
+mod directive;
 mod model;
 mod print;
 mod sdl;
 mod symbol;
 
 pub use complete::{Completion, CompletionKind};
-pub use model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
+pub use model::{Directive, EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
 pub(crate) use sdl::BUILT_IN_SCALARS;
 pub use symbol::{SchemaSymbol, SymbolAt};
 

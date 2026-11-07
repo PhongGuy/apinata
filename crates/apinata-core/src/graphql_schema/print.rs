@@ -27,7 +27,7 @@ fn not_printable(detail: String) -> SchemaError {
 }
 
 /// A GraphQL name: a letter or underscore, then letters, digits and underscores.
-fn is_name(name: &str) -> bool {
+pub(super) fn is_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars
         .next()
