@@ -134,3 +134,28 @@ fn broken_text_shows_the_note(cx: &mut TestAppContext) {
     click(cx, win, "graphql-builder-toggle");
     assert!(present(cx, win, "graphql-builder-note"));
 }
+
+#[gpui_kit::test]
+fn each_field_row_shows_its_type(cx: &mut TestAppContext) {
+    let (win, s) = section(cx, "{ users { id } }", true);
+    click(cx, win, "graphql-builder-toggle");
+    click(cx, win, ("graphql-builder-chevron", 0usize));
+    let b = builder(cx, &s);
+    let (ix, ty) = b.read_with(cx, |b, _| {
+        let ix = b
+            .rows()
+            .iter()
+            .position(|r| r.path == p("Query.users"))
+            .unwrap();
+        (ix, b.rows()[ix].ty.clone())
+    });
+    assert!(!ty.is_empty());
+    let shown = cx
+        .update_window(win, |_, w, _| {
+            w.find(("graphql-builder-type", ix))
+                .label()
+                .map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(shown.as_deref(), Some(ty.as_str()));
+}

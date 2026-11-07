@@ -375,6 +375,14 @@ impl BuilderPanel {
                 None => check,
             }
         });
+        let ty = (!row.ty.is_empty()).then(|| {
+            div()
+                .id(("graphql-builder-type", ix))
+                .test_support()
+                .aria_label(row.ty.clone())
+                .text_color(muted)
+                .child(row.ty.clone())
+        });
         let deprecated = row
             .deprecated
             .then(|| div().text_color(muted).child("(deprecated)"));
@@ -393,6 +401,7 @@ impl BuilderPanel {
             .children(chevron)
             .children(check)
             .child(row.label.clone())
+            .children(ty)
             .children(deprecated)
             .children(root_lock)
             .test_support()
