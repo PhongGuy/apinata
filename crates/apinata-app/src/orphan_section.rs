@@ -8,7 +8,8 @@ use std::sync::Mutex;
 use apinata_core::{EnvVariable, OrphanReport, SecretError, SecretKey, SecretStore};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyElement, App, Result, TestSupportExt, Window, div};
 
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::ui;

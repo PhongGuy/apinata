@@ -7,7 +7,11 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, Global, PathPromptOptions, Result, SharedString, Subscription, TestSupportExt,
+    Window, div,
+};
 
 use std::path::{Path, PathBuf};
 

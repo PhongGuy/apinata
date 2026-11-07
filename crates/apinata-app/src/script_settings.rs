@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use apinata_core::{ScriptDecision, ScriptTrust};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{Subscription, TestSupportExt, Window, div};
 
 use crate::app::AppState;
 use crate::approval_prompt::untrusted_text;

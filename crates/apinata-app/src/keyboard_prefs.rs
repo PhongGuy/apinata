@@ -9,7 +9,11 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, ClickEvent, Entity, Hsla, Keystroke, Modifiers, SharedString, Subscription,
+    TestSupportExt, Window, div,
+};
 use std::rc::Rc;
 
 use crate::app::AppState;

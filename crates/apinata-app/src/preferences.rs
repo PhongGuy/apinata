@@ -11,7 +11,12 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarMode};
 use gpui_kit::component::{ActiveTheme as _, ThemeMode, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, ClickEvent, Div, Entity, FocusHandle, Focusable, FontWeight, PathPromptOptions, Result,
+    Role, ScrollHandle, SharedString, Subscription, TestSupportExt, Window, actions, div,
+    linear_color_stop, linear_gradient, px, relative,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 

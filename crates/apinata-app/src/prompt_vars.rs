@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{WindowExt, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyWindowHandle, App, AsyncApp, Entity, FocusHandle, TestSupportExt, Window};
 
 use crate::style::{SPACE_2, SPACE_3};
 use crate::ui;

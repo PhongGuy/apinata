@@ -11,7 +11,12 @@ use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Action, Anchor, AnyElement, AnyView, App, Bounds, DragMoveEvent, Empty, Entity, FocusHandle,
+    Focusable, MouseButton, Pixels, Role, ScrollHandle, SharedString, StyleRefinement,
+    Subscription, TestSupportExt, Window, actions, div, relative, rems,
+};
 
 use crate::cached_part::{Part, PartOwner, Slot};
 use crate::changes_dialog::open_changes;

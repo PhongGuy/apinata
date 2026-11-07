@@ -4,7 +4,8 @@
 //! effects flush, leaving focus on the closed menu and the app's keys dead.
 
 use gpui_kit::component::menu::PopupMenu;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, DismissEvent, FocusHandle, Focusable, Subscription, Window};
 
 use crate::palette::OpenCommandPalette;
 

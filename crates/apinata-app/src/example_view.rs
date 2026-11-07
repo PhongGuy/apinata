@@ -9,7 +9,11 @@ use apinata_core::{
 };
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Div, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, TestSupportExt, Window,
+    div,
+};
 
 use crate::response_pane::{ResponsePane, header_table};
 use crate::send_model::SendModel;

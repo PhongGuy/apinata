@@ -9,7 +9,11 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Empty, Entity, Pixels, SharedString, Size, StyleRefinement, TextStyle,
+    WeakEntity, Window, canvas, div, size,
+};
 
 /// A view whose render is split into parts, each drawn by a [`Part`] that calls back in here.
 pub trait PartOwner: Sized + 'static {

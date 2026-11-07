@@ -15,7 +15,11 @@ use gpui_kit::component::input::{
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::v_flex;
 use gpui_kit::component::{ActiveTheme as _, IndexPath, Sizable as _, ThemeMode, h_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, EventEmitter, HighlightStyle, PathPromptOptions, Result, SharedString,
+    Subscription, TestSupportExt, Window, div,
+};
 
 use crate::body_text::{beautify_json, beautify_xml, minify_json, minify_xml};
 use crate::command::Edit;

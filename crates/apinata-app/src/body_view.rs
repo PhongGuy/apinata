@@ -25,7 +25,15 @@ use gpui_kit::component::tag::Tag;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, Theme, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Entity, EventEmitter, FocusHandle,
+    Focusable, Font, FontFeatures, HighlightStyle, Hsla, Image, ImageFormat,
+    ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels,
+    Point, Rems, Result, ScrollStrategy, SharedString, StyledText, Subscription, Task,
+    TestSupportExt, UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px,
+    uniform_list,
+};
 
 use crate::app::AppState;
 use crate::body_find::{

@@ -5,6 +5,7 @@ resolver = "3"
 
 [workspace.lints.clippy]
 ref_option = "warn"
+wildcard_imports = "warn"
 
 [workspace.package]
 version = "0.1.0"

@@ -3,7 +3,8 @@
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::h_flex;
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, FontWeight, Hsla, Pixels, SharedString, TestSupportExt, Window, div};
 
 use crate::body_view::{gutter_digits, mono_gutter};
 use crate::diff_doc::{DiffRow, RowKind};

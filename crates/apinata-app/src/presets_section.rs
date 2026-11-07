@@ -3,7 +3,8 @@
 use apinata_core::CollectionPresets;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::v_flex;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, Entity, EventEmitter, Subscription, Window};
 
 use crate::command::Edit;
 use crate::section::SectionEdit;

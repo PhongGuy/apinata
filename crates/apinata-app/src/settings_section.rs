@@ -8,7 +8,10 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
+};
 use std::time::Duration;
 
 use crate::app::AppState;

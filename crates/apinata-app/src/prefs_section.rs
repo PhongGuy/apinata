@@ -1,7 +1,8 @@
 //! A titled group of labelled rows in Preferences that the search box can filter.
 
 use gpui_kit::component::v_flex;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyElement, SharedString, TestSupportExt};
 
 use crate::style::SPACE_2;
 use crate::ui;

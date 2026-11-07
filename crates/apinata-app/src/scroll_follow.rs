@@ -6,7 +6,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Bounds, ElementId, FocusHandle, Pixels, ScrollHandle, Window, canvas, div,
+};
 
 /// How many frames a focus change stays armed, so a layout shift after it is still caught.
 const ARMED_FRAMES: u8 = 3;

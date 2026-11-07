@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use super::json::compare_json;
-use super::*;
+use super::{BodyComparison, BodyState, ResponseSnapshot, Side, UnavailableReason};
 use crate::git::hunks_within;
 
 /// Compares two bodies as text. A side that is not held in full, or has no body, is reported

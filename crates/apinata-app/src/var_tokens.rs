@@ -9,7 +9,11 @@ use apinata_core::{VarScope, VariableInfo, VariableSet, placeholders, prompt_lab
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::{EditorState, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Bounds, ContentMask, ElementId, Entity, Focusable, MouseMoveEvent, Pixels,
+    SharedString, StyleRefinement, TestSupportExt, Window, anchored, canvas, deferred, div, fill,
+};
 
 use crate::header_complete::Hint;
 use crate::style;

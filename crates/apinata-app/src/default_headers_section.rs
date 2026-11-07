@@ -5,7 +5,8 @@ use apinata_core::{KeyValue, default_headers};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{EventEmitter, SharedString, TestSupportExt, Window, div};
 
 use crate::command::Edit;
 use crate::section::SectionEdit;

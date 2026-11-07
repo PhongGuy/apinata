@@ -28,7 +28,13 @@ use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Action, Anchor, AnyElement, App, ClipboardItem, Div, Entity, FocusHandle, Focusable,
+    FontFeatures, FontWeight, Global, Hsla, Pixels, Rems, ScrollHandle, ScrollStrategy,
+    SharedString, Subscription, Svg, Task, TestSupportExt, UniformListScrollHandle, WeakEntity,
+    Window, canvas, div, relative, rems, svg, uniform_list,
+};
 
 use crate::app::AppState;
 use crate::body_text::{format_size, format_time, size_labels};

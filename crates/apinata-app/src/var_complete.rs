@@ -9,7 +9,11 @@ use apinata_core::{VarScope, VariableSet};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::{Enter, Escape, IndentInline, MoveDown, MoveUp};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Anchor, AnyElement, App, Div, ElementId, Entity, MouseButton, MouseDownEvent, Pixels, Point,
+    Role, ScrollHandle, SharedString, Stateful, TestSupportExt, Window, anchored, deferred, div,
+};
 
 use crate::header_complete::{self, Hint, offers};
 use crate::style;

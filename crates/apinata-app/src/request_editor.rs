@@ -27,7 +27,13 @@ use gpui_kit::component::{
     resizable_panel, v_flex, v_resizable,
 };
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, AnyView, App, Bounds, ClickEvent, ClipboardItem, ElementId, Empty, Entity,
+    FocusHandle, Focusable, Global, Pixels, Point, Rems, ScrollHandle, SharedString,
+    StyleRefinement, Subscription, Task, TestSupportExt, Window, actions, canvas, div, px,
+    relative, rems,
+};
 
 use crate::app::AppState;
 use crate::assertions_section::AssertionsSection;

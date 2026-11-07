@@ -6,7 +6,10 @@ use std::path::PathBuf;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div,
+};
 
 use crate::branch_picker::{Activity, BranchPicker, Notice, PickerEvent};
 use crate::changes_dialog;

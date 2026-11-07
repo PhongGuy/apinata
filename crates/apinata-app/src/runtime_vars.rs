@@ -15,7 +15,11 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Div, Entity, Focusable, Hsla, Rems, ScrollHandle, Subscription,
+    TestSupportExt, Window, div, px, rems,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 // The name column both row kinds share, so their value columns start at one x.

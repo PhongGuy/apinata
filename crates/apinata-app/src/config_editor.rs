@@ -10,7 +10,11 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::v_flex;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Subscription, TestSupportExt, Window,
+    actions, div, relative,
+};
 
 use crate::app::AppState;
 use crate::auth_section::{AuthMode, AuthScope, AuthSection};

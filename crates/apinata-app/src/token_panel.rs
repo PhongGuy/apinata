@@ -12,7 +12,8 @@ use apinata_core::{
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, Entity, Result, Task, TestSupportExt, Window, div};
 
 use crate::command::{Command, Target};
 use crate::send_model::plan_message;

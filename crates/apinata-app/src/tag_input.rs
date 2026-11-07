@@ -5,7 +5,10 @@ use apinata_core::normalize_tags;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Entity, EventEmitter, Focusable, KeyDownEvent, Subscription, TestSupportExt, Window, div,
+};
 
 use crate::style::{self, FORM_INPUT_WIDTH, RADIUS, SPACE_1};
 use crate::ui;

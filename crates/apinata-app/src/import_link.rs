@@ -17,7 +17,11 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, FocusHandle, Focusable, Global, PathPromptOptions, Pixels, Result, ScrollHandle,
+    SharedString, Task, TestSupportExt, WeakEntity, Window, div, px,
+};
 
 use crate::command::Command;
 use crate::shell::{Shell, parse_bundles_from};

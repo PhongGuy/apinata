@@ -11,7 +11,11 @@ use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Bounds, Entity, EntityInputHandler, EventEmitter, Pixels, SharedString, Subscription,
+    TestSupportExt, Window, div, relative,
+};
 
 use crate::command::Edit;
 use crate::script_complete::ScriptCompletions;

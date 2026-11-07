@@ -9,7 +9,11 @@ use gpui_kit::component::input::{Editor, EditorState};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{IndexPath, WindowExt as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, ClipboardItem, Entity, Global, Rems, SharedString, Subscription, TestSupportExt,
+    WeakEntity, Window, div, rems,
+};
 
 use crate::copy_curl::{confirm_secrets, plan_and_resolve};
 use crate::ui::{RingRoom as _, RingSides};

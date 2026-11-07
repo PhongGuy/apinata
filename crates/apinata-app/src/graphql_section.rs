@@ -9,7 +9,11 @@ use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, AnyView, App, Bounds, Div, Entity, EventEmitter, Focusable, PathPromptOptions,
+    Pixels, Rems, Result, SharedString, Subscription, Task, TestSupportExt, Window, div,
+};
 
 use crate::command::Edit;
 use crate::graphql_builder::BuilderPanel;

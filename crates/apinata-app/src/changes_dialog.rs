@@ -18,7 +18,12 @@ use gpui_kit::component::{
     ActiveTheme as _, Sizable as _, ThemeStyled as _, WindowExt as _, h_flex, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Entity, FocusHandle, Global, KeyDownEvent, ListHorizontalSizingBehavior,
+    Pixels, Role, ScrollHandle, SharedString, Subscription, TestSupportExt,
+    UniformListScrollHandle, WeakEntity, Window, actions, div, px, uniform_list,
+};
 
 use crate::confirm;
 use crate::diff_doc::{self, DiffBody, DiffDoc, DiffRow};

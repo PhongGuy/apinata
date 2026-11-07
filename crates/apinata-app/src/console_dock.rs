@@ -13,7 +13,11 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Entity, EventEmitter, FocusHandle, Focusable, Role, Subscription, Task,
+    TestSupportExt, WeakEntity, Window, div, relative,
+};
 
 use crate::body_text;
 use crate::har_export;

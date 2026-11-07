@@ -10,7 +10,11 @@ use apinata_core::{FileTexts, text_hunks};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, ListHorizontalSizingBehavior, Subscription, Task, TestSupportExt,
+    UniformListScrollHandle, Window, div, uniform_list,
+};
 
 use crate::banner::Choice;
 use crate::command::{Command, Target};
