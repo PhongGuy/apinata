@@ -132,7 +132,7 @@ The guard fails on a tag that does not match the workspace version, before any b
 Each job is billed in whole minutes; Windows bills 2x and macOS 10x.
 
 - A CI run takes 10 to 12 billed minutes (measured on two pushes).
-- A cold Linux release rehearsal measured 24 billed minutes for the x86_64 leg; the aarch64 leg failed in package verify after 16 (since fixed). ASSUMED: a full cold Linux pair is about 50; warm-cache times are not measured yet.
+- A cold Linux release rehearsal measured 24 billed minutes for the x86_64 leg; the aarch64 leg failed in package verify after 16 (since fixed). ASSUMED: a full Linux pair is about 50. Release builds restore no cache, so every run is cold.
 - ASSUMED: a full release is about 500: Linux about 50, Windows 25 x 2, macOS 2 x 20 x 10.
 - ASSUMED: a `linux,windows` rehearsal is about 100.
 

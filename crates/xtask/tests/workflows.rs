@@ -458,3 +458,19 @@ fn the_draft_uses_generated_notes_from_full_history() {
     assert!(draft.contains("--notes-file release-notes.md"), "{draft}");
     assert!(!draft.contains("--generate-notes"), "{draft}");
 }
+
+#[test]
+fn release_jobs_restore_no_cache() {
+    // A cache written by another run could poison a release file before it is signed.
+    let rel = load("release.yml");
+    for (job, _) in rel["jobs"].as_mapping().unwrap() {
+        for step in steps(&rel, str_of(job)) {
+            let uses = str_of(&step["uses"]);
+            assert!(
+                !uses.starts_with("Swatinem/rust-cache@") && !uses.starts_with("actions/cache"),
+                "{job:?} uses {uses}"
+            );
+            assert!(step["with"].get("cache").is_none(), "{job:?} {uses} caches");
+        }
+    }
+}
