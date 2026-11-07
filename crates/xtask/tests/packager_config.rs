@@ -63,7 +63,6 @@ fn signing_is_added_only_from_the_environment() {
 
     let signing = Signing {
         macos_identity: Some("Developer ID Application: Example (TEAM123)".into()),
-        windows_sign_command: Some("signtool sign %1".into()),
     };
     let signed = packager_config(&metadata(base()), None, Path::new("/o"), &signing).unwrap();
     assert_eq!(
@@ -71,21 +70,27 @@ fn signing_is_added_only_from_the_environment() {
         "Developer ID Application: Example (TEAM123)"
     );
     assert_eq!(signed["macos"]["minimumSystemVersion"], "11.0");
-    assert_eq!(signed["windows"]["signCommand"], "signtool sign %1");
+}
+
+#[test]
+fn windows_builds_take_no_sign_command_from_the_environment() {
+    let signing = Signing::from_vars(|n| {
+        (n == "APINATA_WINDOWS_SIGN_COMMAND").then(|| "signtool sign %1".to_owned())
+    });
+    let config = packager_config(&metadata(base()), None, Path::new("/o"), &signing).unwrap();
+    assert!(config.get("windows").is_none(), "{config}");
 }
 
 #[test]
 fn blank_variables_mean_unsigned() {
     let vars = |name: &str| match name {
         "APINATA_MACOS_SIGNING_IDENTITY" => Some("  ".to_owned()),
-        "APINATA_WINDOWS_SIGN_COMMAND" => Some(String::new()),
         _ => None,
     };
     assert_eq!(Signing::from_vars(vars), Signing::default());
     let set =
         Signing::from_vars(|n| (n == "APINATA_MACOS_SIGNING_IDENTITY").then(|| "Dev".to_owned()));
     assert_eq!(set.macos_identity.as_deref(), Some("Dev"));
-    assert_eq!(set.windows_sign_command, None);
 }
 
 #[test]

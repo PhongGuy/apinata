@@ -140,7 +140,7 @@ package_main() {
   out=${OUT_DIR:-$root/target/dist/$os}
   prepare_out_dir "$root" "$out" || return 1
   out=$(realpath -m -- "$out")
-  unset APINATA_MACOS_SIGNING_IDENTITY APINATA_WINDOWS_SIGN_COMMAND
+  unset APINATA_MACOS_SIGNING_IDENTITY
   cd "$root"
   version=$(workspace_version)
   target=$(rustc -vV | sed -n 's/^host: //p')
