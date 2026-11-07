@@ -206,6 +206,7 @@ pub use graphql_schema::{
     SchemaError, SchemaSymbol, SchemaType, SymbolAt, TypeKind, TypeRef, fetch_introspection,
     fetch_schema, introspect, introspection_request,
 };
+pub use graphql_variables::{VariableDefinition, variable_definitions};
 pub use header_check::{HeaderNameProblem, invalid_header_name};
 pub use header_hints::{header_names, header_values};
 pub use hidden_char::{is_hidden_char, is_variation_selector};
