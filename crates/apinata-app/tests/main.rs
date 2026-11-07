@@ -254,6 +254,7 @@ mod global_env_workspace;
 mod graphql_beautify;
 mod graphql_check;
 mod graphql_complete;
+mod graphql_directive_docs;
 mod graphql_docs;
 mod graphql_editor;
 mod graphql_highlight;

@@ -181,6 +181,21 @@ fn input_signature(v: &apinata_core::InputValue) -> String {
     }
 }
 
+/// `@name(arg: Type = default, ...) repeatable on A | B`; parentheses only with arguments,
+/// `repeatable` only when set.
+pub(crate) fn directive_signature(d: &apinata_core::Directive) -> String {
+    let mut out = format!("@{}", d.name());
+    if !d.args().is_empty() {
+        let args: Vec<String> = d.args().iter().map(input_signature).collect();
+        out.push_str(&format!("({})", args.join(", ")));
+    }
+    if d.is_repeatable() {
+        out.push_str(" repeatable");
+    }
+    out.push_str(&format!(" on {}", d.locations().join(" | ")));
+    out
+}
+
 pub(crate) fn lsp_range(text: &Rope, range: &std::ops::Range<usize>) -> Range {
     Range::new(
         text.offset_to_position(range.start),

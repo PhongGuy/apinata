@@ -3,17 +3,19 @@
 
 use std::ops::Range;
 
-use apinata_core::{Field, InputValue, Schema, SchemaType, TypeKind};
+use apinata_core::{Directive, Field, InputValue, Schema, SchemaType, TypeKind};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
+use crate::graphql_hover::directive_signature;
 use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
 use crate::graphql_section::SchemaAction;
 use crate::{style, ui};
 
-/// Where the explorer stands: the schema root, one named type, or one field of a type.
+/// Where the explorer stands: the schema root, one named type, one field of a type, or one
+/// directive.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocsView {
     /// The root types and the search.
@@ -27,6 +29,8 @@ pub enum DocsView {
         /// The field's name.
         field: String,
     },
+    /// One directive, named without `@`.
+    Directive(String),
 }
 
 /// One line of a docs page.
@@ -64,6 +68,16 @@ pub fn page(schema: &Schema, view: &DocsView, search: &str, show_deprecated: boo
         DocsView::Type(name) => match schema.type_named(name) {
             Some(ty) => type_page(ty, show_deprecated),
             None => missing(name.clone(), name),
+        },
+        DocsView::Directive(name) => match schema.directive_named(name) {
+            Some(d) => directive_page(d),
+            None => DocsPage {
+                title: format!("@{name}"),
+                description: None,
+                rows: vec![DocRow::Plain(format!(
+                    "No directive @{name} in this schema"
+                ))],
+            },
         },
         DocsView::Field { owner, field } => {
             let title = format!("{owner}.{field}");
@@ -128,6 +142,12 @@ fn root_page(schema: &Schema, search: &str, show_deprecated: bool) -> DocsPage {
         .filter_map(|(op, name)| name.map(|n| type_link(format!("{op}: {n}"), n)))
         .collect();
     section(&mut rows, "Root types", links);
+    let directives = schema
+        .directives()
+        .iter()
+        .map(|d| directive_link(d.name()))
+        .collect();
+    section(&mut rows, "Directives", directives);
     let needle = search.trim().to_lowercase();
     if !needle.is_empty() {
         // Introspection's own `__` types are never results; type names come before fields.
@@ -144,6 +164,13 @@ fn root_page(schema: &Schema, search: &str, show_deprecated: bool) -> DocsPage {
                 .filter(|t| matches(t.name()))
                 .map(|t| type_link(t.name().to_owned(), t.name())),
         );
+        rows.extend(
+            schema
+                .directives()
+                .iter()
+                .filter(|d| matches(&format!("@{}", d.name())))
+                .map(|d| directive_link(d.name())),
+        );
         for ty in
             user_types().filter(|t| matches!(t.kind(), TypeKind::Object | TypeKind::Interface))
         {
@@ -158,6 +185,28 @@ fn root_page(schema: &Schema, search: &str, show_deprecated: bool) -> DocsPage {
     DocsPage {
         title: "Schema".into(),
         description: None,
+        rows,
+    }
+}
+
+fn directive_link(name: &str) -> DocRow {
+    DocRow::Link {
+        label: format!("@{name}"),
+        to: DocsView::Directive(name.to_owned()),
+    }
+}
+
+fn directive_page(d: &Directive) -> DocsPage {
+    let mut rows = vec![DocRow::Plain(directive_signature(d))];
+    if d.is_repeatable() {
+        rows.push(DocRow::Plain("Repeatable".into()));
+    }
+    section(&mut rows, "Arguments", input_links(d.args()));
+    let locations = d.locations().iter().cloned().map(DocRow::Plain).collect();
+    section(&mut rows, "Locations", locations);
+    DocsPage {
+        title: format!("@{}", d.name()),
+        description: d.description().map(str::to_owned),
         rows,
     }
 }

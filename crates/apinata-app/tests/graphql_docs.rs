@@ -38,6 +38,12 @@ fn field(label: &str, owner: &str, f: &str) -> DocRow {
 fn plain(s: &str) -> DocRow {
     DocRow::Plain(s.into())
 }
+fn dir(name: &str) -> DocRow {
+    DocRow::Link {
+        label: format!("@{name}"),
+        to: DocsView::Directive(name.into()),
+    }
+}
 
 #[test]
 fn the_root_page_lists_roots_and_search_results() {
@@ -49,12 +55,17 @@ fn the_root_page_lists_roots_and_search_results() {
         [
             h("Root types"),
             ty("query: Query", "Query"),
-            ty("mutation: Mutation", "Mutation")
+            ty("mutation: Mutation", "Mutation"),
+            h("Directives"),
+            dir("skip"),
+            dir("include"),
+            dir("deprecated"),
+            dir("specifiedBy")
         ]
     );
     let found = page(&s, &DocsView::Root, "US", false);
     assert_eq!(
-        found.rows[3..],
+        found.rows[8..],
         [
             h("Results"),
             ty("User", "User"),
