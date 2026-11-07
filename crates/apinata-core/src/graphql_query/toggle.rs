@@ -24,7 +24,7 @@ pub struct QueryEdit {
 /// field of the schema, or it is already selected.
 pub fn toggle_field(query: &str, schema: &Schema, path: &FieldPath, on: bool) -> Option<QueryEdit> {
     let outline = query_outline(query, schema)?;
-    if !on || outline.locked(path).is_some() {
+    if !on || outline.selects(path) || outline.locked(path).is_some() {
         return None;
     }
     // Only a scalar or enum field can be written without a selection set of its own.
@@ -41,7 +41,8 @@ pub fn toggle_field(query: &str, schema: &Schema, path: &FieldPath, on: bool) ->
         return Some(new_operation(&text, keyword(schema, root)?, rest));
     };
     // Descend through the first copy of each ancestor that has a selection set; the
-    // first missing level is where the rest of the chain is written.
+    // first missing level is where the rest of the chain is written. Any copy already
+    // selecting the path returned above.
     let mut set = &op.set;
     for (i, name) in rest.iter().enumerate() {
         let leaf = i + 1 == rest.len();
@@ -85,7 +86,8 @@ fn chain(names: &[String], indent: Option<&str>) -> String {
 }
 
 // Appends `names` to `set`: inside a one-line set after its last selection, else on a new
-// line after the line holding the last selection's end, at that selection's indent.
+// line after the line holding the last selection's end, at that selection's indent, with
+// the set's own line break (CRLF stays CRLF).
 fn insertion(text: &str, set: &Set, names: &[String]) -> QueryEdit {
     let last = set.items.last().expect("a parsed set is never empty");
     let end = last.range.end;
@@ -96,10 +98,19 @@ fn insertion(text: &str, set: &Set, names: &[String]) -> QueryEdit {
         };
     }
     let indent = leading_ws(text, last.range.start);
-    let at = text[end..set.close].find('\n').map_or(end, |i| end + i);
+    let crlf = text[set.open..set.close].contains("\r\n");
+    let mut at = text[end..set.close].find('\n').map_or(end, |i| end + i);
+    if crlf && text[..at].ends_with('\r') {
+        at -= 1;
+    }
+    let lines = format!("\n{indent}{}", chain(names, Some(indent)));
     QueryEdit {
         range: at..at,
-        text: format!("\n{indent}{}", chain(names, Some(indent))),
+        text: if crlf {
+            lines.replace('\n', "\r\n")
+        } else {
+            lines
+        },
     }
 }
 

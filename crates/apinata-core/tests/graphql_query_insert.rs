@@ -80,6 +80,16 @@ fn multi_line_sets_get_a_new_line_with_the_sibling_indent() {
             "{\n\tversion\n\tme {\n\t  id\n\t}\n}",
         ),
         (
+            "{\r\n  me {\r\n    id\r\n  }\r\n}",
+            "Query.me.name",
+            "{\r\n  me {\r\n    id\r\n    name\r\n  }\r\n}",
+        ),
+        (
+            "{\r\n  version\r\n}",
+            "Query.me.id",
+            "{\r\n  version\r\n  me {\r\n    id\r\n  }\r\n}",
+        ),
+        (
             "{\n  version # v\n}",
             "Query.users.id",
             "{\n  version # v\n  users {\n    id\n  }\n}",
@@ -141,6 +151,7 @@ fn nothing_to_write_gives_none() {
     let big = format!("{{ version }}{}", " ".repeat(QUERY_VALIDATE_LIMIT));
     for (q, path) in [
         ("{ version }", "Query.version"),
+        ("{ me { id } me { name } }", "Query.me.name"),
         ("", "Query.me"),
         ("", "Query"),
         ("", "Query.nope"),
