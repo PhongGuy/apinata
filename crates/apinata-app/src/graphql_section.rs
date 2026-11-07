@@ -19,6 +19,7 @@ use crate::graphql_complete::SchemaCompletions;
 use crate::graphql_docs::{DocsPanel, DocsView};
 use crate::graphql_hover::{SchemaSymbols, docs_view};
 use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
+use crate::graphql_variables::VariableTools;
 use crate::schema_load::load_from_file;
 use crate::section::SectionEdit;
 use crate::style;
@@ -88,6 +89,15 @@ impl GraphqlSection {
             lsp.show_document = Some(show_document);
         });
         let variables = cx.new(|cx| EditorState::new(window, cx).language("json"));
+        let tools = Rc::new(VariableTools::new(
+            query.downgrade(),
+            completion_url.clone(),
+        ));
+        variables.update(cx, |s, _| {
+            let lsp = s.lsp_mut();
+            lsp.completion_provider = Some(tools.clone());
+            lsp.hover_provider = Some(tools);
+        });
         let on_change = |this: &mut Self, _, event: &InputEvent, cx: &mut Context<Self>| {
             if matches!(event, InputEvent::Change) {
                 this.emit(cx);
@@ -486,14 +496,17 @@ impl Render for GraphqlSection {
             .min_w_0()
             .gap_2()
             .child(
-                // Accepting a schema completion lets Enter bubble on, and an unhandled Enter is
-                // then typed as a newline; stopping it here ends the key at the accepted word.
+                // Accepting a completion lets Enter bubble on, and an unhandled Enter is then
+                // typed as a newline; stopping it at each wrapper ends the key at the accepted item.
                 self.editor("graphql-query", "Query", &self.query)
                     .key_context(GRAPHQL_QUERY_CONTEXT)
                     .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             )
             .children(beautify_error)
-            .child(self.editor("graphql-variables", "Variables", &self.variables));
+            .child(
+                self.editor("graphql-variables", "Variables", &self.variables)
+                    .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
+            );
         // The panel carries the `graphql-docs` id itself, so the wrapper only sizes it.
         let docs = self.docs_open.then(|| {
             div()

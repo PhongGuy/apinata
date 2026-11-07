@@ -64,7 +64,7 @@ fn params(uri: &str) -> ShowDocumentParams {
 }
 
 #[gpui_kit::test]
-fn only_the_query_editor_gets_the_providers(cx: &mut TestAppContext) {
+fn only_the_query_editor_gets_definitions(cx: &mut TestAppContext) {
     let (_win, s) = section(cx);
     let (query, variables) = s.read_with(cx, |s, _| (s.query().clone(), s.variables().clone()));
     assert!(query.read_with(cx, |q, _| {
@@ -73,7 +73,7 @@ fn only_the_query_editor_gets_the_providers(cx: &mut TestAppContext) {
     }));
     assert!(variables.read_with(cx, |v, _| {
         let l = v.lsp();
-        l.hover_provider.is_none() && l.definition_provider.is_none() && l.show_document.is_none()
+        l.hover_provider.is_some() && l.definition_provider.is_none() && l.show_document.is_none()
     }));
 }
 
