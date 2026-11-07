@@ -151,6 +151,7 @@ fn nothing_to_write_gives_none() {
     let big = format!("{{ version }}{}", " ".repeat(QUERY_VALIDATE_LIMIT));
     for (q, path) in [
         ("{ version }", "Query.version"),
+        ("{ }", "Query.version"),
         ("{ me { id } me { name } }", "Query.me.name"),
         ("", "Query.me"),
         ("", "Query"),

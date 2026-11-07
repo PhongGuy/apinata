@@ -115,6 +115,8 @@ impl fmt::Debug for PartValue {
 }
 
 /// bruno-common `extractBoundaryFromContentType`: a quoted boundary first, else a bare one.
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static BOUNDARY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::with_flags(r#"boundary="([^"]+)"|boundary=([^;\s]+)"#, "i")
         .expect("bruno-common boundary regex compiles")

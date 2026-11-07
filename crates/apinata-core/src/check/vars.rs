@@ -26,11 +26,15 @@ const MAX_ROUNDS: usize = 50;
 const PROCESS_ENV: &str = "process.env.";
 
 /// A setter call whose first argument is a string literal; capture 3 is the name.
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static LITERAL_SETTER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"\b(setVar|setEnvVar|setGlobalEnvVar)\s*\(\s*(["'`])([^"'`]*)\2\s*[,)]"#)
         .expect("literal setter pattern compiles")
 });
 /// Any setter call, literal or not.
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static ANY_SETTER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(setVar|setEnvVar|setGlobalEnvVar)\s*\(").expect("setter pattern compiles")
 });

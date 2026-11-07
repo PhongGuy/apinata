@@ -189,8 +189,7 @@ fn handle(message: Message, window: &mut Window, cx: &mut App) {
         }
         Message::Done(id) => {
             let queue = &mut cx.global_mut::<SignIn>().queue;
-            if queue.front().is_some_and(|e| e.id == id) {
-                let front = queue.pop_front().expect("the front entry");
+            if let Some(front) = queue.pop_front_if(|e| e.id == id) {
                 if front.open {
                     window.close_dialog(cx);
                 }

@@ -175,6 +175,8 @@ pub fn schema_test_script(existing: &str, body: &str) -> Option<String> {
 }
 
 /// The test name, suffixed ` (2)`, ` (3)` while the script already declares it.
+// The candidate sequence never ends, so `find` returns only once a name is free.
+#[allow(clippy::expect_used)]
 fn free_name(existing: &str) -> String {
     let taken = |name: &str| existing.contains(&format!("\"{name}\""));
     if !taken(TEST_NAME) {

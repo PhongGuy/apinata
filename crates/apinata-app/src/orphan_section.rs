@@ -147,9 +147,9 @@ pub struct FilelessGroup {
 
 impl FilelessGroup {
     /// A group of `variables` under `environment`.
-    pub fn new(environment: impl Into<String>, variables: Vec<String>) -> FilelessGroup {
+    pub fn new(environment: &str, variables: Vec<String>) -> FilelessGroup {
         FilelessGroup {
-            environment: environment.into(),
+            environment: environment.to_owned(),
             variables,
         }
     }
@@ -176,7 +176,7 @@ pub fn fileless_groups(report: &OrphanReport) -> Vec<FilelessGroup> {
                 g.variables.push(orphan.variable.clone())
             }
             _ => groups.push(FilelessGroup::new(
-                orphan.environment.clone(),
+                &orphan.environment,
                 vec![orphan.variable.clone()],
             )),
         }

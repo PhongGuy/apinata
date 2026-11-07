@@ -10,6 +10,8 @@ use serde_json::{Map, Value, json};
 use yaml_serde::Mapping;
 
 /// A JSON section as YAML, keeping its key order.
+// Every JSON value has a YAML form, so the conversion cannot fail.
+#[allow(clippy::expect_used)]
 fn yaml(value: Value) -> yaml_serde::Value {
     yaml_serde::to_value(value).expect("JSON converts to YAML")
 }

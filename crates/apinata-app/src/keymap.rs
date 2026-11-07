@@ -122,6 +122,7 @@ pub fn bindings() -> Vec<KeyBinding> {
 }
 
 // Every chord comes from `Chord`, which only holds parsable keystrokes, so a failure here is a bug.
+#[allow(clippy::expect_used)]
 fn bind(chord: &str, action: &dyn Action, context: &str) -> KeyBinding {
     let predicate = KeyBindingContextPredicate::parse(context)
         .expect("every binding context is a fixed predicate from the command registry");

@@ -8,6 +8,8 @@ use crate::js::js_trim;
 
 /// dotenv 16.6.1 `LINE` (lib/main.js:9), run with the same `mg` flags.
 const LINE: &str = r#"(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)"#;
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static LINE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::with_flags(LINE, "mg").expect("dotenv LINE compiles"));
 

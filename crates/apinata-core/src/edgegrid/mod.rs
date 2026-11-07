@@ -207,6 +207,8 @@ fn collapse(text: &str) -> String {
 
 /// Base64 HMAC-SHA256 of `data` under `key`.
 fn hmac_base64(key: &[u8], data: &[u8]) -> String {
+    // HMAC accepts a key of any length, so building the MAC cannot fail.
+    #[allow(clippy::expect_used)]
     let mut mac =
         <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC takes any key length");
     mac.update(data);

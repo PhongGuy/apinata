@@ -115,6 +115,8 @@ impl ResolvedProxy {
     }
 
     /// The proxy as reqwest takes it, credentials percent-encoded as `encodeURIComponent` does.
+    // The scheme, host and port were validated when the proxy was parsed.
+    #[allow(clippy::expect_used)]
     pub(crate) fn url(&self) -> Url {
         let userinfo = match &self.credentials {
             Some((user, pass)) => format!(
@@ -130,6 +132,8 @@ impl ResolvedProxy {
 
     /// The proxy's host and port as an `http` URL for judging under a host policy: SOCKS schemes
     /// are not special, so under them `url` would read an IP literal as a domain.
+    // The host and port were validated when the proxy was parsed.
+    #[allow(clippy::expect_used)]
     pub(crate) fn address(&self) -> Url {
         Url::parse(&format!("http://{}:{}/", self.host, self.port))
             .expect("a validated host and port form a URL")

@@ -360,6 +360,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         .into_iter()
         .filter(|c| c.in_palette && !no_collection.contains(&c.id))
         .map(|c| {
+            // Every registry command has at least one target.
+            #[allow(clippy::expect_used)]
             let target = c
                 .targets
                 .into_iter()
@@ -381,6 +383,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
 /// since the kit numbers a group with every command hidden too. Panics when `ix` is out of range.
 pub fn index_path(items: &[PaletteEntry], ix: usize) -> IndexPath {
     let group = items[ix].group;
+    // `PaletteGroup::ALL` lists every group.
+    #[allow(clippy::expect_used)]
     let section = PaletteGroup::ALL
         .iter()
         .position(|g| *g == group)

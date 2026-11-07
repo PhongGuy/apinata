@@ -20,6 +20,7 @@ use gpui_kit::{
     AnyElement, App, Div, Entity, Focusable, Hsla, Rems, ScrollHandle, Subscription,
     TestSupportExt, Window, div, px, rems,
 };
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 // The name column both row kinds share, so their value columns start at one x.
@@ -33,8 +34,18 @@ enum Kind {
     Global,
 }
 
-// A script row as shown: name, value, note and whether it is masked.
-type ShownRow = (String, String, String, bool);
+// A script or global row as shown, its value already masked unless revealed.
+struct ShownRow {
+    name: String,
+    value: String,
+    note: String,
+}
+
+// The overlay rows as shown, split by layer: environment and collection, then global.
+struct ShownRows {
+    script: Vec<ShownRow>,
+    global: Vec<ShownRow>,
+}
 
 // Identifies one row's field: its kind, the overlay layer (0 for captured rows) and its name.
 type FieldKey = (Kind, u8, String);
@@ -259,22 +270,21 @@ impl RuntimeVarsView {
     /// entry, environment first; global entries are listed by `global_rows`. A masked row that
     /// is not revealed shows `SECRET_HIDDEN` as its value.
     pub fn script_rows(&self) -> Vec<(String, String, String)> {
-        (self.shown_entries().0.into_iter())
-            .map(|(name, value, note, _)| (name, value, note))
+        (self.shown_entries().script.into_iter())
+            .map(|r| (r.name, r.value, r.note))
             .collect()
     }
 
     /// `(name, value | "undefined" | "deleted")` per global overlay entry, masked like the
     /// script rows.
     pub fn global_rows(&self) -> Vec<(String, String)> {
-        (self.shown_entries().1.into_iter())
-            .map(|(name, value, _, _)| (name, value))
+        (self.shown_entries().global.into_iter())
+            .map(|r| (r.name, r.value))
             .collect()
     }
 
-    // The script rows and then the global rows as shown, each with whether it is masked,
-    // from one overlay read.
-    fn shown_entries(&self) -> (Vec<ShownRow>, Vec<ShownRow>) {
+    // The script rows and then the global rows as shown, from one overlay read.
+    fn shown_entries(&self) -> ShownRows {
         let (mut script, mut global) = (Vec::new(), Vec::new());
         for r in self.all_rows() {
             let list = match r.kind {
@@ -282,10 +292,14 @@ impl RuntimeVarsView {
                 Kind::Script => &mut script,
                 Kind::Global => &mut global,
             };
-            let shown = self.shown(r.kind, &r.name, r.plain, r.masked);
-            list.push((r.name, shown, r.note, r.masked));
+            let value = self.shown(r.kind, &r.name, r.plain, r.masked);
+            list.push(ShownRow {
+                name: r.name,
+                value,
+                note: r.note,
+            });
         }
-        (script, global)
+        ShownRows { script, global }
     }
 
     // `value`, or `SECRET_HIDDEN` while the row is masked and not revealed.
@@ -425,34 +439,34 @@ impl RuntimeVarsView {
             let text = self.field_text(row);
             let hidden = row.masked && text.is_empty();
             let holder = if hidden { SECRET_HIDDEN } else { "" };
-            if !self.fields.contains_key(&key) {
-                let input = cx.new(|cx| {
-                    InputState::new(window, cx)
-                        .placeholder(holder)
-                        .default_value(text.clone())
-                });
-                let at = key.clone();
-                let sub = cx.subscribe_in(
-                    &input,
-                    window,
-                    move |this: &mut RuntimeVarsView, _, event: &InputEvent, window, cx| {
-                        if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                            this.commit(&at, window, cx);
-                        }
-                    },
-                );
-                self.fields.insert(
-                    key.clone(),
-                    Field {
+            // A row seen for the first time gets its input and Enter/blur subscription here.
+            let field = match self.fields.entry(key.clone()) {
+                Entry::Occupied(slot) => slot.into_mut(),
+                Entry::Vacant(slot) => {
+                    let input = cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .placeholder(holder)
+                            .default_value(text.clone())
+                    });
+                    let at = key.clone();
+                    let sub = cx.subscribe_in(
+                        &input,
+                        window,
+                        move |this: &mut RuntimeVarsView, _, event: &InputEvent, window, cx| {
+                            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                                this.commit(&at, window, cx);
+                            }
+                        },
+                    );
+                    slot.insert(Field {
                         input,
                         holder,
                         synced: text.clone(),
                         _sub: sub,
-                    },
-                );
-            }
+                    })
+                }
+            };
             // Writing an input notifies it, so only touch what differs or every frame is dirty.
-            let field = self.fields.get_mut(&key).expect("just inserted");
             let input = field.input.clone();
             let fresh_holder = field.holder != holder;
             field.holder = holder;

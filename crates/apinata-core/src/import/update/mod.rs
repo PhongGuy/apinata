@@ -748,6 +748,8 @@ pub(crate) fn plan(
         if !o.prune {
             continue;
         }
+        // `key` comes from `baseline.keys()`, so the baseline holds an entry for it.
+        #[allow(clippy::expect_used)]
         let recorded = baseline.get(key).expect("key comes from the baseline");
         match prune_blocker(file, recorded) {
             None => {

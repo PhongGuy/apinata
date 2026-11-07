@@ -14,9 +14,13 @@ use crate::resolve::{effective_auth, raw_headers, with_scheme};
 
 /// The reference's `PROMPT_VARIABLE_TEMPLATE_PATTERN`; group 1 is the label.
 const LABEL: &str = r"[^{}\s](?:[^{}]*[^{}\s])?";
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static TEMPLATE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"\{{\{{\?({LABEL})\}}\}}")).expect("prompt template compiles")
 });
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static NAME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!(r"^\?({LABEL})$")).expect("prompt name compiles"));
 

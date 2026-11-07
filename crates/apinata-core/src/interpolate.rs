@@ -289,16 +289,22 @@ fn canonical_index(key: &str) -> Option<usize> {
 }
 
 /// lodash `reIsDeepProp`: a key with `.` or `[...]` is a path unless the object has it literally.
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static DEEP_PROP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\\]|\\.)*?\1)\]"#)
         .expect("lodash reIsDeepProp compiles")
 });
 /// lodash `rePropName`, as used by `stringToPath`.
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static PROP_NAME: LazyLock<Regex> = LazyLock::new(|| {
     Regex::with_flags(r#"[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))"#, "g")
         .expect("lodash rePropName compiles")
 });
 /// lodash `reEscapeChar`: a backslash and the character it escapes inside a quoted key.
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static ESCAPE_CHAR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\\(\\)?").expect("lodash reEscapeChar compiles"));
 

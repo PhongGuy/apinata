@@ -65,6 +65,8 @@ pub fn postman(collection: &Collection) -> PostmanExport {
         notes.push(ExportNote::new("scripts", SCRIPTS));
     }
     let root = Value::Object(root);
+    // A `serde_json::Value` has only string keys, so serializing it cannot fail.
+    #[allow(clippy::expect_used)]
     let mut json = serde_json::to_string_pretty(&root).expect("a JSON value serializes");
     json.push('\n');
     PostmanExport { json, notes }

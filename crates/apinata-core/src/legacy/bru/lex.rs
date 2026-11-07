@@ -410,7 +410,11 @@ pub(super) fn key(c: &mut Cursor) -> String {
 
 fn is_alnum(ch: char) -> bool {
     static LETTER: OnceLock<regress::Regex> = OnceLock::new();
-    let letter = LETTER.get_or_init(|| regress::Regex::with_flags(r"^\p{L}$", "u").expect("valid"));
+    // A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+    #[allow(clippy::expect_used)]
+    let letter = LETTER.get_or_init(|| {
+        regress::Regex::with_flags(r"^\p{L}$", "u").expect("the letter pattern compiles")
+    });
     // ohm matches one UTF-16 unit, and a surrogate half is never a letter.
     ch.len_utf16() == 1
         && (ch.is_ascii_digit() || letter.find(ch.encode_utf8(&mut [0; 4])).is_some())

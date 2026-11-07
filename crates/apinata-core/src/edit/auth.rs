@@ -407,7 +407,9 @@ pub(crate) fn write_auth(doc: &mut Document, keys: &[&str], order: &[&[&str]], a
             let mut nested = order.to_vec();
             nested.push(auth.order());
             for (key, value) in auth.entries() {
-                *path.last_mut().expect("path has the auth key") = key;
+                // Swap the previous leaf (first `type`, then each earlier key) for this key.
+                path.pop();
+                path.push(key);
                 doc.set(&path, value, &nested);
             }
         }

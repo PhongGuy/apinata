@@ -190,6 +190,8 @@ impl Parser<'_> {
         Ok(())
     }
 
+    // The four digits are checked as hex just above, so parsing them cannot fail.
+    #[allow(clippy::expect_used)]
     fn hex4(&mut self) -> Result<u32, JsonError> {
         let digits = self.text.get(self.pos..self.pos + 4).unwrap_or("");
         if digits.len() != 4 || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -259,6 +261,8 @@ impl Parser<'_> {
             let low = self.hex4()?;
             if (0xdc00..0xe000).contains(&low) {
                 let joined = 0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00);
+                // A high and a low surrogate always join into a scalar above U+FFFF.
+                #[allow(clippy::expect_used)]
                 return Ok(char::from_u32(joined).expect("a surrogate pair is a scalar"));
             }
             self.pos = save;

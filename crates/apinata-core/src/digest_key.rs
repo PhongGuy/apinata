@@ -42,6 +42,8 @@ impl DigestKey {
 }
 
 fn mac(key: &[u8], parts: &[&[u8]]) -> Vec<u8> {
+    // HMAC accepts a key of any length, so building the MAC cannot fail.
+    #[allow(clippy::expect_used)]
     let mut mac =
         <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC takes any key length");
     for part in parts {

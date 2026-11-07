@@ -46,6 +46,8 @@ pub fn introspection_request(
     if req.kind() != RequestKind::Graphql {
         return Err(SchemaError::NotGraphql);
     }
+    // Serializing a plain string to JSON cannot fail.
+    #[allow(clippy::expect_used)]
     let query = serde_json::to_string(INTROSPECTION_QUERY).expect("a string serializes");
     let body = format!("{{\"query\":{query}}}");
     crate::resolve::introspection(req, ctx, body, SCHEMA_TIMEOUT).map_err(SchemaError::Resolve)

@@ -46,6 +46,8 @@ const MENU_GROUPS: [&[&str]; 4] = [
 
 /// The menu's groups, in order: registry commands looked up by id, each as its label and
 /// first target's action.
+// Menu ids and their targets are fixed registry entries, so a missing one is a bug every launch hits.
+#[allow(clippy::expect_used)]
 pub fn app_menu_groups() -> Vec<Vec<(&'static str, Box<dyn Action>)>> {
     let mut commands = registry();
     MENU_GROUPS
@@ -57,7 +59,11 @@ pub fn app_menu_groups() -> Vec<Vec<(&'static str, Box<dyn Action>)>> {
                     let c = commands.swap_remove(ix);
                     (
                         c.label,
-                        c.targets.into_iter().next().expect("a target").action,
+                        c.targets
+                            .into_iter()
+                            .next()
+                            .expect("every menu command has a target")
+                            .action,
                     )
                 })
                 .collect()

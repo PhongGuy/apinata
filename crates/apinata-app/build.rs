@@ -2,6 +2,8 @@
 
 const ICON: &str = "../../assets/icon/generated/apinata.ico";
 
+// A build script reports failure by panicking, so a failed icon embed stops the build.
+#[allow(clippy::expect_used)]
 fn main() {
     println!("cargo:rerun-if-changed={ICON}");
     // The build script runs on the host, so the target comes from cargo's cfg variable.

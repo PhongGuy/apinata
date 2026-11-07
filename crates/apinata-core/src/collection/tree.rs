@@ -428,6 +428,8 @@ impl Collection {
     ///
     /// Fails like [`Collection::create_request`]; in the root the name may not contain
     /// `environments`, which Bruno reserves.
+    // `parent` is looked up first and nothing removes it, and a directory name is a single path segment.
+    #[allow(clippy::expect_used)]
     pub fn create_folder(&mut self, parent: &ItemPath, name: &str) -> Result<ItemPath, TreeError> {
         let stem = folder_stem(parent, name)?;
         let dir = self.folder(parent).ok_or_else(|| TreeError::NotFound {
@@ -462,7 +464,9 @@ impl Collection {
             .map_err(|e| io_error(&path, std::io::Error::other(e.to_string())))?;
         let dir_name = folder.dir_name.clone();
         self.load_errors.extend(errors);
-        let parent_folder = self.folder_mut(parent).expect("parent exists");
+        let parent_folder = self
+            .folder_mut(parent)
+            .expect("the parent folder was found before the write");
         parent_folder.folders.push(folder);
         sort_lists(parent_folder);
         Ok(parent

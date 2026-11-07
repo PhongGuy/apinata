@@ -267,6 +267,8 @@ fn description(text: Option<&str>, indent: &str) -> String {
 }
 
 /// `text` as a GraphQL string literal; JSON's escapes are all valid GraphQL escapes.
+// Serializing a plain string to JSON cannot fail.
+#[allow(clippy::expect_used)]
 fn quoted(text: &str) -> String {
     serde_json::to_string(text).expect("a string serializes")
 }

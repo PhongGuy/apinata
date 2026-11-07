@@ -17,6 +17,8 @@ const LABEL: &str = "cookie jar";
 
 // The vendored public suffix list, parsed once per process and cloned into every jar's store,
 // so a `Domain` attribute naming a suffix no site owns is refused. Never fetched at run time.
+// The list is vendored into the binary, so a parse failure is a bug every run hits.
+#[allow(clippy::expect_used)]
 static PUBLIC_SUFFIXES: LazyLock<publicsuffix::List> = LazyLock::new(|| {
     include_str!("../vendor/public_suffix_list.dat")
         .parse()

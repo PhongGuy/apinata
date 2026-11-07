@@ -445,7 +445,11 @@ pub(crate) fn duplicate_environment<H: EnvHost + ?Sized>(
     let (color, extends) = (source.color(), source.extends());
     // Same naming and file creation as a new environment, then fill the fresh file.
     let (unique, mut warnings) = create_environment(host, from, store)?;
-    let env = host.env_mut(&unique).expect("just created");
+    // `create_environment` has just added this name to the host.
+    #[allow(clippy::expect_used)]
+    let env = host
+        .env_mut(&unique)
+        .expect("the environment was just created");
     env.set_variables(variables.clone());
     env.set_color(color);
     env.set_extends(extends);
@@ -502,7 +506,11 @@ pub(crate) fn rename_environment<H: EnvHost + ?Sized>(
 
     // Saving at the old path first lets a conflict stop the rename before anything moves;
     // a failed save puts the draft's name back, so a later save cannot write `to` there.
-    let env = host.env_mut(from).expect("found above");
+    // `from` was found at the top and nothing since has removed it.
+    #[allow(clippy::expect_used)]
+    let env = host
+        .env_mut(from)
+        .expect("the source environment was found above");
     let draft_name = env.document().get(&["name"]).cloned();
     env.document_mut()
         .set(&["name"], Value::from(to), &[ENV_TOP]);

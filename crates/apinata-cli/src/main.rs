@@ -1,5 +1,8 @@
 //! The `apinata` command line: argument parsing and the mapping of outcomes to exit codes.
 
+// A binary with no caller to hand an error to: an expect that fires is a bug report naming why.
+#![allow(clippy::expect_used)]
+
 #[macro_use]
 mod out;
 mod check_cmd;
