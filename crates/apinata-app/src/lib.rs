@@ -75,6 +75,7 @@ pub mod graphql_highlight;
 pub mod graphql_hover;
 pub mod graphql_schema_store;
 pub mod graphql_section;
+pub mod graphql_variables;
 pub mod har_export;
 pub mod header_complete;
 pub mod history_key;

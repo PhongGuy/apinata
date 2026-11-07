@@ -262,6 +262,8 @@ mod graphql_jump;
 mod graphql_live_check;
 mod graphql_schema_store;
 mod graphql_section;
+mod graphql_variable_tools;
+mod graphql_variables;
 mod har_export;
 mod harness;
 mod header_complete;

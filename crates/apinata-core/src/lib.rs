@@ -43,6 +43,7 @@ mod git;
 mod global_env;
 mod graphql_query;
 mod graphql_schema;
+mod graphql_variables;
 #[cfg(test)]
 mod hang_guard;
 mod header_check;
@@ -204,6 +205,10 @@ pub use graphql_schema::{
     IntrospectGuard, IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT, SCHEMA_TIMEOUT, Schema,
     SchemaError, SchemaSymbol, SchemaType, SymbolAt, TypeKind, TypeRef, fetch_introspection,
     fetch_schema, introspect, introspection_request,
+};
+pub use graphql_variables::{
+    VariableCompletion, VariableCompletionKind, VariableDefinition, VariableHover,
+    variable_completions, variable_definitions, variable_hover,
 };
 pub use header_check::{HeaderNameProblem, invalid_header_name};
 pub use header_hints::{header_names, header_values};
