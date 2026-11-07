@@ -235,7 +235,7 @@ fn extensions_add_members_to_their_type() {
 }
 
 #[test]
-fn directive_definitions_are_ignored() {
+fn applied_directives_other_than_deprecated_are_not_deprecations() {
     let s = sdl(
         "directive @auth(role: String) on FIELD_DEFINITION | OBJECT\ntype Query { a: Int @auth(role: \"x\") }",
     );
@@ -244,6 +244,7 @@ fn directive_definitions_are_ignored() {
         None
     );
     assert!(s.type_named("auth").is_none());
+    assert!(s.directive_named("auth").is_some());
 }
 
 #[test]

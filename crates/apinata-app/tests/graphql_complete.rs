@@ -181,3 +181,13 @@ fn enter_accepts_a_completion_in_a_selection_without_a_newline(cx: &mut TestAppC
         "{\n  user\n}"
     );
 }
+
+#[gpui_kit::test]
+fn typing_at_opens_the_directive_list(cx: &mut TestAppContext) {
+    let (win, query) = loaded_query_editor(cx);
+    keys(cx, win, "{ user @", &["enter"]);
+    assert_eq!(
+        query.read_with(cx, |q, _| q.value().to_string()),
+        "{ user @skip}"
+    );
+}

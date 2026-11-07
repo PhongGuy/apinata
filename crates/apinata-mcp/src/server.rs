@@ -1011,10 +1011,9 @@ impl ApinataServer {
                        line and column. Give exactly one of `path` (a GraphQL request's saved \
                        query) or `query` (raw text). Without `schema` only syntax is checked; \
                        with `schema` (SDL or an introspection JSON answer) the query is also \
-                       checked against it, and a deprecated field is a warning. A directive \
-                       name typo is not reported. At most 200 findings are returned, then an \
-                       `info` entry counting the rest. Nothing is sent and no approval is \
-                       needed.",
+                       checked against it, and a deprecated field is a warning. At most 200 \
+                       findings are returned, then an `info` entry counting the rest. Nothing \
+                       is sent and no approval is needed.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn graphql_validate(

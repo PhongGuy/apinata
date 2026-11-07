@@ -1,7 +1,7 @@
 //! Completion at a cursor in a GraphQL document: a small lexer feeds a frame stack that
 //! tracks which selection, argument list or variable definitions the cursor sits in.
 
-use super::model::{Schema, SchemaType, TypeKind};
+use super::model::{Directive, InputValue, Schema, SchemaType, TypeKind};
 
 /// One completion offered at a cursor.
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +23,8 @@ pub enum CompletionKind {
     Argument,
     /// A type name, after `on` or in a variable definition.
     Type,
+    /// A directive name after `@`, labelled with the bare name.
+    Directive,
 }
 
 impl Completion {
@@ -61,6 +63,11 @@ impl Schema {
             .rposition(|b| !(b.is_ascii_alphanumeric() || b == b'_'))
             .map_or(0, |i| i + 1);
         let prefix = &query[start..end];
+        // The scanner would read an open `{{` placeholder as two selection sets.
+        let line = &query[query[..start].rfind('\n').map_or(0, |i| i + 1)..start];
+        if line.rfind("{{").is_some_and(|i| !line[i..].contains("}}")) {
+            return Vec::new();
+        }
         let Some(context) = Scanner::new(self).run(&query[..start]) else {
             return Vec::new();
         };
@@ -75,6 +82,20 @@ impl Schema {
             Context::Nothing => Vec::new(),
             Context::Fields(parent) => self.field_completions(&parent),
             Context::Args { parent, field } => self.arg_completions(&parent, &field),
+            Context::DirectiveArgs { directive } => self
+                .directive_named(&directive)
+                .map_or_else(Vec::new, |d| arg_items(d.args())),
+            Context::Directives(class) => self
+                .directives()
+                .iter()
+                .filter(|d| d.locations().iter().any(|l| class.contains(&l.as_str())))
+                .map(|d| Completion {
+                    label: d.name().to_owned(),
+                    kind: CompletionKind::Directive,
+                    detail: directive_detail(d),
+                    documentation: d.description().map(str::to_owned),
+                })
+                .collect(),
             Context::Types(kinds) => self
                 .types()
                 .iter()
@@ -121,15 +142,7 @@ impl Schema {
         else {
             return Vec::new();
         };
-        f.args()
-            .iter()
-            .map(|a| Completion {
-                label: format!("{}:", a.name()),
-                kind: CompletionKind::Argument,
-                detail: a.ty().display().to_owned(),
-                documentation: a.description().map(str::to_owned),
-            })
-            .collect()
+        arg_items(f.args())
     }
 
     /// The type named `name` when a selection set can be written on it.
@@ -148,6 +161,30 @@ impl Schema {
         let f = ty.fields().iter().find(|f| f.name() == field)?;
         Some(f.ty().named().to_owned())
     }
+}
+
+fn arg_items(args: &[InputValue]) -> Vec<Completion> {
+    args.iter()
+        .map(|a| Completion {
+            label: format!("{}:", a.name()),
+            kind: CompletionKind::Argument,
+            detail: a.ty().display().to_owned(),
+            documentation: a.description().map(str::to_owned),
+        })
+        .collect()
+}
+
+/// `@name(arg: Type, ...)`, or just `@name` without arguments; defaults are left out.
+fn directive_detail(d: &Directive) -> String {
+    if d.args().is_empty() {
+        return format!("@{}", d.name());
+    }
+    let args: Vec<String> = d
+        .args()
+        .iter()
+        .map(|a| format!("{}: {}", a.name(), a.ty().display()))
+        .collect();
+    format!("@{}({})", d.name(), args.join(", "))
 }
 
 fn kind_word(kind: TypeKind) -> &'static str {
@@ -170,9 +207,21 @@ fn starts_with_ignore_case(name: &str, prefix: &str) -> bool {
 pub(super) enum Context {
     Nothing,
     Fields(String),
-    Args { parent: String, field: String },
+    Args {
+        parent: String,
+        field: String,
+    },
     Types(&'static [TypeKind]),
+    /// A directive name, offered when it has a location in this class.
+    Directives(&'static [&'static str]),
+    DirectiveArgs {
+        directive: String,
+    },
 }
+
+const SELECTION_LOCATIONS: &[&str] = &["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"];
+const HEADER_LOCATIONS: &[&str] = &["QUERY", "MUTATION", "SUBSCRIPTION", "FRAGMENT_DEFINITION"];
+const VARIABLE_LOCATIONS: &[&str] = &["VARIABLE_DEFINITION"];
 
 const ON_TYPES: &[TypeKind] = &[TypeKind::Object, TypeKind::Interface, TypeKind::Union];
 const INPUT_TYPES: &[TypeKind] = &[TypeKind::Scalar, TypeKind::Enum, TypeKind::InputObject];
@@ -210,7 +259,9 @@ enum Frame {
         parent: Option<String>,
         field: Option<String>,
     },
-    DirectiveArgs,
+    DirectiveArgs {
+        directive: String,
+    },
     VarDefs {
         in_type: bool,
     },
@@ -338,16 +389,18 @@ impl<'s> Scanner<'s> {
         }
     }
 
-    /// A `(` right after `@name` opens a directive's arguments.
-    fn after_directive_name(&self) -> bool {
-        self.prev_name(1).is_some() && self.prev_is(2, b'@')
+    /// The directive whose arguments a `(` here would open: the name right after `@`.
+    fn directive_name(&self) -> Option<String> {
+        self.prev_is(2, b'@')
+            .then(|| self.prev_name(1).map(str::to_owned))
+            .flatten()
     }
 
     /// Applies one token, with `history` still holding the tokens before it.
     fn step(&mut self, token: &Token) {
-        let directive_args = self.after_directive_name();
+        let directive = self.directive_name();
         match self.stack.last_mut() {
-            None => self.step_document(token, directive_args),
+            None => self.step_document(token, directive),
             Some(Frame::Selection { .. }) => {
                 let Some(Frame::Selection {
                     parent,
@@ -356,7 +409,7 @@ impl<'s> Scanner<'s> {
                 else {
                     unreachable!("the top frame is a selection");
                 };
-                let opened = self.step_selection(token, &parent, &mut pending, directive_args);
+                let opened = self.step_selection(token, &parent, &mut pending, directive);
                 match opened {
                     Step::Close if self.stack.is_empty() => {
                         self.root = self.schema.query_type().map(str::to_owned);
@@ -369,7 +422,7 @@ impl<'s> Scanner<'s> {
                     }
                 }
             }
-            Some(Frame::Args { .. }) | Some(Frame::DirectiveArgs) => match token {
+            Some(Frame::Args { .. }) | Some(Frame::DirectiveArgs { .. }) => match token {
                 Token::Punct(b'{' | b'[') => self.stack.push(Frame::Value),
                 Token::Punct(b')') => {
                     self.stack.pop();
@@ -383,7 +436,11 @@ impl<'s> Scanner<'s> {
                     self.stack.pop();
                 }
                 Token::Punct(b'{') => self.stack.push(Frame::Value),
-                Token::Punct(b'(') if directive_args => self.stack.push(Frame::DirectiveArgs),
+                Token::Punct(b'(') => {
+                    if let Some(directive) = directive {
+                        self.stack.push(Frame::DirectiveArgs { directive });
+                    }
+                }
                 _ => {}
             },
             Some(Frame::Value) => match token {
@@ -396,7 +453,7 @@ impl<'s> Scanner<'s> {
         }
     }
 
-    fn step_document(&mut self, token: &Token, directive_args: bool) {
+    fn step_document(&mut self, token: &Token, directive: Option<String>) {
         match token {
             Token::Name(n) if !self.prev_is(1, b'@') => match n.as_str() {
                 "query" => self.root = self.schema.query_type().map(str::to_owned),
@@ -405,8 +462,10 @@ impl<'s> Scanner<'s> {
                 _ if self.prev_name(1) == Some("on") => self.root = Some(n.clone()),
                 _ => {}
             },
-            Token::Punct(b'(') if directive_args => self.stack.push(Frame::DirectiveArgs),
-            Token::Punct(b'(') => self.stack.push(Frame::VarDefs { in_type: false }),
+            Token::Punct(b'(') => self.stack.push(match directive {
+                Some(directive) => Frame::DirectiveArgs { directive },
+                None => Frame::VarDefs { in_type: false },
+            }),
             Token::Punct(b'{') => {
                 let parent = self.root.take();
                 self.stack.push(Frame::Selection {
@@ -424,7 +483,7 @@ impl<'s> Scanner<'s> {
         token: &Token,
         parent: &Option<String>,
         pending: &mut Pending,
-        directive_args: bool,
+        directive: Option<String>,
     ) -> Step {
         match token {
             // A directive name never becomes the pending field.
@@ -444,8 +503,10 @@ impl<'s> Scanner<'s> {
             Token::Spread => *pending = Pending::Fragment(parent.clone()),
             // After an alias, the next name is the field.
             Token::Punct(b':') => *pending = Pending::None,
-            Token::Punct(b'(') if directive_args => return Step::Open(Frame::DirectiveArgs),
             Token::Punct(b'(') => {
+                if let Some(directive) = directive {
+                    return Step::Open(Frame::DirectiveArgs { directive });
+                }
                 let field = match pending {
                     Pending::Field(f) => Some(f.clone()),
                     _ => None,
@@ -482,6 +543,14 @@ impl<'s> Scanner<'s> {
         if on_condition {
             return Context::Types(ON_TYPES);
         }
+        if self.prev_is(1, b'@') {
+            return match self.stack.last() {
+                None => Context::Directives(HEADER_LOCATIONS),
+                Some(Frame::Selection { .. }) => Context::Directives(SELECTION_LOCATIONS),
+                Some(Frame::VarDefs { .. }) => Context::Directives(VARIABLE_LOCATIONS),
+                _ => Context::Nothing,
+            };
+        }
         match self.stack.last() {
             Some(Frame::Selection {
                 parent: Some(parent),
@@ -500,6 +569,13 @@ impl<'s> Scanner<'s> {
                 parent: parent.clone(),
                 field: field.clone(),
             },
+            Some(Frame::DirectiveArgs { directive })
+                if !(self.prev_is(1, b':') || self.prev_is(1, b'$')) =>
+            {
+                Context::DirectiveArgs {
+                    directive: directive.clone(),
+                }
+            }
             Some(Frame::VarDefs { in_type: true })
                 if self.prev_is(1, b':') || self.prev_is(1, b'[') =>
             {

@@ -63,6 +63,22 @@ pub fn hover(schema: &Schema, text: &Rope, offset: usize) -> Option<Hover> {
             let a = f.args().iter().find(|a| a.name() == arg)?;
             (input_signature(a), a.description(), None)
         }
+        SchemaSymbol::Directive { name } => {
+            let d = schema.directive_named(name)?;
+            (directive_signature(d), d.description(), None)
+        }
+        SchemaSymbol::DirectiveArgument { directive, arg } => {
+            let a = schema
+                .directive_named(directive)?
+                .args()
+                .iter()
+                .find(|a| a.name() == arg)?;
+            (
+                format!("@{directive}({})", input_signature(a)),
+                a.description(),
+                None,
+            )
+        }
         _ => return None,
     };
     let (signature, description, deprecation) = parts;
@@ -95,6 +111,10 @@ pub fn definition(schema: &Schema, text: &Rope, offset: usize) -> Option<Locatio
         SchemaSymbol::Field { owner, field } | SchemaSymbol::Argument { owner, field, .. } => {
             format!("{SCHEME}field/{owner}/{field}")
         }
+        SchemaSymbol::Directive { name: directive }
+        | SchemaSymbol::DirectiveArgument { directive, .. } => {
+            format!("{SCHEME}directive/{directive}")
+        }
         _ => return None,
     };
     Some(LocationLink {
@@ -105,7 +125,8 @@ pub fn definition(schema: &Schema, text: &Rope, offset: usize) -> Option<Locatio
     })
 }
 
-/// The Docs view an `apinata-docs:type/<Name>` or `apinata-docs:field/<Owner>/<field>` URI names.
+/// The Docs view an `apinata-docs:type/<Name>`, `apinata-docs:field/<Owner>/<field>` or
+/// `apinata-docs:directive/<name>` URI names.
 pub fn docs_view(uri: &str) -> Option<DocsView> {
     let rest = uri.strip_prefix(SCHEME)?;
     let mut parts = rest.split('/');
@@ -115,11 +136,13 @@ pub fn docs_view(uri: &str) -> Option<DocsView> {
             owner: owner.to_owned(),
             field: field.to_owned(),
         },
+        ("directive", Some(name), None, None) => DocsView::Directive(name.to_owned()),
         _ => return None,
     };
     let named = match &view {
         DocsView::Type(n) => !n.is_empty(),
         DocsView::Field { owner, field } => !owner.is_empty() && !field.is_empty(),
+        DocsView::Directive(n) => !n.is_empty(),
         _ => false,
     };
     named.then_some(view)
@@ -179,6 +202,21 @@ fn input_signature(v: &apinata_core::InputValue) -> String {
         Some(d) => format!("{}: {} = {d}", v.name(), v.ty().display()),
         None => format!("{}: {}", v.name(), v.ty().display()),
     }
+}
+
+/// `@name(arg: Type = default, ...) repeatable on A | B`; parentheses only with arguments,
+/// `repeatable` only when set.
+pub(crate) fn directive_signature(d: &apinata_core::Directive) -> String {
+    let mut out = format!("@{}", d.name());
+    if !d.args().is_empty() {
+        let args: Vec<String> = d.args().iter().map(input_signature).collect();
+        out.push_str(&format!("({})", args.join(", ")));
+    }
+    if d.is_repeatable() {
+        out.push_str(" repeatable");
+    }
+    out.push_str(&format!(" on {}", d.locations().join(" | ")));
+    out
 }
 
 pub(crate) fn lsp_range(text: &Rope, range: &std::ops::Range<usize>) -> Range {

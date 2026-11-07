@@ -201,10 +201,10 @@ pub use graphql_query::{
     SCHEMA_SKIP_NOTE, SchemaUse, check_query, format_query, validate_query,
 };
 pub use graphql_schema::{
-    Completion, CompletionKind, EnumValue, Field, INTROSPECTION_QUERY, InputValue, IntrospectError,
-    IntrospectGuard, IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT, SCHEMA_TIMEOUT, Schema,
-    SchemaError, SchemaSymbol, SchemaType, SymbolAt, TypeKind, TypeRef, fetch_introspection,
-    fetch_schema, introspect, introspection_request,
+    Completion, CompletionKind, Directive, EnumValue, Field, INTROSPECTION_QUERY, InputValue,
+    IntrospectError, IntrospectGuard, IntrospectOptions, Introspection, SCHEMA_BODY_LIMIT,
+    SCHEMA_TIMEOUT, Schema, SchemaError, SchemaSymbol, SchemaType, SymbolAt, TypeKind, TypeRef,
+    fetch_introspection, fetch_schema, introspect, introspection_request,
 };
 pub use graphql_variables::{
     VariableCompletion, VariableCompletionKind, VariableDefinition, VariableHover,

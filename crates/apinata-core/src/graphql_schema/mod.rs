@@ -2,13 +2,14 @@
 //! parsed from the answer or from an SDL file, and the errors a schema load can end in.
 
 mod complete;
+mod directive;
 mod model;
 mod print;
 mod sdl;
 mod symbol;
 
 pub use complete::{Completion, CompletionKind};
-pub use model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
+pub use model::{Directive, EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
 pub(crate) use sdl::BUILT_IN_SCALARS;
 pub use symbol::{SchemaSymbol, SymbolAt};
 
@@ -285,8 +286,8 @@ impl Schema {
     }
 
     /// Writes the schema as an SDL document that [`Schema::from_sdl`] reads back to the same
-    /// types. Introspection types and the built-in scalars are left out, and directive
-    /// definitions are not part of the model, so only `@deprecated` is written.
+    /// types. Introspection types, the built-in scalars and the directives core added are left
+    /// out; the schema's own directive definitions are written.
     ///
     /// Fails with [`SchemaError::NotPrintable`] when a name is not a GraphQL name, or when no
     /// root is set but a type named Query, Mutation or Subscription would read back as one.

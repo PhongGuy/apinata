@@ -42,6 +42,18 @@ pub enum SchemaSymbol {
         /// The argument's name.
         arg: String,
     },
+    /// A directive name after `@`.
+    Directive {
+        /// The directive's name.
+        name: String,
+    },
+    /// An argument name inside a directive's parentheses.
+    DirectiveArgument {
+        /// The directive the argument belongs to.
+        directive: String,
+        /// The argument's name.
+        arg: String,
+    },
 }
 
 impl Schema {
@@ -103,6 +115,22 @@ impl Schema {
                     .filter(|t| kinds.contains(&t.kind()))?;
                 SchemaSymbol::Type {
                     name: name.to_owned(),
+                }
+            }
+            Context::Directives(_) => {
+                self.directive_named(name)?;
+                SchemaSymbol::Directive {
+                    name: name.to_owned(),
+                }
+            }
+            Context::DirectiveArgs { directive } => {
+                self.directive_named(&directive)?
+                    .args()
+                    .iter()
+                    .find(|a| a.name() == name)?;
+                SchemaSymbol::DirectiveArgument {
+                    directive,
+                    arg: name.to_owned(),
                 }
             }
             _ => return None,

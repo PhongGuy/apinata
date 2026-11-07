@@ -47,6 +47,7 @@ pub fn items(schema: &Schema, text: &Rope, offset: usize) -> Vec<CompletionItem>
                 CompletionKind::Field => Some(CompletionItemKind::FIELD),
                 CompletionKind::Argument => Some(CompletionItemKind::PROPERTY),
                 CompletionKind::Type => Some(CompletionItemKind::CLASS),
+                CompletionKind::Directive => Some(CompletionItemKind::FUNCTION),
                 _ => None,
             },
             detail: Some(c.detail().to_owned()),
@@ -106,6 +107,6 @@ impl CompletionProvider for SchemaCompletions {
 
     fn is_completion_trigger(&self, _: usize, new_text: &str, _: &mut App) -> bool {
         (!new_text.is_empty() && new_text.chars().all(|c| c.is_alphanumeric() || c == '_'))
-            || matches!(new_text, "{" | "(" | " ")
+            || matches!(new_text, "{" | "(" | " " | "@")
     }
 }

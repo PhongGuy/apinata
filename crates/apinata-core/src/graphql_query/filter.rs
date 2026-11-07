@@ -10,8 +10,8 @@ use super::{QUERY_DIAGNOSTIC_LIMIT, QueryDiagnostic, QuerySeverity};
 
 /// Whether to keep one apollo diagnostic, by its `unstable_error_name()` and range.
 ///
-/// Directive names are never checked, a missing subselection on a field whose source has
-/// one is the echo of an undefined field inside it, and value checks over a mask judge `_`.
+/// A missing subselection on a field whose source has one is the echo of an undefined field
+/// inside it, and value checks over a mask judge `_`.
 pub(crate) fn keep(
     name: Option<&str>,
     range: &Range<usize>,
@@ -19,7 +19,6 @@ pub(crate) fn keep(
     filled_fields: &HashSet<usize>,
 ) -> bool {
     match name {
-        Some("UndefinedDirective") => false,
         Some("MissingSubselection") => !filled_fields.contains(&range.start),
         Some("UnsupportedValueType" | "UndefinedEnumValue" | "ConflictingFieldArgument") => !spans
             .iter()
