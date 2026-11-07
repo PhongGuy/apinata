@@ -98,6 +98,8 @@ fn export_one(envs: &[Environment], name: &str, scope: &str) -> Option<PostmanEx
     root.insert("name".into(), name.into());
     root.insert("values".into(), values.into());
     root.insert("_postman_variable_scope".into(), "environment".into());
+    // A `serde_json::Value` has only string keys, so serializing it cannot fail.
+    #[allow(clippy::expect_used)]
     let mut json =
         serde_json::to_string_pretty(&Value::Object(root)).expect("a JSON value serializes");
     json.push('\n');

@@ -76,6 +76,8 @@ fn utf16(s: &str) -> Vec<u8> {
 }
 
 fn hmac_md5(key: &[u8], parts: &[&[u8]]) -> [u8; 16] {
+    // HMAC accepts a key of any length, so building the MAC cannot fail.
+    #[allow(clippy::expect_used)]
     let mut mac = <Hmac<Md5> as KeyInit>::new_from_slice(key).expect("HMAC takes any key length");
     for p in parts {
         mac.update(p);

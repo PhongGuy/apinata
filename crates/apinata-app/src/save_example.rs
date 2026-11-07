@@ -42,6 +42,8 @@ const NOTE: &str = "Examples are saved in the request file and committed with th
 pub const NOTE_TIP: &str = "example-commit-note";
 
 /// `example`, else the first free `example (n)` from 1 up, against the request's example names.
+// The candidate sequence never ends, so `find` returns only once a name is free.
+#[allow(clippy::expect_used)]
 pub fn initial_name(existing: &[String]) -> String {
     let taken = |name: &str| existing.iter().any(|e| e == name);
     if !taken("example") {
@@ -50,7 +52,7 @@ pub fn initial_name(existing: &[String]) -> String {
     (1..)
         .map(|n| format!("example ({n})"))
         .find(|name| !taken(name))
-        .expect("a free name")
+        .expect("an unbounded range finds a free name")
 }
 
 /// Whether a request may save examples at all: not a draft, which has no file yet, and not

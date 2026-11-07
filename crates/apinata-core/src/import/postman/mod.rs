@@ -32,9 +32,13 @@ const V2_SCHEMAS: [&str; 4] = [
     "https://schema.postman.com/json/collection/v2.1.0/collection.json",
 ];
 
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static JSON_TYPE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[\w\-]+\/([\w\-]+\+)?json").expect("the JSON content type pattern compiles")
 });
+// A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+#[allow(clippy::expect_used)]
 static XML_TYPE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[\w\-]+\/([\w\-]+\+)?xml").expect("the XML content type pattern compiles")
 });

@@ -452,7 +452,12 @@ impl RuntimeVarsView {
                 );
             }
             // Writing an input notifies it, so only touch what differs or every frame is dirty.
-            let field = self.fields.get_mut(&key).expect("just inserted");
+            // A missing key was inserted just above.
+            #[allow(clippy::expect_used)]
+            let field = self
+                .fields
+                .get_mut(&key)
+                .expect("a missing field was inserted above");
             let input = field.input.clone();
             let fresh_holder = field.holder != holder;
             field.holder = holder;

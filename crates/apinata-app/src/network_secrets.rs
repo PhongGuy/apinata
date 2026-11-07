@@ -200,6 +200,8 @@ pub fn passphrase_base(row: usize) -> String {
 }
 
 /// `base` when it is free, else the first of `base_2`, `base_3`, ... not in `taken`.
+// The candidate sequence never ends, so `find` returns only once a name is free.
+#[allow(clippy::expect_used)]
 pub fn dotenv_name(base: &str, taken: &BTreeSet<String>) -> String {
     if !taken.contains(base) {
         return base.to_owned();

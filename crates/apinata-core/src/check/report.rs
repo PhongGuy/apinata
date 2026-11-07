@@ -230,6 +230,8 @@ fn collapse(findings: Vec<Finding>, env_count: usize) -> Vec<Finding> {
         envs.sort();
         envs.dedup();
         if envs.len() == env_count {
+            // Each group starts with the finding that created it, so it is never empty.
+            #[allow(clippy::expect_used)]
             let mut f = members.into_iter().next().expect("group is non-empty");
             f.environment = None;
             out.push(f);

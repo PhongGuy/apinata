@@ -282,8 +282,11 @@ fn parse_int(text: &str) -> Option<f64> {
 /// suffix and the content type, or `None` when there is no suffix.
 fn split_content_type(value: &str) -> Option<(&str, &str)> {
     static RE: OnceLock<regress::Regex> = OnceLock::new();
+    // A fixed pattern, so a failure to compile is a bug every run hits, not an input error.
+    #[allow(clippy::expect_used)]
     let re = RE.get_or_init(|| {
-        regress::Regex::with_flags(r"^(.*?)\s*@contentType\((.*?)\)\s*$", "s").expect("valid")
+        regress::Regex::with_flags(r"^(.*?)\s*@contentType\((.*?)\)\s*$", "s")
+            .expect("the contentType suffix pattern compiles")
     });
     let found = re.find(value)?;
     Some((&value[found.group(1)?], &value[found.group(2)?]))

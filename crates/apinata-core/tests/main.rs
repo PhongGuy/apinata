@@ -7,6 +7,7 @@
 // by plain `.clone()`; the stricter forms only matter in shipped code.
 #![allow(
     clippy::clone_on_ref_ptr,
+    clippy::expect_used,
     clippy::missing_assert_message,
     clippy::unwrap_used
 )]

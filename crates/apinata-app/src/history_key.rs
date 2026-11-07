@@ -23,6 +23,8 @@ pub fn history_key(ws: &Workspace, tab: TabId) -> Option<(PathBuf, ItemPath)> {
 }
 
 /// `untitled-<ms since epoch><6 random digits>.draft` at the collection root.
+// Letters, digits, a dash and a dot always form a valid root-level name.
+#[allow(clippy::expect_used)]
 pub fn new_history_key(now: SystemTime) -> ItemPath {
     let ms = now
         .duration_since(UNIX_EPOCH)

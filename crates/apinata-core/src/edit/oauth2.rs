@@ -315,6 +315,8 @@ impl OAuth2Spec {
 
 impl OAuth2Spec {
     /// The spec as reading back its written form gives: other flows' fields dropped.
+    // `to_yaml` always writes the spec's own flow, which `from_yaml` reads back.
+    #[allow(clippy::expect_used)]
     pub fn on_disk(&self) -> OAuth2Spec {
         OAuth2Spec::from_yaml(&self.to_yaml()).expect("the projection names a known flow")
     }

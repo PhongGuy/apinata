@@ -170,6 +170,8 @@ fn single_quoted(value: &str, indent: &str, implicit_key: bool) -> String {
 /// YAML's short forms, and turn escaped newlines in long values into real line breaks.
 fn double_quoted(value: &str, indent: &str, implicit_key: bool) -> String {
     // serde_json escapes exactly as JSON.stringify does, with lowercase hex and non-ASCII left raw.
+    // Serializing a plain string to JSON cannot fail.
+    #[allow(clippy::expect_used)]
     let json = serde_json::to_string(value).expect("a str always serializes");
     let short = json.encode_utf16().count() < DOUBLE_QUOTED_MIN_MULTI_LINE_LENGTH;
     let b = json.as_bytes();

@@ -20,6 +20,8 @@ impl Collection {
 
     /// Bruno's `findUniqueFolderName`: `name`, else `name - 1`, `name - 2`..., the first whose
     /// sanitised form does not exist in `parent_dir`. The result is the display name.
+    // The candidate sequence never ends, so `find` returns only once a name is free.
+    #[allow(clippy::expect_used)]
     pub fn unique_dir_name(parent_dir: &Path, name: &str) -> String {
         (0u64..)
             .map(|n| {

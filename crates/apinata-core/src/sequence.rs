@@ -160,7 +160,14 @@ pub(crate) fn reorder_target(
     let mut stored: Vec<Option<u64>> = items.iter().map(|i| i.seq).collect();
     stored[dragged] = dragged_stored;
     let mut order = reset_order(items);
-    let position = |i| order.iter().position(|&x| x == i).expect("listed");
+    // `reset_order` lists every item index once.
+    #[allow(clippy::expect_used)]
+    let position = |i| {
+        order
+            .iter()
+            .position(|&x| x == i)
+            .expect("reset_order lists every index")
+    };
     let (t, d) = (position(target), position(dragged));
     let mut at = if below { t + 1 } else { t };
     if d < at {

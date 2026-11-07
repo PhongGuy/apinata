@@ -112,6 +112,8 @@ pub fn openapi(collection: &Collection) -> OpenApiExport {
     if let Some(top) = walker.top {
         root.insert("security".into(), json!([top]));
     }
+    // A `serde_json::Value` has only string keys, so serializing it cannot fail.
+    #[allow(clippy::expect_used)]
     let mut json =
         serde_json::to_string_pretty(&Value::Object(root)).expect("a JSON value serializes");
     json.push('\n');
@@ -305,6 +307,8 @@ impl Walker<'_> {
             .paths
             .entry(path_key)
             .or_insert_with(|| Map::new().into());
+        // Every path item is inserted just above as an object.
+        #[allow(clippy::expect_used)]
         item.as_object_mut()
             .expect("a path item is an object")
             .insert(method, op.into());

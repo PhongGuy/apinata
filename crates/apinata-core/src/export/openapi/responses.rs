@@ -102,6 +102,8 @@ pub(super) fn responses(
             }
             None => json!({"examples": {}}),
         });
+        // Every media entry is created just above with `examples` as an object.
+        #[allow(clippy::expect_used)]
         examples["examples"]
             .as_object_mut()
             .expect("examples is an object")

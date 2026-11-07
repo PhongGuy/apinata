@@ -654,7 +654,11 @@ impl AssertionsSection {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let [expr_col, op_col, value_col] = columns().try_into().expect("three columns");
+        // `columns()` is a fixed three-column layout.
+        #[allow(clippy::expect_used)]
+        let [expr_col, op_col, value_col] = columns()
+            .try_into()
+            .expect("the assertion table has three columns");
         let focused = |input: &Entity<InputState>, cx: &App| {
             input.focus_handle(cx).contains_focused(window, cx)
         };

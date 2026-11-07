@@ -75,7 +75,7 @@ pub fn mask_credential_shape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
     let mut prev_word_char = false;
-    while !rest.is_empty() {
+    while let Some(c) = rest.chars().next() {
         let scheme = SCHEMES.iter().find_map(|s| {
             let head = rest.get(..s.len())?;
             let after = &rest[s.len()..];
@@ -99,7 +99,6 @@ pub fn mask_credential_shape(value: &str) -> String {
             prev_word_char = true;
             continue;
         }
-        let c = rest.chars().next().expect("rest is not empty");
         prev_word_char = c.is_alphanumeric();
         out.push(c);
         rest = &rest[c.len_utf8()..];

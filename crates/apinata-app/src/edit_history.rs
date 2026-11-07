@@ -331,16 +331,14 @@ impl EditHistory {
         let undid = self.undo.last().is_some_and(|top| {
             top.after.field() == field && same_value(&top.before, edit) && holds(self, &top.after)
         });
-        if undid {
-            let step = self.undo.pop().expect("checked above");
+        if undid && let Some(step) = self.undo.pop() {
             self.move_step(step, edit, true);
             return true;
         }
         let redid = self.redo.last().is_some_and(|top| {
             top.after.field() == field && same_value(&top.after, edit) && holds(self, &top.before)
         });
-        if redid {
-            let step = self.redo.pop().expect("checked above");
+        if redid && let Some(step) = self.redo.pop() {
             self.move_step(step, edit, false);
             return true;
         }

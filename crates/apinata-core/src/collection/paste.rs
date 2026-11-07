@@ -224,6 +224,8 @@ impl Collection {
                     .filter(|s| s.class != Class::Folder)
                     .map(|s| s.item.name.as_str())
                     .collect();
+                // The candidate sequence never ends, so `find` returns only once a name is free.
+                #[allow(clippy::expect_used)]
                 let n = (0..)
                     .find(|&n| {
                         let file = format!("{}.yml", copy_name(stem, n));
@@ -263,6 +265,8 @@ impl Collection {
                     .filter(|s| s.class == Class::Folder)
                     .map(|s| s.item.name.as_str())
                     .collect();
+                // The candidate sequence never ends, so `find` returns only once a name is free.
+                #[allow(clippy::expect_used)]
                 let n = (0..)
                     .find(|&n| {
                         !dir_path.join(copy_name(dir_name, n)).exists()
@@ -362,13 +366,17 @@ impl Collection {
     }
 
     /// Load the directory just written at `path` into the folder `parent`.
+    // The caller found `parent` before writing, and a directory name is a single path segment.
+    #[allow(clippy::expect_used)]
     fn insert_dir(&mut self, parent: &ItemPath, path: &Path) -> Result<ItemPath, TreeError> {
         let mut errors = Vec::new();
         let folder = walk(path, &self.ignore, &mut errors)
             .map_err(|e| io_error(path, std::io::Error::other(e.to_string())))?;
         let dir_name = folder.dir_name.clone();
         self.load_errors.extend(errors);
-        let parent_folder = self.folder_mut(parent).expect("parent exists");
+        let parent_folder = self
+            .folder_mut(parent)
+            .expect("the parent folder was found before the write");
         parent_folder.folders.push(folder);
         sort_lists(parent_folder);
         Ok(parent

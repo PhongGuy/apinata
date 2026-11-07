@@ -252,17 +252,15 @@ fn plan(
                 "{name} is secret; making it plain would write its value where agents read it"
             ));
         }
-        let var = match existing {
-            Some(i) => &mut vars[i],
-            None => {
-                vars.push(if wants_secret {
-                    EnvVariable::secret(name.clone())
-                } else {
-                    EnvVariable::new(name.clone(), VarValue::Text(String::new()))
-                });
-                vars.last_mut().expect("just pushed")
-            }
-        };
+        let at = existing.unwrap_or_else(|| {
+            vars.push(if wants_secret {
+                EnvVariable::secret(name.clone())
+            } else {
+                EnvVariable::new(name.clone(), VarValue::Text(String::new()))
+            });
+            vars.len() - 1
+        });
+        let var = &mut vars[at];
         // A value keeps the current type unless one is given; a type alone retypes the data.
         if input.value.is_some() || input.value_type.is_some() {
             let (kind, data) = match &var.value {

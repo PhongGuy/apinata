@@ -178,6 +178,8 @@ impl RunnerView {
     }
 
     // Each edit goes straight to the model; a delay that is not all digits is ignored.
+    // The inputs are made just above when missing, so they are always present at the end.
+    #[allow(clippy::expect_used)]
     fn options(&mut self, window: &mut Window, cx: &mut Context<Self>) -> &OptionInputs {
         if self.options.is_none() {
             let model = self.model.read(cx);
@@ -337,7 +339,9 @@ impl RunnerView {
                 _subs: subs,
             });
         }
-        self.options.as_ref().expect("made above")
+        self.options
+            .as_ref()
+            .expect("the option inputs are made above when missing")
     }
 
     // Asks for one data file; a cancelled or failed prompt leaves the current one.

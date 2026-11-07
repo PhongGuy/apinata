@@ -67,7 +67,7 @@ fn tick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<Que
     let text = mask(query).text;
     let (root, rest) = path.names().split_first()?;
     let Some(op) = outline.op() else {
-        return Some(new_operation(&text, keyword(schema, root)?, rest));
+        return new_operation(&text, keyword(schema, root)?, rest);
     };
     // Descend through the first copy of each ancestor that has a selection set; the
     // first missing level is where the rest of the chain is written. Any copy already
@@ -82,7 +82,7 @@ fn tick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<Que
         match found {
             Some(_) if leaf => return None,
             Some(sel) => set = sel.set.as_ref()?,
-            None => return Some(insertion(&text, set, &rest[i..])),
+            None => return insertion(&text, set, &rest[i..]),
         }
     }
     None
@@ -145,35 +145,35 @@ fn leading_ws(text: &str, at: usize) -> &str {
 }
 
 // `names` nested as fields; on one line when `indent` is None, else one per line, each
-// deeper level two spaces in from `indent`, the first name's own indent.
-fn chain(names: &[String], indent: Option<&str>) -> String {
-    let (first, rest) = names.split_first().expect("at least one name");
+// deeper level two spaces in from `indent`, the first name's own indent. None for no names.
+fn chain(names: &[String], indent: Option<&str>) -> Option<String> {
+    let (first, rest) = names.split_first()?;
     if rest.is_empty() {
-        return first.clone();
+        return Some(first.clone());
     }
-    match indent {
-        None => format!("{first} {{ {} }}", chain(rest, None)),
+    Some(match indent {
+        None => format!("{first} {{ {} }}", chain(rest, None)?),
         Some(outer) => {
             let inner = format!("{outer}  ");
             format!(
                 "{first} {{\n{inner}{}\n{outer}}}",
-                chain(rest, Some(&inner))
+                chain(rest, Some(&inner))?
             )
         }
-    }
+    })
 }
 
 // Appends `names` to `set`: inside a one-line set after its last selection, else on a new
 // line after the line holding the last selection's end, at that selection's indent, with
-// the set's own line break (CRLF stays CRLF).
-fn insertion(text: &str, set: &Set, names: &[String]) -> QueryEdit {
-    let last = set.items.last().expect("a parsed set is never empty");
+// the set's own line break (CRLF stays CRLF). None for an empty set or no names.
+fn insertion(text: &str, set: &Set, names: &[String]) -> Option<QueryEdit> {
+    let last = set.items.last()?;
     let end = last.range.end;
     if !text[set.open..set.close].contains('\n') {
-        return QueryEdit {
+        return Some(QueryEdit {
             range: end..end,
-            text: format!(" {}", chain(names, None)),
-        };
+            text: format!(" {}", chain(names, None)?),
+        });
     }
     let indent = leading_ws(text, last.range.start);
     let crlf = text[set.open..set.close].contains("\r\n");
@@ -181,22 +181,23 @@ fn insertion(text: &str, set: &Set, names: &[String]) -> QueryEdit {
     if crlf && text[..at].ends_with('\r') {
         at -= 1;
     }
-    let lines = format!("\n{indent}{}", chain(names, Some(indent)));
-    QueryEdit {
+    let lines = format!("\n{indent}{}", chain(names, Some(indent))?);
+    Some(QueryEdit {
         range: at..at,
         text: if crlf {
             lines.replace('\n', "\r\n")
         } else {
             lines
         },
-    }
+    })
 }
 
 // A new operation after any existing text, one blank line between; blank text is replaced.
-fn new_operation(text: &str, keyword: &str, names: &[String]) -> QueryEdit {
-    let op = format!("{keyword} {{\n  {}\n}}", chain(names, Some("  ")));
+// None for no names.
+fn new_operation(text: &str, keyword: &str, names: &[String]) -> Option<QueryEdit> {
+    let op = format!("{keyword} {{\n  {}\n}}", chain(names, Some("  "))?);
     let kept = text.trim_end().len();
-    if kept == 0 {
+    Some(if kept == 0 {
         QueryEdit {
             range: 0..text.len(),
             text: op,
@@ -206,5 +207,5 @@ fn new_operation(text: &str, keyword: &str, names: &[String]) -> QueryEdit {
             range: kept..text.len(),
             text: format!("\n\n{op}"),
         }
-    }
+    })
 }

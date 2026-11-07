@@ -22,6 +22,8 @@ pub(crate) fn mask(text: &str) -> Masked {
     for span in &spans {
         bytes[span.clone()].fill(b'_');
     }
+    // Only whole placeholder spans, which start and end on ASCII braces, are overwritten.
+    #[allow(clippy::expect_used)]
     let text = String::from_utf8(bytes).expect("placeholder edges are char boundaries");
     Masked { text, spans }
 }

@@ -155,6 +155,8 @@ fn rewrite_call(code: &[u8], start: usize) -> Option<(Vec<u8>, usize)> {
 }
 
 /// `stripBruExtInRunRequest`.
+// The rewrite drops only ASCII text between ASCII bytes, so the bytes stay UTF-8.
+#[allow(clippy::expect_used)]
 pub(crate) fn strip_bru_ext(code: &str) -> String {
     if !code.contains("runRequest") {
         return code.to_owned();

@@ -13,6 +13,8 @@ use tokio::task::AbortHandle;
 pub use tokio::task::JoinError;
 
 /// Starts a two-worker tokio runtime and stores it as an app global.
+// The app cannot run without its runtime, so failing to start one ends it at launch.
+#[allow(clippy::expect_used)]
 pub fn init(cx: &mut App) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

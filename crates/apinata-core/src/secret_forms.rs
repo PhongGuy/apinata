@@ -255,6 +255,8 @@ fn extended_texts(value: &str) -> Vec<String> {
 
 // The value as the `url` crate writes it into a path, query, fragment, username or password.
 fn url_crate_forms(value: &str) -> Vec<String> {
+    // A literal URL that parses.
+    #[allow(clippy::expect_used)]
     let base = || Url::parse("http://h.test/").expect("a literal URL parses");
     let mut out = Vec::new();
     let mut u = base();
@@ -371,6 +373,8 @@ pub(crate) fn unicode_escaped(value: &str, all: bool, upper: bool) -> String {
 }
 
 pub(crate) fn json_escaped(value: &str) -> String {
+    // Serializing a plain string to JSON cannot fail.
+    #[allow(clippy::expect_used)]
     let quoted = serde_json::to_string(value).expect("a string serializes");
     quoted[1..quoted.len() - 1].to_owned()
 }

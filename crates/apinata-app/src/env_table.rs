@@ -1262,7 +1262,11 @@ impl EnvVarTable {
         if ix == self.rows.len() {
             return div().flex_none().w(CHECKBOX_SIZE).into_any_element();
         }
-        let row = self.row(ix).expect("row in range");
+        // Rows are drawn for indices up to `rows.len()`, the blank row, and `row` answers all of them.
+        #[allow(clippy::expect_used)]
+        let row = self
+            .row(ix)
+            .expect("indices up to rows.len() all have a row");
         // A row not yet saved owns its secret flag, so a dirty or busy environment never locks it.
         let secret = row.meta.secret;
         let name = row.name.read(cx).value().to_string();
@@ -1294,7 +1298,11 @@ impl EnvVarTable {
 
     /// Row `ix`'s show or hide eye, in a fixed slot so plain rows keep the same columns.
     fn render_action_slot(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
-        let row = self.row(ix).expect("row in range");
+        // Rows are drawn for indices up to `rows.len()`, the blank row, and `row` answers all of them.
+        #[allow(clippy::expect_used)]
+        let row = self
+            .row(ix)
+            .expect("indices up to rows.len() all have a row");
         let secret = row.meta.secret;
         let revealed = secret && row.shown;
         h_flex()

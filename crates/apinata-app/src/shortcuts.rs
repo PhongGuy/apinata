@@ -304,6 +304,8 @@ pub fn assign(
     let others = conflicts_with(cmds, overrides, id, &chord);
     let previous = effective(this, overrides);
     for other in &others {
+        // `others` holds only ids taken from `cmds`.
+        #[allow(clippy::expect_used)]
         let c = cmds
             .iter()
             .find(|c| c.id == *other)
@@ -360,6 +362,8 @@ pub fn reset_resolving(cmds: &[Command], overrides: &mut Overrides, id: &str, ho
     given_up.retain(|k| !wanted.contains(k));
     let others = holders_of_defaults(cmds, overrides, this);
     for other in &others {
+        // `others` holds only ids taken from `cmds`.
+        #[allow(clippy::expect_used)]
         let c = cmds
             .iter()
             .find(|c| c.id == *other)

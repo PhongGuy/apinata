@@ -699,8 +699,12 @@ fn keyed(salt: &str, text: &str) -> String {
     {
         return hit.clone();
     }
+    // Constant parameters and a 32-byte output are within scrypt's limits.
+    #[allow(clippy::expect_used)]
     let params = scrypt::Params::new(14, 8, 1).expect("constant scrypt parameters are valid");
     let mut out = [0u8; 32];
+    // Constant parameters and a 32-byte output are within scrypt's limits.
+    #[allow(clippy::expect_used)]
     scrypt::scrypt(text.as_bytes(), salt.as_bytes(), &params, &mut out)
         .expect("a 32-byte scrypt output is valid");
     let value = hex(&out);

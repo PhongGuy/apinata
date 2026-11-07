@@ -3098,7 +3098,11 @@ impl ResponsePane {
                 revealed_set: BTreeSet::new(),
             });
         }
-        let m = cache.as_ref().expect("filled above");
+        // The block above fills the cache whenever it is empty or stale.
+        #[allow(clippy::expect_used)]
+        let m = cache
+            .as_ref()
+            .expect("the masks cache is filled for this result");
         (Rc::clone(&m.hops), m.revealed.clone())
     }
 
@@ -3110,7 +3114,11 @@ impl ResponsePane {
         let scrubbed: &[usize] = send.restored_ref().map_or(&[], |r| &r.masked_headers);
         self.timeline_masks(r);
         let cache = self.timeline_masks.borrow();
-        let m = cache.as_ref().expect("filled above");
+        // `timeline_masks` has just filled the cache for `r`.
+        #[allow(clippy::expect_used)]
+        let m = cache
+            .as_ref()
+            .expect("the masks cache is filled for this result");
         let headers = r.response.as_ref().map(|r| r.headers());
         (headers.unwrap_or_default().iter())
             .zip(m.headers.iter())
@@ -3135,7 +3143,11 @@ impl ResponsePane {
     ) -> Vec<(CookieCells, Option<bool>)> {
         self.timeline_masks(r);
         let mut cache = self.timeline_masks.borrow_mut();
-        let m = cache.as_mut().expect("filled above");
+        // `timeline_masks` has just filled the cache for `r`.
+        #[allow(clippy::expect_used)]
+        let m = cache
+            .as_mut()
+            .expect("the masks cache is filled for this result");
         self.cookie_table(now)
             .into_iter()
             .map(|mut c| {
@@ -3160,7 +3172,11 @@ impl ResponsePane {
     fn shown_set_cookies(&self, r: &Arc<RequestResult>) -> Vec<(SetCookieCells, Option<bool>)> {
         self.timeline_masks(r);
         let cache = self.timeline_masks.borrow();
-        let m = cache.as_ref().expect("filled above");
+        // `timeline_masks` has just filled the cache for `r`.
+        #[allow(clippy::expect_used)]
+        let m = cache
+            .as_ref()
+            .expect("the masks cache is filled for this result");
         set_cookie_cells(r)
             .into_iter()
             .map(|mut c| {

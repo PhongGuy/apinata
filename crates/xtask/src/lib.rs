@@ -1,5 +1,8 @@
 //! Repository automation run as `cargo xtask`; each subcommand lives in its own module.
 
+// Developer tooling behind `cargo xtask`: an expect that fires is a bug report naming why.
+#![allow(clippy::expect_used)]
+
 use std::path::PathBuf;
 use std::process::Command;
 

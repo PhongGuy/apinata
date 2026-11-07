@@ -16,6 +16,8 @@ pub(crate) struct CurlOption {
 // Generated from `curl --help all`.
 static TABLE: &str = include_str!("curl-options-8.22.0.txt");
 
+// The table is a vendored file with a long name on every line, so a bad line is a bug every run hits.
+#[allow(clippy::expect_used)]
 static OPTIONS: LazyLock<Vec<CurlOption>> = LazyLock::new(|| {
     TABLE
         .lines()
