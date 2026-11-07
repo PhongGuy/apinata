@@ -5,7 +5,9 @@
 use std::rc::Rc;
 
 use gpui_kit::base::actions::Confirm as SelectConfirm;
-use gpui_kit::component::input::{GoToDefinition, Redo as EditorRedo};
+use gpui_kit::component::input::GoToDefinition;
+#[cfg(not(target_os = "macos"))]
+use gpui_kit::component::input::Redo as EditorRedo;
 use gpui_kit::{
     Action, App, DummyKeyboardMapper, Global, KeyBinding, KeyBindingContextPredicate, NoAction,
     actions,

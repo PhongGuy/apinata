@@ -475,6 +475,7 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(2));
     }
 
+    #[cfg(target_os = "linux")]
     fn running(pid: u32) -> bool {
         match fs::read_to_string(format!("/proc/{pid}/stat")) {
             Ok(stat) => !stat.rsplit(") ").next().unwrap_or("").starts_with('Z'),

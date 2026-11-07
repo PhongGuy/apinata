@@ -21,7 +21,7 @@ expect() {
   [[ $got == "$want" ]] || fail "make -n $* printed [$got], want [$want]"
 }
 
-GATE=$'cargo fmt --check\ncargo clippy --all-targets --all-features -- -Dwarnings\nenv -u WAYLAND_DISPLAY -u DISPLAY cargo test --workspace\nbash scripts/readme-images-check.sh'
+GATE=$'cargo fmt --check\ncargo clippy --all-targets --all-features --locked -- -Dwarnings\nenv -u WAYLAND_DISPLAY -u DISPLAY cargo test --workspace --locked\ncargo check -p apinata-core --no-default-features --locked\nRUSTDOCFLAGS=-Dwarnings cargo doc --no-deps -p apinata-core --locked\nbash scripts/readme-images-check.sh'
 
 test_check_runs_format_lint_and_tests_in_order() {
   expect "$GATE" check
@@ -30,8 +30,8 @@ test_check_runs_format_lint_and_tests_in_order() {
 test_single_targets_print_their_one_command() {
   expect 'cargo fmt' fmt
   expect 'cargo fmt --check' fmt-check
-  expect 'cargo clippy --all-targets --all-features -- -Dwarnings' lint
-  expect 'env -u WAYLAND_DISPLAY -u DISPLAY cargo test --workspace' test
+  expect 'cargo clippy --all-targets --all-features --locked -- -Dwarnings' lint
+  expect 'env -u WAYLAND_DISPLAY -u DISPLAY cargo test --workspace --locked' test
   expect 'scripts/package-linux.sh' package
   expect 'bash scripts/release.sh package' package-release
   expect 'cargo clean' clean
@@ -62,7 +62,7 @@ test_demo_runs_the_demo_script() {
 }
 
 test_cargo_can_be_overridden() {
-  expect '/opt/cargo clippy --all-targets --all-features -- -Dwarnings' CARGO=/opt/cargo lint
+  expect '/opt/cargo clippy --all-targets --all-features --locked -- -Dwarnings' CARGO=/opt/cargo lint
 }
 
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do "$t"; done

@@ -5,9 +5,9 @@ CARGO ?= cargo
 .DEFAULT_GOAL := install
 export PREFIX DESTDIR DEMO_DRY_RUN
 
-.PHONY: check fmt fmt-check lint test pilot-check package package-release clean icons-check windows-check workflows-lint licenses licenses-check readme-images-check install uninstall demo
+.PHONY: check core-check fmt fmt-check lint test pilot-check package package-release clean icons-check windows-check workflows-lint licenses licenses-check readme-images-check install uninstall demo
 
-check: fmt-check lint test readme-images-check
+check: fmt-check lint test core-check readme-images-check
 
 fmt:
 	$(CARGO) fmt
@@ -16,12 +16,17 @@ fmt-check:
 	$(CARGO) fmt --check
 
 lint:
-	$(CARGO) clippy --all-targets --all-features -- -Dwarnings
+	$(CARGO) clippy --all-targets --all-features --locked -- -Dwarnings
 
 # The app's tests must never open a window on the developer's display, so both display
 # variables are unset for the test run.
 test:
-	env -u WAYLAND_DISPLAY -u DISPLAY $(CARGO) test --workspace
+	env -u WAYLAND_DISPLAY -u DISPLAY $(CARGO) test --workspace --locked
+
+# Core must build without the keychain feature, and its public docs must have no broken links.
+core-check:
+	$(CARGO) check -p apinata-core --no-default-features --locked
+	RUSTDOCFLAGS=-Dwarnings $(CARGO) doc --no-deps -p apinata-core --locked
 
 # The pilot package sits outside the workspace because its host crate is private, so CI never builds it.
 PILOT := --manifest-path tools/apinata-pilot/Cargo.toml

@@ -172,6 +172,9 @@ fn ci_runs_the_make_gate_on_linux_for_master_and_pull_requests() {
     assert!(on.get("workflow_dispatch").is_some());
     assert_eq!(ci["concurrency"]["cancel-in-progress"], Value::Bool(true));
     for (job, body) in ci["jobs"].as_mapping().unwrap() {
+        if str_of(job) == "macos-clippy" {
+            continue;
+        }
         assert_eq!(
             str_of(&body["runs-on"]),
             "ubuntu-24.04",
@@ -572,4 +575,84 @@ fn a_release_run_is_never_cancelled_halfway() {
     let rel = load("release.yml");
     assert!(!str_of(&rel["concurrency"]["group"]).is_empty());
     assert_eq!(rel["concurrency"]["cancel-in-progress"], Value::Bool(false));
+}
+
+/// The recipe lines of a Makefile target, with the leading tab removed.
+fn make_recipe(target: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(xtask::workspace_root().join("Makefile")).unwrap();
+    text.lines()
+        .skip_while(|l| !l.starts_with(&format!("{target}:")))
+        .skip(1)
+        .take_while(|l| l.starts_with('\t'))
+        .map(|l| l.trim_start_matches('\t').to_owned())
+        .collect()
+}
+
+#[test]
+fn the_gate_holds_the_lock_and_builds_core_without_its_default_features() {
+    // A manifest edit without a lock commit must fail rather than resolve silently.
+    for target in ["lint", "test"] {
+        let recipe = make_recipe(target);
+        assert!(
+            recipe.iter().any(|l| l.contains("--locked")),
+            "make {target} is not --locked: {recipe:?}"
+        );
+    }
+    let check = std::fs::read_to_string(xtask::workspace_root().join("Makefile")).unwrap();
+    let prereqs = check
+        .lines()
+        .find_map(|l| l.strip_prefix("check:"))
+        .expect("a check target");
+    assert!(
+        prereqs.split_whitespace().any(|t| t == "core-check"),
+        "make check skips core-check: {prereqs}"
+    );
+    assert_eq!(
+        make_recipe("core-check"),
+        [
+            "$(CARGO) check -p apinata-core --no-default-features --locked",
+            "RUSTDOCFLAGS=-Dwarnings $(CARGO) doc --no-deps -p apinata-core --locked",
+        ]
+    );
+}
+
+#[test]
+fn dependabot_bumps_the_pinned_actions_monthly_in_one_pull_request() {
+    let text =
+        std::fs::read_to_string(xtask::workspace_root().join(".github/dependabot.yml")).unwrap();
+    let config: Value = yaml_serde::from_str(&text).unwrap();
+    let actions = config["updates"]
+        .as_sequence()
+        .unwrap()
+        .iter()
+        .find(|u| str_of(&u["package-ecosystem"]) == "github-actions")
+        .expect("a github-actions entry");
+    assert_eq!(str_of(&actions["directory"]), "/");
+    assert_eq!(str_of(&actions["schedule"]["interval"]), "monthly");
+    assert_eq!(
+        strs(&actions["groups"]["actions"]["patterns"]),
+        ["*"],
+        "all action bumps arrive as one grouped pull request"
+    );
+}
+
+#[test]
+fn macos_clippy_runs_only_when_a_dispatch_asks_for_it() {
+    // macOS minutes bill at ten times Linux, so the job is opt-in and off by default.
+    let ci = load("ci.yml");
+    let input = &ci["on"]["workflow_dispatch"]["inputs"]["macos_clippy"];
+    assert_eq!(str_of(&input["type"]), "boolean");
+    assert_eq!(input["default"], Value::Bool(false));
+    let job = &ci["jobs"]["macos-clippy"];
+    assert_eq!(str_of(&job["runs-on"]), "macos-latest");
+    assert_eq!(str_of(&job["if"]), "inputs.macos_clippy");
+    let runs: Vec<String> = steps(&ci, "macos-clippy")
+        .iter()
+        .map(|s| str_of(&s["run"]).trim().to_owned())
+        .filter(|r| !r.is_empty())
+        .collect();
+    assert_eq!(
+        runs,
+        ["cargo clippy --workspace --all-targets --locked -- -Dwarnings"]
+    );
 }

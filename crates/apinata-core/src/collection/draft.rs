@@ -12,7 +12,7 @@ use yaml_serde::{Mapping, Value};
 impl Collection {
     /// Start an unsaved request in the folder `parent`, from the same template as
     /// [`Collection::create_request`] and clean until edited. It is named "Untitled request",
-    /// or "Untitled request <n>" with the lowest `n` from 2 that no other draft holds. Nothing
+    /// or `"Untitled request <n>"` with the lowest `n` from 2 that no other draft holds. Nothing
     /// is written. Returns its path, `<parent>/untitled-<n>.draft`; `NotFound` when there is
     /// no such folder.
     pub fn create_draft(&mut self, parent: &ItemPath) -> Result<ItemPath, TreeError> {
