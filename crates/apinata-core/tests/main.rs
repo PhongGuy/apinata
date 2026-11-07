@@ -189,6 +189,7 @@ mod graphql_check_query;
 mod graphql_compiled_schema;
 mod graphql_completion;
 mod graphql_create;
+mod graphql_directive_complete;
 mod graphql_directive_model;
 mod graphql_directive_print;
 mod graphql_directive_sdl;

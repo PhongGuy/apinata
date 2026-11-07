@@ -124,6 +124,21 @@ fn names_resolve_to_schema_elements() {
             field("Mutation", "addUser"),
             "addUser",
         ),
+        (
+            "{ user(id: 1) @sk|ip(if: true) { name } }",
+            SchemaSymbol::Directive {
+                name: "skip".into(),
+            },
+            "skip",
+        ),
+        (
+            "{ user(id: 1) @skip(i|f: true) { name } }",
+            SchemaSymbol::DirectiveArgument {
+                directive: "skip".into(),
+                arg: "if".into(),
+            },
+            "if",
+        ),
         // A second operation starts again at the query root.
         (
             "query Q { user(id: 1) { id } }\nquery R { us|ers { id } }",
@@ -217,9 +232,6 @@ fn everything_else_finds_nothing() {
         "{ user(id: 1) { name(fo|o: 1) } }",
         "{ search(term: \"x\") { ti|tle } }",
         "{ search(term: \"x\") { ... on No|pe { id } } }",
-        // Directives and their arguments.
-        "{ user(id: 1) @sk|ip(if: true) { name } }",
-        "{ user(id: 1) @skip(i|f: true) { name } }",
         // Inside a placeholder, edges included.
         "{ user(id: {{i|d}}) { name } }",
         "{ user(id: 1) { {{fie|lds}} } }",

@@ -71,7 +71,7 @@ fn completion_table() {
         ("{ nope { |", &[]),
         ("{ user { nope { |", &[]),
         ("fragment F on Nope { |", &[]),
-        ("{ user @|", &[]),
+        ("{ user @|", &["skip", "include"]),
         (
             "{ user(id: 1) @include(if: true) { |",
             &["id", "name", "role", "friends", "__typename", "legacyName"],
@@ -80,7 +80,7 @@ fn completion_table() {
             "{ user @skip(if: $x) { |",
             &["id", "name", "role", "friends", "__typename", "legacyName"],
         ),
-        ("{ user @include(|", &[]),
+        ("{ user @include(|", &["if:"]),
         ("{ ... @include(if: $x) { |", &QUERY),
         ("{ ... { |", &QUERY),
         ("{ ...|", &[]),
