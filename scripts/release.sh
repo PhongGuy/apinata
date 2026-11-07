@@ -398,9 +398,10 @@ generated_changes() {
 }
 
 # Write OUT, the draft notes for TAG in REPO (owner/name): the intro, What's
-# Changed as the pull requests merged since the previous v* tag, Downloads named from the tag's version,
-# and the install and update notes. DIST tells a signed Windows build from an
-# unsigned one. Runs in the repository, which needs full history and tags.
+# Changed as the pull requests merged since the previous v* tag, Downloads
+# named from the tag's version, and the install and update notes. DIST tells a
+# signed Windows build from an unsigned one. Runs in the repository, which
+# needs full history and tags.
 release_notes() {
   local tag=$1 repo=$2 dist=$3 out=$4
   local v=${tag#v} prev="" range=$tag first=true subjects changes feats fixes win="" f
