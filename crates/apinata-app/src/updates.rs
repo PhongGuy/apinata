@@ -113,9 +113,9 @@ enum Install {
 
 impl Prepared {
     /// The release `staged` for the install `kind`.
-    pub fn new(version: impl Into<String>, kind: InstallKind, staged: Staged) -> Self {
+    pub fn new(version: String, kind: InstallKind, staged: Staged) -> Self {
         Prepared {
-            version: version.into(),
+            version,
             how: Install::Staged(kind, staged),
         }
     }
