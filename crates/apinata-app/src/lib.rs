@@ -72,6 +72,7 @@ pub mod graphql_check;
 pub mod graphql_complete;
 pub mod graphql_docs;
 pub mod graphql_highlight;
+pub mod graphql_hover;
 pub mod graphql_schema_store;
 pub mod graphql_section;
 pub mod har_export;

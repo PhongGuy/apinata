@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_query};
 use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
+use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
@@ -16,7 +16,8 @@ use crate::graphql_check::{
     CHECK_DELAY, CheckBasis, FORMAT_OFF_THREAD_BYTES, Jobs, editor_diagnostics, syntax_message,
 };
 use crate::graphql_complete::SchemaCompletions;
-use crate::graphql_docs::DocsPanel;
+use crate::graphql_docs::{DocsPanel, DocsView};
+use crate::graphql_hover::{SchemaSymbols, docs_view};
 use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
 use crate::schema_load::load_from_file;
 use crate::section::SectionEdit;
@@ -24,6 +25,9 @@ use crate::style;
 use crate::theme::SelectedStyle;
 use crate::ui::ChooseButton as _;
 use crate::var_tokens::VarField;
+
+/// The key context on the query editor's wrapper, where F12 jumps to a definition.
+pub const GRAPHQL_QUERY_CONTEXT: &str = "GraphqlQuery";
 
 /// The docs explorer's width beside the editors.
 const DOCS_WIDTH: Rems = style::ui(320.);
@@ -67,8 +71,21 @@ impl GraphqlSection {
         let query = cx.new(|cx| EditorState::new(window, cx).language("graphql"));
         let completion_url = Rc::new(RefCell::new(String::new()));
         let provider = SchemaCompletions::new(completion_url.clone());
+        let symbols = Rc::new(SchemaSymbols::new(completion_url.clone()));
+        let section = cx.weak_entity();
+        // The handler runs inside the query editor's update, so it must not read that editor.
+        let show_document: ShowDocumentHandler = Rc::new(move |params, _, cx| {
+            let Some(view) = docs_view(params.uri.as_str()) else {
+                return false;
+            };
+            section.update(cx, |s, cx| s.show_docs(view, cx)).is_ok()
+        });
         query.update(cx, |s, _| {
-            s.lsp_mut().completion_provider = Some(Rc::new(provider))
+            let lsp = s.lsp_mut();
+            lsp.completion_provider = Some(Rc::new(provider));
+            lsp.hover_provider = Some(symbols.clone());
+            lsp.definition_provider = Some(symbols);
+            lsp.show_document = Some(show_document);
         });
         let variables = cx.new(|cx| EditorState::new(window, cx).language("json"));
         let on_change = |this: &mut Self, _, event: &InputEvent, cx: &mut Context<Self>| {
@@ -326,6 +343,14 @@ impl GraphqlSection {
         &self.docs
     }
 
+    /// Opens the Docs panel on `view`. It never reads the query editor, since the jump runs
+    /// inside that editor's update.
+    pub fn show_docs(&mut self, view: DocsView, cx: &mut Context<Self>) {
+        self.docs_open = true;
+        self.docs.update(cx, |d, cx| d.open(view, cx));
+        cx.notify();
+    }
+
     /// Whether the docs explorer is shown.
     pub fn docs_open(&self) -> bool {
         self.docs_open
@@ -464,6 +489,7 @@ impl Render for GraphqlSection {
                 // Accepting a schema completion lets Enter bubble on, and an unhandled Enter is
                 // then typed as a newline; stopping it here ends the key at the accepted word.
                 self.editor("graphql-query", "Query", &self.query)
+                    .key_context(GRAPHQL_QUERY_CONTEXT)
                     .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             )
             .children(beautify_error)

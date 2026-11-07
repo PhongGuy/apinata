@@ -345,6 +345,11 @@ fn today() -> Vec<Triple> {
         ("space".into(), "sidebar::PreviewSelected", "Sidebar > Tree"),
         ("f2".into(), "sidebar::RenameSelected", "Sidebar > Tree"),
         (
+            "f12".into(),
+            "input::GoToDefinition",
+            "GraphqlQuery > Input",
+        ),
+        (
             "shift-enter".into(),
             "sidebar::RunSelected",
             "Sidebar > Tree",
