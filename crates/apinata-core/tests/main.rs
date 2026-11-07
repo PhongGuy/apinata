@@ -201,6 +201,7 @@ mod graphql_sdl_print;
 mod graphql_symbol;
 mod graphql_validate;
 mod graphql_validate_filters;
+mod graphql_variable_completion;
 mod graphql_variable_defs;
 mod host_overrides;
 mod ignore_open;
