@@ -31,3 +31,6 @@ yaml_serde.workspace = true
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+[lints]
+workspace = true

@@ -3,6 +3,8 @@ members = ["crates/apinata-core", "crates/apinata-cli", "crates/apinata-app", "c
 exclude = ["tools/apinata-pilot"]
 resolver = "3"
 
+[workspace.lints.clippy]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

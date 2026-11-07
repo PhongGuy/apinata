@@ -235,7 +235,7 @@ impl JwtView {
             )
         };
         let expiry = match jwt.expiry(now) {
-            apinata_core::Expiry::NoExpiry => "No expiry".to_owned(),
+            apinata_core::Expiry::Absent => "No expiry".to_owned(),
             apinata_core::Expiry::Valid { expires_at } => format!("Expires {}", date(expires_at)),
             apinata_core::Expiry::Expired { expires_at } => {
                 format!("Expires {} (expired)", date(expires_at))

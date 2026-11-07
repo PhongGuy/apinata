@@ -77,3 +77,6 @@ desktopTemplate = "packaging/apinata-app.desktop"
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+[lints]
+workspace = true
