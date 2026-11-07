@@ -1,4 +1,4 @@
-//! `toggle_field`: the one text edit that ticks a field path into a query.
+//! `toggle_field`: the one text edit that ticks a field path into a query or unticks it.
 //!
 //! Edits are computed on the masked text, whose offsets match the original, so a newline
 //! inside a placeholder is never mistaken for a line break.
@@ -6,7 +6,7 @@
 use std::ops::Range;
 
 use super::mask::mask;
-use super::outline::{FieldPath, Set, keyword, query_outline, resolve};
+use super::outline::{Cut, FieldPath, QueryOutline, Set, keyword, query_outline, resolve};
 use crate::{Schema, TypeKind};
 
 /// One replacement in the query text: `range` is replaced by `text`.
@@ -20,13 +20,42 @@ pub struct QueryEdit {
 }
 
 /// The edit that ticks (`on`) `path` in `query`, writing the field and any missing
-/// ancestors. `None` when the query does not outline, the path is locked or not a leaf
-/// field of the schema, or it is already selected.
+/// ancestors, or unticks it, removing one copy and every parent that would be left empty.
+/// `None` when the query does not outline, the path is locked, a tick names a path that is
+/// not a leaf field of the schema or is already selected, or an untick names one that is
+/// not selected.
 pub fn toggle_field(query: &str, schema: &Schema, path: &FieldPath, on: bool) -> Option<QueryEdit> {
     let outline = query_outline(query, schema)?;
-    if !on || outline.selects(path) || outline.locked(path).is_some() {
+    if outline.locked(path).is_some() {
         return None;
     }
+    if on {
+        tick(query, &outline, path)
+    } else {
+        untick(query, &outline, path)
+    }
+}
+
+fn untick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<QueryEdit> {
+    if !outline.selects(path) {
+        return None;
+    }
+    let node = match outline.cut(path)? {
+        Cut::Field(sel) => sel.range.clone(),
+        Cut::Operation(op) => op.range.clone(),
+        Cut::Locked(_) => return None,
+    };
+    Some(QueryEdit {
+        range: removal_range(&mask(query).text, node),
+        text: String::new(),
+    })
+}
+
+fn tick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<QueryEdit> {
+    if outline.selects(path) {
+        return None;
+    }
+    let schema = outline.schema();
     // Only a scalar or enum field can be written without a selection set of its own.
     let last = resolve(schema, path)?.pop()?;
     if schema
@@ -57,6 +86,41 @@ pub fn toggle_field(query: &str, schema: &Schema, path: &FieldPath, on: bool) ->
         }
     }
     None
+}
+
+// Whole lines when the node stands alone on them (a trailing comma or comment may follow),
+// else the node plus the separator after it, or before it when nothing follows on the line.
+// A line's `\r\n` goes with the line, and a CRLF pair is never split.
+fn removal_range(text: &str, node: Range<usize>) -> Range<usize> {
+    let (s, e) = (node.start, node.end);
+    let b = text.as_bytes();
+    let line_start = text[..s].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = text[e..].find('\n').map_or(text.len(), |i| e + i);
+    let alone_before = text[line_start..s]
+        .bytes()
+        .all(|c| matches!(c, b' ' | b'\t' | b'\r'));
+    let after = text[e..line_end].trim_start_matches([' ', '\t', '\r', ',']);
+    if alone_before && (after.is_empty() || after.starts_with('#')) {
+        return line_start..(line_end + 1).min(text.len());
+    }
+    let skip = |mut j: usize| {
+        while j < b.len() && matches!(b[j], b' ' | b'\t') {
+            j += 1;
+        }
+        j
+    };
+    let mut j = skip(e);
+    if j < b.len() && b[j] == b',' {
+        j = skip(j + 1);
+    }
+    if j < b.len() && !matches!(b[j], b'}' | b'\n' | b'\r' | b'#') {
+        return s..j;
+    }
+    let mut i = s;
+    while i > 0 && matches!(b[i - 1], b' ' | b'\t' | b',') {
+        i -= 1;
+    }
+    i..e
 }
 
 // The whitespace that starts the line holding byte `at`, copied verbatim (tabs stay tabs).
