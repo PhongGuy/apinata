@@ -8,8 +8,7 @@ use super::sdl::{BUILT_IN_SCALARS, DEFAULT_DEPRECATION};
 
 /// The document for `schema`: a `schema` block when the roots differ from the conventional
 /// names, then the schema's own directives, then each type in introspection order, separated by
-/// blank lines. Every name is
-/// checked first, so no name can break the document's syntax.
+/// blank lines. Every name is checked first, so no name can break the document's syntax.
 pub(super) fn print(schema: &Schema) -> Result<String, SchemaError> {
     check_names(schema)?;
     let mut blocks = Vec::new();
