@@ -8,7 +8,9 @@ use apollo_parser::{Parser, SyntaxKind, SyntaxNode};
 
 use super::SchemaError;
 use super::directive;
-use super::model::{EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef};
+use super::model::{
+    Directive, EnumValue, Field, InputValue, Schema, SchemaType, TypeKind, TypeRef,
+};
 
 /// The scalars every schema has, appended when the document does not declare them.
 pub(crate) const BUILT_IN_SCALARS: [&str; 5] = ["String", "Int", "Float", "Boolean", "ID"];
@@ -27,6 +29,7 @@ pub(super) fn parse(text: &str) -> Result<Schema, SchemaError> {
         types: Vec::new(),
         index: HashMap::new(),
         refs: Vec::new(),
+        directive_defs: Vec::new(),
         roots: Vec::new(),
         schema_block: false,
     };
@@ -47,6 +50,8 @@ struct Reader<'a> {
     index: HashMap<String, usize>,
     /// Every named type reference with its byte offset, checked once all types are known.
     refs: Vec<(String, usize)>,
+    /// Directive definitions as read, before the admission rule filters them.
+    directive_defs: Vec<Directive>,
     /// Root operations from `schema` blocks: (operation, type name, offset).
     roots: Vec<(Root, String, usize)>,
     schema_block: bool,
@@ -75,7 +80,10 @@ impl Reader<'_> {
             D::OperationDefinition(_) | D::FragmentDefinition(_) => {
                 return Err(self.error(def.syntax(), "a query or fragment is not part of a schema"));
             }
-            D::DirectiveDefinition(_) => return Ok(()),
+            D::DirectiveDefinition(d) => {
+                self.directive(d)?;
+                return Ok(());
+            }
             D::SchemaDefinition(s) => {
                 self.schema_block = true;
                 return self.schema_roots(s.root_operation_type_definitions());
@@ -106,6 +114,38 @@ impl Reader<'_> {
             possible_types: Vec::new(),
         });
         self.members(def)
+    }
+
+    /// Reads one directive definition; a malformed piece skips it rather than failing the load.
+    fn directive(&mut self, d: &cst::DirectiveDefinition) -> Result<(), SchemaError> {
+        let Some(name) = d.name().map(|n| n.text().to_string()) else {
+            return Ok(());
+        };
+        let locations: Vec<String> = d
+            .directive_locations()
+            .into_iter()
+            .flat_map(|l| l.directive_locations())
+            .filter_map(|l| l.text().map(|t| t.to_string()))
+            .collect();
+        // Argument types are checked by `admit`, so they stay out of `refs`, which fails the load.
+        let mark = self.refs.len();
+        let mut args = Vec::new();
+        for a in d
+            .arguments_definition()
+            .iter()
+            .flat_map(|a| a.input_value_definitions())
+        {
+            args.push(self.input(&a)?);
+        }
+        self.refs.truncate(mark);
+        self.directive_defs.push(Directive {
+            name,
+            description: description_of(d.description()),
+            args,
+            repeatable: d.repeatable_token().is_some(),
+            locations,
+        });
+        Ok(())
     }
 
     fn extend(&mut self, def: &cst::Definition) -> Result<(), SchemaError> {
@@ -377,7 +417,10 @@ impl Reader<'_> {
                 self.index.contains_key(default).then(|| default.to_owned())
             }
         };
-        let (directives, own_directives) = directive::with_built_ins(Vec::new());
+        let (directives, own_directives) = directive::with_built_ins(directive::admit(
+            std::mem::take(&mut self.directive_defs),
+            |name| self.index.contains_key(name),
+        ));
         Ok(Schema {
             query_type: root(Root::Query, "Query"),
             mutation_type: root(Root::Mutation, "Mutation"),
