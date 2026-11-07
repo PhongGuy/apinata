@@ -128,7 +128,7 @@ pub fn docs_view(uri: &str) -> Option<DocsView> {
 // Schema text shown as plain text: every ASCII punctuation character is backslash-escaped so no
 // image, link or HTML renders. Line breaks become hard breaks, since the kit folds a soft one
 // into a space, and leading whitespace goes, since four spaces or a tab would open a code block.
-fn plain(text: &str) -> String {
+pub(crate) fn plain(text: &str) -> String {
     let lines: Vec<String> = text
         .lines()
         .map(|line| {
@@ -156,7 +156,7 @@ fn plain(text: &str) -> String {
 
 // An inline code span that survives backticks inside: the fence is one longer than the longest
 // run, with padding when the content touches a backtick, and newlines become spaces.
-fn code_span(content: &str) -> String {
+pub(crate) fn code_span(content: &str) -> String {
     let content = content.replace(['\r', '\n'], " ");
     let mut longest = 0;
     let mut run = 0;
