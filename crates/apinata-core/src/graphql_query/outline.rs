@@ -272,8 +272,10 @@ fn walk_sel(sel: &cst::Selection) -> Sel {
             f.arguments().is_some() || f.directives().is_some(),
             f.selection_set().map(|s| walk_set(&s)),
         ),
-        cst::Selection::FragmentSpread(f) => (None, f.directives().is_some(), None),
-        cst::Selection::InlineFragment(f) => (None, f.directives().is_some(), None),
+        // A fragment is never on a field chain, so its protection is never asked for.
+        cst::Selection::FragmentSpread(_) | cst::Selection::InlineFragment(_) => {
+            (None, false, None)
+        }
     };
     Sel {
         name,

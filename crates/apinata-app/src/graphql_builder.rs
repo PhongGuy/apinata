@@ -108,7 +108,7 @@ impl Walk<'_, '_> {
     fn lock(&self, path: &FieldPath) -> Option<String> {
         match self.outline {
             None => Some(BROKEN_NOTE.to_owned()),
-            Some(o) => o.locked(path).map(|l| lock_text(path, &l)),
+            Some(o) => o.locked(path).map(|l| lock_text(&l)),
         }
     }
 
@@ -149,7 +149,7 @@ impl Walk<'_, '_> {
 }
 
 /// The note shown for a row the builder will not toggle.
-pub fn lock_text(_path: &FieldPath, lock: &Lock) -> String {
+pub fn lock_text(lock: &Lock) -> String {
     match lock {
         Lock::OtherRoot => "One operation per request".into(),
         Lock::SubscriptionField => "A subscription selects one field".into(),
