@@ -3,6 +3,14 @@
 //! Each file beside this one is a module of this single binary, so the
 //! suite links once. A new test file must be declared below, or it never runs.
 
+// Test helpers panic by design, each assert is named by its test, and fixtures are shared
+// by plain `.clone()`; the stricter forms only matter in shipped code.
+#![allow(
+    clippy::clone_on_ref_ptr,
+    clippy::missing_assert_message,
+    clippy::unwrap_used
+)]
+
 mod check_files;
 mod check_load;
 mod check_shapes;

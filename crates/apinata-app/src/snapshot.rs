@@ -304,7 +304,7 @@ impl SnapshotCache {
         } = walk;
 
         let collection = match &self.collection {
-            Some(view) if self.fresh(&Target::Collection) => view.clone(),
+            Some(view) if self.fresh(&Target::Collection) => Arc::clone(view),
             _ => Arc::new(overlay(
                 collection_view(c),
                 changed,
@@ -318,7 +318,7 @@ impl SnapshotCache {
             .map(|env| {
                 let target = Target::Environment(env.name().to_owned());
                 match self.environments.get(env.name()) {
-                    Some(view) if self.fresh(&target) => view.clone(),
+                    Some(view) if self.fresh(&target) => Arc::clone(view),
                     _ => {
                         let view = env_view(env);
                         let disk = mark(changed, &target, view.disk);
@@ -349,10 +349,10 @@ impl SnapshotCache {
 
         self.requests = requests;
         self.folders = folders;
-        self.collection = Some(collection.clone());
+        self.collection = Some(Arc::clone(&collection));
         self.environments = environments
             .iter()
-            .map(|v| (v.name.clone(), v.clone()))
+            .map(|v| (v.name.clone(), Arc::clone(v)))
             .collect();
         self.touched.clear();
         self.all = false;
@@ -390,7 +390,7 @@ impl Walk<'_> {
     fn request(&self, path: &ItemPath, request: &RequestFile) -> Arc<RequestView> {
         let target = Target::Request(path.clone());
         match self.cache.requests.get(path) {
-            Some(v) if self.cache.fresh(&target) => v.clone(),
+            Some(v) if self.cache.fresh(&target) => Arc::clone(v),
             _ => {
                 let view = request_view(path, request, self.collection);
                 let disk = mark(self.changed, &target, view.disk);
@@ -414,7 +414,7 @@ impl Walk<'_> {
                 Sibling::Folder(sub) => {
                     let target = Target::Folder(path.clone());
                     let view = match self.cache.folders.get(&path) {
-                        Some(v) if self.cache.fresh(&target) => v.clone(),
+                        Some(v) if self.cache.fresh(&target) => Arc::clone(v),
                         _ => Arc::new(overlay(
                             folder_view(sub),
                             self.changed,

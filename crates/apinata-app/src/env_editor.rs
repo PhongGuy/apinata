@@ -18,7 +18,11 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Anchor, App, Div, ElementId, Entity, FocusHandle, Focusable, FontWeight, Hsla, Result,
+    ScrollHandle, SharedString, Subscription, Task, TestSupportExt, Window, actions, div, px,
+};
 
 use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, EnvOp, Field, Notice, NoticeKind, Target};

@@ -142,19 +142,19 @@ pub fn packager_config(
         &mut config,
         "macos",
         "signingIdentity",
-        &signing.macos_identity,
+        signing.macos_identity.as_deref(),
     );
     Ok(Value::Object(config))
 }
 
 /// Merges `key` into the `section` object, creating the object only when there is a value.
-fn add_setting(config: &mut Map<String, Value>, section: &str, key: &str, value: &Option<String>) {
+fn add_setting(config: &mut Map<String, Value>, section: &str, key: &str, value: Option<&str>) {
     let Some(value) = value else { return };
     let entry = config
         .entry(section)
         .or_insert_with(|| Value::Object(Map::new()));
     if let Value::Object(object) = entry {
-        object.insert(key.into(), value.clone().into());
+        object.insert(key.into(), value.into());
     }
 }
 

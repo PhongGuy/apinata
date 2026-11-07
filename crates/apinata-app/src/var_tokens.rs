@@ -9,7 +9,11 @@ use apinata_core::{VarScope, VariableInfo, VariableSet, placeholders, prompt_lab
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::input::{EditorState, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Bounds, ContentMask, ElementId, Entity, Focusable, MouseMoveEvent, Pixels,
+    SharedString, StyleRefinement, TestSupportExt, Window, anchored, canvas, deferred, div, fill,
+};
 
 use crate::header_complete::Hint;
 use crate::style;
@@ -140,15 +144,15 @@ fn cached_tokens(
         && Arc::ptr_eq(&c.vars, vars)
         && c.revision == revision
     {
-        return c.tokens.clone();
+        return Rc::clone(&c.tokens);
     }
     let found: Rc<[Token]> = tokens(text, vars).into();
     state.update(cx, |s, _| {
         s.cache = Some(TokenCache {
             text: text.clone(),
-            vars: vars.clone(),
+            vars: Arc::clone(vars),
             revision,
-            tokens: found.clone(),
+            tokens: Rc::clone(&found),
         })
     });
     found
@@ -289,7 +293,7 @@ impl RenderOnce for VarField {
         let state = window.use_keyed_state(self.id.clone(), cx, |_, _| FieldState::default());
         let text = self.source.text(cx);
         let found = cached_tokens(&state, &text, &vars, cx);
-        let tinted = found.clone();
+        let tinted = Rc::clone(&found);
         let fills = match &self.source {
             Source::Input(input) => {
                 let input = input.clone();
@@ -342,7 +346,7 @@ impl RenderOnce for VarField {
             .filter(|t| !listing && !hinting && found.contains(t))
             .and_then(|t| Some((self.source.bounds(&t.range, cx)?, t.tip)));
         let source = self.source.clone();
-        let hit_vars = vars.clone();
+        let hit_vars = Arc::clone(&vars);
         let on_move = {
             let state = state.clone();
             move |e: &MouseMoveEvent, _: &mut Window, cx: &mut App| {

@@ -178,7 +178,7 @@ impl SchemaStore {
             SchemaState::Loaded(_) => match self.compiled.get(url) {
                 Some((built, Slot::Ready(schema))) if built == generation => Lookup::Ready {
                     generation: *generation,
-                    schema: schema.clone(),
+                    schema: Arc::clone(schema),
                 },
                 Some((built, Slot::Unusable(reason))) if built == generation => Lookup::Unusable {
                     generation: *generation,
@@ -200,7 +200,7 @@ impl SchemaStore {
         };
         self.compiled
             .insert(url.to_owned(), (*generation, Slot::Building));
-        Some((*generation, schema.clone()))
+        Some((*generation, Arc::clone(schema)))
     }
 
     /// Stores a compile `result` for `url` only when `generation` is still its newest load;

@@ -14,7 +14,11 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyWindowHandle, App, AppContext, ClipboardItem, Entity, Global, Result, SharedString,
+    TestSupportExt, Window, div,
+};
 
 use crate::style::SPACE_3;
 
@@ -101,7 +105,7 @@ pub fn authorize_options(cx: &App) -> AuthorizeOptions {
             ..
         }) => options.authorizer(Arc::new(AppAuthorizer {
             messages: messages.clone(),
-            next_id: next_id.clone(),
+            next_id: Arc::clone(next_id),
         })),
         _ => options,
     }
@@ -382,7 +386,7 @@ mod tests {
             })
             .unwrap();
         let opened = Arc::new(AtomicU64::new(0));
-        let seen = opened.clone();
+        let seen = Arc::clone(&opened);
         cx.update(|cx| {
             install(win, cx);
             set_opener(

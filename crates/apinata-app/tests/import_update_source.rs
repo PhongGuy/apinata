@@ -44,7 +44,7 @@ fn the_root_row_does_not_repeat_the_display_name(cx: &mut TestAppContext) {
     r.open(cx, root);
     let server = serve(cx, V2);
     let d = r.dialog(cx, &format!("{}/spec.json", server.uri()));
-    let label = d.read_with(cx, |d, _| d.scope_name(&None));
+    let label = d.read_with(cx, |d, _| d.scope_name(None));
     assert_eq!(label, "Whole collection");
 }
 

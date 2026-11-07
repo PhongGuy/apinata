@@ -9,7 +9,11 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Empty, Entity, Pixels, SharedString, Size, StyleRefinement, TextStyle,
+    WeakEntity, Window, canvas, div, size,
+};
 
 /// A view whose render is split into parts, each drawn by a [`Part`] that calls back in here.
 pub trait PartOwner: Sized + 'static {
@@ -61,7 +65,7 @@ impl<O: PartOwner> Render for Part<O> {
             .unwrap_or_else(|_| Empty.into_any_element());
         // The marker reads the size the content took; a change after a cached draw asks for
         // another frame, which the owner then lays out by content again.
-        let (cell, by_content) = (self.size.clone(), self.by_content);
+        let (cell, by_content) = (Rc::clone(&self.size), self.by_content);
         let measure = canvas(
             move |bounds, window, _| {
                 let old = cell.replace(Some(bounds.size));
@@ -192,7 +196,7 @@ impl<T> Same<T> {
 
 impl<T> Clone for Same<T> {
     fn clone(&self) -> Self {
-        Same(self.0.clone())
+        Same(std::sync::Weak::clone(&self.0))
     }
 }
 

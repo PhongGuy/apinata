@@ -8,7 +8,11 @@ use apinata_core::{Directive, Field, InputValue, Schema, SchemaType, TypeKind};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, Div, Entity, EventEmitter, Result, Subscription, TestSupportExt, Window, div,
+    uniform_list,
+};
 
 use crate::graphql_hover::directive_signature;
 use crate::graphql_schema_store::{self, SchemaState, SchemaStore};

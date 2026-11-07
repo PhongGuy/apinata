@@ -352,6 +352,8 @@ mod status_rule {
     use apinata_core::StatusRule;
     use serde::{Deserialize, Deserializer, Serializer};
 
+    // serde's `serialize_with` hands the field over as `&Option<T>`, so the signature is fixed.
+    #[allow(clippy::ref_option)]
     pub fn serialize<S: Serializer>(rule: &Option<StatusRule>, s: S) -> Result<S::Ok, S::Error> {
         match rule {
             Some(r) => s.serialize_some(r.as_str()),

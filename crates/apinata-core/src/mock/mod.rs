@@ -169,7 +169,7 @@ pub async fn start(
     let log = Arc::new(respond::HitLog::new());
     let shared = Arc::new(server::Shared {
         table,
-        log: log.clone(),
+        log: Arc::clone(&log),
         delay: options.delay,
         hook: options.hook,
     });

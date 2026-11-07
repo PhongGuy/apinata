@@ -64,7 +64,7 @@ fn a_missing_or_non_numeric_exp_means_no_expiry() {
     for payload in [r#"{"sub":"x"}"#, r#"{"exp":"soon"}"#, r#"{"exp":null}"#] {
         let d = decode_jwt(&token("{}", payload)).unwrap();
         assert_eq!(d.expires_at, None, "{payload}");
-        assert_eq!(d.expiry(1), Expiry::NoExpiry);
+        assert_eq!(d.expiry(1), Expiry::Absent);
     }
 }
 

@@ -6,7 +6,8 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{EventEmitter, SharedString, TestSupportExt, Window, div};
 
 use crate::section::SectionEdit;
 use crate::style::{HEADER_NAME_WIDTH, SPACE_0, SPACE_1, SPACE_2, SPACE_3, TEXT_SMALL};

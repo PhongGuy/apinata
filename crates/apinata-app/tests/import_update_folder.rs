@@ -244,7 +244,7 @@ fn the_root_scope_row_reads_whole_collection(cx: &mut TestAppContext) {
     let server = serve(cx, V2);
     let d = r.dialog(cx, &format!("{}/spec.json", server.uri()));
     assert_eq!(
-        d.read_with(cx, |d, _| d.scope_name(&None)),
+        d.read_with(cx, |d, _| d.scope_name(None)),
         "Whole collection"
     );
     r.click(cx, "import-link-import");

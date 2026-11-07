@@ -17,7 +17,11 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, FocusHandle, Focusable, Global, PathPromptOptions, Pixels, Result, ScrollHandle,
+    SharedString, Task, TestSupportExt, WeakEntity, Window, div, px,
+};
 
 use crate::command::Command;
 use crate::shell::{Shell, parse_bundles_from};
@@ -316,7 +320,7 @@ impl ImportLinkDialog {
 
     /// The label of a scope in the picker: `Whole collection` for the root, else `Folder <path>`.
     #[doc(hidden)]
-    pub fn scope_name(&self, scope: &Option<ItemPath>) -> String {
+    pub fn scope_name(&self, scope: Option<&ItemPath>) -> String {
         match scope {
             Some(f) => format!("Folder {f}"),
             None => "Whole collection".to_string(),
@@ -1238,7 +1242,7 @@ impl Render for ImportLinkDialog {
         let scope_picker = self.scope_picker_shown().then(|| {
             let rows = scopes.into_iter().enumerate().map(|(n, scope)| {
                 let style = styles[n];
-                let label = self.scope_name(&scope);
+                let label = self.scope_name(scope.as_ref());
                 Button::new(SharedString::from(format!("import-update-folder-{n}")))
                     .label(label)
                     .w_full()

@@ -159,7 +159,7 @@ impl HistorySearch {
                 filter_history(&self.entries, query).into(),
             );
         }
-        last.1.clone()
+        Rc::clone(&last.1)
     }
 }
 
@@ -387,7 +387,7 @@ pub fn open_history(
                 .group(CommandGroup::new().label("History").items(rows))
                 .on_confirm({
                     let (target, search, state) =
-                        (target.clone(), search.clone(), dialog_state.clone());
+                        (target.clone(), Rc::clone(&search), dialog_state.clone());
                     move |path, window, cx| {
                         let query = state.read(cx).query(cx);
                         let found = search.matches(&query);

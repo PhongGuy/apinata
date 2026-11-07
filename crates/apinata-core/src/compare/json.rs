@@ -2,7 +2,7 @@
 
 use serde_json::{Number, Value};
 
-use super::*;
+use super::{BodyComparison, JsonChange, JsonChangeKind};
 
 /// Changes kept before the rest are only counted.
 const MAX_CHANGES: usize = 1000;

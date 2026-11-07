@@ -39,10 +39,10 @@ pub(super) async fn accept_loop(listener: TcpListener, shared: Arc<Shared>) {
                     tokio::time::sleep(Duration::from_millis(10)).await;
                     continue;
                 };
-                let shared = shared.clone();
+                let shared = Arc::clone(&shared);
                 conns.spawn(async move {
                     let service = hyper::service::service_fn(move |req| {
-                        let shared = shared.clone();
+                        let shared = Arc::clone(&shared);
                         async move { Ok::<_, Infallible>(handle(&shared, req).await) }
                     });
                     let io = hyper_util::rt::TokioIo::new(stream);

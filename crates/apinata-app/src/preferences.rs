@@ -11,7 +11,12 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarMode};
 use gpui_kit::component::{ActiveTheme as _, ThemeMode, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, ClickEvent, Div, Entity, FocusHandle, Focusable, FontWeight, PathPromptOptions, Result,
+    Role, ScrollHandle, SharedString, Subscription, TestSupportExt, Window, actions, div,
+    linear_color_stop, linear_gradient, px, relative,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -259,7 +264,7 @@ impl PreferencesView {
         });
         let keyboard = cx.new(KeyboardPrefs::new);
         let updates = cx.try_global::<AppState>().map(|s| s.updates.clone());
-        let secrets = cx.try_global::<AppState>().map(|s| s.secrets.clone());
+        let secrets = cx.try_global::<AppState>().map(|s| Arc::clone(&s.secrets));
         let mut subs = vec![
             cx.observe(&keyboard, |_, _, cx| cx.notify()),
             // A key or scroll zoom changes the zoom while the dialog is open; refill each

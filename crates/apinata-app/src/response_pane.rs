@@ -28,7 +28,13 @@ use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Action, Anchor, AnyElement, App, ClipboardItem, Div, Entity, FocusHandle, Focusable,
+    FontFeatures, FontWeight, Global, Hsla, Pixels, Rems, ScrollHandle, ScrollStrategy,
+    SharedString, Subscription, Svg, Task, TestSupportExt, UniformListScrollHandle, WeakEntity,
+    Window, canvas, div, relative, rems, svg, uniform_list,
+};
 
 use crate::app::AppState;
 use crate::body_text::{format_size, format_time, size_labels};
@@ -1595,7 +1601,7 @@ impl ResponsePane {
         // The menu shows only while last frame's layout overflowed; the strip's watch
         // redraws once when this frame's layout disagrees.
         let pane = this.clone();
-        let picked = shown.clone();
+        let picked = Rc::clone(&shown);
         // The strip clips flush with the pane's edge, so a spacer leaves the first tab's ring
         // whole and lines it up with the request column's content.
         ui::tab_strip("response-tabs", cx)
@@ -1610,7 +1616,7 @@ impl ResponsePane {
                     labels,
                     self.tab_position(self.tab),
                     {
-                        let shown = shown.clone();
+                        let shown = Rc::clone(&shown);
                         move |ix, _, cx| pane.update(cx, |p, cx| p.set_tab(shown[ix], cx))
                     },
                 ))
@@ -2588,8 +2594,8 @@ impl ResponsePane {
     fn tabs_probe(&self) -> impl IntoElement {
         let (scroll, cell, whole_cell, count) = (
             self.tab_scroll.clone(),
-            self.min.tabs.clone(),
-            self.min.tabs_whole.clone(),
+            Rc::clone(&self.min.tabs),
+            Rc::clone(&self.min.tabs_whole),
             self.strip_tabs().len(),
         );
         canvas(
@@ -2666,8 +2672,8 @@ impl ResponsePane {
     // the compact threshold, or the width where the tabs give way, it asks for one more
     // frame, which re-renders this pane (the current view) with the matching header.
     fn width_watch(&self, window: &Window) -> impl IntoElement {
-        let compact = self.compact.clone();
-        let (height, width) = (self.height.clone(), self.width.clone());
+        let compact = Rc::clone(&self.compact);
+        let (height, width) = (Rc::clone(&self.height), Rc::clone(&self.width));
         let floor = self.wide_floor(window);
         let need = match self.min.tabs_whole.get() > Pixels::ZERO {
             true => self.tabs_whole_need(window),
@@ -3056,10 +3062,10 @@ impl ResponsePane {
         if let Some((shown, lines)) = &*cache
             && Weak::ptr_eq(shown, &Arc::downgrade(r))
         {
-            return lines.clone();
+            return Rc::clone(lines);
         }
         let lines: Rc<[ConsoleEntry]> = r.redacted_console().into();
-        *cache = Some((Arc::downgrade(r), lines.clone()));
+        *cache = Some((Arc::downgrade(r), Rc::clone(&lines)));
         lines
     }
 
@@ -3093,7 +3099,7 @@ impl ResponsePane {
             });
         }
         let m = cache.as_ref().expect("filled above");
-        (m.hops.clone(), m.revealed.clone())
+        (Rc::clone(&m.hops), m.revealed.clone())
     }
 
     // Each response header of `r` as shown: its name, its value masked unless revealed, its eye
@@ -3881,7 +3887,7 @@ impl ResponsePane {
     pub fn compare_rows(&self) -> Arc<[CompareRow]> {
         self.compare
             .as_ref()
-            .map_or_else(|| Arc::from(Vec::new()), |c| c.rows.clone())
+            .map_or_else(|| Arc::from(Vec::new()), |c| Arc::clone(&c.rows))
     }
 
     /// How far the Compare list is scrolled; `None` with no Compare tab.
@@ -4127,7 +4133,7 @@ impl ResponsePane {
 
     /// The cell the owning editor fills with the room of the split this pane sits in.
     pub fn room_cell(&self) -> Rc<Cell<Pixels>> {
-        self.room.clone()
+        Rc::clone(&self.room)
     }
 
     /// Removes the Compare tab, returning to Body when it was selected, and drops any
@@ -4294,7 +4300,7 @@ impl ResponsePane {
         let weak = Arc::downgrade(&result);
         let seed = self.send.read(cx).ended_events();
         if from_stream && !seed.is_empty() {
-            self.done_events = Some((weak.clone(), Rc::new(seed.to_vec())));
+            self.done_events = Some((Weak::clone(&weak), Rc::new(seed.to_vec())));
         }
         self.events_task = Some(cx.spawn(async move |this, cx| {
             let parsed = cx
@@ -4322,7 +4328,7 @@ impl ResponsePane {
     fn shown_events(&self, cx: &App) -> Option<Rc<Vec<SseEvent>>> {
         let (weak, events) = self.done_events.as_ref()?;
         let shown = done(self.send.read(cx))?;
-        Weak::ptr_eq(weak, &Arc::downgrade(&shown)).then(|| events.clone())
+        Weak::ptr_eq(weak, &Arc::downgrade(&shown)).then(|| Rc::clone(events))
     }
 
     /// The tabs the strip lists, in order.
@@ -4656,7 +4662,7 @@ impl ResponsePane {
         let list = match &state.comparison {
             None => div().into_any_element(),
             Some(_) => {
-                let rows = state.rows.clone();
+                let rows = Arc::clone(&state.rows);
                 let palette = ComparePalette::new(&state.diff_rows, window, cx);
                 let pane = cx.entity().downgrade();
                 let toggle: Toggle = Rc::new({
@@ -4803,7 +4809,7 @@ impl Render for ResponsePane {
                 self.under_history(self.error_element(e, cx), cx)
             }
             (SendState::Done(result), _) => {
-                let result = result.clone();
+                let result = Arc::clone(result);
                 // One header row that never wraps: the tabs on the left, the status facts
                 // right-aligned. A short row cuts the address, then scrolls the tabs; below
                 // that floor the pane is compact, the tabs on a whole row over folded facts.
@@ -5267,7 +5273,7 @@ fn is_event_stream_response(r: &Response) -> bool {
 
 fn done(send: &SendModel) -> Option<Arc<RequestResult>> {
     match send.state() {
-        SendState::Done(r) => Some(r.clone()),
+        SendState::Done(r) => Some(Arc::clone(r)),
         _ => None,
     }
 }
@@ -5453,7 +5459,7 @@ fn set_width(cell: &Rc<Cell<Pixels>>, width: Pixels, window: &mut Window) {
 
 // As `width_probe`, storing the width in rems, so it stays true across a zoom change.
 fn rem_probe(cell: &Rc<Cell<f32>>) -> impl IntoElement {
-    let cell = cell.clone();
+    let cell = Rc::clone(cell);
     canvas(
         move |bounds, window, _| {
             let width = bounds.size.width / window.rem_size();
@@ -5475,7 +5481,7 @@ fn width_probe(cell: &Rc<Cell<Pixels>>) -> impl IntoElement {
 
 // As `width_probe`, adding `extra` resolved at the current zoom.
 fn width_probe_plus(cell: &Rc<Cell<Pixels>>, extra: Rems) -> impl IntoElement {
-    let cell = cell.clone();
+    let cell = Rc::clone(cell);
     canvas(
         move |bounds, window, _| {
             set_width(

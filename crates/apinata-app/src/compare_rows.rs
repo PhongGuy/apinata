@@ -6,7 +6,8 @@ use std::rc::Rc;
 use apinata_core::{HeaderChangeKind, JsonChangeKind};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{ActiveTheme as _, h_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyElement, App, FontWeight, Hsla, SharedString, TestSupportExt, Window, div};
 
 use crate::body_view::SCRUBBED_TIP;
 use crate::compare_view::{CompareRow, HeaderEye};
@@ -130,7 +131,7 @@ fn header_eye(ix: usize, name: &str, eye: HeaderEye, actions: &RowActions, cx: &
     let button = match eye {
         HeaderEye::Locked => button.lock(true, cx),
         _ => {
-            let (reveal, name) = (actions.reveal.clone(), name.to_owned());
+            let (reveal, name) = (Rc::clone(&actions.reveal), name.to_owned());
             button.on_click(move |_, window, cx| reveal(&name, window, cx))
         }
     };
@@ -200,7 +201,7 @@ pub fn compare_row(
                 .cursor_pointer()
                 .text_color(p.muted)
                 .on_click({
-                    let toggle = actions.toggle.clone();
+                    let toggle = Rc::clone(&actions.toggle);
                     move |_, window, cx| toggle(window, cx)
                 })
                 .child(label)

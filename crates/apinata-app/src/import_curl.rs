@@ -6,7 +6,8 @@ use apinata_core::import::{ImportedRequest, RequestFormat, parse_request};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, Entity, Focusable, Result, SharedString, TestSupportExt, Window, div};
 
 use crate::style::{self, SPACE_2};
 use crate::ui::{self, FocusNextControl};

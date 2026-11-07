@@ -3,8 +3,11 @@
 //! The kit's `PopupMenu::dismiss` loses its focus restore when the Escape key-up lands before
 //! effects flush, leaving focus on the closed menu and the app's keys dead.
 
+use std::rc::Rc;
+
 use gpui_kit::component::menu::PopupMenu;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, DismissEvent, FocusHandle, Focusable, Subscription, Window};
 
 use crate::palette::OpenCommandPalette;
 
@@ -51,7 +54,7 @@ pub fn watch_built(
     let mine = menu.focus_handle(cx);
     let slots = std::rc::Rc::new(std::cell::RefCell::new(Some((previous, fallback))));
     let watcher = std::rc::Rc::new(std::cell::RefCell::new(None::<Subscription>));
-    let keep = watcher.clone();
+    let keep = Rc::clone(&watcher);
     *watcher.borrow_mut() = Some(cx.observe_new(
         move |created: &mut PopupMenu, window: Option<&mut Window>, cx: &mut Context<PopupMenu>| {
             if created.focus_handle(cx) != mine {

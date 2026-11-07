@@ -6,7 +6,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Bounds, ElementId, FocusHandle, Pixels, ScrollHandle, Window, canvas, div,
+};
 
 /// How many frames a focus change stays armed, so a layout shift after it is still caught.
 const ARMED_FRAMES: u8 = 3;
@@ -28,7 +31,7 @@ impl FocusFollow {
     /// The marker that scrolls `scroll` to the focused wrapper. Draw it after every wrapper, as
     /// the last child of the scrolling box.
     pub fn watch(&self, scroll: &ScrollHandle) -> impl IntoElement + use<> {
-        let (inner, scroll) = (self.0.clone(), scroll.clone());
+        let (inner, scroll) = (Rc::clone(&self.0), scroll.clone());
         canvas(
             move |_, window, cx| inner.follow(&scroll, window, cx),
             |_, _, _, _| {},
@@ -107,7 +110,7 @@ impl RenderOnce for Followed {
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
             .read(cx)
             .clone();
-        let marks = self.follow.0.clone();
+        let marks = Rc::clone(&self.follow.0);
         let reporter = {
             let handle = handle.clone();
             canvas(

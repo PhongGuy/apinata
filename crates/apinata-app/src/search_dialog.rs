@@ -15,7 +15,12 @@ use gpui_kit::component::input::{Enter, Input, InputEvent, InputState, MoveDown,
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Action, AnyElement, App, ClickEvent, Entity, FocusHandle, FontWeight, HighlightStyle,
+    MouseButton, Point, ScrollHandle, SharedString, StyledText, Subscription, Task, TestSupportExt,
+    Window, actions, div,
+};
 
 use crate::command::Command;
 use crate::request_editor::Section;

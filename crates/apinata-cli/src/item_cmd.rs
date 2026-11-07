@@ -304,7 +304,14 @@ fn update_folder(c: &mut Collection, args: &FolderArgs, json: bool) -> anyhow::R
     let auth = match (auth_json, auth_json_file) {
         (Some(text), _) => Some(parse_auth(text)?),
         (None, Some(file)) => Some(parse_auth(&read_text(file, "the auth JSON")?)?),
-        (None, None) => auth_flag(*auth, bearer, basic, digest, api_key, *api_key_in)?,
+        (None, None) => auth_flag(
+            *auth,
+            bearer.as_deref(),
+            basic.as_deref(),
+            digest.as_deref(),
+            api_key.as_deref(),
+            *api_key_in,
+        )?,
     };
     let docs = match (docs, docs_file) {
         (Some(text), _) => Some(text.clone()),
@@ -412,10 +419,10 @@ fn update_folder(c: &mut Collection, args: &FolderArgs, json: bool) -> anyhow::R
 /// The auth the flags name, if any; clap already allows at most one.
 fn auth_flag(
     mode: Option<FolderAuthArg>,
-    bearer: &Option<String>,
-    basic: &Option<String>,
-    digest: &Option<String>,
-    api_key: &Option<String>,
+    bearer: Option<&str>,
+    basic: Option<&str>,
+    digest: Option<&str>,
+    api_key: Option<&str>,
     api_key_in: Option<ApiKeyInArg>,
 ) -> anyhow::Result<Option<AuthSpec>> {
     let pair = |flag: &str, raw: &str| -> anyhow::Result<(String, String)> {
@@ -429,7 +436,7 @@ fn auth_flag(
         (Some(FolderAuthArg::None), ..) => AuthSpec::None,
         (Some(FolderAuthArg::Inherit), ..) => AuthSpec::Inherit,
         (_, Some(token), ..) => AuthSpec::Bearer {
-            token: token.clone(),
+            token: token.to_owned(),
         },
         (_, _, Some(raw), ..) => {
             let (username, password) = pair("--basic", raw)?;

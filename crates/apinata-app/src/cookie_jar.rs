@@ -13,7 +13,11 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Div, Entity, Focusable, Result, ScrollHandle, SharedString, Subscription, Task,
+    TestSupportExt, Window, div, px,
+};
 
 use crate::body_view::MASKED;
 use crate::executor::{save_cookies, shared};

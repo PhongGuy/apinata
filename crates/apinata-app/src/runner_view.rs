@@ -16,7 +16,11 @@ use gpui_kit::component::list::ListItem;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Action, AnyElement, App, Div, Entity, FocusHandle, Focusable, PathPromptOptions, Rems,
+    ScrollHandle, SharedString, Subscription, TestSupportExt, Window, div, rems,
+};
 
 use crate::body_text;
 use crate::response_pane::{
@@ -160,7 +164,7 @@ impl RunnerView {
             let action = OpenRunResult {
                 root: model.root().to_path_buf(),
                 path: path.clone(),
-                result: result.clone(),
+                result: Arc::clone(result),
             };
             window.dispatch_action(action.boxed_clone(), cx);
         }

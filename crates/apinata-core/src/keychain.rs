@@ -267,7 +267,10 @@ mod tests {
 
     fn store() -> (KeychainStore, Arc<CredentialStore>) {
         let inner = keyring_core::mock::Store::new().unwrap();
-        (KeychainStore::with_store(inner.clone()), inner)
+        (
+            KeychainStore::with_store(Arc::<keyring_core::mock::Store>::clone(&inner)),
+            inner,
+        )
     }
 
     fn put(store: &Arc<CredentialStore>, account: &str, value: &str) {

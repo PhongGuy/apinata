@@ -65,7 +65,7 @@ impl<S> Layer<S> for OneConnect {
     fn layer(&self, inner: S) -> OneConnectService<S> {
         OneConnectService {
             inner,
-            used: self.0.clone(),
+            used: Arc::clone(&self.0),
         }
     }
 }

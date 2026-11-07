@@ -228,7 +228,7 @@ mod tests {
     fn a_hung_store_costs_one_thread_and_later_calls_are_refused_at_once() {
         let hung = Arc::new(Hung::default());
         let limit = Duration::from_millis(500);
-        let store = TimeoutStore::new(hung.clone(), limit);
+        let store = TimeoutStore::new(Arc::<Hung>::clone(&hung), limit);
         let first = store.get(&key()).expect_err("the first call times out");
         assert!(
             first
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn a_panicking_call_is_unavailable_and_the_next_call_is_tried_again() {
         let panicky = Arc::new(Panicky::default());
-        let store = TimeoutStore::new(panicky.clone(), Duration::from_secs(5));
+        let store = TimeoutStore::new(Arc::<Panicky>::clone(&panicky), Duration::from_secs(5));
         for _ in 0..2 {
             let e = store.get(&key()).expect_err("fails");
             assert!(e.to_string().contains("the keychain call failed"), "{e}");

@@ -587,7 +587,7 @@ impl SendModel {
             };
             self.shown_secrets = secrets.clone();
             if let Some(answer) =
-                last_response::record(root, item, result.clone(), secrets, extra, cx)
+                last_response::record(root, item, Arc::clone(&result), secrets, extra, cx)
             {
                 let sent = Arc::downgrade(&result);
                 // A send that lands before this answer drops it; that send is then compared

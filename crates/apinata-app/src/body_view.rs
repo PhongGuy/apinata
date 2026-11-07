@@ -25,7 +25,15 @@ use gpui_kit::component::tag::Tag;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, Theme, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Entity, EventEmitter, FocusHandle,
+    Focusable, Font, FontFeatures, HighlightStyle, Hsla, Image, ImageFormat,
+    ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, ObjectFit, Pixels,
+    Point, Rems, Result, ScrollStrategy, SharedString, StyledText, Subscription, Task,
+    TestSupportExt, UniformListScrollHandle, WeakEntity, Window, canvas, div, img, point, px,
+    uniform_list,
+};
 
 use crate::app::AppState;
 use crate::body_find::{
@@ -1070,8 +1078,11 @@ impl BodyView {
     // selection onto the state before anything paints.
     fn find_colour_marker(&self) -> impl IntoElement {
         let (editor, painted) = (self.editor.clone(), self.editor.clone());
-        let (laid, reveal) = (self.selection_laid.clone(), self.reveal_editor.clone());
-        let centre = self.centre_hit.clone();
+        let (laid, reveal) = (
+            Rc::clone(&self.selection_laid),
+            Rc::clone(&self.reveal_editor),
+        );
+        let centre = Rc::clone(&self.centre_hit);
         canvas(
             move |_, _, cx| {
                 let style = editor_style(cx);
@@ -1302,9 +1313,9 @@ impl BodyView {
     // A job's stop question, answered by `flag`, and the guard that counts the job for tests
     // if it ends without a result.
     fn job_signal(&self, flag: &Arc<AtomicBool>) -> (impl Fn() -> bool + Send + 'static, JobGuard) {
-        let flag = flag.clone();
+        let flag = Arc::clone(flag);
         let guard = JobGuard {
-            counted: self.cancelled_jobs.clone(),
+            counted: Arc::clone(&self.cancelled_jobs),
             finished: false,
         };
         (move || flag.load(Ordering::Relaxed), guard)
@@ -1518,7 +1529,7 @@ impl BodyView {
         self.row_current = None;
         self.void_find_scan();
         let generation = self.find_generation;
-        let chunked = self.chunked.clone();
+        let chunked = Arc::clone(&self.chunked);
         let (stop, guard) = self.job_signal(&self.find_cancel);
         let job = cx.background_spawn(async move {
             guard.finish(find_in_chunked_until(&chunked, &finder, stop))
@@ -1822,9 +1833,9 @@ impl BodyView {
     fn value_button(&self, top: Pixels, cx: &mut Context<Self>) -> AnyElement {
         let view = cx.entity().downgrade();
         let (pending, held, open) = (
-            self.node_pending.clone(),
-            self.node_held.clone(),
-            self.value_menu_open.clone(),
+            Rc::clone(&self.node_pending),
+            Rc::clone(&self.node_held),
+            Rc::clone(&self.value_menu_open),
         );
         let menu_view = view.clone();
         let button = Button::new(VALUE_ACTIONS)
@@ -1836,7 +1847,8 @@ impl BodyView {
             .tab_stop(false)
             .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
                 open.set(true);
-                let (held, closed, focus_view) = (held.clone(), open.clone(), menu_view.clone());
+                let (held, closed, focus_view) =
+                    (Rc::clone(&held), Rc::clone(&open), menu_view.clone());
                 let release = menu_view.clone();
                 menu_focus::watch(
                     cx,
@@ -2393,8 +2405,8 @@ impl BodyView {
             self.json_cache = None;
         }
         let (stop, guard) = self.job_signal(&self.job_cancel);
-        let parses = self.filter_parses.clone();
-        let (mask, reveal) = (self.mask.clone(), self.reveal);
+        let parses = Arc::clone(&self.filter_parses);
+        let (mask, reveal) = (Arc::clone(&self.mask), self.reveal);
         // An invalid filter keeps the shown text only if it already belongs to this result.
         let keep = self.kind.is_some();
         let job = cx.background_spawn(async move {
@@ -2779,7 +2791,7 @@ impl BodyView {
         }
         self.rechunk_generation += 1;
         let generation = self.rechunk_generation;
-        let current = self.chunked.clone();
+        let current = Arc::clone(&self.chunked);
         // A small body is cut here, so its new rows land with no wait on a worker.
         let inline = (current.rows.iter().map(|r| r.len()).sum::<usize>() <= RECHUNK_INLINE_BYTES)
             .then(|| current.rechunk(target));
@@ -3125,13 +3137,13 @@ impl BodyView {
             return frame.into_any_element();
         }
         let (pending, held, view) = (
-            self.node_pending.clone(),
-            self.node_held.clone(),
+            Rc::clone(&self.node_pending),
+            Rc::clone(&self.node_held),
             cx.entity().downgrade(),
         );
         frame
             .capture_any_mouse_down({
-                let (held, pending) = (held.clone(), pending.clone());
+                let (held, pending) = (Rc::clone(&held), Rc::clone(&pending));
                 move |e, window, cx| {
                     if e.button == MouseButton::Right {
                         // Cleared first so a press that hits no row offers nothing stale.
@@ -3141,7 +3153,7 @@ impl BodyView {
                 }
             })
             .context_menu(move |menu, window, cx| {
-                let (held, focus_view) = (held.clone(), view.clone());
+                let (held, focus_view) = (Rc::clone(&held), view.clone());
                 menu_focus::watch(
                     cx,
                     window,
@@ -3673,7 +3685,7 @@ impl Render for BodyView {
                         .h_full()
                         .text_size(Self::font_size(cx))
                         .when(self.node_offered(), |editor| {
-                            let pending = self.node_pending.clone();
+                            let pending = Rc::clone(&self.node_pending);
                             editor.context_menu(move |menu, _, cx| {
                                 let (entries, selected) = &*pending.borrow();
                                 node_menu(menu, entries, *selected, cx)
@@ -3714,8 +3726,8 @@ impl Render for BodyView {
                 .into_any_element(),
             Shown::Lines(_) => self.rows_list(true, window, cx),
         };
-        let painted = self.painted.clone();
-        let pending = self.scroll_pending.clone();
+        let painted = Rc::clone(&self.painted);
+        let pending = Rc::clone(&self.scroll_pending);
         v_flex()
             .key_context(KEY_CONTEXT)
             .track_focus(&self.focus)
@@ -3867,7 +3879,9 @@ fn editor_style(cx: &App) -> InputEditorStyle {
             info: style.status.info(cx),
             hint: style.status.hint(cx),
         },
-        highlight_styles: theme.highlight_theme.clone(),
+        highlight_styles: Arc::<gpui_kit::component::highlighter::HighlightTheme>::clone(
+            &theme.highlight_theme,
+        ),
         editor_invisible: style.editor_invisible,
         editor_active_line: style.editor_active_line,
         editor_gutter_background: style.editor_gutter_background,

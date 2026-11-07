@@ -9,7 +9,11 @@ use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, AnyView, App, Bounds, Div, Entity, EventEmitter, Focusable, PathPromptOptions,
+    Pixels, Rems, Result, SharedString, Subscription, Task, TestSupportExt, Window, div,
+};
 
 use crate::command::Edit;
 use crate::graphql_builder::BuilderPanel;
@@ -84,8 +88,8 @@ impl GraphqlSection {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let query = cx.new(|cx| EditorState::new(window, cx).language("graphql"));
         let completion_url = Rc::new(RefCell::new(String::new()));
-        let provider = SchemaCompletions::new(completion_url.clone());
-        let symbols = Rc::new(SchemaSymbols::new(completion_url.clone()));
+        let provider = SchemaCompletions::new(Rc::clone(&completion_url));
+        let symbols = Rc::new(SchemaSymbols::new(Rc::clone(&completion_url)));
         let section = cx.weak_entity();
         // The handler runs inside the query editor's update, so it must not read that editor.
         let show_document: ShowDocumentHandler = Rc::new(move |params, _, cx| {
@@ -97,18 +101,18 @@ impl GraphqlSection {
         query.update(cx, |s, _| {
             let lsp = s.lsp_mut();
             lsp.completion_provider = Some(Rc::new(provider));
-            lsp.hover_provider = Some(symbols.clone());
+            lsp.hover_provider = Some(Rc::<SchemaSymbols>::clone(&symbols));
             lsp.definition_provider = Some(symbols);
             lsp.show_document = Some(show_document);
         });
         let variables = cx.new(|cx| EditorState::new(window, cx).language("json"));
         let tools = Rc::new(VariableTools::new(
             query.downgrade(),
-            completion_url.clone(),
+            Rc::clone(&completion_url),
         ));
         variables.update(cx, |s, _| {
             let lsp = s.lsp_mut();
-            lsp.completion_provider = Some(tools.clone());
+            lsp.completion_provider = Some(Rc::<VariableTools>::clone(&tools));
             lsp.hover_provider = Some(tools);
         });
         let on_change = |this: &mut Self, _, event: &InputEvent, cx: &mut Context<Self>| {
@@ -319,7 +323,7 @@ impl GraphqlSection {
         };
         self.checked_key = Some(key);
         let schema = match &lookup {
-            Lookup::Ready { schema, .. } => Some(schema.clone()),
+            Lookup::Ready { schema, .. } => Some(Arc::clone(schema)),
             _ => None,
         };
         let source = self.schema_source(cx);

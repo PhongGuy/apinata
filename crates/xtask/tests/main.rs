@@ -3,6 +3,9 @@
 //! Each file beside this one is a module of this single binary, so the
 //! suite links once. A new test file must be declared below, or it never runs.
 
+// Test helpers panic by design; a failed unwrap there is a failed test.
+#![allow(clippy::unwrap_used)]
+
 mod dev_desktop;
 mod icons;
 mod package_linux_script;

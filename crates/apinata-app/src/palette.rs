@@ -439,16 +439,22 @@ pub fn open_with(
     window.open_dialog(cx, move |dialog, window, cx| {
         // The key holds everything the rows are built from but the keymap's hint widths, so
         // an unchanged frame skips building them, and `palette` with them.
-        let available = availability_now(&sidebar, &workspace, &tab_area, cx);
+        let available =
+            availability_now(sidebar.as_ref(), workspace.as_ref(), tab_area.as_ref(), cx);
         let (rem, cap) = (window.rem_size(), list_cap(window));
         let key = (dialog_state.read(cx).query(cx), available, rem, cap);
         let command = rows_key.render(&dialog_state, key, || {
             palette(&dialog_state, &requests, available, rem, cap, cx).on_confirm({
-                let (target, requests) = (target.clone(), requests.clone());
+                let (target, requests) = (target.clone(), Rc::clone(&requests));
                 let (sidebar, workspace) = (sidebar.clone(), workspace.clone());
                 let tab_area = tab_area.clone();
                 move |path, window, cx| {
-                    let available = availability_now(&sidebar, &workspace, &tab_area, cx);
+                    let available = availability_now(
+                        sidebar.as_ref(),
+                        workspace.as_ref(),
+                        tab_area.as_ref(),
+                        cx,
+                    );
                     confirm(path, &requests, available, &target, window, cx)
                 }
             })
@@ -470,25 +476,19 @@ pub fn open_with(
 
 // Which commands have something to do right now; a missing sidebar or workspace means all of theirs.
 fn availability_now(
-    sidebar: &Option<Entity<Sidebar>>,
-    workspace: &Option<Entity<Workspace>>,
-    tab_area: &Option<Entity<TabArea>>,
+    sidebar: Option<&Entity<Sidebar>>,
+    workspace: Option<&Entity<Workspace>>,
+    tab_area: Option<&Entity<TabArea>>,
     cx: &App,
 ) -> Availability {
-    let (close_to_right, reveal) = workspace.as_ref().map_or((true, true), |w| {
+    let (close_to_right, reveal) = workspace.map_or((true, true), |w| {
         let tab = crate::tab_area::active_tab_commands(w.read(cx).tabs());
         (tab.close_to_right, tab.reveal)
     });
-    let tabs = tab_area.as_ref().map(|t| t.read(cx).palette_flags(cx));
-    let offers = |entry| {
-        sidebar
-            .as_ref()
-            .is_none_or(|s| s.read(cx).selection_offers(entry, cx))
-    };
+    let tabs = tab_area.map(|t| t.read(cx).palette_flags(cx));
+    let offers = |entry| sidebar.is_none_or(|s| s.read(cx).selection_offers(entry, cx));
     Availability {
-        run_selected: sidebar
-            .as_ref()
-            .is_none_or(|s| s.read(cx).run_selected_available(cx)),
+        run_selected: sidebar.is_none_or(|s| s.read(cx).run_selected_available(cx)),
         close_to_right,
         reveal,
         close_others: tabs.is_none_or(|t| t.close_others),
@@ -502,9 +502,7 @@ fn availability_now(
         request_tab: tabs.is_none_or(|t| t.request_tab),
         to_graphql: tabs.is_none_or(|t| t.to_graphql),
         to_http: tabs.is_none_or(|t| t.to_http),
-        rename_idle: sidebar
-            .as_ref()
-            .is_none_or(|s| s.read(cx).renaming().is_none()),
+        rename_idle: sidebar.is_none_or(|s| s.read(cx).renaming().is_none()),
         close_all: tabs.is_none_or(|t| t.close_all),
         pin: tabs.is_none_or(|t| t.pin),
         unpin: tabs.is_none_or(|t| t.unpin),
@@ -514,12 +512,8 @@ fn availability_now(
         close_saved: tabs.is_none_or(|t| t.close_saved),
         multi_tab: tabs.is_none_or(|t| t.multi_tab),
         not_last: tabs.is_none_or(|t| t.not_last),
-        undo_delete: sidebar
-            .as_ref()
-            .is_none_or(|s| s.read(cx).can_undo_delete(cx)),
-        collection_open: workspace
-            .as_ref()
-            .is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
+        undo_delete: sidebar.is_none_or(|s| s.read(cx).can_undo_delete(cx)),
+        collection_open: workspace.is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
     }
 }
 

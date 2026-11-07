@@ -98,12 +98,12 @@ impl ContextCache {
         store: &Arc<dyn SecretStore>,
     ) -> ContextOptions {
         let options = ContextOptions::new()
-            .secrets(store.clone())
+            .secrets(Arc::clone(store))
             .runtime_vars(self.runtime.clone())
             .env_overlay(self.overlay.clone())
             .oauth2_tokens(self.tokens.clone());
         let options = match &self.globals {
-            Some((globals, name)) => options.global_env(globals.clone(), name.clone()),
+            Some((globals, name)) => options.global_env(Arc::clone(globals), name.clone()),
             None => options,
         };
         match env {

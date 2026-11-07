@@ -10,7 +10,10 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectState};
 use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, Result, SharedString, Subscription, TestSupportExt, Window, div, rems,
+};
 
 use crate::command::{Command, Edit, Target};
 use crate::style::{SHORT_FORM_LABEL_WIDTH, SPACE_2};

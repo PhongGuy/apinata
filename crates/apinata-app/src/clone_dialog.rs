@@ -10,7 +10,11 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, FocusHandle, Focusable, Global, PathPromptOptions, Pixels, Subscription,
+    TestSupportExt, WeakEntity, Window, canvas, div, relative,
+};
 
 use crate::app::AppState;
 use crate::clone_form::{self, Opened};
@@ -491,7 +495,7 @@ impl CloneView {
             ),
         };
         // A changed room redraws the form once the frame is done.
-        let (cell, me) = (self.parent_room.clone(), cx.entity().downgrade());
+        let (cell, me) = (Rc::clone(&self.parent_room), cx.entity().downgrade());
         let measure = canvas(
             move |bounds, window, cx| {
                 let size = window.text_style().font_size.to_pixels(window.rem_size());

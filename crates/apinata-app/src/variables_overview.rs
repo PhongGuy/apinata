@@ -14,7 +14,8 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{App, Entity, Hsla, Rems, ScrollHandle, TestSupportExt, Window, div, px, rems};
 use std::collections::BTreeSet;
 
 // The name column every row shares, so the value columns start at one x.

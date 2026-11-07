@@ -3,7 +3,8 @@
 //!
 //! Each part is a [`crate::cached_part::Part`] the editor draws cached while its inputs hold.
 
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyElement, Window};
 
 use crate::cached_part::{Part, PartOwner};
 use crate::request_editor::RequestEditor;

@@ -3,6 +3,7 @@
 use crate::style;
 use gpui_kit::{Pixels, Window};
 use std::path::Path;
+use std::sync::Arc;
 
 /// `path` with the `home` prefix replaced by "~"; other paths are shown as they are.
 pub fn tilde(path: &Path, home: Option<&Path>) -> String {
@@ -89,7 +90,7 @@ fn cut_end(text: &str, max: f32, measure: &dyn Fn(&str) -> f32) -> String {
 /// A width function for text at `size` in the window's current font, in pixels; a glyph the
 /// text system cannot measure counts as half an em.
 pub fn measurer(window: &Window, size: Pixels) -> impl Fn(&str) -> f32 + use<> {
-    let system = window.text_system().clone();
+    let system = Arc::clone(window.text_system());
     let font = system.resolve_font(&window.text_style().font());
     move |text: &str| {
         text.chars()

@@ -13,7 +13,11 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, EventEmitter, FocusHandle, Focusable, Hsla, PathPromptOptions, Pixels, Rems,
+    SharedString, Subscription, TestSupportExt, Window, div, px,
+};
 
 use crate::body_section::collection_relative;
 use crate::command::Edit;

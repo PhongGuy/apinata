@@ -632,7 +632,7 @@ impl Workspace {
 
     /// Delete into `trash` from now on. Collections opened earlier keep the trash they opened with.
     pub fn set_trash(&mut self, trash: Arc<dyn apinata_core::Trash>) {
-        self.open_faults.trash = Some(trash.clone());
+        self.open_faults.trash = Some(Arc::clone(&trash));
         self.trash = trash;
     }
 
@@ -854,7 +854,7 @@ impl Workspace {
         }
         let model = CollectionModel::open_with_faults(
             root.clone(),
-            self.store.clone(),
+            Arc::clone(&self.store),
             self.open_faults.clone(),
             cx,
         );
@@ -1511,7 +1511,11 @@ impl Workspace {
         let Some(globals) = self.globals.clone() else {
             return Task::ready(Ok(None));
         };
-        let (store, name, variable) = (self.store.clone(), name.to_owned(), variable.to_owned());
+        let (store, name, variable) = (
+            Arc::clone(&self.store),
+            name.to_owned(),
+            variable.to_owned(),
+        );
         cx.background_spawn(async move {
             let key = globals.secret_key(&name, &variable);
             store.get(&key).map_err(|e| e.to_string())
@@ -1528,7 +1532,7 @@ impl Workspace {
         let Some(globals) = self.globals.clone() else {
             return Task::ready(Err("Global environments are not loaded.".to_owned()));
         };
-        let (store, name) = (self.store.clone(), name.to_owned());
+        let (store, name) = (Arc::clone(&self.store), name.to_owned());
         cx.background_spawn(async move {
             globals
                 .orphaned_secrets(&name, &*store)
@@ -1546,7 +1550,7 @@ impl Workspace {
                 Err(unloaded.to_owned()),
             ));
         };
-        let (store, name) = (self.store.clone(), name.map(str::to_owned));
+        let (store, name) = (Arc::clone(&self.store), name.map(str::to_owned));
         cx.background_spawn(async move {
             let once = crate::orphan_section::ListOnce::new(&*store);
             let orphans = name.map(|name| {
@@ -2192,7 +2196,7 @@ impl Workspace {
             return;
         };
         self.global_draining = true;
-        let store = self.store.clone();
+        let store = Arc::clone(&self.store);
         let task = cx.background_spawn(async move {
             let applied = op.apply(dir, &*store);
             (op, applied)
@@ -2275,7 +2279,7 @@ impl Workspace {
         if let Some(r) = &self.reference
             && let (Some(envs), Some(name)) = (&r.envs, &r.active)
         {
-            return Some((envs.clone(), name.clone()));
+            return Some((Arc::clone(envs), name.clone()));
         }
         Some((self.globals.clone()?, self.selected_global.clone()?))
     }

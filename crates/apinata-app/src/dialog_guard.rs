@@ -116,7 +116,7 @@ pub(crate) fn top(window: &Window, cx: &App) -> Option<GuardRef> {
     list.iter()
         .rev()
         .find(|w| w.upgrade().is_some_and(|s| !s.closed.get()))
-        .map(|w| GuardRef(w.clone()))
+        .map(|w| GuardRef(Weak::clone(w)))
 }
 
 impl Guarded {
@@ -220,7 +220,7 @@ fn ask(state: &Rc<State>, window: &mut Window, cx: &mut App, through: Then, kept
         cx,
     );
     let weak = Rc::downgrade(state);
-    let waiters = state.waiters.clone();
+    let waiters = Rc::clone(&state.waiters);
     window
         .spawn(cx, async move |cx| {
             // A prompt dismissed unanswered errs, which keeps the dialog like Cancel.
@@ -280,7 +280,7 @@ fn close_when_top(weak: Weak<State>, window: &mut Window, cx: &mut App, closed: 
         return closed(window, cx);
     }
     state.busy.set(true);
-    let waiters = state.waiters.clone();
+    let waiters = Rc::clone(&state.waiters);
     drop(state);
     window
         .spawn(cx, async move |cx| {

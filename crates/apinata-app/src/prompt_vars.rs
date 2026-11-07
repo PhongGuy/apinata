@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{WindowExt, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{AnyWindowHandle, App, AsyncApp, Entity, FocusHandle, TestSupportExt, Window};
 
 use crate::style::{SPACE_2, SPACE_3};
 use crate::ui;
@@ -132,7 +133,7 @@ fn open(
     // A one-slot channel and try_send: whichever answer lands first wins, later ones drop.
     let (tx, rx) = async_channel::bounded(1);
     let slot = Rc::new(RefCell::new(None));
-    let opened = slot.clone();
+    let opened = Rc::clone(&slot);
     window.defer(cx, move |window, cx| {
         // Nobody waits for an answer any more, so the dialog never opens.
         if tx.is_closed() {

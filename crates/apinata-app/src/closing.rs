@@ -427,7 +427,7 @@ fn ask_to_close(
                 .ok();
             match answer {
                 Ok(2) => {
-                    save_all(workspace.clone(), scope.clone(), kept.clone(), cx).await;
+                    save_all(workspace.clone(), scope.clone(), Rc::clone(&kept), cx).await;
                     // A closed window cannot update, and a closed collection is no longer
                     // listed, so only a scope still open reports itself as kept.
                     // A run prompt now open decides for itself.
@@ -550,7 +550,7 @@ fn proceed(
             if runs.is_empty() {
                 window.remove_window();
             } else {
-                ask_to_stop_runs(runs, kept.clone(), window, cx);
+                ask_to_stop_runs(runs, Rc::clone(kept), window, cx);
             }
         }
         CloseScope::Collection(root) => workspace.update(cx, |w, cx| w.close(root, cx)),
@@ -721,7 +721,7 @@ async fn save_all(
             changed.try_send(false).ok();
         });
         let failed = tx.clone();
-        let watched = ids.clone();
+        let watched = Rc::clone(&ids);
         let notices = cx.subscribe(&workspace, move |_, e: &WorkspaceEvent, _| {
             if let WorkspaceEvent::Notices { root, notices, .. } = e
                 && notices.iter().any(|n| {

@@ -117,15 +117,15 @@ pub fn start_with_trash(
     let jar = Arc::new(if cx.has_global::<VolatileSecrets>() {
         CookieJar::default()
     } else {
-        CookieJar::open(paths.cookies.clone(), store.clone())
+        CookieJar::open(paths.cookies.clone(), Arc::clone(&store))
     });
     // The tick saves only a changed jar, off the UI thread as the load is.
-    load_saved_cookies(jar.clone(), cx);
-    let ticking = jar.clone();
+    load_saved_cookies(Arc::clone(&jar), cx);
+    let ticking = Arc::clone(&jar);
     cx.spawn(async move |cx| {
         loop {
             cx.background_executor().timer(COOKIE_SAVE_TICK).await;
-            let jar = ticking.clone();
+            let jar = Arc::clone(&ticking);
             cx.background_spawn(async move { crate::executor::save_cookies(&jar) })
                 .await;
         }
@@ -138,12 +138,12 @@ pub fn start_with_trash(
     crate::network_gate::install(paths.network_ack.clone(), cx);
     let late_password = crate::executor::wants_password(&settings.value);
     let installed = if late_password {
-        crate::executor::install_with_password(&settings.value, None, jar.clone(), cx)
+        crate::executor::install_with_password(&settings.value, None, Arc::clone(&jar), cx)
     } else {
-        crate::executor::install_with_jar(&settings.value, store.as_ref(), jar.clone(), cx)
+        crate::executor::install_with_jar(&settings.value, store.as_ref(), Arc::clone(&jar), cx)
     };
     let installed_proxy = settings.value.proxy.clone();
-    let (store_for_password, jar_for_password) = (store.clone(), jar.clone());
+    let (store_for_password, jar_for_password) = (Arc::clone(&store), Arc::clone(&jar));
     match installed {
         Ok(install_notes) => notes.extend(install_notes),
         Err(e) => notes.push(format!("Requests cannot be sent: {e}")),
@@ -152,7 +152,7 @@ pub fn start_with_trash(
     let tokens = if cx.has_global::<VolatileSecrets>() {
         TokenCache::in_memory()
     } else {
-        TokenCache::open(paths.oauth2_tokens.clone(), store.clone())
+        TokenCache::open(paths.oauth2_tokens.clone(), Arc::clone(&store))
     };
     crate::oauth2_tokens::install(tokens, cx);
     let options = WindowOptions {
@@ -166,7 +166,7 @@ pub fn start_with_trash(
     let approvals = cx.new(|cx| Approvals::new(trust_file, inbox, cx));
     let script_trust = paths.script_trust.clone();
     approvals.update(cx, |a, cx| {
-        a.set_secrets(store.clone(), cx);
+        a.set_secrets(Arc::clone(&store), cx);
         a.set_script_trust(script_trust, cx);
     });
     let update_state = cx.new(|_| Persisted::new(update_state.value, paths.update_state.clone()));
@@ -177,7 +177,7 @@ pub fn start_with_trash(
         session: session.clone(),
         approvals,
         updates,
-        secrets: store.clone(),
+        secrets: Arc::clone(&store),
     });
 
     // A quit must wait for every final write: a dropped flush task is a cancelled write.
@@ -191,7 +191,7 @@ pub fn start_with_trash(
             update_state.update(cx, |p, cx| p.flush(cx)),
         ];
         // Loading first waits out a slow pending load, so the save holds the merged jar.
-        let jar = jar.clone();
+        let jar = Arc::clone(&jar);
         writes.push(cx.background_spawn(async move {
             jar.load();
             crate::executor::save_cookies(&jar);
@@ -214,7 +214,7 @@ pub fn start_with_trash(
     // The digest key reads the keychain, so it loads off the UI thread; until it does, or when
     // it cannot, sends are kept without digests. A volatile run makes no key it would lose.
     if !cx.has_global::<VolatileSecrets>() {
-        let keys = store.clone();
+        let keys = Arc::clone(&store);
         cx.background_spawn(async move {
             let name = crate::last_response::DIGEST_KEY_NAME;
             if let Ok(key) = apinata_core::DigestKey::load(keys.as_ref(), name) {
@@ -283,7 +283,7 @@ impl LatePassword {
     // Reads off the UI thread, then reinstalls the executor with the password unless the
     // proxy settings changed meanwhile. A failed read warns once and keeps the executor.
     fn spawn(self, cx: &mut App) {
-        let store = self.store.clone();
+        let store = Arc::clone(&self.store);
         let read =
             cx.background_spawn(async move { store.get(&crate::executor::proxy_password_key()) });
         cx.spawn(async move |cx| {

@@ -346,7 +346,7 @@ impl Render for EnvSelector {
         // The control's room comes from the bar, never from the select, so hiding the select
         // cannot change the measurement that hid it. A change redraws once the frame is done.
         let squeezed = self.squeezed.get();
-        let (cell, me) = (self.squeezed.clone(), cx.entity().downgrade());
+        let (cell, me) = (Rc::clone(&self.squeezed), cx.entity().downgrade());
         let measure = canvas(
             move |bounds, window, cx| {
                 let now = bounds.size.width < resolve(ENV_CONTROL_SHOWN_FROM, window);

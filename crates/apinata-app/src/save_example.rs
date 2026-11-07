@@ -15,7 +15,10 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, AsyncWindowContext, Entity, Result, Subscription, TestSupportExt, Window, div,
+};
 
 use crate::app::AppState;
 use crate::command::{Command, NoticeKind, TreeOp};

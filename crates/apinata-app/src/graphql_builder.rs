@@ -11,7 +11,11 @@ use apinata_core::{
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::EditorState;
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, Div, Entity, EventEmitter, Result, Subscription, TestSupportExt, Window, div,
+    uniform_list,
+};
 
 use crate::graphql_docs::{StateIds, schema_state};
 use crate::graphql_schema_store::{self, SchemaState, SchemaStore};

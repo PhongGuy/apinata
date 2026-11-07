@@ -10,7 +10,11 @@ use apinata_core::{FileTexts, text_hunks};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, ListHorizontalSizingBehavior, Subscription, Task, TestSupportExt,
+    UniformListScrollHandle, Window, div, uniform_list,
+};
 
 use crate::banner::Choice;
 use crate::command::{Command, Target};
@@ -244,7 +248,7 @@ pub fn open(
                 }
             };
             let answering = |id: &'static str, label: &'static str, choice: Choice| {
-                let (state, answer) = (state.clone(), answer.clone());
+                let (state, answer) = (state.clone(), Rc::clone(&answer));
                 Button::new(id).label(label).on_click(move |_, window, cx| {
                     state.update(cx, |d, _| d.open = false);
                     answer(choice, window, cx);

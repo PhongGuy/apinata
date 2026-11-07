@@ -7,9 +7,14 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt, v_flex};
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    App, Entity, Global, PathPromptOptions, Result, SharedString, Subscription, TestSupportExt,
+    Window, div,
+};
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::command::{Command, TreeOp};
 use crate::snapshot::{Content, RowKind};
@@ -206,7 +211,7 @@ impl SaveDraftForm {
         };
         let workspace = choice.workspace.clone();
         // The seam, when set, answers in place of the native prompt.
-        let seam = cx.try_global::<FolderPickSeam>().map(|s| s.0.clone());
+        let seam = cx.try_global::<FolderPickSeam>().map(|s| Rc::clone(&s.0));
         let native = seam.is_none().then(|| {
             cx.prompt_for_paths(PathPromptOptions {
                 files: false,

@@ -46,7 +46,7 @@ pub struct DecodedJwt {
 #[non_exhaustive]
 pub enum Expiry {
     /// The payload has no numeric `exp`.
-    NoExpiry,
+    Absent,
     /// `exp` is still ahead.
     Valid {
         /// The `exp` claim in Unix seconds.
@@ -63,7 +63,7 @@ impl DecodedJwt {
     /// The token's standing at `now_unix` (Unix seconds); the caller owns the clock.
     pub fn expiry(&self, now_unix: i64) -> Expiry {
         match self.expires_at {
-            None => Expiry::NoExpiry,
+            None => Expiry::Absent,
             Some(expires_at) if now_unix >= expires_at => Expiry::Expired { expires_at },
             Some(expires_at) => Expiry::Valid { expires_at },
         }

@@ -8,7 +8,10 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::*;
+use gpui_kit::prelude::*;
+use gpui_kit::{
+    AnyElement, App, ClickEvent, Entity, Result, Subscription, TestSupportExt, Window, div,
+};
 
 use crate::app::AppState;
 use crate::approval_prompt::untrusted_text;

@@ -127,7 +127,7 @@ impl<T: Serialize + Clone + Send + 'static> Persisted<T> {
             self.value.clone(),
             self.path.clone(),
             self.generation,
-            self.written.clone(),
+            Arc::clone(&self.written),
         );
         // Writes serialise on the lock, and one older than the last landed write is skipped.
         let job = cx.background_spawn(async move {
