@@ -227,31 +227,90 @@ fn release_builds_the_guard_matrix_with_make() {
     );
 }
 
+/// The gate on the jobs that publish: tag runs that are not dry runs.
+const PUBLISH_GATE: &str = "github.ref_type == 'tag' && !inputs.dry_run";
+
 #[test]
-fn only_the_draft_step_can_write_and_it_skips_dry_runs() {
+fn only_the_draft_job_can_write_and_it_skips_dry_runs() {
     let rel = load("release.yml");
     for (job, body) in rel["jobs"].as_mapping().unwrap() {
         let write = str_of(&body["permissions"]["contents"]) == "write";
-        assert_eq!(
-            write,
-            str_of(job) == "checksums",
-            "{job:?} contents permission"
-        );
+        assert_eq!(write, str_of(job) == "draft", "{job:?} contents permission");
     }
-    let draft: Vec<Value> = steps(&rel, "checksums")
+    let draft = &rel["jobs"]["draft"];
+    assert_eq!(str_of(&draft["if"]), PUBLISH_GATE);
+    let create: Vec<Value> = steps(&rel, "draft")
         .into_iter()
         .filter(|s| str_of(&s["run"]).contains("gh release create"))
         .collect();
-    assert_eq!(draft.len(), 1);
-    assert_eq!(
-        str_of(&draft[0]["if"]),
-        "github.ref_type == 'tag' && !inputs.dry_run"
-    );
-    assert!(str_of(&draft[0]["run"]).contains("--draft"));
+    assert_eq!(create.len(), 1);
+    assert!(str_of(&create[0]["run"]).contains("--draft"));
+}
+
+/// The name of a job's deployment environment, written either as a string or a mapping.
+fn environment(job: &Value) -> &str {
+    let env = &job["environment"];
+    env.as_str().unwrap_or_else(|| str_of(&env["name"]))
 }
 
 #[test]
-fn secrets_reach_only_the_packaging_step_env_and_are_documented() {
+fn only_the_signing_job_binds_the_release_environment() {
+    let rel = load("release.yml");
+    for (job, body) in rel["jobs"].as_mapping().unwrap() {
+        let release = environment(body) == "release";
+        assert_eq!(release, str_of(job) == "sign", "{job:?} environment");
+    }
+    // The environment admits only version tags, so a dry run never asks for it.
+    assert_eq!(str_of(&rel["jobs"]["sign"]["if"]), PUBLISH_GATE);
+}
+
+#[test]
+fn no_job_but_signing_references_the_signing_key() {
+    let rel = load("release.yml");
+    for (job, body) in rel["jobs"].as_mapping().unwrap() {
+        let text = yaml_serde::to_string(body).unwrap();
+        let reads = text.contains("CARGO_PACKAGER_SIGN_PRIVATE_KEY");
+        assert_eq!(reads, str_of(job) == "sign", "{job:?} signing key");
+    }
+}
+
+#[test]
+fn the_signing_job_only_downloads_signs_and_uploads() {
+    // Nothing from the repository and nothing compiled runs beside the key: the signer
+    // binary comes from the unprivileged assemble job like every other release file.
+    let rel = load("release.yml");
+    let sign = &rel["jobs"]["sign"];
+    assert_eq!(
+        strs(&sign["needs"]),
+        ["guard", "assemble"],
+        "sign takes the assembled files"
+    );
+    let mut runs = Vec::new();
+    for step in steps(&rel, "sign") {
+        let uses = str_of(&step["uses"]);
+        let allowed = [
+            "actions/download-artifact@",
+            "actions/upload-artifact@",
+            "actions/attest@",
+        ];
+        assert!(
+            uses.is_empty() || allowed.iter().any(|a| uses.starts_with(a)),
+            "sign uses {uses}"
+        );
+        if !str_of(&step["run"]).is_empty() {
+            runs.push(str_of(&step["run"]).trim().to_owned());
+        }
+    }
+    assert_eq!(runs.len(), 1, "one run step: {runs:?}");
+    assert!(
+        runs[0].ends_with("signer/cargo-packager signer sign update/latest.json"),
+        "{}",
+        runs[0]
+    );
+}
+
+#[test]
+fn secrets_reach_only_the_signing_step_env_and_are_documented() {
     let text = std::fs::read_to_string(workflow_path("release.yml")).unwrap();
     let docs = std::fs::read_to_string(xtask::workspace_root().join("RELEASING.md")).unwrap();
     let mut names = Vec::new();
@@ -286,8 +345,7 @@ fn secrets_reach_only_the_packaging_step_env_and_are_documented() {
             if env.contains("secrets.") {
                 let run = str_of(&step["run"]);
                 assert!(
-                    run == "make package-release"
-                        || run == "cargo packager signer sign update/latest.json",
+                    run == "make package-release" || run.contains("signer sign update/latest.json"),
                     "{job:?} passes secrets to another step"
                 );
             }
@@ -313,38 +371,39 @@ fn release_builds_see_the_update_urls_only_while_packaging() {
     );
 }
 
+/// The index of the first step in `all` whose script contains `needle`.
+fn step_running(all: &[Value], needle: &str) -> usize {
+    all.iter()
+        .position(|s| str_of(&s["run"]).contains(needle))
+        .unwrap_or_else(|| panic!("no step runs {needle}"))
+}
+
 #[test]
-fn the_manifest_is_signed_after_the_sums_and_uploaded_last() {
+fn the_manifest_is_written_before_signing_and_uploaded_last() {
     let rel = load("release.yml");
-    let all = steps(&rel, "checksums");
-    let at = |needle: &str| {
-        all.iter()
-            .position(|s| str_of(&s["run"]).contains(needle))
-            .unwrap_or_else(|| panic!("no step runs {needle}"))
-    };
-    let (sums, manifest, sign, draft) = (
-        at("release.sh sums"),
-        at("release.sh manifest"),
-        at("signer sign"),
-        at("gh release create"),
+    let assemble = steps(&rel, "assemble");
+    let (sums, manifest) = (
+        step_running(&assemble, "release.sh sums"),
+        step_running(&assemble, "release.sh manifest"),
     );
-    assert!(sums < manifest && manifest < sign && sign < draft);
-    // Only tag runs sign, so a dry run from a branch never yields a signed manifest; the
-    // toolchain and cargo-packager steps serve only the signing and share the gate.
+    assert!(sums < manifest);
+    // Only configured tag runs build a manifest; the toolchain and the signer binary
+    // serve only that and share the gate.
     let gate = "github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''";
-    let toolchain = all
+    let toolchain = assemble
         .iter()
         .position(|s| str_of(&s["uses"]).starts_with("dtolnay/rust-toolchain@"))
         .expect("a toolchain step");
     for i in [
         toolchain,
-        at("cargo install --locked cargo-packager"),
+        step_running(&assemble, "cargo install --locked cargo-packager"),
         manifest,
-        sign,
     ] {
-        assert_eq!(str_of(&all[i]["if"]), gate, "step {i}");
+        assert_eq!(str_of(&assemble[i]["if"]), gate, "assemble step {i}");
     }
-    let run = str_of(&all[draft]["run"]);
+    assert_eq!(strs(&rel["jobs"]["draft"]["needs"]), ["guard", "sign"]);
+    let draft = steps(&rel, "draft");
+    let run = str_of(&draft[step_running(&draft, "gh release create")]["run"]);
     let create = run.find("gh release create").unwrap();
     let json = run
         .find("update/latest.json\n")
@@ -380,7 +439,7 @@ fn the_draft_uses_generated_notes_from_full_history() {
     // The notes count commits since the previous tag, so the checkout needs every
     // commit and tag, and the draft takes the generated file instead of GitHub's.
     let rel = load("release.yml");
-    let all = steps(&rel, "checksums");
+    let all = steps(&rel, "draft");
     let checkout = all
         .iter()
         .find(|s| str_of(&s["uses"]).starts_with("actions/checkout@"))

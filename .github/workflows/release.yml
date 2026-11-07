@@ -102,10 +102,91 @@ jobs:
           path: target/dist/${{ runner.os == 'Linux' && 'linux' || runner.os == 'macOS' && 'macos' || 'windows' }}/
           if-no-files-found: error
 
-  checksums:
+  # Hashes the builds and writes the unsigned update manifest, with no secrets and no
+  # write access; the signer binary is built here so the signing job compiles nothing.
+  assemble:
     needs: [guard, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS
+        run: scripts/release.sh sums dist
+      # The manifest is built only on tag runs with an update base URL configured.
+      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: Build the signer
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        run: cargo install --locked cargo-packager --version 0.11.8 --root signer
+      - name: Write the update manifest
+        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          UPDATE_BASE_URL: ${{ vars.APINATA_UPDATE_BASE_URL }}
+        run: scripts/release.sh manifest dist "$VERSION" "$UPDATE_BASE_URL" "$GITHUB_REF_NAME" update
+      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signer
+          path: signer/bin/cargo-packager
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ needs.guard.outputs.version }}
+          path: |
+            dist/*
+            update/*
+          if-no-files-found: error
+
+  # The only job that holds the update-signing key: it downloads, signs and uploads,
+  # and runs nothing from the repository.
+  sign:
+    needs: [guard, assemble]
+    if: github.ref_type == 'tag' && !inputs.dry_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ needs.guard.outputs.version }}
+      - if: vars.APINATA_UPDATE_BASE_URL != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signer
+          path: signer
+      - name: Sign the update manifest
+        if: vars.APINATA_UPDATE_BASE_URL != ''
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+        run: |
+          chmod 755 signer/cargo-packager
+          signer/cargo-packager signer sign update/latest.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-${{ needs.guard.outputs.version }}
+          path: |
+            dist/*
+            update/*
+          if-no-files-found: error
+
+  draft:
+    needs: [guard, sign]
+    if: github.ref_type == 'tag' && !inputs.dry_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -116,40 +197,8 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-      - name: Write SHA256SUMS
-        run: scripts/release.sh sums dist
-      # The manifest is built and signed only on tag runs with an update base URL configured.
-      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
-        with:
-          toolchain: stable
-      - name: Install cargo-packager
-        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        run: cargo install --locked cargo-packager --version 0.11.8
-      - name: Write the update manifest
-        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        env:
-          VERSION: ${{ needs.guard.outputs.version }}
-          UPDATE_BASE_URL: ${{ vars.APINATA_UPDATE_BASE_URL }}
-        run: scripts/release.sh manifest dist "$VERSION" "$UPDATE_BASE_URL" "$GITHUB_REF_NAME" update
-      - name: Sign the update manifest
-        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        env:
-          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
-          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
-        run: cargo packager signer sign update/latest.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-${{ needs.guard.outputs.version }}
-          path: |
-            dist/*
-            update/*
-          if-no-files-found: error
+          name: signed-${{ needs.guard.outputs.version }}
       - name: Draft the release
-        if: github.ref_type == 'tag' && !inputs.dry_run
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.guard.outputs.version }}

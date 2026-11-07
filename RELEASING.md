@@ -45,19 +45,24 @@ The draft also carries version-free copies of the installers, so `https://github
 
 ## Updates
 
-The app checks a signed `latest.json` and installs the release it names. The workflow writes the manifest after `SHA256SUMS`, signs it, and uploads it to the draft after every other artifact, with `latest.json.sig` last.
+The app checks a signed `latest.json` and installs the release it names. The workflow's jobs split the work so no job that compiles holds a secret:
+
+- `build` packages each platform with no secrets.
+- `assemble` writes `SHA256SUMS` and the unsigned manifest, and builds the `cargo-packager` binary that signs.
+- `sign` is the only job bound to the `release` environment and the only one that reads the signing key. It downloads the assembled files and that binary, runs `cargo-packager signer sign update/latest.json`, and uploads the result. It runs nothing from the repository.
+- `draft` writes the notes and uploads to the draft after every other artifact, with `latest.json.sig` last.
 
 ### Keys
 
-Generate the key pair once on the maintainer's machine. Store the private key online only as the repository secret below, and keep the key file itself offline as the backup, since the secret is its only online copy:
+Generate the key pair once on the maintainer's machine. Store the private key online only as a secret of the `release` environment, which admits only `v*` tags and needs the maintainer's approval, and keep the key file itself offline as the backup, since the secret is its only online copy:
 
 ```sh
 cargo packager signer generate --path apinata-update.key
-gh secret set CARGO_PACKAGER_SIGN_PRIVATE_KEY < apinata-update.key
-gh secret set CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD
+gh secret set CARGO_PACKAGER_SIGN_PRIVATE_KEY --env release < apinata-update.key
+gh secret set CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD --env release
 ```
 
-Repository secrets reach any workflow run. The stronger option is a GitHub environment whose deployment rules allow only version tags, holding the two signing secrets instead, with the checksums job set to that environment.
+Never set them as repository secrets, which reach any workflow on any branch.
 
 Append the public key, the `.pub` line, to `assets/update/keys.txt` and commit it. The app trusts every key listed there, so a build only accepts manifests signed by a key it was shipped with.
 
@@ -131,4 +136,4 @@ Each job is billed in whole minutes; Windows bills 2x and macOS 10x.
 - ASSUMED: a full release is about 500: Linux about 50, Windows 25 x 2, macOS 2 x 20 x 10.
 - ASSUMED: a `linux,windows` rehearsal is about 100.
 
-Every job's `timeout-minutes` caps what a hung run can cost (`guard` 5, `gate` 45, `build` 90, `checksums` 45), per Decision 11 of plan 4e.
+Every job's `timeout-minutes` caps what a hung run can cost (`guard` 5, `gate` 45, `build` 90, `assemble` 45, `sign` 15, `draft` 15), per Decision 11 of plan 4e.
