@@ -421,7 +421,10 @@ mod tests {
     }
 }
 
+// Test-only fixtures that panic by design; clippy does not see `cfg(all(test, ..))` as a test
+// module, so its unwrap allowance does not reach here.
 #[cfg(all(test, target_os = "linux"))]
+#[allow(clippy::unwrap_used)]
 pub(super) mod stop_tests {
     use super::*;
     use std::fs;

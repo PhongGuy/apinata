@@ -8,6 +8,7 @@ ref_option = "warn"
 wildcard_imports = "warn"
 clone_on_ref_ptr = "warn"
 missing_assert_message = "warn"
+unwrap_used = "warn"
 
 [workspace.package]
 version = "0.1.0"

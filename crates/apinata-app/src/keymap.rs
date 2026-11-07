@@ -123,7 +123,8 @@ pub fn bindings() -> Vec<KeyBinding> {
 
 // Every chord comes from `Chord`, which only holds parsable keystrokes, so a failure here is a bug.
 fn bind(chord: &str, action: &dyn Action, context: &str) -> KeyBinding {
-    let predicate = KeyBindingContextPredicate::parse(context).unwrap();
+    let predicate = KeyBindingContextPredicate::parse(context)
+        .expect("every binding context is a fixed predicate from the command registry");
     KeyBinding::load(
         chord,
         action.boxed_clone(),
@@ -132,7 +133,7 @@ fn bind(chord: &str, action: &dyn Action, context: &str) -> KeyBinding {
         None,
         &DummyKeyboardMapper,
     )
-    .unwrap()
+    .expect("every chord comes from `Chord`, which only holds parsable keystrokes")
 }
 
 /// Bindings no command owns: the Preferences search keys, the segmented-control and tree
