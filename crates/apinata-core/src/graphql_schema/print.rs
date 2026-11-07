@@ -1,12 +1,14 @@
 //! The SDL printer: a [`Schema`] written as a schema document that the SDL reader turns back
-//! into the same types. Introspection types and the built-in scalars are left out.
+//! into the same types. Introspection types, the built-in scalars and the directives core added
+//! are left out.
 
 use super::SchemaError;
-use super::model::{InputValue, Schema, SchemaType, TypeKind};
+use super::model::{Directive, InputValue, Schema, SchemaType, TypeKind};
 use super::sdl::{BUILT_IN_SCALARS, DEFAULT_DEPRECATION};
 
 /// The document for `schema`: a `schema` block when the roots differ from the conventional
-/// names, then each type in introspection order, separated by blank lines. Every name is
+/// names, then the schema's own directives, then each type in introspection order, separated by
+/// blank lines. Every name is
 /// checked first, so no name can break the document's syntax.
 pub(super) fn print(schema: &Schema) -> Result<String, SchemaError> {
     check_names(schema)?;
@@ -14,6 +16,8 @@ pub(super) fn print(schema: &Schema) -> Result<String, SchemaError> {
     if let Some(block) = schema_block(schema)? {
         blocks.push(block);
     }
+    let own = &schema.directives[..schema.own_directives];
+    blocks.extend(own.iter().map(directive_block));
     blocks.extend(schema.types.iter().filter(|t| printed(t)).map(type_block));
     let mut out = blocks.join("\n\n");
     if !out.is_empty() {
@@ -118,6 +122,17 @@ fn schema_block(schema: &Schema) -> Result<Option<String>, SchemaError> {
         ));
     }
     Ok(Some(format!("schema {{\n{}}}", lines.concat())))
+}
+
+fn directive_block(d: &Directive) -> String {
+    let repeatable = if d.repeatable { " repeatable" } else { "" };
+    format!(
+        "{}directive @{}{}{repeatable} on {}",
+        description(d.description.as_deref(), ""),
+        d.name,
+        arguments(&d.args),
+        d.locations.join(" | ")
+    )
 }
 
 fn type_block(ty: &SchemaType) -> String {

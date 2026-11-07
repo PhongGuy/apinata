@@ -86,10 +86,15 @@ fn a_placeholder_conflicts_with_a_literal_only_when_the_literal_comes_second() {
 }
 
 #[test]
-fn directive_names_are_not_checked_but_include_arguments_are() {
-    // UndefinedDirective.
-    assert_eq!(check("{ me @custom(a: 1) { id } }"), vec![]);
-    assert_eq!(check("{ me @inclde(if: true) { id } }"), vec![]);
+fn directive_names_and_include_arguments_are_checked() {
+    assert_eq!(
+        check("{ me @custom(a: 1) { id } }"),
+        vec![e(5..18, "cannot find directive `@custom` in this document")]
+    );
+    assert_eq!(
+        check("{ me @inclde(if: true) { id } }"),
+        vec![e(5..22, "cannot find directive `@inclde` in this document")]
+    );
     assert_eq!(
         check("{ me @include(if: 1) { id } }"),
         vec![e(
