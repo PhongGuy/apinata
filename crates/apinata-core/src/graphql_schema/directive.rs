@@ -61,6 +61,28 @@ pub(super) fn with_built_ins(own: Vec<Directive>) -> (Vec<Directive>, usize) {
     (all, count)
 }
 
+/// Whether `d` is a built-in exactly as core would add it: the same arguments (names, types,
+/// defaults), locations in any order, and repeatability. Descriptions are not compared, since
+/// servers word them differently.
+pub(super) fn is_unchanged_built_in(d: &Directive) -> bool {
+    let sorted = |l: &[String]| {
+        let mut v = l.to_vec();
+        v.sort();
+        v
+    };
+    built_ins().iter().any(|b| {
+        b.name == d.name
+            && b.repeatable == d.repeatable
+            && sorted(&b.locations) == sorted(&d.locations)
+            && b.args.len() == d.args.len()
+            && b.args.iter().zip(&d.args).all(|(x, y)| {
+                x.name == y.name
+                    && x.ty.display == y.ty.display
+                    && x.default_value == y.default_value
+            })
+    })
+}
+
 const REASON: &str = "Explains why this element was deprecated, usually also including a suggestion for how to access supported similar data. Formatted using the Markdown syntax, as specified by [CommonMark](https://commonmark.org/).";
 
 /// One built-in with a single argument given as `[name, named type, display, description]`.
