@@ -156,19 +156,20 @@ fn linux_builds_free_runner_disk_and_skip_debug_info() {
 }
 
 #[test]
-fn ci_runs_the_make_gate_on_linux_on_demand_only() {
+fn ci_runs_the_make_gate_on_linux_for_master_and_pull_requests() {
     let ci = load("ci.yml");
     let on = &ci["on"];
-    // Dispatch only until the push trigger is restored; see the "CI on the hosted runner" note.
+    // Every change to master and every pull request runs the gate; dispatch reruns it by hand.
+    assert_eq!(
+        on["push"]["branches"],
+        Value::Sequence(vec![Value::String("master".into())]),
+        "pushes to master run the gate"
+    );
     assert!(
-        on.get("push").is_none(),
-        "pushes do not spend Actions minutes"
+        on.get("pull_request").is_some(),
+        "pull requests run the gate"
     );
     assert!(on.get("workflow_dispatch").is_some());
-    assert!(
-        on.get("pull_request").is_none(),
-        "merges are gated locally by make check"
-    );
     assert_eq!(ci["concurrency"]["cancel-in-progress"], Value::Bool(true));
     for (job, body) in ci["jobs"].as_mapping().unwrap() {
         assert_eq!(
