@@ -2,6 +2,7 @@
 //! tracks which selection, argument list or variable definitions the cursor sits in.
 
 use super::model::{Directive, InputValue, Schema, SchemaType, TypeKind};
+use crate::graphql_query::QUERY_VALIDATE_LIMIT;
 
 /// One completion offered at a cursor.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,8 +53,12 @@ impl Completion {
 impl Schema {
     /// The completions for the name being typed at byte `offset` of `query`, filtered by the
     /// typed prefix (ASCII case-insensitive). The offset is clamped to the text and down to
-    /// a character boundary. Inside a string or comment, or where nothing fits, it is empty.
+    /// a character boundary. Inside a string or comment, where nothing fits, or over
+    /// [`QUERY_VALIDATE_LIMIT`], it is empty.
     pub fn completions(&self, query: &str, offset: usize) -> Vec<Completion> {
+        if query.len() > QUERY_VALIDATE_LIMIT {
+            return Vec::new();
+        }
         let mut end = offset.min(query.len());
         while !query.is_char_boundary(end) {
             end -= 1;

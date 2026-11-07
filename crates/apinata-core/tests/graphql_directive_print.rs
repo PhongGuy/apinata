@@ -4,10 +4,10 @@ use std::ops::Range;
 
 use QuerySeverity::{Error, Info};
 use apinata_core::{CompiledSchema, QuerySeverity, Schema, validate_query};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::graphql_compiled_schema::compiled;
-use crate::graphql_directive_model::intro;
+use crate::graphql_directive_model::{intro, names};
 use crate::graphql_directive_sdl::TAGGED;
 use crate::graphql_validate::{SKIPPED, plain};
 
@@ -99,23 +99,84 @@ fn a_schema_s_own_directives_validate_by_their_definitions() {
     );
 }
 
+/// The four built-ins as a graphql-js 16 server lists them, worded differently from core's
+/// table, plus `upper`; `deprecated` replaces the `@deprecated` entry.
+fn listed_built_ins(deprecated: Value) -> Schema {
+    intro(Some(json!([
+        {"name": "include", "description": "Include it.", "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
+         "args": [{"name": "if", "description": "When true.", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "Boolean"}}}]},
+        {"name": "skip", "description": "Skip it.", "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
+         "args": [{"name": "if", "description": "When true.", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "Boolean"}}}]},
+        deprecated,
+        {"name": "specifiedBy", "description": "Spec URL.", "locations": ["SCALAR"],
+         "args": [{"name": "url", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "String"}}}]},
+        {"name": "upper", "locations": ["FIELD"], "args": []}
+    ])))
+}
+
+fn deprecated(locations: Value, extra_args: &[Value]) -> Value {
+    let mut args = vec![json!({"name": "reason", "description": "Why.",
+        "type": {"kind": "SCALAR", "name": "String"}, "defaultValue": "\"No longer supported\""})];
+    args.extend_from_slice(extra_args);
+    json!({"name": "deprecated", "description": "Gone.", "locations": locations, "args": args})
+}
+
+fn standard_deprecated() -> Value {
+    deprecated(
+        json!([
+            "FIELD_DEFINITION",
+            "ARGUMENT_DEFINITION",
+            "INPUT_FIELD_DEFINITION",
+            "ENUM_VALUE"
+        ]),
+        &[],
+    )
+}
+
 /// A graphql-js server lists the built-ins itself, so they arrive as the schema's own.
 #[test]
 fn introspected_built_ins_and_a_custom_directive_compile_and_validate() {
-    let s = intro(Some(json!([
-        {"name": "include", "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
-         "args": [{"name": "if", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "Boolean"}}}]},
-        {"name": "skip", "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
-         "args": [{"name": "if", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "Boolean"}}}]},
-        {"name": "deprecated", "locations": ["FIELD_DEFINITION", "ARGUMENT_DEFINITION", "INPUT_FIELD_DEFINITION", "ENUM_VALUE"],
-         "args": [{"name": "reason", "type": {"kind": "SCALAR", "name": "String"}, "defaultValue": "\"No longer supported\""}]},
-        {"name": "specifiedBy", "locations": ["SCALAR"],
-         "args": [{"name": "url", "type": {"kind": "NON_NULL", "ofType": {"kind": "SCALAR", "name": "String"}}}]},
-        {"name": "upper", "locations": ["FIELD"], "args": []}
-    ])));
+    let s = listed_built_ins(standard_deprecated());
     let c = CompiledSchema::new(&s).unwrap_or_else(|e| panic!("{e}\n{:?}", s.to_sdl()));
     assert_eq!(
         plain(&validate_query("{ a @include(if: true) @upper }", Some(&c))),
         vec![]
     );
+}
+
+#[test]
+fn unchanged_listed_built_ins_are_left_out_of_the_sdl() {
+    let s = listed_built_ins(standard_deprecated());
+    let sdl = s.to_sdl().unwrap();
+    assert!(sdl.contains("directive @upper on FIELD\n"), "{sdl}");
+    for name in ["skip", "include", "deprecated", "specifiedBy"] {
+        assert!(!sdl.contains(&format!("directive @{name}")), "{sdl}");
+    }
+    assert_eq!(
+        names(&s),
+        vec!["include", "skip", "deprecated", "specifiedBy", "upper"]
+    );
+}
+
+#[test]
+fn a_listed_built_in_with_changed_arguments_or_locations_is_printed() {
+    let extra = json!({"name": "since", "type": {"kind": "SCALAR", "name": "String"}});
+    let more_args = deprecated(
+        json!([
+            "FIELD_DEFINITION",
+            "ARGUMENT_DEFINITION",
+            "INPUT_FIELD_DEFINITION",
+            "ENUM_VALUE"
+        ]),
+        &[extra],
+    );
+    let sdl = listed_built_ins(more_args).to_sdl().unwrap();
+    assert!(sdl.contains("directive @deprecated("), "{sdl}");
+    assert!(sdl.contains("since: String"), "{sdl}");
+    assert!(!sdl.contains("directive @skip"), "{sdl}");
+
+    let fewer_locations = deprecated(json!(["FIELD_DEFINITION"]), &[]);
+    let sdl = listed_built_ins(fewer_locations).to_sdl().unwrap();
+    assert!(sdl.contains(") on FIELD_DEFINITION\n"), "{sdl}");
+    assert!(sdl.contains("directive @deprecated("), "{sdl}");
 }

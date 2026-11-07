@@ -1,6 +1,6 @@
 //! `Schema::completions` over the fixture schema: one row per scanner context.
 
-use apinata_core::{Completion, CompletionKind, Schema};
+use apinata_core::{Completion, CompletionKind, QUERY_VALIDATE_LIMIT, Schema};
 
 const QUERY: [&str; 6] = ["user", "users", "node", "search", "__typename", "oldUsers"];
 const ON: [&str; 6] = ["Query", "Mutation", "Node", "User", "Post", "SearchResult"];
@@ -144,4 +144,14 @@ fn an_offset_inside_a_character_or_past_the_end_is_clamped() {
     };
     assert_eq!(labels("{ é", 3), QUERY);
     assert_eq!(labels("{ us", 100), ["user", "users"]);
+}
+
+#[test]
+fn a_query_over_the_validation_limit_gets_no_completions() {
+    let s = schema();
+    let pad = |n: usize| format!("# {}\n{{ u|", "x".repeat(n));
+    assert_eq!(labels(&s, &pad(10)), ["user", "users"]);
+    let over = pad(QUERY_VALIDATE_LIMIT);
+    assert!(over.len() - 1 > QUERY_VALIDATE_LIMIT);
+    assert_eq!(labels(&s, &over), Vec::<String>::new());
 }

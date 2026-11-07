@@ -286,8 +286,9 @@ impl Schema {
     }
 
     /// Writes the schema as an SDL document that [`Schema::from_sdl`] reads back to the same
-    /// types. Introspection types, the built-in scalars and the directives core added are left
-    /// out; the schema's own directive definitions are written.
+    /// types. Introspection types, the built-in scalars and the built-in directives are left
+    /// out, whether core added them or the schema listed them unchanged; the schema's other
+    /// directive definitions are written.
     ///
     /// Fails with [`SchemaError::NotPrintable`] when a name is not a GraphQL name, or when no
     /// root is set but a type named Query, Mutation or Subscription would read back as one.

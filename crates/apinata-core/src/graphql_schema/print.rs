@@ -1,10 +1,10 @@
 //! The SDL printer: a [`Schema`] written as a schema document that the SDL reader turns back
-//! into the same types. Introspection types, the built-in scalars and the directives core added
-//! are left out.
+//! into the same types. Introspection types, the built-in scalars and the built-in directives,
+//! added by core or listed unchanged, are left out.
 
-use super::SchemaError;
 use super::model::{Directive, InputValue, Schema, SchemaType, TypeKind};
 use super::sdl::{BUILT_IN_SCALARS, DEFAULT_DEPRECATION};
+use super::{SchemaError, directive};
 
 /// The document for `schema`: a `schema` block when the roots differ from the conventional
 /// names, then the schema's own directives, then each type in introspection order, separated by
@@ -15,8 +15,10 @@ pub(super) fn print(schema: &Schema) -> Result<String, SchemaError> {
     if let Some(block) = schema_block(schema)? {
         blocks.push(block);
     }
+    // A server that lists the standard built-ins itself gets them back from the compiler.
     let own = &schema.directives[..schema.own_directives];
-    blocks.extend(own.iter().map(directive_block));
+    let redefined = own.iter().filter(|d| !directive::is_unchanged_built_in(d));
+    blocks.extend(redefined.map(directive_block));
     blocks.extend(schema.types.iter().filter(|t| printed(t)).map(type_block));
     let mut out = blocks.join("\n\n");
     if !out.is_empty() {
