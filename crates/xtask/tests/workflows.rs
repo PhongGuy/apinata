@@ -536,3 +536,34 @@ fn ci_audits_the_workflows_with_a_pinned_zizmor() {
     // Findings fail the job in the log; uploading SARIF would need security-events: write.
     assert_eq!(with["advanced-security"], Value::Bool(false));
 }
+
+#[test]
+fn the_toolchain_action_is_pinned_to_its_master_branch() {
+    // The stable branch is rewritten and orphans old pins; master only gains commits.
+    for name in workflow_files() {
+        let text = std::fs::read_to_string(workflow_path(&name)).unwrap();
+        for line in text
+            .lines()
+            .filter(|l| l.contains("dtolnay/rust-toolchain@"))
+        {
+            assert!(
+                line.trim_end().ends_with(
+                    "dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master"
+                ),
+                "{name}: {line}"
+            );
+        }
+        let wf = load(&name);
+        for (job, body) in wf["jobs"].as_mapping().unwrap() {
+            for step in body["steps"].as_sequence().unwrap() {
+                if str_of(&step["uses"]).starts_with("dtolnay/rust-toolchain@") {
+                    assert_eq!(
+                        str_of(&step["with"]["toolchain"]),
+                        "stable",
+                        "{name}: {job:?}"
+                    );
+                }
+            }
+        }
+    }
+}
