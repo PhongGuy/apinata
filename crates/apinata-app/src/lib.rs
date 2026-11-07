@@ -68,6 +68,7 @@ pub mod git_head;
 pub mod git_status;
 pub mod global_env_editor;
 pub mod global_env_selector;
+pub mod graphql_builder;
 pub mod graphql_check;
 pub mod graphql_complete;
 pub mod graphql_docs;

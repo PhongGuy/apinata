@@ -2,6 +2,7 @@
 //! shows it with a navigation stack, a search on the root page and a show-deprecated toggle.
 
 use std::ops::Range;
+use std::sync::Arc;
 
 use apinata_core::{Directive, Field, InputValue, Schema, SchemaType, TypeKind};
 use gpui_kit::component::button::Button;
@@ -368,14 +369,6 @@ impl DocsPanel {
         self.show_deprecated
     }
 
-    fn status(&self, id: &'static str, text: String, cx: &App) -> Stateful<Div> {
-        div()
-            .id(id)
-            .text_size(style::TEXT_SMALL)
-            .text_color(cx.theme().muted_foreground)
-            .child(text)
-    }
-
     // The loaded page: header, root-only search, toggle, back, then the rows as a virtual list.
     fn loaded(&mut self, schema: &Schema, cx: &mut Context<Self>) -> Div {
         let view = self.view().clone();
@@ -461,30 +454,9 @@ impl DocsPanel {
 
 impl Render for DocsPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body: AnyElement = match graphql_schema_store::state(cx, &self.url) {
-            None => v_flex()
-                .gap_2()
-                .child(self.status(
-                    "graphql-docs-hint",
-                    "Load the schema to browse its types.".into(),
-                    cx,
-                ))
-                .child(
-                    Button::new("graphql-docs-load")
-                        .label("Load schema")
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(SchemaAction::Load))),
-                )
-                .into_any_element(),
-            Some(SchemaState::Loading) => self
-                .status("graphql-docs-loading", "Loading schema".into(), cx)
-                .test_support()
-                .into_any_element(),
-            Some(SchemaState::Failed(message)) => self
-                .status("graphql-docs-error", message, cx)
-                .text_color(cx.theme().danger)
-                .test_support()
-                .into_any_element(),
-            Some(SchemaState::Loaded(schema)) => self.loaded(&schema, cx).into_any_element(),
+        let body = match schema_state(&self.url, &DOCS_IDS, cx) {
+            Ok(schema) => self.loaded(&schema, cx).into_any_element(),
+            Err(state) => state,
         };
         v_flex()
             .id("graphql-docs")
@@ -493,4 +465,57 @@ impl Render for DocsPanel {
             .gap_2()
             .child(body)
     }
+}
+
+const DOCS_IDS: StateIds = StateIds {
+    hint: "graphql-docs-hint",
+    load: "graphql-docs-load",
+    loading: "graphql-docs-loading",
+    error: "graphql-docs-error",
+    hint_text: "Load the schema to browse its types.",
+};
+
+/// The element ids and hint text one panel uses for the schema states.
+pub(crate) struct StateIds {
+    pub(crate) hint: &'static str,
+    pub(crate) load: &'static str,
+    pub(crate) loading: &'static str,
+    pub(crate) error: &'static str,
+    pub(crate) hint_text: &'static str,
+}
+
+/// The loaded schema for `url`, or the element for its other state: the hint and a Load
+/// button that emits `SchemaAction::Load` from `V`, "Loading schema", or the error.
+pub(crate) fn schema_state<V: EventEmitter<SchemaAction>>(
+    url: &str,
+    ids: &StateIds,
+    cx: &mut Context<V>,
+) -> Result<Arc<Schema>, AnyElement> {
+    let muted = cx.theme().muted_foreground;
+    let status = |id: &'static str, text: String| {
+        div()
+            .id(id)
+            .text_size(style::TEXT_SMALL)
+            .text_color(muted)
+            .child(text)
+    };
+    Err(match graphql_schema_store::state(cx, url) {
+        Some(SchemaState::Loaded(schema)) => return Ok(schema),
+        None => v_flex()
+            .gap_2()
+            .child(status(ids.hint, ids.hint_text.into()).test_support())
+            .child(
+                Button::new(ids.load)
+                    .label("Load schema")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(SchemaAction::Load))),
+            )
+            .into_any_element(),
+        Some(SchemaState::Loading) => status(ids.loading, "Loading schema".into())
+            .test_support()
+            .into_any_element(),
+        Some(SchemaState::Failed(message)) => status(ids.error, message)
+            .text_color(cx.theme().danger)
+            .test_support()
+            .into_any_element(),
+    })
 }
