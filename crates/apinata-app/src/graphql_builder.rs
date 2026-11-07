@@ -2,8 +2,18 @@
 
 use std::collections::HashSet;
 use std::ops::Range;
+use std::sync::Arc;
 
-use apinata_core::{FieldPath, Lock, QueryOutline, Schema, TypeKind};
+use apinata_core::{FieldPath, Lock, QueryOutline, Schema, TypeKind, query_outline};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::EditorState;
+use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::*;
+
+use crate::graphql_docs::{StateIds, schema_state};
+use crate::graphql_schema_store::SchemaStore;
+use crate::graphql_section::SchemaAction;
+use crate::{style, ui};
 
 /// The lock note on every row while the query text does not parse.
 pub const BROKEN_NOTE: &str = "Fix the query to edit it here";
@@ -158,5 +168,194 @@ pub fn caret_after(caret: usize, range: Range<usize>, inserted: usize) -> usize 
         caret - range.len() + inserted
     } else {
         range.start
+    }
+}
+
+const BUILDER_IDS: StateIds = StateIds {
+    hint: "graphql-builder-hint",
+    load: "graphql-builder-load",
+    loading: "graphql-builder-loading",
+    error: "graphql-builder-error",
+    hint_text: "Load the schema to build a query.",
+};
+
+/// The builder panel for one request URL: the schema's fields as rows ticked from the query
+/// editor's text. It emits `SchemaAction::Load` when the user asks for a schema it lacks.
+pub struct BuilderPanel {
+    query: Entity<EditorState>,
+    url: String,
+    expanded: HashSet<FieldPath>,
+    show_deprecated: bool,
+    rows: Vec<BuilderRow>,
+    broken: bool,
+    // The text and schema the rows were built from; `None` forces a rebuild.
+    built: Option<(String, Arc<Schema>)>,
+    _subs: Vec<Subscription>,
+}
+
+impl EventEmitter<SchemaAction> for BuilderPanel {}
+
+impl BuilderPanel {
+    /// A collapsed panel over `query`, keyed on no URL yet.
+    pub fn new(query: Entity<EditorState>, _: &mut Window, cx: &mut Context<Self>) -> Self {
+        // A programmatic load emits no change event, so the editor is observed instead.
+        let subs = vec![
+            cx.observe(&query, |_, _, cx| cx.notify()),
+            cx.observe_global::<SchemaStore>(|_, cx| cx.notify()),
+        ];
+        BuilderPanel {
+            query,
+            url: String::new(),
+            expanded: HashSet::new(),
+            show_deprecated: false,
+            rows: Vec::new(),
+            broken: false,
+            built: None,
+            _subs: subs,
+        }
+    }
+
+    /// Key the panel on `url`, the request's raw URL.
+    pub fn set_url(&mut self, url: String, cx: &mut Context<Self>) {
+        if self.url != url {
+            self.url = url;
+            cx.notify();
+        }
+    }
+
+    /// Lists or hides the children of `path`.
+    pub fn toggle_expanded(&mut self, path: &FieldPath, cx: &mut Context<Self>) {
+        if !self.expanded.remove(path) {
+            self.expanded.insert(path.clone());
+        }
+        self.built = None;
+        cx.notify();
+    }
+
+    /// Whether the children of `path` are listed.
+    pub fn is_expanded(&self, path: &FieldPath) -> bool {
+        self.expanded.contains(path)
+    }
+
+    /// The rows as of the last render.
+    pub fn rows(&self) -> &[BuilderRow] {
+        &self.rows
+    }
+
+    // Rebuild only when the text or schema moved; expansion and the toggle clear `built`.
+    fn refresh(&mut self, schema: Arc<Schema>, cx: &App) {
+        let text = self.query.read(cx).value().to_string();
+        if let Some((t, s)) = &self.built
+            && *t == text
+            && Arc::ptr_eq(s, &schema)
+        {
+            return;
+        }
+        let outline = query_outline(&text, &schema);
+        self.broken = outline.is_none();
+        self.rows = rows(
+            &schema,
+            outline.as_ref(),
+            &self.expanded,
+            self.show_deprecated,
+        );
+        self.built = Some((text, schema));
+    }
+
+    fn loaded(&mut self, schema: Arc<Schema>, cx: &mut Context<Self>) -> Div {
+        self.refresh(schema, cx);
+        let note = self.broken.then(|| {
+            div()
+                .id("graphql-builder-note")
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(BROKEN_NOTE)
+                .test_support()
+        });
+        let toggle = ui::checkbox("graphql-builder-deprecated", self.show_deprecated)
+            .label("Show deprecated")
+            .on_click(cx.listener(|this, on: &bool, _, cx| {
+                this.show_deprecated = *on;
+                this.built = None;
+                cx.notify();
+            }));
+        let list = uniform_list(
+            "graphql-builder-rows",
+            self.rows.len(),
+            cx.processor(|this: &mut Self, range: Range<usize>, _, cx| {
+                range.map(|ix| this.row(ix, cx)).collect::<Vec<_>>()
+            }),
+        )
+        .size_full()
+        .test_support();
+        v_flex()
+            .size_full()
+            .gap_2()
+            .children(note)
+            .child(toggle)
+            .child(div().flex_1().min_h_0().child(list))
+    }
+
+    fn row(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
+        let row = &self.rows[ix];
+        let muted = cx.theme().muted_foreground;
+        let chevron = matches!(row.kind, RowKind::Root | RowKind::Composite).then(|| {
+            let path = row.path.clone();
+            Button::new(("graphql-builder-chevron", ix))
+                .ghost()
+                .xsmall()
+                .icon(if row.expanded {
+                    IconName::ChevronDown
+                } else {
+                    IconName::ChevronRight
+                })
+                .on_click(cx.listener(move |this, _, _, cx| this.toggle_expanded(&path, cx)))
+        });
+        let check = (row.kind != RowKind::Root).then(|| {
+            let check = ui::checkbox(("graphql-builder-check", ix), row.checked)
+                .disabled(row.lock.is_some())
+                .accessible_name(row.lock.clone().unwrap_or_else(|| row.label.clone()));
+            match &row.lock {
+                Some(lock) => check.tooltip(lock.clone()),
+                None => check,
+            }
+        });
+        let deprecated = row
+            .deprecated
+            .then(|| div().text_color(muted).child("(deprecated)"));
+        // Only a root shows its lock as text; a field's lock is on its disabled box.
+        let root_lock = (row.kind == RowKind::Root)
+            .then(|| row.lock.clone())
+            .flatten()
+            .map(|lock| div().text_color(muted).child(lock));
+        h_flex()
+            .id(("graphql-builder-row", ix))
+            .gap_1()
+            .items_center()
+            .pl(style::ui(16. * row.depth as f32))
+            .whitespace_nowrap()
+            .text_size(style::TEXT_SMALL)
+            .children(chevron)
+            .children(check)
+            .child(row.label.clone())
+            .children(deprecated)
+            .children(root_lock)
+            .test_support()
+            .into_any_element()
+    }
+}
+
+impl Render for BuilderPanel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let body = match schema_state(&self.url, &BUILDER_IDS, cx) {
+            Ok(schema) => self.loaded(schema, cx).into_any_element(),
+            Err(state) => state,
+        };
+        v_flex()
+            .id("graphql-builder")
+            .test_support()
+            .size_full()
+            .gap_2()
+            .child(body)
     }
 }

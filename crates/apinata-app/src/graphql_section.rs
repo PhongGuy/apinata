@@ -12,6 +12,7 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::command::Edit;
+use crate::graphql_builder::BuilderPanel;
 use crate::graphql_check::{
     CHECK_DELAY, CheckBasis, FORMAT_OFF_THREAD_BYTES, Jobs, editor_diagnostics, syntax_message,
 };
@@ -30,8 +31,19 @@ use crate::var_tokens::VarField;
 /// The key context on the query editor's wrapper, where F12 jumps to a definition.
 pub const GRAPHQL_QUERY_CONTEXT: &str = "GraphqlQuery";
 
-/// The docs explorer's width beside the editors.
+/// The side panel's width beside the editors.
 const DOCS_WIDTH: Rems = style::ui(320.);
+
+/// Which panel shares the slot beside the editors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidePanel {
+    /// Neither panel.
+    Off,
+    /// The docs explorer.
+    Docs,
+    /// The query builder.
+    Builder,
+}
 
 /// Edits a GraphQL body. Any change to either editor emits the whole body, query and
 /// variables together, since the file stores them as one `body` mapping.
@@ -43,7 +55,8 @@ pub struct GraphqlSection {
     // The same URL, shared with the query editor's completion provider.
     completion_url: Rc<RefCell<String>>,
     docs: Entity<DocsPanel>,
-    docs_open: bool,
+    builder: Entity<BuilderPanel>,
+    side: SidePanel,
     // Live check: job numbers, the typing-pause timer, the running validation, the schema
     // key the last check started against, and what the last finished check used.
     jobs: Jobs,
@@ -104,8 +117,12 @@ impl GraphqlSection {
             }
         };
         let docs = cx.new(|cx| DocsPanel::new(window, cx));
+        let builder = cx.new(|cx| BuilderPanel::new(query.clone(), window, cx));
         let subs = vec![
             cx.subscribe(&docs, |_, _, _: &SchemaAction, cx| {
+                cx.emit(SchemaAction::Load)
+            }),
+            cx.subscribe(&builder, |_, _, _: &SchemaAction, cx| {
                 cx.emit(SchemaAction::Load)
             }),
             // A query edit is emitted like a variables edit, then drops a stale format error and
@@ -136,7 +153,8 @@ impl GraphqlSection {
             schema_url: String::new(),
             completion_url,
             docs,
-            docs_open: false,
+            builder,
+            side: SidePanel::Off,
             jobs: Jobs::default(),
             pending_check: None,
             running_check: None,
@@ -204,6 +222,7 @@ impl GraphqlSection {
     pub fn set_schema_url(&mut self, url: String, cx: &mut Context<Self>) {
         if self.schema_url != url {
             self.docs.update(cx, |d, cx| d.set_url(url.clone(), cx));
+            self.builder.update(cx, |b, cx| b.set_url(url.clone(), cx));
             self.completion_url.replace(url.clone());
             if !url.is_empty() {
                 crate::schema_load::load_from_cache(url.clone(), cx);
@@ -356,14 +375,34 @@ impl GraphqlSection {
     /// Opens the Docs panel on `view`. It never reads the query editor, since the jump runs
     /// inside that editor's update.
     pub fn show_docs(&mut self, view: DocsView, cx: &mut Context<Self>) {
-        self.docs_open = true;
+        self.side = SidePanel::Docs;
         self.docs.update(cx, |d, cx| d.open(view, cx));
         cx.notify();
     }
 
     /// Whether the docs explorer is shown.
     pub fn docs_open(&self) -> bool {
-        self.docs_open
+        self.side == SidePanel::Docs
+    }
+
+    /// Which panel is shown beside the editors.
+    pub fn side(&self) -> SidePanel {
+        self.side
+    }
+
+    /// The query builder beside the editors.
+    pub fn builder(&self) -> &Entity<BuilderPanel> {
+        &self.builder
+    }
+
+    // Each toggle shows its own panel, or closes it when it is already shown.
+    fn toggle_side(&mut self, panel: SidePanel, cx: &mut Context<Self>) {
+        self.side = if self.side == panel {
+            SidePanel::Off
+        } else {
+            panel
+        };
+        cx.notify();
     }
 
     // Asks for one schema file, introspection JSON or SDL, and loads it for the current URL.
@@ -422,13 +461,14 @@ impl GraphqlSection {
             ),
             _ => None,
         };
-        let toggle = Button::new("graphql-docs-toggle")
-            .label("Docs")
-            .choose(self.docs_open, SelectedStyle::Plain, cx)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.docs_open = !this.docs_open;
-                cx.notify();
-            }));
+        let toggle = |id: &'static str, label: &'static str, panel: SidePanel| {
+            Button::new(id)
+                .label(label)
+                .choose(self.side == panel, SelectedStyle::Plain, cx)
+                .on_click(cx.listener(move |this, _, _, cx| this.toggle_side(panel, cx)))
+        };
+        let builder = toggle("graphql-builder-toggle", "Builder", SidePanel::Builder);
+        let docs = toggle("graphql-docs-toggle", "Docs", SidePanel::Docs);
         let file = Button::new("graphql-schema-file")
             .label("Load schema from file")
             .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx)));
@@ -446,7 +486,8 @@ impl GraphqlSection {
             .items_center()
             .child(lead)
             .child(file)
-            .child(toggle)
+            .child(builder)
+            .child(docs)
             .children(error)
             .children(status)
     }
@@ -507,14 +548,13 @@ impl Render for GraphqlSection {
                 self.editor("graphql-variables", "Variables", &self.variables)
                     .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             );
-        // The panel carries the `graphql-docs` id itself, so the wrapper only sizes it.
-        let docs = self.docs_open.then(|| {
-            div()
-                .flex_none()
-                .w(DOCS_WIDTH)
-                .h_full()
-                .child(self.docs.clone())
-        });
+        // Each panel carries its own id, so the wrapper only sizes it.
+        let panel: Option<AnyView> = match self.side {
+            SidePanel::Off => None,
+            SidePanel::Docs => Some(self.docs.clone().into()),
+            SidePanel::Builder => Some(self.builder.clone().into()),
+        };
+        let side = panel.map(|panel| div().flex_none().w(DOCS_WIDTH).h_full().child(panel));
         v_flex()
             .size_full()
             .gap_2()
@@ -526,7 +566,7 @@ impl Render for GraphqlSection {
                     .items_start()
                     .gap_2()
                     .child(editors)
-                    .children(docs),
+                    .children(side),
             )
     }
 }
