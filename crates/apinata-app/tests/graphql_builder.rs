@@ -3,10 +3,10 @@
 
 use crate::support;
 
-use apinata_app::graphql_builder::BuilderPanel;
+use apinata_app::graphql_builder::{BROKEN_NOTE, BuilderPanel, TOO_LARGE_NOTE};
 use apinata_app::graphql_schema_store::SchemaStore;
 use apinata_app::graphql_section::{GraphqlSection, SidePanel};
-use apinata_core::{BodySpec, FieldPath, Schema};
+use apinata_core::{BodySpec, FieldPath, QUERY_VALIDATE_LIMIT, Schema};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use support::*;
@@ -133,6 +133,22 @@ fn broken_text_shows_the_note(cx: &mut TestAppContext) {
     let (win, _s) = section(cx, "{ users {", true);
     click(cx, win, "graphql-builder-toggle");
     assert!(present(cx, win, "graphql-builder-note"));
+    assert_eq!(note(cx, win).as_deref(), Some(BROKEN_NOTE));
+}
+
+#[gpui_kit::test]
+fn oversized_text_shows_the_too_large_note(cx: &mut TestAppContext) {
+    let big = format!("{{ users {{ id }} }}{}", " ".repeat(QUERY_VALIDATE_LIMIT));
+    let (win, _s) = section(cx, &big, true);
+    click(cx, win, "graphql-builder-toggle");
+    assert_eq!(note(cx, win).as_deref(), Some(TOO_LARGE_NOTE));
+}
+
+fn note(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, _| {
+        w.find("graphql-builder-note").label().map(str::to_owned)
+    })
+    .unwrap()
 }
 
 #[gpui_kit::test]

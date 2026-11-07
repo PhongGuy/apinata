@@ -5,7 +5,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use apinata_core::{
-    FieldPath, Lock, QueryEdit, QueryOutline, Schema, TypeKind, query_outline, toggle_field,
+    FieldPath, Lock, QUERY_VALIDATE_LIMIT, QueryEdit, QueryOutline, Schema, TypeKind,
+    query_outline, toggle_field,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::EditorState;
@@ -17,8 +18,20 @@ use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
 use crate::graphql_section::SchemaAction;
 use crate::{style, ui};
 
-/// The lock note on every row while the query text does not parse.
+/// The note while the query text does not parse.
 pub const BROKEN_NOTE: &str = "Fix the query to edit it here";
+
+/// The note while the query text is over the size the builder reads.
+pub const TOO_LARGE_NOTE: &str = "Too large to edit here";
+
+/// Why the builder cannot read `text`, given that it has no outline.
+pub fn unavailable_note(text: &str) -> &'static str {
+    if text.len() > QUERY_VALIDATE_LIMIT {
+        TOO_LARGE_NOTE
+    } else {
+        BROKEN_NOTE
+    }
+}
 
 /// What a row stands for, which decides its chevron and checkbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,9 +70,10 @@ pub struct BuilderRow {
 }
 
 /// Root types in query, mutation, subscription order; children only under expanded paths.
+/// `outline` is the query's outline, or the note that locks every field when there is none.
 pub fn rows(
     schema: &Schema,
-    outline: Option<&QueryOutline>,
+    outline: Result<&QueryOutline, &str>,
     expanded: &HashSet<FieldPath>,
     show_deprecated: bool,
 ) -> Vec<BuilderRow> {
@@ -79,8 +93,13 @@ pub fn rows(
         let Some(name) = name else { continue };
         let path = FieldPath::new([name]);
         let open = expanded.contains(&path);
+        // The panel shows a missing outline's note once above the rows, so roots skip it.
         out.push(BuilderRow {
-            lock: walk.lock(&path),
+            lock: walk
+                .outline
+                .ok()
+                .and_then(|o| o.locked(&path))
+                .map(|l| lock_text(&l)),
             path: path.clone(),
             depth: 0,
             label: format!("{op}: {name}"),
@@ -99,7 +118,7 @@ pub fn rows(
 
 struct Walk<'a, 's> {
     schema: &'a Schema,
-    outline: Option<&'a QueryOutline<'s>>,
+    outline: Result<&'a QueryOutline<'s>, &'a str>,
     expanded: &'a HashSet<FieldPath>,
     show_deprecated: bool,
 }
@@ -107,8 +126,8 @@ struct Walk<'a, 's> {
 impl Walk<'_, '_> {
     fn lock(&self, path: &FieldPath) -> Option<String> {
         match self.outline {
-            None => Some(BROKEN_NOTE.to_owned()),
-            Some(o) => o.locked(path).map(|l| lock_text(&l)),
+            Err(note) => Some(note.to_owned()),
+            Ok(o) => o.locked(path).map(|l| lock_text(&l)),
         }
     }
 
@@ -118,8 +137,11 @@ impl Walk<'_, '_> {
             return;
         };
         for field in ty.fields() {
+            let path = FieldPath::new(parent.names().iter().chain([&field.name().to_owned()]));
+            let checked = self.outline.is_ok_and(|o| o.selects(&path));
+            // A selected deprecated field always shows, so it can still be unticked.
             let deprecated = field.deprecation().is_some();
-            if deprecated && !self.show_deprecated {
+            if deprecated && !self.show_deprecated && !checked {
                 continue;
             }
             let named = field.ty().named();
@@ -128,11 +150,10 @@ impl Walk<'_, '_> {
                 Some(TypeKind::Union) => RowKind::Union,
                 Some(_) => RowKind::Composite,
             };
-            let path = FieldPath::new(parent.names().iter().chain([&field.name().to_owned()]));
             let open = self.expanded.contains(&path);
             out.push(BuilderRow {
                 lock: self.lock(&path),
-                checked: self.outline.is_some_and(|o| o.selects(&path)),
+                checked,
                 path: path.clone(),
                 depth,
                 label: field.name().to_owned(),
@@ -189,7 +210,8 @@ pub struct BuilderPanel {
     expanded: HashSet<FieldPath>,
     show_deprecated: bool,
     rows: Vec<BuilderRow>,
-    broken: bool,
+    // Why the builder cannot read the text, shown once above the rows.
+    note: Option<&'static str>,
     // The text and schema the rows were built from; `None` forces a rebuild.
     built: Option<(String, Arc<Schema>)>,
     _subs: Vec<Subscription>,
@@ -211,7 +233,7 @@ impl BuilderPanel {
             expanded: HashSet::new(),
             show_deprecated: false,
             rows: Vec::new(),
-            broken: false,
+            note: None,
             built: None,
             _subs: subs,
         }
@@ -303,10 +325,11 @@ impl BuilderPanel {
             return;
         }
         let outline = query_outline(&text, &schema);
-        self.broken = outline.is_none();
+        let note = unavailable_note(&text);
+        self.note = outline.is_none().then_some(note);
         self.rows = rows(
             &schema,
-            outline.as_ref(),
+            outline.as_ref().ok_or(note),
             &self.expanded,
             self.show_deprecated,
         );
@@ -315,12 +338,13 @@ impl BuilderPanel {
 
     fn loaded(&mut self, schema: Arc<Schema>, cx: &mut Context<Self>) -> Div {
         self.refresh(schema, cx);
-        let note = self.broken.then(|| {
+        let note = self.note.map(|note| {
             div()
                 .id("graphql-builder-note")
                 .text_size(style::TEXT_SMALL)
                 .text_color(cx.theme().muted_foreground)
-                .child(BROKEN_NOTE)
+                .aria_label(note)
+                .child(note)
                 .test_support()
         });
         let toggle = ui::checkbox("graphql-builder-deprecated", self.show_deprecated)
