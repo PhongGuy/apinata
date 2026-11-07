@@ -217,7 +217,7 @@ fn hostile() -> Schema {
            {"name":"a","description":null,"type":{"kind":"SCALAR","name":"String"},"defaultValue":"a`b\nc"},
            {"name":"b","description":null,"type":{"kind":"SCALAR","name":"String"},"defaultValue":"x`"}],
          "type":{"kind":"SCALAR","name":"String"},"isDeprecated":false,"deprecationReason":null},
-        {"name":"g","description":"Line one\nline two","args":[],
+        {"name":"g","description":"Line one\nline two\n\n    indented\n\tcode\nlast","args":[],
          "type":{"kind":"SCALAR","name":"String"},"isDeprecated":true,"deprecationReason":"Use <b>f</b>"}]},
       {"kind":"SCALAR","name":"String","description":null}]}}}"#;
     Schema::from_json(text).unwrap()
@@ -243,10 +243,10 @@ fn schema_text_is_escaped_to_plain_text() {
 }
 
 #[test]
-fn description_comes_before_deprecation_and_keeps_line_breaks() {
+fn description_comes_before_deprecation_and_breaks_lines_hard_and_drops_leading_whitespace() {
     assert_eq!(
         hostile_hover("{ g }", 2),
-        "`Query.g: String`\n\nLine one\nline two\n\nDeprecated: Use \\<b\\>f\\<\\/b\\>"
+        "`Query.g: String`\n\nLine one\\\nline two\n\nindented\\\ncode\\\nlast\n\nDeprecated: Use \\<b\\>f\\<\\/b\\>"
     );
 }
 
@@ -260,4 +260,15 @@ fn signature_code_spans_survive_backticks_and_newlines() {
         hostile_hover("{ f(a: 1, b: 2) }", 10),
         "`` b: String = x` ``"
     );
+}
+
+#[test]
+fn a_query_over_the_size_limit_has_no_hover_or_link() {
+    let big = format!(
+        "{{ user {{ id }} }}{}",
+        " ".repeat(apinata_core::QUERY_VALIDATE_LIMIT)
+    );
+    let rope = Rope::from(big.as_str());
+    assert!(hover(&schema(), &rope, 3).is_none());
+    assert!(definition(&schema(), &rope, 3).is_none());
 }

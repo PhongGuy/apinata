@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use apinata_core::{Schema, SchemaSymbol, TypeKind};
+use apinata_core::{QUERY_VALIDATE_LIMIT, Schema, SchemaSymbol, TypeKind};
 use gpui_kit::component::input::{DefinitionProvider, HoverProvider};
 use gpui_kit::component::{Rope, RopeExt as _};
 use gpui_kit::{App, Result, Task, Window};
@@ -17,6 +17,9 @@ const SCHEME: &str = "apinata-docs:";
 
 /// Markdown hover for the name at byte `offset`, its range in LSP positions; None off a known name.
 pub fn hover(schema: &Schema, text: &Rope, offset: usize) -> Option<Hover> {
+    if text.len() > QUERY_VALIDATE_LIMIT {
+        return None;
+    }
     let source = text.to_string();
     let found = schema.symbol_at(&source, offset)?;
     let parts = match &found.symbol {
@@ -83,6 +86,9 @@ pub fn hover(schema: &Schema, text: &Rope, offset: usize) -> Option<Hover> {
 
 /// One link to the name's docs page: origin = the name's range, both target ranges zero.
 pub fn definition(schema: &Schema, text: &Rope, offset: usize) -> Option<LocationLink> {
+    if text.len() > QUERY_VALIDATE_LIMIT {
+        return None;
+    }
     let found = schema.symbol_at(&text.to_string(), offset)?;
     let target = match &found.symbol {
         SchemaSymbol::Type { name } => format!("{SCHEME}type/{name}"),
@@ -119,15 +125,31 @@ pub fn docs_view(uri: &str) -> Option<DocsView> {
     named.then_some(view)
 }
 
-// Schema text shown as plain text, as the Docs panel does: every ASCII punctuation character is
-// backslash-escaped so no image, link or HTML renders and nothing contacts a remote host.
+// Schema text shown as plain text: every ASCII punctuation character is backslash-escaped so no
+// image, link or HTML renders. Line breaks become hard breaks, since the kit folds a soft one
+// into a space, and leading whitespace goes, since four spaces or a tab would open a code block.
 fn plain(text: &str) -> String {
+    let lines: Vec<String> = text
+        .lines()
+        .map(|line| {
+            let mut out = String::with_capacity(line.len());
+            for c in line.trim_start().chars() {
+                if c.is_ascii_punctuation() {
+                    out.push('\\');
+                }
+                out.push(c);
+            }
+            out
+        })
+        .collect();
     let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_ascii_punctuation() {
-            out.push('\\');
+    for (i, line) in lines.iter().enumerate() {
+        out.push_str(line);
+        match lines.get(i + 1) {
+            Some(next) if !line.is_empty() && !next.is_empty() => out.push_str("\\\n"),
+            Some(_) => out.push('\n'),
+            None => {}
         }
-        out.push(c);
     }
     out
 }

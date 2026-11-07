@@ -146,11 +146,30 @@ fn f12_on_a_name_opens_its_docs_page(cx: &mut TestAppContext) {
     );
     f12_at(cx, win, &s, 8);
     assert_eq!(
-        docs(cx, &s).1,
-        DocsView::Field {
-            owner: "Query".into(),
-            field: "user".into()
-        },
+        docs(cx, &s),
+        (
+            true,
+            DocsView::Field {
+                owner: "Query".into(),
+                field: "user".into()
+            }
+        ),
         "an argument jumps to its field"
     );
+}
+
+#[gpui_kit::test]
+fn f12_in_the_variables_editor_opens_no_docs(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (win, s) = section(cx);
+    cx.update(apinata_app::keymap::init);
+    let variables = s.read_with(cx, |s, _| s.variables().clone());
+    cx.update_window(win, |_, w, cx| {
+        variables.update(cx, |v, cx| v.focus(w, cx));
+        w.render_frame(cx);
+        w.press("f12", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(docs(cx, &s), (false, DocsView::Root));
 }
