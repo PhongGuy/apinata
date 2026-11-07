@@ -1,10 +1,11 @@
-# The gate on every push to master, Linux only to save Actions minutes; the Windows check
-# cross-compiles here. Each step is a make target, so a local `make check` runs the same.
+# The gate on every push to master and every pull request; the Windows check cross-compiles
+# here. Each step is a make target, so a local `make check` runs the same.
 name: CI
 
-# Manual only: the hosted runner's linker dies (bus error) on the full test suite, and the
-# local `make check` gates every merge. Restore the push trigger once the gate fits the runner.
 on:
+  push:
+    branches: [master]
+  pull_request:
   workflow_dispatch:
 
 permissions:
