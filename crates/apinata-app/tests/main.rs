@@ -253,6 +253,7 @@ mod global_env_selector;
 mod global_env_workspace;
 mod graphql_beautify;
 mod graphql_builder;
+mod graphql_builder_apply;
 mod graphql_builder_rows;
 mod graphql_check;
 mod graphql_complete;

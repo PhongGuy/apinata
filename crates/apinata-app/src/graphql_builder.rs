@@ -4,14 +4,16 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
 
-use apinata_core::{FieldPath, Lock, QueryOutline, Schema, TypeKind, query_outline};
+use apinata_core::{
+    FieldPath, Lock, QueryEdit, QueryOutline, Schema, TypeKind, query_outline, toggle_field,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::EditorState;
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::graphql_docs::{StateIds, schema_state};
-use crate::graphql_schema_store::SchemaStore;
+use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
 use crate::graphql_section::SchemaAction;
 use crate::{style, ui};
 
@@ -242,6 +244,55 @@ impl BuilderPanel {
         &self.rows
     }
 
+    /// Applies `edit` to the query editor as one undoable replacement, only when the editor
+    /// still holds `snapshot`; restores the caret per `caret_after`. False when dropped.
+    pub fn apply(
+        &mut self,
+        snapshot: &str,
+        edit: QueryEdit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.query.update(cx, |e, cx| {
+            if *e.value() != *snapshot {
+                return false;
+            }
+            let caret = caret_after(e.cursor(), edit.range.clone(), edit.text.len());
+            e.set_selected_range(edit.range, cx);
+            e.replace(edit.text, window, cx);
+            e.set_selected_range(caret..caret, cx);
+            true
+        })
+    }
+
+    // A click decides tick or untick from the current text, never the rendered row: an
+    // unselected composite only expands, anything else is toggled in the query.
+    fn click(
+        &mut self,
+        path: &FieldPath,
+        kind: RowKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(SchemaState::Loaded(schema)) = graphql_schema_store::state(cx, &self.url) else {
+            return;
+        };
+        let snapshot = self.query.read(cx).value().to_string();
+        let Some(outline) = query_outline(&snapshot, &schema) else {
+            return;
+        };
+        let selected = outline.selects(path);
+        if kind == RowKind::Composite && !selected {
+            self.expanded.insert(path.clone());
+            self.built = None;
+            cx.notify();
+            return;
+        }
+        if let Some(edit) = toggle_field(&snapshot, &schema, path, !selected) {
+            self.apply(&snapshot, edit, window, cx);
+        }
+    }
+
     // Rebuild only when the text or schema moved; expansion and the toggle clear `built`.
     fn refresh(&mut self, schema: Arc<Schema>, cx: &App) {
         let text = self.query.read(cx).value().to_string();
@@ -312,8 +363,12 @@ impl BuilderPanel {
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_expanded(&path, cx)))
         });
         let check = (row.kind != RowKind::Root).then(|| {
+            let (path, kind) = (row.path.clone(), row.kind);
             let check = ui::checkbox(("graphql-builder-check", ix), row.checked)
                 .disabled(row.lock.is_some())
+                .on_click(cx.listener(move |this, _: &bool, window, cx| {
+                    this.click(&path, kind, window, cx)
+                }))
                 .accessible_name(row.lock.clone().unwrap_or_else(|| row.label.clone()));
             match &row.lock {
                 Some(lock) => check.tooltip(lock.clone()),
