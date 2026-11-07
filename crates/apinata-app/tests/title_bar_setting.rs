@@ -1,6 +1,7 @@
 //! The Linux title bar preference: stored in the settings, offered in Preferences, and
 //! turned into the window's decoration request.
 
+#[cfg(target_os = "linux")]
 use crate::support;
 
 use apinata_app::app::window_decorations;
