@@ -31,3 +31,13 @@ updates:
         versions: [">=0.2"]
       - dependency-name: "quick-xml"
         versions: [">=0.42"]
+
+  # The SHA-pinned actions, monthly, as one grouped PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      actions:
+        patterns:
+          - "*"
