@@ -95,12 +95,12 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                             acked = true;
                             let subscribe =
                                 json!({"id": "1", "type": "subscribe", "payload": session.payload});
-                            if !send(&mut ws, subscribe).await {
+                            if !bounded_send(&mut ws, subscribe).await {
                                 break dropped();
                             }
                         }
                         Some("ping") => {
-                            send(&mut ws, json!({"type": "pong"})).await;
+                            bounded_send(&mut ws, json!({"type": "pong"})).await;
                         }
                         // Another operation's messages and keep-alive replies are not ours.
                         Some("pong") => {}
@@ -164,14 +164,24 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
 async fn polite_close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, acked: bool) {
     // Bounded, so a server that stops reading cannot hold Stop or a limit.
     if acked {
-        let complete = send(ws, json!({"id": "1", "type": "complete"}));
-        let _ = tokio::time::timeout(CLOSE_WAIT, complete).await;
+        bounded_send(ws, json!({"id": "1", "type": "complete"})).await;
     }
     close(ws, 1000).await;
 }
 
 async fn send<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, v: Value) -> bool {
     ws.send(Message::text(v.to_string())).await.is_ok()
+}
+
+/// `send` given at most `CLOSE_WAIT`, so a server that stops reading cannot stall the loop;
+/// a send that times out counts as failed.
+async fn bounded_send<S: AsyncRead + AsyncWrite + Unpin>(
+    ws: &mut WebSocketStream<S>,
+    v: Value,
+) -> bool {
+    tokio::time::timeout(CLOSE_WAIT, send(ws, v))
+        .await
+        .unwrap_or(false)
 }
 
 /// Appends one `event: <kind>` record with the compact payload as its data, cut at the cap,

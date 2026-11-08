@@ -106,7 +106,7 @@ async fn no_ack_within_the_request_timeout_closes_4408() {
         &s.http("/"),
         QUERY,
         VARS,
-        "settings:\n  timeout: 300\n",
+        "settings:\n  timeout: 1000\n",
     );
     let started = Instant::now();
     // Streaming with no limits, so only the ack wait can end it.
@@ -117,7 +117,7 @@ async fn no_ack_within_the_request_timeout_closes_4408() {
     assert_eq!(res.status(), 101);
     assert_eq!(
         res.stream_end(),
-        Some(&StreamEnd::Error("no connection_ack within 300 ms".into()))
+        Some(&StreamEnd::Error("no connection_ack within 1000 ms".into()))
     );
     assert!(started.elapsed() < Duration::from_secs(5));
     let lines = s.seen.until(|l| l.starts_with("close: ")).await;
@@ -138,12 +138,12 @@ async fn an_unstreamed_send_without_an_ack_closes_4408() {
         &s.http("/"),
         QUERY,
         VARS,
-        "settings:\n  timeout: 300\n",
+        "settings:\n  timeout: 1000\n",
     );
     let res = ws_exec(Auto).send(&req).await.unwrap();
     assert_eq!(
         res.stream_end(),
-        Some(&StreamEnd::Error("no connection_ack within 300 ms".into()))
+        Some(&StreamEnd::Error("no connection_ack within 1000 ms".into()))
     );
     let lines = s.seen.until(|l| l.starts_with("close: ")).await;
     assert!(lines.contains(&"close: 4408".to_owned()), "{lines:?}");
