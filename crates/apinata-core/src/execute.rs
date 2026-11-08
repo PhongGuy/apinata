@@ -679,10 +679,14 @@ impl Executor {
     fn build_client(&self, key: &ClientKey) -> Result<Client, ExecError> {
         let mut builder = self.base_builder(key)?;
         // The policy sets the TLS ALPN offer too; Auto leaves reqwest's `h2, http/1.1` default.
-        builder = match self.http_version {
-            HttpVersionPolicy::Http1Only => builder.http1_only(),
-            HttpVersionPolicy::Auto => builder,
-            HttpVersionPolicy::Http2PriorKnowledge => builder.http2_prior_knowledge(),
+        builder = if key.http1_only {
+            builder.http1_only()
+        } else {
+            match self.http_version {
+                HttpVersionPolicy::Http1Only => builder.http1_only(),
+                HttpVersionPolicy::Auto => builder,
+                HttpVersionPolicy::Http2PriorKnowledge => builder.http2_prior_knowledge(),
+            }
         };
         // A host policy re-resolves every hop, so no idle connection may outlive its check.
         if self.host_policy.is_some() {
@@ -1141,6 +1145,7 @@ impl Executor {
             identity,
             compress: !omits(req.omitted_headers(), "Accept-Encoding"),
             overrides: Arc::clone(&overrides),
+            http1_only: false,
         };
         let mut client = self.clients.get(&key, |key| self.build_client(key))?;
         let mut followed = 0;
@@ -2512,5 +2517,38 @@ mod tests {
 
         let other = wrapped(io::Error::from(io::ErrorKind::TimedOut));
         assert_eq!(connect_cause(&other), ConnectCause::Other);
+    }
+
+    /// The handshake's client speaks HTTP/1.1 under any policy, and its key never matches the
+    /// policy's own client in the cache.
+    #[tokio::test]
+    async fn an_http1_only_key_overrides_the_policy() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let exec =
+            Executor::new(ExecOptions::new().http_version(HttpVersionPolicy::Http2PriorKnowledge))
+                .unwrap();
+        let key = |http1_only: bool| ClientKey {
+            rule: ProxyRule::Direct,
+            identity: None,
+            compress: true,
+            overrides: Arc::default(),
+            http1_only,
+        };
+        let uri = server.uri();
+        let h1 = exec.build_client(&key(true)).unwrap();
+        let policy = exec.build_client(&key(false)).unwrap();
+        assert_eq!(
+            h1.get(&uri).send().await.unwrap().version(),
+            reqwest::Version::HTTP_11
+        );
+        assert_eq!(
+            policy.get(&uri).send().await.unwrap().version(),
+            reqwest::Version::HTTP_2
+        );
+        assert!(key(true) != key(false));
     }
 }
