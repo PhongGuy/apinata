@@ -3,6 +3,8 @@
 use crate::common::ws_server::{QUERY, Step, WsScript, raw_server, tick, ws_server};
 use crate::script_support::{ROOT, run_dir, write_tree};
 use apinata_core::{Outcome, RunOptions};
+use wiremock::matchers::any;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// A GraphQL item POSTing `query` to `url` with `assertions` as `runtime.assertions` items.
 fn item(url: &str, query: &str, assertions: &str) -> String {
@@ -66,4 +68,48 @@ async fn a_bad_close_code_errors_the_request() {
     assert_eq!(r.response.as_ref().map(|x| x.status()), Some(101));
     // Assertions still ran on what arrived.
     assert_eq!(r.assertions.len(), 1);
+}
+
+async fn always(status: u16) -> MockServer {
+    let s = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(status))
+        .mount(&s)
+        .await;
+    s
+}
+
+async fn methods(s: &MockServer) -> Vec<String> {
+    let seen = s.received_requests().await.expect("recorded");
+    seen.iter().map(|r| r.method.to_string()).collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_handshake_is_retried_as_a_get() {
+    let s = always(503).await;
+    let r = one(&s.uri(), QUERY, "", RunOptions::new().retries(2)).await;
+    assert_eq!(r.attempts(), 3, "{r:?}");
+    assert_eq!(methods(&s).await, ["GET", "GET", "GET"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_graphql_query_is_still_a_post_that_is_not_retried() {
+    let s = always(503).await;
+    let r = one(&s.uri(), "query { a }", "", RunOptions::new().retries(2)).await;
+    assert_eq!(r.attempts(), 1, "{r:?}");
+    assert_eq!(methods(&s).await, ["POST"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_socket_that_fails_after_the_101_is_not_retried() {
+    let s = ws_server(WsScript::new(vec![tick(1), Step::Close(4403, "Forbidden")])).await;
+    let r = one(&s.http("/"), QUERY, "", RunOptions::new().retries(2)).await;
+    assert_eq!(r.attempts(), 1, "{r:?}");
+    let opened = s
+        .seen
+        .lines()
+        .iter()
+        .filter(|l| l.starts_with("path: "))
+        .count();
+    assert_eq!(opened, 1);
 }
