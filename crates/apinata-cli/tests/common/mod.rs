@@ -126,6 +126,9 @@ pub mod ws_server;
 #[path = "../../../apinata-core/tests/common/body_server.rs"]
 pub mod body_server;
 
+#[path = "../../../apinata-core/tests/common/raw_server.rs"]
+pub mod raw_server;
+
 /// A port that refuses every connection and that no other process can take: the socket is
 /// bound for the whole process but never listens.
 pub fn dead_port() -> u16 {

@@ -1,6 +1,7 @@
 //! A subscription's transcript saved through `StreamOptions::body_file`.
 
-use crate::common::ws_server::{Step, WsScript, raw_server, sub, tick, ws_exec, ws_server};
+use crate::common::raw_server::raw_server;
+use crate::common::ws_server::{Step, WsScript, sub, tick, ws_exec, ws_server};
 use apinata_core::HttpVersionPolicy::Auto;
 use apinata_core::{CancelHandle, ExecError, StreamEnd, StreamEvent, StreamLimits, StreamOptions};
 use std::time::{Duration, Instant};

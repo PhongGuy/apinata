@@ -66,6 +66,7 @@ pub fn executor() -> Executor {
     Executor::new(ExecOptions::new()).expect("client")
 }
 pub mod body_server;
+pub mod raw_server;
 pub mod sse_server;
 pub mod ws_server;
 

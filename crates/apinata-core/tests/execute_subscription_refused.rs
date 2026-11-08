@@ -2,8 +2,9 @@
 //! server's choice of subprotocol.
 
 use crate::common::ROOT;
+use crate::common::raw_server::raw_server;
 use crate::common::ws_server::{
-    QUERY, Step, VARS, WsScript, graphql_request, raw_server, sub, ws_exec, ws_server,
+    QUERY, Step, VARS, WsScript, graphql_request, sub, ws_exec, ws_server,
 };
 use apinata_core::HttpVersionPolicy::Auto;
 use apinata_core::{ExecError, StreamEnd};

@@ -1,6 +1,7 @@
 //! `run` on a subscription: a failed socket errors the result, and handshake retries.
 
-use crate::common::ws_server::{QUERY, Step, WsScript, raw_server, tick, ws_server};
+use crate::common::raw_server::raw_server;
+use crate::common::ws_server::{QUERY, Step, WsScript, tick, ws_server};
 use crate::script_support::{ROOT, run_dir, write_tree};
 use apinata_core::{Outcome, RunOptions};
 use wiremock::matchers::any;

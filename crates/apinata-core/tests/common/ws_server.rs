@@ -14,7 +14,7 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
@@ -260,32 +260,6 @@ async fn play<S: AsyncRead + AsyncWrite + Unpin>(
         }
     }
     true
-}
-
-/// Answers the first request head on each connection with `reply`, then holds the connection
-/// until the client leaves.
-pub async fn raw_server(reply: &'static str) -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-    let port = listener.local_addr().expect("addr").port();
-    tokio::spawn(async move {
-        while let Ok((mut tcp, _)) = listener.accept().await {
-            tokio::spawn(async move {
-                let mut head = Vec::new();
-                let mut buf = [0u8; 1024];
-                while !head.windows(4).any(|w| w == b"\r\n\r\n") {
-                    match tcp.read(&mut buf).await {
-                        Ok(0) | Err(_) => return,
-                        Ok(n) => head.extend_from_slice(&buf[..n]),
-                    }
-                }
-                if tcp.write_all(reply.as_bytes()).await.is_err() {
-                    return;
-                }
-                while matches!(tcp.read(&mut buf).await, Ok(n) if n > 0) {}
-            });
-        }
-    });
-    port
 }
 
 /// A GraphQL item POSTing `query` and `variables` to `url`, resolved in a collection whose

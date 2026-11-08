@@ -1,6 +1,7 @@
 //! `apinata run` on a GraphQL subscription: stream flags, -o, legacy servers, report and exit code.
 
-use crate::common::ws_server::{COMPLETE, raw_server, tick, ws_server};
+use crate::common::raw_server::raw_server;
+use crate::common::ws_server::{COMPLETE, tick, ws_server};
 use crate::common::{ROOT, apinata, check, write_tree};
 use std::time::{Duration, Instant};
 
