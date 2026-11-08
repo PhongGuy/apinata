@@ -1939,6 +1939,9 @@ impl Drop for Armed<'_> {
     }
 }
 
+/// The transcript cap of a stream with neither an executor cap nor a byte limit.
+const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
+
 /// Reads the final hop's body chunk by chunk, telling the sink as it goes.
 ///
 /// A body that is not an event-stream keeps today's rules: the leg `deadline` bounds it whole,
@@ -1948,9 +1951,6 @@ impl Drop for Armed<'_> {
 ///
 /// With a body file a plain body is written whole: the cap bounds memory only, the idle timer
 /// replaces the deadline, and Stop is an error that discards the file.
-/// The transcript cap of a stream with neither an executor cap nor a byte limit.
-const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
-
 async fn read_streaming(
     mut res: reqwest::Response,
     head: StreamHead,

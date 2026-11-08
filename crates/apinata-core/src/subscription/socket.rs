@@ -27,7 +27,7 @@ pub(crate) struct Session<'a> {
     pub(crate) sink: Option<&'a Sink>,
     /// Stop ends the run politely.
     pub(crate) cancel: &'a CancelHandle,
-    /// The duration and event bounds, counted from the start of the run.
+    /// The duration and event bounds; the duration counts from once `connection_init` is sent.
     pub(crate) limits: StreamLimits,
     /// Transcript bytes kept at most; the record crossing it is cut there.
     pub(crate) cap: u64,
@@ -150,6 +150,7 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                         }
                     };
                 }
+                // Binary frames are deliberately ignored: graphql-transport-ws speaks text only.
                 Some(Ok(_)) => {}
                 // A TCP end without a close frame, reported either way by tungstenite.
                 None | Some(Err(_)) => break dropped(),
@@ -161,8 +162,10 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
 
 /// Ends the run from the client side: completes the operation if it was subscribed, then closes.
 async fn polite_close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, acked: bool) {
+    // Bounded, so a server that stops reading cannot hold Stop or a limit.
     if acked {
-        send(ws, json!({"id": "1", "type": "complete"})).await;
+        let complete = send(ws, json!({"id": "1", "type": "complete"}));
+        let _ = tokio::time::timeout(CLOSE_WAIT, complete).await;
     }
     close(ws, 1000).await;
 }
@@ -204,7 +207,7 @@ async fn close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, c
         code: CloseCode::from(code),
         reason: "".into(),
     };
-    if ws.close(Some(frame)).await.is_ok() {
+    if let Ok(Ok(())) = tokio::time::timeout(CLOSE_WAIT, ws.close(Some(frame))).await {
         drain(ws).await;
     }
 }
