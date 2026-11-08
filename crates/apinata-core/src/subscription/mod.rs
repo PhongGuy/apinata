@@ -1,10 +1,12 @@
 //! GraphQL subscriptions over WebSocket: detection of a subscription body and its transport.
 
+pub(crate) mod handshake;
+pub(crate) mod socket;
+
 use apollo_parser::Parser;
 use apollo_parser::cst::Definition;
 
 /// The `subscribe` payload of a GraphQL body whose one operation is a subscription.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct Plan {
     /// `{"query": <string>}` plus `"variables"` when the body has that key; nothing else.
     pub(crate) payload: serde_json::Value,
@@ -13,7 +15,6 @@ pub(crate) struct Plan {
 /// Reads a sent GraphQL body. `Ok(None)`: not a subscription (not a JSON object, no string
 /// `query`, or no subscription operation). `Err("a subscription request must hold one
 /// operation")`: a subscription shares the document with another operation.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn detect(body: &str) -> Result<Option<Plan>, String> {
     let Ok(serde_json::Value::Object(object)) = serde_json::from_str(body) else {
         return Ok(None);

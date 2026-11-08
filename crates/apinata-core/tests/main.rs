@@ -141,6 +141,7 @@ mod execute_set_cookies;
 mod execute_size;
 mod execute_stale_pool;
 mod execute_stream;
+mod execute_subscription;
 mod execute_timeline;
 mod execute_tls;
 mod execute_userinfo_auth;

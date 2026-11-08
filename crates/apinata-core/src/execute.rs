@@ -16,6 +16,8 @@ use reqwest::header::{
 };
 use reqwest::redirect::Policy;
 use reqwest::{Client, Identity, Method, StatusCode};
+use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use url::Url;
 
 use crate::cancel::CancelHandle;
@@ -43,6 +45,7 @@ use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
 use crate::stream::{StreamBound, StreamEnd, StreamEvent, StreamOptions};
+use crate::subscription::{detect, handshake, socket};
 use crate::timing::{Recorder, SystemResolve, TimedConnect, TimedResolve};
 use crate::trust::normalize_host;
 use crate::wsse;
@@ -1073,6 +1076,11 @@ impl Executor {
         if let Some(problem) = req.header_problem() {
             return Err(invalid(problem.to_owned()));
         }
+        // Detected on the sent body, so it sees what a pre-request script left.
+        let subscription = match req.body() {
+            Body::Text(text) if req.graphql() => detect(text).map_err(invalid)?,
+            _ => None,
+        };
         let mut url = Url::parse(req.url())
             .map_err(|e| invalid(format!("{}: {e}", redact_url(req.url()))))?;
         let mut method = Method::from_bytes(req.method().as_bytes())
@@ -1133,7 +1141,19 @@ impl Executor {
             buf.place(&nonce);
             headers.push(("X-WSSE".to_owned(), value));
         }
-        let limit = if req.follow_redirects() {
+        // A subscription's handshake is a bodiless GET carrying the upgrade headers, set before
+        // the hop loop so cookies, auth and signing all see it; its 3xx is never followed.
+        if subscription.is_some() {
+            let key = handshake::new_key().ok_or_else(|| ExecError::Transport {
+                url: redact_url(url.as_str()),
+                message: "the OS random generator failed, so no WebSocket key".to_owned(),
+            })?;
+            method = Method::GET;
+            body = Vec::new();
+            drop_headers(&mut headers, &["content-type", "content-length"]);
+            headers.extend(handshake::upgrade_headers(&key));
+        }
+        let limit = if req.follow_redirects() && subscription.is_none() {
             req.max_redirects()
         } else {
             0
@@ -1145,7 +1165,7 @@ impl Executor {
             identity,
             compress: !omits(req.omitted_headers(), "Accept-Encoding"),
             overrides: Arc::clone(&overrides),
-            http1_only: false,
+            http1_only: subscription.is_some(),
         };
         let mut client = self.clients.get(&key, |key| self.build_client(key))?;
         let mut followed = 0;
@@ -1459,8 +1479,42 @@ impl Executor {
                     .then(|| hop_headers.get("location")?.to_str().ok())
                     .flatten()
                     .and_then(|location| url.join(location).ok());
-            let read = match stream {
-                Some((options, cancel)) if challenge.is_none() && next.is_none() => {
+            let read = match (stream, &subscription) {
+                (_, Some(plan))
+                    if challenge.is_none() && status == StatusCode::SWITCHING_PROTOCOLS =>
+                {
+                    let fallback = (StreamOptions::new(), CancelHandle::new());
+                    let (options, cancel) = stream.unwrap_or((&fallback.0, &fallback.1));
+                    let upgraded = leg
+                        .run(res.upgrade())
+                        .await
+                        .ok_or_else(timed_out)?
+                        .map_err(transport)?;
+                    let ws = WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await;
+                    let _armed = Armed(cancel);
+                    cancel.arm();
+                    if let Some(sink) = &options.sink {
+                        sink(StreamEvent::Started {
+                            status: status.as_u16(),
+                            headers: lossy(&hop_headers),
+                            event_stream: true,
+                        });
+                    }
+                    let session = socket::Session {
+                        payload: plan.payload.clone(),
+                        ack_wait: timeout.unwrap_or(Duration::from_secs(10)),
+                        sink: options.sink.as_ref(),
+                    };
+                    let transcript = socket::run(ws, session).await;
+                    BodyRead {
+                        bytes: transcript.bytes,
+                        size: transcript.size,
+                        truncated: transcript.truncated,
+                        end: Some(transcript.end),
+                        file: None,
+                    }
+                }
+                (Some((options, cancel)), _) if challenge.is_none() && next.is_none() => {
                     let wire = StreamHead {
                         status: status.as_u16(),
                         headers: lossy(&hop_headers),

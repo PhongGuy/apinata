@@ -218,7 +218,6 @@ pub enum Body {
 
 impl ResolvedRequest {
     /// Whether the body was built from a GraphQL body spec (file or script-set).
-    #[allow(dead_code)] // no caller, test or not, until the executor reads it
     pub(crate) fn graphql(&self) -> bool {
         self.graphql
     }
