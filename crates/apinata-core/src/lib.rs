@@ -2,7 +2,7 @@
 //! requests against collection, environment, folder and process variables, then sends them.
 //! All logic lives here; the CLI, MCP server and app are thin shells over it.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![deny(missing_docs)]
 
 mod approval;

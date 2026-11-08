@@ -43,9 +43,8 @@ pub(super) const FIXED: [(&str, &str); 4] = [
 /// The least time the pipe readers get after git exits.
 const PIPE_GRACE: Duration = Duration::from_millis(250);
 
-/// How long a stopped git and the rest of its group get to clean up and exit after SIGTERM,
-/// before SIGKILL.
-#[cfg(unix)]
+/// How long a stopped git and the processes it started get to clean up and exit after the
+/// gentle stop, before the kill.
 const TERM_GRACE: Duration = Duration::from_secs(2);
 
 /// The limit of the lock lookup after a write had to be killed.
@@ -222,10 +221,23 @@ impl From<std::io::Error> for Halt {
     }
 }
 
-/// Stop `child` and its process group: SIGTERM first, so git and its hooks can clean up (git
-/// removes its own lock files), then SIGKILL to whatever of the group outlives `TERM_GRACE`.
-/// Reaps the child, and is true when git itself needed SIGKILL (always so on Windows).
+/// Stop `child` and every process it started, gently first so git can clean up (it removes its
+/// own lock files), then kill whatever outlives `TERM_GRACE`. Reaps the child, and is true when
+/// git itself needed the kill (on Windows, when anything in its tree did).
 pub(super) fn stop_group(child: &mut Child) -> bool {
+    #[cfg(windows)]
+    {
+        stop_tree(child)
+    }
+    #[cfg(not(windows))]
+    {
+        stop_signalled(child)
+    }
+}
+
+/// SIGTERM to the process group git leads, then SIGKILL to whatever of it outlives the grace.
+#[cfg(not(windows))]
+fn stop_signalled(child: &mut Child) -> bool {
     #[cfg(unix)]
     if signal_group(child, "-TERM") {
         let deadline = Instant::now() + TERM_GRACE;
@@ -251,12 +263,78 @@ pub(super) fn stop_group(child: &mut Child) -> bool {
         let _ = child.wait();
         return true;
     }
-    // Without the `kill` helper, or on Windows, git is killed at once. On Windows that is
-    // TerminateProcess, which skips git's lock cleanup; the gentler ExitProcess-in-the-child
-    // stop that Git for Windows' own kill uses is not done here.
+    // Without the `kill` helper git is killed at once.
     let _ = child.kill();
     let _ = child.wait();
     true
+}
+
+/// Windows has no process groups to signal, so git's tree is walked by parent id instead. Each
+/// process in it is asked to exit through an injected ExitProcess, newcomers included, until
+/// the tree is empty or the grace ends; then every survivor is terminated. The tree includes
+/// the real git behind a `git.exe` launcher, which is why the stop does not end at the child.
+#[cfg(windows)]
+fn stop_tree(child: &mut Child) -> bool {
+    use super::win_stop::Process;
+
+    let deadline = Instant::now() + TERM_GRACE;
+    let mut tree: Vec<Process> = Process::open(child.id()).into_iter().collect();
+    let mut asked = 0;
+    while !tree.is_empty() && Instant::now() < deadline {
+        adopt(&mut tree);
+        for process in &tree[asked..] {
+            process.ask_to_exit();
+        }
+        asked = tree.len();
+        if !tree.iter().any(Process::running) {
+            let _ = child.wait();
+            return false;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    // Git goes first, so it starts nothing new while the rest of its tree is found and ended.
+    let _ = child.kill();
+    if tree.is_empty() {
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    } else {
+        adopt(&mut tree);
+        for process in tree.iter().filter(|p| p.running()) {
+            process.terminate();
+        }
+    }
+    let _ = child.wait();
+    true
+}
+
+/// Adds to `tree` every process whose parent is in it and that started after that parent (so a
+/// reused parent id is not mistaken for kinship), until a pass finds no more.
+#[cfg(windows)]
+fn adopt(tree: &mut Vec<super::win_stop::Process>) {
+    let all = super::win_stop::processes();
+    loop {
+        let before = tree.len();
+        for &(pid, parent) in &all {
+            if tree.iter().any(|p| p.pid() == pid) {
+                continue;
+            }
+            let Some(born) = tree.iter().find(|p| p.pid() == parent).map(|p| p.created()) else {
+                continue;
+            };
+            if let Some(process) = super::win_stop::Process::open(pid)
+                && process.created() >= born
+            {
+                tree.push(process);
+            }
+        }
+        if tree.len() == before {
+            break;
+        }
+    }
 }
 
 /// Send `signal` to the process group `child` leads, through the `kill` helper.
