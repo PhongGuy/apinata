@@ -1573,6 +1573,20 @@ impl Executor {
                         .await
                         .ok_or_else(timed_out)?
                         .map_err(transport)?;
+                    // Created before the socket speaks, so a bad path fails before
+                    // `connection_init`; the transcript is saved whatever ends it.
+                    let write_fail = |path: &Path, e: std::io::Error| ExecError::Transport {
+                        url: redact_url(url.as_str()),
+                        message: format!("could not write {}: {e}", path.display()),
+                    };
+                    let mut file = match &options.body_file {
+                        Some(path) => Some(
+                            TempBody::create(path)
+                                .await
+                                .map_err(|e| write_fail(path, e))?,
+                        ),
+                        None => None,
+                    };
                     let ws = WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await;
                     let _armed = Armed(cancel);
                     cancel.arm();
@@ -1596,12 +1610,17 @@ impl Executor {
                             .unwrap_or(DEFAULT_STREAM_CAP),
                     };
                     let transcript = socket::run(ws, session).await;
+                    if let (Some(temp), Some(path)) = (&mut file, &options.body_file) {
+                        temp.write(&transcript.bytes)
+                            .await
+                            .map_err(|e| write_fail(path, e))?;
+                    }
                     BodyRead {
                         bytes: transcript.bytes,
                         size: transcript.size,
                         truncated: transcript.truncated,
                         end: Some(transcript.end),
-                        file: None,
+                        file,
                     }
                 }
                 (Some((options, cancel)), _) if challenge.is_none() && next.is_none() => {

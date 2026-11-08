@@ -143,6 +143,7 @@ mod execute_stale_pool;
 mod execute_stream;
 mod execute_subscription;
 mod execute_subscription_end;
+mod execute_subscription_file;
 mod execute_subscription_legacy;
 mod execute_subscription_limits;
 mod execute_subscription_refused;
