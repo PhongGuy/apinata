@@ -68,6 +68,10 @@ async fn a_bad_close_code_errors_the_request() {
     assert_eq!(r.response.as_ref().map(|x| x.status()), Some(101));
     // Assertions still ran on what arrived.
     assert_eq!(r.assertions.len(), 1);
+    // The message may quote server text, so Debug shows only its length.
+    let debug = format!("{:?}", r.error.expect("error"));
+    assert!(debug.contains("message_len: 32"), "{debug}");
+    assert!(!debug.contains("Forbidden"), "{debug}");
 }
 
 async fn always(status: u16) -> MockServer {

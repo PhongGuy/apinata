@@ -597,7 +597,7 @@ impl RunError {
     }
 }
 
-// A script's message may quote what it read, so Debug shows its length only.
+// A script's or subscription's message may quote what it read, so Debug shows its length only.
 impl fmt::Debug for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -614,7 +614,7 @@ impl fmt::Debug for RunError {
             RunError::OAuth2(e) => f.debug_tuple("OAuth2").field(e).finish(),
             RunError::Subscription { message } => f
                 .debug_struct("Subscription")
-                .field("message", message)
+                .field("message_len", &message.len())
                 .finish(),
         }
     }

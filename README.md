@@ -176,7 +176,7 @@ apinata import collection openapi.yaml --into ./collections
 ```
 
 The exit code is `0` on success, `1` when an assertion or check failed, `2`
-when a request got no response and `3` for a usage or setup error. Every
+when a request errored and `3` for a usage or setup error. Every
 command, flag and code is in the [guide](GUIDE.md#command-line).
 
 ## How it works
