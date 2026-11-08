@@ -5,8 +5,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use apinata_core::{
-    FieldPath, Lock, QUERY_VALIDATE_LIMIT, QueryEdit, QueryOutline, Schema, TypeKind,
-    query_outline, toggle_field,
+    FieldPath, Lock, QUERY_VALIDATE_LIMIT, QueryEdit, QueryOutline, Schema, TypeKind, query_outline,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::EditorState;
@@ -318,7 +317,7 @@ impl BuilderPanel {
             cx.notify();
             return;
         }
-        if let Some(edit) = toggle_field(&snapshot, &schema, path, !selected) {
+        if let Some(edit) = outline.toggle(path, !selected) {
             self.apply(&snapshot, edit, window, cx);
         }
     }

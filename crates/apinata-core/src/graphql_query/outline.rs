@@ -54,6 +54,9 @@ pub enum Lock {
 #[non_exhaustive]
 pub struct QueryOutline<'s> {
     schema: &'s Schema,
+    // The masked text the outline was read from; edits are computed on it, so a tick
+    // never masks the query a second time.
+    masked: String,
     op: Option<Op>,
 }
 
@@ -99,7 +102,11 @@ pub fn query_outline<'s>(query: &str, schema: &'s Schema) -> Option<QueryOutline
     let masked = mask(query);
     let tree = parse(&masked.text);
     if is_blank(&tree) {
-        return Some(QueryOutline { schema, op: None });
+        return Some(QueryOutline {
+            schema,
+            masked: masked.text,
+            op: None,
+        });
     }
     if tree.errors().next().is_some() {
         return None;
@@ -108,9 +115,11 @@ pub fn query_outline<'s>(query: &str, schema: &'s Schema) -> Option<QueryOutline
         cst::Definition::OperationDefinition(op) => Some(op),
         _ => None,
     });
+    let op = op.and_then(|op| walk_op(&op, schema));
     Some(QueryOutline {
         schema,
-        op: op.and_then(|op| walk_op(&op, schema)),
+        masked: masked.text,
+        op,
     })
 }
 
@@ -159,6 +168,10 @@ impl<'s> QueryOutline<'s> {
             Cut::Locked(lock) => Some(lock),
             Cut::Field(_) | Cut::Operation(_) => None,
         }
+    }
+
+    pub(crate) fn masked(&self) -> &str {
+        &self.masked
     }
 
     pub(crate) fn schema(&self) -> &'s Schema {

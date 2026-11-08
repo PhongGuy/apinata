@@ -1,7 +1,7 @@
 //! `toggle_field` unticking: removal ranges, one copy per tick, the empty-parent cascade
 //! and the protected nodes it stops at.
 
-use apinata_core::{FieldPath, Schema, toggle_field};
+use apinata_core::{FieldPath, Schema, query_outline, toggle_field};
 
 const SDL: &str = "
 type Query { me: User user(id: ID): User users: [User!]! version: String search: [SearchResult!]! node: Node }
@@ -20,7 +20,11 @@ fn p(path: &str) -> FieldPath {
 
 fn untick(q: &str, path: &str) -> Option<String> {
     let s = Schema::from_sdl(SDL).unwrap();
-    let edit = toggle_field(q, &s, &p(path), false)?;
+    // Toggling through a built outline must give the same edit as from the text.
+    let via_outline = query_outline(q, &s).and_then(|o| o.toggle(&p(path), false));
+    let edit = toggle_field(q, &s, &p(path), false);
+    assert_eq!(via_outline, edit, "{q:?} {path}");
+    let edit = edit?;
     assert!(edit.text.is_empty(), "a removal writes nothing");
     let mut out = q.to_owned();
     out.replace_range(edit.range.clone(), "");

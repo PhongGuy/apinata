@@ -5,7 +5,6 @@
 
 use std::ops::Range;
 
-use super::mask::mask;
 use super::outline::{Cut, FieldPath, QueryOutline, Set, keyword, query_outline, resolve};
 use crate::{Schema, TypeKind};
 
@@ -25,18 +24,25 @@ pub struct QueryEdit {
 /// not a leaf field of the schema or is already selected, or an untick names one that is
 /// not selected.
 pub fn toggle_field(query: &str, schema: &Schema, path: &FieldPath, on: bool) -> Option<QueryEdit> {
-    let outline = query_outline(query, schema)?;
-    if outline.locked(path).is_some() {
-        return None;
-    }
-    if on {
-        tick(query, &outline, path)
-    } else {
-        untick(query, &outline, path)
+    query_outline(query, schema)?.toggle(path, on)
+}
+
+impl QueryOutline<'_> {
+    /// The edit [`toggle_field`] gives for the text this outline was built from, reusing
+    /// the outline instead of reading the text again.
+    pub fn toggle(&self, path: &FieldPath, on: bool) -> Option<QueryEdit> {
+        if self.locked(path).is_some() {
+            return None;
+        }
+        if on {
+            tick(self, path)
+        } else {
+            untick(self, path)
+        }
     }
 }
 
-fn untick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<QueryEdit> {
+fn untick(outline: &QueryOutline<'_>, path: &FieldPath) -> Option<QueryEdit> {
     if !outline.selects(path) {
         return None;
     }
@@ -46,12 +52,12 @@ fn untick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<Q
         Cut::Locked(_) => return None,
     };
     Some(QueryEdit {
-        range: removal_range(&mask(query).text, node),
+        range: removal_range(outline.masked(), node),
         text: String::new(),
     })
 }
 
-fn tick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<QueryEdit> {
+fn tick(outline: &QueryOutline<'_>, path: &FieldPath) -> Option<QueryEdit> {
     if outline.selects(path) {
         return None;
     }
@@ -64,10 +70,10 @@ fn tick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<Que
     {
         return None;
     }
-    let text = mask(query).text;
+    let text = outline.masked();
     let (root, rest) = path.names().split_first()?;
     let Some(op) = outline.op() else {
-        return new_operation(&text, keyword(schema, root)?, rest);
+        return new_operation(text, keyword(schema, root)?, rest);
     };
     // Descend through the first copy of each ancestor that has a selection set; the
     // first missing level is where the rest of the chain is written. Any copy already
@@ -82,7 +88,7 @@ fn tick(query: &str, outline: &QueryOutline<'_>, path: &FieldPath) -> Option<Que
         match found {
             Some(_) if leaf => return None,
             Some(sel) => set = sel.set.as_ref()?,
-            None => return insertion(&text, set, &rest[i..]),
+            None => return insertion(text, set, &rest[i..]),
         }
     }
     None

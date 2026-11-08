@@ -1,6 +1,6 @@
 //! `toggle_field` ticking: where a field and its missing ancestors are written.
 
-use apinata_core::{FieldPath, QUERY_VALIDATE_LIMIT, Schema, toggle_field};
+use apinata_core::{FieldPath, QUERY_VALIDATE_LIMIT, Schema, query_outline, toggle_field};
 
 const SDL: &str = "
 type Query { me: User user(id: ID): User users: [User!]! version: String search: [SearchResult!]! node: Node }
@@ -19,7 +19,11 @@ fn p(path: &str) -> FieldPath {
 
 fn tick(q: &str, path: &str) -> Option<String> {
     let s = Schema::from_sdl(SDL).unwrap();
-    let edit = toggle_field(q, &s, &p(path), true)?;
+    // Toggling through a built outline must give the same edit as from the text.
+    let via_outline = query_outline(q, &s).and_then(|o| o.toggle(&p(path), true));
+    let edit = toggle_field(q, &s, &p(path), true);
+    assert_eq!(via_outline, edit, "{q:?} {path}");
+    let edit = edit?;
     let mut out = q.to_owned();
     out.replace_range(edit.range.clone(), &edit.text);
     Some(out)
