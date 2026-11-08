@@ -2614,7 +2614,8 @@ impl TabArea {
             .selected_index(selected)
             .children(tabs)
             .suffix(overflow);
-        // The wrapper lends the strip a vertical wheel, which the kit's x-only scroller ignores.
+        // The kit strip turns a mouse wheel sideways itself; the wrapper does the same for a
+        // vertical trackpad swipe, which the kit leaves to the page.
         let fades = self
             .fades
             .render("tab-strip", &self.scroll, entries.len(), cx);

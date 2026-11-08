@@ -1492,16 +1492,16 @@ pub fn strip_overflows(scroll: &ScrollHandle) -> bool {
     scroll.max_offset().x > px(0.)
 }
 
-/// A wheel handler for a strip that scrolls only sideways: a purely vertical wheel moves
-/// `handle` along x by the same amount, clamped to the strip. Events with an x part are
-/// left to the strip's own scroller.
+/// A wheel handler for a kit tab strip, which scrolls only sideways: a purely vertical
+/// trackpad swipe moves `handle` along x by the same amount, clamped to the strip. A mouse
+/// wheel is the kit strip's own, and events with an x part are left to its scroller.
 pub(crate) fn wheel_sideways(
     handle: &ScrollHandle,
 ) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {
     let handle = handle.clone();
     move |event, window, cx| {
         let delta = event.delta.pixel_delta(window.line_height());
-        if delta.x != px(0.) || delta.y == px(0.) {
+        if !event.delta.precise() || delta.x != px(0.) || delta.y == px(0.) {
             return;
         }
         let mut offset = handle.offset();
