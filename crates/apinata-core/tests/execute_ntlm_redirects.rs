@@ -1,4 +1,4 @@
-//! NTLM across redirects, and the recorded proxy decision.
+//! NTLM across redirects and through proxies.
 
 use crate::common;
 use crate::network_support;
@@ -9,7 +9,7 @@ use apinata_core::{
     ResolvedRequest,
 };
 use common::{executor, resolved_one};
-use network_support::http_proxy;
+use network_support::{closing_proxy, http_proxy, keeping_proxy};
 use ntlm_support::{Options, PASSWORD, Stage, USER, ntlm_server};
 
 const JSON: &str = "  body:\n    type: json\n    data: '{\"a\":1}'\n";
@@ -194,34 +194,57 @@ fn via(port: u16) -> Executor {
     .expect("executor")
 }
 
-/// Decision D2 (`HttpsOnly`): plain http through a proxy is refused before anything is sent.
+/// Plain http through a proxy that keeps one upstream connection runs the whole handshake
+/// absolute-form on that connection.
 #[tokio::test]
-async fn plain_http_through_a_proxy_is_refused_before_anything_is_sent() {
+async fn plain_http_through_a_keeping_proxy_completes_on_one_upstream_connection() {
     let s = ntlm_server(Options::default()).await;
-    let proxy = http_proxy(None).await;
+    let proxy = keeping_proxy().await;
+    let res = via(proxy.port)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect("sent");
+    assert_eq!((res.status(), res.text()), (200, "GET 0"));
+    assert_eq!(stages(&s), [Stage::Probe, Stage::Type1, Stage::Type3]);
+    assert_eq!(s.connections(), 1, "one upstream connection");
+    assert!(
+        s.seen()
+            .iter()
+            .all(|r| r.target == format!("{}/ok", s.origin())),
+        "absolute-form on every leg"
+    );
+    assert_eq!(proxy.seen.lines().len(), 1, "one client connection");
+}
+
+/// A proxy that does not keep the connection fails the handshake and says why in plain words.
+#[tokio::test]
+async fn plain_http_through_a_closing_proxy_names_the_proxy() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = closing_proxy().await;
     let err = via(proxy.port)
         .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
         .await
-        .expect_err("unsupported");
+        .expect_err("not kept");
     assert!(
         matches!(
             err,
             ExecError::Ntlm {
-                cause: NtlmCause::ProxyUnsupported,
+                cause: NtlmCause::ConnectionNotKept,
                 ..
             }
         ),
         "{err:?}"
     );
     assert!(
-        err.to_string()
-            .contains("NTLM through a proxy is not supported"),
+        err.to_string().ends_with(
+            "NTLM: the proxy did not keep one connection to the server for the handshake; \
+             use https, or a proxy that keeps connections"
+        ),
         "{err}"
     );
-    assert!(s.seen().is_empty() && proxy.seen.lines().is_empty());
 }
 
-/// Decision D2: https through a CONNECT tunnel completes the handshake.
+/// https through a CONNECT tunnel completes the handshake.
 #[tokio::test]
 async fn https_through_connect_completes() {
     let s = ntlm_server(Options {

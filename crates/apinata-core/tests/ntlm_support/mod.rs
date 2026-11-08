@@ -303,7 +303,14 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
             body: req.body.clone(),
             headers: req.headers.clone(),
         });
-        let path = req.target.split('?').next().unwrap_or_default().to_owned();
+        // An absolute-form target, as a plain-http proxy forwards it, routes by its path.
+        let origin_form = req
+            .target
+            .strip_prefix("http://")
+            .map_or(req.target.as_str(), |rest| {
+                rest.find('/').map_or("/", |i| &rest[i..])
+            });
+        let path = origin_form.split('?').next().unwrap_or_default().to_owned();
         let reply = if path == "/basic" {
             unauthorized(&opts, "Basic realm=\"x\"".to_owned())
         } else if opts.open_redirects && path.starts_with("/redirect") {

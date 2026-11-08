@@ -110,6 +110,10 @@ impl Executor {
     }
 }
 
+/// Why a handshake to an http target through a proxy lost its connection, in plain words.
+const PROXY_NOT_KEPT: &str = "the proxy did not keep one connection to the server for the \
+     handshake; use https, or a proxy that keeps connections";
+
 /// The most a challenge response's body may weigh before the handshake gives up on it.
 const CHALLENGE_BODY_LIMIT: usize = 1 << 20;
 
@@ -232,15 +236,51 @@ impl Executor {
         pac: Option<&str>,
         buf: &mut HopBuffer,
     ) -> Result<Negotiated, ExecError> {
-        // NTLM is pinned to one connection and a plain-http proxy may reconnect upstream per
-        // request, so only a CONNECT tunnel to https is allowed.
-        if proxy.is_some() && url.scheme() == "http" {
-            return Err(ntlm_err(
-                url,
-                NtlmCause::ProxyUnsupported,
-                "NTLM through a proxy is not supported",
-            ));
-        }
+        let legs = self.legs(
+            probe,
+            key,
+            creds,
+            url,
+            proxy,
+            followed,
+            store_cookies,
+            timeout,
+            hop_deadline,
+            pac,
+            buf,
+        );
+        // To an http target the legs go absolute-form through the proxy, so a lost connection
+        // is most likely the proxy's doing, not the server's.
+        legs.await.map_err(|e| match e {
+            ExecError::Ntlm {
+                url: u,
+                cause: cause @ (NtlmCause::ConnectionNotKept | NtlmCause::ConnectionNotReused),
+                ..
+            } if proxy.is_some() && url.scheme() == "http" => ExecError::Ntlm {
+                url: u,
+                cause,
+                message: PROXY_NOT_KEPT.to_owned(),
+            },
+            e => e,
+        })
+    }
+
+    /// The legs of [`Executor::negotiate`], whose errors name the server as the one at fault.
+    #[allow(clippy::too_many_arguments)]
+    async fn legs(
+        &self,
+        probe: reqwest::Request,
+        key: &ClientKey,
+        creds: &ntlm::Credentials<'_>,
+        url: &Url,
+        proxy: Option<&ResolvedProxy>,
+        followed: usize,
+        store_cookies: bool,
+        timeout: Option<Duration>,
+        hop_deadline: Deadline,
+        pac: Option<&str>,
+        buf: &mut HopBuffer,
+    ) -> Result<Negotiated, ExecError> {
         let base = buf.hops.len();
         let client = self.build_handshake_client(key)?;
         let transport = |e: reqwest::Error| classify(url, proxy, followed, e);
