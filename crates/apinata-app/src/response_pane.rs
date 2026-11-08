@@ -4600,6 +4600,7 @@ impl ResponsePane {
             .gap(style::SPACE_2)
             .child(strip)
             .children(self.streaming_facts(cx));
+        let waiting = self.waiting_row(cx);
         if self.tab == ResponseTab::Events && self.events_tab {
             return v_flex()
                 .id("response-streaming")
@@ -4607,6 +4608,7 @@ impl ResponsePane {
                 .size_full()
                 .gap_2()
                 .child(header)
+                .children(waiting)
                 .child(self.events_body(cx))
                 .into_any_element();
         }
@@ -4650,7 +4652,8 @@ impl ResponsePane {
             .size_full()
             .gap_2()
             .child(header)
-            // The note sits above the list so every list row shares one height.
+            // The waiting row and the note sit above the list so every list row shares one height.
+            .children(waiting)
             .when(skipped > 0, |v| {
                 v.child(
                     div()
@@ -4673,6 +4676,39 @@ impl ResponsePane {
                     .vertical_scrollbar(&self.live_scroll),
             )
             .into_any_element()
+    }
+
+    // Until the first byte of a live response arrives, say so and offer Stop here, so a quiet
+    // subscription is not a blank list. Stop keeps the run, unlike Cancel while sending.
+    fn waiting_row(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.send.read(cx).live().is_some_and(|l| l.bytes() > 0) {
+            return None;
+        }
+        let send = self.send.clone();
+        Some(
+            h_flex()
+                .id("response-live-waiting")
+                .test_support()
+                .aria_label("Waiting for data")
+                .flex_none()
+                .w_full()
+                .items_center()
+                .gap(style::SPACE_2)
+                .child(
+                    div()
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Waiting for data"),
+                )
+                .child(
+                    Button::new("response-stop")
+                        .ghost()
+                        .small()
+                        .label("Stop")
+                        .on_click(move |_, _, cx| send.update(cx, |m, cx| m.stop(cx))),
+                )
+                .into_any_element(),
+        )
     }
 
     // The Compare tab: a fixed summary row over the one scrolling list of rows.

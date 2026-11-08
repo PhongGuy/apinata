@@ -561,6 +561,7 @@ mod strip_overflow;
 mod style_icons;
 mod subscription_errors;
 mod subscription_send;
+mod subscription_stop;
 mod tab_area;
 mod tab_close_focus;
 mod tab_close_right;
