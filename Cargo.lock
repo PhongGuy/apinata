@@ -300,6 +300,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml",
  "regress",
+ "ropey",
  "rust-embed",
  "ryu-js",
  "serde",
