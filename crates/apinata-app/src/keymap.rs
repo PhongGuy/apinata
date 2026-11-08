@@ -139,7 +139,7 @@ fn bind(chord: &str, action: &dyn Action, context: &str, cx: &App) -> KeyBinding
 // secondary modifier out for the build target as a static chord.
 macro_rules! secondary {
     ($key:literal) => {
-        if cfg!(target_os = "macos") {
+        if $crate::shortcuts::HOST_OS == gpui_kit::OperatingSystem::Mac {
             concat!("cmd-", $key)
         } else {
             concat!("ctrl-", $key)
