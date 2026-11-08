@@ -185,6 +185,13 @@ fn open_writes_a_private_file_and_calls_the_opener(cx: &mut TestAppContext) {
     let (dir, seen) = installed_dir(cx, &base);
     let (win, view) = host(cx, pdf(body(), false));
     assert!(cx.update(|cx| view.read(cx).can_open(cx)));
+    let disabled = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("body-open").disabled()
+        })
+        .unwrap();
+    assert_ne!(disabled, Some(true), "a whole body opens");
     click_open(cx, win);
     click_open(cx, win);
     let seen = seen.lock().unwrap().clone();
@@ -215,8 +222,13 @@ fn a_truncated_body_cannot_be_opened(cx: &mut TestAppContext) {
     let base = tempfile::tempdir().unwrap();
     let (_dir, seen) = installed_dir(cx, &base);
     let (win, view) = host(cx, pdf(body(), true));
-    // The kit reports no disabled flag to test snapshots, so the view's own answer stands in.
-    assert!(present(cx, win, "body-open"), "the button is still offered");
+    let disabled = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("body-open").disabled()
+        })
+        .unwrap();
+    assert_eq!(disabled, Some(true), "the button is offered, disabled");
     assert!(!cx.update(|cx| view.read(cx).can_open(cx)));
     click_open(cx, win);
     assert!(seen.lock().unwrap().is_empty());
