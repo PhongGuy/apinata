@@ -3315,7 +3315,9 @@ impl RequestEditor {
         if self.section != Section::Body {
             return;
         }
-        let Some((caret, key)) = self.graphql.read(cx).caret(window, cx) else {
+        let Some(crate::graphql_section::Caret { drawn, key }) =
+            self.graphql.read(cx).caret(window, cx)
+        else {
             self.caret_key = None;
             return;
         };
@@ -3327,7 +3329,9 @@ impl RequestEditor {
             return;
         }
         self.caret_follow -= 1;
-        if self.scroll_body_to(caret) {
+        // A builder tick keeps the editor's view and so can leave the caret scrolled out of
+        // it; a caret the editor hides is not the body's to reveal.
+        if drawn.is_some_and(|c| self.scroll_body_to(c)) {
             self.caret_follow = 0;
         }
     }

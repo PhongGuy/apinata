@@ -200,3 +200,75 @@ fn typing_in_a_query_under_a_scrolled_section_body_keeps_the_caret_in_view(
         "the body was snapped back to the caret"
     );
 }
+
+// A builder tick with the caret on the last line and the query scrolled to its top must leave
+// the section body where it was: the caret the editor scrolled away is not the body's to reveal.
+#[gpui_kit::test]
+fn a_builder_tick_leaves_the_section_body_still(cx: &mut TestAppContext) {
+    use apinata_app::graphql_schema_store::SchemaStore;
+    use apinata_app::request_editor::Section;
+    use apinata_core::{FieldPath, Schema};
+    use gpui_kit::{point, px, size};
+    let long: String = (0..80).map(|i| format!("      # line {i}\n")).collect();
+    let file = format!(
+        "info:\n  name: g\n  type: graphql\n  seq: 1\ngraphql:\n  url: http://x/0\n  body:\n    query: |-\n      {{\n        users {{\n          id\n        }}\n{long}      }}\n"
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("g.yml", file.as_str())]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "g.yml", false);
+    let schema = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../apinata-core/tests/fixtures/graphql/schema.json"
+    ))
+    .unwrap();
+    cx.update(|cx| {
+        let store = cx.default_global::<SchemaStore>();
+        let g = store.begin("http://x/0");
+        store.finish("http://x/0", g, Ok(Schema::from_json(&schema).unwrap()));
+    });
+    gpui_kit::VisualTestContext::from_window(win, cx).simulate_resize(size(px(1000.), px(500.)));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Body as usize), cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("graphql-builder-toggle", cx))
+        .unwrap();
+    frame(cx, win);
+    let (query, builder) = ed.read_with(cx, |e, cx| {
+        let g = e.graphql().read(cx);
+        (g.query().clone(), g.builder().clone())
+    });
+    for path in ["Query", "Query.users"] {
+        builder.update(cx, |b, cx| {
+            b.toggle_expanded(&FieldPath::new(path.split('.')), cx)
+        });
+    }
+    // Caret on the last line, then the query scrolled back to its top.
+    cx.update_window(win, |_, w, cx| {
+        w.click_at("graphql-query", point(px(200.), px(40.)), cx);
+        w.press(&key("end"), cx);
+        for _ in 0..4 {
+            w.render_frame(cx);
+        }
+    })
+    .unwrap();
+    query.update(cx, |q, cx| q.set_scroll_offset(point(px(0.), px(0.)), cx));
+    for _ in 0..4 {
+        frame(cx, win);
+    }
+    let top = |cx: &mut TestAppContext| query.read_with(cx, |q, _| q.input_bounds().top());
+    let before = top(cx);
+    let name = FieldPath::new("Query.users.name".split('.'));
+    let ix = builder.read_with(cx, |b, _| b.rows().iter().position(|r| r.path == name));
+    cx.update_window(win, |_, w, cx| {
+        w.click(("graphql-builder-check", ix.expect("a name row")), cx);
+        for _ in 0..4 {
+            w.render_frame(cx);
+        }
+    })
+    .unwrap();
+    assert!(query.read_with(cx, |q, _| q.value().contains("name")));
+    assert_eq!(top(cx), before, "the section body scrolled");
+}
