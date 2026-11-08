@@ -318,6 +318,25 @@ fn tab_from_the_last_value_reaches_lock_and_remove_then_the_empty_row(cx: &mut T
     .unwrap();
 }
 
+// Locking the environment disables each saved row's lock, and the accessibility tree says so.
+#[gpui_kit::test]
+fn a_locked_environment_reports_its_secrecy_locks_disabled(cx: &mut TestAppContext) {
+    let (win, _host, t) = host(cx, rows());
+    let disabled = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (0..2usize)
+                .map(|ix| w.find(("env-secret", ix)).disabled() == Some(true))
+                .collect::<Vec<_>>()
+        })
+        .unwrap()
+    };
+    assert_eq!(disabled(cx), [false, false]);
+    t.update(cx, |t, cx| t.set_secret_locked(true, cx));
+    cx.run_until_parked();
+    assert_eq!(disabled(cx), [true, true]);
+}
+
 // A disabled lock is no Tab stop: with the environment locked, Tab walks the whole table
 // without ever landing on a row's lock.
 #[gpui_kit::test]
