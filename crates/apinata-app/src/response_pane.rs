@@ -4711,6 +4711,7 @@ impl ResponsePane {
                         .ghost()
                         .small()
                         .label("Stop")
+                        .accessibility_label("Stop the stream")
                         .on_click(move |_, _, cx| send.update(cx, |m, cx| m.stop(cx))),
                 )
                 .into_any_element(),

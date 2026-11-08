@@ -143,6 +143,25 @@ fn a_subscription_restored_from_the_last_response_store_shows_its_events(cx: &mu
 }
 
 #[gpui_kit::test]
+fn a_101_with_another_subprotocol_offers_no_events(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = two_requests();
+    let (_win, pane, model, _root) = pane_for(cx, &col);
+    let response = Response::new(101)
+        .with_header("Sec-WebSocket-Protocol", "chat")
+        .with_text_body("event: next\ndata: {}\n\n");
+    let result =
+        RequestResult::from_parts(ip("a.yml"), "A", Outcome::Passed, Some(response), vec![]);
+    model.update(cx, |m, cx| m.show(Arc::new(result), cx));
+    assert!(
+        !pane
+            .read_with(cx, |p, cx| p.shown_tabs(cx))
+            .contains(&ResponseTab::Events),
+        "only a GraphQL subprotocol marks a restored 101 as a subscription"
+    );
+}
+
+#[gpui_kit::test]
 fn an_ordinary_101_without_a_stream_end_offers_no_events(cx: &mut TestAppContext) {
     http_ready(cx);
     let col = two_requests();

@@ -58,6 +58,15 @@ fn a_quiet_subscription_says_it_waits_and_offers_stop_in_the_pane(cx: &mut TestA
         present(cx, win, "response-live-waiting"),
         "on the Events tab too"
     );
+    let stop = cx
+        .update_window(win, |_, w, _| w.try_find("response-stop"))
+        .unwrap()
+        .expect("the pane offers Stop");
+    assert_eq!(
+        stop.label(),
+        Some("Stop the stream"),
+        "the pane's Stop is named apart from the editor's"
+    );
     cx.update_window(win, |_, w, cx| w.click("response-stop", cx))
         .unwrap();
     let result = finished(cx, &model);
