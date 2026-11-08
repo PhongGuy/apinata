@@ -30,8 +30,8 @@ use git_support::{Sandbox, write as git_write};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
     AnyWindowHandle, AppContext, ElementId, Entity, InputEvent as _, Keystroke, Modifiers,
-    MouseMoveEvent, Pixels, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext,
-    point, px, size,
+    MouseMoveEvent, Pixels, ScrollDelta, ScrollEvent, TestAppContext, VisualTestContext, point, px,
+    size,
 };
 use support::sse_server::{Script, Step};
 use support::*;
@@ -1068,7 +1068,7 @@ fn the_tab_strip_keeps_the_active_tab_in_view(cx: &mut TestAppContext) {
         .update_window(s.win, |_, w, _| w.find("tab-strip").bounds())
         .unwrap();
     cx.update_window(s.win, |_, w, cx| {
-        let event = ScrollWheelEvent {
+        let event = ScrollEvent {
             position: strip.center(),
             delta: ScrollDelta::Pixels(point(px(0.), px(-2000.))),
             ..Default::default()

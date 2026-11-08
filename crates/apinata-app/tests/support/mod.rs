@@ -1531,6 +1531,15 @@ pub fn click_with(
         };
         w.dispatch_event(down.to_platform_input(), cx);
         w.dispatch_event(up.to_platform_input(), cx);
+        // The keys come up after the click, as a real release reports; the window keeps the
+        // last modifiers it saw, and the kit's own clicks reuse them.
+        if modifiers != gpui_kit::Modifiers::none() {
+            let release = gpui_kit::ModifiersChangedEvent {
+                modifiers: gpui_kit::Modifiers::none(),
+                capslock: w.capslock(),
+            };
+            w.dispatch_event(release.to_platform_input(), cx);
+        }
         w.render_frame(cx);
     })
     .unwrap();
@@ -1590,7 +1599,8 @@ pub fn secondary_click(
     win: gpui_kit::AnyWindowHandle,
     id: impl Into<gpui_kit::ElementId>,
 ) {
-    click_with(cx, win, id, gpui_kit::Modifiers::secondary_key());
+    let secondary = cx.update(|cx| gpui_kit::Modifiers::secondary_key(cx));
+    click_with(cx, win, id, secondary);
 }
 
 pub fn shift_click(
@@ -1828,7 +1838,7 @@ pub fn platform_press(
 ) {
     use gpui_kit::AppContext as _;
     use gpui_kit::{InputEvent as _, KeyDownEvent, KeyUpEvent, Keystroke};
-    let k = Keystroke::parse(key).unwrap();
+    let k = Keystroke::parse_with_os(key, apinata_app::shortcuts::HOST_OS).unwrap();
     cx.update_window(win, |_, w, cx| {
         if matches!(key, "enter" | "tab") {
             let down = KeyDownEvent {

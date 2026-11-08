@@ -307,7 +307,7 @@ fn shop_with_oauth_requests(n: usize) -> String {
 
 #[gpui_kit::test]
 fn the_wheel_scrolls_a_long_report_to_its_last_note(cx: &mut TestAppContext) {
-    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollWheelEvent, point};
+    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, point};
     let (files, win, _view) = shell(cx);
     let into = tempfile::tempdir().unwrap();
     click_import(cx, win);
@@ -335,7 +335,7 @@ fn the_wheel_scrolls_a_long_report_to_its_last_note(cx: &mut TestAppContext) {
     cx.update_window(win, |_, w, cx| {
         let position = w.find(("import-note", 0usize)).bounds().center();
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position,
                 delta: ScrollDelta::Lines(point(0., -1000.)),
                 ..Default::default()

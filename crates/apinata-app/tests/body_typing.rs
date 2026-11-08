@@ -36,7 +36,7 @@ fn request_with_body(text: &str) -> String {
 }
 
 fn press(w: &mut gpui_kit::Window, cx: &mut gpui_kit::App, name: &str) {
-    let mut key = Keystroke::parse(name).unwrap();
+    let mut key = Keystroke::parse_with_os(name, apinata_app::shortcuts::HOST_OS).unwrap();
     if name.chars().count() == 1 {
         key.key_char = Some(name.into());
     }

@@ -67,17 +67,24 @@ fn the_kit_bindings_stay_first_through_init_and_apply(cx: &mut TestAppContext) {
         .collect::<Vec<_>>();
     assert!(!kit.is_empty(), "the kit binds keys at init");
     cx.update(keymap::init);
-    assert_eq!(listed(cx), [kit.clone(), debug(&bindings())].concat());
+    assert_eq!(
+        listed(cx),
+        [kit.clone(), debug(&cx.update(|cx| bindings(cx)))].concat()
+    );
     cx.update(keymap::init);
     assert_eq!(
         listed(cx),
-        [kit.clone(), debug(&bindings())].concat(),
+        [kit.clone(), debug(&cx.update(|cx| bindings(cx)))].concat(),
         "a second init binds once"
     );
     cx.update(|cx| keymap::apply(&sidebar_on_backslash(), cx));
     assert_eq!(
         listed(cx),
-        [kit, debug(&bindings_with(&sidebar_on_backslash()))].concat()
+        [
+            kit,
+            debug(&cx.update(|cx| bindings_with(&sidebar_on_backslash(), cx)))
+        ]
+        .concat()
     );
     assert!(
         has_filter_guard(cx),

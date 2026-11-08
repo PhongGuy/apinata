@@ -34,7 +34,7 @@ fn message(cx: &mut TestAppContext, s: &Started, id: &str) -> Option<String> {
 
 // The chord as the prompt names it: Ctrl+W on Linux and Windows.
 fn shown_chord(k: &str) -> String {
-    Kbd::format(&Keystroke::parse(&key(k)).unwrap())
+    Kbd::format(&Keystroke::parse_with_os(&key(k), apinata_app::shortcuts::HOST_OS).unwrap())
 }
 
 fn shown(cx: &mut TestAppContext, s: &Started, id: &str) -> bool {

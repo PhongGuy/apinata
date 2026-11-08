@@ -785,7 +785,7 @@ fn a_long_runs_summary_stays_above_the_open_dock(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_long_plan_scrolls_above_the_open_dock_before_a_run(cx: &mut TestAppContext) {
-    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollWheelEvent, point};
+    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, point};
     http_ready(cx);
     let names: Vec<String> = (0..15).map(|i| format!("r{i:02}.yml")).collect();
     let texts: Vec<String> = (0..15)
@@ -823,7 +823,7 @@ fn a_long_plan_scrolls_above_the_open_dock_before_a_run(cx: &mut TestAppContext)
     // The wheel then brings the last planned row into view above the dock.
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position: row0.center(),
                 delta: ScrollDelta::Lines(point(0., -1000.)),
                 ..Default::default()

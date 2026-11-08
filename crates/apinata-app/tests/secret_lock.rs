@@ -2625,9 +2625,17 @@ mod oauth {
     }
 
     // Whether exactly one dialog shows: the first is there and none is stacked over it.
+    // Exactly one dialog is drawn. Its layer number is not checked: a dialog that just closed
+    // keeps its layer through the exit transition, so the next one can sit at layer 1.
     fn one_prompt(cx: &mut TestAppContext, s: &Started) -> bool {
         cx.update_window(s.win, |_, w, _| {
-            w.try_find("dialog-0").is_some() && w.try_find("dialog-1").is_none()
+            (0..4)
+                .filter(|ix| {
+                    let id = gpui_kit::ElementId::Name(format!("dialog-{ix}").into());
+                    w.try_find(id).is_some()
+                })
+                .count()
+                == 1
         })
         .unwrap()
     }

@@ -6,8 +6,8 @@ use apinata_app::request_editor::{RequestEditor, SendRequest};
 use apinata_app::settings::Settings;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
-    AnyWindowHandle, AppContext, ElementId, Entity, Focusable, Modifiers, ScrollDelta,
-    ScrollWheelEvent, TestAppContext, VisualTestContext, point, px,
+    AnyWindowHandle, AppContext, ElementId, Entity, Focusable, Modifiers, ScrollDelta, ScrollEvent,
+    TestAppContext, VisualTestContext, point, px,
 };
 use support::*;
 use wiremock::ResponseTemplate;
@@ -163,10 +163,10 @@ fn ctrl_scroll(
         w.hover(id.clone(), cx);
         let position = w.find(id).bounds().center();
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position,
                 delta,
-                modifiers: Modifiers::secondary_key(),
+                modifiers: Modifiers::secondary_key(cx),
                 ..Default::default()
             }
             .to_platform_input(),

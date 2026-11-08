@@ -371,9 +371,7 @@ fn reaches_its_last_control(
     last: &'static str,
 ) {
     use apinata_app::keymap::ToggleConsole;
-    use gpui_kit::{
-        InputEvent as _, ScrollDelta, ScrollWheelEvent, VisualTestContext, point, px, size,
-    };
+    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, VisualTestContext, point, px, size};
     let col = tree();
     let s = started(cx, &col);
     let tab =
@@ -404,7 +402,7 @@ fn reaches_its_last_control(
         .unwrap();
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position: centre,
                 delta: ScrollDelta::Lines(point(0., -1000.)),
                 ..Default::default()

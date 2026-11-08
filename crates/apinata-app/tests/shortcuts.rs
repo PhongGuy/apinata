@@ -6,7 +6,7 @@ use apinata_app::commands::{Command, Place, Scope, Target, places, registry};
 use apinata_app::keymap::ToggleTheme;
 use apinata_app::palette::PaletteGroup;
 use apinata_app::shortcuts::*;
-use gpui_kit::{KeyBinding, Keystroke, Modifiers};
+use gpui_kit::{KeyBinding, Keystroke, Modifiers, OperatingSystem, TestAppContext};
 
 fn map(entries: &[(&str, &[&str])]) -> Overrides {
     entries
@@ -75,6 +75,33 @@ fn secondary_and_its_platform_modifier_are_one_chord() {
     assert_ne!(chord("alt-k"), chord("secondary-k"));
 }
 
+// The model reads the build target, not an `App`; the running app must agree with it, and a
+// chord shows the platform key by the host's own name.
+#[gpui_kit::test]
+fn the_host_os_is_the_running_os(cx: &mut TestAppContext) {
+    assert_eq!(cx.update(|cx| cx.platform_info().os), HOST_OS);
+}
+
+#[test]
+fn a_chord_names_the_platform_key_as_its_host_does() {
+    let (os, platform, secondary) = if cfg!(target_os = "macos") {
+        (OperatingSystem::Mac, "cmd-k", "cmd-shift-k")
+    } else if cfg!(target_os = "windows") {
+        (OperatingSystem::Windows, "win-k", "ctrl-shift-k")
+    } else {
+        (OperatingSystem::Linux, "super-k", "ctrl-shift-k")
+    };
+    assert_eq!(HOST_OS, os);
+    let k = Keystroke {
+        modifiers: Modifiers::command(),
+        key: "k".into(),
+        key_char: None,
+    };
+    assert_eq!(unparse(&k), platform);
+    assert_eq!(unparse(chord("secondary-shift-k").keystroke()), secondary);
+    assert!(is_secondary(&chord("secondary-k").keystroke().modifiers));
+}
+
 #[test]
 fn recorded_keystrokes_become_canonical_chords() {
     let ks = |modifiers: Modifiers, key: &str, ch: Option<&str>| Keystroke {
@@ -82,7 +109,11 @@ fn recorded_keystrokes_become_canonical_chords() {
         key: key.into(),
         key_char: ch.map(Into::into),
     };
-    let sec = Modifiers::secondary_key();
+    let sec = if cfg!(target_os = "macos") {
+        Modifiers::command()
+    } else {
+        Modifiers::control()
+    };
     let sec_shift = Modifiers { shift: true, ..sec };
     let rec = |k: Keystroke| Chord::from_keystroke(&k).map(|c| c.to_file_string());
     assert_eq!(rec(ks(sec, "b", Some("b"))), Some("secondary-b".into()));
@@ -272,9 +303,15 @@ fn scopes_overlap_when_equal_or_either_is_the_shell() {
 
 #[test]
 fn a_chord_the_kit_binds_in_text_inputs_is_flagged() {
+    // `KeyBinding::new` takes no host OS, so the kit's chords are spelled for the target.
+    let (a, j) = if cfg!(target_os = "macos") {
+        ("cmd-a", "cmd-j")
+    } else {
+        ("ctrl-a", "ctrl-j")
+    };
     let kit = vec![
-        KeyBinding::new("secondary-a", ToggleTheme, Some("Input")),
-        KeyBinding::new("secondary-j", ToggleTheme, Some("List")),
+        KeyBinding::new(a, ToggleTheme, Some("Input")),
+        KeyBinding::new(j, ToggleTheme, Some("List")),
     ];
     assert!(input_chord(&kit, &chord("secondary-a")));
     assert!(!input_chord(&kit, &chord("secondary-j")));
