@@ -12,7 +12,7 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 use crate::cancel::CancelHandle;
-use crate::stream::{Sink, StreamEnd, StreamEvent};
+use crate::stream::{Sink, StreamBound, StreamEnd, StreamEvent, StreamLimits};
 
 /// How long a closing client waits for the server's close reply.
 const CLOSE_WAIT: Duration = Duration::from_secs(1);
@@ -27,6 +27,10 @@ pub(crate) struct Session<'a> {
     pub(crate) sink: Option<&'a Sink>,
     /// Stop ends the run politely.
     pub(crate) cancel: &'a CancelHandle,
+    /// The duration and event bounds, counted from the start of the run.
+    pub(crate) limits: StreamLimits,
+    /// Transcript bytes kept at most; the record crossing it is cut there.
+    pub(crate) cap: u64,
 }
 
 /// What a run wrote and how it ended.
@@ -53,15 +57,28 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
         transcript.end = dropped();
         return transcript;
     }
-    let ack_at = tokio::time::Instant::now() + session.ack_wait;
+    let began = tokio::time::Instant::now();
+    let ack_at = began + session.ack_wait;
+    let bound_at = session.limits.max_duration.map(|d| began + d);
     let mut acked = false;
-    // Stop wins over a ready message; the ack deadline only counts until the ack arrives.
+    let mut events = 0u64;
+    // Stop and the time bound win over a ready message; the ack deadline only counts until
+    // the ack arrives.
     transcript.end = loop {
         tokio::select! {
             biased;
             () = session.cancel.stopped() => {
                 polite_close(&mut ws, acked).await;
                 break StreamEnd::Stopped;
+            }
+            () = async {
+                match bound_at {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                polite_close(&mut ws, acked).await;
+                break StreamEnd::Bound(StreamBound::Time);
             }
             () = tokio::time::sleep_until(ack_at), if !acked => {
                 close(&mut ws, 4408).await;
@@ -90,18 +107,27 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                         Some("next" | "error" | "complete") if !ours => {}
                         Some("next") => {
                             let payload = value.as_ref().and_then(|v| v.get("payload"));
-                            write(&mut transcript, &session, "next", payload);
+                            // Every record counts, but only a `next` leaves the run open to end here.
+                            if !write(&mut transcript, &session, "next", payload) {
+                                polite_close(&mut ws, acked).await;
+                                break StreamEnd::BodyCap;
+                            }
+                            events += 1;
+                            if session.limits.max_events.is_some_and(|n| events >= n) {
+                                polite_close(&mut ws, acked).await;
+                                break StreamEnd::Bound(StreamBound::Events);
+                            }
                         }
                         Some("error") => {
                             let payload = value.as_ref().and_then(|v| v.get("payload"));
-                            write(&mut transcript, &session, "error", payload);
+                            let kept = write(&mut transcript, &session, "error", payload);
                             close(&mut ws, 1000).await;
-                            break StreamEnd::Closed;
+                            break if kept { StreamEnd::Closed } else { StreamEnd::BodyCap };
                         }
                         Some("complete") => {
-                            write(&mut transcript, &session, "complete", None);
+                            let kept = write(&mut transcript, &session, "complete", None);
                             close(&mut ws, 1000).await;
-                            break StreamEnd::Closed;
+                            break if kept { StreamEnd::Closed } else { StreamEnd::BodyCap };
                         }
                         _ => {
                             close(&mut ws, 4400).await;
@@ -145,18 +171,31 @@ async fn send<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, v:
     ws.send(Message::text(v.to_string())).await.is_ok()
 }
 
-/// Appends one `event: <kind>` record with the compact payload as its data, and tells the sink.
-fn write(transcript: &mut Transcript, session: &Session<'_>, kind: &str, payload: Option<&Value>) {
+/// Appends one `event: <kind>` record with the compact payload as its data, cut at the cap,
+/// and tells the sink; false when the cap cut it.
+fn write(
+    transcript: &mut Transcript,
+    session: &Session<'_>,
+    kind: &str,
+    payload: Option<&Value>,
+) -> bool {
     // No payload (the complete record) writes a bare `data:` line.
     let record = match payload {
         Some(payload) => format!("event: {kind}\ndata: {payload}\n\n"),
         None => format!("event: {kind}\ndata:\n\n"),
     };
     transcript.size += record.len() as u64;
-    transcript.bytes.extend_from_slice(record.as_bytes());
-    if let Some(sink) = session.sink {
-        sink(StreamEvent::Chunk(record.into_bytes()));
+    let room = session.cap.saturating_sub(transcript.bytes.len() as u64);
+    let room = usize::try_from(room).unwrap_or(usize::MAX);
+    let kept = &record.as_bytes()[..record.len().min(room)];
+    transcript.truncated = kept.len() < record.len();
+    transcript.bytes.extend_from_slice(kept);
+    if let Some(sink) = session.sink
+        && !kept.is_empty()
+    {
+        sink(StreamEvent::Chunk(kept.to_vec()));
     }
+    !transcript.truncated
 }
 
 /// Sends a close frame with `code` and waits briefly for the server's reply.

@@ -143,6 +143,7 @@ mod execute_stale_pool;
 mod execute_stream;
 mod execute_subscription;
 mod execute_subscription_end;
+mod execute_subscription_limits;
 mod execute_timeline;
 mod execute_tls;
 mod execute_userinfo_auth;

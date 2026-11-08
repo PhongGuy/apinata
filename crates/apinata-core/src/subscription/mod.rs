@@ -6,6 +6,8 @@ pub(crate) mod socket;
 use std::time::Duration;
 
 use apollo_parser::Parser;
+
+use crate::stream::StreamLimits;
 use apollo_parser::cst::Definition;
 
 /// The `subscribe` payload of a GraphQL body whose one operation is a subscription.
@@ -58,6 +60,12 @@ pub(crate) fn detect(body: &str) -> Result<Option<Plan>, String> {
 /// How long `connection_ack` may take: the request timeout when set, else 10 s.
 pub(crate) fn ack_wait(timeout: Option<Duration>) -> Duration {
     timeout.unwrap_or(Duration::from_secs(10))
+}
+
+/// The limits of a send that does not stream: min(request timeout, 30 s) as the duration bound.
+pub(crate) fn unstreamed_limits(timeout: Option<Duration>) -> StreamLimits {
+    let ceiling = Duration::from_secs(30);
+    StreamLimits::new().max_duration(Some(timeout.map_or(ceiling, |t| t.min(ceiling))))
 }
 
 #[cfg(test)]
@@ -138,6 +146,21 @@ mod tests {
         assert_eq!(
             super::ack_wait(Some(Duration::from_millis(300))),
             Duration::from_millis(300)
+        );
+    }
+
+    #[test]
+    fn an_unstreamed_send_is_bounded_by_its_timeout_and_thirty_seconds() {
+        use std::time::Duration;
+        let bound = |t| super::unstreamed_limits(t).max_duration;
+        assert_eq!(bound(None), Some(Duration::from_secs(30)));
+        assert_eq!(
+            bound(Some(Duration::from_millis(400))),
+            Some(Duration::from_millis(400))
+        );
+        assert_eq!(
+            bound(Some(Duration::from_secs(60))),
+            Some(Duration::from_secs(30))
         );
     }
 }

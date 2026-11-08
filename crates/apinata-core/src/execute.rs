@@ -45,7 +45,7 @@ use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
 use crate::stream::{StreamBound, StreamEnd, StreamEvent, StreamOptions};
-use crate::subscription::{ack_wait, detect, handshake, socket};
+use crate::subscription::{ack_wait, detect, handshake, socket, unstreamed_limits};
 use crate::timing::{Recorder, SystemResolve, TimedConnect, TimedResolve};
 use crate::trust::normalize_host;
 use crate::wsse;
@@ -1483,7 +1483,12 @@ impl Executor {
                 (_, Some(plan))
                     if challenge.is_none() && status == StatusCode::SWITCHING_PROTOCOLS =>
                 {
-                    let fallback = (StreamOptions::new(), CancelHandle::new());
+                    // A send that does not stream is bounded, since a subscription never ends
+                    // on its own.
+                    let fallback = (
+                        StreamOptions::new().limits(unstreamed_limits(timeout)),
+                        CancelHandle::new(),
+                    );
                     let (options, cancel) = stream.unwrap_or((&fallback.0, &fallback.1));
                     let upgraded = leg
                         .run(res.upgrade())
@@ -1505,6 +1510,11 @@ impl Executor {
                         ack_wait: ack_wait(timeout),
                         sink: options.sink.as_ref(),
                         cancel,
+                        limits: options.limits,
+                        cap: self
+                            .max_body_bytes
+                            .or(options.limits.max_bytes)
+                            .unwrap_or(DEFAULT_STREAM_CAP),
                     };
                     let transcript = socket::run(ws, session).await;
                     BodyRead {
@@ -1868,6 +1878,9 @@ impl Drop for Armed<'_> {
 ///
 /// With a body file a plain body is written whole: the cap bounds memory only, the idle timer
 /// replaces the deadline, and Stop is an error that discards the file.
+/// The transcript cap of a stream with neither an executor cap nor a byte limit.
+const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
+
 async fn read_streaming(
     mut res: reqwest::Response,
     head: StreamHead,
@@ -1877,7 +1890,6 @@ async fn read_streaming(
     cancel: &CancelHandle,
     max_body_bytes: Option<u64>,
 ) -> Result<BodyRead, ReadFail> {
-    const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
     let event_stream = head.event_stream;
     let limits = options.limits;
     // No stream grows unchecked: an event-stream also honours the stream limit, a plain body
