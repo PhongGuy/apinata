@@ -1,5 +1,6 @@
-//! The graphql-transport-ws client loop: init, ack, one `subscribe`, then the server's
-//! messages written as a GraphQL-over-SSE transcript.
+//! The GraphQL-over-WebSocket client loop: init, ack, one subscription, then the server's
+//! messages written as a GraphQL-over-SSE transcript. The codec the handshake chose names the
+//! messages (graphql-transport-ws or legacy graphql-ws); the loop itself is shared.
 
 use std::time::Duration;
 
@@ -11,6 +12,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
+use super::handshake::Codec;
 use crate::cancel::CancelHandle;
 use crate::stream::{Sink, StreamBound, StreamEnd, StreamEvent, StreamLimits};
 
@@ -19,6 +21,8 @@ const CLOSE_WAIT: Duration = Duration::from_secs(1);
 
 /// One subscription run over an upgraded socket.
 pub(crate) struct Session<'a> {
+    /// The protocol the server chose.
+    pub(crate) codec: Codec,
     /// The `subscribe` message's payload.
     pub(crate) payload: Value,
     /// How long the server has to send `connection_ack`.
@@ -68,7 +72,7 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
         tokio::select! {
             biased;
             () = session.cancel.stopped() => {
-                polite_close(&mut ws, acked).await;
+                polite_close(&mut ws, session.codec, acked).await;
                 break StreamEnd::Stopped;
             }
             () = tokio::time::sleep_until(ack_at), if !acked => {
@@ -82,7 +86,7 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                     None => std::future::pending().await,
                 }
             } => {
-                polite_close(&mut ws, acked).await;
+                polite_close(&mut ws, session.codec, acked).await;
                 break StreamEnd::Bound(StreamBound::Time);
             }
             next = ws.next() => match next {
@@ -90,45 +94,53 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                     let value = serde_json::from_str::<Value>(text.as_str()).ok();
                     let kind = value.as_ref().and_then(|v| v.get("type")?.as_str());
                     let ours = value.as_ref().and_then(|v| v.get("id")?.as_str()) == Some("1");
-                    match kind {
-                        Some("connection_ack") if !acked => {
+                    match classify(session.codec, kind) {
+                        Incoming::Ack if !acked => {
                             acked = true;
-                            let subscribe =
-                                json!({"id": "1", "type": "subscribe", "payload": session.payload});
+                            let subscribe = subscribe_message(session.codec, &session.payload);
                             if !bounded_send(&mut ws, subscribe).await {
                                 break dropped();
                             }
                         }
-                        Some("ping") => {
+                        Incoming::Ping => {
                             bounded_send(&mut ws, json!({"type": "pong"})).await;
                         }
-                        // Another operation's messages and keep-alive replies are not ours.
-                        Some("pong") => {}
-                        Some("next" | "error" | "complete") if !ours => {}
-                        Some("next") => {
+                        // Another operation's messages and keep-alives are not ours.
+                        Incoming::Ignore => {}
+                        Incoming::Next | Incoming::Error | Incoming::Complete if !ours => {}
+                        Incoming::Next => {
                             let payload = value.as_ref().and_then(|v| v.get("payload"));
                             // Every record counts, but only a `next` leaves the run open to end here.
                             if !write(&mut transcript, &session, "next", payload) {
-                                polite_close(&mut ws, acked).await;
+                                polite_close(&mut ws, session.codec, acked).await;
                                 break StreamEnd::BodyCap;
                             }
                             events += 1;
                             if session.limits.max_events.is_some_and(|n| events >= n) {
-                                polite_close(&mut ws, acked).await;
+                                polite_close(&mut ws, session.codec, acked).await;
                                 break StreamEnd::Bound(StreamBound::Events);
                             }
                         }
-                        Some("error") => {
+                        Incoming::Error => {
                             let payload = value.as_ref().and_then(|v| v.get("payload"));
                             let kept = write(&mut transcript, &session, "error", payload);
                             close(&mut ws, 1000).await;
                             break if kept { StreamEnd::Closed } else { StreamEnd::BodyCap };
                         }
-                        Some("complete") => {
+                        Incoming::Complete => {
                             let kept = write(&mut transcript, &session, "complete", None);
                             close(&mut ws, 1000).await;
                             break if kept { StreamEnd::Closed } else { StreamEnd::BodyCap };
                         }
+                        // The legacy server refused the connection; nothing was subscribed.
+                        Incoming::Refused => {
+                            close(&mut ws, 1000).await;
+                            let payload = value.as_ref().and_then(|v| v.get("payload"));
+                            let payload = payload.map(Value::to_string).unwrap_or_default();
+                            let shown: String = payload.chars().take(200).collect();
+                            break StreamEnd::Error(format!("connection_error from server: {shown}"));
+                        }
+                        // A second ack and any message the codec does not know.
                         _ => {
                             close(&mut ws, 4400).await;
                             let shown: String = text.as_str().chars().take(200).collect();
@@ -150,7 +162,7 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                         }
                     };
                 }
-                // Binary frames are deliberately ignored: graphql-transport-ws speaks text only.
+                // Binary frames are deliberately ignored: both protocols speak text only.
                 Some(Ok(_)) => {}
                 // A TCP end without a close frame, reported either way by tungstenite.
                 None | Some(Err(_)) => break dropped(),
@@ -160,11 +172,60 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
     transcript
 }
 
-/// Ends the run from the client side: completes the operation if it was subscribed, then closes.
-async fn polite_close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, acked: bool) {
+/// A server message as the loop acts on it.
+enum Incoming {
+    Ack,
+    Ping,
+    Ignore,
+    Next,
+    Error,
+    Complete,
+    Refused,
+    Unknown,
+}
+
+/// Names a server message's `type` under `codec`; legacy `data` is the transcript's `next`.
+fn classify(codec: Codec, kind: Option<&str>) -> Incoming {
+    match (codec, kind) {
+        (_, Some("connection_ack")) => Incoming::Ack,
+        (_, Some("error")) => Incoming::Error,
+        (_, Some("complete")) => Incoming::Complete,
+        (Codec::TransportWs, Some("next")) | (Codec::Legacy, Some("data")) => Incoming::Next,
+        (Codec::TransportWs, Some("ping")) => Incoming::Ping,
+        (Codec::TransportWs, Some("pong")) | (Codec::Legacy, Some("ka")) => Incoming::Ignore,
+        (Codec::Legacy, Some("connection_error")) => Incoming::Refused,
+        _ => Incoming::Unknown,
+    }
+}
+
+/// The one operation's opening message: `subscribe`, or legacy `start`.
+fn subscribe_message(codec: Codec, payload: &Value) -> Value {
+    let kind = match codec {
+        Codec::TransportWs => "subscribe",
+        Codec::Legacy => "start",
+    };
+    json!({"id": "1", "type": kind, "payload": payload})
+}
+
+/// Ends the run from the client side: ends the operation if it was subscribed (legacy also ends
+/// the connection), then closes.
+async fn polite_close<S: AsyncRead + AsyncWrite + Unpin>(
+    ws: &mut WebSocketStream<S>,
+    codec: Codec,
+    acked: bool,
+) {
     // Bounded, so a server that stops reading cannot hold Stop or a limit.
     if acked {
-        bounded_send(ws, json!({"id": "1", "type": "complete"})).await;
+        let goodbye = match codec {
+            Codec::TransportWs => vec![json!({"id": "1", "type": "complete"})],
+            Codec::Legacy => vec![
+                json!({"id": "1", "type": "stop"}),
+                json!({"type": "connection_terminate"}),
+            ],
+        };
+        for message in goodbye {
+            bounded_send(ws, message).await;
+        }
     }
     close(ws, 1000).await;
 }

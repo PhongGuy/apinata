@@ -1512,6 +1512,13 @@ impl Executor {
                     handshake::ws_url(&url)
                 ))
             };
+            // A 101 to a subscription is judged once; its verdict names the codec or the refusal.
+            let reply = (subscription.is_some()
+                && challenge.is_none()
+                && status == StatusCode::SWITCHING_PROTOCOLS)
+                .then(|| {
+                    handshake::check_reply(ws_key.as_deref().unwrap_or_default(), &hop_headers)
+                });
             let read = match (stream, &subscription) {
                 (_, Some(_))
                     if challenge.is_none() && status != StatusCode::SWITCHING_PROTOCOLS =>
@@ -1536,24 +1543,14 @@ impl Executor {
                         file: None,
                     }
                 }
-                (_, Some(_))
-                    if challenge.is_none()
-                        && let Err(why) = handshake::check_reply(
-                            ws_key.as_deref().unwrap_or_default(),
-                            &hop_headers,
-                        ) =>
-                {
-                    BodyRead {
-                        bytes: Vec::new(),
-                        size: 0,
-                        truncated: false,
-                        end: Some(refused(why)),
-                        file: None,
-                    }
-                }
-                (_, Some(plan))
-                    if challenge.is_none() && status == StatusCode::SWITCHING_PROTOCOLS =>
-                {
+                (_, Some(_)) if let Some(Err(why)) = &reply => BodyRead {
+                    bytes: Vec::new(),
+                    size: 0,
+                    truncated: false,
+                    end: Some(refused(why.clone())),
+                    file: None,
+                },
+                (_, Some(plan)) if let Some(Ok(codec)) = reply => {
                     // A send that does not stream is bounded, since a subscription never ends
                     // on its own.
                     let fallback = (
@@ -1577,6 +1574,7 @@ impl Executor {
                         });
                     }
                     let session = socket::Session {
+                        codec,
                         payload: plan.payload.clone(),
                         ack_wait: ack_wait(timeout),
                         sink: options.sink.as_ref(),
