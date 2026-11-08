@@ -254,6 +254,13 @@ impl VariableSet {
         let overlay = self.ctx.env_overlay().revision();
         self.ctx.runtime_vars().revision().wrapping_add(overlay)
     }
+
+    /// Whether `other` was built for the same request path and the same `runtime.variables`
+    /// rows, compared as written; the rest of the request never reaches a lookup.
+    pub fn same_request_inputs(&self, other: &VariableSet) -> bool {
+        let rows = |set: &VariableSet| set.req.document().get(&["runtime", "variables"]).cloned();
+        self.req.path() == other.req.path() && rows(self) == rows(other)
+    }
 }
 
 /// Whether `name` is `$` followed by a name the dynamic table generates.
