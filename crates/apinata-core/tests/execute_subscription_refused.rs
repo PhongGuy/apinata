@@ -2,8 +2,9 @@
 //! server's choice of subprotocol.
 
 use crate::common::ROOT;
+use crate::common::raw_server::raw_server;
 use crate::common::ws_server::{
-    QUERY, Step, VARS, WsScript, graphql_request, raw_server, sub, ws_exec, ws_server,
+    QUERY, Step, VARS, WsScript, graphql_request, sub, ws_exec, ws_server,
 };
 use apinata_core::HttpVersionPolicy::Auto;
 use apinata_core::{ExecError, StreamEnd};
@@ -74,16 +75,12 @@ async fn a_wrong_accept_is_refused() {
 }
 
 #[tokio::test]
-async fn the_reply_must_choose_graphql_transport_ws() {
+async fn the_reply_must_choose_a_known_subprotocol() {
     for (chosen, why) in [
         (None, "the server chose no subprotocol".to_owned()),
         (
             Some("weird"),
             "the server chose subprotocol \"weird\"".to_owned(),
-        ),
-        (
-            Some("graphql-ws"),
-            "the server chose graphql-ws, which is not supported yet".to_owned(),
         ),
     ] {
         let s = ws_server(WsScript {

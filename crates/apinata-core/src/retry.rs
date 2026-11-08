@@ -34,7 +34,8 @@ pub(crate) struct Sent {
 
 /// Sends `req`, repeating it while the send is retryable and retries remain. Returns the last
 /// attempt's outcome and PAC warnings with the number of sends made; a cancel during the pause
-/// keeps that attempt and marks it. An answer that was read as an event-stream is never repeated.
+/// keeps that attempt and marks it. An answer that was read as an event-stream is never repeated,
+/// except a refused subscription handshake, which is judged as a GET.
 pub(crate) async fn send_with_retries(
     exec: &Executor,
     req: &ResolvedRequest,
@@ -43,7 +44,9 @@ pub(crate) async fn send_with_retries(
     retry: Retry,
     on_retry: Option<&RetryHook>,
 ) -> Sent {
-    let allowed = retry.retries > 0 && (retry.unsafe_methods || idempotent(req.method()));
+    let subscription = crate::subscription::is_subscription(req);
+    let allowed =
+        retry.retries > 0 && (retry.unsafe_methods || subscription || idempotent(req.method()));
     let mut attempts = 1;
     loop {
         // The log numbers the sends only when a repeat was possible.
@@ -61,7 +64,7 @@ pub(crate) async fn send_with_retries(
         if !allowed || attempts > retry.retries {
             return done(sent, pac, false);
         }
-        let Some(asked) = retry_wanted(&sent) else {
+        let Some(asked) = retry_wanted(&sent, subscription) else {
             return done(sent, pac, false);
         };
         let wait = retry.delay.max(asked).min(MAX_WAIT);
@@ -86,11 +89,13 @@ fn idempotent(method: &str) -> bool {
         .any(|m| method.eq_ignore_ascii_case(m))
 }
 
-/// `Some(pause the server asked for)` when the outcome is worth another send, else `None`.
-fn retry_wanted(sent: &Result<Response, ExecError>) -> Option<Duration> {
+/// `Some(pause the server asked for)` when the outcome is worth another send, else `None`. A
+/// refused `subscription` handshake carries a `StreamEnd` yet nothing was subscribed, so it counts.
+fn retry_wanted(sent: &Result<Response, ExecError>, subscription: bool) -> Option<Duration> {
     match sent {
         Ok(response)
-            if matches!(response.status(), 502..=504) && response.stream_end().is_none() =>
+            if matches!(response.status(), 502..=504)
+                && (subscription || response.stream_end().is_none()) =>
         {
             Some(retry_after(response).unwrap_or_default())
         }

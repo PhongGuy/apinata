@@ -1172,12 +1172,22 @@ impl Executor {
             ws_key = Some(key.clone());
             method = Method::GET;
             body = Vec::new();
-            // The handshake's own upgrade headers replace any the item set, so none goes twice.
+            // The handshake's own upgrade headers replace any the item set, so none goes twice;
+            // a user-set Sec-WebSocket-Protocol is sent as is in place of the offer.
+            let pinned = headers
+                .iter()
+                .any(|(n, _)| n.eq_ignore_ascii_case("sec-websocket-protocol"));
             let upgrade = handshake::upgrade_headers(&key);
             let names: Vec<&str> = upgrade.iter().map(|(n, _)| n.as_str()).collect();
             drop_headers(&mut headers, &["content-type", "content-length"]);
             drop_headers(&mut headers, &names);
             headers.extend(upgrade);
+            if !pinned {
+                headers.push((
+                    "Sec-WebSocket-Protocol".to_owned(),
+                    handshake::OFFER.to_owned(),
+                ));
+            }
         }
         let limit = if req.follow_redirects() && subscription.is_none() {
             req.max_redirects()
@@ -1512,6 +1522,13 @@ impl Executor {
                     handshake::ws_url(&url)
                 ))
             };
+            // A 101 to a subscription is judged once; its verdict names the codec or the refusal.
+            let reply = (subscription.is_some()
+                && challenge.is_none()
+                && status == StatusCode::SWITCHING_PROTOCOLS)
+                .then(|| {
+                    handshake::check_reply(ws_key.as_deref().unwrap_or_default(), &hop_headers)
+                });
             let read = match (stream, &subscription) {
                 (_, Some(_))
                     if challenge.is_none() && status != StatusCode::SWITCHING_PROTOCOLS =>
@@ -1536,24 +1553,14 @@ impl Executor {
                         file: None,
                     }
                 }
-                (_, Some(_))
-                    if challenge.is_none()
-                        && let Err(why) = handshake::check_reply(
-                            ws_key.as_deref().unwrap_or_default(),
-                            &hop_headers,
-                        ) =>
-                {
-                    BodyRead {
-                        bytes: Vec::new(),
-                        size: 0,
-                        truncated: false,
-                        end: Some(refused(why)),
-                        file: None,
-                    }
-                }
-                (_, Some(plan))
-                    if challenge.is_none() && status == StatusCode::SWITCHING_PROTOCOLS =>
-                {
+                (_, Some(_)) if let Some(Err(why)) = &reply => BodyRead {
+                    bytes: Vec::new(),
+                    size: 0,
+                    truncated: false,
+                    end: Some(refused(why.clone())),
+                    file: None,
+                },
+                (_, Some(plan)) if let Some(Ok(codec)) = reply => {
                     // A send that does not stream is bounded, since a subscription never ends
                     // on its own.
                     let fallback = (
@@ -1566,6 +1573,20 @@ impl Executor {
                         .await
                         .ok_or_else(timed_out)?
                         .map_err(transport)?;
+                    // Created before the socket speaks, so a bad path fails before
+                    // `connection_init`; the transcript is saved whatever ends it.
+                    let write_fail = |path: &Path, e: std::io::Error| ExecError::Transport {
+                        url: redact_url(url.as_str()),
+                        message: format!("could not write {}: {e}", path.display()),
+                    };
+                    let mut file = match &options.body_file {
+                        Some(path) => Some(
+                            TempBody::create(path)
+                                .await
+                                .map_err(|e| write_fail(path, e))?,
+                        ),
+                        None => None,
+                    };
                     let ws = WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await;
                     let _armed = Armed(cancel);
                     cancel.arm();
@@ -1577,6 +1598,7 @@ impl Executor {
                         });
                     }
                     let session = socket::Session {
+                        codec,
                         payload: plan.payload.clone(),
                         ack_wait: ack_wait(timeout),
                         sink: options.sink.as_ref(),
@@ -1588,12 +1610,17 @@ impl Executor {
                             .unwrap_or(DEFAULT_STREAM_CAP),
                     };
                     let transcript = socket::run(ws, session).await;
+                    if let (Some(temp), Some(path)) = (&mut file, &options.body_file) {
+                        temp.write(&transcript.bytes)
+                            .await
+                            .map_err(|e| write_fail(path, e))?;
+                    }
                     BodyRead {
                         bytes: transcript.bytes,
                         size: transcript.size,
                         truncated: transcript.truncated,
                         end: Some(transcript.end),
-                        file: None,
+                        file,
                     }
                 }
                 (Some((options, cancel)), _) if challenge.is_none() && next.is_none() => {

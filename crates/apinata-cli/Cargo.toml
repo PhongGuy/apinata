@@ -41,6 +41,8 @@ tempfile.workspace = true
 tokio-rustls.workspace = true
 wiremock.workspace = true
 yaml_serde.workspace = true
+tokio-tungstenite = { workspace = true, features = ["handshake"] }
+futures-util.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 libc = "0.2"

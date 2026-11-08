@@ -19,15 +19,14 @@ pub(crate) fn new_key() -> Option<String> {
     Some(STANDARD.encode(bytes))
 }
 
-/// Upgrade: websocket, Connection: Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version: 13,
-/// Sec-WebSocket-Protocol: OFFER.
+/// Upgrade: websocket, Connection: Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version: 13.
+/// The subprotocol offer is not among them, since a user-set one replaces it.
 pub(crate) fn upgrade_headers(key: &str) -> Vec<(String, String)> {
     [
         ("Upgrade", "websocket"),
         ("Connection", "Upgrade"),
         ("Sec-WebSocket-Key", key),
         ("Sec-WebSocket-Version", "13"),
-        ("Sec-WebSocket-Protocol", OFFER),
     ]
     .into_iter()
     .map(|(n, v)| (n.to_owned(), v.to_owned()))
@@ -51,8 +50,18 @@ pub(crate) fn accept_for(key: &str) -> String {
     STANDARD.encode(sha1::Sha1::digest(format!("{key}{GUID}").as_bytes()))
 }
 
-/// Judges a 101 reply's headers; Err holds the reason that follows "failed: ".
-pub(crate) fn check_reply(key: &str, headers: &HeaderMap) -> Result<(), String> {
+/// The GraphQL-over-WebSocket protocol a socket speaks, as the server's reply chose it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Codec {
+    /// graphql-transport-ws (graphql-ws the library).
+    TransportWs,
+    /// Legacy graphql-ws (subscriptions-transport-ws).
+    Legacy,
+}
+
+/// Judges a 101 reply's headers and names the codec it chose; Err holds the reason that
+/// follows "failed: ".
+pub(crate) fn check_reply(key: &str, headers: &HeaderMap) -> Result<Codec, String> {
     let accept = headers
         .get("sec-websocket-accept")
         .and_then(|v| v.to_str().ok());
@@ -64,11 +73,9 @@ pub(crate) fn check_reply(key: &str, headers: &HeaderMap) -> Result<(), String> 
         .map(|v| String::from_utf8_lossy(v.as_bytes()).trim().to_owned())
         .as_deref()
     {
-        Some("graphql-transport-ws") => Ok(()),
+        Some("graphql-transport-ws") => Ok(Codec::TransportWs),
+        Some("graphql-ws") => Ok(Codec::Legacy),
         None | Some("") => Err("the server chose no subprotocol".to_owned()),
-        Some("graphql-ws") => {
-            Err("the server chose graphql-ws, which is not supported yet".to_owned())
-        }
         Some(other) => Err(format!("the server chose subprotocol {other:?}")),
     }
 }
@@ -92,6 +99,33 @@ mod tests {
         assert_eq!(
             super::accept_for("dGhlIHNhbXBsZSBub25jZQ=="),
             "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+        );
+    }
+
+    #[test]
+    fn the_chosen_subprotocol_selects_the_codec() {
+        let key = "dGhlIHNhbXBsZSBub25jZQ==";
+        let reply = |protocol: Option<&str>| {
+            let mut h = HeaderMap::new();
+            h.insert(
+                "sec-websocket-accept",
+                accept_for(key).parse().expect("value"),
+            );
+            if let Some(p) = protocol {
+                h.insert("sec-websocket-protocol", p.parse().expect("value"));
+            }
+            check_reply(key, &h)
+        };
+        assert_eq!(reply(Some("graphql-transport-ws")), Ok(Codec::TransportWs));
+        assert_eq!(reply(Some("graphql-ws")), Ok(Codec::Legacy));
+        assert_eq!(reply(Some(" graphql-ws ")), Ok(Codec::Legacy));
+        assert_eq!(
+            reply(Some("weird")),
+            Err("the server chose subprotocol \"weird\"".to_owned())
+        );
+        assert_eq!(
+            reply(None),
+            Err("the server chose no subprotocol".to_owned())
         );
     }
 }

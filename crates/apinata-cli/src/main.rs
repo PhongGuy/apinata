@@ -82,7 +82,7 @@ enum Command {
     #[command(after_help = "Exit codes:\n  \
         0  all passed\n  \
         1  an assertion or test failed\n  \
-        2  a request errored (no response)\n  \
+        2  a request errored\n  \
         3  usage error, collection or file that failed to load, a report file could not be written, or no request matched\n  \
         130  watch stopped with Ctrl+C before any run finished")]
     Run(Box<RunArgs>),
@@ -93,7 +93,7 @@ enum Command {
     #[command(after_help = "Exit codes:\n  \
         0  the request was sent and passed\n  \
         1  --fail-on-status judged the reply a failure\n  \
-        2  the request errored (no response)\n  \
+        2  the request errored\n  \
         3  usage error, an unusable URL or curl command, or a file that could not be written")]
     Send(Box<send::SendArgs>),
     /// Print a shell completion script to stdout.
