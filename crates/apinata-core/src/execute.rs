@@ -1081,6 +1081,12 @@ impl Executor {
             Body::Text(text) if req.graphql() => detect(text).map_err(invalid)?,
             _ => None,
         };
+        // NTLM's negotiate legs would each carry the upgrade headers, so it is refused up front.
+        if subscription.is_some() && matches!(req.send_auth(), Some(SendAuth::Ntlm { .. })) {
+            return Err(invalid(
+                "NTLM is not supported for subscriptions".to_owned(),
+            ));
+        }
         let mut url = Url::parse(req.url())
             .map_err(|e| invalid(format!("{}: {e}", redact_url(req.url()))))?;
         let mut method = Method::from_bytes(req.method().as_bytes())
@@ -1143,11 +1149,13 @@ impl Executor {
         }
         // A subscription's handshake is a bodiless GET carrying the upgrade headers, set before
         // the hop loop so cookies, auth and signing all see it; its 3xx is never followed.
+        let mut ws_key = None;
         if subscription.is_some() {
             let key = handshake::new_key().ok_or_else(|| ExecError::Transport {
                 url: redact_url(url.as_str()),
                 message: "the OS random generator failed, so no WebSocket key".to_owned(),
             })?;
+            ws_key = Some(key.clone());
             method = Method::GET;
             body = Vec::new();
             // The handshake's own upgrade headers replace any the item set, so none goes twice.
@@ -1483,7 +1491,52 @@ impl Executor {
                     .then(|| hop_headers.get("location")?.to_str().ok())
                     .flatten()
                     .and_then(|location| url.join(location).ok());
+            // A refused handshake names the ws URL and why; it is a response, not an ExecError.
+            let refused = |why: String| {
+                StreamEnd::Error(format!(
+                    "WebSocket handshake to {} failed: {why}",
+                    handshake::ws_url(&url)
+                ))
+            };
             let read = match (stream, &subscription) {
+                (_, Some(_))
+                    if challenge.is_none() && status != StatusCode::SWITCHING_PROTOCOLS =>
+                {
+                    let mut why = status.to_string();
+                    if let Some(location) = hop_headers.get("location") {
+                        why.push_str(&format!(
+                            " (Location: {})",
+                            String::from_utf8_lossy(location.as_bytes())
+                        ));
+                    }
+                    let (bytes, size, truncated) = leg
+                        .run(read_body(res, self.max_body_bytes))
+                        .await
+                        .ok_or_else(timed_out)?
+                        .map_err(transport)?;
+                    BodyRead {
+                        bytes,
+                        size,
+                        truncated,
+                        end: Some(refused(why)),
+                        file: None,
+                    }
+                }
+                (_, Some(_))
+                    if challenge.is_none()
+                        && let Err(why) = handshake::check_reply(
+                            ws_key.as_deref().unwrap_or_default(),
+                            &hop_headers,
+                        ) =>
+                {
+                    BodyRead {
+                        bytes: Vec::new(),
+                        size: 0,
+                        truncated: false,
+                        end: Some(refused(why)),
+                        file: None,
+                    }
+                }
                 (_, Some(plan))
                     if challenge.is_none() && status == StatusCode::SWITCHING_PROTOCOLS =>
                 {
