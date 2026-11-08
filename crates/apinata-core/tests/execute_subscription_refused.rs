@@ -41,6 +41,23 @@ async fn a_redirect_is_not_followed_and_names_its_location() {
 }
 
 #[tokio::test]
+async fn a_redirect_location_is_redacted_like_any_url() {
+    let port = raw_server(
+        "HTTP/1.1 302 Found\r\nlocation: https://user:secret@host/x?token=t0k\r\ncontent-length: 0\r\n\r\n",
+    )
+    .await;
+    let url = format!("http://127.0.0.1:{port}/graphql");
+    let res = ws_exec(Auto).send(&sub(&url)).await.unwrap();
+    assert_eq!(
+        res.stream_end().cloned(),
+        failed(
+            port,
+            "302 Found (Location: https://<redacted>@host/x?token=<redacted>)"
+        )
+    );
+}
+
+#[tokio::test]
 async fn a_wrong_accept_is_refused() {
     let port = raw_server(
         "HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: bm90LXRoZS1yaWdodC1rZXk=\r\nsec-websocket-protocol: graphql-transport-ws\r\n\r\n",

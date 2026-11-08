@@ -1166,7 +1166,8 @@ impl Executor {
         if subscription.is_some() {
             let key = handshake::new_key().ok_or_else(|| ExecError::Transport {
                 url: redact_url(url.as_str()),
-                message: "the OS random generator failed, so no WebSocket key".to_owned(),
+                message: "could not create a WebSocket key: the OS random generator failed"
+                    .to_owned(),
             })?;
             ws_key = Some(key.clone());
             method = Method::GET;
@@ -1519,7 +1520,7 @@ impl Executor {
                     if let Some(location) = hop_headers.get("location") {
                         why.push_str(&format!(
                             " (Location: {})",
-                            String::from_utf8_lossy(location.as_bytes())
+                            redact_url(&String::from_utf8_lossy(location.as_bytes()))
                         ));
                     }
                     let (bytes, size, truncated) = leg
