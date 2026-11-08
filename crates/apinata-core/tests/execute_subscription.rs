@@ -159,7 +159,7 @@ async fn the_handshake_replaces_user_set_upgrade_headers() {
     assert_eq!(named("connection: "), ["connection: Upgrade"], "{lines:?}");
     assert_eq!(
         named("sec-websocket-protocol: "),
-        ["sec-websocket-protocol: graphql-transport-ws, graphql-ws"],
+        ["sec-websocket-protocol: x"],
         "{lines:?}"
     );
 }

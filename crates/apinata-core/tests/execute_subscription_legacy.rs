@@ -1,7 +1,8 @@
 //! The legacy graphql-ws protocol (subscriptions-transport-ws), chosen by the server's reply.
 
+use crate::common::ROOT;
 use crate::common::ws_server::{
-    QUERY, Step, WsScript, record, sent, sub, tick, ws_exec, ws_server,
+    QUERY, Step, VARS, WsScript, graphql_request, record, sent, sub, tick, ws_exec, ws_server,
 };
 use apinata_core::HttpVersionPolicy::Auto;
 use apinata_core::{
@@ -169,4 +170,29 @@ async fn data_for_another_id_is_ignored() {
     assert_eq!(res.stream_end(), Some(&StreamEnd::Closed));
     assert_eq!(res.events(), vec![record("complete", "")]);
     assert!(!res.text().contains("tick"), "{}", res.text());
+}
+
+#[tokio::test]
+async fn a_pinned_subprotocol_is_sent_alone_and_selects_the_codec() {
+    let s = ws_server(legacy(vec![tick(1), Step::Complete])).await;
+    let pin = "  headers:\n    - name: Sec-WebSocket-Protocol\n      value: graphql-ws\n";
+    let req = graphql_request(ROOT, &s.http("/"), QUERY, VARS, pin);
+    let res = ws_exec(Auto).send(&req).await.unwrap();
+    assert_eq!(res.stream_end(), Some(&StreamEnd::Closed));
+    assert_eq!(
+        res.events(),
+        vec![record("next", TICK1), record("complete", "")]
+    );
+    let lines = s.seen.until(|l| l.starts_with("close: ")).await;
+    let offered: Vec<&str> = lines
+        .iter()
+        .filter(|l| l.starts_with("sec-websocket-protocol: "))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        offered,
+        vec!["sec-websocket-protocol: graphql-ws"],
+        "{lines:?}"
+    );
+    assert_eq!(sent(&lines)[1]["type"], json!("start"), "{lines:?}");
 }

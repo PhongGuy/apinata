@@ -1172,12 +1172,22 @@ impl Executor {
             ws_key = Some(key.clone());
             method = Method::GET;
             body = Vec::new();
-            // The handshake's own upgrade headers replace any the item set, so none goes twice.
+            // The handshake's own upgrade headers replace any the item set, so none goes twice;
+            // a user-set Sec-WebSocket-Protocol is sent as is in place of the offer.
+            let pinned = headers
+                .iter()
+                .any(|(n, _)| n.eq_ignore_ascii_case("sec-websocket-protocol"));
             let upgrade = handshake::upgrade_headers(&key);
             let names: Vec<&str> = upgrade.iter().map(|(n, _)| n.as_str()).collect();
             drop_headers(&mut headers, &["content-type", "content-length"]);
             drop_headers(&mut headers, &names);
             headers.extend(upgrade);
+            if !pinned {
+                headers.push((
+                    "Sec-WebSocket-Protocol".to_owned(),
+                    handshake::OFFER.to_owned(),
+                ));
+            }
         }
         let limit = if req.follow_redirects() && subscription.is_none() {
             req.max_redirects()

@@ -19,15 +19,14 @@ pub(crate) fn new_key() -> Option<String> {
     Some(STANDARD.encode(bytes))
 }
 
-/// Upgrade: websocket, Connection: Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version: 13,
-/// Sec-WebSocket-Protocol: OFFER.
+/// Upgrade: websocket, Connection: Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version: 13.
+/// The subprotocol offer is not among them, since a user-set one replaces it.
 pub(crate) fn upgrade_headers(key: &str) -> Vec<(String, String)> {
     [
         ("Upgrade", "websocket"),
         ("Connection", "Upgrade"),
         ("Sec-WebSocket-Key", key),
         ("Sec-WebSocket-Version", "13"),
-        ("Sec-WebSocket-Protocol", OFFER),
     ]
     .into_iter()
     .map(|(n, v)| (n.to_owned(), v.to_owned()))
