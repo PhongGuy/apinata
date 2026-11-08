@@ -4,7 +4,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gpui_kit::{App, DispatchPhase, Pixels, Point, ScrollDelta, ScrollWheelEvent, Window, px};
+use gpui_kit::{App, DispatchPhase, Pixels, Point, ScrollDelta, ScrollEvent, Window, px};
 
 use crate::app::AppState;
 
@@ -90,9 +90,9 @@ pub fn paint_scroll_listener(
     inside: impl Fn(Point<Pixels>) -> bool + 'static,
     window: &mut Window,
 ) {
-    window.on_mouse_event(move |event: &ScrollWheelEvent, phase, _, cx| {
+    window.on_mouse_event(move |event: &ScrollEvent, phase, _, cx| {
         if phase != DispatchPhase::Capture
-            || !event.modifiers.secondary()
+            || !crate::shortcuts::is_secondary(&event.modifiers)
             || !inside(event.position)
         {
             return;

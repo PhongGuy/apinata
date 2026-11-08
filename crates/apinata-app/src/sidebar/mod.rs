@@ -3056,7 +3056,7 @@ pub const SCRATCH_HINT: &str = "Unsaved requests; save to keep them in a collect
 
 // What a modifier click means: Some(true) toggles (secondary wins), Some(false) extends a range.
 fn click_kind(m: &Modifiers) -> Option<bool> {
-    if m.secondary() {
+    if crate::shortcuts::is_secondary(m) {
         Some(true)
     } else {
         m.shift.then_some(false)

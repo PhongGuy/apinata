@@ -3288,7 +3288,7 @@ impl RequestEditor {
             .id("section-strip")
             .test_support()
             .relative()
-            .on_scroll_wheel(ui::wheel_on_intent(&self.section_scroll))
+            .on_scroll(ui::wheel_on_intent(&self.section_scroll))
             .child(bar)
             .children(self.section_fades.render(
                 "section-strip",

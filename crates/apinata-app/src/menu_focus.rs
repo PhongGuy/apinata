@@ -91,7 +91,9 @@ fn settle(
         }
         return;
     }
-    if !window.is_action_available(&OpenCommandPalette, cx) {
+    // What held focus is gone, and the kit's own restore may have put focus back on its stale
+    // handle, which the action check below would also call live.
+    if previous.is_none() || !window.is_action_available(&OpenCommandPalette, cx) {
         fallback(window, cx);
     }
 }

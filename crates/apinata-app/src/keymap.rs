@@ -8,10 +8,7 @@ use gpui_kit::base::actions::Confirm as SelectConfirm;
 use gpui_kit::component::input::GoToDefinition;
 #[cfg(not(target_os = "macos"))]
 use gpui_kit::component::input::Redo as EditorRedo;
-use gpui_kit::{
-    Action, App, DummyKeyboardMapper, Global, KeyBinding, KeyBindingContextPredicate, NoAction,
-    actions,
-};
+use gpui_kit::{Action, App, Global, KeyBinding, KeyBindingContextPredicate, NoAction, actions};
 
 use crate::app::AppState;
 use crate::body_find::{
@@ -94,7 +91,7 @@ actions!(
 
 /// Every key binding of the app under `overrides`: each command's effective chords on each
 /// of its targets, then the fixed bindings no command owns.
-pub fn bindings_with(overrides: &Overrides) -> Vec<KeyBinding> {
+pub fn bindings_with(overrides: &Overrides, cx: &App) -> Vec<KeyBinding> {
     let mut b = Vec::new();
     // The kit binds Redo to Ctrl+Y off macOS and Cmd+Shift+Z on it; Ctrl+Shift+Z joins
     // Ctrl+Y so every code editor redoes as in most editors. It comes before the commands
@@ -108,6 +105,7 @@ pub fn bindings_with(overrides: &Overrides) -> Vec<KeyBinding> {
                     &chord.to_file_string(),
                     target.action.as_ref(),
                     target.context,
+                    cx,
                 ));
             }
         }
@@ -117,13 +115,13 @@ pub fn bindings_with(overrides: &Overrides) -> Vec<KeyBinding> {
 }
 
 /// Every key binding of the app with each command on its default chords.
-pub fn bindings() -> Vec<KeyBinding> {
-    bindings_with(&Overrides::new())
+pub fn bindings(cx: &App) -> Vec<KeyBinding> {
+    bindings_with(&Overrides::new(), cx)
 }
 
 // Every chord comes from `Chord`, which only holds parsable keystrokes, so a failure here is a bug.
 #[allow(clippy::expect_used)]
-fn bind(chord: &str, action: &dyn Action, context: &str) -> KeyBinding {
+fn bind(chord: &str, action: &dyn Action, context: &str, cx: &App) -> KeyBinding {
     let predicate = KeyBindingContextPredicate::parse(context)
         .expect("every binding context is a fixed predicate from the command registry");
     KeyBinding::load(
@@ -132,9 +130,21 @@ fn bind(chord: &str, action: &dyn Action, context: &str) -> KeyBinding {
         Some(Rc::new(predicate)),
         false,
         None,
-        &DummyKeyboardMapper,
+        cx,
     )
     .expect("every chord comes from `Chord`, which only holds parsable keystrokes")
+}
+
+// `KeyBinding::new` parses without a host OS, so it refuses `secondary-`; this spells the
+// secondary modifier out for the build target as a static chord.
+macro_rules! secondary {
+    ($key:literal) => {
+        if cfg!(target_os = "macos") {
+            concat!("cmd-", $key)
+        } else {
+            concat!("ctrl-", $key)
+        }
+    };
 }
 
 /// Bindings no command owns: the Preferences search keys, the segmented-control and tree
@@ -150,7 +160,7 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         // Ctrl+enter is the sidebar filter's own and must not send from there.
         // Pinned by tests/keymap.rs `send_works_from_the_url_input_but_not_the_filter`.
         KeyBinding::new(
-            "secondary-enter",
+            secondary!("enter"),
             NoAction,
             Some(format!("{FILTER_CONTEXT} > Input").as_str()),
         ),
@@ -162,11 +172,15 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
             Some(format!("{FILTER_CONTEXT} > Input").as_str()),
         ),
         // Nor from the rename input inside the tree, while the tree itself still sends.
-        KeyBinding::new("secondary-enter", NoAction, Some("Sidebar > Tree > Input")),
+        KeyBinding::new(
+            secondary!("enter"),
+            NoAction,
+            Some("Sidebar > Tree > Input"),
+        ),
         // Commits from the Changes dialog's message field, where plain Ctrl+Enter would
         // otherwise insert a newline.
         KeyBinding::new(
-            "secondary-enter",
+            secondary!("enter"),
             CommitChanges,
             Some(format!("{MESSAGE_CONTEXT} > Input").as_str()),
         ),
@@ -186,7 +200,7 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
             OpenSelect,
             Some(format!("{DIALOG_SELECT_CONTEXT} > Select").as_str()),
         ),
-        KeyBinding::new("secondary-f", FocusPreferencesSearch, Some(PREFERENCES)),
+        KeyBinding::new(secondary!("f"), FocusPreferencesSearch, Some(PREFERENCES)),
         KeyBinding::new("escape", ClearPreferencesSearch, Some(PREFERENCES)),
         KeyBinding::new("enter", ActivateSegment, seg),
         KeyBinding::new("space", ActivateSegment, seg),
@@ -259,7 +273,8 @@ pub fn apply(overrides: &Overrides, cx: &mut App) {
     let kit = kit_bindings(cx);
     cx.clear_key_bindings();
     cx.bind_keys(kit);
-    cx.bind_keys(bindings_with(overrides));
+    let bindings = bindings_with(overrides, cx);
+    cx.bind_keys(bindings);
 }
 
 /// The kit's own bindings as snapshotted by `init`; empty before it.

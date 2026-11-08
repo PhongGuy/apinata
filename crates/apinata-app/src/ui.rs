@@ -32,10 +32,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, Corners, Div, ElementId,
     Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Rems, Render, RenderOnce, ScrollHandle,
-    ScrollWheelEvent, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _,
-    TestSupportExt as _, Window, actions, canvas, div, fill, linear_color_stop, linear_gradient,
-    outline, px, relative, svg, transparent_black,
+    MouseButton, ParentElement as _, Pixels, Rems, Render, RenderOnce, ScrollEvent, ScrollHandle,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _,
+    Window, actions, canvas, div, fill, linear_color_stop, linear_gradient, outline, px, relative,
+    svg, transparent_black,
 };
 
 use crate::app::AppState;
@@ -1497,7 +1497,7 @@ pub fn strip_overflows(scroll: &ScrollHandle) -> bool {
 /// left to the strip's own scroller.
 pub(crate) fn wheel_sideways(
     handle: &ScrollHandle,
-) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static {
+) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {
     let handle = handle.clone();
     move |event, window, cx| {
         let delta = event.delta.pixel_delta(window.line_height());
@@ -1524,7 +1524,7 @@ pub(crate) fn wheel_sideways(
 /// an x delta as vertical. A plain vertical wheel is left to bubble to the column.
 pub(crate) fn wheel_on_intent(
     handle: &ScrollHandle,
-) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static {
+) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {
     let handle = handle.clone();
     move |event, window, cx| {
         let delta = event.delta.pixel_delta(window.line_height());
