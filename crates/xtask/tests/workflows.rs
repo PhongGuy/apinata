@@ -172,7 +172,7 @@ fn ci_runs_the_make_gate_on_linux_for_master_and_pull_requests() {
     assert!(on.get("workflow_dispatch").is_some());
     assert_eq!(ci["concurrency"]["cancel-in-progress"], Value::Bool(true));
     for (job, body) in ci["jobs"].as_mapping().unwrap() {
-        if str_of(job) == "macos-clippy" {
+        if ["macos-clippy", "windows-test"].contains(&str_of(job)) {
             continue;
         }
         assert_eq!(
@@ -683,5 +683,30 @@ fn macos_clippy_runs_only_when_a_dispatch_asks_for_it() {
     assert_eq!(
         runs,
         ["cargo clippy --workspace --all-targets --locked -- -Dwarnings"]
+    );
+}
+
+#[test]
+fn windows_test_runs_only_when_a_dispatch_asks_for_it() {
+    // The Windows git stop needs a real Windows machine, so its tests run there on demand only.
+    let ci = load("ci.yml");
+    let input = &ci["on"]["workflow_dispatch"]["inputs"]["windows_test"];
+    assert_eq!(str_of(&input["type"]), "boolean");
+    assert_eq!(input["default"], Value::Bool(false));
+    let job = &ci["jobs"]["windows-test"];
+    assert_eq!(str_of(&job["runs-on"]), "windows-latest");
+    assert_eq!(str_of(&job["if"]), "inputs.windows_test");
+    assert!(
+        job["timeout-minutes"].as_u64().is_some(),
+        "the job has a timeout"
+    );
+    let runs: Vec<String> = steps(&ci, "windows-test")
+        .iter()
+        .map(|s| str_of(&s["run"]).trim().to_owned())
+        .filter(|r| !r.is_empty())
+        .collect();
+    assert_eq!(
+        runs,
+        ["cargo test -p apinata-core --locked --test integration git_commit::windows_stop::"]
     );
 }
