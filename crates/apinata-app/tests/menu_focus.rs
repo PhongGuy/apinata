@@ -254,5 +254,5 @@ fn focus_a_menu_item_moved_stays_when_nothing_was_focused_before(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn focus_falls_back_when_what_was_focused_before_is_gone(cx: &mut TestAppContext) {
-    assert_eq!(settle_after_a_move(cx, Before::Gone).0, true);
+    assert!(settle_after_a_move(cx, Before::Gone).0, "the fallback ran");
 }
