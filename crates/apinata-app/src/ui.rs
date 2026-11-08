@@ -2040,23 +2040,20 @@ pub fn tab_strip(id: impl Into<ElementId>, cx: &App) -> TabBar {
 
 impl RenderOnce for Segmented {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        // The kit button keys its own focus handle under its id, inside the track and its
-        // component scope; reading the same keyed state lets the track's key handlers tell
-        // which segment holds focus and move it to a neighbour.
+        // The track keeps each segment's focus handle and hands it to the kit button, so the
+        // track's key handlers can tell which segment holds focus and move it to a neighbour.
         let ids: Vec<ElementId> = (0..self.options.len())
             .map(|ix| self.ids.get(ix).cloned().unwrap_or(ix.into()))
             .collect();
         let handles: Rc<[FocusHandle]> = window.with_id(self.id.clone(), |window| {
-            window.with_id(std::any::type_name::<Button>(), |window| {
-                ids.iter()
-                    .map(|id| {
-                        window
-                            .use_keyed_state(id.clone(), cx, |_, cx| cx.focus_handle())
-                            .read(cx)
-                            .clone()
-                    })
-                    .collect()
-            })
+            ids.iter()
+                .map(|id| {
+                    window
+                        .use_keyed_state(id.clone(), cx, |_, cx| cx.focus_handle())
+                        .read(cx)
+                        .clone()
+                })
+                .collect()
         });
         let t = cx.theme();
         let (fg, muted) = (t.foreground, t.muted_foreground);
@@ -2095,6 +2092,7 @@ impl RenderOnce for Segmented {
                 let on_select = Rc::clone(&self.on_select);
                 // `selected` stops the kit painting its hover over the current choice.
                 let button = Button::new(id)
+                    .track_focus(&handles[ix])
                     .ghost()
                     .label(label)
                     .toggled(sel)

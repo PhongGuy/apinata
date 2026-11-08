@@ -1204,6 +1204,7 @@ impl EnvVarTable {
                     .child(followed(
                         "env-delete-follow",
                         kv_grid::button_focusing(
+                            slot("env-delete", "env-slot-delete"),
                             ui::icon_button(
                                 slot("env-delete", "env-slot-delete"),
                                 IconName::Close,
@@ -1214,8 +1215,7 @@ impl EnvVarTable {
                             .on_click(
                                 cx.listener(move |t, _, window, cx| t.delete(ix, window, cx)),
                             ),
-                            (!blank && self.take_control_focus(ix, Control::Remove))
-                                .then(|| ("env-delete", ix).into()),
+                            !blank && self.take_control_focus(ix, Control::Remove),
                         )
                         .into_any_element(),
                     )),

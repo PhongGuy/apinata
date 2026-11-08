@@ -16,7 +16,7 @@ use std::cell::Cell;
 
 use crate::command::Edit;
 use crate::kv_grid::{
-    self, ActionShow, KvColumn, Reloaded, action_slot_focusing, check_slot, kv_head, kv_row,
+    self, ActionShow, KvColumn, Reloaded, action_slot, check_slot, kv_head, kv_row,
 };
 use crate::kv_table::set_text;
 use crate::row_move::{
@@ -667,6 +667,7 @@ impl AssertionsSection {
             let field = ui::table_input(input, false, window, cx).id((id, ix));
             kv_grid::kv_cell((edge, ix), field, input, focused(input, cx), cx)
         };
+        let remove_id = (if blank { "as-slot-delete" } else { "as-delete" }, ix);
         // The remove control shows on the hovered row and stays while the row is typed in.
         let show = if blank {
             ActionShow::Never
@@ -751,20 +752,19 @@ impl AssertionsSection {
                     r.child(value_col.size(cell(&row.value, "as-value", "as-value-edge", cx)))
                 }
             })
-            .child(action_slot_focusing(
-                div().track_focus(&row.remove).child(
-                    ui::icon_button(
-                        (if blank { "as-slot-delete" } else { "as-delete" }, ix),
-                        IconName::Close,
-                        "Remove assertion",
-                        None,
-                    )
-                    .tab_stop(!blank)
-                    .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
-                ),
+            .child(action_slot(
+                div()
+                    .track_focus(&row.remove)
+                    .child(kv_grid::button_focusing(
+                        remove_id,
+                        ui::icon_button(remove_id, IconName::Close, "Remove assertion", None)
+                            .tab_stop(!blank)
+                            .on_click(
+                                cx.listener(move |t, _, window, cx| t.delete(ix, window, cx)),
+                            ),
+                        !blank && self.take_control_focus(ix, Control::Remove),
+                    )),
                 show,
-                (!blank && self.take_control_focus(ix, Control::Remove))
-                    .then(|| ("as-delete", ix).into()),
             ))
     }
 }
