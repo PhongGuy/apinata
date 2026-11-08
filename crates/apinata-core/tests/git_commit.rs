@@ -865,8 +865,8 @@ mod pipes {
     }
 }
 
-// A commit held past its time limit by a slow pre-commit hook, stopped on Windows. Git for
-// Windows runs the hook with its bundled sh; a commit's limit is never under 120 seconds.
+// Writes held past their time limit by a slow hook or filter, stopped on Windows. Git for
+// Windows runs both with its bundled sh; a write's limit is never under 120 seconds.
 #[cfg(windows)]
 mod windows_stop {
     use super::*;
@@ -874,7 +874,7 @@ mod windows_stop {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    /// The least limit a commit gets, and the grace the stop gives before it kills.
+    /// The least limit a write gets, and the grace the stop gives before it kills.
     const COMMIT_LIMIT: Duration = Duration::from_secs(120);
     const GRACE: Duration = Duration::from_secs(2);
     /// Covers the preflight calls and both lock lookups on a slow runner.
@@ -913,13 +913,19 @@ mod windows_stop {
         })
     }
 
+    // A plain commit has released index.lock before its hooks run, but git add holds it while
+    // a clean filter runs, so a slow filter keeps the lock taken until the stop.
     #[test]
-    fn a_commit_stopped_at_its_limit_leaves_no_index_lock() {
+    fn a_stage_stopped_at_its_limit_leaves_no_index_lock() {
         let sb = Sandbox::new();
-        let (repo, col) = hooked(&sb, "sleep 600");
+        let (repo, col) = committed(&sb);
+        sb.git(&repo, &["config", "filter.slow.clean", "sleep 600"]);
+        write(&repo, ".gitattributes", "*.yml filter=slow\n");
+        write(&col, "a.yml", "changed\n");
         let started = Instant::now();
-        let error = commit(&col, "m", &sb.options()).expect_err("the hook outlives the limit");
-        assert!(matches!(error, CommitError::Timeout), "{error}");
+        let error =
+            stage(&col, &["a.yml"], &sb.options()).expect_err("the filter outlives the limit");
+        assert!(matches!(error, GitError::Timeout), "{error}");
         assert!(
             started.elapsed() < COMMIT_LIMIT + GRACE + MARGIN,
             "took {:?}",
