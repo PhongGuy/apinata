@@ -38,6 +38,9 @@ use support::*;
 
 const KEYS: usize = 20;
 
+// The first edit shows Save, which resizes the buttons and so the Url part.
+const FIRST_EDIT_URL_RENDERS: usize = 3;
+
 // A text body to type into, and a URL whose undefined variable fails the send before it
 // leaves the machine, so the response pane shows its error block.
 const BODY_REQUEST: &str = "info:\n  name: j\n  type: http\n  seq: 1\nhttp:\n  method: POST\n  url: \"http://127.0.0.1:9/{{nope}}\"\n  body:\n    type: text\n    data: 'x'\n";
@@ -532,14 +535,22 @@ fn j() -> Target {
 #[gpui_kit::test]
 fn a_body_key_redraws_none_of_the_request_chrome(cx: &mut TestAppContext) {
     let (s, editor, _col) = typing_after_a_send(cx);
-    let before = chrome_renders(cx, &editor);
+    let start = chrome_renders(cx, &editor);
+    type_keys(cx, s.win, 1);
+    let warm = chrome_renders(cx, &editor);
     type_burst(cx, s.win);
     let after = chrome_renders(cx, &editor);
-    // The counts measured: the URL follows the edits' variable sets and the buttons show
-    // Save once the body is dirty; nothing else redraws.
-    let most = [0, 0, 0, 3, 2, 0];
-    for (((part, b), a), most) in ChromePart::ALL.iter().zip(before).zip(after).zip(most) {
-        assert!(a - b <= most, "{KEYS} keys redrew {part:?} {} times", a - b);
+    // The first edit shows Save: the buttons draw it and the URL takes the narrower width.
+    let first = [0, 0, 0, FIRST_EDIT_URL_RENDERS, 2, 0];
+    for (((part, b), a), most) in ChromePart::ALL.iter().zip(&start).zip(&warm).zip(first) {
+        assert!(
+            a - b <= most,
+            "the first key redrew {part:?} {} times",
+            a - b
+        );
+    }
+    for ((part, b), a) in ChromePart::ALL.iter().zip(&warm).zip(&after) {
+        assert_eq!(a - b, 0, "{KEYS} more keys redrew {part:?} {} times", a - b);
     }
 }
 
