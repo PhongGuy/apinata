@@ -49,6 +49,15 @@ pub enum SidePanel {
     Builder,
 }
 
+/// The focused editor's caret, as [`GraphqlSection::caret`] reports it.
+pub struct Caret {
+    /// Where the caret is drawn, in window coordinates; `None` while the editor's own scroll
+    /// hides it.
+    pub drawn: Option<Bounds<Pixels>>,
+    /// The text length and caret offset, to tell edits and moves apart.
+    pub key: (usize, usize),
+}
+
 /// Edits a GraphQL body. Any change to either editor emits the whole body, query and
 /// variables together, since the file stores them as one `body` mapping.
 pub struct GraphqlSection {
@@ -198,8 +207,8 @@ impl GraphqlSection {
     /// The focused editor's caret in window coordinates, with its text length and offset to tell
     /// edits and moves apart, or `None` when neither has focus or none has been laid out. The
     /// editor reports a caret without its own vertical scroll, so that is added back to give
-    /// where the caret is drawn.
-    pub fn caret(&self, window: &Window, cx: &App) -> Option<(Bounds<Pixels>, (usize, usize))> {
+    /// where the caret is drawn; the bounds are `None` while the editor's own scroll hides it.
+    pub fn caret(&self, window: &Window, cx: &App) -> Option<Caret> {
         [&self.query, &self.variables].into_iter().find_map(|e| {
             let state = e.read(cx);
             if !state.focus_handle(cx).is_focused(window) {
@@ -207,7 +216,11 @@ impl GraphqlSection {
             }
             let (mut caret, _) = state.cursor_layout()?;
             caret.origin.y += state.text_bounds()?.origin.y - state.input_bounds().origin.y;
-            Some((caret, (state.value().len(), state.cursor())))
+            let drawn = state.input_bounds().intersects(&caret).then_some(caret);
+            Some(Caret {
+                drawn,
+                key: (state.value().len(), state.cursor()),
+            })
         })
     }
 
