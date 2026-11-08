@@ -1377,7 +1377,7 @@ impl ResponsePane {
         Some(view)
     }
 
-    /// The banner above the tabs for a subscription that failed with a response (a refused
+    /// The banner under the tab strip for a subscription that failed with a response (a refused
     /// handshake's page, or a transcript its socket ended); `None` for anything else.
     pub fn stream_error(&self, cx: &App) -> Option<ErrorView> {
         let r = match self.send.read(cx).state() {
@@ -1420,13 +1420,19 @@ impl ResponsePane {
                         .text_color(cx.theme().danger)
                         .child(view.title),
                 )
+                // The sentence is cut to one line; its tooltip holds the whole text.
                 .child(
                     div()
+                        .id("response-stream-error-sentence")
                         .min_w_0()
                         .flex_1()
                         .truncate()
                         .text_size(style::TEXT_SMALL)
                         .text_color(cx.theme().muted_foreground)
+                        .tooltip(ui::text_tooltip(
+                            "response-stream-error-tooltip",
+                            sentence.clone(),
+                        ))
                         .child(sentence),
                 )
                 .when(view.retry, |row| row.child(retry_button(cx)))
@@ -5373,13 +5379,16 @@ pub fn cookie_matches(host: &str, domain: &str, host_only: bool) -> bool {
     host == domain || (!host_only && host.ends_with(&format!(".{domain}")))
 }
 
-// Whether the response's Content-Type marks an event-stream. A subscription's transcript is a
-// 101 with a stream end and no content type; an ordinary 101 has no stream end.
+// Whether the response is an event-stream: its Content-Type says so, or it is a subscription's
+// 101 transcript, known by its stream end or, once restored without one, by its GraphQL
+// subprotocol. An ordinary 101 has neither.
 fn is_event_stream_response(r: &Response) -> bool {
-    (r.status() == 101 && r.stream_end().is_some())
-        || r.headers()
-            .iter()
-            .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && sse::is_event_stream(v))
+    let header = |name: &str, want: &dyn Fn(&str) -> bool| {
+        (r.headers().iter()).any(|(k, v)| k.eq_ignore_ascii_case(name) && want(v))
+    };
+    let graphql = |v: &str| matches!(v.trim(), "graphql-transport-ws" | "graphql-ws");
+    (r.status() == 101 && (r.stream_end().is_some() || header("sec-websocket-protocol", &graphql)))
+        || header("content-type", &|v| sse::is_event_stream(v))
 }
 
 // Whether a finished run is a subscription that failed but still has a response to show.

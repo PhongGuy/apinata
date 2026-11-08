@@ -112,6 +112,37 @@ fn a_kept_subscription_transcript_shows_its_events(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_subscription_restored_from_the_last_response_store_shows_its_events(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let mut frames = ticks(false, 2);
+    frames.push(COMPLETE.to_owned());
+    let port = ws_peer(cx, TRANSPORT, frames, Duration::from_millis(10));
+    let col = subscription_collection(port);
+    let (_win, pane, model, root) = pane_for(cx, &col);
+    model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
+    let result = finished(cx, &model);
+    let dir = tempfile::tempdir().expect("store dir");
+    let store = apinata_app::last_response::ResponseStore::new(dir.path().to_path_buf());
+    store
+        .save(&root, &ip("a.yml"), &result, std::time::SystemTime::now())
+        .expect("save");
+    let kept = store.load(&root, &ip("a.yml")).expect("kept");
+    assert_eq!(
+        kept.result.response.as_ref().map(Response::status),
+        Some(101)
+    );
+    model.update(cx, |m, cx| m.show(Arc::new(kept.result), cx));
+    assert!(
+        pane.read_with(cx, |p, cx| p.shown_tabs(cx))
+            .contains(&ResponseTab::Events),
+        "a restored subscription still offers Events"
+    );
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, cx| nexts(&p.event_rows(cx)) == 2)
+    });
+}
+
+#[gpui_kit::test]
 fn an_ordinary_101_without_a_stream_end_offers_no_events(cx: &mut TestAppContext) {
     http_ready(cx);
     let col = two_requests();
