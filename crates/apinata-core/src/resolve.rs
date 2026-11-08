@@ -75,6 +75,8 @@ pub struct ResolvedRequest {
     auth_secrets: Vec<String>,
     /// Values computed for this send (the OAuth2 token); never printed by `Debug`.
     derived: Vec<String>,
+    /// Whether the body was built from a GraphQL body spec.
+    graphql: bool,
 }
 
 /// Auth that cannot be a header at resolve: digest answers a challenge, WSSE needs a fresh nonce
@@ -215,6 +217,11 @@ pub enum Body {
 }
 
 impl ResolvedRequest {
+    /// Whether the body was built from a GraphQL body spec (file or script-set).
+    pub(crate) fn graphql(&self) -> bool {
+        self.graphql
+    }
+
     /// The HTTP method, uppercased.
     pub fn method(&self) -> &str {
         &self.method
@@ -787,6 +794,7 @@ pub fn resolve_prepared(
             None => None,
         };
         let mut files = Vec::new();
+        let graphql = matches!(body, BodySpec::Graphql { .. } | BodySpec::GraphqlData(_));
         let (body, content_type) = render_body(body, &scope, ctx.root(), &mut files)?;
         match content_type {
             ContentType::None => {}
@@ -869,6 +877,7 @@ pub fn resolve_prepared(
             send_auth,
             auth_secrets,
             derived,
+            graphql,
         })
     })();
     outcome.map_err(|e| e.with_hint(|name| ctx.undefined_hint(&req, name)))
@@ -956,6 +965,7 @@ pub(crate) fn token_request(
         send_auth: None,
         auth_secrets: Vec::new(),
         derived: Vec::new(),
+        graphql: false,
     })
 }
 
@@ -1045,6 +1055,7 @@ pub(crate) fn script_request(
         send_auth: None,
         auth_secrets: Vec::new(),
         derived: Vec::new(),
+        graphql: false,
     })
 }
 

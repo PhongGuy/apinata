@@ -44,6 +44,8 @@ time.workspace = true
 encoding_rs.workspace = true
 mime.workspace = true
 tokio-util.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 dirs.workspace = true
 trash.workspace = true
 tempfile.workspace = true
@@ -110,6 +112,7 @@ wiremock.workspace = true
 flate2.workspace = true
 tar.workspace = true
 tokio-rustls.workspace = true
+tokio-tungstenite = { workspace = true, features = ["handshake"] }
 hyper = { workspace = true, features = ["server", "http1", "http2"] }
 hyper-util = { workspace = true, features = ["server-auto", "tokio"] }
 insta.workspace = true
