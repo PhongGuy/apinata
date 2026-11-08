@@ -146,10 +146,32 @@ async fn a_cancelled_sign_in_is_cancelled() {
     assert_eq!(posts(&server).await, 0);
 }
 
+/// A free loopback port below every default ephemeral range (Linux starts at 32768, macOS and
+/// Windows at 49152), so no parallel test's port-0 bind can take it once it is freed.
+fn port_outside_the_ephemeral_range() -> u16 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    let start = 20_000 + (nanos ^ std::process::id()) % 10_000;
+    (start..30_000)
+        .chain(20_000..start)
+        .map(|p| p as u16)
+        .find(|&p| std::net::TcpListener::bind(("127.0.0.1", p)).is_ok())
+        .expect("a free port in 20000..30000")
+}
+
 #[tokio::test]
 async fn cancelling_the_send_closes_the_listener() {
     let server = wiremock::MockServer::start().await;
-    let f = single(&server, &authorization_code(&server.uri(), ""));
+    let port = port_outside_the_ephemeral_range();
+    let f = single(
+        &server,
+        &authorization_code(
+            &server.uri(),
+            &format!("    callbackUrl: http://127.0.0.1:{port}/callback\n"),
+        ),
+    );
     let browser = FakeBrowser::new(Play::Silent);
     let cancel = CancelHandle::new();
     let stop = cancel.clone();
@@ -163,7 +185,13 @@ async fn cancelling_the_send_closes_the_listener() {
         .unwrap_err();
     assert!(matches!(err, OAuth2Error::Cancelled), "{err:?}");
     let callback = url::Url::parse(&browser.prompts()[0].callback).unwrap();
-    assert!(std::net::TcpStream::connect(("127.0.0.1", callback.port().unwrap())).is_err());
+    assert_eq!(callback.port(), Some(port));
+    // An open listener holds its port exclusively, so binding it again proves the socket closed.
+    let rebound = std::net::TcpListener::bind(("127.0.0.1", port));
+    assert!(
+        rebound.is_ok(),
+        "the listener still holds {port}: {rebound:?}"
+    );
 }
 
 #[tokio::test]
