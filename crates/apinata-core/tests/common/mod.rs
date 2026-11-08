@@ -67,6 +67,7 @@ pub fn executor() -> Executor {
 }
 pub mod body_server;
 pub mod sse_server;
+pub mod ws_server;
 
 /// A port that refuses every connection and that no other process can take: the socket is
 /// bound for the whole process but never listens.
