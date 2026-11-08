@@ -374,6 +374,7 @@ mod runner_run;
 mod runner_select;
 mod runner_stream;
 mod runner_stream_nested;
+mod runner_subscription;
 mod runner_tags;
 mod runtime_vars;
 mod save;

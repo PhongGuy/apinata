@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use apollo_parser::Parser;
 
+use crate::resolve::{Body, ResolvedRequest};
 use crate::stream::StreamLimits;
 use apollo_parser::cst::Definition;
 
@@ -54,6 +55,14 @@ pub(crate) fn detect(body: &str) -> Result<Option<Plan>, String> {
             }))
         }
         _ => Err("a subscription request must hold one operation".to_owned()),
+    }
+}
+
+/// Whether `req` goes out as a subscription: a GraphQL body whose one operation is one.
+pub(crate) fn is_subscription(req: &ResolvedRequest) -> bool {
+    match req.body() {
+        Body::Text(text) if req.graphql() => matches!(detect(text), Ok(Some(_))),
+        _ => false,
     }
 }
 

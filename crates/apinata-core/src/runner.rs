@@ -25,7 +25,8 @@ use crate::script::{
 };
 use crate::secret_names::log_values;
 use crate::session_log::{ConsoleLine, Logged, Redactor, SendHold, SendSource};
-use crate::stream::{StreamEvent, StreamLimits, StreamOptions};
+use crate::stream::{StreamEnd, StreamEvent, StreamLimits, StreamOptions};
+use crate::subscription::is_subscription;
 use crate::tags::{TagFilter, normalize};
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -562,6 +563,12 @@ pub enum RunError {
     /// The request's oauth2 token could not be obtained, so nothing was sent.
     #[error(transparent)]
     OAuth2(OAuth2Error),
+    /// A subscription's handshake was refused or its socket ended with an error.
+    #[error("{message}")]
+    Subscription {
+        /// What ended it; the URL it names is redacted.
+        message: String,
+    },
 }
 
 impl RunError {
@@ -605,6 +612,10 @@ impl fmt::Debug for RunError {
                 .field("message_len", &message.len())
                 .finish(),
             RunError::OAuth2(e) => f.debug_tuple("OAuth2").field(e).finish(),
+            RunError::Subscription { message } => f
+                .debug_struct("Subscription")
+                .field("message", message)
+                .finish(),
         }
     }
 }
@@ -1674,6 +1685,16 @@ async fn exchange(
     } else {
         Outcome::Passed
     };
+    // A subscription that ended in error errors the request, after its transcript was judged.
+    if is_subscription(&resolved)
+        && let Some(StreamEnd::Error(message)) =
+            result.response.as_ref().and_then(Response::stream_end)
+    {
+        result.error = Some(RunError::Subscription {
+            message: message.clone(),
+        });
+        result.outcome = Outcome::Errored;
+    }
 }
 
 /// Marks `result` cancelled because the person declined a network change, which ends the run.
