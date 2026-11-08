@@ -1341,6 +1341,9 @@ impl ApinataServer {
                        `set-cookie` line per such cookie. \
                        An event-stream ends at `stream_max_seconds` (default 30) or \
                        `stream_max_events` (default 10000) and reports `stream_end`. \
+                       `error` gives the reason when the run errored though a response arrived, \
+                       such as a refused subscription handshake or a subscription the server \
+                       ended with an error; a failed script is a failed entry in `tests`. \
                        `timeout_secs` (1 to 86400) caps the request's timeout; the lower of it \
                        and the request's own applies. \
                        `body_filter` (a JSONPath for JSON, an XPath for XML) returns only the \

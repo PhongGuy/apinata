@@ -653,6 +653,9 @@ pub fn port_of(url: &str) -> u16 {
 #[path = "../../../apinata-core/tests/common/sse_server.rs"]
 pub mod sse_server;
 
+#[path = "../../../apinata-core/tests/common/raw_server.rs"]
+pub mod raw_server;
+
 /// Drops a path's permissions for one test and puts the original mode back on drop, so a
 /// failing assertion never leaves a temp dir the cleanup cannot remove. Bind it with
 /// `let _g =` after the `TempDir` so it drops first.
