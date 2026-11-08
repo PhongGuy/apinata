@@ -2,6 +2,7 @@
 //! that checks results against the schema never rejects a real answer.
 
 use crate::common;
+use crate::common::raw_server::raw_server;
 use crate::git_support;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -301,12 +302,21 @@ async fn every_tool_result_matches_its_output_schema() {
         "info:\n  name: q\n  type: graphql\n  seq: 7\ngraphql:\n  url: \"{}/graphql\"\n",
         up.uri()
     );
+    // A server that refuses the subscription's handshake, so a send returns `error` beside its response.
+    let refuser = raw_server(
+        "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: 17\r\n\r\n<h1>Not here</h1>",
+    )
+    .await;
+    let subscription = format!(
+        "info:\n  name: s\n  type: graphql\n  seq: 8\ngraphql:\n  method: POST\n  url: \"http://127.0.0.1:{refuser}/graphql\"\n  body:\n    query: \"subscription {{ tick }}\"\n"
+    );
     files.extend([
         ("environments/dev.yml", DEV),
         ("r.yml", target.as_str()),
         ("o.yml", oauth.as_str()),
         ("p.yml", plain.as_str()),
         ("q.yml", graphql.as_str()),
+        ("s.yml", subscription.as_str()),
         (
             "f/folder.yml",
             "info:\n  name: f\n  type: folder\n  seq: 5\n",
@@ -402,6 +412,10 @@ async fn every_tool_result_matches_its_output_schema() {
         json!({"path": "p.yml", "body_filter": "$.a"}),
     )
     .await;
+    let refused = ex
+        .run(&server, "send_request", json!({"path": "s.yml"}))
+        .await;
+    assert!(refused["error"].is_string(), "{refused}");
     ex.run(&server, "list_cookies", json!({})).await;
     ex.run(&server, "clear_cookies", json!({})).await;
     ex.run(&server, "graphql_schema", json!({"path": "q.yml"}))

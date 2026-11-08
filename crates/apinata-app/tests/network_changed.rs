@@ -339,6 +339,28 @@ fn a_run_is_asked_about_an_outside_change_too(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_subscription_is_asked_about_an_outside_change_too(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let frames = vec![support::ws_server::COMPLETE.to_owned()];
+    let port = ws_peer(
+        cx,
+        "graphql-transport-ws",
+        frames,
+        std::time::Duration::from_millis(10),
+    );
+    let a = subscription_item(&format!("http://127.0.0.1:{port}/graphql"));
+    let col = write_tree(&[("opencollection.yml", &root_with(&A)), ("a.yml", &a)]);
+    let s = started_with(cx, &col, acknowledged(&col, &A));
+    outside_edit(cx, &s, &B);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    click(cx, &s, "network-change-continue");
+    let result = finished(cx, &model);
+    assert_eq!(result.response.as_ref().map(|r| r.status()), Some(101));
+    assert_eq!(result.outcome, apinata_core::Outcome::Passed);
+}
+
+#[gpui_kit::test]
 fn a_download_is_asked_about_an_outside_change_too(cx: &mut TestAppContext) {
     http_ready(cx);
     let col = collection(&A);

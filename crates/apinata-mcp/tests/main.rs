@@ -77,6 +77,7 @@ mod send_set_cookies;
 mod send_stream;
 mod send_url_headers;
 mod serde_defaults;
+mod subscription;
 mod tree_tools;
 mod trusted_hosts;
 mod undefined_hint;

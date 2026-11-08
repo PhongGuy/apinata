@@ -240,6 +240,10 @@ pub(crate) struct SendResult {
     /// The count of events parsed from a streamed body.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<usize>,
+    /// The run's error when it errored though a response arrived, such as a subscription refused
+    /// at its handshake or ended by the server; absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// The variable context for one send: `environment` or the server's default, the launch global
@@ -454,6 +458,7 @@ pub(crate) fn send_result(
         console: scripts::console_docs(r),
         stream_end,
         events,
+        error: r.error.as_ref().map(|e| redactor.scrub(&e.to_string())),
     }
 }
 
