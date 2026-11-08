@@ -1,5 +1,6 @@
-//! A scripted graphql-transport-ws (or legacy graphql-ws) peer on 127.0.0.1, plain or behind the test PKI's TLS, a raw
-//! responder for broken handshakes, and the request and executor the subscription tests use.
+//! A scripted graphql-transport-ws (or legacy graphql-ws) peer on 127.0.0.1, plain or behind
+//! the test PKI's TLS, a raw responder for broken handshakes, and the request and executor the
+//! subscription tests use.
 #![allow(dead_code)] // each test file uses a different subset
 
 use super::{ROOT, at, setup};

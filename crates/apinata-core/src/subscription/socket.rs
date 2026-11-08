@@ -132,13 +132,19 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
                             close(&mut ws, 1000).await;
                             break if kept { StreamEnd::Closed } else { StreamEnd::BodyCap };
                         }
-                        // The legacy server refused the connection; nothing was subscribed.
+                        // The legacy server refused the connection.
                         Incoming::Refused => {
                             close(&mut ws, 1000).await;
                             let payload = value.as_ref().and_then(|v| v.get("payload"));
-                            let payload = payload.map(Value::to_string).unwrap_or_default();
-                            let shown: String = payload.chars().take(200).collect();
-                            break StreamEnd::Error(format!("connection_error from server: {shown}"));
+                            let message = match payload {
+                                Some(payload) => {
+                                    let text = payload.to_string();
+                                    let shown: String = text.chars().take(200).collect();
+                                    format!("connection_error from server: {shown}")
+                                }
+                                None => "connection_error from server".to_owned(),
+                            };
+                            break StreamEnd::Error(message);
                         }
                         // A second ack and any message the codec does not know.
                         _ => {

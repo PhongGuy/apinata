@@ -147,6 +147,66 @@ async fn connection_error_ends_the_run_with_its_payload() {
     assert_eq!(sent(&lines), vec![json!({"type": "connection_init"})]);
 }
 
+/// The run's end when a legacy server answers `connection_init` with `refusal` only.
+async fn refused_with(refusal: String) -> Option<StreamEnd> {
+    let s = ws_server(WsScript {
+        ack: false,
+        greeting: vec![Step::Text(refusal)],
+        ..legacy(Vec::new())
+    })
+    .await;
+    let res = ws_exec(Auto).send(&sub(&s.http("/"))).await.unwrap();
+    res.stream_end().cloned()
+}
+
+#[tokio::test]
+async fn a_long_connection_error_payload_is_cut_to_200_chars() {
+    let long = "x".repeat(300);
+    let refusal = json!({"type": "connection_error", "payload": {"message": long}});
+    let shown: String = format!(r#"{{"message":"{long}"}}"#)
+        .chars()
+        .take(200)
+        .collect();
+    assert_eq!(
+        refused_with(refusal.to_string()).await,
+        Some(StreamEnd::Error(format!(
+            "connection_error from server: {shown}"
+        )))
+    );
+}
+
+#[tokio::test]
+async fn a_connection_error_without_a_payload_still_names_the_refusal() {
+    assert_eq!(
+        refused_with(r#"{"type":"connection_error"}"#.to_owned()).await,
+        Some(StreamEnd::Error("connection_error from server".into()))
+    );
+}
+
+#[tokio::test]
+async fn a_stop_before_the_ack_sends_no_goodbye() {
+    let s = ws_server(WsScript {
+        ack: false,
+        ..legacy(Vec::new())
+    })
+    .await;
+    let cancel = CancelHandle::new();
+    let stopper = cancel.clone();
+    let opts = StreamOptions::new().sink(move |e| {
+        if matches!(e, StreamEvent::Started { .. }) {
+            stopper.stop();
+        }
+    });
+    let res = ws_exec(Auto)
+        .send_streaming(&sub(&s.http("/")), &cancel, opts)
+        .await
+        .unwrap();
+    assert_eq!(res.stream_end(), Some(&StreamEnd::Stopped));
+    let lines = s.seen.until(|l| l.starts_with("close: ")).await;
+    assert_eq!(sent(&lines), vec![json!({"type": "connection_init"})]);
+    assert!(lines.contains(&"close: 1000".to_owned()), "{lines:?}");
+}
+
 #[tokio::test]
 async fn a_graphql_transport_ws_message_is_unexpected_on_a_legacy_socket() {
     let next = r#"{"id":"1","type":"next","payload":{}}"#;
