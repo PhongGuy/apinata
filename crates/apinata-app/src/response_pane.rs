@@ -5280,11 +5280,13 @@ pub fn cookie_matches(host: &str, domain: &str, host_only: bool) -> bool {
     host == domain || (!host_only && host.ends_with(&format!(".{domain}")))
 }
 
-// Whether the response's Content-Type marks an event-stream.
+// Whether the response's Content-Type marks an event-stream. A subscription's transcript is a
+// 101 with a stream end and no content type; an ordinary 101 has no stream end.
 fn is_event_stream_response(r: &Response) -> bool {
-    r.headers()
-        .iter()
-        .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && sse::is_event_stream(v))
+    (r.status() == 101 && r.stream_end().is_some())
+        || r.headers()
+            .iter()
+            .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && sse::is_event_stream(v))
 }
 
 fn done(send: &SendModel) -> Option<Arc<RequestResult>> {
