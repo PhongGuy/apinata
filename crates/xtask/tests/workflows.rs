@@ -279,8 +279,8 @@ fn no_job_but_signing_references_the_signing_key() {
 
 #[test]
 fn the_signing_job_only_downloads_signs_and_uploads() {
-    // Nothing from the repository and nothing compiled runs beside the key: the signer
-    // binary comes from the unprivileged assemble job like every other release file.
+    // Nothing from the repository and nothing compiled runs beside the key: the signer is
+    // the distro minisign at a pinned version, installed in a step that sees no secrets.
     let rel = load("release.yml");
     let sign = &rel["jobs"]["sign"];
     assert_eq!(
@@ -304,12 +304,45 @@ fn the_signing_job_only_downloads_signs_and_uploads() {
             runs.push(str_of(&step["run"]).trim().to_owned());
         }
     }
-    assert_eq!(runs.len(), 1, "one run step: {runs:?}");
-    assert!(
-        runs[0].ends_with("signer/cargo-packager signer sign update/latest.json"),
-        "{}",
-        runs[0]
-    );
+    assert_eq!(runs.len(), 2, "install and sign: {runs:?}");
+    assert_eq!(runs[0], MINISIGN_INSTALL);
+    assert!(runs[1].contains("minisign -S"), "{}", runs[1]);
+    let install = steps(&rel, "sign")
+        .into_iter()
+        .find(|s| str_of(&s["run"]).trim() == MINISIGN_INSTALL)
+        .unwrap();
+    assert!(install["env"].is_null(), "the install step sees no secrets");
+}
+
+/// Noble's minisign, pinned to the package version the fixture signature was made with.
+const MINISIGN_INSTALL: &str = "sudo apt-get update -qq\n\
+    sudo apt-get install -y -qq --no-install-recommends minisign=0.11-1";
+
+#[test]
+fn the_signing_key_is_piped_never_written_or_passed_as_an_argument() {
+    // The password goes in on stdin and the key through a pipe, both from shell builtins,
+    // so neither lands on disk or in a process's arguments.
+    let rel = load("release.yml");
+    let all = steps(&rel, "sign");
+    let step = &all[step_running(&all, "minisign -S")];
+    assert_eq!(str_of(&step["shell"]), "bash", "pipefail on");
+    let run = str_of(&step["run"]);
+    for piece in [
+        r#"printf '%s\n' "$CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD" |"#,
+        r#"-s <(printf '%s' "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" | base64 -d)"#,
+        "-m update/latest.json -x update/latest.json.minisig",
+        "base64 -w0 update/latest.json.minisig > update/latest.json.sig",
+        "rm update/latest.json.minisig",
+    ] {
+        assert!(run.contains(piece), "missing {piece:?} in {run}");
+    }
+}
+
+#[test]
+fn no_job_builds_or_ships_a_signer_binary() {
+    let text = std::fs::read_to_string(workflow_path("release.yml")).unwrap();
+    assert!(!text.contains("--root signer"), "assemble builds no signer");
+    assert!(!text.contains("name: signer"));
 }
 
 #[test]
@@ -346,7 +379,7 @@ fn secrets_reach_only_the_signing_step_env_and_are_documented() {
             if env.contains("secrets.") {
                 let run = str_of(&step["run"]);
                 assert!(
-                    run.contains("signer sign update/latest.json"),
+                    run.contains("minisign -S"),
                     "{job:?} passes secrets to another step"
                 );
             }
@@ -388,18 +421,14 @@ fn the_manifest_is_written_before_signing_and_uploaded_last() {
         step_running(&assemble, "release.sh manifest"),
     );
     assert!(sums < manifest);
-    // Only configured tag runs build a manifest; the toolchain and the signer binary
-    // serve only that and share the gate.
+    // Only configured tag runs build a manifest; the toolchain serves only that and
+    // shares the gate.
     let gate = "github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''";
     let toolchain = assemble
         .iter()
         .position(|s| str_of(&s["uses"]).starts_with("dtolnay/rust-toolchain@"))
         .expect("a toolchain step");
-    for i in [
-        toolchain,
-        step_running(&assemble, "cargo install --locked cargo-packager"),
-        manifest,
-    ] {
+    for i in [toolchain, manifest] {
         assert_eq!(str_of(&assemble[i]["if"]), gate, "assemble step {i}");
     }
     assert_eq!(strs(&rel["jobs"]["draft"]["needs"]), ["guard", "sign"]);

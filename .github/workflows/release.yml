@@ -104,7 +104,7 @@ jobs:
           if-no-files-found: error
 
   # Hashes the builds and writes the unsigned update manifest, with no secrets and no
-  # write access; the signer binary is built here so the signing job compiles nothing.
+  # write access.
   assemble:
     needs: [guard, build]
     runs-on: ubuntu-24.04
@@ -125,21 +125,12 @@ jobs:
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-      - name: Build the signer
-        if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        run: cargo install --locked cargo-packager --version 0.11.8 --root signer
       - name: Write the update manifest
         if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
         env:
           VERSION: ${{ needs.guard.outputs.version }}
           UPDATE_BASE_URL: ${{ vars.APINATA_UPDATE_BASE_URL }}
         run: scripts/release.sh manifest dist "$VERSION" "$UPDATE_BASE_URL" "$GITHUB_REF_NAME" update
-      - if: github.ref_type == 'tag' && vars.APINATA_UPDATE_BASE_URL != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: signer
-          path: signer/bin/cargo-packager
-          if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ needs.guard.outputs.version }}
@@ -165,19 +156,27 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-${{ needs.guard.outputs.version }}
-      - if: vars.APINATA_UPDATE_BASE_URL != ''
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: signer
-          path: signer
+      # The distro minisign signs cargo packager's keys; the updater accepts its signature.
+      - name: Install minisign
+        if: vars.APINATA_UPDATE_BASE_URL != ''
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends minisign=0.11-1
+      # The secret is a base64 minisign key box and the .sig file is the signature box
+      # base64-wrapped onto one line. Builtins pipe both secrets, so neither touches disk
+      # or a process's arguments.
       - name: Sign the update manifest
         if: vars.APINATA_UPDATE_BASE_URL != ''
+        shell: bash
         env:
           CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
           CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
         run: |
-          chmod 755 signer/cargo-packager
-          signer/cargo-packager signer sign update/latest.json
+          printf '%s\n' "$CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD" |
+            minisign -S -s <(printf '%s' "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" | base64 -d) \
+              -m update/latest.json -x update/latest.json.minisig
+          base64 -w0 update/latest.json.minisig > update/latest.json.sig
+          rm update/latest.json.minisig
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed-${{ needs.guard.outputs.version }}

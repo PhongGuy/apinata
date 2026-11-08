@@ -45,8 +45,8 @@ The draft also carries version-free copies of the installers, so `https://github
 The app checks a signed `latest.json` and installs the release it names. The workflow's jobs split the work so no job that compiles holds a secret:
 
 - `build` packages each platform with no secrets.
-- `assemble` writes `SHA256SUMS` and the unsigned manifest, and builds the `cargo-packager` binary that signs.
-- `sign` is the only job bound to the `release` environment and the only one that reads the signing key. It downloads the assembled files and that binary, runs `cargo-packager signer sign update/latest.json`, and uploads the result. It runs nothing from the repository.
+- `assemble` writes `SHA256SUMS` and the unsigned manifest.
+- `sign` is the only job bound to the `release` environment and the only one that reads the signing key. It downloads the assembled files, installs Ubuntu's `minisign` package at a pinned version, signs `update/latest.json` with it (the key and password are piped in, never written to disk), and uploads the result. It runs nothing from the repository.
 - `draft` writes the notes and uploads to the draft after every other artifact, with `latest.json.sig` last.
 
 ### Keys
