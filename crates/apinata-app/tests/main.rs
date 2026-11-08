@@ -559,6 +559,7 @@ mod stream_status;
 mod stream_stop;
 mod strip_overflow;
 mod style_icons;
+mod subscription_errors;
 mod subscription_send;
 mod tab_area;
 mod tab_close_focus;
