@@ -25,6 +25,19 @@ fn a_manifest_signed_by_cargo_packager_verifies() {
     .unwrap();
 }
 
+/// The release job signs with the distro minisign: its prehashed `.minisig` box, base64-wrapped
+/// onto one line as the `.sig` file, must verify like cargo packager's own output.
+#[test]
+fn a_manifest_signed_by_distro_minisign_verifies() {
+    let key = String::from_utf8(fixture("minisign-test-only-key.pub")).unwrap();
+    verify_manifest(
+        &fixture("minisign-latest.json"),
+        &fixture("minisign-latest.json.sig"),
+        &[key],
+    )
+    .unwrap();
+}
+
 #[test]
 fn the_fixture_fails_once_edited() {
     let mut m = fixture("latest.json");
