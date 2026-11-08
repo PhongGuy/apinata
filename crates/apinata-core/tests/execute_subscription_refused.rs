@@ -74,16 +74,12 @@ async fn a_wrong_accept_is_refused() {
 }
 
 #[tokio::test]
-async fn the_reply_must_choose_graphql_transport_ws() {
+async fn the_reply_must_choose_a_known_subprotocol() {
     for (chosen, why) in [
         (None, "the server chose no subprotocol".to_owned()),
         (
             Some("weird"),
             "the server chose subprotocol \"weird\"".to_owned(),
-        ),
-        (
-            Some("graphql-ws"),
-            "the server chose graphql-ws, which is not supported yet".to_owned(),
         ),
     ] {
         let s = ws_server(WsScript {

@@ -1,4 +1,4 @@
-//! A scripted graphql-transport-ws peer on 127.0.0.1, plain or behind the test PKI's TLS, a raw
+//! A scripted graphql-transport-ws (or legacy graphql-ws) peer on 127.0.0.1, plain or behind the test PKI's TLS, a raw
 //! responder for broken handshakes, and the request and executor the subscription tests use.
 #![allow(dead_code)] // each test file uses a different subset
 
@@ -39,6 +39,8 @@ pub enum Step {
     Complete,
     /// The protocol's `{"type":"ping"}`.
     Ping,
+    /// The legacy keep-alive `{"type":"ka"}`.
+    Ka,
     /// A text frame sent as is.
     Text(String),
     /// A close frame with this code and reason.
@@ -56,6 +58,8 @@ pub struct WsScript {
     /// Whether `connection_init` gets a `connection_ack`.
     pub ack: bool,
     pub steps: Vec<Step>,
+    /// Played right after `connection_init` (after the ack, if any).
+    pub greeting: Vec<Step>,
 }
 
 impl WsScript {
@@ -65,6 +69,7 @@ impl WsScript {
             protocol: Some("graphql-transport-ws"),
             ack: true,
             steps,
+            greeting: Vec::new(),
         }
     }
 }
@@ -160,6 +165,7 @@ async fn serve(script: WsScript, tls: Option<TlsAcceptor>) -> WsServer {
 async fn session<S: AsyncRead + AsyncWrite + Unpin>(stream: S, script: WsScript, seen: WsSeen) {
     let record = seen.clone();
     let protocol = script.protocol;
+    let legacy = protocol == Some("graphql-ws");
     #[allow(clippy::result_large_err)] // tungstenite's `Callback` fixes this signature
     let callback = move |req: &Request, mut res: Response| -> Result<Response, ErrorResponse> {
         record.push(format!("path: {}", req.uri().path()));
@@ -186,13 +192,18 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(stream: S, script: WsScript,
                     .ok()
                     .and_then(|v| v.get("type").and_then(|t| t.as_str().map(str::to_owned)));
                 match kind.as_deref() {
-                    Some("connection_init") if script.ack => {
+                    Some("connection_init") => {
                         let ack = Message::text(r#"{"type":"connection_ack"}"#);
-                        if ws.send(ack).await.is_err() {
+                        if script.ack && ws.send(ack).await.is_err() {
+                            return;
+                        }
+                        if !play(&mut ws, &script.greeting, legacy).await {
                             return;
                         }
                     }
-                    Some("subscribe") if !play(&mut ws, &script.steps).await => return,
+                    Some("subscribe" | "start") if !play(&mut ws, &script.steps, legacy).await => {
+                        return;
+                    }
                     _ => {}
                 }
             }
@@ -205,21 +216,25 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(stream: S, script: WsScript,
     }
 }
 
-/// Plays `steps`; false when the connection is gone or a step dropped it.
+/// Plays `steps`, naming `Next` as legacy `data` when `legacy`; false when the connection is
+/// gone or a step dropped it.
 async fn play<S: AsyncRead + AsyncWrite + Unpin>(
     ws: &mut WebSocketStream<S>,
     steps: &[Step],
+    legacy: bool,
 ) -> bool {
     for step in steps {
         let text = match step {
             Step::Next(payload) => {
-                json!({"id": "1", "type": "next", "payload": payload}).to_string()
+                let kind = if legacy { "data" } else { "next" };
+                json!({"id": "1", "type": kind, "payload": payload}).to_string()
             }
             Step::Error(payload) => {
                 json!({"id": "1", "type": "error", "payload": payload}).to_string()
             }
             Step::Complete => r#"{"id":"1","type":"complete"}"#.to_owned(),
             Step::Ping => r#"{"type":"ping"}"#.to_owned(),
+            Step::Ka => r#"{"type":"ka"}"#.to_owned(),
             Step::Text(text) => text.clone(),
             Step::Close(code, reason) => {
                 let frame = CloseFrame {
