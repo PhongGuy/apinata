@@ -232,15 +232,19 @@ fn check_automatically_draws_unticked_while_updates_are_unconfigured(cx: &mut Te
     set(cx, |p| p.check_for_updates = true);
     open_prefs(cx, &s);
     prefs_reveal(cx, &s, "check-updates");
-    let (checked, disabled) = cx
-        .update_window(s.win, |_, w, cx| {
+    let state = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| {
             w.render_frame(cx);
             let b = w.find("check-updates");
             (b.checked(), b.disabled())
         })
-        .unwrap();
-    assert_eq!(checked, Some(false));
-    assert_eq!(disabled, Some(true));
+        .unwrap()
+    };
+    assert_eq!(state(cx), (Some(false), Some(true)));
+    // The disabled box swallows the click, so it neither ticks nor writes.
+    prefs_click(cx, &s, "check-updates");
+    cx.run_until_parked();
+    assert_eq!(state(cx), (Some(false), Some(true)));
     assert!(settings(cx).check_for_updates, "the stored setting is kept");
 }
 
