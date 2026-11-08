@@ -45,7 +45,7 @@ use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
 use crate::stream::{StreamBound, StreamEnd, StreamEvent, StreamOptions};
-use crate::subscription::{detect, handshake, socket};
+use crate::subscription::{ack_wait, detect, handshake, socket};
 use crate::timing::{Recorder, SystemResolve, TimedConnect, TimedResolve};
 use crate::trust::normalize_host;
 use crate::wsse;
@@ -1502,8 +1502,9 @@ impl Executor {
                     }
                     let session = socket::Session {
                         payload: plan.payload.clone(),
-                        ack_wait: timeout.unwrap_or(Duration::from_secs(10)),
+                        ack_wait: ack_wait(timeout),
                         sink: options.sink.as_ref(),
+                        cancel,
                     };
                     let transcript = socket::run(ws, session).await;
                     BodyRead {

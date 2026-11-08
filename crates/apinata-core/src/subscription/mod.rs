@@ -3,6 +3,8 @@
 pub(crate) mod handshake;
 pub(crate) mod socket;
 
+use std::time::Duration;
+
 use apollo_parser::Parser;
 use apollo_parser::cst::Definition;
 
@@ -51,6 +53,11 @@ pub(crate) fn detect(body: &str) -> Result<Option<Plan>, String> {
         }
         _ => Err("a subscription request must hold one operation".to_owned()),
     }
+}
+
+/// How long `connection_ack` may take: the request timeout when set, else 10 s.
+pub(crate) fn ack_wait(timeout: Option<Duration>) -> Duration {
+    timeout.unwrap_or(Duration::from_secs(10))
 }
 
 #[cfg(test)]
@@ -122,5 +129,15 @@ mod tests {
     fn several_operations_without_a_subscription_stay_http() {
         let body = json!({"query": "query A { a } mutation B { b }"});
         assert_eq!(payload(body), None);
+    }
+
+    #[test]
+    fn the_ack_wait_is_the_request_timeout_or_ten_seconds() {
+        use std::time::Duration;
+        assert_eq!(super::ack_wait(None), Duration::from_secs(10));
+        assert_eq!(
+            super::ack_wait(Some(Duration::from_millis(300))),
+            Duration::from_millis(300)
+        );
     }
 }

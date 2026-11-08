@@ -11,6 +11,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
+use crate::cancel::CancelHandle;
 use crate::stream::{Sink, StreamEnd, StreamEvent};
 
 /// How long a closing client waits for the server's close reply.
@@ -24,6 +25,8 @@ pub(crate) struct Session<'a> {
     pub(crate) ack_wait: Duration,
     /// Told `Chunk` per record as it is written.
     pub(crate) sink: Option<&'a Sink>,
+    /// Stop ends the run politely.
+    pub(crate) cancel: &'a CancelHandle,
 }
 
 /// What a run wrote and how it ended.
@@ -34,7 +37,7 @@ pub(crate) struct Transcript {
     pub(crate) end: StreamEnd,
 }
 
-/// Runs the protocol on `ws` until the server completes the operation or the socket ends.
+/// Runs the protocol on `ws` until the operation ends, the socket ends or the caller stops it.
 pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
     mut ws: WebSocketStream<S>,
     session: Session<'_>,
@@ -43,73 +46,99 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
         bytes: Vec::new(),
         size: 0,
         truncated: false,
-        end: StreamEnd::Error(String::new()),
+        end: StreamEnd::Closed,
     };
-    let subscribe = json!({"id": "1", "type": "subscribe", "payload": session.payload});
-    let acked = send(&mut ws, json!({"type": "connection_init"})).await
-        && tokio::time::timeout(session.ack_wait, await_ack(&mut ws))
-            .await
-            .unwrap_or(false)
-        && send(&mut ws, subscribe).await;
-    if !acked {
+    let dropped = || StreamEnd::Error("closed by server: connection dropped".to_owned());
+    if !send(&mut ws, json!({"type": "connection_init"})).await {
+        transcript.end = dropped();
         return transcript;
     }
-    // Server messages until the operation or the socket ends; a server `complete` gets the
-    // client's close 1000, a server close 1000 gets tungstenite's automatic reply.
+    let ack_at = tokio::time::Instant::now() + session.ack_wait;
+    let mut acked = false;
+    // Stop wins over a ready message; the ack deadline only counts until the ack arrives.
     transcript.end = loop {
-        let Some(Ok(message)) = ws.next().await else {
-            break StreamEnd::Error(String::new());
-        };
-        match message {
-            Message::Text(text) => {
-                let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
-                    continue;
-                };
-                let ours = value.get("id").and_then(Value::as_str) == Some("1");
-                match value.get("type").and_then(Value::as_str) {
-                    Some("next") if ours => {
-                        write(&mut transcript, &session, "next", value.get("payload"));
+        tokio::select! {
+            biased;
+            () = session.cancel.stopped() => {
+                polite_close(&mut ws, acked).await;
+                break StreamEnd::Stopped;
+            }
+            () = tokio::time::sleep_until(ack_at), if !acked => {
+                close(&mut ws, 4408).await;
+                let ms = session.ack_wait.as_millis();
+                break StreamEnd::Error(format!("no connection_ack within {ms} ms"));
+            }
+            next = ws.next() => match next {
+                Some(Ok(Message::Text(text))) => {
+                    let value = serde_json::from_str::<Value>(text.as_str()).ok();
+                    let kind = value.as_ref().and_then(|v| v.get("type")?.as_str());
+                    let ours = value.as_ref().and_then(|v| v.get("id")?.as_str()) == Some("1");
+                    match kind {
+                        Some("connection_ack") if !acked => {
+                            acked = true;
+                            let subscribe =
+                                json!({"id": "1", "type": "subscribe", "payload": session.payload});
+                            if !send(&mut ws, subscribe).await {
+                                break dropped();
+                            }
+                        }
+                        Some("ping") => {
+                            send(&mut ws, json!({"type": "pong"})).await;
+                        }
+                        // Another operation's messages and keep-alive replies are not ours.
+                        Some("pong") => {}
+                        Some("next" | "error" | "complete") if !ours => {}
+                        Some("next") => {
+                            let payload = value.as_ref().and_then(|v| v.get("payload"));
+                            write(&mut transcript, &session, "next", payload);
+                        }
+                        Some("error") => {
+                            let payload = value.as_ref().and_then(|v| v.get("payload"));
+                            write(&mut transcript, &session, "error", payload);
+                            close(&mut ws, 1000).await;
+                            break StreamEnd::Closed;
+                        }
+                        Some("complete") => {
+                            write(&mut transcript, &session, "complete", None);
+                            close(&mut ws, 1000).await;
+                            break StreamEnd::Closed;
+                        }
+                        _ => {
+                            close(&mut ws, 4400).await;
+                            let shown: String = text.as_str().chars().take(200).collect();
+                            break StreamEnd::Error(format!(
+                                "unexpected message from server: {shown}"
+                            ));
+                        }
                     }
-                    Some("complete") if ours => {
-                        write(&mut transcript, &session, "complete", None);
-                        close(&mut ws).await;
-                        break StreamEnd::Closed;
-                    }
-                    Some("ping") => {
-                        send(&mut ws, json!({"type": "pong"})).await;
-                    }
-                    _ => {}
                 }
-            }
-            Message::Close(frame) => {
-                let normal = frame.is_some_and(|f| f.code == CloseCode::Normal);
-                drain(&mut ws).await;
-                break if normal {
-                    StreamEnd::Closed
-                } else {
-                    StreamEnd::Error(String::new())
-                };
-            }
-            _ => {}
+                // tungstenite queues the close reply; draining flushes it.
+                Some(Ok(Message::Close(frame))) => {
+                    drain(&mut ws).await;
+                    break match frame {
+                        None => StreamEnd::Error("closed by server: no status".to_owned()),
+                        Some(f) if f.code == CloseCode::Normal => StreamEnd::Closed,
+                        Some(f) => {
+                            let line = format!("closed by server: {} {}", u16::from(f.code), f.reason.as_str());
+                            StreamEnd::Error(line.trim_end().to_owned())
+                        }
+                    };
+                }
+                Some(Ok(_)) => {}
+                // A TCP end without a close frame, reported either way by tungstenite.
+                None | Some(Err(_)) => break dropped(),
+            },
         }
     };
     transcript
 }
 
-/// Reads until `connection_ack`, answering protocol pings; false when the socket ends first.
-async fn await_ack<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>) -> bool {
-    while let Some(Ok(message)) = ws.next().await {
-        let Message::Text(text) = message else {
-            continue;
-        };
-        let value = serde_json::from_str::<Value>(text.as_str()).unwrap_or_default();
-        match value.get("type").and_then(Value::as_str) {
-            Some("connection_ack") => return true,
-            Some("ping") if !send(ws, json!({"type": "pong"})).await => return false,
-            _ => {}
-        }
+/// Ends the run from the client side: completes the operation if it was subscribed, then closes.
+async fn polite_close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, acked: bool) {
+    if acked {
+        send(ws, json!({"id": "1", "type": "complete"})).await;
     }
-    false
+    close(ws, 1000).await;
 }
 
 async fn send<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, v: Value) -> bool {
@@ -130,10 +159,10 @@ fn write(transcript: &mut Transcript, session: &Session<'_>, kind: &str, payload
     }
 }
 
-/// Sends close 1000 and waits briefly for the server's reply.
-async fn close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>) {
+/// Sends a close frame with `code` and waits briefly for the server's reply.
+async fn close<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, code: u16) {
     let frame = CloseFrame {
-        code: CloseCode::Normal,
+        code: CloseCode::from(code),
         reason: "".into(),
     };
     if ws.close(Some(frame)).await.is_ok() {
