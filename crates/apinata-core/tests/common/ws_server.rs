@@ -70,7 +70,7 @@ impl WsScript {
 }
 
 /// What the server saw, in order: `alpn: ..`, `path: ..`, `sec-websocket-protocol: ..`,
-/// `cookie: ..`, `recv: <text>` per client text frame and `close: <code>`.
+/// `cookie: ..`, `connection: ..`, `recv: <text>` per client text frame and `close: <code>`.
 #[derive(Clone, Default)]
 pub struct WsSeen(Arc<Mutex<Vec<String>>>);
 
@@ -163,8 +163,9 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(stream: S, script: WsScript,
     #[allow(clippy::result_large_err)] // tungstenite's `Callback` fixes this signature
     let callback = move |req: &Request, mut res: Response| -> Result<Response, ErrorResponse> {
         record.push(format!("path: {}", req.uri().path()));
-        for name in ["sec-websocket-protocol", "cookie"] {
-            if let Some(value) = req.headers().get(name) {
+        // One line per value, so a header sent twice shows twice.
+        for name in ["sec-websocket-protocol", "cookie", "connection"] {
+            for value in req.headers().get_all(name) {
                 record.push(format!("{name}: {}", value.to_str().unwrap_or("?")));
             }
         }

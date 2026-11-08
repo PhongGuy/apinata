@@ -1150,8 +1150,12 @@ impl Executor {
             })?;
             method = Method::GET;
             body = Vec::new();
+            // The handshake's own upgrade headers replace any the item set, so none goes twice.
+            let upgrade = handshake::upgrade_headers(&key);
+            let names: Vec<&str> = upgrade.iter().map(|(n, _)| n.as_str()).collect();
             drop_headers(&mut headers, &["content-type", "content-length"]);
-            headers.extend(handshake::upgrade_headers(&key));
+            drop_headers(&mut headers, &names);
+            headers.extend(upgrade);
         }
         let limit = if req.follow_redirects() && subscription.is_none() {
             req.max_redirects()

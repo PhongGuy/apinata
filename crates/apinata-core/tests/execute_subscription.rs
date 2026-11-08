@@ -4,7 +4,7 @@ use crate::common::ws_server::{
     QUERY, Step, WsScript, chunks, graphql_request, record, recording, sent, sub, tick, ws_exec,
     ws_server, wss_server,
 };
-use crate::common::{ROOT, dead_port, resolved_one};
+use crate::common::{ROOT, at, dead_port, resolved_one, setup};
 use apinata_core::HttpVersionPolicy::{Auto, Http2PriorKnowledge};
 use apinata_core::{CancelHandle, ExecError, HttpVersion, StreamEnd, StreamEvent, StreamLimits};
 use serde_json::json;
@@ -138,5 +138,28 @@ async fn a_subscription_beside_another_operation_fails_before_connecting() {
         matches!(&err, ExecError::InvalidRequest { message, .. }
             if message == "a subscription request must hold one operation"),
         "{err}"
+    );
+}
+
+#[tokio::test]
+async fn the_handshake_replaces_user_set_upgrade_headers() {
+    let s = ws_server(WsScript::new(vec![tick(1), Step::Complete])).await;
+    let item = format!(
+        "info:\n  name: s\n  type: graphql\ngraphql:\n  method: POST\n  url: \"{}\"\n  headers:\n    - name: Connection\n      value: keep-alive\n    - name: Sec-WebSocket-Protocol\n      value: x\n  body:\n    query: {}\n",
+        s.http("/"),
+        serde_json::to_string(QUERY).expect("query"),
+    );
+    let (_dir, c, ctx) = setup(&[("opencollection.yml", ROOT), ("s.yml", &item)]);
+    let req = at(&c, &ctx, "s.yml").expect("resolves");
+    let res = ws_exec(Auto).send(&req).await.unwrap();
+    assert_eq!(res.stream_end(), Some(&StreamEnd::Closed));
+    let lines = s.seen.lines();
+    let named =
+        |prefix: &str| -> Vec<&String> { lines.iter().filter(|l| l.starts_with(prefix)).collect() };
+    assert_eq!(named("connection: "), ["connection: Upgrade"], "{lines:?}");
+    assert_eq!(
+        named("sec-websocket-protocol: "),
+        ["sec-websocket-protocol: graphql-transport-ws, graphql-ws"],
+        "{lines:?}"
     );
 }
