@@ -127,7 +127,7 @@ fn the_toast_margin_clears_the_zoomed_status_bar(cx: &mut TestAppContext) {
 }
 
 // The kit clips a tab's content to an inner box of fixed px per Size; these are the
-// underline variant's heights (gpui-component-0.7.1/src/tab/tab.rs:45-70).
+// underline variant's heights (gpui-component-0.9.0/src/tab/tab.rs, `inner_height`).
 fn underline_inner_height(size: Size) -> Pixels {
     match size {
         Size::XSmall => px(20.),

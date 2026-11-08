@@ -386,7 +386,7 @@ fn the_eye_stays_clear_of_the_scrollbar(cx: &mut TestAppContext) {
             "the rows overflow the list, so it scrolls"
         );
         let eye = w.find(("compare-eye", ix)).bounds();
-        // gpui-base 0.7.1 `scrollbar::WIDTH`, the overlay scrollbar's width.
+        // gpui-base 0.9.0 `scrollbar::WIDTH`, the overlay scrollbar's width.
         let track = list.right() - gpui_kit::px(16.);
         assert!(
             eye.right() <= track,

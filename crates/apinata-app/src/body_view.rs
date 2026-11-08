@@ -3857,7 +3857,7 @@ fn image_format(kind: ImageKind) -> ImageFormat {
     }
 }
 
-// A copy of the style gpui-component 0.7.1's `Input` projects onto an editor (input.rs, its
+// A copy of the style gpui-component 0.9.0's `Input` projects onto an editor (input.rs, its
 // render), with the find selection in place of the theme's; re-check it when gpui-kit moves.
 fn editor_style(cx: &App) -> InputEditorStyle {
     let theme = cx.theme();
