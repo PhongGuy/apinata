@@ -31,6 +31,8 @@ url.workspace = true
 percent-encoding.workspace = true
 # Already in the lock through gpui; pinned to that version so only one copy builds.
 quick-xml = "=0.41.0"
+# The editor's text type, at the kit's version; `ropes_are_instances` compares two in O(1).
+ropey = { version = "=2.0.0-beta.1", default-features = false }
 # Same version gpui links, so `RgbaImage` is the type `WindowOptions.icon` takes.
 image = { version = "=0.25.10", default-features = false, features = ["png", "gif", "jpeg", "webp", "bmp"] }
 # Unused directly: turns on `debug-embed` for the kit's icon set, so debug builds carry

@@ -8,7 +8,7 @@ use apinata_core::{
     FieldPath, Lock, QUERY_VALIDATE_LIMIT, QueryEdit, QueryOutline, Schema, TypeKind, query_outline,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::EditorState;
+use gpui_kit::component::input::{EditorState, Rope};
 use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -215,8 +215,9 @@ pub struct BuilderPanel {
     rows: Vec<BuilderRow>,
     // Why the builder cannot read the text, shown once above the rows.
     note: Option<&'static str>,
-    // The text and schema the rows were built from; `None` forces a rebuild.
-    built: Option<(String, Arc<Schema>)>,
+    // The text and schema the rows were built from; `None` forces a rebuild. The rope is
+    // a shared clone of the editor's, so an unedited text is recognised without a copy.
+    built: Option<(Rope, Arc<Schema>)>,
     _subs: Vec<Subscription>,
 }
 
@@ -324,13 +325,16 @@ impl BuilderPanel {
 
     // Rebuild only when the text or schema moved; expansion and the toggle clear `built`.
     fn refresh(&mut self, schema: Arc<Schema>, cx: &App) {
-        let text = self.query.read(cx).value().to_string();
+        // An unedited rope is the same instance, which is the O(1) check every caret move
+        // takes; the content comparison only runs when the instance changed.
+        let rope = self.query.read(cx).text().clone();
         if let Some((t, s)) = &self.built
-            && *t == text
+            && (ropey::extra::esoterica::ropes_are_instances(t, &rope) || *t == rope)
             && Arc::ptr_eq(s, &schema)
         {
             return;
         }
+        let text = rope.to_string();
         let outline = query_outline(&text, &schema);
         let note = unavailable_note(&text);
         self.note = outline.is_none().then_some(note);
@@ -340,7 +344,7 @@ impl BuilderPanel {
             &self.expanded,
             self.show_deprecated,
         );
-        self.built = Some((text, schema));
+        self.built = Some((rope, schema));
     }
 
     fn loaded(&mut self, schema: Arc<Schema>, cx: &mut Context<Self>) -> Div {
