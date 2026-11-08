@@ -2948,7 +2948,11 @@ impl Render for Sidebar {
                                     cx,
                                     move |cx| {
                                         let idle = idle.read_with(cx, |s, _| s.rename.is_none());
-                                        before.filter(|_| idle.unwrap_or(false))
+                                        match (before, idle.unwrap_or(false)) {
+                                            (None, _) => menu_focus::Before::Nothing,
+                                            (Some(held), true) => menu_focus::Before::Held(held),
+                                            (Some(_), false) => menu_focus::Before::Gone,
+                                        }
                                     },
                                     move |window, cx| {
                                         tree_owner

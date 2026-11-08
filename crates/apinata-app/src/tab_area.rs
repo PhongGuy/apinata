@@ -34,7 +34,7 @@ use crate::keymap::{
     DiscardChanges, FocusResponse, FocusUrl, NewRequest, NextSection, OpenEnvironments,
     PreviousSection, RedoActive, SHELL_CONTEXT, SaveActive, UndoActive,
 };
-use crate::menu_focus;
+use crate::menu_focus::{self, Before};
 use crate::palette::OpenCommandPalette;
 use crate::request_editor::{RequestEditor, SendRequest};
 use crate::runner_view::RunnerView;
@@ -2258,14 +2258,18 @@ impl TabArea {
                     window,
                     move |cx| {
                         area.update(cx, |a, cx| {
-                            let (handle, owner) = a.before_menu.take()?;
+                            let Some((handle, owner)) = a.before_menu.take() else {
+                                return Before::Nothing;
+                            };
                             let open = |id: &TabId| {
                                 (a.workspace.read(cx).tabs().entries().iter()).any(|e| e.id == *id)
                             };
-                            owner.as_ref().is_none_or(open).then_some(handle)
+                            match owner.as_ref().is_none_or(open) {
+                                true => Before::Held(handle),
+                                false => Before::Gone,
+                            }
                         })
-                        .ok()
-                        .flatten()
+                        .unwrap_or(Before::Gone)
                     },
                     move |window, cx| {
                         fallback_area
