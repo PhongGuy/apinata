@@ -126,6 +126,30 @@ async fn no_ack_within_the_request_timeout_closes_4408() {
 }
 
 #[tokio::test]
+async fn an_unstreamed_send_without_an_ack_closes_4408() {
+    // The run's time bound equals the request timeout here, and the ack wait must still win.
+    let s = ws_server(WsScript {
+        ack: false,
+        ..WsScript::new(Vec::new())
+    })
+    .await;
+    let req = graphql_request(
+        ROOT,
+        &s.http("/"),
+        QUERY,
+        VARS,
+        "settings:\n  timeout: 300\n",
+    );
+    let res = ws_exec(Auto).send(&req).await.unwrap();
+    assert_eq!(
+        res.stream_end(),
+        Some(&StreamEnd::Error("no connection_ack within 300 ms".into()))
+    );
+    let lines = s.seen.until(|l| l.starts_with("close: ")).await;
+    assert!(lines.contains(&"close: 4408".to_owned()), "{lines:?}");
+}
+
+#[tokio::test]
 async fn ping_is_answered_and_other_ids_are_ignored() {
     let foreign = r#"{"id":"2","type":"next","payload":{"data":null}}"#.to_owned();
     let s = ws_server(WsScript::new(vec![

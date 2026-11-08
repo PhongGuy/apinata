@@ -62,14 +62,19 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
     let bound_at = session.limits.max_duration.map(|d| began + d);
     let mut acked = false;
     let mut events = 0u64;
-    // Stop and the time bound win over a ready message; the ack deadline only counts until
-    // the ack arrives.
+    // Stop, then the ack deadline, then the time bound win over a ready message, so a missing
+    // ack is reported even when the bound falls due at the same instant.
     transcript.end = loop {
         tokio::select! {
             biased;
             () = session.cancel.stopped() => {
                 polite_close(&mut ws, acked).await;
                 break StreamEnd::Stopped;
+            }
+            () = tokio::time::sleep_until(ack_at), if !acked => {
+                close(&mut ws, 4408).await;
+                let ms = session.ack_wait.as_millis();
+                break StreamEnd::Error(format!("no connection_ack within {ms} ms"));
             }
             () = async {
                 match bound_at {
@@ -79,11 +84,6 @@ pub(crate) async fn run<S: AsyncRead + AsyncWrite + Unpin>(
             } => {
                 polite_close(&mut ws, acked).await;
                 break StreamEnd::Bound(StreamBound::Time);
-            }
-            () = tokio::time::sleep_until(ack_at), if !acked => {
-                close(&mut ws, 4408).await;
-                let ms = session.ack_wait.as_millis();
-                break StreamEnd::Error(format!("no connection_ack within {ms} ms"));
             }
             next = ws.next() => match next {
                 Some(Ok(Message::Text(text))) => {
