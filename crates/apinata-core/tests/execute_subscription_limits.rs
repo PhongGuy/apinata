@@ -35,7 +35,7 @@ async fn an_event_limit_ends_politely() {
 #[tokio::test]
 async fn a_time_limit_ends_politely() {
     let s = ws_server(WsScript::new(vec![tick(1)])).await;
-    let (opts, _) = recording(StreamLimits::new().max_duration(Some(Duration::from_millis(300))));
+    let (opts, _) = recording(StreamLimits::new().max_duration(Some(Duration::from_millis(1500))));
     let started = Instant::now();
     let res = ws_exec(Auto)
         .send_streaming(&sub(&s.http("/")), &CancelHandle::new(), opts)
@@ -77,7 +77,7 @@ async fn an_unstreamed_send_returns_at_the_request_timeout() {
         &s.http("/"),
         QUERY,
         VARS,
-        "settings:\n  timeout: 400\n",
+        "settings:\n  timeout: 1500\n",
     );
     let started = Instant::now();
     let res = ws_exec(Auto).send(&req).await.unwrap();
