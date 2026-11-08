@@ -1100,6 +1100,19 @@ impl Executor {
             .hop_rule(&rule, &url, 0, pac, &hop_deadline, &overrides)
             .await?;
         let mut proxy = self.check_route(&hop_rule, &url, 0, &overrides)?;
+        // A forwarding HTTP proxy drops the upgrade, so plain ws must tunnel or go direct.
+        if subscription.is_some()
+            && url.scheme() == "http"
+            && proxy
+                .as_ref()
+                .is_some_and(|p| matches!(p.scheme(), "http" | "https"))
+        {
+            return Err(invalid(
+                "a ws:// subscription cannot pass through an HTTP proxy; \
+                 use wss:// or bypass the proxy for this host"
+                    .to_owned(),
+            ));
+        }
         if let Some(root) = &self.confine_files {
             confine(req.files(), root)?;
         }

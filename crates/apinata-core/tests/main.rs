@@ -145,6 +145,7 @@ mod execute_subscription;
 mod execute_subscription_end;
 mod execute_subscription_limits;
 mod execute_subscription_refused;
+mod execute_subscription_route;
 mod execute_timeline;
 mod execute_tls;
 mod execute_userinfo_auth;
