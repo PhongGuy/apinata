@@ -18,6 +18,9 @@ pub(crate) struct ClientKey {
     /// The host overrides the client resolves by, ordered by host, so a changed mapping builds a
     /// new client rather than reusing a pooled connection to the old address.
     pub(crate) overrides: Arc<Vec<ResolvedHostOverride>>,
+    /// True for a WebSocket handshake: the client offers only HTTP/1.1 whatever the policy, since an
+    /// h2 connection cannot be upgraded.
+    pub(crate) http1_only: bool,
 }
 
 /// Most recently used first; at most `CAPACITY`. Evicting only costs a rebuild and a new connection.

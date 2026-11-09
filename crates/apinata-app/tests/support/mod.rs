@@ -927,6 +927,69 @@ pub fn sse_collection(server: &sse_server::SlowServer) -> TempDir {
     collection_for(&format!("http://127.0.0.1:{}", server.port()), "")
 }
 
+#[path = "../../../apinata-cli/tests/common/ws_server.rs"]
+pub mod ws_server;
+
+#[path = "../../../apinata-core/tests/common/raw_server.rs"]
+pub mod raw_server;
+
+/// A GraphQL-over-WebSocket peer on the app's tokio runtime: replies with subprotocol
+/// `protocol`, acks, and after the subscribe sends `frames`, `gap` apart. Returns its port.
+pub fn ws_peer(
+    cx: &mut gpui_kit::TestAppContext,
+    protocol: &'static str,
+    frames: Vec<String>,
+    gap: std::time::Duration,
+) -> u16 {
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    handle.block_on(ws_server::ws_server(protocol, frames, gap))
+}
+
+/// A raw server answering each request head with `reply`, on the app's runtime. Returns its port.
+pub fn raw_peer(cx: &mut gpui_kit::TestAppContext, reply: &'static str) -> u16 {
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    handle.block_on(raw_server::raw_server(reply))
+}
+
+/// Request file `a`: a graphql item whose body is `subscription { tick }`, sent to `url`.
+pub fn subscription_item(url: &str) -> String {
+    format!(
+        "info:\n  name: a\n  type: graphql\n  seq: 1\ngraphql:\n  method: POST\n  url: \"{url}\"\n  body:\n    query: \"subscription {{ tick }}\"\n"
+    )
+}
+
+/// A collection whose `a.yml` is `subscription_item("http://127.0.0.1:<port>/graphql")`.
+pub fn subscription_collection(port: u16) -> TempDir {
+    let a = subscription_item(&format!("http://127.0.0.1:{port}/graphql"));
+    write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)])
+}
+
+/// A response pane in its own window over a fresh send model for `col`:
+/// (window, pane, model, collection root).
+pub fn pane_for(
+    cx: &mut gpui_kit::TestAppContext,
+    col: &TempDir,
+) -> (
+    gpui_kit::AnyWindowHandle,
+    gpui_kit::Entity<apinata_app::response_pane::ResponsePane>,
+    gpui_kit::Entity<apinata_app::send_model::SendModel>,
+    std::path::PathBuf,
+) {
+    use gpui_kit::AppContext as _;
+    let (_state, ws, root) = open_dir(cx, col);
+    let model = sender(cx, &ws);
+    init(cx);
+    let m = model.clone();
+    let (win, pane) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| apinata_app::response_pane::ResponsePane::new(m, w, cx))
+            })
+        })
+        .unwrap();
+    (win, pane, model, root)
+}
+
 pub fn served(cx: &mut gpui_kit::TestAppContext, server: &wiremock::MockServer) -> Vec<String> {
     let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
     let requests = handle

@@ -16,6 +16,7 @@ gpui-kit.workspace = true
 async-channel.workspace = true
 tree-sitter-c-sharp.workspace = true
 tree-sitter-graphql.workspace = true
+tree-sitter-powershell.workspace = true
 lsp-types.workspace = true
 chrono.workspace = true
 notify-debouncer-full.workspace = true
@@ -49,6 +50,8 @@ socket2 = { workspace = true }
 gpui-kit = { workspace = true, features = ["test-support"] }
 wiremock.workspace = true
 tokio = { workspace = true, features = ["net", "io-util"] }
+tokio-tungstenite = { workspace = true, features = ["handshake"] }
+futures-util.workspace = true
 
 # Packaging config without secrets; `cargo xtask packager-config` completes it per build.
 [package.metadata.packager]

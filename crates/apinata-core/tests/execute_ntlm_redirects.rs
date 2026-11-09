@@ -1,22 +1,28 @@
-//! NTLM across redirects, and the recorded proxy decision.
+//! NTLM across redirects and through proxies.
 
 use crate::common;
 use crate::network_support;
 use crate::ntlm_support;
+use crate::script_support;
 
 use apinata_core::{
-    ExecError, ExecOptions, Executor, GlobalProxy, NetworkSettings, NtlmCause, ResolvedProxy,
-    ResolvedRequest,
+    ContextOptions, ExecError, ExecOptions, Executor, GlobalProxy, NetworkSettings, NtlmCause,
+    ResolvedProxy, ResolvedRequest, RunOptions, Warning,
 };
 use common::{executor, resolved_one};
-use network_support::http_proxy;
+use network_support::{closing_proxy, http_proxy, keeping_proxy, socks5_proxy};
 use ntlm_support::{Options, PASSWORD, Stage, USER, ntlm_server};
+use script_support::{send_full, write_tree};
 
 const JSON: &str = "  body:\n    type: json\n    data: '{\"a\":1}'\n";
 
 fn auth() -> String {
+    auth_with(PASSWORD)
+}
+
+fn auth_with(password: &str) -> String {
     format!(
-        "  auth:\n    type: ntlm\n    username: {USER}\n    password: {PASSWORD}\n    domain: CORP\n"
+        "  auth:\n    type: ntlm\n    username: {USER}\n    password: {password}\n    domain: CORP\n"
     )
 }
 
@@ -181,7 +187,10 @@ async fn a_cross_origin_redirect_with_forwarding_renegotiates() {
 }
 
 fn via(port: u16) -> Executor {
-    let proxy = ResolvedProxy::new("http", "127.0.0.1", &port.to_string()).expect("proxy");
+    through(ResolvedProxy::new("http", "127.0.0.1", &port.to_string()).expect("proxy"))
+}
+
+fn through(proxy: ResolvedProxy) -> Executor {
     let manual = GlobalProxy::Manual {
         proxy,
         bypass: String::new(),
@@ -194,34 +203,58 @@ fn via(port: u16) -> Executor {
     .expect("executor")
 }
 
-/// Decision D2 (`HttpsOnly`): plain http through a proxy is refused before anything is sent.
+/// Plain http through a proxy that keeps one upstream connection runs the whole handshake
+/// absolute-form on that connection.
 #[tokio::test]
-async fn plain_http_through_a_proxy_is_refused_before_anything_is_sent() {
+async fn plain_http_through_a_keeping_proxy_completes_on_one_upstream_connection() {
     let s = ntlm_server(Options::default()).await;
-    let proxy = http_proxy(None).await;
+    let proxy = keeping_proxy().await;
+    let res = via(proxy.port)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect("sent");
+    assert_eq!((res.status(), res.text()), (200, "GET 0"));
+    assert_eq!(stages(&s), [Stage::Probe, Stage::Type1, Stage::Type3]);
+    assert_eq!(s.connections(), 1, "one upstream connection");
+    assert!(
+        s.seen()
+            .iter()
+            .all(|r| r.target == format!("{}/ok", s.origin())),
+        "absolute-form on every leg"
+    );
+    let target = format!("GET {}/ok HTTP/1.1", s.origin());
+    assert_eq!(proxy.seen.lines(), [target.clone(), target.clone(), target]);
+}
+
+/// A proxy that does not keep the connection fails the handshake and says why in plain words.
+#[tokio::test]
+async fn plain_http_through_a_closing_proxy_names_the_proxy() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = closing_proxy().await;
     let err = via(proxy.port)
         .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
         .await
-        .expect_err("unsupported");
+        .expect_err("not kept");
     assert!(
         matches!(
             err,
             ExecError::Ntlm {
-                cause: NtlmCause::ProxyUnsupported,
+                cause: NtlmCause::ConnectionNotKept,
                 ..
             }
         ),
         "{err:?}"
     );
     assert!(
-        err.to_string()
-            .contains("NTLM through a proxy is not supported"),
+        err.to_string().ends_with(
+            "NTLM: the proxy did not keep one connection to the server for the handshake; \
+             use https, or a proxy that keeps connections"
+        ),
         "{err}"
     );
-    assert!(s.seen().is_empty() && proxy.seen.lines().is_empty());
 }
 
-/// Decision D2: https through a CONNECT tunnel completes the handshake.
+/// https through a CONNECT tunnel completes the handshake.
 #[tokio::test]
 async fn https_through_connect_completes() {
     let s = ntlm_server(Options {
@@ -237,4 +270,208 @@ async fn https_through_connect_completes() {
     assert_eq!((res.status(), res.text()), (200, "GET 0"));
     assert_eq!(stages(&s), [Stage::Probe, Stage::Type1, Stage::Type3]);
     assert!(proxy.seen.lines()[0].starts_with("CONNECT "));
+}
+
+/// Through SOCKS an http target is a raw tunnel, as direct, so the handshake runs as usual.
+#[tokio::test]
+async fn plain_http_through_socks5_completes_on_one_connection() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = socks5_proxy(None).await;
+    let socks = ResolvedProxy::new("socks5", "127.0.0.1", &proxy.port.to_string()).expect("proxy");
+    let res = through(socks)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect("sent");
+    assert_eq!((res.status(), res.text()), (200, "GET 0"));
+    assert_eq!(stages(&s), [Stage::Probe, Stage::Type1, Stage::Type3]);
+    assert_eq!(s.connections(), 1, "one connection");
+    assert_eq!(
+        proxy.seen.lines().len(),
+        1,
+        "one tunnel: {:?}",
+        proxy.seen.lines()
+    );
+}
+
+/// Through SOCKS a closed connection is the server's doing and is told as such.
+#[tokio::test]
+async fn a_close_through_socks5_names_the_server() {
+    let s = ntlm_server(Options {
+        close_on_401: true,
+        ..Options::default()
+    })
+    .await;
+    let proxy = socks5_proxy(None).await;
+    let socks = ResolvedProxy::new("socks5", "127.0.0.1", &proxy.port.to_string()).expect("proxy");
+    let err = through(socks)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect_err("not kept");
+    assert!(
+        err.to_string()
+            .ends_with("NTLM: the server closed the connection after the first answer"),
+        "{err}"
+    );
+}
+
+/// A challenge body cut short through a proxy keeps its own reason, not the proxy wording.
+#[tokio::test]
+async fn a_cut_challenge_body_through_a_proxy_keeps_its_reason() {
+    let s = ntlm_server(Options {
+        cut_401_body: true,
+        ..Options::default()
+    })
+    .await;
+    let proxy = keeping_proxy().await;
+    let err = via(proxy.port)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect_err("cut");
+    assert!(
+        matches!(
+            err,
+            ExecError::Ntlm {
+                cause: NtlmCause::ConnectionNotKept,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert!(!err.to_string().contains("the proxy did not keep"), "{err}");
+}
+
+/// Proxy credentials go to the proxy on every leg and stay out of the timeline.
+#[tokio::test]
+async fn proxy_credentials_reach_the_proxy_on_every_leg_but_not_the_timeline() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = keeping_proxy().await;
+    let credentialed = ResolvedProxy::new("http", "127.0.0.1", &proxy.port.to_string())
+        .expect("proxy")
+        .with_credentials("pu", "pp");
+    let res = through(credentialed)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect("sent");
+    assert_eq!(res.status(), 200);
+    let auths: Vec<String> = (proxy.seen.lines().into_iter())
+        .filter(|l| l.starts_with("auth: "))
+        .collect();
+    assert_eq!(auths, ["auth: Basic cHU6cHA="; 3]);
+    assert_eq!(res.timeline().len(), 3);
+    for hop in res.timeline() {
+        assert!(
+            !(hop.request_headers.iter())
+                .any(|(n, _)| n.eq_ignore_ascii_case("proxy-authorization")),
+            "{:?}",
+            hop.request_headers
+        );
+    }
+    assert!(
+        s.seen()
+            .iter()
+            .all(|r| !r.headers.iter().any(|(n, _)| n == "proxy-authorization"))
+    );
+}
+
+/// A wrong password through an http proxy may also be a proxy that switched the upstream
+/// connection, so the final 401 carries a warning that says both.
+#[tokio::test]
+async fn a_final_401_through_an_http_proxy_warns_about_the_proxy() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = keeping_proxy().await;
+    let res = via(proxy.port)
+        .send(&req(
+            "GET",
+            &format!("{}/ok", s.origin()),
+            &auth_with("nope"),
+            "",
+        ))
+        .await
+        .expect("a 401 is a response");
+    assert_eq!(res.status(), 401);
+    assert_eq!(res.warnings(), [Warning::NtlmProxyUnauthorized]);
+    assert_eq!(
+        Warning::NtlmProxyUnauthorized.to_string(),
+        "NTLM through an HTTP proxy ended in 401: the credentials may be wrong, or the proxy may \
+         not keep one connection to the server for the handshake; use https to rule out the proxy"
+    );
+}
+
+#[tokio::test]
+async fn a_final_401_without_a_proxy_has_no_proxy_warning() {
+    let s = ntlm_server(Options::default()).await;
+    let res = executor()
+        .send(&req(
+            "GET",
+            &format!("{}/ok", s.origin()),
+            &auth_with("nope"),
+            "",
+        ))
+        .await
+        .expect("a 401 is a response");
+    assert_eq!(res.status(), 401);
+    assert!(res.warnings().is_empty(), "{:?}", res.warnings());
+}
+
+#[tokio::test]
+async fn a_final_401_through_socks5_has_no_proxy_warning() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = socks5_proxy(None).await;
+    let socks = ResolvedProxy::new("socks5", "127.0.0.1", &proxy.port.to_string()).expect("proxy");
+    let res = through(socks)
+        .send(&req(
+            "GET",
+            &format!("{}/ok", s.origin()),
+            &auth_with("nope"),
+            "",
+        ))
+        .await
+        .expect("a 401 is a response");
+    assert_eq!(res.status(), 401);
+    assert!(res.warnings().is_empty(), "{:?}", res.warnings());
+}
+
+#[tokio::test]
+async fn a_signed_in_run_through_an_http_proxy_has_no_proxy_warning() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = keeping_proxy().await;
+    let res = via(proxy.port)
+        .send(&req("GET", &format!("{}/ok", s.origin()), &auth(), ""))
+        .await
+        .expect("sent");
+    assert_eq!(res.status(), 200);
+    assert!(res.warnings().is_empty(), "{:?}", res.warnings());
+}
+
+/// The runner lists the proxy warning with the request's other warnings.
+#[tokio::test]
+async fn the_runner_lists_the_ntlm_proxy_warning() {
+    let s = ntlm_server(Options::default()).await;
+    let proxy = keeping_proxy().await;
+    let manual = GlobalProxy::Manual {
+        proxy: ResolvedProxy::new("http", "127.0.0.1", &proxy.port.to_string()).expect("proxy"),
+        bypass: String::new(),
+    };
+    let request = format!(
+        "info:\n  name: r\n  type: http\nhttp:\n  method: GET\n  url: \"{}/ok\"\n{}",
+        s.origin(),
+        auth_with("nope")
+    );
+    let dir = write_tree(&[
+        (
+            "opencollection.yml",
+            "opencollection: \"1.0.0\"\ninfo:\n  name: t\n",
+        ),
+        ("r.yml", &request),
+    ]);
+    let (result, _) = send_full(
+        dir.path(),
+        "r.yml",
+        RunOptions::new(),
+        ContextOptions::new(),
+        ExecOptions::new().network(NetworkSettings::new().proxy(manual)),
+    )
+    .await;
+    assert_eq!(result.response.as_ref().map(|r| r.status()), Some(401));
+    assert_eq!(result.warnings, [Warning::NtlmProxyUnauthorized]);
 }

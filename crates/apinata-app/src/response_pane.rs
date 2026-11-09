@@ -92,6 +92,8 @@ pub enum ErrorKind {
     UndefinedVariable,
     /// The request was stopped before it was sent.
     NotSent,
+    /// A subscription was refused at its handshake or its socket ended with an error.
+    Subscription,
     /// Anything else.
     Failed,
 }
@@ -206,6 +208,11 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             "A body file could not be read.".into(),
             false,
         ),
+        RunError::Subscription { .. } => {
+            let plain = ui::plain_quotes(details);
+            let first = plain.lines().next().unwrap_or_default().to_owned();
+            view(ErrorKind::Subscription, "Subscription failed", first, true)
+        }
         RunError::Resolve(_) | RunError::Exec(ExecError::SecretInProxy) => view(
             ErrorKind::NotSent,
             "Request not sent",
@@ -1362,20 +1369,75 @@ impl ResponsePane {
             SendState::Done(r) if matches!(r.outcome, Outcome::Cancelled | Outcome::Skipped) => {
                 return Some(self.cancelled_view());
             }
-            // A script error can quote a secret, so the block shows it redacted.
-            SendState::Done(r) => {
-                let e = r.error.as_ref()?;
-                let send = self.send.read(cx);
-                let env = (send.root())
-                    .and_then(|root| send.workspace().read(cx).selected_environment(root, cx));
-                let mut view = describe_error(e, &r.redact(&e.to_string()), env.as_deref());
-                // The sentence quotes the error's own fields, such as a secret host.
-                view.sentence = view.sentence.map(|s| r.redact(&s));
-                view
-            }
+            // A failed subscription with a response keeps its body; `stream_error` says why.
+            SendState::Done(r) if is_stream_error(r) => return None,
+            SendState::Done(r) => self.done_error(r, cx)?,
         };
         view.retry &= self.retry;
         Some(view)
+    }
+
+    /// The banner under the tab strip for a subscription that failed with a response (a refused
+    /// handshake's page, or a transcript its socket ended); `None` for anything else.
+    pub fn stream_error(&self, cx: &App) -> Option<ErrorView> {
+        let r = match self.send.read(cx).state() {
+            SendState::Done(r) if is_stream_error(r) => r,
+            _ => return None,
+        };
+        let mut view = self.done_error(r, cx)?;
+        view.retry &= self.retry;
+        Some(view)
+    }
+
+    // A finished run's error, redacted: a script error can quote a secret.
+    fn done_error(&self, r: &RequestResult, cx: &App) -> Option<ErrorView> {
+        let e = r.error.as_ref()?;
+        let send = self.send.read(cx);
+        let env =
+            (send.root()).and_then(|root| send.workspace().read(cx).selected_environment(root, cx));
+        let mut view = describe_error(e, &r.redact(&e.to_string()), env.as_deref());
+        // The sentence quotes the error's own fields, such as a secret host.
+        view.sentence = view.sentence.map(|s| r.redact(&s));
+        Some(view)
+    }
+
+    // The one-row banner for `stream_error`: icon, title, sentence and a Retry when offered.
+    fn stream_error_row(&self, cx: &App) -> Option<AnyElement> {
+        let view = self.stream_error(cx)?;
+        let sentence = view.sentence.clone().unwrap_or_default();
+        Some(
+            h_flex()
+                .id("response-stream-error")
+                .test_support()
+                .aria_label(format!("{}: {sentence}", view.title))
+                .w_full()
+                .gap(style::SPACE_2)
+                .items_center()
+                .child(Icon::new(IconName::CircleAlert).text_color(cx.theme().danger))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(cx.theme().danger)
+                        .child(view.title),
+                )
+                // The sentence is cut to one line; its tooltip holds the whole text.
+                .child(
+                    div()
+                        .id("response-stream-error-sentence")
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(cx.theme().muted_foreground)
+                        .tooltip(ui::text_tooltip(
+                            "response-stream-error-tooltip",
+                            sentence.clone(),
+                        ))
+                        .child(sentence),
+                )
+                .when(view.retry, |row| row.child(retry_button(cx)))
+                .into_any_element(),
+        )
     }
 
     // The "Ask again" button under a "scripts not executed" notice while the collection is
@@ -4544,6 +4606,7 @@ impl ResponsePane {
             .gap(style::SPACE_2)
             .child(strip)
             .children(self.streaming_facts(cx));
+        let waiting = self.waiting_row(cx);
         if self.tab == ResponseTab::Events && self.events_tab {
             return v_flex()
                 .id("response-streaming")
@@ -4551,6 +4614,7 @@ impl ResponsePane {
                 .size_full()
                 .gap_2()
                 .child(header)
+                .children(waiting)
                 .child(self.events_body(cx))
                 .into_any_element();
         }
@@ -4594,7 +4658,8 @@ impl ResponsePane {
             .size_full()
             .gap_2()
             .child(header)
-            // The note sits above the list so every list row shares one height.
+            // The waiting row and the note sit above the list so every list row shares one height.
+            .children(waiting)
             .when(skipped > 0, |v| {
                 v.child(
                     div()
@@ -4617,6 +4682,40 @@ impl ResponsePane {
                     .vertical_scrollbar(&self.live_scroll),
             )
             .into_any_element()
+    }
+
+    // Until the first byte of a live response arrives, say so and offer Stop here, so a quiet
+    // subscription is not a blank list. Stop keeps the run, unlike Cancel while sending.
+    fn waiting_row(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.send.read(cx).live().is_some_and(|l| l.bytes() > 0) {
+            return None;
+        }
+        let send = self.send.clone();
+        Some(
+            h_flex()
+                .id("response-live-waiting")
+                .test_support()
+                .aria_label("Waiting for data")
+                .flex_none()
+                .w_full()
+                .items_center()
+                .gap(style::SPACE_2)
+                .child(
+                    div()
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Waiting for data"),
+                )
+                .child(
+                    Button::new("response-stop")
+                        .ghost()
+                        .small()
+                        .label("Stop")
+                        .accessibility_label("Stop the stream")
+                        .on_click(move |_, _, cx| send.update(cx, |m, cx| m.stop(cx))),
+                )
+                .into_any_element(),
+        )
     }
 
     // The Compare tab: a fixed summary row over the one scrolling list of rows.
@@ -4885,6 +4984,7 @@ impl Render for ResponsePane {
                     .w_full()
                     .gap_2()
                     .ring_room(RingSides::LEFT)
+                    .children(self.stream_error_row(cx))
                     .children(self.warnings(cx).into_iter().enumerate().map(|(ix, w)| {
                         div()
                             .id(("response-warning", ix))
@@ -5280,11 +5380,21 @@ pub fn cookie_matches(host: &str, domain: &str, host_only: bool) -> bool {
     host == domain || (!host_only && host.ends_with(&format!(".{domain}")))
 }
 
-// Whether the response's Content-Type marks an event-stream.
+// Whether the response is an event-stream: its Content-Type says so, or it is a subscription's
+// 101 transcript, known by its stream end or, once restored without one, by its GraphQL
+// subprotocol. An ordinary 101 has neither.
 fn is_event_stream_response(r: &Response) -> bool {
-    r.headers()
-        .iter()
-        .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && sse::is_event_stream(v))
+    let header = |name: &str, want: &dyn Fn(&str) -> bool| {
+        (r.headers().iter()).any(|(k, v)| k.eq_ignore_ascii_case(name) && want(v))
+    };
+    let graphql = |v: &str| matches!(v.trim(), "graphql-transport-ws" | "graphql-ws");
+    (r.status() == 101 && (r.stream_end().is_some() || header("sec-websocket-protocol", &graphql)))
+        || header("content-type", &|v| sse::is_event_stream(v))
+}
+
+// Whether a finished run is a subscription that failed but still has a response to show.
+fn is_stream_error(r: &RequestResult) -> bool {
+    r.response.is_some() && matches!(r.error, Some(RunError::Subscription { .. }))
 }
 
 fn done(send: &SendModel) -> Option<Arc<RequestResult>> {

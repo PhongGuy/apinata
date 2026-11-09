@@ -16,6 +16,8 @@ use reqwest::header::{
 };
 use reqwest::redirect::Policy;
 use reqwest::{Client, Identity, Method, StatusCode};
+use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use url::Url;
 
 use crate::cancel::CancelHandle;
@@ -43,6 +45,7 @@ use crate::session_log::{
     Exchange, Logged, NetworkEntry, Redactor, SendHold, SendSource, SessionLog,
 };
 use crate::stream::{StreamBound, StreamEnd, StreamEvent, StreamOptions};
+use crate::subscription::{ack_wait, detect, handshake, socket, unstreamed_limits};
 use crate::timing::{Recorder, SystemResolve, TimedConnect, TimedResolve};
 use crate::trust::normalize_host;
 use crate::wsse;
@@ -274,7 +277,8 @@ pub enum ConnectCause {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NtlmCause {
-    /// The server closed the connection the handshake needs to keep.
+    /// The server, or a proxy in front of an http target, closed the connection the handshake
+    /// needs to keep.
     ConnectionNotKept,
     /// The handshake would have needed a second connection.
     ConnectionNotReused,
@@ -282,8 +286,6 @@ pub enum NtlmCause {
     ChallengeUnusable,
     /// The server's challenge was larger than allowed.
     ChallengeTooLarge,
-    /// NTLM over a proxy to an http origin is not supported.
-    ProxyUnsupported,
     /// No random bytes were available for the response.
     Random,
 }
@@ -679,10 +681,14 @@ impl Executor {
     fn build_client(&self, key: &ClientKey) -> Result<Client, ExecError> {
         let mut builder = self.base_builder(key)?;
         // The policy sets the TLS ALPN offer too; Auto leaves reqwest's `h2, http/1.1` default.
-        builder = match self.http_version {
-            HttpVersionPolicy::Http1Only => builder.http1_only(),
-            HttpVersionPolicy::Auto => builder,
-            HttpVersionPolicy::Http2PriorKnowledge => builder.http2_prior_knowledge(),
+        builder = if key.http1_only {
+            builder.http1_only()
+        } else {
+            match self.http_version {
+                HttpVersionPolicy::Http1Only => builder.http1_only(),
+                HttpVersionPolicy::Auto => builder,
+                HttpVersionPolicy::Http2PriorKnowledge => builder.http2_prior_knowledge(),
+            }
         };
         // A host policy re-resolves every hop, so no idle connection may outlive its check.
         if self.host_policy.is_some() {
@@ -1069,6 +1075,17 @@ impl Executor {
         if let Some(problem) = req.header_problem() {
             return Err(invalid(problem.to_owned()));
         }
+        // Detected on the sent body, so it sees what a pre-request script left.
+        let subscription = match req.body() {
+            Body::Text(text) if req.graphql() => detect(text).map_err(invalid)?,
+            _ => None,
+        };
+        // NTLM's negotiate legs would each carry the upgrade headers, so it is refused up front.
+        if subscription.is_some() && matches!(req.send_auth(), Some(SendAuth::Ntlm { .. })) {
+            return Err(invalid(
+                "NTLM is not supported for subscriptions".to_owned(),
+            ));
+        }
         let mut url = Url::parse(req.url())
             .map_err(|e| invalid(format!("{}: {e}", redact_url(req.url()))))?;
         let mut method = Method::from_bytes(req.method().as_bytes())
@@ -1082,6 +1099,19 @@ impl Executor {
             .hop_rule(&rule, &url, 0, pac, &hop_deadline, &overrides)
             .await?;
         let mut proxy = self.check_route(&hop_rule, &url, 0, &overrides)?;
+        // A forwarding HTTP proxy drops the upgrade, so plain ws must tunnel or go direct.
+        if subscription.is_some()
+            && url.scheme() == "http"
+            && proxy
+                .as_ref()
+                .is_some_and(|p| matches!(p.scheme(), "http" | "https"))
+        {
+            return Err(invalid(
+                "a ws:// subscription cannot pass through an HTTP proxy; \
+                 use wss:// or bypass the proxy for this host"
+                    .to_owned(),
+            ));
+        }
         if let Some(root) = &self.confine_files {
             confine(req.files(), root)?;
         }
@@ -1129,7 +1159,36 @@ impl Executor {
             buf.place(&nonce);
             headers.push(("X-WSSE".to_owned(), value));
         }
-        let limit = if req.follow_redirects() {
+        // A subscription's handshake is a bodiless GET carrying the upgrade headers, set before
+        // the hop loop so cookies, auth and signing all see it; its 3xx is never followed.
+        let mut ws_key = None;
+        if subscription.is_some() {
+            let key = handshake::new_key().ok_or_else(|| ExecError::Transport {
+                url: redact_url(url.as_str()),
+                message: "could not create a WebSocket key: the OS random generator failed"
+                    .to_owned(),
+            })?;
+            ws_key = Some(key.clone());
+            method = Method::GET;
+            body = Vec::new();
+            // The handshake's own upgrade headers replace any the item set, so none goes twice;
+            // a user-set Sec-WebSocket-Protocol is sent as is in place of the offer.
+            let pinned = headers
+                .iter()
+                .any(|(n, _)| n.eq_ignore_ascii_case("sec-websocket-protocol"));
+            let upgrade = handshake::upgrade_headers(&key);
+            let names: Vec<&str> = upgrade.iter().map(|(n, _)| n.as_str()).collect();
+            drop_headers(&mut headers, &["content-type", "content-length"]);
+            drop_headers(&mut headers, &names);
+            headers.extend(upgrade);
+            if !pinned {
+                headers.push((
+                    "Sec-WebSocket-Protocol".to_owned(),
+                    handshake::OFFER.to_owned(),
+                ));
+            }
+        }
+        let limit = if req.follow_redirects() && subscription.is_none() {
             req.max_redirects()
         } else {
             0
@@ -1141,6 +1200,7 @@ impl Executor {
             identity,
             compress: !omits(req.omitted_headers(), "Accept-Encoding"),
             overrides: Arc::clone(&overrides),
+            http1_only: subscription.is_some(),
         };
         let mut client = self.clients.get(&key, |key| self.build_client(key))?;
         let mut followed = 0;
@@ -1347,6 +1407,7 @@ impl Executor {
             // A hop in NTLM mode runs its three legs on a pinned connection; negotiate pushes the
             // earlier legs onto the timeline and this loop records the last.
             let mut ntlm_sent = None;
+            let mut ntlm_warning = None;
             let mut leg_started = started;
             // Set for a plain send only: the recorder and the instant its headers arrived.
             let mut measured = None;
@@ -1380,6 +1441,7 @@ impl Executor {
                         )
                         .await?;
                     ntlm_sent = done.authorization;
+                    ntlm_warning = done.warning;
                     leg_started = done.started;
                     total += done.earlier;
                     leg = done.deadline;
@@ -1454,8 +1516,115 @@ impl Executor {
                     .then(|| hop_headers.get("location")?.to_str().ok())
                     .flatten()
                     .and_then(|location| url.join(location).ok());
-            let read = match stream {
-                Some((options, cancel)) if challenge.is_none() && next.is_none() => {
+            // A refused handshake names the ws URL and why; it is a response, not an ExecError.
+            let refused = |why: String| {
+                StreamEnd::Error(format!(
+                    "WebSocket handshake to {} failed: {why}",
+                    handshake::ws_url(&url)
+                ))
+            };
+            // A 101 to a subscription is judged once; its verdict names the codec or the refusal.
+            let reply = (subscription.is_some()
+                && challenge.is_none()
+                && status == StatusCode::SWITCHING_PROTOCOLS)
+                .then(|| {
+                    handshake::check_reply(ws_key.as_deref().unwrap_or_default(), &hop_headers)
+                });
+            let read = match (stream, &subscription) {
+                (_, Some(_))
+                    if challenge.is_none() && status != StatusCode::SWITCHING_PROTOCOLS =>
+                {
+                    let mut why = status.to_string();
+                    if let Some(location) = hop_headers.get("location") {
+                        why.push_str(&format!(
+                            " (Location: {})",
+                            redact_url(&String::from_utf8_lossy(location.as_bytes()))
+                        ));
+                    }
+                    let (bytes, size, truncated) = leg
+                        .run(read_body(res, self.max_body_bytes))
+                        .await
+                        .ok_or_else(timed_out)?
+                        .map_err(transport)?;
+                    BodyRead {
+                        bytes,
+                        size,
+                        truncated,
+                        end: Some(refused(why)),
+                        file: None,
+                    }
+                }
+                (_, Some(_)) if let Some(Err(why)) = &reply => BodyRead {
+                    bytes: Vec::new(),
+                    size: 0,
+                    truncated: false,
+                    end: Some(refused(why.clone())),
+                    file: None,
+                },
+                (_, Some(plan)) if let Some(Ok(codec)) = reply => {
+                    // A send that does not stream is bounded, since a subscription never ends
+                    // on its own.
+                    let fallback = (
+                        StreamOptions::new().limits(unstreamed_limits(timeout)),
+                        CancelHandle::new(),
+                    );
+                    let (options, cancel) = stream.unwrap_or((&fallback.0, &fallback.1));
+                    let upgraded = leg
+                        .run(res.upgrade())
+                        .await
+                        .ok_or_else(timed_out)?
+                        .map_err(transport)?;
+                    // Created before the socket speaks, so a bad path fails before
+                    // `connection_init`; the transcript is saved whatever ends it.
+                    let write_fail = |path: &Path, e: std::io::Error| ExecError::Transport {
+                        url: redact_url(url.as_str()),
+                        message: format!("could not write {}: {e}", path.display()),
+                    };
+                    let mut file = match &options.body_file {
+                        Some(path) => Some(
+                            TempBody::create(path)
+                                .await
+                                .map_err(|e| write_fail(path, e))?,
+                        ),
+                        None => None,
+                    };
+                    let ws = WebSocketStream::from_raw_socket(upgraded, Role::Client, None).await;
+                    let _armed = Armed(cancel);
+                    cancel.arm();
+                    if let Some(sink) = &options.sink {
+                        sink(StreamEvent::Started {
+                            status: status.as_u16(),
+                            headers: lossy(&hop_headers),
+                            event_stream: true,
+                        });
+                    }
+                    let session = socket::Session {
+                        codec,
+                        payload: plan.payload.clone(),
+                        ack_wait: ack_wait(timeout),
+                        sink: options.sink.as_ref(),
+                        cancel,
+                        limits: options.limits,
+                        cap: self
+                            .max_body_bytes
+                            .or(options.limits.max_bytes)
+                            .unwrap_or(DEFAULT_STREAM_CAP),
+                    };
+                    let transcript = socket::run(ws, session).await;
+                    if let (Some(temp), Some(path)) = (&mut file, &options.body_file) {
+                        temp.write(&transcript.bytes)
+                            .await
+                            .map_err(|e| write_fail(path, e))?;
+                    }
+                    BodyRead {
+                        bytes: transcript.bytes,
+                        size: transcript.size,
+                        truncated: transcript.truncated,
+                        end: Some(transcript.end),
+                        file,
+                    }
+                }
+                (Some((options, cancel)), _) if challenge.is_none() && next.is_none() => {
                     let wire = StreamHead {
                         status: status.as_u16(),
                         headers: lossy(&hop_headers),
@@ -1598,6 +1767,9 @@ impl Executor {
                 }
                 if let Some(path) = saved {
                     response = response.with_body_file(path);
+                }
+                if let Some(warning) = ntlm_warning {
+                    response = response.with_warning(warning);
                 }
                 return Ok(response);
             };
@@ -1799,6 +1971,9 @@ impl Drop for Armed<'_> {
     }
 }
 
+/// The transcript cap of a stream with neither an executor cap nor a byte limit.
+const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
+
 /// Reads the final hop's body chunk by chunk, telling the sink as it goes.
 ///
 /// A body that is not an event-stream keeps today's rules: the leg `deadline` bounds it whole,
@@ -1817,7 +1992,6 @@ async fn read_streaming(
     cancel: &CancelHandle,
     max_body_bytes: Option<u64>,
 ) -> Result<BodyRead, ReadFail> {
-    const DEFAULT_STREAM_CAP: u64 = 10 * 1024 * 1024;
     let event_stream = head.event_stream;
     let limits = options.limits;
     // No stream grows unchecked: an event-stream also honours the stream limit, a plain body
@@ -2512,5 +2686,38 @@ mod tests {
 
         let other = wrapped(io::Error::from(io::ErrorKind::TimedOut));
         assert_eq!(connect_cause(&other), ConnectCause::Other);
+    }
+
+    /// The handshake's client speaks HTTP/1.1 under any policy, and its key never matches the
+    /// policy's own client in the cache.
+    #[tokio::test]
+    async fn an_http1_only_key_overrides_the_policy() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let exec =
+            Executor::new(ExecOptions::new().http_version(HttpVersionPolicy::Http2PriorKnowledge))
+                .unwrap();
+        let key = |http1_only: bool| ClientKey {
+            rule: ProxyRule::Direct,
+            identity: None,
+            compress: true,
+            overrides: Arc::default(),
+            http1_only,
+        };
+        let uri = server.uri();
+        let h1 = exec.build_client(&key(true)).unwrap();
+        let policy = exec.build_client(&key(false)).unwrap();
+        assert_eq!(
+            h1.get(&uri).send().await.unwrap().version(),
+            reqwest::Version::HTTP_11
+        );
+        assert_eq!(
+            policy.get(&uri).send().await.unwrap().version(),
+            reqwest::Version::HTTP_2
+        );
+        assert!(key(true) != key(false));
     }
 }

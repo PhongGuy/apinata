@@ -224,6 +224,97 @@ pub async fn http_proxy(auth: Option<&'static str>) -> LocalProxy {
     LocalProxy { port, seen }
 }
 
+/// A plain-http proxy that opens one upstream connection per client connection and keeps it,
+/// relaying each request without its `proxy-*` headers. Records each request line and, when
+/// present, `auth: <Proxy-Authorization>`.
+pub async fn keeping_proxy() -> LocalProxy {
+    one_upstream_proxy(false).await
+}
+
+/// A plain-http proxy that serves exactly one request per client connection and tells the
+/// client so with `connection: close` on the response, as a proxy that does not keep upstream
+/// connections does. Records each request line.
+pub async fn closing_proxy() -> LocalProxy {
+    one_upstream_proxy(true).await
+}
+
+/// The `content-length` of an HTTP head, 0 when it has none.
+fn content_length(head: &str) -> usize {
+    head.split("\r\n")
+        .find(|h| named(h, "content-length"))
+        .and_then(|h| h.split_once(':'))
+        .and_then(|(_, v)| v.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Copies exactly `len` bytes from `from` to `to`.
+async fn relay_body(from: &mut TcpStream, to: &mut TcpStream, len: usize) -> Option<()> {
+    let mut body = vec![0u8; len];
+    from.read_exact(&mut body).await.ok()?;
+    to.write_all(&body).await.ok()
+}
+
+async fn one_upstream_proxy(close: bool) -> LocalProxy {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let seen = Seen::default();
+    let log = seen.clone();
+    tokio::spawn(async move {
+        while let Ok((client, _)) = listener.accept().await {
+            tokio::spawn(relay_requests(client, close, log.clone()));
+        }
+    });
+    LocalProxy { port, seen }
+}
+
+/// Relays request after request from `client` over one upstream connection, opened to the
+/// first request's authority. With `close`, the first answer says so and ends the session.
+async fn relay_requests(mut client: TcpStream, close: bool, log: Seen) -> Option<()> {
+    let mut upstream: Option<TcpStream> = None;
+    loop {
+        let head = read_head(&mut client).await?;
+        let request_line = head.split("\r\n").next().unwrap_or_default().to_owned();
+        log.push(request_line.clone());
+        if let Some(h) = head.split("\r\n").find(|h| named(h, "proxy-authorization")) {
+            log.push(format!("auth: {}", h.split_once(':')?.1.trim()));
+        }
+        if upstream.is_none() {
+            let authority = request_line
+                .split(' ')
+                .nth(1)?
+                .strip_prefix("http://")?
+                .split('/')
+                .next()?
+                .to_owned();
+            upstream = Some(TcpStream::connect(authority).await.ok()?);
+        }
+        let up = upstream.as_mut()?;
+        let forwarded: String = head
+            .split_inclusive("\r\n")
+            .filter(|h| !named(h, "proxy-connection") && !named(h, "proxy-authorization"))
+            .collect();
+        up.write_all(forwarded.as_bytes()).await.ok()?;
+        relay_body(&mut client, up, content_length(&head)).await?;
+        let answer = read_head(up).await?;
+        let mut sent: String = answer
+            .strip_suffix("\r\n")
+            .unwrap_or(&answer)
+            .split_inclusive("\r\n")
+            .filter(|h| !close || !named(h, "connection"))
+            .collect();
+        sent.push_str(if close {
+            "connection: close\r\n\r\n"
+        } else {
+            "\r\n"
+        });
+        client.write_all(sent.as_bytes()).await.ok()?;
+        relay_body(up, &mut client, content_length(&answer)).await?;
+        if close {
+            return Some(());
+        }
+    }
+}
+
 /// A SOCKS5 proxy (RFC 1928; RFC 1929 username and password when `credentials` is set).
 /// Records `auth: <user>:<pass>` when credentials arrive and `connect <host>:<port>` per tunnel.
 pub async fn socks5_proxy(credentials: Option<(&'static str, &'static str)>) -> LocalProxy {

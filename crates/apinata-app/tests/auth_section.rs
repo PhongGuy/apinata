@@ -635,6 +635,26 @@ fn ntlm_edits_username_masked_password_and_domain(cx: &mut TestAppContext) {
     assert_eq!(last_auth(cx, &host), ntlm("uv", "p2", "CORPX"));
 }
 
+// Plain http through an HTTP proxy needs the proxy's help, so the form points at https.
+#[gpui_kit::test]
+fn ntlm_notes_that_https_avoids_the_proxy_pitfall(cx: &mut TestAppContext) {
+    let (win, _host, _s) = auth(cx, ntlm("u", "p", "CORP"));
+    let text = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("auth-ntlm-proxy-note")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        text.as_deref(),
+        Some(
+            "Through an HTTP proxy, use https: plain http needs the proxy to keep one \
+             connection for the whole sign-in."
+        )
+    );
+}
+
 #[gpui_kit::test]
 fn switching_to_ntlm_sends_an_empty_spec_and_back_restores(cx: &mut TestAppContext) {
     let (win, host, s) = auth(cx, basic("u", "p"));

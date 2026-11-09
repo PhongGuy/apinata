@@ -132,7 +132,7 @@ fn run_help_lists_the_exit_codes() {
     apinata().args(["run", "--help"]).assert().code(0).stdout(
         contains("0  all passed")
             .and(contains("1  an assertion or test failed"))
-            .and(contains("2  a request errored (no response)"))
+            .and(contains("2  a request errored\n"))
             .and(contains(
                 "3  usage error, collection or file that failed to load",
             )),

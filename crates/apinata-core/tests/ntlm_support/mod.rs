@@ -34,6 +34,8 @@ pub struct Options {
     pub open_redirects: bool,
     /// Echo the request's `Authorization` value into the 200 body.
     pub echo_auth: bool,
+    /// Every 401 promises more body than it sends, then the connection ends.
+    pub cut_401_body: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -212,6 +214,8 @@ struct Reply {
     headers: Vec<(&'static str, String)>,
     body: Vec<u8>,
     end: bool,
+    /// Bytes the `content-length` promises beyond the body sent.
+    missing: usize,
 }
 
 impl Reply {
@@ -220,7 +224,10 @@ impl Reply {
         for (k, v) in &self.headers {
             out.push_str(&format!("{k}: {v}\r\n"));
         }
-        out.push_str(&format!("content-length: {}\r\n\r\n", self.body.len()));
+        out.push_str(&format!(
+            "content-length: {}\r\n\r\n",
+            self.body.len() + self.missing
+        ));
         let mut out = out.into_bytes();
         out.extend_from_slice(&self.body);
         out
@@ -240,7 +247,8 @@ fn unauthorized(opts: &Options, offer: String) -> Reply {
         status: "401 Unauthorized",
         headers,
         body: vec![b'x'; opts.challenge_body],
-        end: opts.close_on_401,
+        end: opts.close_on_401 || opts.cut_401_body,
+        missing: if opts.cut_401_body { 16 } else { 0 },
     }
 }
 
@@ -251,6 +259,7 @@ fn redirect(opts: &Options, status: &'static str) -> Reply {
         headers: vec![("location", to)],
         body: Vec::new(),
         end: false,
+        missing: 0,
     }
 }
 
@@ -270,6 +279,7 @@ fn served(req: &Request, path: &str, opts: &Options) -> Reply {
                 format!("{} {}", req.method, req.body.len()).into_bytes()
             },
             end: false,
+            missing: 0,
         },
         "/redirect302" => redirect(opts, "302 Found"),
         "/redirect307" => redirect(opts, "307 Temporary Redirect"),
@@ -278,6 +288,7 @@ fn served(req: &Request, path: &str, opts: &Options) -> Reply {
             headers: Vec::new(),
             body: Vec::new(),
             end: false,
+            missing: 0,
         },
     }
 }
@@ -303,7 +314,14 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
             body: req.body.clone(),
             headers: req.headers.clone(),
         });
-        let path = req.target.split('?').next().unwrap_or_default().to_owned();
+        // An absolute-form target, as a plain-http proxy forwards it, routes by its path.
+        let origin_form = req
+            .target
+            .strip_prefix("http://")
+            .map_or(req.target.as_str(), |rest| {
+                rest.find('/').map_or("/", |i| &rest[i..])
+            });
+        let path = origin_form.split('?').next().unwrap_or_default().to_owned();
         let reply = if path == "/basic" {
             unauthorized(&opts, "Basic realm=\"x\"".to_owned())
         } else if opts.open_redirects && path.starts_with("/redirect") {

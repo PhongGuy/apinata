@@ -307,6 +307,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "dirs 7.0.0",
+ "futures-util",
  "gethostname",
  "gpui-kit",
  "image",
@@ -324,8 +325,10 @@ dependencies = [
  "socket2",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "tree-sitter-c-sharp",
  "tree-sitter-graphql",
+ "tree-sitter-powershell",
  "url",
  "winresource",
  "wiremock",
@@ -343,6 +346,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "futures-util",
  "gethostname",
  "insta",
  "libc",
@@ -357,6 +361,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "tokio-tungstenite",
  "url",
  "wiremock",
  "yaml_serde",
@@ -381,6 +386,7 @@ dependencies = [
  "dirs 7.0.0",
  "encoding_rs",
  "flate2",
+ "futures-util",
  "hmac 0.13.0",
  "http",
  "http-body-util",
@@ -426,6 +432,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-rustls",
+ "tokio-tungstenite",
  "tokio-util",
  "tower",
  "trash",
@@ -2136,6 +2143,12 @@ dependencies = [
  "quote",
  "syn 3.0.6",
 ]
+
+[[package]]
+name = "data-encoding"
+version = "2.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "data-url"
@@ -9156,6 +9169,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9482,6 +9507,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-powershell"
+version = "0.26.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa49d15e5b291030a548447445e0547992eff1438e7cd9133bfec99a9ba962a9"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-python"
 version = "0.23.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9525,6 +9560,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 dependencies = [
  "core_maths",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.10.3",
+ "sha1 0.11.0",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -309,8 +309,8 @@ the command never exits with that code.
 
 | Command | 0 | 1 | 2 | 3 |
 | --- | --- | --- | --- | --- |
-| `run` | all passed | an assertion or test failed, or a reply matched `--fail-on-status` | a request errored (no response) | usage error, a collection or file that failed to load, a report file could not be written, or no request matched |
-| `send` | the request was sent and passed | a reply matched `--fail-on-status` | the request errored (no response) | usage error, an unusable URL or curl command, or a file that could not be written |
+| `run` | all passed | an assertion or test failed, or a reply matched `--fail-on-status` | a request errored | usage error, a collection or file that failed to load, a report file could not be written, or no request matched |
+| `send` | the request was sent and passed | a reply matched `--fail-on-status` | the request errored | usage error, an unusable URL or curl command, or a file that could not be written |
 | `check` | no error findings (warnings do not count) | at least one error finding | - | usage error, collection cannot be opened, unknown `--env`, or JSON output could not be written |
 | `ls` | listed | - | - | usage or collection error, the path is not a folder, or JSON output could not be written |
 | `search` | searched, with or without hits | - | - | usage or collection error, or JSON output could not be written |

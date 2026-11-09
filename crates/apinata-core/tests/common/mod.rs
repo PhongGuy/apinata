@@ -66,7 +66,9 @@ pub fn executor() -> Executor {
     Executor::new(ExecOptions::new()).expect("client")
 }
 pub mod body_server;
+pub mod raw_server;
 pub mod sse_server;
+pub mod ws_server;
 
 /// A port that refuses every connection and that no other process can take: the socket is
 /// bound for the whole process but never listens.

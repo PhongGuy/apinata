@@ -109,6 +109,7 @@ mod session_log;
 mod sigv4;
 pub mod sse;
 mod stream;
+mod subscription;
 mod system_trash;
 mod tags;
 mod timing;
