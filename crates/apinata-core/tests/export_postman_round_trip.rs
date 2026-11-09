@@ -44,13 +44,12 @@ const TABLE: &[(&str, &str)] = &[
     ("res.getHeader(\"h\");", "res.getHeader(\"h\");"),
     ("res.getResponseTime();", "res.getResponseTime();"),
     ("res.statusText;", "res.statusText;"),
-    // The importer reads `pm.request.url` and `pm.request.method` back as getter calls and
-    // assigns to them, which is not valid JavaScript; pinned here, not fixed.
+    // An assignment to the request URL or method comes back as the setter call.
     (
         "req.setUrl(\"https://x.test/b\");",
-        "req.getUrl() = \"https://x.test/b\";",
+        "req.setUrl(\"https://x.test/b\");",
     ),
-    ("req.setMethod(\"POST\");", "req.getMethod() = \"POST\";"),
+    ("req.setMethod(\"POST\");", "req.setMethod(\"POST\");"),
     (
         "req.setHeader(\"h\", \"v\");",
         "req.setHeader(\"h\", \"v\");",
