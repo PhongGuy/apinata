@@ -10,9 +10,9 @@
 
 use std::collections::HashSet;
 
-use crate::js_scan::punct_regex::{find_close, skip_opaque, template_end};
 use crate::js_scan::{
-    MAX_DEPTH, ident_end, is_ident_byte, is_property_access, prev_significant, skip_trivia, skip_ws,
+    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, prev_significant,
+    skip_opaque, skip_trivia, skip_ws, template_end,
 };
 #[cfg(test)]
 use crate::js_scan::{NESTING, NestingGuard};
@@ -1956,6 +1956,32 @@ mod tests {
         linear(1000, |k| "pm.setNextRequest(".repeat(k) + &")".repeat(k));
         linear(5000, |k| "tests['a'] = ".repeat(k));
         linear(5000, |k| "`${".repeat(k));
+    }
+
+    #[test]
+    fn regex_after_a_keyword_is_left_untouched() {
+        for src in [
+            "function f(s) { return /pm.environment.get/.test(s); }",
+            "const k = typeof /pm.globals.get/;",
+            "switch (x) { case /pm.variables.get/.source: break; }",
+            "void /pm.environment.get/;",
+        ] {
+            assert_eq!(t(src), src);
+        }
+    }
+
+    #[test]
+    fn code_after_a_keyword_regex_is_still_translated() {
+        // A quote or `/*` inside the regex must not open a string or comment that swallows
+        // the code after it.
+        assert_eq!(
+            t("function f(s) { return /'/.test(s); }\npm.environment.get('a');"),
+            "function f(s) { return /'/.test(s); }\nbru.getEnvVar('a');"
+        );
+        assert_eq!(
+            t("function f(s) { return /\\/*/.test(s); }\npm.environment.get('a');"),
+            "function f(s) { return /\\/*/.test(s); }\nbru.getEnvVar('a');"
+        );
     }
 
     #[test]

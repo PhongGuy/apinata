@@ -1,8 +1,5 @@
 //! Byte-level JavaScript scanning shared by the Postman script translators: identifiers,
 //! strings, comments, regexes, templates and brackets.
-//!
-//! The scanners differ in one rule, whether a `/` after a keyword such as `return` opens a
-//! regex. That rule is the `KEYWORDS` parameter; `keyword_regex` and `punct_regex` pin it.
 
 /// Deepest nesting of argument and template rewrites; beyond it text passes through.
 pub(crate) const MAX_DEPTH: usize = 32;
@@ -26,32 +23,6 @@ pub(crate) const REGEX_AFTER: &[&str] = &[
     "yield",
     "await",
 ];
-
-/// Scanning where a `/` after a keyword in `REGEX_AFTER` opens a regex.
-pub(crate) mod keyword_regex {
-    pub(crate) fn skip_opaque(src: &str, i: usize) -> Option<usize> {
-        super::skip_opaque::<true>(src, i)
-    }
-    pub(crate) fn template_end(src: &str, i: usize) -> usize {
-        super::template_end::<true>(src, i)
-    }
-    pub(crate) fn find_close(src: &str, open: usize) -> Option<usize> {
-        super::find_close::<true>(src, open)
-    }
-}
-
-/// Scanning where only punctuation before a `/` makes it a regex, so `return /a/` is division.
-pub(crate) mod punct_regex {
-    pub(crate) fn skip_opaque(src: &str, i: usize) -> Option<usize> {
-        super::skip_opaque::<false>(src, i)
-    }
-    pub(crate) fn template_end(src: &str, i: usize) -> usize {
-        super::template_end::<false>(src, i)
-    }
-    pub(crate) fn find_close(src: &str, open: usize) -> Option<usize> {
-        super::find_close::<false>(src, open)
-    }
-}
 
 pub(crate) fn is_ident_byte(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80
@@ -92,7 +63,7 @@ pub(crate) fn is_property_access(b: &[u8], i: usize) -> bool {
 }
 
 /// End of the string, comment, template or regex literal starting at `i`, if one does.
-fn skip_opaque<const KEYWORDS: bool>(src: &str, i: usize) -> Option<usize> {
+pub(crate) fn skip_opaque(src: &str, i: usize) -> Option<usize> {
     let b = src.as_bytes();
     match b[i] {
         q @ (b'\'' | b'"') => {
@@ -102,21 +73,21 @@ fn skip_opaque<const KEYWORDS: bool>(src: &str, i: usize) -> Option<usize> {
             }
             Some((k + 1).min(b.len()))
         }
-        b'`' => Some(template_end::<KEYWORDS>(src, i)),
+        b'`' => Some(template_end(src, i)),
         b'/' if b.get(i + 1) == Some(&b'/') => Some(src[i..].find('\n').map_or(b.len(), |n| i + n)),
         b'/' if b.get(i + 1) == Some(&b'*') => {
             Some(src[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2))
         }
-        b'/' => regex_end::<KEYWORDS>(b, i),
+        b'/' => regex_end(b, i),
         _ => None,
     }
 }
 
 /// A `/` starts a regex literal only where an expression may begin.
-fn regex_end<const KEYWORDS: bool>(b: &[u8], i: usize) -> Option<usize> {
+fn regex_end(b: &[u8], i: usize) -> Option<usize> {
     let starts_expr = match prev_significant(b, i) {
         None => true,
-        Some((k, c)) if KEYWORDS && is_ident_byte(c) => {
+        Some((k, c)) if is_ident_byte(c) => {
             let from = (0..=k)
                 .rev()
                 .take_while(|&j| is_ident_byte(b[j]))
@@ -173,16 +144,16 @@ impl Drop for NestingGuard {
 }
 
 /// End of the template literal starting at `i`, descending into `${}` holes.
-fn template_end<const KEYWORDS: bool>(src: &str, i: usize) -> usize {
+pub(crate) fn template_end(src: &str, i: usize) -> usize {
     // Templates nested through `${}` recurse via find_close; past the cap the rest of
     // the input is taken as one opaque template.
     let Some(_level) = NestingGuard::enter() else {
         return src.len();
     };
-    template_scan::<KEYWORDS>(src, i)
+    template_scan(src, i)
 }
 
-fn template_scan<const KEYWORDS: bool>(src: &str, i: usize) -> usize {
+fn template_scan(src: &str, i: usize) -> usize {
     let b = src.as_bytes();
     let mut k = i + 1;
     while k < b.len() {
@@ -190,7 +161,7 @@ fn template_scan<const KEYWORDS: bool>(src: &str, i: usize) -> usize {
             b'\\' => k += 2,
             b'`' => return k + 1,
             b'$' if b.get(k + 1) == Some(&b'{') => {
-                k = find_close::<KEYWORDS>(src, k + 1).map_or(b.len(), |c| c + 1);
+                k = find_close(src, k + 1).map_or(b.len(), |c| c + 1);
             }
             _ => k += 1,
         }
@@ -199,12 +170,12 @@ fn template_scan<const KEYWORDS: bool>(src: &str, i: usize) -> usize {
 }
 
 /// Index of the bracket closing the one at `open`, skipping literals and comments.
-fn find_close<const KEYWORDS: bool>(src: &str, open: usize) -> Option<usize> {
+pub(crate) fn find_close(src: &str, open: usize) -> Option<usize> {
     let b = src.as_bytes();
     let mut depth = 0usize;
     let mut i = open;
     while i < b.len() {
-        if let Some(end) = skip_opaque::<KEYWORDS>(src, i) {
+        if let Some(end) = skip_opaque(src, i) {
             i = end;
             continue;
         }
@@ -224,14 +195,13 @@ fn find_close<const KEYWORDS: bool>(src: &str, open: usize) -> Option<usize> {
 }
 
 /// The first byte at or after `i`, before `end`, that is not whitespace or a comment.
-/// Comments never reach the regex rule, so either scanner gives the same answer.
 pub(crate) fn skip_trivia(src: &str, mut i: usize, end: usize) -> usize {
     let b = src.as_bytes();
     loop {
         i = skip_ws(&b[..end], i);
         match (b.get(i), b.get(i + 1)) {
             (Some(b'/'), Some(b'/' | b'*')) if i < end => {
-                i = skip_opaque::<true>(src, i).unwrap_or(end).min(end);
+                i = skip_opaque(src, i).unwrap_or(end).min(end);
             }
             _ => return i,
         }
