@@ -870,6 +870,10 @@ mod pipes {
 #[cfg(windows)]
 mod windows_stop {
     use super::*;
+    use crate::git_branch::cloned;
+    use crate::git_sync::advance;
+    use crate::git_sync_edges::cancel_when;
+    use apinata_core::{SyncError, pull};
     use std::process::Command;
     use std::thread;
     use std::time::{Duration, Instant};
@@ -922,6 +926,39 @@ mod windows_stop {
             !repo.join(".git/index.lock").exists(),
             "index.lock left behind"
         );
+    }
+
+    /// Every `*.lock` file under `dir`, at any depth.
+    fn locks_under(dir: &Path) -> Vec<PathBuf> {
+        let mut found = Vec::new();
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                found.extend(locks_under(&path));
+            } else if path.extension().is_some_and(|e| e == "lock") {
+                found.push(path);
+            }
+        }
+        found
+    }
+
+    // Fetch holds its ref locks while the reference-transaction hook sees "prepared", so a hook
+    // that sleeps there keeps them taken until the cancel, at a moment the test can wait for.
+    #[test]
+    fn a_fetch_cancelled_while_it_holds_ref_locks_leaves_no_lock() {
+        let sb = Sandbox::new();
+        let root = cloned(&sb);
+        advance(&sb, "c.txt");
+        let marker = sb.path().join("prepared");
+        let hook = format!(
+            "#!/bin/sh\nif [ \"$1\" = prepared ]; then : > '{}'; sleep 600; fi\n",
+            marker.display().to_string().replace('\\', "/")
+        );
+        write(&root, ".git/hooks/reference-transaction", &hook);
+        let r = cancel_when(&marker, |cancel| pull(&root, cancel, &sb.options()));
+        assert!(matches!(r, Err(SyncError::Cancelled)), "{r:?}");
+        let left = locks_under(&root.join(".git"));
+        assert!(left.is_empty(), "locks left behind: {left:?}");
     }
 
     // A 32-bit process cannot take the gentle stop from this 64-bit one, so it stands for a

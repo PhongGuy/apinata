@@ -345,31 +345,11 @@ fn read_lines(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<String
     rx
 }
 
-/// Stop the child and everything in its process group (TERM, then KILL to whatever of the group
-/// outlives one shared grace, so git and its hooks can clean up), then reap it so the caller
-/// may delete files the child held. True when the child itself needed KILL.
-#[cfg(unix)]
+/// Stop the child and every process it started, gently first so git and its hooks can remove
+/// their locks, then reap it so the caller may delete files the child held. True when the
+/// child needed more than the gentle stop.
 fn kill_tree(child: &mut Child) -> bool {
     run::stop_group(child)
-}
-
-/// Kill the child's process tree, then reap it. Falls back to killing just the child if the
-/// helper cannot run. Always true: nothing gets a graceful stop here.
-#[cfg(windows)]
-fn kill_tree(child: &mut Child) -> bool {
-    let killed = Command::new("taskkill")
-        .args(["/T", "/F", "/PID", &child.id().to_string()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if !killed {
-        // Best effort: the child may have exited on its own already.
-        let _ = child.kill();
-    }
-    let _ = child.wait();
-    true
 }
 
 #[cfg(all(test, unix))]
