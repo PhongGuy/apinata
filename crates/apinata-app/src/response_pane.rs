@@ -4443,7 +4443,7 @@ impl ResponsePane {
         }
     }
 
-    // The Events tab: a muted note when old events were dropped, over the list of rows.
+    // The Events tab: a muted note when old events were dropped or none came, over the rows.
     fn events_body(&self, cx: &mut Context<Self>) -> AnyElement {
         let live = self.send.read(cx).live().is_some();
         let dropped = self.events_dropped(cx);
@@ -4488,6 +4488,9 @@ impl ResponsePane {
                             .id(("event-row", ix))
                             .test_support()
                             .h(style::EVENT_ROW_HEIGHT)
+                            // Each list item lays out on its own and would shrink to its
+                            // text, cutting the separator short; it spans the list instead.
+                            .w_full()
                             .overflow_hidden()
                             .px_2()
                             .py_1()
@@ -4535,6 +4538,18 @@ impl ResponsePane {
                         .text_size(style::TEXT_SMALL)
                         .text_color(muted)
                         .child(format!("{dropped} earlier events not shown")),
+                )
+            })
+            // A live stream's waiting row already speaks for an empty list.
+            .when(!live && count == 0, |v| {
+                v.child(
+                    div()
+                        .id("response-events-empty")
+                        .test_support()
+                        .aria_label("No events")
+                        .text_size(style::TEXT_SMALL)
+                        .text_color(muted)
+                        .child("No events"),
                 )
             })
             .child(
