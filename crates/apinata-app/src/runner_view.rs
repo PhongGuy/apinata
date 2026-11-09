@@ -19,7 +19,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     Action, AnyElement, App, Div, Entity, FocusHandle, Focusable, PathPromptOptions, Rems,
-    ScrollHandle, SharedString, Subscription, TestSupportExt, Window, div, rems,
+    ScrollHandle, Subscription, TestSupportExt, Window, div, rems,
 };
 
 use crate::body_text;
@@ -82,7 +82,7 @@ struct OptionInputs {
     exclude_tags: Entity<InputState>,
     retries: Entity<InputState>,
     retry_delay: Entity<InputState>,
-    fail_select: Entity<SelectState<Vec<SharedString>>>,
+    fail_select: Entity<ui::IdSelect>,
     _select_sub: Subscription,
     _subs: [Subscription; 6],
 }
@@ -303,10 +303,10 @@ impl RunnerView {
                     cx,
                 ),
             ];
-            let labels: Vec<SharedString> = FAIL_ON_STATUS_CHOICES
-                .iter()
-                .map(|(label, _)| (*label).into())
-                .collect();
+            let labels = ui::id_items(
+                "run-fail-on-status",
+                FAIL_ON_STATUS_CHOICES.iter().map(|(label, _)| *label),
+            );
             let current = FAIL_ON_STATUS_CHOICES
                 .iter()
                 .position(|(_, rule)| *rule == self.model.read(cx).fail_on_status())
@@ -316,7 +316,7 @@ impl RunnerView {
             let _select_sub = cx.subscribe_in(
                 &fail_select,
                 window,
-                |this: &mut Self, _, event: &SelectEvent<Vec<SharedString>>, _, cx| {
+                |this: &mut Self, _, event: &SelectEvent<Vec<ui::IdItem>>, _, cx| {
                     if let SelectEvent::Confirm(Some(label)) = event
                         && let Some((_, rule)) = FAIL_ON_STATUS_CHOICES
                             .iter()

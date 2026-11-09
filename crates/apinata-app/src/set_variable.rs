@@ -65,7 +65,7 @@ pub struct Answer {
 pub struct SetVariableForm {
     targets: Vec<VarTarget>,
     name: Entity<InputState>,
-    target: Entity<SelectState<Vec<SharedString>>>,
+    target: Entity<ui::IdSelect>,
     value: SharedString,
     _name_changes: Subscription,
 }
@@ -79,7 +79,7 @@ impl SetVariableForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let labels: Vec<SharedString> = targets.iter().map(VarTarget::label).collect();
+        let labels = ui::id_items("set-variable-target", targets.iter().map(VarTarget::label));
         let name = cx.new(|cx| InputState::new(window, cx).default_value(name.to_owned()));
         let target = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(0)), window, cx));
         // The Set button follows the name, so each keystroke re-renders.

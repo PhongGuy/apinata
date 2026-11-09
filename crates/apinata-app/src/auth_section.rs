@@ -22,6 +22,7 @@ use crate::kv_table::set_text;
 use crate::oauth1_editor::{OAuth1Edit, OAuth1Editor};
 use crate::oauth2_editor::{OAuth2Edit, OAuth2Editor, OAuth2MoveSecrets};
 use crate::section::SectionEdit;
+use crate::ui::{IdItem, IdSelect};
 use crate::var_tokens::VarField;
 use crate::{style, ui};
 
@@ -75,6 +76,24 @@ impl AuthMode {
             AuthMode::EdgeGrid => "Akamai EdgeGrid",
             AuthMode::OAuth1 => "OAuth 1.0",
             AuthMode::OAuth2 => "OAuth 2.0",
+        }
+    }
+
+    /// The stable key the mode's select row is found by, as the file names the mode.
+    pub fn key(self) -> &'static str {
+        match self {
+            AuthMode::None => "none",
+            AuthMode::Inherit => "inherit",
+            AuthMode::Basic => "basic",
+            AuthMode::Bearer => "bearer",
+            AuthMode::ApiKey => "apikey",
+            AuthMode::Digest => "digest",
+            AuthMode::Ntlm => "ntlm",
+            AuthMode::AwsV4 => "awsv4",
+            AuthMode::Wsse => "wsse",
+            AuthMode::EdgeGrid => "edgegrid",
+            AuthMode::OAuth1 => "oauth1",
+            AuthMode::OAuth2 => "oauth2",
         }
     }
 
@@ -209,6 +228,14 @@ const EDGEGRID_FIELDS: [(&str, &str, bool); 7] = [
     ("Headers to Sign", "auth-eg-headers-to-sign", false),
 ];
 
+// The mode select's rows, each found by its mode's key.
+fn mode_rows(modes: &[AuthMode]) -> Vec<IdItem> {
+    modes
+        .iter()
+        .map(|m| IdItem::new("auth-mode", m.key(), m.label()))
+        .collect()
+}
+
 const PLACEMENTS: [(ApiKeyPlacement, &str); 2] = [
     (ApiKeyPlacement::Header, "Header"),
     (ApiKeyPlacement::Query, "Query Params"),
@@ -262,8 +289,8 @@ pub struct AuthSection {
     inherited: Option<SharedString>,
     modes: Vec<AuthMode>,
     scope: AuthScope,
-    select: Entity<SelectState<Vec<SharedString>>>,
-    placement_select: Entity<SelectState<Vec<SharedString>>>,
+    select: Entity<IdSelect>,
+    placement_select: Entity<IdSelect>,
     username: Entity<InputState>,
     password: Entity<InputState>,
     domain: Entity<InputState>,
@@ -298,9 +325,9 @@ impl EventEmitter<SectionEdit> for AuthSection {}
 impl AuthSection {
     /// A section showing No Auth.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let labels: Vec<SharedString> = AuthMode::ALL.iter().map(|m| m.label().into()).collect();
-        let select = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(0)), window, cx));
-        let places: Vec<SharedString> = PLACEMENTS.iter().map(|(_, l)| (*l).into()).collect();
+        let rows = mode_rows(&AuthMode::ALL);
+        let select = cx.new(|cx| SelectState::new(rows, Some(IndexPath::new(0)), window, cx));
+        let places = ui::id_items("auth-placement", PLACEMENTS.iter().map(|(_, l)| *l));
         let placement_select =
             cx.new(|cx| SelectState::new(places, Some(IndexPath::new(0)), window, cx));
         let mut input = |masked| cx.new(|cx| InputState::new(window, cx).masked(masked));
@@ -337,7 +364,7 @@ impl AuthSection {
             cx.subscribe_in(
                 &select,
                 window,
-                |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(label)) = event
                         && let Some(mode) = this
                             .modes
@@ -352,7 +379,7 @@ impl AuthSection {
             cx.subscribe_in(
                 &placement_select,
                 window,
-                |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(label)) = event
                         && let Some((p, _)) = PLACEMENTS.iter().find(|(_, l)| *l == label.as_ref())
                     {
@@ -474,9 +501,8 @@ impl AuthSection {
     /// them turns read-only.
     pub fn set_modes(&mut self, modes: &[AuthMode], window: &mut Window, cx: &mut Context<Self>) {
         self.modes = modes.to_vec();
-        let labels: Vec<SharedString> = modes.iter().map(|m| m.label().into()).collect();
         self.select
-            .update(cx, |s, cx| s.set_items(labels, window, cx));
+            .update(cx, |s, cx| s.set_items(mode_rows(modes), window, cx));
         match self.mode {
             Some(mode) if modes.contains(&mode) => {
                 let label: SharedString = mode.label().into();

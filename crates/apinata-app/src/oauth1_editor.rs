@@ -175,13 +175,22 @@ impl EventEmitter<OAuth1Edit> for OAuth1Editor {}
 impl OAuth1Editor {
     /// An editor showing a fresh OAuth 1.0 auth.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut choice = |items: Vec<&str>| {
-            let items: Vec<SharedString> = items.into_iter().map(SharedString::from).collect();
+        let mut choice = |id: &str, items: Vec<&str>| {
+            let items = ui::id_items(id, items);
             cx.new(|cx| SelectState::new(items, None, window, cx))
         };
-        let method = choice(METHODS.iter().map(|(_, l)| *l).collect());
-        let key_kind = choice(KEY_KINDS.iter().map(|(_, l)| *l).collect());
-        let placement = choice(PLACEMENTS.iter().map(|(_, l)| *l).collect());
+        let method = choice(
+            "oauth1-signature-method",
+            METHODS.iter().map(|(_, l)| *l).collect(),
+        );
+        let key_kind = choice(
+            "oauth1-key-kind",
+            KEY_KINDS.iter().map(|(_, l)| *l).collect(),
+        );
+        let placement = choice(
+            "oauth1-placement",
+            PLACEMENTS.iter().map(|(_, l)| *l).collect(),
+        );
         let inputs: Vec<Entity<InputState>> = FIELDS
             .iter()
             .map(|f| {

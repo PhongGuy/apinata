@@ -47,8 +47,18 @@ impl TimeoutMode {
         }
     }
 
-    fn labels(default: Option<Duration>) -> Vec<SharedString> {
-        TimeoutMode::ALL.iter().map(|m| m.label(default)).collect()
+    // The select's rows; the Inherit label names the default, so rows are keyed by mode.
+    fn labels(default: Option<Duration>) -> Vec<ui::IdItem> {
+        TimeoutMode::ALL
+            .iter()
+            .map(|m| {
+                let key = match m {
+                    TimeoutMode::Inherit => "inherit",
+                    TimeoutMode::Custom => "custom",
+                };
+                ui::IdItem::new("set-timeout-mode", key, m.label(default))
+            })
+            .collect()
     }
 
     fn of(timeout: Timeout) -> TimeoutMode {
@@ -67,7 +77,7 @@ pub struct SettingsSection {
     // The settings last sent or loaded; the base each change builds on.
     base: RequestSettings,
     max_redirects: Entity<InputState>,
-    timeout_select: Entity<SelectState<Vec<SharedString>>>,
+    timeout_select: Entity<ui::IdSelect>,
     // The request's own timeout last loaded or typed, which Custom brings back after Default.
     custom: Timeout,
     // The Preferences timeout the Inherit label names.
@@ -138,7 +148,7 @@ impl SettingsSection {
             cx.subscribe_in(
                 &timeout_select,
                 window,
-                |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, _, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(label)) = event
                         && let Some(mode) = TimeoutMode::ALL
                             .into_iter()

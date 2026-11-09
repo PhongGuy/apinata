@@ -3179,3 +3179,75 @@ pub(crate) fn redraw_on_settings<V: 'static>(
     let settings = cx.try_global::<AppState>()?.settings.clone();
     Some(cx.observe(&settings, |_, _, cx| cx.notify()))
 }
+
+/// A select row valued by its label, whose drawn row registers as `{select}-option-{key}`.
+///
+/// The kit draws select rows without `.test_support()`, so the row content registers itself;
+/// a click on it bubbles to the kit row's confirm handler.
+#[derive(Debug, Clone)]
+pub struct IdItem {
+    id: SharedString,
+    label: SharedString,
+}
+
+/// A kit select over [`IdItem`] rows.
+pub type IdSelect = gpui_kit::component::select::SelectState<Vec<IdItem>>;
+
+impl IdItem {
+    /// A row of the select `select` showing `label`, found by the stable `key`.
+    pub fn new(select: &str, key: &str, label: impl Into<SharedString>) -> Self {
+        IdItem {
+            id: format!("{select}-option-{key}").into(),
+            label: label.into(),
+        }
+    }
+
+    /// A row keyed by its own label, lowercased with each run of other characters a dash.
+    pub fn labelled(select: &str, label: impl Into<SharedString>) -> Self {
+        let label = label.into();
+        IdItem::new(select, &option_key(&label), label)
+    }
+}
+
+/// [`IdItem::labelled`] rows of `select`, one per label.
+pub fn id_items<L: Into<SharedString>>(
+    select: &str,
+    labels: impl IntoIterator<Item = L>,
+) -> Vec<IdItem> {
+    labels
+        .into_iter()
+        .map(|l| IdItem::labelled(select, l))
+        .collect()
+}
+
+/// The readable key of a label: `"400 and above"` is `400-and-above`.
+fn option_key(label: &str) -> String {
+    let mut key = String::with_capacity(label.len());
+    for c in label.chars() {
+        if c.is_alphanumeric() {
+            key.extend(c.to_lowercase());
+        } else if !key.is_empty() && !key.ends_with('-') {
+            key.push('-');
+        }
+    }
+    key.trim_end_matches('-').to_owned()
+}
+
+impl gpui_kit::component::select::SelectItem for IdItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &SharedString {
+        &self.label
+    }
+
+    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        div()
+            .id(self.id.clone())
+            .test_support()
+            .child(self.label.clone())
+    }
+}

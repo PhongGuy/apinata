@@ -11,8 +11,8 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{IndexPath, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, ClipboardItem, Entity, Global, Rems, SharedString, Subscription, TestSupportExt,
-    WeakEntity, Window, div, rems,
+    App, ClipboardItem, Entity, Global, Rems, Subscription, TestSupportExt, WeakEntity, Window,
+    div, rems,
 };
 
 use crate::copy_curl::{confirm_secrets, plan_and_resolve};
@@ -112,7 +112,7 @@ pub struct GenerateCodeView {
     request: ResolvedRequest,
     target: Target,
     text: String,
-    select: Entity<SelectState<Vec<SharedString>>>,
+    select: Entity<ui::IdSelect>,
     editor: Entity<EditorState>,
     _picked: Subscription,
 }
@@ -124,14 +124,17 @@ impl GenerateCodeView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let labels: Vec<SharedString> = Target::ALL.iter().map(|t| t.label().into()).collect();
+        let labels: Vec<ui::IdItem> = Target::ALL
+            .iter()
+            .map(|t| ui::IdItem::new("generate-code-target", t.id(), t.label()))
+            .collect();
         let at = Target::ALL.iter().position(|t| *t == target).unwrap_or(0);
         let select = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(at)), window, cx));
         let editor = cx.new(|cx| EditorState::new(window, cx).searchable(false));
         let picked = cx.subscribe_in(
             &select,
             window,
-            |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+            |this, _, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
                 if let SelectEvent::Confirm(Some(label)) = event
                     && let Some(t) = Target::ALL.iter().find(|t| t.label() == label.as_ref())
                 {
