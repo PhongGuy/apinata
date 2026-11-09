@@ -1578,7 +1578,8 @@ impl ApinataServer {
                        `apinata export --format postman` writes. Secret values are never part \
                        of it. The text is cut to `max_bytes` (32 KiB default, 1 MiB at most) \
                        and `truncated` says whether it was; `notes` lists what Postman cannot \
-                       carry. Nothing is sent or written.",
+                       carry. Scripts are translated to Postman's script API unless \
+                       `keep_scripts` is true. Nothing is sent or written.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn export_postman(
@@ -1586,7 +1587,8 @@ impl ApinataServer {
         Parameters(args): Parameters<ExportPostmanArgs>,
     ) -> Result<Json<ExportDoc>, String> {
         let seen = self.seen();
-        self.with_collection(move |c| Ok(export::postman(c, args.max_bytes, &seen)))
+        let keep = args.keep_scripts.unwrap_or(false);
+        self.with_collection(move |c| Ok(export::postman(c, args.max_bytes, keep, &seen)))
             .await
             .map(Json)
     }

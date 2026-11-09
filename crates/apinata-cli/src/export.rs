@@ -34,6 +34,9 @@ pub struct ExportArgs {
     /// Add a section listing each environment's variables as stored, secrets masked (HTML only).
     #[arg(long)]
     pub include_environments: bool,
+    /// Write scripts exactly as they are instead of translating their API calls (Postman only).
+    #[arg(long)]
+    pub keep_scripts: bool,
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -84,6 +87,11 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
             }
         }
     }
+    if args.keep_scripts && !matches!(args.format, ExportFormat::Postman) {
+        anyhow::bail!(
+            "--keep-scripts does not apply to this format; it applies to --format postman"
+        );
+    }
     let named = collection_arg::require(
         args.path.as_deref(),
         args.collection.as_deref(),
@@ -102,7 +110,8 @@ fn export_collection(args: &ExportArgs) -> anyhow::Result<()> {
     }
     let (text, notes) = match args.format {
         ExportFormat::Postman => {
-            let exported = export::postman(&collection);
+            let options = export::PostmanOptions::new().keep_scripts(args.keep_scripts);
+            let exported = export::postman_with(&collection, &options);
             (exported.json, exported.notes)
         }
         ExportFormat::Openapi | ExportFormat::OpenapiYaml => {

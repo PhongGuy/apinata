@@ -115,3 +115,60 @@ async fn default_budget_applies_and_unknown_format_is_refused() {
         .await;
     assert!(message.contains("toml"), "{message}");
 }
+
+const SCRIPTED: &str = "info:\n  name: a\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: http://x.test/a\nruntime:\n  scripts:\n    - type: before-request\n      code: \"bru.setVar('k', 1);\"\n";
+
+#[tokio::test]
+async fn postman_translates_scripts_unless_kept() {
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("a.yml", SCRIPTED)]).await;
+    let c = Collection::open(server.root()).expect("open");
+    let got = server
+        .ok("export_postman", json!({"max_bytes": 1048576}))
+        .await;
+    assert_eq!(got["text"], export::postman(&c).json.as_str());
+    assert!(
+        got["text"]
+            .as_str()
+            .unwrap()
+            .contains("pm.variables.set('k', 1);")
+    );
+    let off = server
+        .ok(
+            "export_postman",
+            json!({"max_bytes": 1048576, "keep_scripts": false}),
+        )
+        .await;
+    assert_eq!(off["text"], got["text"]);
+    let kept = server
+        .ok(
+            "export_postman",
+            json!({"max_bytes": 1048576, "keep_scripts": true}),
+        )
+        .await;
+    let core = export::postman_with(&c, &export::PostmanOptions::new().keep_scripts(true));
+    assert_eq!(kept["text"], core.json.as_str());
+    assert!(
+        kept["text"]
+            .as_str()
+            .unwrap()
+            .contains("bru.setVar('k', 1);")
+    );
+    assert_eq!(
+        serde_json::to_value(notes(&core.notes)).unwrap(),
+        kept["notes"]
+    );
+}
+
+#[tokio::test]
+async fn keep_scripts_is_an_optional_argument() {
+    let server = shop().await;
+    let tools = server.tools().await;
+    let tool = tools
+        .iter()
+        .find(|t| t.name == "export_postman")
+        .expect("listed");
+    let props = tool.input_schema["properties"].as_object().expect("props");
+    assert!(props.contains_key("keep_scripts"));
+    let required = tool.input_schema.get("required").and_then(|r| r.as_array());
+    assert!(!required.is_some_and(|r| r.iter().any(|n| n == "keep_scripts")));
+}
