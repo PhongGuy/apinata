@@ -87,6 +87,16 @@ impl SelectItem for Parent {
     fn value(&self) -> &Option<String> {
         &self.value
     }
+
+    // The kit draws rows without `.test_support()`, so the row registers itself, keyed by
+    // the parent's name or `none`.
+    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let key = self.value.as_deref().unwrap_or("none");
+        div()
+            .id(SharedString::from(format!("env-extends-option-{key}")))
+            .test_support()
+            .child(self.title.clone())
+    }
 }
 
 // "None", then every other environment, then a named parent that is missing, so the

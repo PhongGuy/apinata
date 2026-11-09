@@ -3201,36 +3201,21 @@ impl IdItem {
             label: label.into(),
         }
     }
-
-    /// A row keyed by its own label, lowercased with each run of other characters a dash.
-    pub fn labelled(select: &str, label: impl Into<SharedString>) -> Self {
-        let label = label.into();
-        IdItem::new(select, &option_key(&label), label)
-    }
 }
 
-/// [`IdItem::labelled`] rows of `select`, one per label.
+/// Rows of `select`, one per label, each keyed by its label as shown so distinct labels
+/// never share an id.
 pub fn id_items<L: Into<SharedString>>(
     select: &str,
     labels: impl IntoIterator<Item = L>,
 ) -> Vec<IdItem> {
     labels
         .into_iter()
-        .map(|l| IdItem::labelled(select, l))
+        .map(|l| {
+            let label = l.into();
+            IdItem::new(select, &label, label.clone())
+        })
         .collect()
-}
-
-/// The readable key of a label: `"400 and above"` is `400-and-above`.
-fn option_key(label: &str) -> String {
-    let mut key = String::with_capacity(label.len());
-    for c in label.chars() {
-        if c.is_alphanumeric() {
-            key.extend(c.to_lowercase());
-        } else if !key.is_empty() && !key.ends_with('-') {
-            key.push('-');
-        }
-    }
-    key.trim_end_matches('-').to_owned()
 }
 
 impl gpui_kit::component::select::SelectItem for IdItem {

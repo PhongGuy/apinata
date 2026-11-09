@@ -5,9 +5,10 @@ use crate::support;
 use apinata_app::auth_section::{AuthMode, AuthSection};
 use apinata_app::body_section::{BodyMode, BodySection};
 use apinata_app::generate_code::current;
-use apinata_core::{AuthSpec, BodySpec, Target};
+use apinata_app::save_draft::SaveDraftForm;
+use apinata_core::{AuthSpec, BodySpec, ItemPath, Target};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AnyWindowHandle, AppContext as _, Focusable as _, TestAppContext};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Focusable as _, SharedString, TestAppContext};
 use std::path::PathBuf;
 use support::*;
 
@@ -126,4 +127,50 @@ fn codegen_target_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
     );
     let target = cx.update(|cx| current(cx).map(|v| v.read(cx).target()));
     assert_eq!(target, Some(Target::Httpie));
+}
+
+#[gpui_kit::test]
+fn env_extends_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", "name: dev\n"),
+        ("environments/prod.yml", "name: prod\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    open_and_pick(
+        cx,
+        win,
+        "env-extends",
+        &["env-extends-option-none"],
+        "env-extends-option-prod",
+    );
+    let dev = env_view(cx, &ws, &root, "dev");
+    assert_eq!(dev.extends.as_deref(), Some("prod"));
+}
+
+#[gpui_kit::test]
+fn folders_that_differ_only_in_punctuation_get_distinct_rows(cx: &mut TestAppContext) {
+    support::init(cx);
+    let folders: Vec<(ItemPath, SharedString)> = vec![
+        (ItemPath::root(), "Collection root".into()),
+        (ip("a/b"), "a/b".into()),
+        (ip("a-b"), "a-b".into()),
+    ];
+    let (win, form) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| SaveDraftForm::new(folders, ItemPath::root(), "r", w, cx))
+            })
+        })
+        .unwrap();
+    frame(cx, win);
+    open_and_pick(
+        cx,
+        win,
+        "save-draft-folder",
+        &["save-draft-folder-option-a/b"],
+        "save-draft-folder-option-a-b",
+    );
+    assert_eq!(form.read_with(cx, |f, cx| f.folder(cx)), ip("a-b"));
 }
