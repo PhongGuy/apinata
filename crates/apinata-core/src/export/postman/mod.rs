@@ -1,5 +1,7 @@
 //! The Postman v2.1 collection exporter: tree walk, item order, requests, URLs and notes.
 
+mod script;
+
 use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
