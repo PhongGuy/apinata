@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 pub(super) use crate::js_scan::REGEX_AFTER;
-pub(super) use crate::js_scan::keyword_regex::{find_close, skip_opaque, template_end};
 pub(super) use crate::js_scan::{
-    MAX_DEPTH, ident_end, is_ident_byte, is_property_access, prev_significant, skip_trivia, skip_ws,
+    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, prev_significant,
+    skip_opaque, skip_trivia, skip_ws, template_end,
 };
 
 /// Absolute ranges of the top-level comma-separated parts of `src[from..to]`; empty parts
