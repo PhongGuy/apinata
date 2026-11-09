@@ -161,6 +161,9 @@ pub enum Warning {
     AwsProfileUnavailable,
     /// A proxy auto-config failure sent hops directly.
     ProxyAutoConfig(PacWarning),
+    /// NTLM to an http target through an http(s) proxy ended in 401, which a proxy that
+    /// switches upstream connections mid-handshake causes as well as wrong credentials.
+    NtlmProxyUnauthorized,
 }
 
 impl fmt::Display for Warning {
@@ -187,6 +190,11 @@ impl fmt::Display for Warning {
             }
             Warning::AwsProfileUnavailable => {
                 "the AWS profile could not be read; the auth fields were used"
+            }
+            Warning::NtlmProxyUnauthorized => {
+                "NTLM through an HTTP proxy ended in 401: the credentials may be wrong, or the \
+                 proxy may not keep one connection to the server for the handshake; use https \
+                 to rule out the proxy"
             }
         })
     }
