@@ -309,7 +309,7 @@ fn stop_tree(child: &mut Child) -> bool {
         thread::sleep(Duration::from_millis(20));
         adopt(&mut tree);
     }
-    // Git goes first, so it starts nothing new while the rest of its tree is ended.
+    // The launcher goes first, so it starts nothing new while the rest of its tree is ended.
     let _ = child.kill();
     adopt(&mut tree);
     for process in tree.iter().filter(|p| p.running()) {

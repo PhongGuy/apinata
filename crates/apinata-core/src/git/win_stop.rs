@@ -91,6 +91,8 @@ impl Process {
 
     /// Starts a thread in the process at kernel32's routine for `ask`, as Git for Windows' own
     /// kill does; false when that address cannot be known to hold there or no thread starts.
+    /// A process that inherited Ctrl+C as ignored drops the interrupt, and the later exit step
+    /// then ends it without its lock cleanup.
     pub(super) fn ask(&self, ask: Ask) -> bool {
         let (start, argument) = match ask {
             Ask::Interrupt => (ctrl_routine(), CTRL_C_EVENT),
