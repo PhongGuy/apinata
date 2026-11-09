@@ -10,6 +10,13 @@
 
 use std::collections::HashSet;
 
+use crate::js_scan::punct_regex::{find_close, skip_opaque, template_end};
+use crate::js_scan::{
+    MAX_DEPTH, ident_end, is_ident_byte, is_property_access, prev_significant, skip_trivia, skip_ws,
+};
+#[cfg(test)]
+use crate::js_scan::{NESTING, NestingGuard};
+
 mod alias;
 mod scope;
 mod send_request;
@@ -38,13 +45,8 @@ pub(super) fn translate(exec: &str) -> Translated {
     }
 }
 
-/// Deepest nesting of argument and template rewrites; beyond it text passes through.
-const MAX_DEPTH: usize = 32;
 /// Longest member chain examined; the longest table key has far fewer segments.
 const MAX_SEGS: usize = 16;
-/// Longest regex literal recognised; a longer run is read as division.
-const MAX_REGEX: usize = 256;
-
 /// State shared across one translation: rewrite count, nesting depth, the legacy
 /// names the whole script declares (computed once) and a scan budget that keeps
 /// repeated unclosed calls from rescanning the rest of the script each time.
@@ -420,167 +422,6 @@ fn ends_statement(b: &[u8], at: usize) -> bool {
         }
         _ => false,
     }
-}
-
-fn is_ident_byte(c: u8) -> bool {
-    c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80
-}
-
-fn ident_end(b: &[u8], mut i: usize) -> usize {
-    while i < b.len() && is_ident_byte(b[i]) {
-        i += 1;
-    }
-    i
-}
-
-fn skip_ws(b: &[u8], mut i: usize) -> usize {
-    while i < b.len() && b[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    i
-}
-
-/// The last non-whitespace byte before `i`, with its index.
-fn prev_significant(b: &[u8], i: usize) -> Option<(usize, u8)> {
-    let mut k = i;
-    while k > 0 {
-        k -= 1;
-        if !b[k].is_ascii_whitespace() {
-            return Some((k, b[k]));
-        }
-    }
-    None
-}
-
-/// True when the identifier at `i` is a property (`a.b`, not a spread `...b`).
-fn is_property_access(b: &[u8], i: usize) -> bool {
-    match prev_significant(b, i) {
-        Some((k, b'.')) => !(k >= 2 && b[k - 1] == b'.' && b[k - 2] == b'.'),
-        _ => false,
-    }
-}
-
-/// End of the string, comment, template or regex literal starting at `i`, if one does.
-fn skip_opaque(src: &str, i: usize) -> Option<usize> {
-    let b = src.as_bytes();
-    match b[i] {
-        q @ (b'\'' | b'"') => {
-            let mut k = i + 1;
-            while k < b.len() && b[k] != q {
-                k += if b[k] == b'\\' { 2 } else { 1 };
-            }
-            Some((k + 1).min(b.len()))
-        }
-        b'`' => Some(template_end(src, i)),
-        b'/' if b.get(i + 1) == Some(&b'/') => Some(src[i..].find('\n').map_or(b.len(), |n| i + n)),
-        b'/' if b.get(i + 1) == Some(&b'*') => {
-            Some(src[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2))
-        }
-        b'/' => regex_end(b, i),
-        _ => None,
-    }
-}
-
-/// A `/` starts a regex literal only where an expression may begin.
-fn regex_end(b: &[u8], i: usize) -> Option<usize> {
-    let starts_expr = match prev_significant(b, i) {
-        None => true,
-        Some((_, c)) => b"(,=:[!&|?{};+-*%<>~^".contains(&c),
-    };
-    if !starts_expr {
-        return None;
-    }
-    let mut k = i + 1;
-    let mut class = false;
-    while k < b.len() && b[k] != b'\n' && k - i <= MAX_REGEX {
-        match b[k] {
-            b'\\' => k += 1,
-            b'[' => class = true,
-            b']' => class = false,
-            b'/' if !class => {
-                k += 1;
-                while k < b.len() && b[k].is_ascii_alphabetic() {
-                    k += 1;
-                }
-                return Some(k);
-            }
-            _ => {}
-        }
-        k += 1;
-    }
-    None
-}
-
-thread_local!(static NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) });
-
-/// One level of template nesting; dropping it, also while unwinding, gives the level back.
-struct NestingGuard;
-
-impl NestingGuard {
-    fn enter() -> Option<NestingGuard> {
-        let depth = NESTING.get();
-        (depth < MAX_DEPTH).then(|| {
-            NESTING.set(depth + 1);
-            NestingGuard
-        })
-    }
-}
-
-impl Drop for NestingGuard {
-    fn drop(&mut self) {
-        NESTING.set(NESTING.get().saturating_sub(1));
-    }
-}
-
-/// End of the template literal starting at `i`, descending into `${}` holes.
-fn template_end(src: &str, i: usize) -> usize {
-    // Templates nested through `${}` recurse via find_close; past the cap the rest of
-    // the input is taken as one opaque template.
-    let Some(_level) = NestingGuard::enter() else {
-        return src.len();
-    };
-    template_scan(src, i)
-}
-
-fn template_scan(src: &str, i: usize) -> usize {
-    let b = src.as_bytes();
-    let mut k = i + 1;
-    while k < b.len() {
-        match b[k] {
-            b'\\' => k += 2,
-            b'`' => return k + 1,
-            b'$' if b.get(k + 1) == Some(&b'{') => {
-                k = find_close(src, k + 1).map_or(b.len(), |c| c + 1);
-            }
-            _ => k += 1,
-        }
-    }
-    b.len()
-}
-
-/// Index of the bracket closing the one at `open`, skipping literals and comments.
-fn find_close(src: &str, open: usize) -> Option<usize> {
-    let b = src.as_bytes();
-    let mut depth = 0usize;
-    let mut i = open;
-    while i < b.len() {
-        if let Some(end) = skip_opaque(src, i) {
-            i = end;
-            continue;
-        }
-        match b[i] {
-            b'(' | b'[' | b'{' => depth += 1,
-            b')' | b']' | b'}' => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
 }
 
 /// Split call arguments at top-level commas, trimmed.
@@ -1037,7 +878,7 @@ fn mutation_at(src: &str, start: usize, end: usize) -> Option<Mutation> {
     {
         return Some(Mutation::Other);
     }
-    let n = skip_trivia(src, end);
+    let n = skip_trivia(src, end, src.len());
     let rest = &b[n..];
     // A `++` or `--` after a line break begins the next statement instead.
     let postfix =
@@ -1046,7 +887,7 @@ fn mutation_at(src: &str, start: usize, end: usize) -> Option<Mutation> {
         return Some(Mutation::Other);
     }
     (rest.first() == Some(&b'=') && !matches!(rest.get(1), Some(b'=' | b'>')))
-        .then(|| Mutation::Assign(skip_trivia(src, n + 1)))
+        .then(|| Mutation::Assign(skip_trivia(src, n + 1, src.len())))
 }
 
 /// The last byte of the token before `i`, with its index, past whitespace and block comments.
@@ -1278,29 +1119,16 @@ fn blank_opaque(code: &str) -> String {
     out
 }
 
-/// End of whitespace and comments starting at `i`.
-fn skip_trivia(src: &str, mut i: usize) -> usize {
-    let b = src.as_bytes();
-    loop {
-        i = skip_ws(b, i);
-        let comment = b.get(i) == Some(&b'/') && matches!(b.get(i + 1), Some(b'/' | b'*'));
-        match comment.then(|| skip_opaque(src, i)).flatten() {
-            Some(end) => i = end,
-            None => return i,
-        }
-    }
-}
-
 /// Byte offset just after the last leading directive (`'use strict';`), or 0 without one.
 /// Only a string-literal statement ending at `;`, a newline or the end counts.
 pub(crate) fn directive_prologue_end(code: &str) -> usize {
     let b = code.as_bytes();
-    let (mut end, mut i) = (0, skip_trivia(code, 0));
+    let (mut end, mut i) = (0, skip_trivia(code, 0, code.len()));
     while matches!(b.get(i), Some(b'\'' | b'"')) {
         let Some(lit) = skip_opaque(code, i) else {
             break;
         };
-        let next = skip_trivia(code, lit);
+        let next = skip_trivia(code, lit, code.len());
         let stop = if b.get(next) == Some(&b';') {
             next + 1
         } else if next >= b.len()
@@ -1311,7 +1139,7 @@ pub(crate) fn directive_prologue_end(code: &str) -> usize {
             break;
         };
         end = stop;
-        i = skip_trivia(code, stop);
+        i = skip_trivia(code, stop, code.len());
     }
     end
 }
@@ -1327,13 +1155,13 @@ pub(crate) fn requires_module(code: &str, name: &str) -> bool {
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
             if &code[i..end] == "require" && !is_property_access(b, i) {
-                let open = skip_trivia(code, end);
-                let arg = skip_trivia(code, open + 1);
+                let open = skip_trivia(code, end, code.len());
+                let arg = skip_trivia(code, open + 1, code.len());
                 if b.get(open) == Some(&b'(')
                     && matches!(b.get(arg), Some(b'\'' | b'"'))
                     && let Some(lit) = skip_opaque(code, arg)
                     && code[arg + 1..lit.saturating_sub(1)] == *name
-                    && b.get(skip_trivia(code, lit)) == Some(&b')')
+                    && b.get(skip_trivia(code, lit, code.len())) == Some(&b')')
                 {
                     return true;
                 }

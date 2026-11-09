@@ -59,6 +59,7 @@ pub mod item_ops;
 mod item_path;
 mod iteration_data;
 mod js;
+mod js_scan;
 mod json_filter;
 mod json_node;
 mod json_syntax;
