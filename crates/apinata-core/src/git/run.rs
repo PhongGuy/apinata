@@ -43,9 +43,8 @@ pub(super) const FIXED: [(&str, &str); 4] = [
 /// The least time the pipe readers get after git exits.
 const PIPE_GRACE: Duration = Duration::from_millis(250);
 
-/// How long a stopped git and the rest of its group get to clean up and exit after SIGTERM,
-/// before SIGKILL.
-#[cfg(unix)]
+/// How long a stopped git and the processes it started get to clean up and exit after the
+/// gentle stop, before the kill.
 const TERM_GRACE: Duration = Duration::from_secs(2);
 
 /// The limit of the lock lookup after a write had to be killed.
@@ -222,10 +221,23 @@ impl From<std::io::Error> for Halt {
     }
 }
 
-/// Stop `child` and its process group: SIGTERM first, so git and its hooks can clean up (git
-/// removes its own lock files), then SIGKILL to whatever of the group outlives `TERM_GRACE`.
-/// Reaps the child, and is true when git itself needed SIGKILL (always so on Windows).
+/// Stop `child` and every process it started, gently first so git can clean up (it removes its
+/// own lock files), then kill whatever outlives `TERM_GRACE`. Reaps the child, and is true when
+/// git itself needed the kill (on Windows, when anything in its tree needed more than Ctrl+C).
 pub(super) fn stop_group(child: &mut Child) -> bool {
+    #[cfg(windows)]
+    {
+        stop_tree(child)
+    }
+    #[cfg(not(windows))]
+    {
+        stop_signalled(child)
+    }
+}
+
+/// SIGTERM to the process group git leads, then SIGKILL to whatever of it outlives the grace.
+#[cfg(not(windows))]
+fn stop_signalled(child: &mut Child) -> bool {
     #[cfg(unix)]
     if signal_group(child, "-TERM") {
         let deadline = Instant::now() + TERM_GRACE;
@@ -251,10 +263,58 @@ pub(super) fn stop_group(child: &mut Child) -> bool {
         let _ = child.wait();
         return true;
     }
-    // Without the `kill` helper, or on Windows, git is killed at once. On Windows that is
-    // TerminateProcess, which skips git's lock cleanup; the gentler ExitProcess-in-the-child
-    // stop that Git for Windows' own kill uses is not done here.
+    // Without the `kill` helper git is killed at once.
     let _ = child.kill();
+    let _ = child.wait();
+    true
+}
+
+/// Windows has no process groups, so git's tree is found by parent id, starting before the
+/// stop. Every process in it gets Ctrl+C, which Git for Windows handles like SIGINT and so
+/// removes its locks; survivors get ExitProcess halfway through the grace, then are terminated.
+/// The tree holds the real git behind the `git.exe` launcher, so the stop cannot end at the child.
+#[cfg(windows)]
+fn stop_tree(child: &mut Child) -> bool {
+    use super::win_stop::{Ask, Process, adopt};
+
+    let Some(git) = Process::open(child.id()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return true;
+    };
+    let started = Instant::now();
+    let mut tree = vec![git];
+    adopt(&mut tree);
+    let mut interrupted = 0;
+    let mut halfway = false;
+    // ExitProcess skips the cleanup that removes locks, so it counts as a kill.
+    let mut forced = false;
+    while started.elapsed() < TERM_GRACE {
+        // Newcomers, such as a hook git started just now, get the same Ctrl+C.
+        for process in &tree[interrupted..] {
+            process.ask(Ask::Interrupt);
+        }
+        interrupted = tree.len();
+        if !halfway && started.elapsed() >= TERM_GRACE / 2 {
+            for process in tree.iter().filter(|p| p.running()) {
+                process.ask(Ask::Exit);
+                forced = true;
+            }
+            halfway = true;
+        }
+        if !tree.iter().any(Process::running) {
+            let _ = child.wait();
+            return forced;
+        }
+        thread::sleep(Duration::from_millis(20));
+        adopt(&mut tree);
+    }
+    // Git goes first, so it starts nothing new while the rest of its tree is ended.
+    let _ = child.kill();
+    adopt(&mut tree);
+    for process in tree.iter().filter(|p| p.running()) {
+        process.terminate();
+    }
     let _ = child.wait();
     true
 }

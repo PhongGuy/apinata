@@ -864,3 +864,117 @@ mod pipes {
         );
     }
 }
+
+// Writes held past their time limit by a slow hook or filter, stopped on Windows. Git for
+// Windows runs both with its bundled sh; a write's limit is never under 120 seconds.
+#[cfg(windows)]
+mod windows_stop {
+    use super::*;
+    use std::process::Command;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    /// The least limit a write gets, and the grace the stop gives before it kills.
+    const WRITE_LIMIT: Duration = Duration::from_secs(120);
+    const GRACE: Duration = Duration::from_secs(2);
+    /// Covers the preflight calls and both lock lookups on a slow runner.
+    const MARGIN: Duration = Duration::from_secs(20);
+
+    /// The pids of every running process named `image`, through `tasklist`.
+    fn pids_of(image: &str) -> Vec<u32> {
+        let out = Command::new("tasklist")
+            .args(["/FI", &format!("IMAGENAME eq {image}"), "/FO", "CSV", "/NH"])
+            .output()
+            .expect("tasklist runs");
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|line| line.split("\",\"").nth(1)?.parse().ok())
+            .collect()
+    }
+
+    /// Polls up to 5 s for every process named `image` with a pid in `pids` to be gone.
+    fn all_gone(image: &str, pids: &[u32]) -> bool {
+        (0..100).any(|_| {
+            thread::sleep(Duration::from_millis(50));
+            !pids_of(image).iter().any(|p| pids.contains(p))
+        })
+    }
+
+    // A plain commit has released index.lock before its hooks run, but git add holds it while
+    // a clean filter runs, so a slow filter keeps the lock taken until the stop.
+    #[test]
+    fn a_write_held_past_its_limit_leaves_no_index_lock_after_the_gentle_stop() {
+        let sb = Sandbox::new();
+        let (repo, col) = committed(&sb);
+        sb.git(&repo, &["config", "filter.slow.clean", "sleep 600"]);
+        write(&repo, ".gitattributes", "*.yml filter=slow\n");
+        write(&col, "a.yml", "changed\n");
+        let started = Instant::now();
+        let error =
+            stage(&col, &["a.yml"], &sb.options()).expect_err("the filter outlives the limit");
+        assert!(matches!(error, GitError::Timeout), "{error}");
+        assert!(
+            started.elapsed() < WRITE_LIMIT + GRACE + MARGIN,
+            "took {:?}",
+            started.elapsed()
+        );
+        assert!(
+            !repo.join(".git/index.lock").exists(),
+            "index.lock left behind"
+        );
+    }
+
+    // A 32-bit process cannot take the gentle stop from this 64-bit one, so it stands for a
+    // child that ignores it: it must outlive the grace and still be killed.
+    #[test]
+    fn a_child_that_ignores_the_gentle_stop_is_killed_after_the_grace() {
+        let root = std::env::var("SystemRoot").expect("SystemRoot is set");
+        let ping = Path::new(&root).join("SysWOW64").join("PING.EXE");
+        assert!(ping.is_file(), "no 32-bit ping at {}", ping.display());
+        let before = pids_of("PING.EXE");
+        let sb = Sandbox::new();
+        let (repo, col) = committed(&sb);
+        write(&col, "a.yml", "staged\n");
+        stage(&col, &["a.yml"], &sb.options()).expect("stage");
+        let hook = format!(
+            "#!/bin/sh\n'{}' -n 600 127.0.0.1 > /dev/null &\nwait\n",
+            ping.display().to_string().replace('\\', "/")
+        );
+        write(&repo, ".git/hooks/pre-commit", &hook);
+        let options = sb.options();
+        let started = Instant::now();
+        let job = thread::spawn(move || commit(&col, "m", &options));
+
+        let mut stubborn = Vec::new();
+        for _ in 0..600 {
+            stubborn = pids_of("PING.EXE");
+            stubborn.retain(|p| !before.contains(p));
+            if !stubborn.is_empty() || job.is_finished() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert!(!stubborn.is_empty(), "the hook's ping never started");
+        let error = job
+            .join()
+            .expect("the commit thread ran")
+            .expect_err("the hook outlives the limit");
+        let took = started.elapsed();
+        assert!(
+            matches!(
+                error,
+                CommitError::Timeout | CommitError::Git(GitError::Busy { .. })
+            ),
+            "{error}"
+        );
+        assert!(
+            took >= WRITE_LIMIT + GRACE,
+            "stopped before the grace ended: {took:?}"
+        );
+        assert!(took < WRITE_LIMIT + GRACE + MARGIN, "took {took:?}");
+        assert!(
+            all_gone("PING.EXE", &stubborn),
+            "the stubborn child survived"
+        );
+    }
+}

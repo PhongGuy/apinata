@@ -82,6 +82,14 @@ apple-native-keyring-store = { workspace = true, optional = true }
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = { workspace = true, optional = true }
 self-replace = { workspace = true, optional = true }
+# The gentle git stop: a thread injected into git and the processes it started.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+] }
 
 [features]
 default = ["keychain"]
