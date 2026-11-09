@@ -5,23 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::tokens::{Tok, contains, same, tokens};
-
-/// Script API words whose translation reshapes arguments; a case using one waits for that port.
-const PENDING_WORDS: &[&str] = &[
-    "sendRequest",
-    "setBody",
-    "setHeaders",
-    "setHeader",
-    "setUrl",
-    "setMethod",
-    "getCookie",
-    "getCookies",
-    "setCookie",
-    "deleteCookie",
-    "deleteCookies",
-];
-const STRINGIFY_BODY: &str = "JSON.stringify(res.getBody())";
+use super::tokens::{contains, same};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub(super) enum Kind {
@@ -59,8 +43,7 @@ pub(super) struct Table {
 /// The corpus outcome; `differing` and `stale` hold case ids, `stale` the listed deviations
 /// that now match.
 pub(super) struct Report {
-    pub plan_a: usize,
-    pub pending: usize,
+    pub cases: usize,
     pub matched: usize,
     pub deviated: usize,
     pub differing: Vec<String>,
@@ -70,12 +53,11 @@ pub(super) struct Report {
 impl Report {
     pub(super) fn summary(&self) -> String {
         format!(
-            "plan A: {} of {} match, {} deviations, {} differ; {} pending for plan B",
+            "corpus: {} of {} match, {} deviations, {} differ",
             self.matched,
-            self.plan_a,
+            self.cases,
             self.deviated,
-            self.differing.len(),
-            self.pending
+            self.differing.len()
         )
     }
 }
@@ -111,23 +93,6 @@ pub(super) fn deviations() -> BTreeMap<String, String> {
     serde_json::from_str(&fixture("deviations.json")).expect("parses deviations.json")
 }
 
-/// The later-plan marker in `input`, found on tokens so strings and comments never count.
-pub(super) fn pending(input: &str) -> Option<&'static str> {
-    let toks = tokens(input);
-    for (k, tok) in toks.iter().enumerate() {
-        let Tok::Word(word) = tok else { continue };
-        if let Some(marker) = PENDING_WORDS.iter().find(|m| **m == word) {
-            return Some(marker);
-        }
-        let member = k > 0 && toks[k - 1] == Tok::Punct(".".into());
-        let called = toks.get(k + 1) == Some(&Tok::Punct("(".into()));
-        if matches!(word.as_str(), "test" | "expect") && !member && called {
-            return Some("test or expect call");
-        }
-    }
-    contains(input, STRINGIFY_BODY).then_some(STRINGIFY_BODY)
-}
-
 /// Whether `output` satisfies `check`, on exact text first and then on tokens.
 pub(super) fn passes(check: &Check, output: &str) -> bool {
     match check.kind {
@@ -136,23 +101,18 @@ pub(super) fn passes(check: &Check, output: &str) -> bool {
     }
 }
 
-/// Runs every case not pending for a later plan through `translate` and tallies the outcome.
+/// Runs every case through `translate` and tallies the outcome.
 pub(super) fn run(translate: &dyn Fn(&str) -> String) -> Report {
     let deviations = deviations();
     let mut report = Report {
-        plan_a: 0,
-        pending: 0,
+        cases: 0,
         matched: 0,
         deviated: 0,
         differing: Vec::new(),
         stale: Vec::new(),
     };
     for case in cases() {
-        if pending(&case.input).is_some() {
-            report.pending += 1;
-            continue;
-        }
-        report.plan_a += 1;
+        report.cases += 1;
         let output = translate(&case.input);
         let listed = deviations.contains_key(&case.id);
         if case.checks.iter().all(|check| passes(check, &output)) {
@@ -171,7 +131,7 @@ pub(super) fn run(translate: &dyn Fn(&str) -> String) -> Report {
 
 #[cfg(test)]
 mod tests {
-    use super::{Check, Kind, cases, deviations, passes, pending, run, table};
+    use super::{Check, Kind, cases, deviations, passes, run, table};
 
     #[test]
     fn the_vendored_corpus_has_every_case() {
@@ -200,36 +160,6 @@ mod tests {
     }
 
     #[test]
-    fn plan_b_cases_are_recognised_by_their_markers() {
-        assert_eq!(pending("req.setHeader('a', 'b');"), Some("setHeader"));
-        assert_eq!(
-            pending("test('ok', () => {});"),
-            Some("test or expect call")
-        );
-        assert_eq!(
-            pending("expect(1).to.equal(1);"),
-            Some("test or expect call")
-        );
-        assert_eq!(pending("expect.fail('x');"), None);
-        assert_eq!(pending("x.test(1);"), None);
-        assert_eq!(
-            pending("const s = JSON.stringify(res.getBody());"),
-            Some("JSON.stringify(res.getBody())")
-        );
-        assert_eq!(pending("const s = JSON.stringify(res.getBody().a);"), None);
-        assert_eq!(pending("// sendRequest\nconst a = 'setBody';"), None);
-        assert_eq!(pending("jar.getCookie(u, 'a');"), Some("getCookie"));
-        assert_eq!(pending("bru.cookies.jar();"), None);
-        assert_eq!(
-            cases()
-                .iter()
-                .filter(|c| pending(&c.input).is_none())
-                .count(),
-            123
-        );
-    }
-
-    #[test]
     fn checks_pass_on_text_or_on_tokens() {
         let to_be = Check {
             kind: Kind::ToBe,
@@ -252,12 +182,12 @@ mod tests {
     }
 
     #[test]
-    fn an_identity_translation_matches_no_plan_a_case() {
+    fn an_identity_translation_matches_no_case() {
         let report = run(&|s: &str| s.to_owned());
         eprintln!("{}", report.summary());
-        assert_eq!((report.plan_a, report.pending), (123, 72));
+        assert_eq!(report.cases, 195);
         assert_eq!(report.matched, 0);
-        assert_eq!(report.differing.len(), 123);
+        assert_eq!(report.differing.len(), 195);
         assert!(report.stale.is_empty());
     }
 }

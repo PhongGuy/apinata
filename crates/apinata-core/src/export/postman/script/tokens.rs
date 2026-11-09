@@ -1,5 +1,7 @@
 //! A small JavaScript tokenizer, so translated scripts compare on code rather than layout.
 
+use super::scan::REGEX_AFTER;
+
 /// One JavaScript token: strings by decoded value, everything else as written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Tok {
@@ -16,24 +18,6 @@ const PUNCTS: &[&str] = &[
     ">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=", "=>", "==", "!=",
     "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",
     "**", "<<", ">>",
-];
-
-/// Words after which a `/` starts an expression, so it opens a regex.
-const REGEX_AFTER: &[&str] = &[
-    "return",
-    "typeof",
-    "case",
-    "do",
-    "else",
-    "in",
-    "of",
-    "new",
-    "delete",
-    "void",
-    "throw",
-    "instanceof",
-    "yield",
-    "await",
 ];
 
 /// The tokens of `src`, whitespace and comments dropped. Unterminated literals run to the end.

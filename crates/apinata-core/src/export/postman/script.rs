@@ -1,15 +1,19 @@
 //! Translation of the app's script API to Postman's on export.
 
+use std::cell::Cell;
 use std::collections::HashSet;
 
 use crate::export::ExportNote;
 
 use scan::{
-    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, skip_opaque, skip_ws,
-    template_end,
+    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, prev_significant,
+    skip_opaque, skip_ws, template_end,
 };
 
+mod alias;
+mod cookies;
 mod scan;
+mod send_request;
 
 #[cfg(test)]
 mod corpus;
@@ -195,8 +199,23 @@ pub(super) fn for_postman(code: &str, source: &str, notes: &mut Vec<ExportNote>)
     out.code
 }
 
+thread_local!(static BUDGET: Cell<usize> = const { Cell::new(0) });
+
+/// `find_close` charged to the script's budget; once it is spent, no further call is reshaped
+/// and what is left is reported.
+fn budgeted_close(src: &str, open: usize) -> Option<usize> {
+    let left = BUDGET.get();
+    if left == 0 {
+        return None;
+    }
+    let close = find_close(src, open);
+    BUDGET.set(left.saturating_sub(close.unwrap_or(src.len()) - open));
+    close
+}
+
 /// Translate a script's code. Never fails: anything not in the tables is kept as written.
 pub(super) fn translate(code: &str) -> Translated {
+    BUDGET.set(code.len().saturating_mul(8).saturating_add(1 << 16));
     // A rewrite inside unbalanced brackets could land anywhere, so such a script is kept whole.
     if !balanced(code) {
         return Translated {
@@ -206,13 +225,47 @@ pub(super) fn translate(code: &str) -> Translated {
             kept: true,
         };
     }
-    let mut rewritten = 0;
-    let code = translate_code(code, 0, &mut rewritten);
+    let (code, values, bindings) = alias::resolve(code);
+    let (code, sent, kept) = send_request::rewrite(&code, &bindings);
+    let (code, renamed) = cookies::rename_jar_methods(&code, &bindings);
+    let mut cx = Cx {
+        rewritten: values + sent + renamed,
+        bindings: &bindings,
+        skipped: Vec::new(),
+        skipped_seen: HashSet::new(),
+    };
+    let code = translate_code(&code, 0, &mut cx);
+    let mut found = leftovers(&code);
+    let mut seen: HashSet<String> = found.iter().cloned().collect();
+    let more = bindings.unsafe_chains.iter().map(|c| (*c).to_owned());
+    for chain in more.chain(kept).chain(cx.skipped) {
+        if seen.insert(chain.clone()) {
+            found.push(chain);
+        }
+    }
     Translated {
-        leftovers: leftovers(&code),
+        leftovers: found,
         code,
-        rewritten,
+        rewritten: cx.rewritten,
         kept: false,
+    }
+}
+
+/// State shared by the scan of one script.
+struct Cx<'b> {
+    rewritten: usize,
+    bindings: &'b alias::Bindings,
+    /// Calls and members left as written that the final text does not show as API chains:
+    /// `test`/`expect` calls past the budget and untranslated members of aliases.
+    skipped: Vec<String>,
+    skipped_seen: HashSet<String>,
+}
+
+impl Cx<'_> {
+    fn skip(&mut self, what: &str) {
+        if self.skipped_seen.insert(what.to_owned()) {
+            self.skipped.push(what.to_owned());
+        }
     }
 }
 
@@ -278,31 +331,108 @@ fn template_closes(src: &str, start: usize, level: usize) -> Option<usize> {
     None
 }
 
+/// The last significant token `translate_code` passed, as far as statement boundaries need it.
+#[derive(Clone, Copy)]
+enum Last<'a> {
+    None,
+    /// A punctuator byte, at its index.
+    Punct(usize),
+    Word(&'a str),
+    /// A number, string, template or regex literal.
+    Literal,
+    /// A `)`; true when it closes an `if`, `for`, `while` or `with` header.
+    Close(bool),
+}
+
+/// Words that keep an operator's place before an expression.
+const OPERATOR_WORDS: &[&str] = &[
+    "typeof",
+    "void",
+    "delete",
+    "await",
+    "new",
+    "in",
+    "instanceof",
+];
+
 // Copy literals and comments as they are, descend into template holes, and try a rewrite at
-// each identifier that starts a chain rather than continuing one.
-fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
+// each identifier that starts a chain rather than continuing one. The last token and the open
+// parens are tracked so reshaped calls can respect the statement around them.
+fn translate_code(src: &str, depth: usize, cx: &mut Cx) -> String {
     let b = src.as_bytes();
     let mut out = String::with_capacity(src.len());
+    let mut last = Last::None;
+    let mut last_end = 0;
+    let mut parens: Vec<bool> = Vec::new();
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'`' {
-            i = copy_template(src, i, depth, &mut out, rewritten);
+            i = copy_template(src, i, depth, &mut out, cx);
+            (last, last_end) = (Last::Literal, i);
         } else if let Some(end) = skip_opaque(src, i) {
             out.push_str(&src[i..end]);
+            if !(b[i] == b'/' && matches!(b.get(i + 1), Some(b'/' | b'*'))) {
+                (last, last_end) = (Last::Literal, end);
+            }
             i = end;
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
+            let before = cx.rewritten;
             if !is_property_access(b, i)
-                && let Some((text, next)) = rewrite_chain(src, i, end)
+                && let Some(found) = rewrite_chain(src, i, end, depth, cx)
+                && !(matches!(found.shape, Shape::Assign) && updated(src, last, found.next))
             {
-                out.push_str(text);
-                *rewritten += 1;
-                i = next;
+                let semicolon = needs_semicolon(src, last, last_end, i);
+                match found.shape {
+                    Shape::Assign if needs_parens(src, last, found.next) => {
+                        if semicolon {
+                            out.push(';');
+                        }
+                        out.push('(');
+                        out.push_str(&found.text);
+                        out.push(')');
+                    }
+                    Shape::Loop if semicolon => {
+                        out.push(';');
+                        out.push_str(&found.text);
+                    }
+                    _ => out.push_str(&found.text),
+                }
+                cx.rewritten += 1;
+                last = if b[found.next - 1] == b')' {
+                    Last::Close(false)
+                } else {
+                    Last::Word("")
+                };
+                (i, last_end) = (found.next, found.next);
                 continue;
             }
+            // An assignment that an update operator would target is kept with its arguments
+            // as written; they are scanned on like any other code.
+            cx.rewritten = before;
             out.push_str(&src[i..end]);
-            i = end;
+            // A word after `.` is a property name, never a keyword.
+            last = if b[i].is_ascii_digit() {
+                Last::Literal
+            } else if is_property_access(b, i) {
+                Last::Word("")
+            } else {
+                Last::Word(&src[i..end])
+            };
+            (i, last_end) = (end, end);
         } else {
+            if !b[i].is_ascii_whitespace() {
+                last = match b[i] {
+                    b'(' => {
+                        let header = matches!(last, Last::Word("if" | "for" | "while" | "with"));
+                        parens.push(header);
+                        Last::Punct(i)
+                    }
+                    b')' => Last::Close(parens.pop().unwrap_or(false)),
+                    _ => Last::Punct(i),
+                };
+                last_end = i + 1;
+            }
             out.push(b[i] as char);
             i += 1;
         }
@@ -310,14 +440,71 @@ fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
     out
 }
 
+// An assignment can stand bare where the token before it starts an expression slot and the
+// token after it ends that expression; anywhere else a neighbouring operator would bind it.
+fn needs_parens(src: &str, last: Last, end: usize) -> bool {
+    let b = src.as_bytes();
+    let before = |k: usize, n: usize| k.checked_sub(n).map(|j| b[j]);
+    let bare_before = match last {
+        Last::None | Last::Close(_) => true,
+        Last::Word(w) => !OPERATOR_WORDS.contains(&w),
+        Last::Literal => false,
+        Last::Punct(k) => match b[k] {
+            b';' | b'{' | b'}' | b'(' | b'[' | b',' | b':' => true,
+            b'?' => before(k, 1) != Some(b'?'),
+            b'>' => before(k, 1) == Some(b'='),
+            b'=' => match before(k, 1) {
+                Some(b'=' | b'!') => false,
+                Some(c @ (b'<' | b'>')) => before(k, 2) == Some(c),
+                _ => true,
+            },
+            _ => false,
+        },
+    };
+    let (next, newline) = skip_trivia(src, end);
+    let bare_after = match b.get(next) {
+        None | Some(b';' | b',' | b')' | b']' | b'}' | b':') => true,
+        Some(&c) => newline && (is_ident_byte(c) || matches!(c, b'\'' | b'"' | b'`' | b'{')),
+    };
+    !(bare_before && bare_after)
+}
+
+// New text starting a line continues the previous statement unless that one ended where ASI
+// would end it anyway; after a value-like token, a leading `;` keeps the statements apart.
+fn needs_semicolon(src: &str, last: Last, last_end: usize, start: usize) -> bool {
+    let newline = src[last_end..start].contains('\n');
+    newline
+        && match last {
+            Last::None => false,
+            Last::Punct(k) => matches!(src.as_bytes()[k], b']' | b'}'),
+            Last::Literal => true,
+            Last::Word(w) => !matches!(w, "else" | "do" | "return") && !OPERATOR_WORDS.contains(&w),
+            Last::Close(header) => !header,
+        }
+}
+
+/// The first byte at or after `i` outside whitespace and comments, and whether a line break
+/// was passed on the way.
+fn skip_trivia(src: &str, mut i: usize) -> (usize, bool) {
+    let b = src.as_bytes();
+    let mut newline = false;
+    loop {
+        let k = skip_ws(b, i);
+        newline |= src[i..k].contains('\n');
+        i = k;
+        match (b.get(i), b.get(i + 1)) {
+            (Some(b'/'), Some(b'/' | b'*')) => {
+                let end = skip_opaque(src, i).unwrap_or(b.len());
+                newline |= src[i..end].contains('\n');
+                i = end;
+            }
+            _ => return (i, newline),
+        }
+    }
+}
+
 /// Copy a template literal, translating only its `${}` holes; past the depth cap, verbatim.
-fn copy_template(
-    src: &str,
-    start: usize,
-    depth: usize,
-    out: &mut String,
-    rewritten: &mut usize,
-) -> usize {
+fn copy_template(src: &str, start: usize, depth: usize, out: &mut String, cx: &mut Cx) -> usize {
     let b = src.as_bytes();
     let end = template_end(src, start);
     let mut i = start + 1;
@@ -330,7 +517,7 @@ fn copy_template(
                     break;
                 };
                 out.push_str(&src[text_from..i + 2]);
-                out.push_str(&translate_code(&src[i + 2..close], depth + 1, rewritten));
+                out.push_str(&translate_code(&src[i + 2..close], depth + 1, cx));
                 out.push('}');
                 i = close + 1;
                 text_from = i;
@@ -342,11 +529,56 @@ fn copy_template(
     end
 }
 
+/// Calls whose arguments move into new syntax; rewritten only when called.
+const RESHAPED: &[&str] = &[
+    "req.setUrl",
+    "req.setMethod",
+    "req.setHeader",
+    "req.setBody",
+    "req.setHeaders",
+    "JSON.stringify",
+];
+
+/// The statement shape a rewrite produces.
+enum Shape {
+    Expr,
+    /// `pm.request.url = x`, which an operator next to it would bind.
+    Assign,
+    /// A call of a function expression, which a previous unterminated line would call.
+    Loop,
+}
+
+struct Rewrite {
+    text: String,
+    next: usize,
+    shape: Shape,
+}
+
 // Gather the `.name` segments that follow the head with no space between, then try the
-// longest key first; at each length a call row needs a `(` and wins over a plain row.
-fn rewrite_chain(src: &str, start: usize, head_end: usize) -> Option<(&'static str, usize)> {
-    if !matches!(&src[start..head_end], "bru" | "req" | "res" | "expect") {
-        return None;
+// longest key first; at each length a call row needs a `(` and wins over a plain row. A safe
+// alias reads as the chain it stands for, and its rewrite keeps the alias as the receiver.
+fn rewrite_chain(
+    src: &str,
+    start: usize,
+    head_end: usize,
+    depth: usize,
+    cx: &mut Cx,
+) -> Option<Rewrite> {
+    let head = &src[start..head_end];
+    let alias = cx.bindings.alias(head);
+    if alias.is_none() {
+        let known = matches!(head, "bru" | "req" | "res" | "test" | "expect" | "JSON");
+        // A script's own `test` or `expect` is not the API.
+        if !known || (matches!(head, "test" | "expect") && cx.bindings.binds(head)) {
+            return None;
+        }
+        if bare_test_call(src, start, head_end, cx) {
+            return Some(Rewrite {
+                text: format!("pm.{head}"),
+                next: head_end,
+                shape: Shape::Expr,
+            });
+        }
     }
     let b = src.as_bytes();
     let mut ends = Vec::new();
@@ -359,20 +591,287 @@ fn rewrite_chain(src: &str, start: usize, head_end: usize) -> Option<(&'static s
         ends.push(pos);
     }
     for &end in ends.iter().rev() {
-        let key = &src[start..end];
-        if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key) {
-            let open = skip_ws(b, end);
-            if b.get(open) == Some(&b'(')
-                && let Some(close) = find_close(src, open)
-            {
-                return Some((text, close + 1));
+        let key = match alias {
+            Some(chain) => format!("{chain}{}", &src[head_end..end]),
+            None => src[start..end].to_owned(),
+        };
+        let Some(found) = row_rewrite(&key, src, end, depth, cx) else {
+            continue;
+        };
+        return match alias {
+            None => Some(found?),
+            Some(chain) => {
+                let Some(found) = found else {
+                    cx.skip(&src[start..end]);
+                    return None;
+                };
+                let text = localize(found.text, chain, head);
+                (text != src[start..found.next]).then_some(Rewrite { text, ..found })
             }
-        }
-        if let Some((_, text)) = SIMPLE.iter().find(|(k, _)| *k == key) {
-            return Some((text, end));
+        };
+    }
+    // A member of an alias that no row knows, or one reached through `?.`, `[` or a spaced
+    // `.`, is left as written and reported as the user wrote it.
+    if alias.is_some() {
+        if let Some(&last) = ends.last() {
+            cx.skip(&src[start..last]);
+        } else if let Some(member) = loose_member(src, head_end) {
+            cx.skip(&format!("{head}{member}"));
         }
     }
     None
+}
+
+/// The member after an alias reached other than by a plain `.name`: `.name` for `?.name` or
+/// a `.` after blanks or comments, `[...]` for an index.
+fn loose_member(src: &str, end: usize) -> Option<String> {
+    let b = src.as_bytes();
+    let (at, _) = skip_trivia(src, end);
+    let dot = match (b.get(at), b.get(at + 1)) {
+        (Some(b'['), _) => return Some("[...]".to_owned()),
+        (Some(b'?'), Some(b'.')) => at + 2,
+        (Some(b'.'), Some(c)) if *c != b'.' => at + 1,
+        _ => return None,
+    };
+    let name = skip_trivia(src, dot).0;
+    let first = *b.get(name)?;
+    (is_ident_byte(first) && !first.is_ascii_digit())
+        .then(|| format!(".{}", &src[name..ident_end(b, name)]))
+}
+
+/// The rewrite of the chain ending at `end` under `key`: `None` when no row has the key,
+/// `Some(None)` when a row has it but the call cannot be rewritten.
+fn row_rewrite(
+    key: &str,
+    src: &str,
+    end: usize,
+    depth: usize,
+    cx: &mut Cx,
+) -> Option<Option<Rewrite>> {
+    let b = src.as_bytes();
+    let open = skip_ws(b, end);
+    // The closing paren is looked for only once a call row matches, so nested calls no
+    // table knows cost nothing; the rest is charged to the script's budget.
+    let close = || {
+        (b.get(open) == Some(&b'('))
+            .then(|| budgeted_close(src, open))
+            .flatten()
+    };
+    if key == "JSON.stringify"
+        && !src[skip_ws(b, open + 1).min(src.len())..].starts_with("res.getBody")
+    {
+        return Some(None);
+    }
+    if RESHAPED.contains(&key) {
+        let Some(close) = close() else {
+            return Some(None);
+        };
+        return Some(
+            reshape(key, src, open, close, depth, cx).map(|(text, shape)| Rewrite {
+                text,
+                next: close + 1,
+                shape,
+            }),
+        );
+    }
+    if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key)
+        && let Some(close) = close()
+    {
+        return Some(Some(Rewrite {
+            text: (*text).to_owned(),
+            next: close + 1,
+            shape: Shape::Expr,
+        }));
+    }
+    SIMPLE.iter().find(|(k, _)| *k == key).map(|(_, text)| {
+        Some(Rewrite {
+            text: (*text).to_owned(),
+            next: end,
+            shape: Shape::Expr,
+        })
+    })
+}
+
+/// `text` with the Postman object `chain` stands for written as the alias `name`.
+fn localize(text: String, chain: &str, name: &str) -> String {
+    let object = alias::postman_object(chain).unwrap_or("pm");
+    match text.strip_prefix(object) {
+        Some(rest) if rest.is_empty() || rest.starts_with('.') => format!("{name}{rest}"),
+        _ => text,
+    }
+}
+
+// An update operator next to an assignment would target it: `++x = y` and `(x = y)++` do not
+// parse.
+fn updated(src: &str, last: Last, next: usize) -> bool {
+    let b = src.as_bytes();
+    let prefix =
+        matches!(last, Last::Punct(k) if k > 0 && matches!(b[k], b'+' | b'-') && b[k - 1] == b[k]);
+    let rest = &src[skip_trivia(src, next).0..];
+    let assigned = (rest.starts_with('=') && !rest.starts_with("==") && !rest.starts_with("=>"))
+        || ASSIGN_OPS.iter().any(|o| rest.starts_with(o));
+    prefix || rest.starts_with("++") || rest.starts_with("--") || assigned
+}
+
+const ASSIGN_OPS: [&str; 15] = [
+    "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**=", "<<=", ">>=", ">>>=", "&&=", "||=",
+    "??=",
+];
+
+// A free-standing `test(` or `expect(` that is neither declared (`function test(`, a method
+// `test() {`) nor constructed; only the head changes, so the arguments are scanned on.
+fn bare_test_call(src: &str, start: usize, end: usize, cx: &mut Cx) -> bool {
+    let b = src.as_bytes();
+    let head = &src[start..end];
+    if !matches!(head, "test" | "expect") {
+        return false;
+    }
+    let open = skip_ws(b, end);
+    if b.get(open) != Some(&b'(') {
+        return false;
+    }
+    let Some(close) = budgeted_close(src, open) else {
+        // Only the budget leaves a call of a balanced script unclosed.
+        cx.skip(head);
+        return false;
+    };
+    let declared = prev_significant(b, start).is_some_and(|(k, c)| {
+        is_ident_byte(c) && {
+            let from = (0..=k)
+                .rev()
+                .take_while(|&j| is_ident_byte(b[j]))
+                .last()
+                .unwrap_or(k);
+            matches!(&src[from..=k], "function" | "new")
+        }
+    });
+    !declared && b.get(skip_ws(b, close + 1)) != Some(&b'{')
+}
+
+// Move a reshaped call's arguments into Postman's syntax, later arguments dropped. A spread
+// where an argument would land inside new syntax keeps the call as written.
+fn reshape(
+    key: &str,
+    src: &str,
+    open: usize,
+    close: usize,
+    depth: usize,
+    cx: &mut Cx,
+) -> Option<(String, Shape)> {
+    let args = parts(src, open + 1, close);
+    let spread = |n: usize| {
+        args.get(n)
+            .is_some_and(|&(s, e)| src[s..e].starts_with("..."))
+    };
+    let mut arg = |n: usize| {
+        let (s, e) = args[n];
+        if depth + 1 >= MAX_DEPTH {
+            src[s..e].to_owned()
+        } else {
+            translate_code(&src[s..e], depth + 1, cx)
+        }
+    };
+    Some(match key {
+        "req.setUrl" | "req.setMethod" => {
+            let prop = if key == "req.setUrl" {
+                "pm.request.url"
+            } else {
+                "pm.request.method"
+            };
+            if args.is_empty() {
+                (prop.to_owned(), Shape::Expr)
+            } else if spread(0) {
+                return None;
+            } else {
+                (format!("{prop} = {}", arg(0)), Shape::Assign)
+            }
+        }
+        "req.setHeader" if args.len() >= 2 => {
+            if spread(0) || spread(1) {
+                return None;
+            }
+            let (k, v) = (arg(0), arg(1));
+            (
+                format!("pm.request.headers.upsert({{ key: {k}, value: {v} }})"),
+                Shape::Expr,
+            )
+        }
+        "req.setHeader" => {
+            let passed: Vec<String> = (0..args.len()).map(&mut arg).collect();
+            (
+                format!("pm.request.headers.upsert({})", passed.join(", ")),
+                Shape::Expr,
+            )
+        }
+        "req.setBody" if args.is_empty() => ("pm.request.body".to_owned(), Shape::Expr),
+        "req.setBody" => {
+            if spread(0) {
+                return None;
+            }
+            (
+                format!(
+                    "pm.request.body.update({{ mode: \"raw\", raw: JSON.stringify({}) }})",
+                    arg(0)
+                ),
+                Shape::Expr,
+            )
+        }
+        "req.setHeaders" if args.is_empty() => ("pm.request.headers".to_owned(), Shape::Expr),
+        "req.setHeaders" => {
+            // The loop is a plain function, where an `await` would not parse.
+            if spread(0) || has_await(src, args[0].0, args[0].1) {
+                return None;
+            }
+            (
+                format!(
+                    "(function() {{ const _headers = {}; for (const key in _headers) {{ pm.request.headers.upsert({{ key: key, value: _headers[key] }}); }} }})()",
+                    arg(0)
+                ),
+                Shape::Loop,
+            )
+        }
+        _ => {
+            let [(s, e)] = args.as_slice() else {
+                return None;
+            };
+            response_body_call(src, *s, *e)
+                .then(|| ("pm.response.text()".to_owned(), Shape::Expr))?
+        }
+    })
+}
+
+/// Whether `src[s..e]` uses `await` outside literals and comments.
+fn has_await(src: &str, s: usize, e: usize) -> bool {
+    let b = src.as_bytes();
+    let mut i = s;
+    while i < e {
+        if let Some(end) = skip_opaque(src, i) {
+            if b[i] == b'`' && src[i..end.min(e)].contains("await") {
+                return true;
+            }
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            if &src[i..end] == "await" && !is_property_access(b, i) {
+                return true;
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+/// Whether `src[s..e]` is wholly a `res.getBody(...)` call.
+fn response_body_call(src: &str, s: usize, e: usize) -> bool {
+    let b = src.as_bytes();
+    let name_end = s + "res.getBody".len();
+    if !src[s..e].starts_with("res.getBody") || ident_end(b, name_end) != name_end {
+        return false;
+    }
+    let open = skip_ws(b, name_end);
+    b.get(open) == Some(&b'(') && find_close(src, open) == Some(e - 1)
 }
 
 /// The distinct `bru.`/`req.`/`res.` member chains in `code`, template holes included.
@@ -455,10 +954,29 @@ fn report_chain(code: &str, start: usize, head_end: usize, each: &mut dyn FnMut(
         chain.push('.');
         chain.push_str(&code[name..next]);
     }
-    if next > head_end {
+    if next > head_end || bare_alias(b, start, head_end) {
         each(chain);
     }
     next
+}
+
+// A head with no segment that is the whole right-hand side of a plain `=` aliases the API;
+// one the resolver left in place would reach Postman untranslated.
+fn bare_alias(b: &[u8], start: usize, end: usize) -> bool {
+    let assigned = match prev_significant(b, start) {
+        Some((k, b'=')) => !matches!(
+            k.checked_sub(1).map(|j| b[j]),
+            Some(b'=' | b'!' | b'<' | b'>')
+        ),
+        _ => false,
+    };
+    let mut k = end;
+    while k < b.len() && matches!(b[k], b' ' | b'\t' | b'\r') {
+        k += 1;
+    }
+    assigned
+        && b.get(k)
+            .is_none_or(|c| matches!(c, b';' | b',' | b'}' | b'\n'))
 }
 
 fn template_holes(

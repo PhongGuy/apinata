@@ -44,6 +44,54 @@ const TABLE: &[(&str, &str)] = &[
     ("res.getHeader(\"h\");", "res.getHeader(\"h\");"),
     ("res.getResponseTime();", "res.getResponseTime();"),
     ("res.statusText;", "res.statusText;"),
+    // An assignment to the request URL or method comes back as the setter call.
+    (
+        "req.setUrl(\"https://x.test/b\");",
+        "req.setUrl(\"https://x.test/b\");",
+    ),
+    ("req.setMethod(\"POST\");", "req.setMethod(\"POST\");"),
+    (
+        "req.setHeader(\"h\", \"v\");",
+        "req.setHeader(\"h\", \"v\");",
+    ),
+    (
+        "req.setBody({a: 1});",
+        "req.getBody().update({ mode: \"raw\", raw: JSON.stringify({a: 1}) });",
+    ),
+    (
+        "req.setHeaders({h: \"v\"});",
+        "(function() { const _headers = {h: \"v\"}; for (const key in _headers) { req.setHeader(key, _headers[key]); } })();",
+    ),
+    (
+        "JSON.stringify(res.getBody());",
+        "JSON.stringify(res.getBody());",
+    ),
+    (
+        "bru.cookies.jar().getCookie(\"https://x.test\", \"n\");",
+        "bru.cookies.jar().getCookie(\"https://x.test\", \"n\");",
+    ),
+    (
+        "bru.cookies.jar().getCookies(\"https://x.test\");",
+        "bru.cookies.jar().getCookies(\"https://x.test\");",
+    ),
+    (
+        "bru.cookies.jar().setCookie(\"https://x.test\", \"n\", \"v\");",
+        "bru.cookies.jar().setCookie(\"https://x.test\", \"n\", \"v\");",
+    ),
+    (
+        "bru.cookies.jar().deleteCookie(\"https://x.test\", \"n\");",
+        "bru.cookies.jar().deleteCookie(\"https://x.test\", \"n\");",
+    ),
+    (
+        "bru.cookies.jar().deleteCookies(\"https://x.test\");",
+        "bru.cookies.jar().deleteCookies(\"https://x.test\");",
+    ),
+    ("test(\"t\", function() {});", "test(\"t\", function() {});"),
+    ("expect(1).to.equal(1);", "expect(1).to.equal(1);"),
+    (
+        "bru.sendRequest(\"https://x.test/c\", (err, r) => { console.log(r.data); });",
+        "await bru.sendRequest(\"https://x.test/c\", async function(err, r) { console.log(r.data); });",
+    ),
 ];
 
 #[test]

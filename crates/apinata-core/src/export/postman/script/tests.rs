@@ -1,4 +1,6 @@
 use super::corpus::table;
+use super::scan::parts;
+use super::tokens::same;
 use super::{CALLS, SIMPLE, translate};
 
 fn t(src: &str) -> String {
@@ -52,7 +54,6 @@ fn only_free_standing_heads_are_rewritten() {
         "mybru.getVar('a')",
         "$res.status",
         "res",
-        "expect(1)",
     ] {
         let out = translate(src);
         assert_eq!(out.code, src);
@@ -214,7 +215,7 @@ fn stop_execution_becomes_set_next_request_null() {
 }
 
 #[test]
-fn plan_a_cases_match_the_reference() {
+fn every_case_matches_the_reference() {
     let report = super::corpus::run(&|s: &str| translate(s).code);
     eprintln!("{}", report.summary());
     assert!(
@@ -227,8 +228,8 @@ fn plan_a_cases_match_the_reference() {
         "deviations that now match: {:?}",
         report.stale
     );
-    assert_eq!(report.plan_a, 123);
-    assert_eq!(report.matched + report.deviated, 123);
+    assert_eq!(report.cases, 195);
+    assert_eq!(report.matched + report.deviated, 195);
 }
 
 #[test]
@@ -277,4 +278,1055 @@ fn spaced_and_optional_chains_are_reported_as_leftovers() {
         out.leftovers,
         ["bru.getVar", "req.getUrl", "res.getStatus", "bru.setVar"]
     );
+}
+
+#[track_caller]
+fn check(src: &str, want: &str) {
+    let out = translate(src).code;
+    assert!(
+        same(&out, want),
+        "\n input: {src}\noutput: {out}\n  want: {want}"
+    );
+}
+
+#[test]
+fn parts_split_at_top_level_commas() {
+    let src = "f(a, [b, c], {d: 1, e: 2}, 'x,y', `${g(1, 2)}`, /,/g, )";
+    let got: Vec<&str> = parts(src, 2, src.len() - 1)
+        .iter()
+        .map(|&(s, e)| &src[s..e])
+        .collect();
+    assert_eq!(
+        got,
+        [
+            "a",
+            "[b, c]",
+            "{d: 1, e: 2}",
+            "'x,y'",
+            "`${g(1, 2)}`",
+            "/,/g"
+        ]
+    );
+    assert!(parts("f()", 2, 2).is_empty());
+}
+
+#[test]
+fn send_request_becomes_pm_send_request_whatever_its_arguments() {
+    assert_eq!(t("bru.sendRequest();"), "pm.sendRequest();");
+    assert_eq!(
+        t("bru.sendRequest('https://x.test');"),
+        "pm.sendRequest('https://x.test');"
+    );
+    assert_eq!(
+        t("await bru.sendRequest(opts);"),
+        "await pm.sendRequest(opts);"
+    );
+    assert_eq!(
+        t("bru.sendRequest(make(), cb, extra);"),
+        "pm.sendRequest(make(), cb);"
+    );
+}
+
+#[test]
+fn the_send_request_layout_is_pinned() {
+    assert_eq!(
+        t("bru.sendRequest({url: 'u', headers: {a: '1'}, data: {k: 'v'}});"),
+        "pm.sendRequest({url: 'u', header: {a: '1'}, body: { mode: \"raw\", raw: {k: 'v'} }});"
+    );
+    assert_eq!(
+        t(
+            "bru.sendRequest({headers: {'content-type': 'application/x-www-form-urlencoded'}, data: {k: 'v', ...more}});"
+        ),
+        "pm.sendRequest({header: {'content-type': 'application/x-www-form-urlencoded'}, body: { mode: \"urlencoded\", urlencoded: [{ key: \"k\", value: 'v' }, ...Object.entries(more).map(([key, value]) => ({ key: key, value: value }))] }});"
+    );
+}
+
+#[test]
+fn the_body_mode_follows_a_plain_content_type_header() {
+    let call =
+        |h: &str, d: &str| format!("bru.sendRequest({{url: 'u', headers: {h}, data: {d}}});");
+    let want = |h: &str, b: &str| format!("pm.sendRequest({{url: 'u', header: {h}, body: {b}}});");
+    for (h, d, b) in [
+        (
+            "{'Content-Type': 'multipart/form-data; boundary=x'}",
+            "{a: 1}",
+            "{mode: 'formdata', formdata: [{key: 'a', value: 1}]}",
+        ),
+        (
+            "{\"CONTENT-TYPE\": \"Application/X-WWW-Form-Urlencoded\"}",
+            "{a: 1}",
+            "{mode: 'urlencoded', urlencoded: [{key: 'a', value: 1}]}",
+        ),
+        (
+            "{'Content-Type': `multipart/form-data`}",
+            "{a: 1}",
+            "{mode: 'raw', raw: {a: 1}}",
+        ),
+        (
+            "{'Content-Type': 'application/x-www-form-urlencoded'}",
+            "'a=1'",
+            "{mode: 'raw', raw: 'a=1'}",
+        ),
+        (
+            "{'Content-Type': 'application/json'}",
+            "{a: 1}",
+            "{mode: 'raw', raw: {a: 1}}",
+        ),
+        ("h", "{a: 1}", "{mode: 'raw', raw: {a: 1}}"),
+    ] {
+        check(&call(h, d), &want(h, b));
+    }
+    check(
+        "bru.sendRequest({url: 'u', data: {a: 1}});",
+        "pm.sendRequest({url: 'u', body: {mode: 'raw', raw: {a: 1}}});",
+    );
+    check(
+        "const data = 'x';\nbru.sendRequest({url: 'u', data});",
+        "const data = 'x';\npm.sendRequest({url: 'u', body: {mode: 'raw', raw: data}});",
+    );
+}
+
+#[test]
+fn data_properties_become_key_value_pairs() {
+    check(
+        "bru.sendRequest({headers: {'Content-Type': 'multipart/form-data'}, data: {'a-b': 1, c: x, 2: z, [k]: w, e, ...rest}});",
+        "pm.sendRequest({header: {'Content-Type': 'multipart/form-data'}, body: {mode: 'formdata', formdata: [{key: 'a-b', value: 1}, {key: 'c', value: x}, {key: 2, value: z}, {key: k, value: w}, {key: 'e', value: e}, ...Object.entries(rest).map(([key, value]) => ({key: key, value: value}))]}});",
+    );
+}
+
+#[test]
+fn templated_and_quoted_send_requests() {
+    assert_eq!(
+        t("const s = `${bru.sendRequest('u')}`;"),
+        "const s = `${pm.sendRequest('u')}`;"
+    );
+    let src = "'bru.sendRequest(1)'; // bru.sendRequest(2)";
+    assert_eq!(translate(src).code, src);
+    assert_eq!(translate(src).rewritten, 0);
+}
+
+#[test]
+fn a_send_request_shape_the_rewrite_cannot_follow_is_kept_and_reported() {
+    for src in [
+        "bru.sendRequest({headers: {'Content-Type': 'multipart/form-data'}, data: {get a() { return 1; }}});",
+        "bru . sendRequest('u');",
+        "const f = bru.sendRequest;",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+        assert_eq!(out.leftovers, ["bru.sendRequest"], "{src}");
+    }
+}
+
+#[test]
+fn send_request_input_stays_bounded() {
+    assert_eq!(
+        bounded(|| translate(&"bru.sendRequest('u');\n".repeat(20_000)).rewritten),
+        20_000
+    );
+    let deep = format!(
+        "{}1{}",
+        "bru.sendRequest({data: ".repeat(5_000),
+        "})".repeat(5_000)
+    );
+    assert!(bounded(move || translate(&deep).code.len()) > 0);
+}
+
+#[test]
+fn the_callback_layout_is_pinned() {
+    assert_eq!(
+        t("bru.sendRequest(\"https://x.test/c\", (err, r) => { console.log(r.data); });"),
+        "pm.sendRequest(\"https://x.test/c\", function(err, r) { console.log(r.json()); });"
+    );
+}
+
+#[test]
+fn callbacks_become_plain_functions_reading_the_postman_response() {
+    for (cb, want) in [
+        (
+            "(e, r) => r.data.items",
+            "function(e, r) { return r.json().items; }",
+        ),
+        (
+            "async (e, r) => { await f(r.status); }",
+            "async function(e, r) { await f(r.code); }",
+        ),
+        (
+            "function done(e, r) { r.statusText; }",
+            "function(e, r) { r.status; }",
+        ),
+        ("async function (e, r) {}", "async function(e, r) {}"),
+        ("r => r.data", "function(r, response) { return r.data; }"),
+        ("() => 1", "function(error, response) { return 1; }"),
+        (
+            "(e, r) => [r.dataset, x.r.data, r?.data, r.headers, r\n.data]",
+            "function(e, r) { return [r.dataset, x.r.data, r?.data, r.headers, r.json()]; }",
+        ),
+        ("cb", "cb"),
+    ] {
+        check(
+            &format!("bru.sendRequest('u', {cb});"),
+            &format!("pm.sendRequest('u', {want});"),
+        );
+    }
+    check(
+        "bru.sendRequest('u', (e, r) => { bru.setVar('a', r.data); res.getBody(); });",
+        "pm.sendRequest('u', function(e, r) { pm.variables.set('a', r.json()); pm.response.json(); });",
+    );
+}
+
+#[test]
+fn a_config_passed_by_name_is_rewritten_where_it_is_declared() {
+    check(
+        "const base = {url: 'u', headers: {a: '1'}, data: 'x'};\nconst cfg = base;\nbru.sendRequest(cfg, function (e, r) { return r.status; });",
+        "const base = {url: 'u', header: {a: '1'}, body: {mode: 'raw', raw: 'x'}};\nconst cfg = base;\npm.sendRequest(cfg, function(e, r) { return r.code; });",
+    );
+    check(
+        "bru.sendRequest(c);\nvar c = {headers: {}};",
+        "pm.sendRequest(c);\nvar c = {header: {}};",
+    );
+    check(
+        "let a = b;\nlet b = a;\nbru.sendRequest(a);",
+        "let a = b;\nlet b = a;\npm.sendRequest(a);",
+    );
+    check(
+        "const headers = {a: '1'};\nbru.sendRequest({url: 'u', headers});",
+        "const headers = {a: '1'};\npm.sendRequest({url: 'u', header: headers});",
+    );
+    check(
+        "const other = {headers: {}};\nbru.sendRequest(cfg);",
+        "const other = {headers: {}};\npm.sendRequest(cfg);",
+    );
+}
+
+#[test]
+fn a_send_request_inside_a_callback_is_rewritten_too() {
+    check(
+        "bru.sendRequest('a', (e, r) => { bru.sendRequest({data: r.data}); });",
+        "pm.sendRequest('a', function(e, r) { pm.sendRequest({body: {mode: 'raw', raw: r.json()}}); });",
+    );
+}
+
+#[test]
+fn a_send_request_counts_once_and_its_arguments_count_their_own() {
+    let out = translate("bru.sendRequest({data: res.getBody()}, (e, r) => r.data);");
+    assert_eq!(out.rewritten, 2);
+    assert!(out.leftovers.is_empty(), "{:?}", out.leftovers);
+    let out = translate("bru.sendRequest('u', (e, res) => res.data);");
+    assert_eq!(
+        out.code,
+        "pm.sendRequest('u', function(e, res) { return res.json(); });"
+    );
+    assert_eq!(out.leftovers, ["res.json"]);
+}
+
+#[test]
+fn configs_by_name_stay_bounded() {
+    let chain = (0..5_000)
+        .map(|i| format!("const c{} = c{i};\n", i + 1))
+        .collect::<String>()
+        + "const c0 = {headers: {}};\n"
+        + &"bru.sendRequest(c5000);\n".repeat(5_000);
+    assert_eq!(bounded(move || translate(&chain).rewritten), 5_000);
+}
+
+fn iife(h: &str) -> String {
+    format!(
+        "(function() {{ const _headers = {h}; for (const key in _headers) {{ pm.request.headers.upsert({{ key: key, value: _headers[key] }}); }} }})()"
+    )
+}
+
+#[test]
+fn set_url_and_set_method_become_assignments() {
+    assert_eq!(
+        t("req.setUrl(\"https://x.test/b\");"),
+        "pm.request.url = \"https://x.test/b\";"
+    );
+    assert_eq!(t("req.setMethod(m)"), "pm.request.method = m");
+    assert_eq!(t("req.setUrl()"), "pm.request.url");
+    assert_eq!(t("req.setUrl(a, b)"), "pm.request.url = a");
+    assert_eq!(
+        t("req.setUrl(bru.getVar('u'));"),
+        "pm.request.url = pm.variables.get('u');"
+    );
+    assert_eq!(
+        t("req.setUrl(req.setUrl(u))"),
+        "pm.request.url = pm.request.url = u"
+    );
+}
+
+#[test]
+fn an_assignment_is_parenthesized_where_an_operator_would_bind_it() {
+    for (src, want) in [
+        ("if (x) req.setUrl(u);", "if (x) pm.request.url = u;"),
+        ("{ req.setUrl(u) }", "{ pm.request.url = u }"),
+        ("f(req.setUrl(u), 1)", "f(pm.request.url = u, 1)"),
+        ("const v = req.setUrl(u);", "const v = pm.request.url = u;"),
+        ("() => req.setUrl(u)", "() => pm.request.url = u"),
+        ("ok ? req.setUrl(u) : 0", "ok ? pm.request.url = u : 0"),
+        ("return req.setUrl(u);", "return pm.request.url = u;"),
+        (
+            "bar()\nreq.setUrl(u)\nfoo()",
+            "bar()\npm.request.url = u\nfoo()",
+        ),
+        ("a + req.setUrl(u)", "a + (pm.request.url = u)"),
+        ("a == req.setUrl(u)", "a == (pm.request.url = u)"),
+        ("a ?? req.setUrl(u)", "a ?? (pm.request.url = u)"),
+        ("!req.setUrl(u)", "!(pm.request.url = u)"),
+        ("typeof req.setUrl(u)", "typeof (pm.request.url = u)"),
+        ("req.setUrl(u).length", "(pm.request.url = u).length"),
+        ("req.setUrl(u) + 1", "(pm.request.url = u) + 1"),
+        (
+            "const v = req.setUrl(u)\n.trim()",
+            "const v = (pm.request.url = u)\n.trim()",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn set_header_and_set_body_take_postman_shapes() {
+    assert_eq!(
+        t("req.setHeader(\"h\", \"v\");"),
+        "pm.request.headers.upsert({ key: \"h\", value: \"v\" });"
+    );
+    assert_eq!(t("req.setHeader(k)"), "pm.request.headers.upsert(k)");
+    assert_eq!(t("req.setHeader()"), "pm.request.headers.upsert()");
+    assert_eq!(
+        t("req.setHeader(...pair)"),
+        "pm.request.headers.upsert(...pair)"
+    );
+    assert_eq!(
+        t("req.setHeader(k, v, extra)"),
+        "pm.request.headers.upsert({ key: k, value: v })"
+    );
+    assert_eq!(
+        t("req.setHeader('a', res.getHeader('b'))"),
+        "pm.request.headers.upsert({ key: 'a', value: pm.response.headers.get('b') })"
+    );
+    assert_eq!(
+        t("req.setBody({a: 1});"),
+        "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify({a: 1}) });"
+    );
+    assert_eq!(t("req.setBody()"), "pm.request.body");
+    assert_eq!(
+        t("req.setBody(res.getBody())"),
+        "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify(pm.response.json()) })"
+    );
+}
+
+#[test]
+fn set_headers_becomes_an_upsert_loop() {
+    assert_eq!(
+        t("req.setHeaders({h: \"v\"});"),
+        format!("{};", iife("{h: \"v\"}"))
+    );
+    assert_eq!(t("req.setHeaders()"), "pm.request.headers");
+    assert_eq!(
+        t("req.setHeaders(res.headers, 2)"),
+        iife("pm.response.headers")
+    );
+}
+
+#[test]
+fn a_loop_starting_a_line_after_an_unterminated_one_gets_a_semicolon() {
+    let h = iife("h");
+    for (src, want) in [
+        ("bar()\nreq.setHeaders(h)", format!("bar()\n;{h}")),
+        (
+            "const a = b\n  req.setHeaders(h)",
+            format!("const a = b\n  ;{h}"),
+        ),
+        ("x = [1]\nreq.setHeaders(h)", format!("x = [1]\n;{h}")),
+        ("a;\nreq.setHeaders(h)", format!("a;\n{h}")),
+        ("if (x)\n  req.setHeaders(h)", format!("if (x)\n  {h}")),
+        (
+            "while (x)\n  req.setHeaders(h)",
+            format!("while (x)\n  {h}"),
+        ),
+        (
+            "if (x) {} else\n  req.setHeaders(h)",
+            format!("if (x) {{}} else\n  {h}"),
+        ),
+        ("{\nreq.setHeaders(h)\n}", format!("{{\n{h}\n}}")),
+        (
+            "const v =\n  req.setHeaders(h)",
+            format!("const v =\n  {h}"),
+        ),
+        ("f(a)(req.setHeaders(h))", format!("f(a)({h})")),
+        (
+            "const o = {a: 1}\nreq.setHeaders(h)",
+            format!("const o = {{a: 1}}\n;{h}"),
+        ),
+        (
+            "const f = function() {}\nreq.setHeaders(h)",
+            format!("const f = function() {{}}\n;{h}"),
+        ),
+        ("if (x) {}\nreq.setHeaders(h)", format!("if (x) {{}}\n;{h}")),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn stringified_response_body_becomes_response_text() {
+    assert_eq!(
+        t("const s = JSON.stringify(res.getBody());"),
+        "const s = pm.response.text();"
+    );
+    assert_eq!(t("JSON.stringify(res.getBody('x'))"), "pm.response.text()");
+    assert_eq!(
+        t("JSON.stringify(res.getBody(), null, 2)"),
+        "JSON.stringify(pm.response.json(), null, 2)"
+    );
+    assert_eq!(
+        t("JSON.stringify(res.getBody().a)"),
+        "JSON.stringify(pm.response.json().a)"
+    );
+    assert_eq!(t("JSON.stringify(x)"), "JSON.stringify(x)");
+}
+
+#[test]
+fn a_spread_where_an_argument_is_reshaped_keeps_the_call() {
+    for (src, chain) in [
+        ("req.setHeader(...a, b)", "req.setHeader"),
+        ("req.setUrl(...u)", "req.setUrl"),
+        ("req.setBody(...b)", "req.setBody"),
+        ("req.setHeaders(...h)", "req.setHeaders"),
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.leftovers, [chain]);
+    }
+}
+
+#[test]
+fn reshaped_calls_count_once_plus_their_arguments() {
+    assert_eq!(
+        translate("req.setHeader('a', res.getHeader('b'))").rewritten,
+        2
+    );
+    assert_eq!(
+        translate("req.setBody(JSON.stringify(res.getBody()))").rewritten,
+        2
+    );
+    let out = translate("const f = req.setUrl;");
+    assert_eq!(out.code, "const f = req.setUrl;");
+    assert_eq!(out.leftovers, ["req.setUrl"]);
+}
+
+#[test]
+fn reshaped_input_stays_bounded() {
+    assert_eq!(
+        bounded(|| translate(&"req.setUrl(u);\n".repeat(50_000)).rewritten),
+        50_000
+    );
+    assert_eq!(
+        bounded(|| translate(&"bar()\nreq.setHeaders(h)\n".repeat(20_000)).rewritten),
+        20_000
+    );
+    let deep = format!("{}1{}", "req.setBody(".repeat(5_000), ")".repeat(5_000));
+    let out = bounded(move || translate(&deep));
+    assert!(!out.kept);
+    assert_eq!(out.leftovers, ["req.setBody"]);
+}
+
+#[test]
+fn a_parenthesized_assignment_starting_a_line_after_an_unterminated_one_gets_a_semicolon() {
+    assert_eq!(
+        t("x = [1]\nreq.setUrl(u)"),
+        "x = [1]\n;(pm.request.url = u)"
+    );
+    assert_eq!(
+        t("const s = 'a'\nreq.setUrl(u).trim()"),
+        "const s = 'a'\n;(pm.request.url = u).trim()"
+    );
+    assert_eq!(t("a +\nreq.setUrl(u)"), "a +\n(pm.request.url = u)");
+}
+
+#[test]
+fn an_alias_keeps_its_declaration_and_its_member_chains_are_translated() {
+    for (src, want) in [
+        (
+            "const r = res;\nconst b = r.getBody();",
+            "const r = pm.response;\nconst b = r.json();",
+        ),
+        (
+            "const r = res;\nr.getStatus()",
+            "const r = pm.response;\nr.code",
+        ),
+        (
+            "const a = req;\nconst b = a;\nb.getUrl();",
+            "const a = pm.request;\nconst b = a;\nb.url;",
+        ),
+        (
+            "const c = bru.cookies;\nc.get('a');",
+            "const c = pm.cookies;\nc.get('a');",
+        ),
+        (
+            "const { cookies, runner: r } = bru;\ncookies.get('a');\nr.skipRequest();",
+            "const { cookies, runner: r } = pm;\ncookies.get('a');\nr.skipRequest();",
+        ),
+        (
+            "const t = test;\nconst e = expect;\nt('x', () => e(1).to.equal(1));",
+            "const t = pm.test;\nconst e = pm.expect;\nt('x', () => e(1).to.equal(1));",
+        ),
+        (
+            "const r = res;\nconsole.log(`${r.status}`);",
+            "const r = pm.response;\nconsole.log(`${r.code}`);",
+        ),
+        (
+            "const b = bru;\nb.getEnvVar('x');",
+            "const b = pm;\nb.environment.get('x');",
+        ),
+        (
+            "const r = req;\nr.getName();",
+            "const r = pm.request;\npm.info.requestName;",
+        ),
+        (
+            "const r = req;\nr.setUrl(u);",
+            "const r = pm.request;\nr.url = u;",
+        ),
+        (
+            "const r = bru.runner;\nr.stopExecution();",
+            "const r = pm.execution;\nr.setNextRequest(null);",
+        ),
+        (
+            "let a = b\nconst r = res\n;(f)()\nr.getStatus()",
+            "let a = b\nconst r = pm.response\n;(f)()\nr.code",
+        ),
+        (
+            "const r = res, s = 1; r.getStatus()",
+            "const r = pm.response, s = 1; r.code",
+        ),
+        (
+            "var r = res;\nr.getStatus()",
+            "var r = pm.response;\nr.code",
+        ),
+        (
+            "if (x) {\n  const r = res;\n  r.getBody();\n}",
+            "if (x) {\n  const r = pm.response;\n  r.json();\n}",
+        ),
+        (
+            "const r = res; o.r.getStatus(); r.getStatus()",
+            "const r = pm.response; o.r.getStatus(); r.code",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+    let out = translate("const r = res;\nconst b = r.getBody();");
+    assert_eq!(out.rewritten, 2);
+    assert!(out.leftovers.is_empty(), "{:?}", out.leftovers);
+}
+
+#[test]
+fn keys_methods_and_labels_named_like_an_alias_are_not_uses() {
+    for mid in [
+        "o = { r: 1 };",
+        "o = { r() { return 1 } };",
+        "class A { r() {} };",
+        "o = { get r() { return 1 } };",
+        "r: for (;;) break r;",
+        "const o = { r };",
+    ] {
+        let src = format!("const r = res; {mid} r.getStatus()");
+        let want = format!("const r = pm.response; {mid} r.code");
+        assert_eq!(t(&src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn an_alias_that_is_not_safe_is_left_as_written_and_reported() {
+    for (src, chain) in [
+        ("let r = res;\nr++;\nr.getBody()", "res"),
+        ("let r = res;\nr = next();\nr.getBody();", "res"),
+        ("const r = res;\nconst f = (r) => r.getBody();", "res"),
+        ("const r = res;\nconst f = r => r.getBody();", "res"),
+        (
+            "const r = res;\ntry { x() } catch (r) { r.getBody() }",
+            "res",
+        ),
+        ("const r = res;\n{ const r = 1; }\nr.getBody();", "res"),
+        ("if (a) var r = res\nr.getStatus()", "res"),
+        ("for (const r = res; r.status < 0; ) {}", "res"),
+        ("const r = res; [r] = [1]", "res"),
+        ("let r = res; ({ a: r } = o); r.getStatus()", "res"),
+        ("let r = res; for (r of xs) {} r.getStatus()", "res"),
+        ("let r = res; for (r in xs) {} r.getStatus()", "res"),
+        (
+            "const r = res; function f(r) { return r.getStatus() } r.getStatus()",
+            "res",
+        ),
+        (
+            "const r = res; const fn = function r() { return r }; r.getStatus()",
+            "res",
+        ),
+        ("const t = test;\nfunction g(t) {}\nt('x');", "test"),
+        ("let c = bru.cookies;\nc = 1;", "bru.cookies"),
+        ("const { getVar } = bru;\ngetVar('a');", "bru"),
+        ("let b = bru;\nb = 1;", "bru"),
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src, "{src:?}");
+        assert!(
+            out.leftovers.iter().any(|l| l == chain),
+            "{src:?}: {:?}",
+            out.leftovers
+        );
+    }
+    assert_eq!(translate("x = req\nf()").leftovers, ["req"]);
+    for src in [
+        "f(res)",
+        "if (a === res) {}",
+        "a == bru;",
+        "const o = { r: res.status };",
+    ] {
+        assert!(
+            translate(src).leftovers.iter().all(|c| c.contains('.')),
+            "{src}"
+        );
+    }
+}
+
+#[test]
+fn aliases_of_bru_reach_send_request_and_the_cookie_jar() {
+    assert_eq!(
+        t("const b = bru;\nb.sendRequest({data: x}, (e, r) => r.data);"),
+        "const b = pm;\npm.sendRequest({body: { mode: \"raw\", raw: x }}, function(e, r) { return r.json(); });"
+    );
+    assert_eq!(
+        t("const b = bru;\nb.cookies.jar().getCookie(u);"),
+        "const b = pm;\nb.cookies.jar().get(u);"
+    );
+    assert_eq!(
+        t("const c = bru.cookies;\nconst jar = c.jar();\njar.deleteCookies(u);"),
+        "const c = pm.cookies;\nconst jar = c.jar();\njar.clear(u);"
+    );
+}
+
+#[test]
+fn aliases_in_hostile_input_stay_bounded() {
+    bounded(|| translate(&"const r = res;\n".repeat(50_000)).code.len());
+    let many: String = (0..40_000)
+        .map(|i| format!("const a{i} = res; a{i}.getBody();\n"))
+        .collect();
+    assert_eq!(bounded(move || translate(&many).rewritten), 80_000);
+    let chain = (0..2_000)
+        .map(|i| format!("const c{} = c{i};\n", i + 1))
+        .collect::<String>()
+        + "const c0 = bru.cookies;\nc2000.get('a');\n";
+    let out = bounded(move || translate(&chain).code);
+    assert!(out.ends_with("const c0 = pm.cookies;\nc2000.get('a');\n"));
+    bounded(|| translate(&"const a = 1 +\n".repeat(50_000)).code.len());
+    bounded(|| {
+        translate(&("const f = (".repeat(30_000) + &") => 1".repeat(30_000)))
+            .code
+            .len()
+    });
+    bounded(|| translate(&"`${const r = res; r".repeat(5_000)).code.len());
+    bounded(|| translate(&"const {a, ".repeat(50_000)).code.len());
+}
+
+#[test]
+fn cookie_jar_methods_take_postman_names() {
+    for (from, to) in super::cookies::JAR_METHODS {
+        assert_eq!(
+            t(&format!("bru.cookies.jar().{from}(u);")),
+            format!("pm.cookies.jar().{to}(u);")
+        );
+        assert_eq!(
+            t(&format!("const jar = bru.cookies.jar();\njar.{from}(u);")),
+            format!("const jar = pm.cookies.jar();\njar.{to}(u);")
+        );
+    }
+    assert_eq!(
+        t("pm.cookies.jar().getCookie(u)"),
+        "pm.cookies.jar().get(u)"
+    );
+    assert_eq!(
+        t("let j = pm.cookies.jar(); j.setCookie(u, n, v);"),
+        "let j = pm.cookies.jar(); j.set(u, n, v);"
+    );
+    assert_eq!(
+        t("bru.cookies.jar()\n  .getCookie(u)"),
+        "pm.cookies.jar()\n  .get(u)"
+    );
+    assert_eq!(
+        t("const c = bru.cookies;\nconst jar = c.jar();\njar.deleteCookies(u);"),
+        "const c = pm.cookies;\nconst jar = c.jar();\njar.clear(u);"
+    );
+    assert_eq!(
+        translate("const jar = bru.cookies.jar();\njar.getCookie(u, 'a');").rewritten,
+        2
+    );
+}
+
+#[test]
+fn only_jar_receivers_are_renamed() {
+    for (src, want) in [
+        ("other.getCookie(u);", "other.getCookie(u);"),
+        ("jar.getCookie(u);", "jar.getCookie(u);"),
+        (
+            "const jar = make();\njar.getCookie(u);",
+            "const jar = make();\njar.getCookie(u);",
+        ),
+        (
+            "const jar = bru.cookies.jar().x;\njar.getCookie(u);",
+            "const jar = pm.cookies.jar().x;\njar.getCookie(u);",
+        ),
+        (
+            "const jar = bru.cookies.jar();\nobj.jar.getCookie(u);",
+            "const jar = pm.cookies.jar();\nobj.jar.getCookie(u);",
+        ),
+        (
+            "const jar = bru.cookies.jar();\nconst f = jar.getCookie;",
+            "const jar = pm.cookies.jar();\nconst f = jar.getCookie;",
+        ),
+        (
+            "const jar = bru.cookies.jar();\njar?.getCookie(u);",
+            "const jar = pm.cookies.jar();\njar?.getCookie(u);",
+        ),
+        ("'jar.getCookie(u)';", "'jar.getCookie(u)';"),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn jar_input_stays_bounded() {
+    let jars: String = (0..20_000)
+        .map(|i| format!("const jar{i} = bru.cookies.jar();\njar{i}.getCookie(u);\n"))
+        .collect();
+    assert_eq!(bounded(move || translate(&jars).rewritten), 40_000);
+}
+
+#[test]
+fn bare_test_and_expect_calls_become_pm_calls() {
+    assert_eq!(
+        t("test('a', () => { expect(res.status).to.equal(200); });"),
+        "pm.test('a', () => { pm.expect(pm.response.code).to.equal(200); });"
+    );
+    assert_eq!(t("expect (x).to.be.ok"), "pm.expect (x).to.be.ok");
+    assert_eq!(t("`${expect(1)}`"), "`${pm.expect(1)}`");
+    assert_eq!(t("expect(1)"), "pm.expect(1)");
+    assert_eq!(translate("test('a', () => expect(1));").rewritten, 2);
+}
+
+#[test]
+fn test_and_expect_that_are_not_bare_calls_stay() {
+    for src in [
+        "x.test(1)",
+        "x?.expect(1)",
+        "function test(a) {}",
+        "async function expect() {}",
+        "const o = { test() { return 1; } };",
+        "class A { expect(x) {} }",
+        "new test()",
+        "const test = 1;",
+        "f(test)",
+        "'test(1)'",
+        "// expect(1)",
+        "/test\\(/.exec(s)",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+    }
+}
+
+#[test]
+fn test_input_stays_bounded() {
+    assert_eq!(
+        bounded(|| translate(&"test('a', () => expect(1));\n".repeat(20_000)).rewritten),
+        40_000
+    );
+}
+
+#[test]
+fn a_part_ending_in_a_line_comment_keeps_its_line_break() {
+    for (src, want) in [
+        (
+            "req.setUrl(\n  u // c\n); foo();",
+            "pm.request.url = u // c\n; foo();",
+        ),
+        (
+            "req.setHeader(k // c\n, v);",
+            "pm.request.headers.upsert({ key: k // c\n, value: v });",
+        ),
+        (
+            "req.setBody(x // c\n);",
+            "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify(x // c\n) });",
+        ),
+        (
+            "req.setHeaders(h // c\n);",
+            "(function() { const _headers = h // c\n; for (const key in _headers) { pm.request.headers.upsert({ key: key, value: _headers[key] }); } })();",
+        ),
+        (
+            "bru.sendRequest({ data: x // c\n}, cb);",
+            "pm.sendRequest({ body: { mode: \"raw\", raw: x // c\n }}, cb);",
+        ),
+        (
+            "bru.sendRequest(u, (e, r) => r.data // c\n);",
+            "pm.sendRequest(u, function(e, r) { return r.json() // c\n; });",
+        ),
+        (
+            "bru.sendRequest(u // c\n, cb);",
+            "pm.sendRequest(u // c\n, cb);",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn a_block_callback_followed_by_a_comment_stays_a_block() {
+    assert_eq!(
+        t("bru.sendRequest(u, (e, r) => { log(r.data); } // done\n);"),
+        "pm.sendRequest(u, function(e, r) { log(r.json()); } // done\n);"
+    );
+}
+
+#[test]
+fn options_and_data_behind_comments_are_still_read() {
+    assert_eq!(
+        t("bru.sendRequest({ // opts\n data: x }, cb);"),
+        "pm.sendRequest({ // opts\n body: { mode: \"raw\", raw: x } }, cb);"
+    );
+    assert_eq!(
+        t("bru.sendRequest({ data: {a: 1} // c\n, headers: h });"),
+        "pm.sendRequest({ body: { mode: \"raw\", raw: {a: 1} // c\n }, header: h });"
+    );
+}
+
+#[test]
+fn a_named_config_that_cannot_become_pairs_keeps_its_call() {
+    let src = "const cfg = { headers: { 'Content-Type': 'multipart/form-data' }, data: { get a() { return 1; } } };\nbru.sendRequest(cfg, cb);";
+    let out = translate(src);
+    assert_eq!(out.code, src);
+    assert_eq!(out.rewritten, 0);
+    assert_eq!(out.leftovers, ["bru.sendRequest"]);
+}
+
+#[test]
+fn a_property_named_like_a_keyword_ends_a_statement() {
+    assert_eq!(
+        t("obj.delete\nreq.setHeaders(h)"),
+        "obj.delete\n;(function() { const _headers = h; for (const key in _headers) { pm.request.headers.upsert({ key: key, value: _headers[key] }); } })()"
+    );
+}
+
+#[test]
+fn set_headers_with_await_in_its_argument_keeps_the_call() {
+    let out = translate("req.setHeaders(await load(res.status));");
+    assert_eq!(out.code, "req.setHeaders(await load(pm.response.code));");
+    assert_eq!(out.leftovers, ["req.setHeaders"]);
+    assert_eq!(
+        t("req.setHeaders({ a: 'await' });")
+            .matches("upsert")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn deeply_nested_calls_stay_bounded() {
+    for head in [
+        "bru.x(",
+        "JSON.stringify(",
+        "req.setUrl(",
+        "bru.sendRequest(",
+        "req.setUrl(...",
+        "req.getUrl(",
+        "test(",
+    ] {
+        let deep = format!("{}1{}", head.repeat(100_000), ")".repeat(100_000));
+        bounded(move || translate(&deep).code.len());
+    }
+}
+
+#[test]
+fn a_script_that_declares_test_or_expect_keeps_its_own() {
+    for src in [
+        "function test(a) {} test(1)",
+        "const test = require('t'); test('a')",
+        "function f(expect) { expect(1) }",
+        "let expect; expect(1)",
+        "const f = (test) => test(1);",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+    }
+}
+
+#[test]
+fn a_shadowed_jar_name_keeps_its_methods() {
+    for (src, want) in [
+        (
+            "const j = bru.cookies.jar(); function f(j) { j.getCookie() } j.setCookie(u, 'n', 'v')",
+            "const j = pm.cookies.jar(); function f(j) { j.getCookie() } j.setCookie(u, 'n', 'v')",
+        ),
+        (
+            "const j = bru.cookies.jar(); { const j = new Map(); j.deleteCookie('x') }",
+            "const j = pm.cookies.jar(); { const j = new Map(); j.deleteCookie('x') }",
+        ),
+        (
+            "let j = bru.cookies.jar(); j = other; j.getCookie(u)",
+            "let j = pm.cookies.jar(); j = other; j.getCookie(u)",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn a_callback_with_patterned_parameters_keeps_its_call() {
+    for src in [
+        "bru.sendRequest(o, (err, {data}) => data)",
+        "bru.sendRequest(o, (err, r = 1) => r.data)",
+        "bru.sendRequest(o, (err, ...rest) => rest)",
+        "bru.sendRequest(o, ([e]) => e)",
+        "bru.sendRequest(o, function (e, {data}) { return data })",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.leftovers, ["bru.sendRequest"], "{src}");
+    }
+}
+
+#[test]
+fn an_added_callback_parameter_takes_an_unused_name() {
+    assert_eq!(
+        t("const response = 1; bru.sendRequest(o, (err) => response)"),
+        "const response = 1; pm.sendRequest(o, function(err, response2) { return response; })"
+    );
+    assert_eq!(
+        t(
+            "const response = 1, response2 = 2; bru.sendRequest(o, function (err) { return response })"
+        ),
+        "const response = 1, response2 = 2; pm.sendRequest(o, function(err, response3) { return response })"
+    );
+    assert_eq!(
+        t("const error = 1; bru.sendRequest(o, () => error)"),
+        "const error = 1; pm.sendRequest(o, function(error2, response) { return error; })"
+    );
+}
+
+#[test]
+fn an_assigned_response_read_is_kept_and_reported() {
+    for (src, want) in [
+        (
+            "bru.sendRequest(o, (err, r) => r.data = 1)",
+            "pm.sendRequest(o, function(err, r) { return r.data = 1; })",
+        ),
+        (
+            "bru.sendRequest(o, (err, r) => { r.data++ })",
+            "pm.sendRequest(o, function(err, r) { r.data++ })",
+        ),
+        (
+            "bru.sendRequest(o, (err, r) => { ++r.data })",
+            "pm.sendRequest(o, function(err, r) { ++r.data })",
+        ),
+        (
+            "bru.sendRequest(o, (err, r) => { r.data += 'x' })",
+            "pm.sendRequest(o, function(err, r) { r.data += 'x' })",
+        ),
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, want, "{src:?}");
+        assert!(
+            out.leftovers.iter().any(|l| l == "r.data"),
+            "{src:?}: {:?}",
+            out.leftovers
+        );
+    }
+    assert_eq!(
+        t("bru.sendRequest(o, (err, r) => r.data == 1)"),
+        "pm.sendRequest(o, function(err, r) { return r.json() == 1; })"
+    );
+}
+
+#[test]
+fn an_updated_assignment_keeps_its_call() {
+    for src in [
+        "x = a\n++req.setUrl(u)",
+        "req.setUrl(u)++",
+        "--req.setMethod(m)",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+        assert_eq!(out.leftovers.len(), 1, "{src}");
+    }
+}
+
+#[test]
+fn a_regex_after_a_keyword_is_not_division() {
+    for (src, want) in [
+        (
+            "function f() { return /\"/.test(s) }\nbru.setVar('a', \"b\")",
+            "function f() { return /\"/.test(s) }\npm.variables.set('a', \"b\")",
+        ),
+        (
+            "x = typeof /'/; bru.setVar('a', 'b')",
+            "x = typeof /'/; pm.variables.set('a', 'b')",
+        ),
+        (
+            "switch (x) { case /'/: bru.getVar('a') }",
+            "switch (x) { case /'/: pm.variables.get('a') }",
+        ),
+        (
+            "x = o.return / 2 / bru.getVar('a')",
+            "x = o.return / 2 / pm.variables.get('a')",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn a_test_call_past_the_budget_is_reported() {
+    let deep = format!("{}1{}", "test(".repeat(100_000), ")".repeat(100_000));
+    let out = bounded(move || translate(&deep));
+    assert!(
+        out.leftovers.iter().any(|l| l == "test"),
+        "{:?}",
+        &out.leftovers[..out.leftovers.len().min(5)]
+    );
+}
+
+#[test]
+fn an_alias_use_no_row_translates_is_reported() {
+    for (src, want) in [
+        (
+            "const b = bru; b.sleep(1); b.runRequest(\"x\")",
+            &["b.sleep", "b.runRequest"][..],
+        ),
+        ("const r = res; r.setBody(1)", &["r.setBody"]),
+        ("const r = res; const g = r.getStatus", &["r.getStatus"]),
+        ("const r = res; r[k]()", &["r[...]"]),
+        ("const r = res; r?.getStatus()", &["r.getStatus"]),
+        ("const r = res; x = r\n.getStatus()", &["r.getStatus"]),
+        ("const r = res; x = r /* c */ . status", &["r.status"]),
+        ("const r = req; r.setUrl(...u)", &["r.setUrl"]),
+        ("const b = bru; b.cookies.foo()", &["b.cookies.foo"]),
+    ] {
+        assert_eq!(translate(src).leftovers, want, "{src:?}");
+    }
+    for src in [
+        "const c = bru.cookies; c.get('a')",
+        "const b = bru; b.cookies.jar().getCookie(u)",
+        "const e = expect; e.fail('x'); e(1)",
+        "const r = res; f(r); o = { r }; o = { r: 1 }; o = { [r]: 1 }; typeof r; r.getStatus()",
+        "const r = res; x = r ? .5 : 1",
+        "const r = res; r: for (;;) break r;",
+    ] {
+        assert!(
+            translate(src).leftovers.is_empty(),
+            "{src:?}: {:?}",
+            translate(src).leftovers
+        );
+    }
 }

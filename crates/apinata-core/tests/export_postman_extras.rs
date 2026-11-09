@@ -5,6 +5,8 @@ use crate::export_support;
 use export_support::*;
 use serde_json::{Value, json};
 
+const ONE: &str = "script translated; 1 call rewritten for Postman";
+
 fn event(listen: &str, exec: Value) -> Value {
     json!({"listen": listen, "script": {"type": "text/javascript", "packages": {}, "requests": {}, "exec": exec}})
 }
@@ -53,7 +55,10 @@ fn tests_follow_the_post_response_script_in_one_test_event() {
     let v = exported(&c);
     assert_eq!(
         v["item"][0]["event"],
-        json!([event("test", json!(["// Tests", "test('f', () => {});"]))])
+        json!([event(
+            "test",
+            json!(["// Tests", "pm.test('f', () => {});"])
+        )])
     );
     assert_eq!(keys(&v["item"][0]), ["name", "item", "event"]);
     assert_eq!(
@@ -67,21 +72,30 @@ fn tests_follow_the_post_response_script_in_one_test_event() {
                     "const c = 3;",
                     "",
                     "// Tests",
-                    "test('ok', () => {});"
+                    "pm.test('ok', () => {});"
                 ])
             )
         ])
     );
     assert_eq!(
         v["item"][2]["event"],
-        json!([event("test", json!(["// Tests", "test('t', () => {});"]))])
+        json!([event(
+            "test",
+            json!(["// Tests", "pm.test('t', () => {});"])
+        )])
     );
     assert_eq!(
         keys(&v["item"][1]),
         ["name", "protocolProfileBehavior", "request", "event"]
     );
-    // Scripts with no calls to rewrite export silently.
-    assert_eq!(notes(&c), pairs(&[]));
+    assert_eq!(
+        notes(&c),
+        pairs(&[
+            ("f / tests script", ONE),
+            ("a / tests script", ONE),
+            ("b / tests script", ONE)
+        ])
+    );
 }
 
 #[test]

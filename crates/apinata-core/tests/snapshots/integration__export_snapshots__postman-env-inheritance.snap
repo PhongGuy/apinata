@@ -56,8 +56,8 @@ expression: rendered(&postman(&c))
               "// The echo endpoint hands the request body back as a raw string.",
               "const sent = () => JSON.parse(pm.response.json().body);",
               "",
-              "test(\"every kind of row the environment inherits resolves under dev\", function() {",
-              "  expect(sent()).to.eql({",
+              "pm.test(\"every kind of row the environment inherits resolves under dev\", function() {",
+              "  pm.expect(sent()).to.eql({",
               "    api_url: \"https://dev.example.com\",",
               "    base_only: \"base_only_value\",",
               "    dev_only: \"dev_only_value\",",
@@ -137,8 +137,8 @@ expression: rendered(&postman(&c))
               "// The echo endpoint hands the request body back as a raw string.",
               "const sent = () => JSON.parse(pm.response.json().body);",
               "",
-              "test(\"every kind of row the workspace environment inherits resolves under workspace_dev\", function() {",
-              "  expect(sent()).to.eql({",
+              "pm.test(\"every kind of row the workspace environment inherits resolves under workspace_dev\", function() {",
+              "  pm.expect(sent()).to.eql({",
               "    workspace_base_only: \"from_workspace_base\",",
               "    workspace_overridden: \"from_workspace_dev\",",
               "    workspace_dev_only: \"workspace_dev_only_value\",",
@@ -254,7 +254,7 @@ expression: rendered(&postman(&c))
   "variable": []
 }
 --- notes
-echo / tests script: script translated; 1 call rewritten for Postman
-workspace-vars / tests script: script translated; 1 call rewritten for Postman
+echo / tests script: script translated; 3 calls rewritten for Postman
+workspace-vars / tests script: script translated; 3 calls rewritten for Postman
 set-env-var / post-response script: script translated; 2 calls rewritten for Postman
 set-global-env-var / post-response script: script translated; 2 calls rewritten for Postman

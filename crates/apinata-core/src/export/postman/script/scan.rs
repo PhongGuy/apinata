@@ -64,10 +64,37 @@ pub(super) fn skip_opaque(src: &str, i: usize) -> Option<usize> {
     }
 }
 
+/// Words after which a `/` starts an expression, so it opens a regex.
+pub(super) const REGEX_AFTER: &[&str] = &[
+    "return",
+    "typeof",
+    "case",
+    "do",
+    "else",
+    "in",
+    "of",
+    "new",
+    "delete",
+    "void",
+    "throw",
+    "instanceof",
+    "yield",
+    "await",
+];
+
 /// A `/` starts a regex literal only where an expression may begin.
 pub(super) fn regex_end(b: &[u8], i: usize) -> Option<usize> {
     let starts_expr = match prev_significant(b, i) {
         None => true,
+        Some((k, c)) if is_ident_byte(c) => {
+            let from = (0..=k)
+                .rev()
+                .take_while(|&j| is_ident_byte(b[j]))
+                .last()
+                .unwrap_or(k);
+            let word = std::str::from_utf8(&b[from..=k]).unwrap_or("");
+            REGEX_AFTER.contains(&word) && !is_property_access(b, from)
+        }
         Some((_, c)) => b"(,=:[!&|?{};+-*%<>~^".contains(&c),
     };
     if !starts_expr {
@@ -164,4 +191,62 @@ pub(super) fn find_close(src: &str, open: usize) -> Option<usize> {
         i += 1;
     }
     None
+}
+
+/// The first byte at or after `i`, before `end`, that is not whitespace or a comment.
+pub(super) fn skip_trivia(src: &str, mut i: usize, end: usize) -> usize {
+    let b = src.as_bytes();
+    loop {
+        i = skip_ws(&b[..end], i);
+        match (b.get(i), b.get(i + 1)) {
+            (Some(b'/'), Some(b'/' | b'*')) if i < end => {
+                i = skip_opaque(src, i).unwrap_or(end).min(end);
+            }
+            _ => return i,
+        }
+    }
+}
+
+/// Absolute ranges of the top-level comma-separated parts of `src[from..to]`; empty parts
+/// dropped. Leading comments and blanks are trimmed. A part ending in a line comment keeps
+/// the line break after it, so text appended to the part is not commented out.
+pub(super) fn parts(src: &str, from: usize, to: usize) -> Vec<(usize, usize)> {
+    let b = src.as_bytes();
+    let mut out = Vec::new();
+    let mut push = |s: usize, e: usize, line_comment_end: Option<usize>| {
+        let s = skip_trivia(src, s, e);
+        let mut e = (s..e)
+            .rev()
+            .find(|&k| !b[k].is_ascii_whitespace())
+            .map_or(s, |k| k + 1);
+        if line_comment_end == Some(e) && b.get(e) == Some(&b'\n') {
+            e += 1;
+        }
+        if s < e {
+            out.push((s, e));
+        }
+    };
+    let (mut start, mut depth, mut i) = (from, 0usize, from);
+    let mut line_comment_end = None;
+    while i < to {
+        if let Some(end) = skip_opaque(src, i) {
+            if b[i] == b'/' && b.get(i + 1) == Some(&b'/') {
+                line_comment_end = Some(end);
+            }
+            i = end;
+            continue;
+        }
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => {
+                push(start, i, line_comment_end);
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    push(start, to, line_comment_end);
+    out
 }
