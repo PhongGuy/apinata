@@ -18,7 +18,7 @@ pub use environment::{
 pub use har::{HarExchange, HarRefusal, har, har_log, sent_exchange};
 pub use html::{html, html_with};
 pub use openapi::openapi;
-pub use postman::postman;
+pub use postman::{postman, postman_with};
 
 /// Longest stem in UTF-16 units, leaving room for `.postman_environment.json` and a ` (n)`
 /// suffix inside Windows' 255-unit file name limit.
@@ -185,6 +185,27 @@ impl HtmlOptions {
     /// Whether the page lists the environments.
     pub fn environments(&self) -> bool {
         self.include_environments
+    }
+}
+
+/// How the Postman export treats scripts; scripts are translated by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct PostmanOptions {
+    /// Export scripts exactly as written, without translating the script API.
+    pub keep_scripts: bool,
+}
+
+impl PostmanOptions {
+    /// The defaults: scripts are translated.
+    pub fn new() -> PostmanOptions {
+        PostmanOptions::default()
+    }
+
+    /// Export scripts exactly as written instead of translating their API calls.
+    pub fn keep_scripts(mut self, on: bool) -> PostmanOptions {
+        self.keep_scripts = on;
+        self
     }
 }
 

@@ -1,0 +1,138 @@
+---
+source: crates/apinata-core/tests/export_snapshots.rs
+expression: "rendered(&postman_with(&c, &keep))"
+---
+{
+  "info": {
+    "name": "ymlcollection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "folder_1",
+      "item": [
+        {
+          "name": "request_1",
+          "protocolProfileBehavior": {
+            "followAuthorizationHeader": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "https://api.example.com/folder-1/one",
+              "protocol": "https",
+              "host": [
+                "api",
+                "example",
+                "com"
+              ],
+              "path": [
+                "folder-1",
+                "one"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "folder_2",
+      "item": [
+        {
+          "name": "request_1",
+          "protocolProfileBehavior": {
+            "followAuthorizationHeader": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "https://api.example.com/folder-2/one",
+              "protocol": "https",
+              "host": [
+                "api",
+                "example",
+                "com"
+              ],
+              "path": [
+                "folder-2",
+                "one"
+              ],
+              "query": [],
+              "variable": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "request_1",
+      "protocolProfileBehavior": {
+        "followAuthorizationHeader": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "https://api.example.com/one",
+          "protocol": "https",
+          "host": [
+            "api",
+            "example",
+            "com"
+          ],
+          "path": [
+            "one"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "request_2",
+      "protocolProfileBehavior": {
+        "followAuthorizationHeader": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "https://api.example.com/two",
+          "protocol": "https",
+          "host": [
+            "api",
+            "example",
+            "com"
+          ],
+          "path": [
+            "two"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    }
+  ],
+  "variable": []
+}
+--- notes

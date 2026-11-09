@@ -4,7 +4,9 @@
 use crate::export_support;
 
 use apinata_core::Collection;
-use apinata_core::export::{PostmanExport, postman, postman_environment};
+use apinata_core::export::{
+    PostmanExport, PostmanOptions, postman, postman_environment, postman_with,
+};
 use export_support::corpus;
 
 /// The JSON, then one `source: detail` line per note.
@@ -21,6 +23,29 @@ fn every_corpus_collection_matches_its_snapshot() {
     for (label, root) in corpus() {
         let c = Collection::open(&root).expect("opens");
         insta::assert_snapshot!(format!("postman-{label}"), rendered(&postman(&c)));
+    }
+}
+
+#[test]
+fn kept_scripts_match_the_untranslated_snapshots() {
+    let keep = PostmanOptions::new().keep_scripts(true);
+    for (label, root) in corpus() {
+        let c = Collection::open(&root).expect("opens");
+        insta::assert_snapshot!(
+            format!("postman-kept-{label}"),
+            rendered(&postman_with(&c, &keep))
+        );
+    }
+}
+
+#[test]
+fn postman_is_postman_with_the_default_options() {
+    assert_eq!(PostmanOptions::default(), PostmanOptions::new());
+    assert!(!PostmanOptions::new().keep_scripts);
+    assert!(PostmanOptions::new().keep_scripts(true).keep_scripts);
+    for (_, root) in corpus() {
+        let c = Collection::open(&root).expect("opens");
+        assert_eq!(postman(&c), postman_with(&c, &PostmanOptions::default()));
     }
 }
 

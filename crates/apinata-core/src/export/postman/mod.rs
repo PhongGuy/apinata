@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 use super::auth::auth;
 use super::body::body;
 use super::extras::{collection_variables, events, responses};
-use super::{ExportNote, PostmanExport};
+use super::{ExportNote, PostmanExport, PostmanOptions};
 use crate::collection::{Collection, Folder};
 use crate::edit::{AuthSpec, BodySpec, KeyValue, Param, ParamKind, Timeout};
 use crate::js::js_trim;
@@ -22,10 +22,16 @@ const VARIABLES: &str = "variables set here have no place in the exported file";
 const POST_RESPONSE: &str = "post-response variables have no place in the exported file";
 const ASSERTIONS: &str = "assertions have no place in the exported file";
 const SCRIPTS: &str = "scripts are exported as written; their API calls are not translated";
+const KEPT: &str = "scripts exported as written; their API calls are not translated";
 
 /// The collection as Postman v2.1 JSON, with a note for each thing the file cannot carry.
 /// Only HTTP requests are exported; other item types are noted and left out.
 pub fn postman(collection: &Collection) -> PostmanExport {
+    postman_with(collection, &PostmanOptions::default())
+}
+
+/// [`postman`] with the given options.
+pub fn postman_with(collection: &Collection, options: &PostmanOptions) -> PostmanExport {
     let mut notes = Vec::new();
     let file = collection.file();
     let mut info = Map::new();
@@ -64,7 +70,8 @@ pub fn postman(collection: &Collection) -> PostmanExport {
     }
     insert_events(&mut root, events(|p| file.script(p)), &mut scripted);
     if scripted {
-        notes.push(ExportNote::new("scripts", SCRIPTS));
+        let detail = if options.keep_scripts { KEPT } else { SCRIPTS };
+        notes.push(ExportNote::new("scripts", detail));
     }
     let root = Value::Object(root);
     // A `serde_json::Value` has only string keys, so serializing it cannot fail.

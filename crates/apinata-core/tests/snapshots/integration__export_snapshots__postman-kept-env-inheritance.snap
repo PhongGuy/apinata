@@ -1,0 +1,257 @@
+---
+source: crates/apinata-core/tests/export_snapshots.rs
+expression: "rendered(&postman_with(&c, &keep))"
+---
+{
+  "info": {
+    "name": "Inheritance YML",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "echo",
+      "protocolProfileBehavior": {
+        "followAuthorizationHeader": true
+      },
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/echo/everything",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "echo",
+            "everything"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"api_url\": \"{{api_url}}\",\n  \"base_only\": \"{{base_only}}\",\n  \"dev_only\": \"{{dev_only}}\",\n  \"disabled_in_base\": \"{{disabled_in_base}}\",\n  \"shadowed_by_disabled\": \"{{shadowed_by_disabled}}\",\n  \"base_number\": {{base_number}},\n  \"base_boolean\": {{base_boolean}},\n  \"base_object\": {{base_object}},\n  \"typed_override\": \"{{typed_override}}\",\n  \"base_token\": \"{{base_token}}\",\n  \"api_key\": \"{{api_key}}\",\n  \"overridden_plain\": \"{{overridden_plain}}\",\n  \"overridden_secret\": \"{{overridden_secret}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {},
+            "exec": [
+              "// Tests",
+              "// The echo endpoint hands the request body back as a raw string.",
+              "const sent = () => JSON.parse(res.getBody().body);",
+              "",
+              "test(\"every kind of row the environment inherits resolves under dev\", function() {",
+              "  expect(sent()).to.eql({",
+              "    api_url: \"https://dev.example.com\",",
+              "    base_only: \"base_only_value\",",
+              "    dev_only: \"dev_only_value\",",
+              "    // Disabled in `base`, so it is never inherited and stays uninterpolated.",
+              "    disabled_in_base: \"{{disabled_in_base}}\",",
+              "    // `dev` declares this one too, but disabled, so the inherited row still applies.",
+              "    shadowed_by_disabled: \"from_base\",",
+              "    api_key: \"plain_api_key\",",
+              "    // The body interpolates the typed rows unquoted, so they only parse back as a number,",
+              "    // boolean and object if the data type survived the merge.",
+              "    base_number: 42,",
+              "    base_boolean: true,",
+              "    base_object: { region: \"eu\" },",
+              "    // An own row replaces the data type it inherited, not just the value.",
+              "    typed_override: \"overridden_in_dev\",",
+              "    // A secret carries no value on disk, so both runners give it one before the request",
+              "    // goes out: the app through its secret store, `bru run` through --env-var.",
+              "    base_token: \"token-from-base\",",
+              "    // `dev` redeclares the inherited plain `overridden_plain` as a secret, and the",
+              "    // inherited secret `overridden_secret` as plain. Both ancestor rows survive, and in",
+              "    // each pair the secret is the one that reaches the request — never the plain row's",
+              "    // `plain_from_base` or `plain_wins_in_dev`.",
+              "    overridden_plain: \"secret-from-dev\",",
+              "    overridden_secret: \"secret-from-base\"",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "workspace-vars",
+      "protocolProfileBehavior": {
+        "followAuthorizationHeader": true
+      },
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{workspace_host}}/api/echo/everything",
+          "protocol": "",
+          "host": [
+            "{{workspace_host}}"
+          ],
+          "path": [
+            "api",
+            "echo",
+            "everything"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"workspace_base_only\": \"{{workspace_base_only}}\",\n  \"workspace_overridden\": \"{{workspace_overridden}}\",\n  \"workspace_dev_only\": \"{{workspace_dev_only}}\",\n  \"workspace_disabled\": \"{{workspace_disabled}}\",\n  \"workspace_shadowed_by_disabled\": \"{{workspace_shadowed_by_disabled}}\",\n  \"workspace_number\": {{workspace_number}},\n  \"workspace_boolean\": {{workspace_boolean}},\n  \"workspace_object\": {{workspace_object}},\n  \"workspace_typed_override\": \"{{workspace_typed_override}}\",\n  \"workspace_token\": \"{{workspace_token}}\",\n  \"workspace_api_key\": \"{{workspace_api_key}}\",\n  \"workspace_overridden_plain\": \"{{workspace_overridden_plain}}\",\n  \"workspace_overridden_secret\": \"{{workspace_overridden_secret}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {},
+            "exec": [
+              "// Tests",
+              "// The echo endpoint hands the request body back as a raw string.",
+              "const sent = () => JSON.parse(res.getBody().body);",
+              "",
+              "test(\"every kind of row the workspace environment inherits resolves under workspace_dev\", function() {",
+              "  expect(sent()).to.eql({",
+              "    workspace_base_only: \"from_workspace_base\",",
+              "    workspace_overridden: \"from_workspace_dev\",",
+              "    workspace_dev_only: \"workspace_dev_only_value\",",
+              "    // Disabled in `workspace_base`, so it is never inherited and stays uninterpolated.",
+              "    workspace_disabled: \"{{workspace_disabled}}\",",
+              "    // `workspace_dev` declares this one too, but disabled, so the inherited row still applies.",
+              "    workspace_shadowed_by_disabled: \"shadowed_from_workspace_base\",",
+              "    workspace_api_key: \"plain_workspace_api_key\",",
+              "    // The body interpolates the typed rows unquoted, so they only parse back as a number,",
+              "    // boolean and object if the data type survived the merge.",
+              "    workspace_number: 7,",
+              "    workspace_boolean: true,",
+              "    workspace_object: { tier: \"free\" },",
+              "    // An own row replaces the data type it inherited, not just the value.",
+              "    workspace_typed_override: \"overridden_in_workspace_dev\",",
+              "    // A secret carries no value on disk, so both runners give it one before the request",
+              "    // goes out: the app through its secret store, `bru run` through --global-env-var.",
+              "    workspace_token: \"token-from-workspace-base\",",
+              "    // `workspace_dev` redeclares the inherited plain `workspace_overridden_plain` as a",
+              "    // secret, and the inherited secret `workspace_overridden_secret` as plain. Both ancestor",
+              "    // rows survive, and in each pair the secret is the one that reaches the request — never",
+              "    // the plain row's `plain_from_workspace_base` or `plain_wins_in_workspace_dev`.",
+              "    workspace_overridden_plain: \"secret-from-workspace-dev\",",
+              "    workspace_overridden_secret: \"secret-from-workspace-base\"",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "set-env-var",
+      "protocolProfileBehavior": {
+        "followAuthorizationHeader": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/ping",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "ping"
+          ],
+          "query": [],
+          "variable": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {},
+            "exec": [
+              "bru.setEnvVar('base_only', 'base_only_value');",
+              "bru.setEnvVar('session_id', 'script_session');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "set-global-env-var",
+      "protocolProfileBehavior": {
+        "followAuthorizationHeader": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{workspace_host}}/ping",
+          "protocol": "",
+          "host": [
+            "{{workspace_host}}"
+          ],
+          "path": [
+            "ping"
+          ],
+          "query": [],
+          "variable": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {},
+            "exec": [
+              "bru.setGlobalEnvVar('workspace_base_only', 'from_workspace_base');",
+              "bru.setGlobalEnvVar('workspace_session_id', 'script_session');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
+--- notes
+scripts: scripts exported as written; their API calls are not translated
