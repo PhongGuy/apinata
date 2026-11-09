@@ -1296,3 +1296,37 @@ fn a_test_call_past_the_budget_is_reported() {
         &out.leftovers[..out.leftovers.len().min(5)]
     );
 }
+
+#[test]
+fn an_alias_use_no_row_translates_is_reported() {
+    for (src, want) in [
+        (
+            "const b = bru; b.sleep(1); b.runRequest(\"x\")",
+            &["b.sleep", "b.runRequest"][..],
+        ),
+        ("const r = res; r.setBody(1)", &["r.setBody"]),
+        ("const r = res; const g = r.getStatus", &["r.getStatus"]),
+        ("const r = res; r[k]()", &["r[...]"]),
+        ("const r = res; r?.getStatus()", &["r.getStatus"]),
+        ("const r = res; x = r\n.getStatus()", &["r.getStatus"]),
+        ("const r = res; x = r /* c */ . status", &["r.status"]),
+        ("const r = req; r.setUrl(...u)", &["r.setUrl"]),
+        ("const b = bru; b.cookies.foo()", &["b.cookies.foo"]),
+    ] {
+        assert_eq!(translate(src).leftovers, want, "{src:?}");
+    }
+    for src in [
+        "const c = bru.cookies; c.get('a')",
+        "const b = bru; b.cookies.jar().getCookie(u)",
+        "const e = expect; e.fail('x'); e(1)",
+        "const r = res; f(r); o = { r }; o = { r: 1 }; o = { [r]: 1 }; typeof r; r.getStatus()",
+        "const r = res; x = r ? .5 : 1",
+        "const r = res; r: for (;;) break r;",
+    ] {
+        assert!(
+            translate(src).leftovers.is_empty(),
+            "{src:?}: {:?}",
+            translate(src).leftovers
+        );
+    }
+}

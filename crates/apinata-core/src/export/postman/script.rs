@@ -232,6 +232,7 @@ pub(super) fn translate(code: &str) -> Translated {
         rewritten: values + sent + renamed,
         bindings: &bindings,
         skipped: Vec::new(),
+        skipped_seen: HashSet::new(),
     };
     let code = translate_code(&code, 0, &mut cx);
     let mut found = leftovers(&code);
@@ -254,8 +255,18 @@ pub(super) fn translate(code: &str) -> Translated {
 struct Cx<'b> {
     rewritten: usize,
     bindings: &'b alias::Bindings,
-    /// Heads of `test`/`expect` calls the budget left as written.
+    /// Calls and members left as written that the final text does not show as API chains:
+    /// `test`/`expect` calls past the budget and untranslated members of aliases.
     skipped: Vec<String>,
+    skipped_seen: HashSet<String>,
+}
+
+impl Cx<'_> {
+    fn skip(&mut self, what: &str) {
+        if self.skipped_seen.insert(what.to_owned()) {
+            self.skipped.push(what.to_owned());
+        }
+    }
 }
 
 /// Whether every bracket outside literals and comments closes in order, and every template
@@ -590,13 +601,42 @@ fn rewrite_chain(
         return match alias {
             None => Some(found?),
             Some(chain) => {
-                let found = found?;
+                let Some(found) = found else {
+                    cx.skip(&src[start..end]);
+                    return None;
+                };
                 let text = localize(found.text, chain, head);
                 (text != src[start..found.next]).then_some(Rewrite { text, ..found })
             }
         };
     }
+    // A member of an alias that no row knows, or one reached through `?.`, `[` or a spaced
+    // `.`, is left as written and reported as the user wrote it.
+    if alias.is_some() {
+        if let Some(&last) = ends.last() {
+            cx.skip(&src[start..last]);
+        } else if let Some(member) = loose_member(src, head_end) {
+            cx.skip(&format!("{head}{member}"));
+        }
+    }
     None
+}
+
+/// The member after an alias reached other than by a plain `.name`: `.name` for `?.name` or
+/// a `.` after blanks or comments, `[...]` for an index.
+fn loose_member(src: &str, end: usize) -> Option<String> {
+    let b = src.as_bytes();
+    let (at, _) = skip_trivia(src, end);
+    let dot = match (b.get(at), b.get(at + 1)) {
+        (Some(b'['), _) => return Some("[...]".to_owned()),
+        (Some(b'?'), Some(b'.')) => at + 2,
+        (Some(b'.'), Some(c)) if *c != b'.' => at + 1,
+        _ => return None,
+    };
+    let name = skip_trivia(src, dot).0;
+    let first = *b.get(name)?;
+    (is_ident_byte(first) && !first.is_ascii_digit())
+        .then(|| format!(".{}", &src[name..ident_end(b, name)]))
 }
 
 /// The rewrite of the chain ending at `end` under `key`: `None` when no row has the key,
@@ -692,9 +732,7 @@ fn bare_test_call(src: &str, start: usize, end: usize, cx: &mut Cx) -> bool {
     }
     let Some(close) = budgeted_close(src, open) else {
         // Only the budget leaves a call of a balanced script unclosed.
-        if !cx.skipped.iter().any(|h| h == head) {
-            cx.skipped.push(head.to_owned());
-        }
+        cx.skip(head);
         return false;
     };
     let declared = prev_significant(b, start).is_some_and(|(k, c)| {
