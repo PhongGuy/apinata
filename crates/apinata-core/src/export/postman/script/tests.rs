@@ -230,8 +230,8 @@ fn plan_a_cases_match_the_reference() {
         "deviations that now match: {:?}",
         report.stale
     );
-    assert_eq!(report.plan_a, 167);
-    assert_eq!(report.matched + report.deviated, 167);
+    assert_eq!(report.plan_a, 180);
+    assert_eq!(report.matched + report.deviated, 180);
 }
 
 #[test]
@@ -864,4 +864,75 @@ fn aliases_in_hostile_input_stay_bounded() {
     bounded(|| resolve(&("const f = (".repeat(30_000) + &") => 1".repeat(30_000))).len());
     bounded(|| resolve(&"`${const r = res; r".repeat(5_000)).len());
     bounded(|| resolve(&"const {a, ".repeat(50_000)).len());
+}
+
+#[test]
+fn cookie_jar_methods_take_postman_names() {
+    for (from, to) in super::cookies::JAR_METHODS {
+        assert_eq!(
+            t(&format!("bru.cookies.jar().{from}(u);")),
+            format!("pm.cookies.jar().{to}(u);")
+        );
+        assert_eq!(
+            t(&format!("const jar = bru.cookies.jar();\njar.{from}(u);")),
+            format!("const jar = pm.cookies.jar();\njar.{to}(u);")
+        );
+    }
+    assert_eq!(
+        t("pm.cookies.jar().getCookie(u)"),
+        "pm.cookies.jar().get(u)"
+    );
+    assert_eq!(
+        t("let j = pm.cookies.jar(); j.setCookie(u, n, v);"),
+        "let j = pm.cookies.jar(); j.set(u, n, v);"
+    );
+    assert_eq!(
+        t("bru.cookies.jar()\n  .getCookie(u)"),
+        "pm.cookies.jar()\n  .get(u)"
+    );
+    assert_eq!(
+        t("const c = bru.cookies;\nconst jar = c.jar();\njar.deleteCookies(u);"),
+        "const jar = pm.cookies.jar();\njar.clear(u);"
+    );
+    assert_eq!(
+        translate("const jar = bru.cookies.jar();\njar.getCookie(u, 'a');").rewritten,
+        2
+    );
+}
+
+#[test]
+fn only_jar_receivers_are_renamed() {
+    for (src, want) in [
+        ("other.getCookie(u);", "other.getCookie(u);"),
+        ("jar.getCookie(u);", "jar.getCookie(u);"),
+        (
+            "const jar = make();\njar.getCookie(u);",
+            "const jar = make();\njar.getCookie(u);",
+        ),
+        (
+            "const jar = bru.cookies.jar().x;\njar.getCookie(u);",
+            "const jar = pm.cookies.jar().x;\njar.getCookie(u);",
+        ),
+        (
+            "const jar = bru.cookies.jar();\nobj.jar.getCookie(u);",
+            "const jar = pm.cookies.jar();\nobj.jar.getCookie(u);",
+        ),
+        (
+            "const jar = bru.cookies.jar();\nconst f = jar.getCookie;",
+            "const jar = pm.cookies.jar();\nconst f = jar.getCookie;",
+        ),
+        (
+            "const jar = bru.cookies.jar();\njar?.getCookie(u);",
+            "const jar = pm.cookies.jar();\njar?.getCookie(u);",
+        ),
+        ("'jar.getCookie(u)';", "'jar.getCookie(u)';"),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn jar_input_stays_bounded() {
+    let jars = "const jar = bru.cookies.jar();\njar.getCookie(u);\n".repeat(20_000);
+    assert_eq!(bounded(move || translate(&jars).rewritten), 40_000);
 }

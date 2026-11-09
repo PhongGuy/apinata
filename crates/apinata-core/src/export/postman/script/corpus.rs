@@ -7,15 +7,6 @@ use serde_json::Value;
 
 use super::tokens::{Tok, contains, same, tokens};
 
-/// Script API words whose translation reshapes arguments; a case using one waits for that port.
-const PENDING_WORDS: &[&str] = &[
-    "getCookie",
-    "getCookies",
-    "setCookie",
-    "deleteCookie",
-    "deleteCookies",
-];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub(super) enum Kind {
     #[serde(rename = "toBe")]
@@ -109,9 +100,6 @@ pub(super) fn pending(input: &str) -> Option<&'static str> {
     let toks = tokens(input);
     for (k, tok) in toks.iter().enumerate() {
         let Tok::Word(word) = tok else { continue };
-        if let Some(marker) = PENDING_WORDS.iter().find(|m| **m == word) {
-            return Some(marker);
-        }
         let member = k > 0 && toks[k - 1] == Tok::Punct(".".into());
         let called = toks.get(k + 1) == Some(&Tok::Punct("(".into()));
         if matches!(word.as_str(), "test" | "expect") && !member && called {
@@ -204,23 +192,19 @@ mod tests {
         );
         assert_eq!(pending("expect.fail('x');"), None);
         assert_eq!(pending("x.test(1);"), None);
-        assert_eq!(pending("jar.getCookie(u, 'a');"), Some("getCookie"));
-        assert_eq!(pending("// getCookie\nconst a = 'setCookie';"), None);
-        assert_eq!(pending("bru.cookies.jar();"), None);
-        assert_eq!(pending("bru.sendRequest({});"), None);
         assert_eq!(
             pending(
-                "req.setHeader(a, b); req.setBody(1); req.setUrl(u); req.setMethod(m); req.setHeaders(h);"
+                "jar.getCookie(u, 'a'); jar.setCookie(u, n, v); jar.getCookies(u); jar.deleteCookie(u, n); jar.deleteCookies(u);"
             ),
             None
         );
-        assert_eq!(pending("const s = JSON.stringify(res.getBody());"), None);
+        assert_eq!(pending("bru.sendRequest({}); req.setHeader(a, b);"), None);
         assert_eq!(
             cases()
                 .iter()
                 .filter(|c| pending(&c.input).is_none())
                 .count(),
-            167
+            180
         );
     }
 
@@ -250,9 +234,9 @@ mod tests {
     fn an_identity_translation_matches_no_plan_a_case() {
         let report = run(&|s: &str| s.to_owned());
         eprintln!("{}", report.summary());
-        assert_eq!((report.plan_a, report.pending), (167, 28));
+        assert_eq!((report.plan_a, report.pending), (180, 15));
         assert_eq!(report.matched, 0);
-        assert_eq!(report.differing.len(), 167);
+        assert_eq!(report.differing.len(), 180);
         assert!(report.stale.is_empty());
     }
 }

@@ -10,6 +10,7 @@ use scan::{
 };
 
 mod alias;
+mod cookies;
 mod scan;
 mod send_request;
 
@@ -210,6 +211,8 @@ pub(super) fn translate(code: &str) -> Translated {
     }
     let code = alias::resolve(code);
     let (code, mut rewritten) = send_request::rewrite(&code);
+    let (code, renamed) = cookies::rename_jar_methods(&code);
+    rewritten += renamed;
     let code = translate_code(&code, 0, &mut rewritten);
     Translated {
         leftovers: leftovers(&code),
