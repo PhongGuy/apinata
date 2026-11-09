@@ -75,3 +75,138 @@ fn choosing_it_adds_one_focused_row_and_a_repeat_adds_none(cx: &mut TestAppConte
         .unwrap();
     assert!(focused, "the new row's expression holds focus");
 }
+
+// The app with a sent request whose JSON body is the scalar "ann", in the editor, and the URL
+// field focused; returns the request editor and its response body.
+fn sent_with_url_focused(
+    cx: &mut TestAppContext,
+) -> (
+    Started,
+    wiremock::MockServer,
+    gpui_kit::Entity<apinata_app::request_editor::RequestEditor>,
+    gpui_kit::Entity<apinata_app::body_view::BodyView>,
+) {
+    use apinata_app::body_view::Shown;
+    use apinata_app::request_editor::SendRequest;
+    http_ready(cx);
+    let server = mock_server(
+        cx,
+        wiremock::ResponseTemplate::new(200).set_body_raw("\"ann\"", "application/json"),
+    );
+    let col = collection_for(&server.uri(), "");
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, _| w.activate_window())
+        .unwrap();
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    let ed = s
+        .shell
+        .read_with(cx, |v, cx| v.tab_area().read(cx).editor(tab).cloned())
+        .unwrap();
+    let body = ed.read_with(cx, |e, cx| e.response().read(cx).body().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        ed.update(cx, |e, cx| e.send(&SendRequest, w, cx))
+    })
+    .unwrap();
+    wait_real(cx, |cx| {
+        body.read_with(cx, |b, _| b.shown()) == Shown::Editor
+    });
+    let url = ed.read_with(cx, |e, _| e.url_input().clone());
+    cx.update_window(s.win, |_, w, cx| url.focus_handle(cx).focus(w, cx))
+        .unwrap();
+    frame(cx, s.win);
+    (s, server, ed, body)
+}
+
+// Chooses Assert this value from the open menu by its label, then tells whether the new
+// row's expression and whether the body editor hold focus.
+fn choose_assert(
+    cx: &mut TestAppContext,
+    s: &Started,
+    ed: &gpui_kit::Entity<apinata_app::request_editor::RequestEditor>,
+    body: &gpui_kit::Entity<apinata_app::body_view::BodyView>,
+) -> (bool, bool) {
+    use gpui_kit::test::TestWindowExt as _;
+    let ix = (0..8usize)
+        .find(|&ix| {
+            cx.update_window(s.win, |_, w, _| {
+                w.within("popup-menu")
+                    .try_find(ix)
+                    .and_then(|e| e.label().map(str::to_owned))
+            })
+            .unwrap()
+            .as_deref()
+                == Some(ASSERT_VALUE)
+        })
+        .expect("the menu offers Assert this value");
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
+        .unwrap();
+    cx.run_until_parked();
+    frame(cx, s.win);
+    frame(cx, s.win);
+    let input = ed.read_with(cx, |e, cx| {
+        e.assertions()
+            .read(cx)
+            .expression_input(0)
+            .cloned()
+            .unwrap()
+    });
+    cx.update_window(s.win, |_, w, cx| {
+        (
+            input.focus_handle(cx).is_focused(w),
+            body.read(cx).editor().focus_handle(cx).is_focused(w),
+        )
+    })
+    .unwrap()
+}
+
+// A right-click on the body editor through the window pipeline: the press lands past the
+// text, on the root scalar.
+#[gpui_kit::test]
+fn choosing_it_from_the_body_menu_focuses_the_new_row(cx: &mut TestAppContext) {
+    use gpui_kit::{InputEvent as _, MouseButton, MouseDownEvent, MouseUpEvent};
+    let (s, _server, ed, body) = sent_with_url_focused(cx);
+    let at = cx
+        .update_window(s.win, |_, w, _| {
+            use gpui_kit::test::TestWindowExt as _;
+            w.find("body-editor").bounds().center()
+        })
+        .unwrap();
+    let down = MouseDownEvent {
+        button: MouseButton::Right,
+        position: at,
+        modifiers: Default::default(),
+        click_count: 1,
+        first_mouse: false,
+    };
+    let up = MouseUpEvent {
+        button: MouseButton::Right,
+        position: at,
+        modifiers: Default::default(),
+        click_count: 1,
+    };
+    for event in [down.to_platform_input(), up.to_platform_input()] {
+        cx.update_window(s.win, |_, w, cx| {
+            w.dispatch_event(event, cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        frame(cx, s.win);
+    }
+    let (row, editor) = choose_assert(cx, &s, &ed, &body);
+    assert!(!editor, "focus left on the body editor");
+    assert!(row, "the new row's expression holds focus");
+}
+
+// The value-actions button opens the same entries without moving focus off the URL field.
+#[gpui_kit::test]
+fn choosing_it_from_the_value_button_focuses_the_new_row(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (s, _server, ed, body) = sent_with_url_focused(cx);
+    cx.update_window(s.win, |_, w, cx| w.click("body-value-actions", cx))
+        .unwrap();
+    frame(cx, s.win);
+    let (row, editor) = choose_assert(cx, &s, &ed, &body);
+    assert!(!editor, "focus left on the body editor");
+    assert!(row, "the new row's expression holds focus");
+}
