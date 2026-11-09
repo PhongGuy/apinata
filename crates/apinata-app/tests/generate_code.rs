@@ -184,13 +184,14 @@ fn every_new_target_generates_in_the_dialog(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn every_target_but_powershell_gets_a_known_grammar() {
+fn every_target_gets_a_known_grammar() {
     use apinata_app::generate_code::highlighter;
     use gpui_kit::component::highlighter::Language;
     for target in Target::ALL {
         let name = highlighter(*target);
+        // The kit has no PowerShell grammar; the app registers its own under this name.
         if *target == Target::PowerShellRestMethod {
-            assert_eq!(name, "text", "the kit has no PowerShell grammar");
+            assert_eq!(name, "powershell");
         } else {
             assert_ne!(
                 Language::from_str(name),
@@ -209,9 +210,6 @@ fn every_highlighted_target_has_a_highlights_query(cx: &mut TestAppContext) {
     let col = with_request(&request("a", "http://x.test/ok"), &[]);
     let _s = started(cx, &col);
     for target in Target::ALL {
-        if *target == Target::PowerShellRestMethod {
-            continue;
-        }
         let name = highlighter(*target);
         let config = LanguageRegistry::singleton()
             .language(name)
@@ -240,6 +238,25 @@ fn the_csharp_query_compiles_and_paints_a_snippet(cx: &mut TestAppContext) {
     assert!(
         styles.iter().any(|(_, style)| style.color.is_some()),
         "csharp paints nothing: {styles:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn the_powershell_query_compiles_and_paints_a_snippet(cx: &mut TestAppContext) {
+    use gpui_kit::component::Rope;
+    use gpui_kit::component::highlighter::{HighlightTheme, SyntaxHighlighter};
+    let col = with_request(&request("a", "http://x.test/ok"), &[]);
+    let _s = started(cx, &col);
+    // A query that fails to compile makes the kit fall back to plain "text".
+    let code = "$headers = @{ 'Accept' = 'application/json' }\nInvoke-RestMethod -Uri 'http://x.test/ok' -Headers $headers\n";
+    let mut h = SyntaxHighlighter::new("powershell");
+    assert_eq!(h.language().as_ref(), "powershell");
+    h.update(None, &Rope::from(code), None);
+    let theme = HighlightTheme::default_dark();
+    let styles = h.styles(&(0..code.len()), &*theme);
+    assert!(
+        styles.iter().any(|(_, style)| style.color.is_some()),
+        "powershell paints nothing: {styles:?}"
     );
 }
 

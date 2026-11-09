@@ -34,8 +34,8 @@ impl Global for LastTarget {}
 struct OpenView(WeakEntity<GenerateCodeView>);
 impl Global for OpenView {}
 
-/// Registers the grammars the kit links without a highlights query, so their snippets are
-/// painted rather than shown plain. Safe to call more than once.
+/// Registers the grammars the kit lacks or links without a highlights query, so their snippets
+/// are painted rather than shown plain. Safe to call more than once.
 pub fn init() {
     use gpui_kit::component::highlighter::{LanguageConfig, LanguageRegistry};
     let csharp = LanguageConfig::new(
@@ -47,6 +47,15 @@ pub fn init() {
         "",
     );
     LanguageRegistry::singleton().register("csharp", &csharp);
+    let powershell = LanguageConfig::new(
+        "powershell",
+        tree_sitter_powershell::LANGUAGE.into(),
+        Vec::new(),
+        tree_sitter_powershell::HIGHLIGHTS_QUERY,
+        "",
+        "",
+    );
+    LanguageRegistry::singleton().register("powershell", &powershell);
 }
 
 /// The open dialog's view, for tests and the pilot; None when no dialog is open.
@@ -176,8 +185,8 @@ impl GenerateCodeView {
     }
 }
 
-/// The highlighter name for a target's language; the shell targets share bash. PowerShell,
-/// which has no kit grammar, and any later target show as plain `"text"`.
+/// The highlighter name for a target's language; the shell targets share bash. PowerShell uses
+/// the grammar `init` registers, and any later target shows as plain `"text"`.
 pub fn highlighter(target: Target) -> &'static str {
     match target {
         Target::Curl | Target::Httpie => "bash",
@@ -188,6 +197,7 @@ pub fn highlighter(target: Target) -> &'static str {
         Target::RustReqwest => "rust",
         Target::JavaHttpClient => "java",
         Target::CSharpHttpClient => "csharp",
+        Target::PowerShellRestMethod => "powershell",
         _ => "text",
     }
 }

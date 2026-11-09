@@ -16,6 +16,7 @@ gpui-kit.workspace = true
 async-channel.workspace = true
 tree-sitter-c-sharp.workspace = true
 tree-sitter-graphql.workspace = true
+tree-sitter-powershell.workspace = true
 lsp-types.workspace = true
 chrono.workspace = true
 notify-debouncer-full.workspace = true
