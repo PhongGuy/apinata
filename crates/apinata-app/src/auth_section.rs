@@ -1065,6 +1065,13 @@ impl Render for AuthSection {
                     cx,
                 ))
                 .child(field("Domain", "auth-domain", &self.domain, vars, cx))
+                // A final 401 through a proxy that switched connections looks like a wrong
+                // password, so the form says up front how to avoid it.
+                .child(ui::form_note(
+                    "auth-ntlm-proxy-note",
+                    "Through an HTTP proxy, use https: plain http needs the proxy to keep one \
+                     connection for the whole sign-in.",
+                ))
                 .into_any_element(),
             (Some(AuthMode::Bearer), _) => v_flex()
                 .gap_2()
