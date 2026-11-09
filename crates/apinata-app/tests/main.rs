@@ -552,6 +552,7 @@ mod start;
 mod status_bar;
 mod status_row_age;
 mod stream_events;
+mod stream_events_empty;
 mod stream_events_layout;
 mod stream_large_fast;
 mod stream_pane;
