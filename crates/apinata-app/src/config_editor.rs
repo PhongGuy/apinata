@@ -8,12 +8,12 @@ use std::sync::Arc;
 use apinata_core::{ItemPath, KeyValue, PostResponseVar, ScriptPhase, Variable};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::notification::Notification;
-use gpui_kit::component::tab::{Tab, TabBar};
+use gpui_kit::component::tab::Tab;
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Subscription, TestSupportExt, Window,
-    actions, div, relative,
+    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, ScrollHandle, Subscription,
+    TestSupportExt, Window, actions, div, relative,
 };
 
 use crate::app::AppState;
@@ -145,6 +145,11 @@ pub struct ConfigEditor {
     // The dirty flag and reload stamp the last refresh saw; a save or a reload ends typing runs.
     checkpoint: Option<(bool, u64)>,
     focus: FocusHandle,
+    // The section strip's scroll, reveal and fades: a narrow tab scrolls the strip and lists
+    // every section in a menu, as the request editor's strip does.
+    section_scroll: ScrollHandle,
+    section_reveal: ui::Reveal,
+    section_fades: ui::StripFades,
     _subs: Vec<Subscription>,
 }
 
@@ -361,6 +366,9 @@ impl ConfigEditor {
             history: EditHistory::default(),
             checkpoint: None,
             focus: cx.focus_handle(),
+            section_scroll: ScrollHandle::new(),
+            section_reveal: ui::Reveal::default(),
+            section_fades: ui::StripFades::default(),
             _subs: subs,
         };
         editor.refresh(window, cx);
@@ -893,9 +901,13 @@ impl ConfigEditor {
         }
     }
 
-    fn section_bar(&self, cx: &mut Context<Self>) -> TabBar {
+    fn section_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         let sections = self.sections();
+        let selected = sections
+            .iter()
+            .position(|s| *s == self.section)
+            .unwrap_or(0);
         let tabs = sections.iter().enumerate().map(|(ix, s)| {
             Tab::new().child(
                 div()
@@ -905,19 +917,47 @@ impl ConfigEditor {
                     .child(s.label()),
             )
         });
-        ui::tab_strip("config-sections", cx)
-            .selected_index(
-                sections
-                    .iter()
-                    .position(|s| *s == self.section)
-                    .unwrap_or(0),
-            )
-            .children(tabs)
-            .on_click(move |ix, _, cx| {
-                if let Some(&section) = sections.get(*ix) {
+        // The menu shows only while last frame's layout overflowed; the watch redraws once
+        // when this frame's layout disagrees.
+        let overflows = ui::strip_overflows(&self.section_scroll);
+        let pick = {
+            let (this, sections) = (this.clone(), sections.clone());
+            move |ix: usize, cx: &mut App| {
+                if let Some(&section) = sections.get(ix) {
                     this.update(cx, |e, cx| e.set_section(section, cx))
                 }
+            }
+        };
+        let bar = ui::tab_strip("config-sections", cx)
+            .track_scroll(&self.section_scroll)
+            .selected_index(selected)
+            .children(tabs)
+            .when(overflows, |bar| {
+                let labels = sections.iter().map(|s| s.label().into()).collect();
+                let pick = pick.clone();
+                bar.suffix(ui::strip_overflow(
+                    "config-section-overflow",
+                    labels,
+                    selected,
+                    move |ix, _, cx| pick(ix, cx),
+                ))
             })
+            .on_click(move |ix, _, cx| pick(*ix, cx));
+        div()
+            .id("config-section-strip")
+            .test_support()
+            .relative()
+            .w_full()
+            .on_scroll(ui::wheel_sideways(&self.section_scroll))
+            .child(bar)
+            .children(self.section_fades.render(
+                "config-section-strip",
+                &self.section_scroll,
+                sections.len(),
+                cx,
+            ))
+            .child(ui::overflow_watch(&self.section_scroll, overflows))
+            .child(self.section_reveal.watch(&self.section_scroll, selected))
     }
 
     // Each section sits in a wrapper whose id scopes the ids of its controls; Vars heads its
