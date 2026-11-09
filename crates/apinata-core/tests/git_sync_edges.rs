@@ -13,7 +13,7 @@ use std::time::Duration;
 use apinata_core::{CancelFlag, SyncError, pull, push};
 
 /// Run `work` with a flag that another thread sets once `marker` exists (polled up to 5 s).
-fn cancel_when<T: Send>(marker: &Path, work: impl FnOnce(&CancelFlag) -> T + Send) -> T {
+pub fn cancel_when<T: Send>(marker: &Path, work: impl FnOnce(&CancelFlag) -> T + Send) -> T {
     let cancel = CancelFlag::new();
     std::thread::scope(|s| {
         s.spawn(|| {

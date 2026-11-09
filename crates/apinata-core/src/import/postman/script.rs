@@ -631,6 +631,9 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
     // here. A nested chunk is an expression, so it starts as if after `(`.
     let mut last: Option<u8> = if cx.depth > 1 { Some(b'(') } else { None };
     let mut after_kw = false;
+    // A line break since `last`, and whether `last` was a word that still needs an operand:
+    // a line that starts after a finished operand starts a new statement.
+    let (mut broke, mut open_word) = (false, false);
     // Open `return` statements without a `;`: where the argument ends, and where it began in
     // the source and the output. One whose argument changed is reprinted with its `;`.
     let mut returns: Vec<(usize, usize, usize)> = Vec::new();
@@ -640,22 +643,31 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
             i = copy_template(src, i, &mut out, cx);
             (last, after_kw) = (Some(b'`'), false);
+            (broke, open_word) = (false, false);
         } else if let Some(end) = skip_opaque(src, i) {
             out.push_str(&src[i..end]);
             if !src[i..end].starts_with("//") && !src[i..end].starts_with("/*") {
                 (last, after_kw) = (Some(b'"'), false);
+                (broke, open_word) = (false, false);
+            } else if src[i..end].contains('\n') {
+                broke = true;
             }
             i = end;
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
             (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
-            cx.at_stmt = after_kw || matches!(last, None | Some(b';' | b'{' | b'}' | b')'));
+            let after_operand = broke
+                && !open_word
+                && last.is_some_and(|c| is_ident_byte(c) || matches!(c, b'"' | b'`' | b']'));
+            cx.at_stmt =
+                after_kw || after_operand || matches!(last, None | Some(b';' | b'{' | b'}' | b')'));
+            broke = false;
             if !is_property_access(b, i)
                 && let Some((text, next)) = rewrite_at(src, i, end, &out, cx)
             {
                 out.push_str(&text);
                 i = next;
-                (last, after_kw) = (Some(b')'), false);
+                (last, after_kw, open_word) = (Some(b')'), false, false);
                 continue;
             }
             out.push_str(&src[i..end]);
@@ -667,6 +679,7 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             {
                 returns.push((arg_end, end, out.len()));
             }
+            open_word = OPERAND_WORDS.contains(&&src[i..end]) && !is_property_access(b, i);
             last = Some(b[end - 1]);
             i = end;
         } else {
@@ -674,6 +687,9 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             out.push(b[i] as char);
             if !b[i].is_ascii_whitespace() {
                 (last, after_kw) = (Some(b[i]), false);
+                (broke, open_word) = (false, false);
+            } else if b[i] == b'\n' {
+                broke = true;
             }
             i += 1;
         }
@@ -682,6 +698,41 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
     (cx.await_ok, cx.fid) = (base, base_fid);
     out
 }
+
+/// Words after which a line break does not surely end the statement: operators and
+/// keywords that take what follows, or whose line break has special rules.
+const OPERAND_WORDS: &[&str] = &[
+    "typeof",
+    "new",
+    "await",
+    "in",
+    "instanceof",
+    "void",
+    "delete",
+    "yield",
+    "of",
+    "case",
+    "extends",
+    "var",
+    "let",
+    "const",
+    "return",
+    "throw",
+    "async",
+    "function",
+    "class",
+    "import",
+    "export",
+    "default",
+    "if",
+    "while",
+    "for",
+    "with",
+    "switch",
+    "catch",
+    "break",
+    "continue",
+];
 
 /// Most `return` statements tracked inside one another, so nesting keeps the scan linear.
 const MAX_OPEN_RETURNS: usize = 8;
@@ -704,7 +755,27 @@ fn close_returns(returns: &mut Vec<(usize, usize, usize)>, src: &str, at: usize,
 /// has an argument and no `;`. A line break ends it only where the next line surely starts a
 /// new statement; where that is unsure, `None`, since a wrong `;` breaks the script.
 fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
+    expression_end(src, from, cx)
+        .filter(|e| !e.semicolon)
+        .map(|e| e.end)
+}
+
+/// Where an expression ends, and whether a `;` follows it there.
+struct ExprEnd {
+    end: usize,
+    semicolon: bool,
+}
+
+/// Where the expression starting at `from` ends: at a `;`, a closing bracket, the end of the
+/// text, or a line break that surely starts a new statement. `None` when that is unsure.
+fn expression_end(src: &str, from: usize, cx: &mut Ctx) -> Option<ExprEnd> {
     let b = src.as_bytes();
+    let done = |end: Option<usize>| {
+        end.map(|end| ExprEnd {
+            end,
+            semicolon: false,
+        })
+    };
     // `after_op`: the last token leaves the expression open; `postfix`: it was `++` or `--`,
     // after which a line break may or may not end the statement.
     let (mut i, mut end, mut after_op, mut postfix) = (from, None, false, false);
@@ -713,7 +784,7 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
         i = skip_ws(b, i);
         let broke = src[ws..i].contains('\n');
         let Some(&c) = b.get(i) else {
-            return end;
+            return done(end);
         };
         if c == b'/' && matches!(b.get(i + 1), Some(b'/' | b'*')) {
             if broke && end.is_none() {
@@ -729,13 +800,21 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
             }
             if !after_op && !continues_line(src, i) {
                 let starts_statement = c == b'}' || (is_ident_byte(c) && !c.is_ascii_digit());
-                return starts_statement.then_some(e);
+                return starts_statement.then_some(ExprEnd {
+                    end: e,
+                    semicolon: false,
+                });
             }
         }
         postfix = false;
         match c {
-            b';' => return None,
-            b')' | b']' | b'}' => return end,
+            b';' => {
+                return end.map(|end| ExprEnd {
+                    end,
+                    semicolon: true,
+                });
+            }
+            b')' | b']' | b'}' => return done(end),
             b':' if end.is_none() => return None,
             b'(' | b'[' | b'{' => {
                 i = cx.find_close(src, i)? + 1;
@@ -893,6 +972,15 @@ fn rewrite_chain(
             let call_at = skip_ws(b, chain_end);
             let called = b.get(call_at) == Some(&b'(');
             match rule {
+                // A call result cannot be assigned to: an assignment becomes the setter where
+                // there is one, and any other write leaves the chain as written.
+                Rule::Replace(text) if text.ends_with(')') => {
+                    return match mutation_at(src, start, chain_end) {
+                        None => Some((text, chain_end)),
+                        Some(Mutation::Assign(rhs)) => assign_with_setter(src, &key, rhs, cx),
+                        Some(Mutation::Other) => None,
+                    };
+                }
                 Rule::Replace(text) => return Some((text, chain_end)),
                 Rule::Statement(text) if cx.at_stmt => {
                     // `ok()` is read as the helper called with no arguments, as the reference does.
@@ -927,6 +1015,71 @@ fn rewrite_chain(
         }
     }
     None
+}
+
+/// How the chain spanning `start..end` is written to, when it is.
+enum Mutation {
+    /// A plain `=`, with the offset of the value assigned.
+    Assign(usize),
+    /// A compound assignment or an increment or decrement.
+    Other,
+}
+
+fn mutation_at(src: &str, start: usize, end: usize) -> Option<Mutation> {
+    let b = src.as_bytes();
+    const COMPOUND: [&[u8]; 15] = [
+        b"**=", b">>>=", b"<<=", b">>=", b"&&=", b"||=", b"??=", b"+=", b"-=", b"*=", b"/=", b"%=",
+        b"&=", b"|=", b"^=",
+    ];
+    if let Some((k, c @ (b'+' | b'-'))) = prev_token(b, start)
+        && k > 0
+        && b[k - 1] == c
+    {
+        return Some(Mutation::Other);
+    }
+    let n = skip_trivia(src, end);
+    let rest = &b[n..];
+    // A `++` or `--` after a line break begins the next statement instead.
+    let postfix =
+        !b[end..n].contains(&b'\n') && (rest.starts_with(b"++") || rest.starts_with(b"--"));
+    if postfix || COMPOUND.iter().any(|op| rest.starts_with(op)) {
+        return Some(Mutation::Other);
+    }
+    (rest.first() == Some(&b'=') && !matches!(rest.get(1), Some(b'=' | b'>')))
+        .then(|| Mutation::Assign(skip_trivia(src, n + 1)))
+}
+
+/// The last byte of the token before `i`, with its index, past whitespace and block comments.
+fn prev_token(b: &[u8], i: usize) -> Option<(usize, u8)> {
+    let mut at = i;
+    loop {
+        let (k, c) = prev_significant(b, at)?;
+        if c == b'/' && k > 0 && b[k - 1] == b'*' {
+            at = b[..k - 1].windows(2).rposition(|w| w == b"/*")?;
+        } else {
+            return Some((k, c));
+        }
+    }
+}
+
+/// `pm.request.url = x` as `req.setUrl(x)`, and the same for the method. Only a whole
+/// statement with a single right-hand expression is rewritten; anything else keeps its text.
+fn assign_with_setter(src: &str, key: &str, rhs: usize, cx: &mut Ctx) -> Option<(String, usize)> {
+    let setter = match key {
+        "pm.request.url" => "req.setUrl",
+        "pm.request.method" => "req.setMethod",
+        _ => return None,
+    };
+    if !cx.at_stmt {
+        return None;
+    }
+    let end = expression_end(src, rhs, cx)?.end;
+    let value = &src[rhs..end];
+    if split_top_level(value, b',').len() != 1 {
+        return None;
+    }
+    let value = translate_code(value, cx);
+    Some((format!("{setter}({value})"), end))
 }
 
 /// Rewrites that need the call's parsed arguments. `open` is the `(` index.
@@ -1131,7 +1284,7 @@ fn skip_trivia(src: &str, mut i: usize) -> usize {
     loop {
         i = skip_ws(b, i);
         let comment = b.get(i) == Some(&b'/') && matches!(b.get(i + 1), Some(b'/' | b'*'));
-        match skip_opaque(src, i).filter(|_| comment) {
+        match comment.then(|| skip_opaque(src, i)).flatten() {
             Some(end) => i = end,
             None => return i,
         }
@@ -1664,6 +1817,129 @@ mod tests {
         assert_eq!(t("pm.execution.skipRequest()"), "bru.runner.skipRequest()");
         assert_eq!(t("request.method"), "req.getMethod()");
         assert_eq!(t("responseCode.code"), "res.getStatus()");
+    }
+
+    #[test]
+    fn assignment_to_url_or_method_becomes_the_setter() {
+        assert_eq!(
+            t("pm.request.url = 'http://127.0.0.1/x';"),
+            "req.setUrl('http://127.0.0.1/x');"
+        );
+        assert_eq!(t("pm.request.method = 'POST'"), "req.setMethod('POST')");
+        assert_eq!(
+            t("postman.request.url = pm.environment.get('u') + '/a'\nfoo()"),
+            "req.setUrl(bru.getEnvVar('u') + '/a')\nfoo()"
+        );
+        assert_eq!(
+            t("if (a) { pm.request.method = m }"),
+            "if (a) { req.setMethod(m) }"
+        );
+        assert_eq!(
+            t("pm.request.url =\n  base +\n  path;\nx()"),
+            "req.setUrl(base +\n  path);\nx()"
+        );
+    }
+
+    #[test]
+    fn comparison_with_url_or_method_stays_a_read() {
+        assert_eq!(
+            t("if (pm.request.url == u) {}"),
+            "if (req.getUrl() == u) {}"
+        );
+        assert_eq!(
+            t("pm.request.method === 'GET'"),
+            "req.getMethod() === 'GET'"
+        );
+    }
+
+    /// A call result cannot be assigned to, so a target with no setter keeps its text
+    /// and is reported unsupported rather than turned into invalid code.
+    #[test]
+    fn assignment_without_a_setter_is_left_as_written() {
+        for src in [
+            "pm.request.url += '/a';",
+            "pm.request.method ??= 'GET';",
+            "pm.request.headers = h;",
+            "pm.request.body = b;",
+            "pm.response.code = 200;",
+            "pm.response.code++;",
+            "--pm.response.code;",
+            "x = pm.request.url = u;",
+            "pm.request.url = a, b;",
+        ] {
+            let out = translate(src);
+            assert_eq!(out.code, src, "{src}");
+            assert!(!out.unsupported.is_empty(), "{src}");
+        }
+        assert_eq!(t("request.url = u;"), "request.url = u;");
+    }
+
+    #[test]
+    fn assignment_is_seen_past_comments() {
+        assert_eq!(t("pm.request.url /* c */ = u;"), "req.setUrl(u);");
+        assert_eq!(t("pm.request.url = // c\n  u;"), "req.setUrl(u);");
+        assert_eq!(
+            t("pm.request.method /* c */ === 'GET'"),
+            "req.getMethod() /* c */ === 'GET'"
+        );
+        for src in [
+            "pm.request.url /* c */ += u;",
+            "pm.response.code /* c */ ++;",
+            "++ /* c */ pm.response.code;",
+            "pm.response.code // c\n= 1;",
+        ] {
+            let out = translate(src);
+            assert_eq!(out.code, src, "{src}");
+            assert!(!out.unsupported.is_empty(), "{src}");
+        }
+    }
+
+    #[test]
+    fn assignment_values_of_any_shape_go_into_the_setter() {
+        assert_eq!(t("pm.request.url = a ? b : c;"), "req.setUrl(a ? b : c);");
+        assert_eq!(
+            t("pm.request.url = `${base}/x`;"),
+            "req.setUrl(`${base}/x`);"
+        );
+        assert_eq!(
+            t("pm.request.url = (() => pm.environment.get('u'))();"),
+            "req.setUrl((() => bru.getEnvVar('u'))());"
+        );
+        assert_eq!(
+            t("pm.request.url = pm.test('a', f);"),
+            "req.setUrl(test('a', f));"
+        );
+        assert_eq!(
+            t("pm.request.url = pm.response.to.be.ok;"),
+            "req.setUrl(pm.response.to.be.ok);"
+        );
+    }
+
+    #[test]
+    fn assignment_on_a_line_without_semicolons_becomes_the_setter() {
+        assert_eq!(
+            t("const a = 1\npm.request.url = u"),
+            "const a = 1\nreq.setUrl(u)"
+        );
+        assert_eq!(
+            t("pm.request.url = u\npm.request.method = m"),
+            "req.setUrl(u)\nreq.setMethod(m)"
+        );
+        assert_eq!(
+            t("f(x)\n/* c\n */ pm.request.url = 'a'\nlet s = \"b\"\npm.request.method = m"),
+            "f(x)\n/* c\n */ req.setUrl('a')\nlet s = \"b\"\nreq.setMethod(m)"
+        );
+        assert_eq!(t("x = [1]\npm.request.url = u"), "x = [1]\nreq.setUrl(u)");
+        // After an operator or a keyword that needs an operand the line carries on.
+        for src in [
+            "x = a +\npm.request.url = u",
+            "x = typeof\npm.request.url = u",
+            "x = a, b\n  = 1\npm.request.url = u, v",
+        ] {
+            let out = translate(src);
+            assert!(!out.code.contains("setUrl"), "{src}");
+            assert!(!out.code.contains("getUrl() ="), "{src}");
+        }
     }
 
     #[test]
