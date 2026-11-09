@@ -300,7 +300,10 @@ fn only_the_collection_row_offers_export_keeping_scripts() {
     assert!(entries.contains(&entry));
     assert!(!menu_entries(NodeKind::Folder).contains(&entry));
     assert!(!menu_entries(NodeKind::Request).contains(&entry));
-    assert_eq!(entry.label(), "Export to Postman (keep scripts as written)");
+    assert_eq!(
+        entry.label(),
+        "Export collection to Postman (keep scripts as written)"
+    );
     let at = |e| entries.iter().position(|x| *x == e).unwrap();
     assert_eq!(at(entry), at(MenuEntry::ExportPostman) + 1);
 }

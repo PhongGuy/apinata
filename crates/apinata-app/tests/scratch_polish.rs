@@ -119,7 +119,7 @@ fn the_scratch_menu_greys_out_collection_only_entries() {
     let off = app_menu_disabled(true);
     for want in [
         "Export collection to Postman",
-        "Export to Postman (keep scripts as written)",
+        "Export collection to Postman (keep scripts as written)",
         "Export collection to OpenAPI",
         "Export collection to HTML documentation",
         "Collection settings",

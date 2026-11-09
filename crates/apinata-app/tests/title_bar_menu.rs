@@ -172,7 +172,7 @@ fn the_menu_is_four_groups_named_by_the_registry() {
                 "Import collection…",
                 "Import cURL",
                 "Export collection to Postman",
-                "Export to Postman (keep scripts as written)",
+                "Export collection to Postman (keep scripts as written)",
                 "Export collection to OpenAPI",
                 "Export collection to HTML documentation",
                 "Run collection",
