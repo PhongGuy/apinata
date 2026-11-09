@@ -1,3 +1,4 @@
+use super::alias::resolve;
 use super::corpus::table;
 use super::scan::parts;
 use super::tokens::same;
@@ -749,4 +750,118 @@ fn a_parenthesized_assignment_starting_a_line_after_an_unterminated_one_gets_a_s
         "const s = 'a'\n;(pm.request.url = u).trim()"
     );
     assert_eq!(t("a +\nreq.setUrl(u)"), "a +\n(pm.request.url = u)");
+}
+
+#[test]
+fn aliases_of_the_script_api_are_resolved_and_their_declarations_dropped() {
+    for (src, want) in [
+        (
+            "const r = res;\nconst b = r.getBody();",
+            "const b = res.getBody();",
+        ),
+        ("const a = req;\nconst b = a;\nb.getUrl();", "req.getUrl();"),
+        (
+            "const c = bru.cookies;\nc.get('a');",
+            "bru.cookies.get('a');",
+        ),
+        (
+            "const { cookies, runner: r } = bru;\ncookies.get('a');\nr.skipRequest();",
+            "bru.cookies.get('a');\nbru.runner.skipRequest();",
+        ),
+        (
+            "const t = test;\nconst e = expect;\nt('x', () => e(1).to.equal(1));",
+            "test('x', () => expect(1).to.equal(1));",
+        ),
+        (
+            "const r = res;\nconsole.log(`${r.status}`);",
+            "console.log(`${res.status}`);",
+        ),
+    ] {
+        let got = resolve(src);
+        assert!(same(&got, want), "{src:?} gave {got:?}");
+    }
+}
+
+#[test]
+fn a_dropped_declaration_takes_its_line_and_nothing_else() {
+    assert_eq!(resolve("const r = res; r.getBody();"), "res.getBody();");
+    assert_eq!(
+        t("foo();\nconst r = res;\nr.getBody();"),
+        "foo();\npm.response.json();"
+    );
+    assert_eq!(
+        t("// lead\nconst r = res;\n\nr.getBody();\nbar();"),
+        "pm.response.json();\nbar();"
+    );
+    assert_eq!(
+        t("if (x) {\n  const r = res;\n  r.getBody();\n}"),
+        "if (x) {\n  pm.response.json();\n}"
+    );
+}
+
+#[test]
+fn aliases_the_resolver_cannot_follow_are_left_alone() {
+    for src in [
+        "let r = res;\nr++;\nr.getBody()",
+        "const r = res;\nconst o = { r };\nr.getBody();",
+        "const r = res;\nconst o = { r: 1 };\nr.getBody();",
+        "const r = res;\nconst f = (r) => r.getBody();",
+        "const r = res;\nconst f = r => r.getBody();",
+        "const r = res;\ntry { x() } catch (r) { r.getBody() }",
+        "const r = res;\n{ const r = 1; }\nr.getBody();",
+        "const g = bru.getVar;\ng('a');",
+        "for (const r = res; r.status < 0; ) {}",
+    ] {
+        assert_eq!(resolve(src), src, "{src:?}");
+    }
+}
+
+#[test]
+fn resolved_aliases_translate_and_unresolved_ones_are_reported() {
+    let out = translate("const r = res;\nconst b = r.getBody();");
+    assert_eq!(out.code, "const b = pm.response.json();");
+    assert_eq!(out.rewritten, 1);
+    assert!(out.leftovers.is_empty(), "{:?}", out.leftovers);
+    assert_eq!(
+        t("const b = bru;\nb.sendRequest('u');"),
+        "pm.sendRequest('u');"
+    );
+    let out = translate("let r = res;\nr = next();\nr.getBody();");
+    assert_eq!(out.code, "let r = res;\nr = next();\nr.getBody();");
+    assert_eq!(out.leftovers, ["res"]);
+    assert_eq!(translate("let b = bru;\nb = 1;").leftovers, ["bru"]);
+    assert_eq!(translate("x = req\nf()").leftovers, ["req"]);
+    assert_eq!(
+        translate("const { getVar } = bru;\ngetVar('a');").leftovers,
+        ["bru"]
+    );
+    for src in [
+        "f(res)",
+        "if (a === res) {}",
+        "a == bru;",
+        "const o = { r: res.status };",
+    ] {
+        assert!(
+            translate(src).leftovers.iter().all(|c| c.contains('.')),
+            "{src}"
+        );
+    }
+}
+
+#[test]
+fn aliases_in_hostile_input_stay_bounded() {
+    bounded(|| resolve(&"const r = res;\n".repeat(50_000)).len());
+    let many: String = (0..40_000)
+        .map(|i| format!("const a{i} = res; a{i}.getBody();\n"))
+        .collect();
+    assert_eq!(bounded(move || translate(&many).rewritten), 40_000);
+    let chain = (0..2_000)
+        .map(|i| format!("const c{} = c{i};\n", i + 1))
+        .collect::<String>()
+        + "const c0 = bru.cookies;\n";
+    bounded(move || resolve(&chain).len());
+    bounded(|| resolve(&"const a = 1 +\n".repeat(50_000)).len());
+    bounded(|| resolve(&("const f = (".repeat(30_000) + &") => 1".repeat(30_000))).len());
+    bounded(|| resolve(&"`${const r = res; r".repeat(5_000)).len());
+    bounded(|| resolve(&"const {a, ".repeat(50_000)).len());
 }

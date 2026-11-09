@@ -5,10 +5,11 @@ use std::collections::HashSet;
 use crate::export::ExportNote;
 
 use scan::{
-    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, skip_opaque,
-    skip_ws, template_end,
+    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, prev_significant,
+    skip_opaque, skip_ws, template_end,
 };
 
+mod alias;
 mod scan;
 mod send_request;
 
@@ -207,7 +208,8 @@ pub(super) fn translate(code: &str) -> Translated {
             kept: true,
         };
     }
-    let (code, mut rewritten) = send_request::rewrite(code);
+    let code = alias::resolve(code);
+    let (code, mut rewritten) = send_request::rewrite(&code);
     let code = translate_code(&code, 0, &mut rewritten);
     Translated {
         leftovers: leftovers(&code),
@@ -742,10 +744,29 @@ fn report_chain(code: &str, start: usize, head_end: usize, each: &mut dyn FnMut(
         chain.push('.');
         chain.push_str(&code[name..next]);
     }
-    if next > head_end {
+    if next > head_end || bare_alias(b, start, head_end) {
         each(chain);
     }
     next
+}
+
+// A head with no segment that is the whole right-hand side of a plain `=` aliases the API;
+// one the resolver left in place would reach Postman untranslated.
+fn bare_alias(b: &[u8], start: usize, end: usize) -> bool {
+    let assigned = match prev_significant(b, start) {
+        Some((k, b'=')) => !matches!(
+            k.checked_sub(1).map(|j| b[j]),
+            Some(b'=' | b'!' | b'<' | b'>')
+        ),
+        _ => false,
+    };
+    let mut k = end;
+    while k < b.len() && matches!(b[k], b' ' | b'\t' | b'\r') {
+        k += 1;
+    }
+    assigned
+        && b.get(k)
+            .is_none_or(|c| matches!(c, b';' | b',' | b'}' | b'\n'))
 }
 
 fn template_holes(
