@@ -688,6 +688,16 @@ and whatever the file cannot carry, such as assertions, is noted on stderr:
 apinata export ./my-api --format postman --out my-api.postman_collection.json --env-dir ./envs
 ```
 
+Scripts are translated to Postman's script API on the way out, each call
+becoming its `pm` counterpart. A call with no Postman translation is kept as
+written and noted. `--keep-scripts` exports every script
+unchanged instead; in the app, the collection's "Export collection to Postman
+(keep scripts as written)" entry does the same:
+
+```sh
+apinata export ./my-api --format postman --keep-scripts --out my-api.postman_collection.json
+```
+
 In the app, "Export environments…" in the environment editor's "…" menu or the
 command palette writes the same files to a folder you pick, and the global
 environments dialog has the same button for the global set. Saved files are
