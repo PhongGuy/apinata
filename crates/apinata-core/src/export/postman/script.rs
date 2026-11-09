@@ -516,9 +516,16 @@ fn rewrite_chain(
 ) -> Option<Rewrite> {
     if !matches!(
         &src[start..head_end],
-        "bru" | "req" | "res" | "expect" | "JSON"
+        "bru" | "req" | "res" | "test" | "expect" | "JSON"
     ) {
         return None;
+    }
+    if bare_test_call(src, start, head_end) {
+        return Some(Rewrite {
+            text: format!("pm.{}", &src[start..head_end]),
+            next: head_end,
+            shape: Shape::Expr,
+        });
     }
     let b = src.as_bytes();
     let mut ends = Vec::new();
@@ -563,6 +570,33 @@ fn rewrite_chain(
         }
     }
     None
+}
+
+// A free-standing `test(` or `expect(` that is neither declared (`function test(`, a method
+// `test() {`) nor constructed; only the head changes, so the arguments are scanned on.
+fn bare_test_call(src: &str, start: usize, end: usize) -> bool {
+    let b = src.as_bytes();
+    if !matches!(&src[start..end], "test" | "expect") {
+        return false;
+    }
+    let open = skip_ws(b, end);
+    let Some(close) = (b.get(open) == Some(&b'('))
+        .then(|| find_close(src, open))
+        .flatten()
+    else {
+        return false;
+    };
+    let declared = prev_significant(b, start).is_some_and(|(k, c)| {
+        is_ident_byte(c) && {
+            let from = (0..=k)
+                .rev()
+                .take_while(|&j| is_ident_byte(b[j]))
+                .last()
+                .unwrap_or(k);
+            matches!(&src[from..=k], "function" | "new")
+        }
+    });
+    !declared && b.get(skip_ws(b, close + 1)) != Some(&b'{')
 }
 
 // Move a reshaped call's arguments into Postman's syntax, later arguments dropped. A spread

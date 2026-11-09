@@ -48,7 +48,7 @@ fn scripts_are_translated_by_default() {
         exec(&v["item"][0]),
         json!([
             "// Tests",
-            "test('f', () => { expect(pm.response.code).to.equal(200); });"
+            "pm.test('f', () => { pm.expect(pm.response.code).to.equal(200); });"
         ])
     );
     assert_eq!(
@@ -67,7 +67,10 @@ fn each_script_gets_a_note_and_each_leftover_one_more() {
     assert_eq!(
         notes(&c),
         pairs(&[
-            ("f / tests script", ONE),
+            (
+                "f / tests script",
+                "script translated; 3 calls rewritten for Postman"
+            ),
             ("a / post-response script", ONE),
             (
                 "a / post-response script",

@@ -55,7 +55,6 @@ fn only_free_standing_heads_are_rewritten() {
         "mybru.getVar('a')",
         "$res.status",
         "res",
-        "expect(1)",
     ] {
         let out = translate(src);
         assert_eq!(out.code, src);
@@ -217,7 +216,7 @@ fn stop_execution_becomes_set_next_request_null() {
 }
 
 #[test]
-fn plan_a_cases_match_the_reference() {
+fn every_case_matches_the_reference() {
     let report = super::corpus::run(&|s: &str| translate(s).code);
     eprintln!("{}", report.summary());
     assert!(
@@ -230,8 +229,8 @@ fn plan_a_cases_match_the_reference() {
         "deviations that now match: {:?}",
         report.stale
     );
-    assert_eq!(report.plan_a, 180);
-    assert_eq!(report.matched + report.deviated, 180);
+    assert_eq!(report.cases, 195);
+    assert_eq!(report.matched + report.deviated, 195);
 }
 
 #[test]
@@ -935,4 +934,46 @@ fn only_jar_receivers_are_renamed() {
 fn jar_input_stays_bounded() {
     let jars = "const jar = bru.cookies.jar();\njar.getCookie(u);\n".repeat(20_000);
     assert_eq!(bounded(move || translate(&jars).rewritten), 40_000);
+}
+
+#[test]
+fn bare_test_and_expect_calls_become_pm_calls() {
+    assert_eq!(
+        t("test('a', () => { expect(res.status).to.equal(200); });"),
+        "pm.test('a', () => { pm.expect(pm.response.code).to.equal(200); });"
+    );
+    assert_eq!(t("expect (x).to.be.ok"), "pm.expect (x).to.be.ok");
+    assert_eq!(t("`${expect(1)}`"), "`${pm.expect(1)}`");
+    assert_eq!(t("expect(1)"), "pm.expect(1)");
+    assert_eq!(translate("test('a', () => expect(1));").rewritten, 2);
+}
+
+#[test]
+fn test_and_expect_that_are_not_bare_calls_stay() {
+    for src in [
+        "x.test(1)",
+        "x?.expect(1)",
+        "function test(a) {}",
+        "async function expect() {}",
+        "const o = { test() { return 1; } };",
+        "class A { expect(x) {} }",
+        "new test()",
+        "const test = 1;",
+        "f(test)",
+        "'test(1)'",
+        "// expect(1)",
+        "/test\\(/.exec(s)",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+    }
+}
+
+#[test]
+fn test_input_stays_bounded() {
+    assert_eq!(
+        bounded(|| translate(&"test('a', () => expect(1));\n".repeat(20_000)).rewritten),
+        40_000
+    );
 }
