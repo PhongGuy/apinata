@@ -17,7 +17,10 @@ use crate::workspace::Workspace;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportFormat {
     /// Postman v2.1 collection JSON.
-    Postman,
+    Postman {
+        /// Write scripts as they are instead of translating them to Postman's script API.
+        keep_scripts: bool,
+    },
     /// OpenAPI 3.1, JSON or YAML by the chosen file's extension.
     OpenApi,
     /// One HTML documentation page.
@@ -118,7 +121,7 @@ pub fn export_collection(
         .or_else(dirs::home_dir)
         .unwrap_or_default();
     let file_name = match format {
-        ExportFormat::Postman => default_file_name(&name),
+        ExportFormat::Postman { .. } => default_file_name(&name),
         ExportFormat::OpenApi => openapi_file_name(&name),
         ExportFormat::Html => html_file_name(&name),
     };
@@ -135,8 +138,10 @@ pub fn export_collection(
                 let collection =
                     Collection::open_with(&root, &options).map_err(|e| e.to_string())?;
                 let (text, notes) = match format {
-                    ExportFormat::Postman => {
-                        let out = apinata_core::export::postman(&collection);
+                    ExportFormat::Postman { keep_scripts } => {
+                        let options =
+                            apinata_core::export::PostmanOptions::new().keep_scripts(keep_scripts);
+                        let out = apinata_core::export::postman_with(&collection, &options);
                         (out.json, out.notes.len())
                     }
                     ExportFormat::OpenApi => {

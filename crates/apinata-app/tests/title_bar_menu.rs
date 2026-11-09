@@ -172,6 +172,7 @@ fn the_menu_is_four_groups_named_by_the_registry() {
                 "Import collection…",
                 "Import cURL",
                 "Export collection to Postman",
+                "Export to Postman (keep scripts as written)",
                 "Export collection to OpenAPI",
                 "Export collection to HTML documentation",
                 "Run collection",
@@ -206,7 +207,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let rows: Vec<Option<String>> = cx
         .update_window(s.win, |_, w, _| {
-            (0..26usize)
+            (0..27usize)
                 .map(|ix| {
                     w.within("popup-menu")
                         .try_find(ix)
@@ -224,7 +225,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     }
     want.push(None);
     assert_eq!(rows, want);
-    assert_eq!(app_menu_index(&OpenCookies), Some(18));
+    assert_eq!(app_menu_index(&OpenCookies), Some(19));
 }
 
 // Hovers the app-menu slot long enough for a tooltip, then reports whether its tip is drawn.

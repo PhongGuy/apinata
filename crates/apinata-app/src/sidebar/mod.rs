@@ -1370,7 +1370,13 @@ impl Sidebar {
             }
             MenuEntry::Delete => self.confirm_delete(node, window, cx),
             MenuEntry::ExportPostman => {
-                let format = ExportFormat::Postman;
+                let format = ExportFormat::Postman {
+                    keep_scripts: false,
+                };
+                crate::export::export_collection(&self.workspace, &root, format, window, cx)
+            }
+            MenuEntry::ExportPostmanKeepScripts => {
+                let format = ExportFormat::Postman { keep_scripts: true };
                 crate::export::export_collection(&self.workspace, &root, format, window, cx)
             }
             MenuEntry::ExportOpenApi => {

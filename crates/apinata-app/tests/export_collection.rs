@@ -270,3 +270,81 @@ fn a_yaml_file_name_makes_the_openapi_export_yaml(cx: &mut TestAppContext) {
     assert!(text.starts_with("openapi: 3.1.0\n"), "{text}");
     assert!(serde_json::from_str::<serde_json::Value>(&text).is_err());
 }
+
+fn scripted() -> tempfile::TempDir {
+    let a = request("a", "http://x/0")
+        + "runtime:\n  scripts:\n    - type: before-request\n      code: \"bru.setVar('k', 1);\"\n";
+    write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)])
+}
+
+// Answers the save prompt with a fresh file; returns the request's first pre-request line.
+fn saved_pre_request(cx: &mut TestAppContext) -> String {
+    assert!(cx.did_prompt_for_new_path());
+    let out = tempfile::tempdir().unwrap();
+    let file = out.path().join("c.postman_collection.json");
+    let chosen = file.clone();
+    cx.simulate_new_path_selection(move |_| Some(chosen));
+    cx.run_until_parked();
+    let v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&file).expect("written")).unwrap();
+    v["item"][0]["event"][0]["script"]["exec"][0]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+#[test]
+fn only_the_collection_row_offers_export_keeping_scripts() {
+    let entry = MenuEntry::ExportPostmanKeepScripts;
+    let entries = menu_entries(NodeKind::Collection);
+    assert!(entries.contains(&entry));
+    assert!(!menu_entries(NodeKind::Folder).contains(&entry));
+    assert!(!menu_entries(NodeKind::Request).contains(&entry));
+    assert_eq!(entry.label(), "Export to Postman (keep scripts as written)");
+    let at = |e| entries.iter().position(|x| *x == e).unwrap();
+    assert_eq!(at(entry), at(MenuEntry::ExportPostman) + 1);
+}
+
+#[gpui_kit::test]
+fn postman_export_translates_scripts(cx: &mut TestAppContext) {
+    let col = scripted();
+    let s = started(cx, &col);
+    choose_menu(
+        cx,
+        s.win,
+        "",
+        NodeKind::Collection,
+        MenuEntry::ExportPostman,
+    );
+    assert_eq!(saved_pre_request(cx), "pm.variables.set('k', 1);");
+}
+
+#[gpui_kit::test]
+fn the_keep_scripts_entry_exports_them_as_written(cx: &mut TestAppContext) {
+    let col = scripted();
+    let s = started(cx, &col);
+    choose_menu(
+        cx,
+        s.win,
+        "",
+        NodeKind::Collection,
+        MenuEntry::ExportPostmanKeepScripts,
+    );
+    assert_eq!(saved_pre_request(cx), "bru.setVar('k', 1);");
+}
+
+#[gpui_kit::test]
+fn the_palette_exports_keeping_scripts_as_written(cx: &mut TestAppContext) {
+    let col = scripted();
+    let s = started(cx, &col);
+    palette(cx, &s, "keep scripts as written");
+    assert_eq!(saved_pre_request(cx), "bru.setVar('k', 1);");
+}
+
+#[gpui_kit::test]
+fn the_palette_still_exports_translated_scripts(cx: &mut TestAppContext) {
+    let col = scripted();
+    let s = started(cx, &col);
+    palette(cx, &s, "export collection");
+    assert_eq!(saved_pre_request(cx), "pm.variables.set('k', 1);");
+}
