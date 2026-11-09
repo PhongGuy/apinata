@@ -110,6 +110,13 @@ impl Executor {
     }
 }
 
+/// Why a handshake to an http target through a proxy lost its connection, in plain words.
+const PROXY_NOT_KEPT: &str = "the proxy did not keep one connection to the server for the \
+     handshake; use https, or a proxy that keeps connections";
+
+/// Why a direct handshake failed when its legs arrived on different connections.
+const NOT_ONE_CONNECTION: &str = "the handshake did not stay on one connection";
+
 /// The most a challenge response's body may weigh before the handshake gives up on it.
 const CHALLENGE_BODY_LIMIT: usize = 1 << 20;
 
@@ -232,15 +239,11 @@ impl Executor {
         pac: Option<&str>,
         buf: &mut HopBuffer,
     ) -> Result<Negotiated, ExecError> {
-        // NTLM is pinned to one connection and a plain-http proxy may reconnect upstream per
-        // request, so only a CONNECT tunnel to https is allowed.
-        if proxy.is_some() && url.scheme() == "http" {
-            return Err(ntlm_err(
-                url,
-                NtlmCause::ProxyUnsupported,
-                "NTLM through a proxy is not supported",
-            ));
-        }
+        // To an http target through an http(s) proxy the legs go absolute-form, so a lost
+        // connection is most likely the proxy's doing; through SOCKS it is a raw tunnel.
+        let absolute =
+            url.scheme() == "http" && proxy.is_some_and(|p| matches!(p.scheme(), "http" | "https"));
+        let lost = |server: &'static str| if absolute { PROXY_NOT_KEPT } else { server };
         let base = buf.hops.len();
         let client = self.build_handshake_client(key)?;
         let transport = |e: reqwest::Error| classify(url, proxy, followed, e);
@@ -250,7 +253,7 @@ impl Executor {
                 ntlm_err(
                     url,
                     NtlmCause::ConnectionNotKept,
-                    "the server did not keep the connection",
+                    lost("the server did not keep the connection"),
                 )
             } else {
                 classify(url, proxy, followed, e)
@@ -292,7 +295,7 @@ impl Executor {
             return Err(ntlm_err(
                 url,
                 NtlmCause::ConnectionNotKept,
-                "the server closed the connection after the first answer",
+                lost("the server closed the connection after the first answer"),
             ));
         }
         let pinned = local_addr(&first);
@@ -318,7 +321,7 @@ impl Executor {
             .await
             .ok_or_else(timed_out)?
             .map_err(later)?;
-        check_pinned(url, pinned, &second)?;
+        check_pinned(url, pinned, &second, lost(NOT_ONE_CONNECTION))?;
         if second.status() != StatusCode::UNAUTHORIZED {
             return Ok(Negotiated {
                 response: second,
@@ -362,7 +365,7 @@ impl Executor {
             .await
             .ok_or_else(timed_out)?
             .map_err(later)?;
-        check_pinned(url, pinned, &third)?;
+        check_pinned(url, pinned, &third, lost(NOT_ONE_CONNECTION))?;
         Ok(Negotiated {
             response: third,
             authorization: Some(value),
@@ -419,14 +422,11 @@ fn check_pinned(
     url: &Url,
     pinned: Option<std::net::SocketAddr>,
     res: &reqwest::Response,
+    message: &str,
 ) -> Result<(), ExecError> {
     match (pinned, local_addr(res)) {
         (Some(a), Some(b)) if a == b => Ok(()),
-        _ => Err(ntlm_err(
-            url,
-            NtlmCause::ConnectionNotReused,
-            "the handshake did not stay on one connection",
-        )),
+        _ => Err(ntlm_err(url, NtlmCause::ConnectionNotReused, message)),
     }
 }
 

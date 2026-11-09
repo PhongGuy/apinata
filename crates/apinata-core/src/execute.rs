@@ -277,7 +277,8 @@ pub enum ConnectCause {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NtlmCause {
-    /// The server closed the connection the handshake needs to keep.
+    /// The server, or a proxy in front of an http target, closed the connection the handshake
+    /// needs to keep.
     ConnectionNotKept,
     /// The handshake would have needed a second connection.
     ConnectionNotReused,
@@ -285,8 +286,6 @@ pub enum NtlmCause {
     ChallengeUnusable,
     /// The server's challenge was larger than allowed.
     ChallengeTooLarge,
-    /// NTLM over a proxy to an http origin is not supported.
-    ProxyUnsupported,
     /// No random bytes were available for the response.
     Random,
 }
