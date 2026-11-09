@@ -631,6 +631,9 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
     // here. A nested chunk is an expression, so it starts as if after `(`.
     let mut last: Option<u8> = if cx.depth > 1 { Some(b'(') } else { None };
     let mut after_kw = false;
+    // A line break since `last`, and whether `last` was a word that still needs an operand:
+    // a line that starts after a finished operand starts a new statement.
+    let (mut broke, mut open_word) = (false, false);
     // Open `return` statements without a `;`: where the argument ends, and where it began in
     // the source and the output. One whose argument changed is reprinted with its `;`.
     let mut returns: Vec<(usize, usize, usize)> = Vec::new();
@@ -640,22 +643,31 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
             i = copy_template(src, i, &mut out, cx);
             (last, after_kw) = (Some(b'`'), false);
+            (broke, open_word) = (false, false);
         } else if let Some(end) = skip_opaque(src, i) {
             out.push_str(&src[i..end]);
             if !src[i..end].starts_with("//") && !src[i..end].starts_with("/*") {
                 (last, after_kw) = (Some(b'"'), false);
+                (broke, open_word) = (false, false);
+            } else if src[i..end].contains('\n') {
+                broke = true;
             }
             i = end;
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
             (cx.await_ok, cx.fid) = (scope.ok(), scope.fid());
-            cx.at_stmt = after_kw || matches!(last, None | Some(b';' | b'{' | b'}' | b')'));
+            let after_operand = broke
+                && !open_word
+                && last.is_some_and(|c| is_ident_byte(c) || matches!(c, b'"' | b'`' | b']'));
+            cx.at_stmt =
+                after_kw || after_operand || matches!(last, None | Some(b';' | b'{' | b'}' | b')'));
+            broke = false;
             if !is_property_access(b, i)
                 && let Some((text, next)) = rewrite_at(src, i, end, &out, cx)
             {
                 out.push_str(&text);
                 i = next;
-                (last, after_kw) = (Some(b')'), false);
+                (last, after_kw, open_word) = (Some(b')'), false, false);
                 continue;
             }
             out.push_str(&src[i..end]);
@@ -667,6 +679,7 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             {
                 returns.push((arg_end, end, out.len()));
             }
+            open_word = OPERAND_WORDS.contains(&&src[i..end]) && !is_property_access(b, i);
             last = Some(b[end - 1]);
             i = end;
         } else {
@@ -674,6 +687,9 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
             out.push(b[i] as char);
             if !b[i].is_ascii_whitespace() {
                 (last, after_kw) = (Some(b[i]), false);
+                (broke, open_word) = (false, false);
+            } else if b[i] == b'\n' {
+                broke = true;
             }
             i += 1;
         }
@@ -682,6 +698,41 @@ fn translate_scan(src: &str, cx: &mut Ctx) -> String {
     (cx.await_ok, cx.fid) = (base, base_fid);
     out
 }
+
+/// Words after which a line break does not surely end the statement: operators and
+/// keywords that take what follows, or whose line break has special rules.
+const OPERAND_WORDS: &[&str] = &[
+    "typeof",
+    "new",
+    "await",
+    "in",
+    "instanceof",
+    "void",
+    "delete",
+    "yield",
+    "of",
+    "case",
+    "extends",
+    "var",
+    "let",
+    "const",
+    "return",
+    "throw",
+    "async",
+    "function",
+    "class",
+    "import",
+    "export",
+    "default",
+    "if",
+    "while",
+    "for",
+    "with",
+    "switch",
+    "catch",
+    "break",
+    "continue",
+];
 
 /// Most `return` statements tracked inside one another, so nesting keeps the scan linear.
 const MAX_OPEN_RETURNS: usize = 8;
@@ -924,7 +975,7 @@ fn rewrite_chain(
                 // A call result cannot be assigned to: an assignment becomes the setter where
                 // there is one, and any other write leaves the chain as written.
                 Rule::Replace(text) if text.ends_with(')') => {
-                    return match mutation_at(b, start, chain_end) {
+                    return match mutation_at(src, start, chain_end) {
                         None => Some((text, chain_end)),
                         Some(Mutation::Assign(rhs)) => assign_with_setter(src, &key, rhs, cx),
                         Some(Mutation::Other) => None,
@@ -974,18 +1025,19 @@ enum Mutation {
     Other,
 }
 
-fn mutation_at(b: &[u8], start: usize, end: usize) -> Option<Mutation> {
+fn mutation_at(src: &str, start: usize, end: usize) -> Option<Mutation> {
+    let b = src.as_bytes();
     const COMPOUND: [&[u8]; 15] = [
         b"**=", b">>>=", b"<<=", b">>=", b"&&=", b"||=", b"??=", b"+=", b"-=", b"*=", b"/=", b"%=",
         b"&=", b"|=", b"^=",
     ];
-    if let Some((k, c @ (b'+' | b'-'))) = prev_significant(b, start)
+    if let Some((k, c @ (b'+' | b'-'))) = prev_token(b, start)
         && k > 0
         && b[k - 1] == c
     {
         return Some(Mutation::Other);
     }
-    let n = skip_ws(b, end);
+    let n = skip_trivia(src, end);
     let rest = &b[n..];
     // A `++` or `--` after a line break begins the next statement instead.
     let postfix =
@@ -994,7 +1046,20 @@ fn mutation_at(b: &[u8], start: usize, end: usize) -> Option<Mutation> {
         return Some(Mutation::Other);
     }
     (rest.first() == Some(&b'=') && !matches!(rest.get(1), Some(b'=' | b'>')))
-        .then(|| Mutation::Assign(skip_ws(b, n + 1)))
+        .then(|| Mutation::Assign(skip_trivia(src, n + 1)))
+}
+
+/// The last byte of the token before `i`, with its index, past whitespace and block comments.
+fn prev_token(b: &[u8], i: usize) -> Option<(usize, u8)> {
+    let mut at = i;
+    loop {
+        let (k, c) = prev_significant(b, at)?;
+        if c == b'/' && k > 0 && b[k - 1] == b'*' {
+            at = b[..k - 1].windows(2).rposition(|w| w == b"/*")?;
+        } else {
+            return Some((k, c));
+        }
+    }
 }
 
 /// `pm.request.url = x` as `req.setUrl(x)`, and the same for the method. Only a whole
@@ -1219,7 +1284,7 @@ fn skip_trivia(src: &str, mut i: usize) -> usize {
     loop {
         i = skip_ws(b, i);
         let comment = b.get(i) == Some(&b'/') && matches!(b.get(i + 1), Some(b'/' | b'*'));
-        match skip_opaque(src, i).filter(|_| comment) {
+        match comment.then(|| skip_opaque(src, i)).flatten() {
             Some(end) => i = end,
             None => return i,
         }
@@ -1807,6 +1872,74 @@ mod tests {
             assert!(!out.unsupported.is_empty(), "{src}");
         }
         assert_eq!(t("request.url = u;"), "request.url = u;");
+    }
+
+    #[test]
+    fn assignment_is_seen_past_comments() {
+        assert_eq!(t("pm.request.url /* c */ = u;"), "req.setUrl(u);");
+        assert_eq!(t("pm.request.url = // c\n  u;"), "req.setUrl(u);");
+        assert_eq!(
+            t("pm.request.method /* c */ === 'GET'"),
+            "req.getMethod() /* c */ === 'GET'"
+        );
+        for src in [
+            "pm.request.url /* c */ += u;",
+            "pm.response.code /* c */ ++;",
+            "++ /* c */ pm.response.code;",
+            "pm.response.code // c\n= 1;",
+        ] {
+            let out = translate(src);
+            assert_eq!(out.code, src, "{src}");
+            assert!(!out.unsupported.is_empty(), "{src}");
+        }
+    }
+
+    #[test]
+    fn assignment_values_of_any_shape_go_into_the_setter() {
+        assert_eq!(t("pm.request.url = a ? b : c;"), "req.setUrl(a ? b : c);");
+        assert_eq!(
+            t("pm.request.url = `${base}/x`;"),
+            "req.setUrl(`${base}/x`);"
+        );
+        assert_eq!(
+            t("pm.request.url = (() => pm.environment.get('u'))();"),
+            "req.setUrl((() => bru.getEnvVar('u'))());"
+        );
+        assert_eq!(
+            t("pm.request.url = pm.test('a', f);"),
+            "req.setUrl(test('a', f));"
+        );
+        assert_eq!(
+            t("pm.request.url = pm.response.to.be.ok;"),
+            "req.setUrl(pm.response.to.be.ok);"
+        );
+    }
+
+    #[test]
+    fn assignment_on_a_line_without_semicolons_becomes_the_setter() {
+        assert_eq!(
+            t("const a = 1\npm.request.url = u"),
+            "const a = 1\nreq.setUrl(u)"
+        );
+        assert_eq!(
+            t("pm.request.url = u\npm.request.method = m"),
+            "req.setUrl(u)\nreq.setMethod(m)"
+        );
+        assert_eq!(
+            t("f(x)\n/* c\n */ pm.request.url = 'a'\nlet s = \"b\"\npm.request.method = m"),
+            "f(x)\n/* c\n */ req.setUrl('a')\nlet s = \"b\"\nreq.setMethod(m)"
+        );
+        assert_eq!(t("x = [1]\npm.request.url = u"), "x = [1]\nreq.setUrl(u)");
+        // After an operator or a keyword that needs an operand the line carries on.
+        for src in [
+            "x = a +\npm.request.url = u",
+            "x = typeof\npm.request.url = u",
+            "x = a, b\n  = 1\npm.request.url = u, v",
+        ] {
+            let out = translate(src);
+            assert!(!out.code.contains("setUrl"), "{src}");
+            assert!(!out.code.contains("getUrl() ="), "{src}");
+        }
     }
 
     #[test]
