@@ -1,0 +1,2463 @@
+[
+  {
+    "id": "cookies/01",
+    "name": "should translate bru.cookies.jar to pm.cookies.jar",
+    "input": "const jar = bru.cookies.jar();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const jar = pm.cookies.jar();"
+      }
+    ]
+  },
+  {
+    "id": "cookies/02",
+    "name": "should translate getCookie to get (direct chaining)",
+    "input": "const sessionId = bru.cookies.jar().getCookie(\"https://example.com\", \"sessionId\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const sessionId = pm.cookies.jar().get(\"https://example.com\", \"sessionId\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/03",
+    "name": "should translate getCookies to getAll (direct chaining)",
+    "input": "const allCookies = bru.cookies.jar().getCookies(\"https://example.com\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const allCookies = pm.cookies.jar().getAll(\"https://example.com\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/04",
+    "name": "should translate setCookie to set (direct chaining)",
+    "input": "bru.cookies.jar().setCookie(\"https://example.com\", \"token\", \"abc123\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.cookies.jar().set(\"https://example.com\", \"token\", \"abc123\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/05",
+    "name": "should translate deleteCookie to unset (direct chaining)",
+    "input": "bru.cookies.jar().deleteCookie(\"https://example.com\", \"sessionId\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.cookies.jar().unset(\"https://example.com\", \"sessionId\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/06",
+    "name": "should translate deleteCookies to clear (direct chaining)",
+    "input": "bru.cookies.jar().deleteCookies(\"https://example.com\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.cookies.jar().clear(\"https://example.com\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/07",
+    "name": "should translate getCookie to get (jar variable)",
+    "input": "\nconst jar = bru.cookies.jar();\nconst sessionId = jar.getCookie(\"https://example.com\", \"sessionId\");\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "const sessionId = jar.get(\"https://example.com\", \"sessionId\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/08",
+    "name": "should translate getCookies to getAll (jar variable)",
+    "input": "\nconst jar = bru.cookies.jar();\nconst allCookies = jar.getCookies(\"https://example.com\");\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "const allCookies = jar.getAll(\"https://example.com\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/09",
+    "name": "should translate setCookie to set (jar variable)",
+    "input": "\nconst jar = bru.cookies.jar();\njar.setCookie(\"https://example.com\", \"token\", \"abc123\");\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.set(\"https://example.com\", \"token\", \"abc123\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/10",
+    "name": "should translate deleteCookie to unset (jar variable)",
+    "input": "\nconst jar = bru.cookies.jar();\njar.deleteCookie(\"https://example.com\", \"sessionId\");\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.unset(\"https://example.com\", \"sessionId\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/11",
+    "name": "should translate deleteCookies to clear (jar variable)",
+    "input": "\nconst jar = bru.cookies.jar();\njar.deleteCookies(\"https://example.com\");\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.clear(\"https://example.com\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/12",
+    "name": "should handle multiple cookie operations together",
+    "input": "\nconst jar = bru.cookies.jar();\nconst domain = \"https://api.example.com\";\n\n// Check existing cookie\nconst existingToken = jar.getCookie(domain, \"authToken\");\n\nif (!existingToken) {\n    // Set new cookie\n    jar.setCookie(domain, \"authToken\", bru.getEnvVar(\"token\"));\n}\n\n// Get all cookies for logging\nconst allCookies = jar.getCookies(domain);\nconsole.log(\"Current cookies:\", allCookies);\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "const existingToken = jar.get(domain, \"authToken\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.set(domain, \"authToken\", pm.environment.get(\"token\"));"
+      },
+      {
+        "kind": "toContain",
+        "text": "const allCookies = jar.getAll(domain);"
+      }
+    ]
+  },
+  {
+    "id": "cookies/13",
+    "name": "should handle cookie cleanup scenario",
+    "input": "\nconst jar = bru.cookies.jar();\nconst domain = bru.getEnvVar(\"apiDomain\");\n\n// Clear specific cookies\njar.deleteCookie(domain, \"session\");\njar.deleteCookie(domain, \"tempToken\");\n\n// Or clear all cookies\nif (bru.getVar(\"clearAll\") === \"true\") {\n    jar.deleteCookies(domain);\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "const domain = pm.environment.get(\"apiDomain\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.unset(domain, \"session\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.unset(domain, \"tempToken\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "if (pm.variables.get(\"clearAll\") === \"true\") {"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.clear(domain);"
+      }
+    ]
+  },
+  {
+    "id": "cookies/14",
+    "name": "should translate bru.cookies.get to pm.cookies.get",
+    "input": "const token = bru.cookies.get(\"authToken\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const token = pm.cookies.get(\"authToken\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/15",
+    "name": "should translate bru.cookies.has to pm.cookies.has",
+    "input": "const exists = bru.cookies.has(\"sessionId\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const exists = pm.cookies.has(\"sessionId\");"
+      }
+    ]
+  },
+  {
+    "id": "cookies/16",
+    "name": "should translate bru.cookies.toString to pm.cookies.toString",
+    "input": "const str = bru.cookies.toString();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const str = pm.cookies.toString();"
+      }
+    ]
+  },
+  {
+    "id": "cookies/17",
+    "name": "should pass through jar().hasCookie() (no Postman equivalent)",
+    "input": "const exists = bru.cookies.jar().hasCookie(\"https://example.com\", \"session\");",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.cookies.jar().hasCookie"
+      }
+    ]
+  },
+  {
+    "id": "cookies/18",
+    "name": "should translate bru.cookies.toObject to pm.cookies.toObject",
+    "input": "const allCookies = bru.cookies.toObject();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const allCookies = pm.cookies.toObject();"
+      }
+    ]
+  },
+  {
+    "id": "cookies/19",
+    "name": "should translate bru.cookies.has in conditional",
+    "input": "if (bru.cookies.has(\"auth\")) {\n  console.log(bru.cookies.get(\"auth\"));\n}",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "if (pm.cookies.has(\"auth\"))"
+      },
+      {
+        "kind": "toContain",
+        "text": "console.log(pm.cookies.get(\"auth\"))"
+      }
+    ]
+  },
+  {
+    "id": "cookies/20",
+    "name": "should handle mixed direct cookie access and jar methods",
+    "input": "\nconst token = bru.cookies.get(\"authToken\");\nconst jar = bru.cookies.jar();\njar.setCookie(\"https://example.com\", \"newCookie\", \"value\");\nconst allCookies = bru.cookies.toObject();\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const token = pm.cookies.get(\"authToken\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "const jar = pm.cookies.jar();"
+      },
+      {
+        "kind": "toContain",
+        "text": "jar.set(\"https://example.com\", \"newCookie\", \"value\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "const allCookies = pm.cookies.toObject();"
+      }
+    ]
+  },
+  {
+    "id": "environment/01",
+    "name": "should translate bru.getEnvVar",
+    "input": "bru.getEnvVar(\"test\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.environment.get(\"test\");"
+      }
+    ]
+  },
+  {
+    "id": "environment/02",
+    "name": "should translate bru.setEnvVar",
+    "input": "bru.setEnvVar(\"test\", \"value\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.environment.set(\"test\", \"value\");"
+      }
+    ]
+  },
+  {
+    "id": "environment/03",
+    "name": "should translate bru.deleteEnvVar",
+    "input": "bru.deleteEnvVar(\"test\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.environment.unset(\"test\");"
+      }
+    ]
+  },
+  {
+    "id": "environment/04",
+    "name": "should translate bru.hasEnvVar",
+    "input": "bru.hasEnvVar(\"apiKey\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.environment.has(\"apiKey\");"
+      }
+    ]
+  },
+  {
+    "id": "environment/05",
+    "name": "should translate bru.getEnvName() to pm.environment.name (function to property)",
+    "input": "const envName = bru.getEnvName();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const envName = pm.environment.name;"
+      }
+    ]
+  },
+  {
+    "id": "environment/06",
+    "name": "should handle nested Postman API calls with environment",
+    "input": "bru.setEnvVar(\"computed\", bru.getVar(\"base\") + \"-suffix\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.environment.set(\"computed\", pm.variables.get(\"base\") + \"-suffix\");"
+      }
+    ]
+  },
+  {
+    "id": "environment/07",
+    "name": "should handle JSON operations with environment variables",
+    "input": "bru.setEnvVar(\"user\", JSON.stringify({ id: 123, name: \"John\" }));",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.environment.set(\"user\", JSON.stringify({ id: 123, name: \"John\" }));"
+      }
+    ]
+  },
+  {
+    "id": "environment/08",
+    "name": "should handle JSON.parse with environment variables",
+    "input": "const userData = JSON.parse(bru.getEnvVar(\"user\"));",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const userData = JSON.parse(pm.environment.get(\"user\"));"
+      }
+    ]
+  },
+  {
+    "id": "environment/09",
+    "name": "should handle all environment variable methods together",
+    "input": "\n// All environment variable methods\nconst token = bru.getEnvVar(\"token\");\nbru.setEnvVar(\"timestamp\", new Date().toISOString());\n\nconsole.log(`Token: ${token}`);\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const token = pm.environment.get(\"token\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.environment.set(\"timestamp\", new Date().toISOString());"
+      }
+    ]
+  },
+  {
+    "id": "environment/10",
+    "name": "should handle environment variables with computed property names",
+    "input": "\nconst prefix = \"api\";\nconst suffix = \"Key\";\nbru.setEnvVar(prefix + \"_\" + suffix, \"abc123\");\nconst computedValue = bru.getEnvVar(prefix + \"_\" + suffix);\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.environment.set(prefix + \"_\" + suffix, \"abc123\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "const computedValue = pm.environment.get(prefix + \"_\" + suffix);"
+      }
+    ]
+  },
+  {
+    "id": "environment/11",
+    "name": "should handle environment variables in complex object structures",
+    "input": "\nconst config = {\n    baseUrl: bru.getEnvVar(\"apiUrl\"),\n    headers: {\n        \"Authorization\": \"Bearer \" + bru.getEnvVar(\"token\"),\n        \"X-Api-Key\": bru.getEnvVar(\"apiKey\") || \"default-key\"\n    },\n    timeout: parseInt(bru.getEnvVar(\"timeout\") || \"5000\")\n};\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "baseUrl: pm.environment.get(\"apiUrl\"),"
+      },
+      {
+        "kind": "toContain",
+        "text": "\"Authorization\": \"Bearer \" + pm.environment.get(\"token\"),"
+      },
+      {
+        "kind": "toContain",
+        "text": "\"X-Api-Key\": pm.environment.get(\"apiKey\") || \"default-key\""
+      },
+      {
+        "kind": "toContain",
+        "text": "timeout: parseInt(pm.environment.get(\"timeout\") || \"5000\")"
+      }
+    ]
+  },
+  {
+    "id": "environment/12",
+    "name": "should handle environment variables in try-catch blocks",
+    "input": "\ntry {\n    const configStr = bru.getEnvVar(\"config\");\n    const config = JSON.parse(configStr);\n    console.log(\"Config loaded:\", config.version);\n} catch (error) {\n    console.error(\"Failed to parse config\");\n    bru.setEnvVar(\"configError\", error.message);\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const configStr = pm.environment.get(\"config\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.environment.set(\"configError\", error.message);"
+      }
+    ]
+  },
+  {
+    "id": "execution/01",
+    "name": "should translate bru.setNextRequest",
+    "input": "bru.setNextRequest(\"Get User Details\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.execution.setNextRequest(\"Get User Details\");"
+      }
+    ]
+  },
+  {
+    "id": "execution/02",
+    "name": "should translate bru.runner.setNextRequest",
+    "input": "bru.runner.setNextRequest(\"Create Order\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.execution.setNextRequest(\"Create Order\");"
+      }
+    ]
+  },
+  {
+    "id": "execution/03",
+    "name": "should preserve the string \"null\" as a request name when translating bru.runner.setNextRequest(\"null\")",
+    "input": "bru.runner.setNextRequest(\"null\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.execution.setNextRequest(\"null\");"
+      }
+    ]
+  },
+  {
+    "id": "execution/04",
+    "name": "should translate bru.runner.skipRequest",
+    "input": "bru.runner.skipRequest();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.execution.skipRequest();"
+      }
+    ]
+  },
+  {
+    "id": "execution/05",
+    "name": "should translate bru.runner.stopExecution() to pm.execution.setNextRequest(null)",
+    "input": "bru.runner.stopExecution();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.execution.setNextRequest(null);"
+      }
+    ]
+  },
+  {
+    "id": "execution/06",
+    "name": "should handle setNextRequest in conditionals",
+    "input": "\nif (res.getStatus() === 401) {\n    bru.setNextRequest(\"Refresh Token\");\n} else if (res.getStatus() === 200) {\n    bru.setNextRequest(\"Process Data\");\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "if (pm.response.code === 401) {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.setNextRequest(\"Refresh Token\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "} else if (pm.response.code === 200) {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.setNextRequest(\"Process Data\");"
+      }
+    ]
+  },
+  {
+    "id": "execution/07",
+    "name": "should handle stopExecution in error handling",
+    "input": "\nif (res.getStatus() >= 500) {\n    console.error(\"Server error, stopping execution\");\n    bru.runner.stopExecution();\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "if (pm.response.code >= 500) {"
+      },
+      {
+        "kind": "toContain",
+        "text": "console.error(\"Server error, stopping execution\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.setNextRequest(null);"
+      }
+    ]
+  },
+  {
+    "id": "execution/08",
+    "name": "should handle skipRequest with condition",
+    "input": "\nconst shouldSkip = bru.getEnvVar(\"skipNextRequest\") === \"true\";\nif (shouldSkip) {\n    bru.runner.skipRequest();\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const shouldSkip = pm.environment.get(\"skipNextRequest\") === \"true\";"
+      },
+      {
+        "kind": "toContain",
+        "text": "if (shouldSkip) {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.skipRequest();"
+      }
+    ]
+  },
+  {
+    "id": "execution/09",
+    "name": "should handle all execution control methods together",
+    "input": "\nconst status = res.getStatus();\nconst data = res.getBody();\n\nif (status === 200 && data.hasMore) {\n    bru.runner.setNextRequest(\"Fetch Next Page\");\n} else if (status === 429) {\n    console.log(\"Rate limited, skipping\");\n    bru.runner.skipRequest();\n} else if (status >= 500) {\n    bru.runner.stopExecution();\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const status = pm.response.code;"
+      },
+      {
+        "kind": "toContain",
+        "text": "const data = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.setNextRequest(\"Fetch Next Page\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.skipRequest();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.setNextRequest(null);"
+      }
+    ]
+  },
+  {
+    "id": "execution/10",
+    "name": "should handle dynamic request names in setNextRequest",
+    "input": "\nconst nextRequest = bru.getVar(\"nextRequestName\");\nbru.setNextRequest(nextRequest);\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const nextRequest = pm.variables.get(\"nextRequestName\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.execution.setNextRequest(nextRequest);"
+      }
+    ]
+  },
+  {
+    "id": "request/01",
+    "name": "should translate req.getUrl() to pm.request.url (function to property)",
+    "input": "const url = req.getUrl();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const url = pm.request.url;"
+      }
+    ]
+  },
+  {
+    "id": "request/02",
+    "name": "should translate req.url to pm.request.url (property to property)",
+    "input": "const url = req.url;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const url = pm.request.url;"
+      }
+    ]
+  },
+  {
+    "id": "request/03",
+    "name": "should translate req.method to pm.request.method (property to property)",
+    "input": "const method = req.method;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const method = pm.request.method;"
+      }
+    ]
+  },
+  {
+    "id": "request/04",
+    "name": "should translate req.headers to pm.request.headers (property to property)",
+    "input": "const headers = req.headers;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const headers = pm.request.headers;"
+      }
+    ]
+  },
+  {
+    "id": "request/05",
+    "name": "should translate req.body to pm.request.body (property to property)",
+    "input": "const body = req.body;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const body = pm.request.body;"
+      }
+    ]
+  },
+  {
+    "id": "request/06",
+    "name": "should translate req.getMethod() to pm.request.method (function to property)",
+    "input": "const method = req.getMethod();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const method = pm.request.method;"
+      }
+    ]
+  },
+  {
+    "id": "request/07",
+    "name": "should translate req.getHeaders() to pm.request.headers (function to property)",
+    "input": "const headers = req.getHeaders();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const headers = pm.request.headers;"
+      }
+    ]
+  },
+  {
+    "id": "request/08",
+    "name": "should translate req.getBody() to pm.request.body (function to property)",
+    "input": "const body = req.getBody();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const body = pm.request.body;"
+      }
+    ]
+  },
+  {
+    "id": "request/09",
+    "name": "should translate req.getName() to pm.info.requestName (function to property)",
+    "input": "const name = req.getName();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const name = pm.info.requestName;"
+      }
+    ]
+  },
+  {
+    "id": "request/10",
+    "name": "should translate req.getAuthMode() to pm.request.auth.type (function to property)",
+    "input": "const authMode = req.getAuthMode();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const authMode = pm.request.auth.type;"
+      }
+    ]
+  },
+  {
+    "id": "request/11",
+    "name": "should handle req.getAuthMode() in conditionals",
+    "input": "if (req.getAuthMode() === \"oauth2\") { console.log(\"OAuth2 auth\"); }",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "if (pm.request.auth.type === \"oauth2\") { console.log(\"OAuth2 auth\"); }"
+      }
+    ]
+  },
+  {
+    "id": "request/12",
+    "name": "should translate req.getHeader() to pm.request.headers.get()",
+    "input": "const contentType = req.getHeader(\"Content-Type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const contentType = pm.request.headers.get(\"Content-Type\");"
+      }
+    ]
+  },
+  {
+    "id": "request/13",
+    "name": "should translate req.setHeader() to pm.request.headers.upsert() with object arg",
+    "input": "req.setHeader(\"Authorization\", \"Bearer token123\");",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.request.headers.upsert({\n  key: \"Authorization\",\n  value: \"Bearer token123\"\n})"
+      }
+    ]
+  },
+  {
+    "id": "request/14",
+    "name": "should translate req.deleteHeader() to pm.request.headers.remove()",
+    "input": "req.deleteHeader(\"Authorization\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.headers.remove(\"Authorization\");"
+      }
+    ]
+  },
+  {
+    "id": "request/15",
+    "name": "should handle req.deleteHeader() with a variable argument",
+    "input": "const headerName = \"X-Custom\"; req.deleteHeader(headerName);",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const headerName = \"X-Custom\"; pm.request.headers.remove(headerName);"
+      }
+    ]
+  },
+  {
+    "id": "request/16",
+    "name": "should handle all request properties together",
+    "input": "\n// All request properties\nconst url = req.getUrl();\nconst method = req.getMethod();\nconst headers = req.getHeaders();\nconst body = req.getBody();\nconst name = req.getName();\n\nconsole.log(`Request: ${method} ${url} - ${name}`);\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "// All request properties\nconst url = pm.request.url;\nconst method = pm.request.method;\nconst headers = pm.request.headers;\nconst body = pm.request.body;\nconst name = pm.info.requestName;\n\nconsole.log(`Request: ${method} ${url} - ${name}`);"
+      }
+    ]
+  },
+  {
+    "id": "request/17",
+    "name": "should handle request properties in conditionals",
+    "input": "\nif (req.getMethod() === 'POST' || req.getMethod() === 'PUT') {\n    const body = req.getBody();\n    console.log(\"Request body:\", body);\n}\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "if (pm.request.method === 'POST' || pm.request.method === 'PUT') {\n    const body = pm.request.body;\n    console.log(\"Request body:\", body);\n}"
+      }
+    ]
+  },
+  {
+    "id": "request/18",
+    "name": "should handle request logging",
+    "input": "\nconsole.log(\"Making request to:\", req.getUrl());\nconsole.log(\"Method:\", req.getMethod());\nconsole.log(\"Headers:\", JSON.stringify(req.getHeaders()));\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "console.log(\"Making request to:\", pm.request.url);\nconsole.log(\"Method:\", pm.request.method);\nconsole.log(\"Headers:\", JSON.stringify(pm.request.headers));"
+      }
+    ]
+  },
+  {
+    "id": "request/19",
+    "name": "should translate req.setUrl() to pm.request.url assignment",
+    "input": "req.setUrl(\"https://api.example.com/users\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.url = \"https://api.example.com/users\";"
+      }
+    ]
+  },
+  {
+    "id": "request/20",
+    "name": "should translate req.setMethod() to pm.request.method assignment",
+    "input": "req.setMethod(\"POST\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.method = \"POST\";"
+      }
+    ]
+  },
+  {
+    "id": "request/21",
+    "name": "should translate req.setBody() to pm.request.body.update()",
+    "input": "req.setBody({name: \"John\", age: 30});",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.body.update({\n  mode: \"raw\",\n  raw: JSON.stringify({name: \"John\", age: 30})\n});"
+      }
+    ]
+  },
+  {
+    "id": "request/22",
+    "name": "should translate req.setHeaders() to pm.request.headers.upsert() calls",
+    "input": "req.setHeaders({\"Content-Type\": \"application/json\", \"Authorization\": \"Bearer token\"});",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "(function() {\n  const _headers = {\"Content-Type\": \"application/json\", \"Authorization\": \"Bearer token\"};\n\n  for (const key in _headers) {\n    pm.request.headers.upsert({\n      key: key,\n      value: _headers[key]\n    });\n  }\n})();"
+      }
+    ]
+  },
+  {
+    "id": "request/23",
+    "name": "should handle req.setUrl() with variable",
+    "input": "const newUrl = \"https://api.example.com\"; req.setUrl(newUrl);",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const newUrl = \"https://api.example.com\"; pm.request.url = newUrl;"
+      }
+    ]
+  },
+  {
+    "id": "request/24",
+    "name": "should handle req.setMethod() with variable",
+    "input": "const method = \"PUT\"; req.setMethod(method);",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const method = \"PUT\"; pm.request.method = method;"
+      }
+    ]
+  },
+  {
+    "id": "request/25",
+    "name": "should handle req.setBody() with variable",
+    "input": "const body = {id: 1}; req.setBody(body);",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const body = {id: 1}; pm.request.body.update({\n  mode: \"raw\",\n  raw: JSON.stringify(body)\n});"
+      }
+    ]
+  },
+  {
+    "id": "request/26",
+    "name": "should translate req.getHost() to pm.request.url.getHost()",
+    "input": "const host = req.getHost();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const host = pm.request.url.getHost();"
+      }
+    ]
+  },
+  {
+    "id": "request/27",
+    "name": "should translate req.getPath() to pm.request.url.getPath()",
+    "input": "const path = req.getPath();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const path = pm.request.url.getPath();"
+      }
+    ]
+  },
+  {
+    "id": "request/28",
+    "name": "should translate req.getQueryString() to pm.request.url.getQueryString()",
+    "input": "const queryString = req.getQueryString();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const queryString = pm.request.url.getQueryString();"
+      }
+    ]
+  },
+  {
+    "id": "request/29",
+    "name": "should translate req.getPathParams() to pm.request.url.variables (function to property)",
+    "input": "const pathParams = req.getPathParams();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const pathParams = pm.request.url.variables;"
+      }
+    ]
+  },
+  {
+    "id": "request/30",
+    "name": "should handle URL methods in complex expressions",
+    "input": "const fullUrl = req.getHost() + req.getPath() + \"?\" + req.getQueryString();",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.request.url.getHost()"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.request.url.getPath()"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.request.url.getQueryString()"
+      }
+    ]
+  },
+  {
+    "id": "request/31",
+    "name": "should handle req.getPathParams() in conditional",
+    "input": "if (req.getPathParams().id) { console.log(\"Has ID\"); }",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.request.url.variables.id"
+      }
+    ]
+  },
+  {
+    "id": "request/32",
+    "name": "should translate req.headerList.get to pm.request.headers.get",
+    "input": "const ct = req.headerList.get(\"Content-Type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const ct = pm.request.headers.get(\"Content-Type\");"
+      }
+    ]
+  },
+  {
+    "id": "request/33",
+    "name": "should translate req.headerList.has to pm.request.headers.has",
+    "input": "const hasAuth = req.headerList.has(\"Authorization\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const hasAuth = pm.request.headers.has(\"Authorization\");"
+      }
+    ]
+  },
+  {
+    "id": "request/34",
+    "name": "should translate req.headerList.all to pm.request.headers.all",
+    "input": "const allHeaders = req.headerList.all();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const allHeaders = pm.request.headers.all();"
+      }
+    ]
+  },
+  {
+    "id": "request/35",
+    "name": "should translate req.headerList.filter to pm.request.headers.filter",
+    "input": "const custom = req.headerList.filter(h => h.key.startsWith(\"X-\"));",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const custom = pm.request.headers.filter(h => h.key.startsWith(\"X-\"));"
+      }
+    ]
+  },
+  {
+    "id": "request/36",
+    "name": "should translate req.headerList.add to pm.request.headers.add",
+    "input": "req.headerList.add({key: \"X-Custom\", value: \"test\"});",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.headers.add({key: \"X-Custom\", value: \"test\"});"
+      }
+    ]
+  },
+  {
+    "id": "request/37",
+    "name": "should translate req.headerList.remove to pm.request.headers.remove",
+    "input": "req.headerList.remove(\"Authorization\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.headers.remove(\"Authorization\");"
+      }
+    ]
+  },
+  {
+    "id": "request/38",
+    "name": "should translate req.headerList.clear to pm.request.headers.clear",
+    "input": "req.headerList.clear();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.headers.clear();"
+      }
+    ]
+  },
+  {
+    "id": "request/39",
+    "name": "should translate req.headerList.one to pm.request.headers.one",
+    "input": "const first = req.headerList.one(\"Content-Type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const first = pm.request.headers.one(\"Content-Type\");"
+      }
+    ]
+  },
+  {
+    "id": "request/40",
+    "name": "should translate req.headerList.find to pm.request.headers.find",
+    "input": "const found = req.headerList.find(h => h.key === \"Authorization\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const found = pm.request.headers.find(h => h.key === \"Authorization\");"
+      }
+    ]
+  },
+  {
+    "id": "request/41",
+    "name": "should translate req.headerList.toObject to pm.request.headers.toObject",
+    "input": "const obj = req.headerList.toObject();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const obj = pm.request.headers.toObject();"
+      }
+    ]
+  },
+  {
+    "id": "request/42",
+    "name": "should translate req.headerList.toString to pm.request.headers.toString",
+    "input": "const str = req.headerList.toString();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const str = pm.request.headers.toString();"
+      }
+    ]
+  },
+  {
+    "id": "request/43",
+    "name": "should translate req.headerList.toJSON to pm.request.headers.toJSON",
+    "input": "const json = req.headerList.toJSON();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const json = pm.request.headers.toJSON();"
+      }
+    ]
+  },
+  {
+    "id": "request/44",
+    "name": "should translate req.headerList.upsert to pm.request.headers.upsert",
+    "input": "req.headerList.upsert({key: \"X-Custom\", value: \"updated\"});",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.request.headers.upsert({key: \"X-Custom\", value: \"updated\"});"
+      }
+    ]
+  },
+  {
+    "id": "request/45",
+    "name": "should translate standalone req.headerList to pm.request.headers",
+    "input": "const hl = req.headerList;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const hl = pm.request.headers;"
+      }
+    ]
+  },
+  {
+    "id": "response/01",
+    "name": "should translate res.getBody()",
+    "input": "const jsonData = res.getBody();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const jsonData = pm.response.json();"
+      }
+    ]
+  },
+  {
+    "id": "response/02",
+    "name": "should translate res.getStatus() to pm.response.code (function to property)",
+    "input": "if (res.getStatus() === 200) { console.log(\"Success\"); }",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "if (pm.response.code === 200) { console.log(\"Success\"); }"
+      }
+    ]
+  },
+  {
+    "id": "response/03",
+    "name": "should translate JSON.stringify(res.getBody()) to pm.response.text()",
+    "input": "const responseText = JSON.stringify(res.getBody());",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const responseText = pm.response.text();"
+      }
+    ]
+  },
+  {
+    "id": "response/04",
+    "name": "should translate res.getResponseTime() to pm.response.responseTime (function to property)",
+    "input": "console.log(\"Response time:\", res.getResponseTime());",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "console.log(\"Response time:\", pm.response.responseTime);"
+      }
+    ]
+  },
+  {
+    "id": "response/05",
+    "name": "should translate res.statusText to pm.response.status (property to property)",
+    "input": "console.log(\"Status text:\", res.statusText);",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "console.log(\"Status text:\", pm.response.status);"
+      }
+    ]
+  },
+  {
+    "id": "response/06",
+    "name": "should translate res.status to pm.response.code (property to property)",
+    "input": "const code = res.status;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const code = pm.response.code;"
+      }
+    ]
+  },
+  {
+    "id": "response/07",
+    "name": "should translate res.getStatusText() to pm.response.status (function to property)",
+    "input": "const statusText = res.getStatusText();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const statusText = pm.response.status;"
+      }
+    ]
+  },
+  {
+    "id": "response/08",
+    "name": "should translate res.getHeaders() to pm.response.headers (function to property)",
+    "input": "console.log(\"Headers:\", res.getHeaders());",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "console.log(\"Headers:\", pm.response.headers);"
+      }
+    ]
+  },
+  {
+    "id": "response/09",
+    "name": "should translate res.getUrl() to pm.response.url (function to property)",
+    "input": "const url = res.getUrl();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const url = pm.response.url;"
+      }
+    ]
+  },
+  {
+    "id": "response/10",
+    "name": "should translate res.url to pm.response.url (property to property)",
+    "input": "const url = res.url;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const url = pm.response.url;"
+      }
+    ]
+  },
+  {
+    "id": "response/11",
+    "name": "should translate res.getHeader()",
+    "input": "const contentType = res.getHeader(\"Content-Type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const contentType = pm.response.headers.get(\"Content-Type\");"
+      }
+    ]
+  },
+  {
+    "id": "response/12",
+    "name": "should transform expect(res.getStatus()).to.equal() to pm.expect(pm.response.code).to.equal()",
+    "input": "expect(res.getStatus()).to.equal(201);",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.expect(pm.response.code).to.equal(201);"
+      }
+    ]
+  },
+  {
+    "id": "response/13",
+    "name": "should transform expect(res.getHeaders()).to.have.property() to pm.expect(pm.response.headers).to.have.property()",
+    "input": "expect(res.getHeaders()).to.have.property(\"Content-Type\".toLowerCase());",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.expect(pm.response.headers).to.have.property(\"Content-Type\".toLowerCase());"
+      }
+    ]
+  },
+  {
+    "id": "response/14",
+    "name": "should transform expect(res.getBody()).to.equal() to pm.expect(pm.response.json()).to.equal()",
+    "input": "expect(res.getBody()).to.equal(\"Expected response body\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.expect(pm.response.json()).to.equal(\"Expected response body\");"
+      }
+    ]
+  },
+  {
+    "id": "response/15",
+    "name": "should translate res.getSize()",
+    "input": "const size = res.getSize();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const size = pm.response.size();"
+      }
+    ]
+  },
+  {
+    "id": "response/16",
+    "name": "should translate res.getSize().body",
+    "input": "const bodySize = res.getSize().body;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const bodySize = pm.response.size().body;"
+      }
+    ]
+  },
+  {
+    "id": "response/17",
+    "name": "should translate res.getSize().header",
+    "input": "const headerSize = res.getSize().header;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const headerSize = pm.response.size().header;"
+      }
+    ]
+  },
+  {
+    "id": "response/18",
+    "name": "should translate res.getSize().total",
+    "input": "const totalSize = res.getSize().total;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const totalSize = pm.response.size().total;"
+      }
+    ]
+  },
+  {
+    "id": "response/19",
+    "name": "should handle response data with destructuring",
+    "input": "\nconst { id, name, items } = res.getBody();\nconst [first, second] = items;\nbru.setEnvVar(\"userId\", id);\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const { id, name, items } = pm.response.json();\nconst [first, second] = items;\npm.environment.set(\"userId\", id);"
+      }
+    ]
+  },
+  {
+    "id": "response/20",
+    "name": "should handle response JSON with optional chaining",
+    "input": "\nconst userId = res.getBody()?.user?.id ?? \"anonymous\";\nconst items = res.getBody()?.data?.items || [];\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const userId = pm.response.json()?.user?.id ?? \"anonymous\";\nconst items = pm.response.json()?.data?.items || [];"
+      }
+    ]
+  },
+  {
+    "id": "response/21",
+    "name": "should handle response in complex conditionals",
+    "input": "\nif (res.getStatus() >= 200 && res.getStatus() < 300) {\n    if (res.getHeader('Content-Type').includes('application/json')) {\n        const data = res.getBody();\n\n        if (data.success === true && data.token) {\n            bru.setEnvVar(\"authToken\", data.token);\n        } else if (data.error) {\n            console.error(\"API error:\", data.error);\n        }\n    }\n} else if (res.getStatus() === 404) {\n    console.log(\"Resource not found\");\n} else {\n    console.error(\"Request failed with status:\", res.getStatus());\n}\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "if (pm.response.code >= 200 && pm.response.code < 300) {\n    if (pm.response.headers.get('Content-Type').includes('application/json')) {\n        const data = pm.response.json();\n\n        if (data.success === true && data.token) {\n            pm.environment.set(\"authToken\", data.token);\n        } else if (data.error) {\n            console.error(\"API error:\", data.error);\n        }\n    }\n} else if (pm.response.code === 404) {\n    console.log(\"Resource not found\");\n} else {\n    console.error(\"Request failed with status:\", pm.response.code);\n}"
+      }
+    ]
+  },
+  {
+    "id": "response/22",
+    "name": "should handle all response property methods together",
+    "input": "\n// All response property methods\nconst statusCode = res.getStatus();\nconst responseBody = res.getBody();\nconst statusText = res.statusText;\nconst responseTime = res.getResponseTime();\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "// All response property methods\nconst statusCode = pm.response.code;\nconst responseBody = pm.response.json();\nconst statusText = pm.response.status;\nconst responseTime = pm.response.responseTime;"
+      }
+    ]
+  },
+  {
+    "id": "response/23",
+    "name": "should handle response processing in arrow functions",
+    "input": "\nconst processItems = () => {\n    const items = res.getBody().items;\n    return items.map(item => item.id);\n};\n\nconst itemIds = processItems();\nbru.setEnvVar(\"itemIds\", JSON.stringify(itemIds));\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const processItems = () => {\n    const items = pm.response.json().items;\n    return items.map(item => item.id);\n};\n\nconst itemIds = processItems();\npm.environment.set(\"itemIds\", JSON.stringify(itemIds));"
+      }
+    ]
+  },
+  {
+    "id": "response/24",
+    "name": "should translate res.responseTime property to pm.response.responseTime",
+    "input": "const time = res.responseTime;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const time = pm.response.responseTime;"
+      }
+    ]
+  },
+  {
+    "id": "response/25",
+    "name": "should translate res.headers property to pm.response.headers",
+    "input": "const headers = res.headers;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const headers = pm.response.headers;"
+      }
+    ]
+  },
+  {
+    "id": "response/26",
+    "name": "should handle res.responseTime in conditionals",
+    "input": "if (res.responseTime > 1000) { console.log(\"Slow response\"); }",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "if (pm.response.responseTime > 1000) { console.log(\"Slow response\"); }"
+      }
+    ]
+  },
+  {
+    "id": "response/27",
+    "name": "should handle res.headers property access",
+    "input": "const contentType = res.headers[\"Content-Type\"];",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const contentType = pm.response.headers[\"Content-Type\"];"
+      }
+    ]
+  },
+  {
+    "id": "response/28",
+    "name": "should handle both res.responseTime property and res.getResponseTime() method",
+    "input": "\nconst time1 = res.responseTime;\nconst time2 = res.getResponseTime();\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const time1 = pm.response.responseTime;\nconst time2 = pm.response.responseTime;"
+      }
+    ]
+  },
+  {
+    "id": "response/29",
+    "name": "should handle both res.headers property and res.getHeaders() method",
+    "input": "\nconst headers1 = res.headers;\nconst headers2 = res.getHeaders();\n",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const headers1 = pm.response.headers;\nconst headers2 = pm.response.headers;"
+      }
+    ]
+  },
+  {
+    "id": "response/30",
+    "name": "should translate res.headerList.get to pm.response.headers.get",
+    "input": "const ct = res.headerList.get(\"content-type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const ct = pm.response.headers.get(\"content-type\");"
+      }
+    ]
+  },
+  {
+    "id": "response/31",
+    "name": "should translate res.headerList.has to pm.response.headers.has",
+    "input": "const hasCt = res.headerList.has(\"content-type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const hasCt = pm.response.headers.has(\"content-type\");"
+      }
+    ]
+  },
+  {
+    "id": "response/32",
+    "name": "should translate res.headerList.all to pm.response.headers.all",
+    "input": "const allHeaders = res.headerList.all();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const allHeaders = pm.response.headers.all();"
+      }
+    ]
+  },
+  {
+    "id": "response/33",
+    "name": "should translate res.headerList.filter to pm.response.headers.filter",
+    "input": "const custom = res.headerList.filter(h => h.key.startsWith(\"x-\"));",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const custom = pm.response.headers.filter(h => h.key.startsWith(\"x-\"));"
+      }
+    ]
+  },
+  {
+    "id": "response/34",
+    "name": "should translate res.headerList.one to pm.response.headers.one",
+    "input": "const first = res.headerList.one(\"content-type\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const first = pm.response.headers.one(\"content-type\");"
+      }
+    ]
+  },
+  {
+    "id": "response/35",
+    "name": "should translate res.headerList.find to pm.response.headers.find",
+    "input": "const found = res.headerList.find(h => h.key === \"x-request-id\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const found = pm.response.headers.find(h => h.key === \"x-request-id\");"
+      }
+    ]
+  },
+  {
+    "id": "response/36",
+    "name": "should translate res.headerList.toObject to pm.response.headers.toObject",
+    "input": "const obj = res.headerList.toObject();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const obj = pm.response.headers.toObject();"
+      }
+    ]
+  },
+  {
+    "id": "response/37",
+    "name": "should translate standalone res.headerList to pm.response.headers",
+    "input": "const hl = res.headerList;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const hl = pm.response.headers;"
+      }
+    ]
+  },
+  {
+    "id": "send-request/01",
+    "name": "should transform raw JSON body to Postman format",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/json',\n            },\n            data: JSON.stringify({\n                \"x\": 1\n            })\n        }, function (error, response) {\n            if (error) {\n                const errorCode = error.code;\n                console.log(errorCode);\n            }\n            if (response) {\n                const response_body = response.data;\n                const response_headers = response.headers;\n                console.log(response_body, response_headers);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/json',\n            },\n            body: {\n                mode: \"raw\",\n\n                raw: JSON.stringify({\n                    \"x\": 1\n                })\n            }\n        }, function(error, response) {\n            if (error) {\n                const errorCode = error.code;\n                console.log(errorCode);\n            }\n            if (response) {\n                const response_body = response.json();\n                const response_headers = response.headers;\n                console.log(response_body, response_headers);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/02",
+    "name": "should transform raw text body",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'text/plain',\n            },\n            data: 'Hello World'\n        }, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'text/plain',\n            },\n            body: {\n                mode: \"raw\",\n                raw: 'Hello World'\n            }\n        }, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/03",
+    "name": "should transform raw JSON object body",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/json',\n            },\n            data: {\n                \"x\": 1\n            }\n        }, function (error, response) {\n            if (error) {\n                const errorCode = error.code;\n                console.log(errorCode);\n            }\n            if (response) {\n                const response_body = response.data;\n                const response_headers = response.headers;\n                console.log(response_body, response_headers);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/json',\n            },\n            body: {\n                mode: \"raw\",\n\n                raw: {\n                    \"x\": 1\n                }\n            }\n        }, function(error, response) {\n            if (error) {\n                const errorCode = error.code;\n                console.log(errorCode);\n            }\n            if (response) {\n                const response_body = response.json();\n                const response_headers = response.headers;\n                console.log(response_body, response_headers);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/04",
+    "name": "should transform raw body with spread operator (preserved as-is)",
+    "input": "\n        const additionalData = { \"y\": 2, \"z\": 3 };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/json',\n            },\n            data: {\n                \"x\": 1,\n                ...additionalData\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const additionalData = { \"y\": 2, \"z\": 3 };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/json',\n            },\n            body: {\n                mode: \"raw\",\n\n                raw: {\n                    \"x\": 1,\n                    ...additionalData\n                }\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/05",
+    "name": "should transform urlencoded body with single key-value pair",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            data: {\n                \"key\": \"value\"\n            }\n        }, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            body: {\n                mode: \"urlencoded\",\n\n                urlencoded: [{\n                    key: \"key\",\n                    value: \"value\"\n                }]\n            }\n        }, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/06",
+    "name": "should transform urlencoded body with multiple key-value pairs",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\",\n                \"email\": \"john.doe@example.com\"\n            }\n        }, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            body: {\n                mode: \"urlencoded\",\n\n                urlencoded: [{\n                    key: \"firstName\",\n                    value: \"John\"\n                }, {\n                    key: \"lastName\",\n                    value: \"Doe\"\n                }, {\n                    key: \"email\",\n                    value: \"john.doe@example.com\"\n                }]\n            }\n        }, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/07",
+    "name": "should transform urlencoded body when no Content-Type header exists",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            data: {\n                \"key1\": \"value1\",\n                \"key2\": \"value2\"\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            body: {\n                mode: \"raw\",\n\n                raw: {\n                    \"key1\": \"value1\",\n                    \"key2\": \"value2\"\n                }\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/08",
+    "name": "should transform urlencoded body with incorrect Content-Type header",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'text/plain',\n            },\n            data: {\n                \"key1\": \"value1\",\n                \"key2\": \"value2\"\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'text/plain',\n            },\n            body: {\n                mode: \"raw\",\n\n                raw: {\n                    \"key1\": \"value1\",\n                    \"key2\": \"value2\"\n                }\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/09",
+    "name": "should transform urlencoded body with spread operator",
+    "input": "\n        const rest = { \"key3\": \"value3\", \"key4\": \"value4\" };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            data: {\n                \"key1\": \"value1\",\n                \"key2\": \"value2\",\n                ...rest\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const rest = { \"key3\": \"value3\", \"key4\": \"value4\" };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            body: {\n                mode: \"urlencoded\",\n\n                urlencoded: [{\n                    key: \"key1\",\n                    value: \"value1\"\n                }, {\n                    key: \"key2\",\n                    value: \"value2\"\n                }, ...Object.entries(rest).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                }))]\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/10",
+    "name": "should transform urlencoded body with only spread operator",
+    "input": "\n        const rest = { \"key1\": \"value1\", \"key2\": \"value2\" };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            data: {\n                ...rest\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const rest = { \"key1\": \"value1\", \"key2\": \"value2\" };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            body: {\n                mode: \"urlencoded\",\n\n                urlencoded: [...Object.entries(rest).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                }))]\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/11",
+    "name": "should transform urlencoded body with multiple spread operators",
+    "input": "\n        const rest1 = { \"key1\": \"value1\" };\n        const rest2 = { \"key2\": \"value2\" };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            data: {\n                ...rest1,\n                \"key3\": \"value3\",\n                ...rest2\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const rest1 = { \"key1\": \"value1\" };\n        const rest2 = { \"key2\": \"value2\" };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            body: {\n                mode: \"urlencoded\",\n\n                urlencoded: [...Object.entries(rest1).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                })), {\n                    key: \"key3\",\n                    value: \"value3\"\n                }, ...Object.entries(rest2).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                }))]\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/12",
+    "name": "should transform formdata body with single key-value pair",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'multipart/form-data',\n            },\n            data: {\n                \"key\": \"value\"\n            }\n        }, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'multipart/form-data',\n            },\n            body: {\n                mode: \"formdata\",\n\n                formdata: [{\n                    key: \"key\",\n                    value: \"value\"\n                }]\n            }\n        }, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/13",
+    "name": "should transform formdata body with multiple key-value pairs",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'multipart/form-data',\n            },\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\",\n                \"email\": \"john.doe@example.com\"\n            }\n        }, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'multipart/form-data',\n            },\n            body: {\n                mode: \"formdata\",\n\n                formdata: [{\n                    key: \"firstName\",\n                    value: \"John\"\n                }, {\n                    key: \"lastName\",\n                    value: \"Doe\"\n                }, {\n                    key: \"email\",\n                    value: \"john.doe@example.com\"\n                }]\n            }\n        }, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/14",
+    "name": "should transform formdata body when no Content-Type header exists",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\"\n            }\n        }, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            body: {\n                mode: \"raw\",\n\n                raw: {\n                    \"firstName\": \"John\",\n                    \"lastName\": \"Doe\"\n                }\n            }\n        }, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/15",
+    "name": "should transform formdata body with incorrect Content-Type header",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'text/plain',\n            },\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\"\n            }\n        }, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'text/plain',\n            },\n            body: {\n                mode: \"raw\",\n\n                raw: {\n                    \"firstName\": \"John\",\n                    \"lastName\": \"Doe\"\n                }\n            }\n        }, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/16",
+    "name": "should transform formdata body with spread operator",
+    "input": "\n        const additionalFields = { \"email\": \"john@example.com\", \"phone\": \"123-456-7890\" };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'multipart/form-data',\n            },\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\",\n                ...additionalFields\n            }\n        }, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const additionalFields = { \"email\": \"john@example.com\", \"phone\": \"123-456-7890\" };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'multipart/form-data',\n            },\n            body: {\n                mode: \"formdata\",\n\n                formdata: [{\n                    key: \"firstName\",\n                    value: \"John\"\n                }, {\n                    key: \"lastName\",\n                    value: \"Doe\"\n                }, ...Object.entries(additionalFields).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                }))]\n            }\n        }, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/17",
+    "name": "should transform formdata body with only spread operator",
+    "input": "\n        const formData = { \"name\": \"John\", \"age\": \"30\" };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'multipart/form-data',\n            },\n            data: {\n                ...formData\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const formData = { \"name\": \"John\", \"age\": \"30\" };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'multipart/form-data',\n            },\n            body: {\n                mode: \"formdata\",\n\n                formdata: [...Object.entries(formData).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                }))]\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/18",
+    "name": "should transform formdata body with spread operator using computed property",
+    "input": "\n        const dynamicKey = \"dynamicField\";\n        const rest = { [dynamicKey]: \"dynamicValue\", \"staticField\": \"staticValue\" };\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'multipart/form-data',\n            },\n            data: {\n                \"key1\": \"value1\",\n                ...rest\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const dynamicKey = \"dynamicField\";\n        const rest = { [dynamicKey]: \"dynamicValue\", \"staticField\": \"staticValue\" };\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'multipart/form-data',\n            },\n            body: {\n                mode: \"formdata\",\n\n                formdata: [{\n                    key: \"key1\",\n                    value: \"value1\"\n                }, ...Object.entries(rest).map(([key, value]) => ({\n                    key: key,\n                    value: value\n                }))]\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/19",
+    "name": "should rename headers property to header",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            headers: {\n                'X-Custom-Header': 'custom-value',\n                'Authorization': 'Bearer token'\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            header: {\n                'X-Custom-Header': 'custom-value',\n                'Authorization': 'Bearer token'\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/20",
+    "name": "should transform response property access",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function (error, response) {\n            const status = response.status;\n            const statusText = response.statusText;\n            const headers = response.headers;\n            const body = response.data;\n\n            if (status === 200) {\n                console.log('Success!');\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function(error, response) {\n            const status = response.code;\n            const statusText = response.status;\n            const headers = response.headers;\n            const body = response.json();\n\n            if (status === 200) {\n                console.log('Success!');\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/21",
+    "name": "should transform callback function",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/22",
+    "name": "should handle arrow function callbacks",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, (error, response) => {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/23",
+    "name": "should handle async arrow function callbacks",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, async (error, response) => {\n            await new Promise(resolve => {\n                setTimeout(() => {\n                    resolve();\n                }, 1000)\n            });\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, async function(error, response) {\n            await new Promise(resolve => {\n                setTimeout(() => {\n                    resolve();\n                }, 1000)\n            });\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/24",
+    "name": "should transform requestConfig passed as a variable",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/json',\n            },\n            data: JSON.stringify({\n                \"x\": 1\n            })\n        };\n        bru.sendRequest(requestConfig, function (error, response) {\n            if (response) {\n                const response_body = response.data;\n                console.log(response_body);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Accept': 'application/json',\n                'Content-Type': 'application/json',\n            },\n            body: {\n                mode: \"raw\",\n\n                raw: JSON.stringify({\n                    \"x\": 1\n                })\n            }\n        };\n        pm.sendRequest(requestConfig, function(error, response) {\n            if (response) {\n                const response_body = response.json();\n                console.log(response_body);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/25",
+    "name": "should transform requestConfig with multi-level variable references",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/json',\n            },\n            data: { \"x\": 1 }\n        };\n        const requestConfig1 = requestConfig;\n        const requestConfig2 = requestConfig1;\n        bru.sendRequest(requestConfig2, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/json',\n            },\n            body: {\n                mode: \"raw\",\n                raw: { \"x\": 1 }\n            }\n        };\n        const requestConfig1 = requestConfig;\n        const requestConfig2 = requestConfig1;\n        pm.sendRequest(requestConfig2, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/26",
+    "name": "should transform urlencoded body mode with variable config",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\"\n            }\n        };\n        bru.sendRequest(requestConfig, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'application/x-www-form-urlencoded',\n            },\n            body: {\n                mode: \"urlencoded\",\n\n                urlencoded: [{\n                    key: \"firstName\",\n                    value: \"John\"\n                }, {\n                    key: \"lastName\",\n                    value: \"Doe\"\n                }]\n            }\n        };\n        pm.sendRequest(requestConfig, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/27",
+    "name": "should transform formdata body mode with variable config",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'multipart/form-data',\n            },\n            data: {\n                \"firstName\": \"John\",\n                \"lastName\": \"Doe\"\n            }\n        };\n        bru.sendRequest(requestConfig, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'multipart/form-data',\n            },\n            body: {\n                mode: \"formdata\",\n\n                formdata: [{\n                    key: \"firstName\",\n                    value: \"John\"\n                }, {\n                    key: \"lastName\",\n                    value: \"Doe\"\n                }]\n            }\n        };\n        pm.sendRequest(requestConfig, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/28",
+    "name": "should transform variable config without callback",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            headers: {\n                'Accept': 'application/json'\n            }\n        };\n        bru.sendRequest(requestConfig);\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            header: {\n                'Accept': 'application/json'\n            }\n        };\n        pm.sendRequest(requestConfig);\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/29",
+    "name": "should transform variable config with raw text body",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            headers: {\n                'Content-Type': 'text/plain',\n            },\n            data: 'Hello World'\n        };\n        bru.sendRequest(requestConfig, function (error, response) {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'POST',\n            header: {\n                'Content-Type': 'text/plain',\n            },\n            body: {\n                mode: \"raw\",\n                raw: 'Hello World'\n            }\n        };\n        pm.sendRequest(requestConfig, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/30",
+    "name": "should transform variable config with arrow function callback",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            headers: {\n                'Accept': 'application/json'\n            }\n        };\n        bru.sendRequest(requestConfig, (error, response) => {\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            header: {\n                'Accept': 'application/json'\n            }\n        };\n        pm.sendRequest(requestConfig, function(error, response) {\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/31",
+    "name": "should transform variable config with async arrow function callback",
+    "input": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            headers: {\n                'Accept': 'application/json'\n            }\n        };\n        bru.sendRequest(requestConfig, async (error, response) => {\n            await new Promise(resolve => setTimeout(resolve, 100));\n            console.log(response.data);\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        const requestConfig = {\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            header: {\n                'Accept': 'application/json'\n            }\n        };\n        pm.sendRequest(requestConfig, async function(error, response) {\n            await new Promise(resolve => setTimeout(resolve, 100));\n            console.log(response.json());\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/32",
+    "name": "should transform sendRequest without callback",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            headers: {\n                'Accept': 'application/json'\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET',\n            header: {\n                'Accept': 'application/json'\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/33",
+    "name": "should handle string URL argument",
+    "input": "\n        bru.sendRequest('https://echo.usebruno.com');\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest('https://echo.usebruno.com');\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/34",
+    "name": "should handle sendRequest inside try-catch",
+    "input": "\n        try {\n            bru.sendRequest({\n                url: 'https://echo.usebruno.com',\n                method: 'GET'\n            }, function (error, response) {\n                if (error) {\n                    console.error(error);\n                }\n                console.log(response.data);\n            });\n        } catch (err) {\n            console.error(err);\n        }\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        try {\n            pm.sendRequest({\n                url: 'https://echo.usebruno.com',\n                method: 'GET'\n            }, function(error, response) {\n                if (error) {\n                    console.error(error);\n                }\n                console.log(response.json());\n            });\n        } catch (err) {\n            console.error(err);\n        }\n      "
+      }
+    ]
+  },
+  {
+    "id": "send-request/35",
+    "name": "should handle sendRequest with conditional logic in callback",
+    "input": "\n        bru.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function (error, response) {\n            if (response.status === 200) {\n                const data = response.data;\n                console.log('Success:', data);\n            } else {\n                console.log('Error:', response.statusText);\n            }\n        });\n      ",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\n        pm.sendRequest({\n            url: 'https://echo.usebruno.com',\n            method: 'GET'\n        }, function(error, response) {\n            if (response.code === 200) {\n                const data = response.json();\n                console.log('Success:', data);\n            } else {\n                console.log('Error:', response.status);\n            }\n        });\n      "
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/01",
+    "name": "should translate test() to pm.test()",
+    "input": "test(\"Status code is 200\", function() { expect(res.getStatus()).to.equal(200); });",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.test(\"Status code is 200\", function() { pm.expect(pm.response.code).to.equal(200); });"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/02",
+    "name": "should translate expect() to pm.expect()",
+    "input": "expect(jsonData.success).to.be.true;",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.expect(jsonData.success).to.be.true;"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/03",
+    "name": "should translate expect.fail() to pm.expect.fail()",
+    "input": "if (!isValid) expect.fail(\"Data is invalid\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "if (!isValid) pm.expect.fail(\"Data is invalid\");"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/04",
+    "name": "should translate test with status check",
+    "input": "\ntest(\"Check environment and call successful\", function () {\n    expect(bru.getEnvName()).to.equal(\"ENVIRONMENT_NAME\");\n    expect(res.getStatus()).to.equal(200);\n});",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "\npm.test(\"Check environment and call successful\", function () {\n    pm.expect(pm.environment.name).to.equal(\"ENVIRONMENT_NAME\");\n    pm.expect(pm.response.code).to.equal(200);\n});"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/05",
+    "name": "should translate test with arrow functions",
+    "input": "\ntest(\"Status code is 200\", () => {\n    expect(res.getStatus()).to.equal(200);\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Status code is 200\", () => {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(pm.response.code).to.equal(200);"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/06",
+    "name": "should handle multiple test assertions in one function",
+    "input": "\ntest(\"The response has all properties\", () => {\n    const responseJson = res.getBody();\n    expect(responseJson.type).to.eql('vip');\n    expect(responseJson.name).to.be.a('string');\n    expect(responseJson.id).to.have.lengthOf(1);\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"The response has all properties\", () => {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const responseJson = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.type).to.eql('vip');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.name).to.be.a('string');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.id).to.have.lengthOf(1);"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/07",
+    "name": "should translate test commands inside tests with nested functions",
+    "input": "\ntest(\"Auth flow works\", function() {\n    const response = res.getBody();\n    expect(response.authenticated).to.be.true;\n    bru.setEnvVar(\"userId\", response.user.id);\n    bru.setVar(\"sessionId\", response.session.id);\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Auth flow works\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const response = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(response.authenticated).to.be.true;"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.environment.set(\"userId\", response.user.id);"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.variables.set(\"sessionId\", response.session.id);"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/08",
+    "name": "should handle nested test functions",
+    "input": "\ntest(\"Main test group\", function() {\n    const responseJson = res.getBody();\n\n    test(\"User data validation\", function() {\n        expect(responseJson.user).to.be.an('object');\n        expect(responseJson.user.id).to.be.a('string');\n    });\n\n    test(\"Settings validation\", function() {\n        expect(responseJson.settings).to.be.an('object');\n        expect(responseJson.settings.notifications).to.be.a('boolean');\n    });\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Main test group\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const responseJson = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"User data validation\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.user).to.be.an('object');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Settings validation\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.settings.notifications).to.be.a('boolean');"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/09",
+    "name": "should handle test with dynamic test names",
+    "input": "\nconst endpoint = bru.getVar(\"currentEndpoint\");\n\ntest(`${endpoint} returns correct data`, function() {\n    const responseJson = res.getBody();\n    expect(responseJson).to.be.an('object');\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const endpoint = pm.variables.get(\"currentEndpoint\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.test(`${endpoint} returns correct data`, function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const responseJson = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson).to.be.an('object');"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/10",
+    "name": "should handle test with conditional execution",
+    "input": "\nconst responseJson = res.getBody();\n\nif (responseJson.type === 'user') {\n    test(\"User validation\", function() {\n        expect(responseJson.name).to.be.a('string');\n        expect(responseJson.email).to.be.a('string');\n    });\n} else if (responseJson.type === 'admin') {\n    test(\"Admin validation\", function() {\n        expect(responseJson.accessLevel).to.be.above(5);\n        expect(responseJson.permissions).to.be.an('array');\n    });\n}\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const responseJson = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "if (responseJson.type === 'user') {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"User validation\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.name).to.be.a('string');"
+      },
+      {
+        "kind": "toContain",
+        "text": "} else if (responseJson.type === 'admin') {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Admin validation\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(responseJson.accessLevel).to.be.above(5);"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/11",
+    "name": "should handle assertions with logical operators",
+    "input": "\ntest(\"Response has valid structure\", function() {\n    const data = res.getBody();\n\n    expect(data.id && data.name).to.be.ok;\n    expect(data.active || data.pending).to.be.true;\n    expect(!data.deleted).to.be.true;\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Response has valid structure\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const data = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.id && data.name).to.be.ok;"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.active || data.pending).to.be.true;"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(!data.deleted).to.be.true;"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/12",
+    "name": "should handle array and object assertions",
+    "input": "\ntest(\"Array and object validations\", function() {\n    const data = res.getBody();\n\n    // Array validations\n    expect(data.items).to.be.an('array');\n    expect(data.items).to.have.lengthOf.at.least(1);\n    expect(data.items[0]).to.have.property('id');\n\n    // Object validations\n    expect(data.user).to.be.an('object');\n    expect(data.user).to.have.all.keys('id', 'name', 'email');\n    expect(data.user).to.include({active: true});\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Array and object validations\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const data = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.items).to.be.an('array');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.items).to.have.lengthOf.at.least(1);"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.items[0]).to.have.property('id');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.user).to.be.an('object');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.user).to.have.all.keys('id', 'name', 'email');"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.user).to.include({active: true});"
+      }
+    ]
+  },
+  {
+    "id": "testing-framework/13",
+    "name": "should handle expect.fail with conditions",
+    "input": "\ntest(\"Validate critical fields\", function() {\n    const data = res.getBody();\n\n    if (!data.id) {\n        expect.fail(\"Missing ID field\");\n    }\n\n    if (data.status !== 'active' && data.status !== 'pending') {\n        expect.fail(\"Invalid status: \" + data.status);\n    }\n\n    // Continue with normal assertions\n    expect(data.name).to.be.a('string');\n});\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "pm.test(\"Validate critical fields\", function() {"
+      },
+      {
+        "kind": "toContain",
+        "text": "const data = pm.response.json();"
+      },
+      {
+        "kind": "toContain",
+        "text": "if (!data.id) {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect.fail(\"Missing ID field\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "if (data.status !== 'active' && data.status !== 'pending') {"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect.fail(\"Invalid status: \" + data.status);"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.expect(data.name).to.be.a('string');"
+      }
+    ]
+  },
+  {
+    "id": "variables/01",
+    "name": "should translate bru.getVar",
+    "input": "bru.getVar(\"test\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.get(\"test\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/02",
+    "name": "should translate bru.setVar",
+    "input": "bru.setVar(\"test\", \"value\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.set(\"test\", \"value\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/03",
+    "name": "should translate bru.hasVar",
+    "input": "bru.hasVar(\"userId\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.has(\"userId\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/04",
+    "name": "should translate bru.deleteVar",
+    "input": "bru.deleteVar(\"tempVar\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.unset(\"tempVar\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/05",
+    "name": "should translate bru.interpolate",
+    "input": "bru.interpolate(\"Hello {{name}}\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.replaceIn(\"Hello {{name}}\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/06",
+    "name": "should translate bru.interpolate with complex template",
+    "input": "const greeting = bru.interpolate(\"Hello {{name}}, your user id is {{userId}}\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const greeting = pm.variables.replaceIn(\"Hello {{name}}, your user id is {{userId}}\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/07",
+    "name": "should translate bru.getGlobalEnvVar",
+    "input": "bru.getGlobalEnvVar(\"test\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.globals.get(\"test\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/08",
+    "name": "should translate bru.setGlobalEnvVar",
+    "input": "bru.setGlobalEnvVar(\"test\", \"value\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.globals.set(\"test\", \"value\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/09",
+    "name": "should translate bru.hasGlobalEnvVar",
+    "input": "bru.hasGlobalEnvVar(\"token\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.globals.has(\"token\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/10",
+    "name": "should translate bru.deleteGlobalEnvVar",
+    "input": "bru.deleteGlobalEnvVar(\"token\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.globals.unset(\"token\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/11",
+    "name": "should translate bru.deleteAllGlobalEnvVars",
+    "input": "bru.deleteAllGlobalEnvVars();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.globals.clear();"
+      }
+    ]
+  },
+  {
+    "id": "variables/12",
+    "name": "should translate bru.getAllGlobalEnvVars",
+    "input": "const globals = bru.getAllGlobalEnvVars();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const globals = pm.globals.toObject();"
+      }
+    ]
+  },
+  {
+    "id": "variables/13",
+    "name": "should translate bru.getCollectionVar",
+    "input": "bru.getCollectionVar(\"baseUrl\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.collectionVariables.get(\"baseUrl\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/14",
+    "name": "should translate bru.setCollectionVar",
+    "input": "bru.setCollectionVar(\"baseUrl\", \"https://api.example.com\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.collectionVariables.set(\"baseUrl\", \"https://api.example.com\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/15",
+    "name": "should translate bru.hasCollectionVar",
+    "input": "bru.hasCollectionVar(\"baseUrl\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.collectionVariables.has(\"baseUrl\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/16",
+    "name": "should translate bru.deleteCollectionVar",
+    "input": "bru.deleteCollectionVar(\"baseUrl\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.collectionVariables.unset(\"baseUrl\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/17",
+    "name": "should translate bru.getAllCollectionVars",
+    "input": "const vars = bru.getAllCollectionVars();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const vars = pm.collectionVariables.toObject();"
+      }
+    ]
+  },
+  {
+    "id": "variables/18",
+    "name": "should translate bru.deleteAllCollectionVars",
+    "input": "bru.deleteAllCollectionVars();",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.collectionVariables.clear();"
+      }
+    ]
+  },
+  {
+    "id": "variables/19",
+    "name": "should translate bru.getFolderVar",
+    "input": "bru.getFolderVar(\"folderToken\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.get(\"folderToken\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/20",
+    "name": "should translate bru.getRequestVar",
+    "input": "bru.getRequestVar(\"requestId\");",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.get(\"requestId\");"
+      }
+    ]
+  },
+  {
+    "id": "variables/21",
+    "name": "should handle conditional expressions with variable calls",
+    "input": "const userStatus = bru.hasVar(\"userId\") ? \"logged-in\" : \"guest\";",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "const userStatus = pm.variables.has(\"userId\") ? \"logged-in\" : \"guest\";"
+      }
+    ]
+  },
+  {
+    "id": "variables/22",
+    "name": "should handle all variable methods together",
+    "input": "\n// All variable methods\nconst hasUserId = bru.hasVar(\"userId\");\nconst userId = bru.getVar(\"userId\");\nbru.setVar(\"requestTime\", new Date().toISOString());\n\nconsole.log(`Has userId: ${hasUserId}, User ID: ${userId}`);\n",
+    "checks": [
+      {
+        "kind": "toContain",
+        "text": "const hasUserId = pm.variables.has(\"userId\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "const userId = pm.variables.get(\"userId\");"
+      },
+      {
+        "kind": "toContain",
+        "text": "pm.variables.set(\"requestTime\", new Date().toISOString());"
+      }
+    ]
+  },
+  {
+    "id": "variables/23",
+    "name": "should handle nested expressions with variables",
+    "input": "bru.setVar(\"fullPath\", bru.getEnvVar(\"baseUrl\") + bru.getVar(\"endpoint\"));",
+    "checks": [
+      {
+        "kind": "toBe",
+        "text": "pm.variables.set(\"fullPath\", pm.environment.get(\"baseUrl\") + pm.variables.get(\"endpoint\"));"
+      }
+    ]
+  }
+]
