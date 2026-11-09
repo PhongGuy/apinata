@@ -15,13 +15,13 @@ use crate::edit::{AuthSpec, BodySpec, KeyValue, Param, ParamKind, Timeout};
 use crate::js::js_trim;
 use crate::request::RequestFile;
 use crate::resolve::HeaderSource;
+use crate::script::ScriptPhase;
 use crate::sequence::sort_by_name_then_seq;
 
 const SCHEMA: &str = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
 const VARIABLES: &str = "variables set here have no place in the exported file";
 const POST_RESPONSE: &str = "post-response variables have no place in the exported file";
 const ASSERTIONS: &str = "assertions have no place in the exported file";
-const SCRIPTS: &str = "scripts are exported as written; their API calls are not translated";
 const KEPT: &str = "scripts exported as written; their API calls are not translated";
 
 /// The collection as Postman v2.1 JSON, with a note for each thing the file cannot carry.
@@ -57,6 +57,7 @@ pub fn postman_with(collection: &Collection, options: &PostmanOptions) -> Postma
         &[],
         &mut notes,
         &mut scripted,
+        options,
     );
     let mut root = Map::new();
     root.insert("info".into(), info.into());
@@ -68,10 +69,10 @@ pub fn postman_with(collection: &Collection, options: &PostmanOptions) -> Postma
     if let Some(auth) = auth(&spec) {
         root.insert("auth".into(), auth);
     }
-    insert_events(&mut root, events(|p| file.script(p)), &mut scripted);
-    if scripted {
-        let detail = if options.keep_scripts { KEPT } else { SCRIPTS };
-        notes.push(ExportNote::new("scripts", detail));
+    let root_events = item_events(|p| file.script(p), &["collection"], options, &mut notes);
+    insert_events(&mut root, root_events, &mut scripted);
+    if scripted && options.keep_scripts {
+        notes.push(ExportNote::new("scripts", KEPT));
     }
     let root = Value::Object(root);
     // A `serde_json::Value` has only string keys, so serializing it cannot fail.
@@ -91,6 +92,7 @@ fn folder_items(
     trail: &[&str],
     notes: &mut Vec<ExportNote>,
     scripted: &mut bool,
+    options: &PostmanOptions,
 ) -> Vec<Value> {
     let mut items = Vec::new();
     let folders =
@@ -122,9 +124,9 @@ fn folder_items(
             note_if(notes, &path, "post-response variables", post, POST_RESPONSE);
             folder_auth = file.auth();
             note_unsupported_auth(notes, &path, &folder_auth);
-            folder_events = events(|p| file.script(p));
+            folder_events = item_events(|p| file.script(p), &path, options, notes);
         }
-        let children = folder_items(collection, copies, sub, &path, notes, scripted);
+        let children = folder_items(collection, copies, sub, &path, notes, scripted, options);
         out.insert("item".into(), children.into());
         if let Some(auth) = auth(&folder_auth) {
             out.insert("auth".into(), auth);
@@ -134,7 +136,9 @@ fn folder_items(
     }
     for req in folder.requests() {
         let path = [trail, &[req.name()]].concat();
-        items.push(request_item(collection, req, &path, notes, scripted));
+        items.push(request_item(
+            collection, req, &path, notes, scripted, options,
+        ));
     }
     for opaque in folder.opaque_items() {
         let source = [trail, &[opaque.name()]].concat().join(" / ");
@@ -154,6 +158,7 @@ fn request_item(
     path: &[&str],
     notes: &mut Vec<ExportNote>,
     scripted: &mut bool,
+    options: &PostmanOptions,
 ) -> Value {
     note_if(notes, path, "variables", !req.vars().is_empty(), VARIABLES);
     let post = !req.post_response_vars().is_empty();
@@ -210,7 +215,8 @@ fn request_item(
         request.insert("body".into(), body);
     }
     item.insert("request".into(), request.into());
-    insert_events(&mut item, events(|p| req.script(p)), scripted);
+    let req_events = item_events(|p| req.script(p), path, options, notes);
+    insert_events(&mut item, req_events, scripted);
     let examples = req.examples();
     if !examples.is_empty() {
         item.insert("response".into(), responses(&examples).into());
@@ -263,6 +269,23 @@ fn settings_behavior(
         tags.join(", ")
     );
     note_if(notes, path, "tags", !tags.is_empty(), &detail);
+}
+
+/// The events for the item at `path`, each script translated for Postman with its notes
+/// unless the options keep scripts as written.
+fn item_events(
+    script: impl Fn(ScriptPhase) -> String,
+    path: &[&str],
+    options: &PostmanOptions,
+    notes: &mut Vec<ExportNote>,
+) -> Vec<Value> {
+    events(script, |phase, code| {
+        if options.keep_scripts {
+            return code.to_owned();
+        }
+        let source = format!("{} / {} script", path.join(" / "), phase.as_str());
+        script::for_postman(code, &source, notes)
+    })
 }
 
 /// Add `event` when there are any, and record that a script was exported.

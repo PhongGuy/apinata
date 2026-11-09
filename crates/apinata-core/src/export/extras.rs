@@ -11,16 +11,20 @@ use crate::example::Example;
 use crate::js::script_code;
 use crate::script::ScriptPhase;
 
-/// The Postman events for one item's scripts, given a reader of its script per phase.
+/// The Postman events for one item's scripts, given a reader of its script per phase and
+/// `export`, which turns each non-blank trimmed script into the code to write.
 /// Tests join the post-response script in one `test` event, as Postman has no tests phase.
-pub(super) fn events(script: impl Fn(ScriptPhase) -> String) -> Vec<Value> {
-    let lines = |phase| -> Vec<String> {
+pub(super) fn events(
+    script: impl Fn(ScriptPhase) -> String,
+    mut export: impl FnMut(ScriptPhase, &str) -> String,
+) -> Vec<Value> {
+    let mut lines = |phase| -> Vec<String> {
         let code = script(phase);
         let code = script_code(&code);
         if code.is_empty() {
             Vec::new()
         } else {
-            code.split('\n').map(str::to_owned).collect()
+            export(phase, code).split('\n').map(str::to_owned).collect()
         }
     };
     let mut out = Vec::new();

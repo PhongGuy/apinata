@@ -173,6 +173,7 @@ mod export_postman;
 mod export_postman_auth;
 mod export_postman_extras;
 mod export_postman_headers;
+mod export_postman_scripts;
 mod export_postman_settings;
 mod export_snapshots;
 mod export_write;

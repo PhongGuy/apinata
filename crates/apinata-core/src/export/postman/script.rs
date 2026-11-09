@@ -1,7 +1,8 @@
 //! Translation of the app's script API to Postman's on export.
-#![cfg_attr(not(test), expect(dead_code, reason = "used by postman_with"))]
 
 use std::collections::HashSet;
+
+use crate::export::ExportNote;
 
 use scan::{
     MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, skip_opaque, skip_ws,
@@ -166,6 +167,28 @@ pub(super) const CALLS: &[(&str, &str)] = &[
         "pm.execution.setNextRequest(null)",
     ),
 ];
+
+const UNBALANCED: &str =
+    "script kept as written; its brackets do not balance, so no calls were rewritten";
+
+/// Translate `code` for Postman, pushing a summary note at `source` and one note per call
+/// left untranslated; returns the code to write.
+pub(super) fn for_postman(code: &str, source: &str, notes: &mut Vec<ExportNote>) -> String {
+    let out = translate(code);
+    let summary = match (out.kept, out.rewritten) {
+        (true, _) => UNBALANCED.to_owned(),
+        (false, 1) => "script translated; 1 call rewritten for Postman".to_owned(),
+        (false, n) => format!("script translated; {n} calls rewritten for Postman"),
+    };
+    notes.push(ExportNote::new(source, summary));
+    for chain in &out.leftovers {
+        let detail = format!(
+            "uses `{chain}`, which was not translated for Postman; the line was kept as written"
+        );
+        notes.push(ExportNote::new(source, detail));
+    }
+    out.code
+}
 
 /// Translate a script's code. Never fails: anything not in the tables is kept as written.
 pub(super) fn translate(code: &str) -> Translated {
