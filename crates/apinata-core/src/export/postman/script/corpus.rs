@@ -9,7 +9,6 @@ use super::tokens::{Tok, contains, same, tokens};
 
 /// Script API words whose translation reshapes arguments; a case using one waits for that port.
 const PENDING_WORDS: &[&str] = &[
-    "sendRequest",
     "setBody",
     "setHeaders",
     "setHeader",
@@ -220,12 +219,13 @@ mod tests {
         assert_eq!(pending("// sendRequest\nconst a = 'setBody';"), None);
         assert_eq!(pending("jar.getCookie(u, 'a');"), Some("getCookie"));
         assert_eq!(pending("bru.cookies.jar();"), None);
+        assert_eq!(pending("bru.sendRequest({});"), None);
         assert_eq!(
             cases()
                 .iter()
                 .filter(|c| pending(&c.input).is_none())
                 .count(),
-            123
+            158
         );
     }
 
@@ -255,9 +255,9 @@ mod tests {
     fn an_identity_translation_matches_no_plan_a_case() {
         let report = run(&|s: &str| s.to_owned());
         eprintln!("{}", report.summary());
-        assert_eq!((report.plan_a, report.pending), (123, 72));
+        assert_eq!((report.plan_a, report.pending), (158, 37));
         assert_eq!(report.matched, 0);
-        assert_eq!(report.differing.len(), 123);
+        assert_eq!(report.differing.len(), 158);
         assert!(report.stale.is_empty());
     }
 }

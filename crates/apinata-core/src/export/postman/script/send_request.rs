@@ -1,5 +1,7 @@
 //! Rewrites `bru.sendRequest` calls into Postman's `pm.sendRequest` shape.
 
+use std::collections::{HashMap, HashSet};
+
 use super::scan::{
     MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, skip_opaque,
     skip_ws, template_end,
@@ -10,6 +12,8 @@ pub(super) fn rewrite(code: &str) -> (String, usize) {
     let mut em = Emitter {
         src: code,
         count: 0,
+        configs: configs(code),
+        responses: Vec::new(),
     };
     let mut out = String::with_capacity(code.len());
     em.emit(0, code.len(), 0, &mut out);
@@ -47,6 +51,131 @@ enum Prop {
 struct Emitter<'a> {
     src: &'a str,
     count: usize,
+    /// Offsets of the object literals that configs passed by name resolve to.
+    configs: HashSet<usize>,
+    /// Response parameters of the callbacks being emitted.
+    responses: Vec<&'a str>,
+}
+
+/// What a `const|let|var NAME = ...` declaration starts with.
+enum Init<'a> {
+    Object(usize),
+    Name(&'a str),
+}
+
+// Find every name passed as a lone first argument to `bru.sendRequest(` and follow each
+// through `NAME = OTHER` declarations to the object literals it can denote. One visited set
+// serves all names, since a name reached once has already contributed its objects.
+fn configs(code: &str) -> HashSet<usize> {
+    let mut called = Vec::new();
+    let mut decls: HashMap<&str, Vec<Init>> = HashMap::new();
+    scan_names(code, 0, code.len(), &mut called, &mut decls);
+    let mut objects = HashSet::new();
+    let mut visited = HashSet::new();
+    while let Some(name) = called.pop() {
+        if !visited.insert(name) {
+            continue;
+        }
+        for init in decls.get(name).into_iter().flatten() {
+            match init {
+                Init::Object(at) => {
+                    objects.insert(*at);
+                }
+                Init::Name(other) => called.push(other),
+            }
+        }
+    }
+    objects
+}
+
+/// Collect named-config calls and declarations in `code[from..to]`, template holes included.
+fn scan_names<'a>(
+    code: &'a str,
+    from: usize,
+    to: usize,
+    called: &mut Vec<&'a str>,
+    decls: &mut HashMap<&'a str, Vec<Init<'a>>>,
+) {
+    let b = code.as_bytes();
+    let mut i = from;
+    while i < to {
+        if b[i] == b'`' {
+            let end = template_end(code, i).min(to);
+            let mut k = i + 1;
+            while k < end {
+                match b[k] {
+                    b'\\' => k += 2,
+                    b'$' if b.get(k + 1) == Some(&b'{') => {
+                        let Some(close) = find_close(code, k + 1).filter(|c| *c < end) else {
+                            break;
+                        };
+                        scan_names(code, k + 2, close, called, decls);
+                        k = close;
+                    }
+                    _ => k += 1,
+                }
+            }
+            i = end;
+        } else if let Some(end) = skip_opaque(code, i) {
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i).min(to);
+            if !is_property_access(b, i) {
+                match &code[i..end] {
+                    "bru" if code[end..to].starts_with(".sendRequest") => {
+                        let open = skip_ws(b, end + ".sendRequest".len());
+                        if b.get(open) == Some(&b'(')
+                            && let Some((name, after)) = ident_at(code, skip_ws(b, open + 1))
+                            && matches!(b.get(skip_ws(b, after)), Some(b',' | b')'))
+                        {
+                            called.push(name);
+                        }
+                    }
+                    "const" | "let" | "var" => {
+                        if let Some((name, init)) = declaration(code, end) {
+                            decls.entry(name).or_default().push(init);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// The identifier (not starting with a digit) at `at`, with its end.
+fn ident_at(code: &str, at: usize) -> Option<(&str, usize)> {
+    let b = code.as_bytes();
+    let first = *b.get(at)?;
+    if !is_ident_byte(first) || first.is_ascii_digit() {
+        return None;
+    }
+    let end = ident_end(b, at);
+    Some((&code[at..end], end))
+}
+
+/// `NAME = {` or `NAME = OTHER` ended by `;`, `,`, a line break or the end, after a keyword.
+fn declaration(code: &str, keyword_end: usize) -> Option<(&str, Init<'_>)> {
+    let b = code.as_bytes();
+    let (name, after) = ident_at(code, skip_ws(b, keyword_end))?;
+    let eq = skip_ws(b, after);
+    if b.get(eq) != Some(&b'=') || matches!(b.get(eq + 1), Some(b'=' | b'>')) {
+        return None;
+    }
+    let value = skip_ws(b, eq + 1);
+    if b.get(value) == Some(&b'{') {
+        return Some((name, Init::Object(value)));
+    }
+    let (other, end) = ident_at(code, value)?;
+    let mut k = end;
+    while matches!(b.get(k), Some(b' ' | b'\t')) {
+        k += 1;
+    }
+    matches!(b.get(k), None | Some(b';' | b',' | b'\n' | b'\r'))
+        .then_some((name, Init::Name(other)))
 }
 
 impl Emitter<'_> {
@@ -75,14 +204,79 @@ impl Emitter<'_> {
                     self.call(i, close, depth, out);
                     i = close + 1;
                     copied = i;
+                } else if !is_property_access(b, i)
+                    && self.responses.contains(&&src[i..end])
+                    && let Some((text, next)) = response_member(src, i, end)
+                {
+                    out.push_str(&src[copied..i]);
+                    out.push_str(&text);
+                    i = next;
+                    copied = i;
                 } else {
                     i = end;
                 }
+            } else if b[i] == b'{'
+                && self.configs.contains(&i)
+                && let Some(close) = find_close(src, i).filter(|c| *c < to)
+            {
+                out.push_str(&src[copied..i]);
+                let before = self.count;
+                let mut text = String::new();
+                if self.options(i, close + 1, depth + 1, &mut text) {
+                    out.push_str(&text);
+                } else {
+                    self.count = before;
+                    out.push_str(&src[i..=close]);
+                }
+                i = close + 1;
+                copied = i;
             } else {
                 i += 1;
             }
         }
         out.push_str(&src[copied..to]);
+    }
+
+    // Rewrite a function or arrow callback as a plain Postman `function(E, R) {...}`, reading
+    // the response the Postman way inside its body. False when `s..e` is no such function.
+    fn callback(&mut self, s: usize, e: usize, depth: usize, out: &mut String) -> bool {
+        let Some(cb) = Callback::parse(self.src, s, e) else {
+            return false;
+        };
+        if depth >= MAX_DEPTH {
+            out.push_str(&self.src[s..e]);
+            return true;
+        }
+        let names: Vec<Option<&str>> = cb
+            .params
+            .iter()
+            .take(2)
+            .map(|&(ps, pe)| {
+                ident_at(self.src, ps)
+                    .filter(|(_, end)| *end == pe)
+                    .map(|(n, _)| n)
+            })
+            .collect();
+        let error = names.first().copied().flatten().unwrap_or("error");
+        let response = names.get(1).copied().flatten().unwrap_or("response");
+        if cb.is_async {
+            out.push_str("async ");
+        }
+        out.push_str(&format!("function({error}, {response}) {{"));
+        self.responses.push(response);
+        match cb.body {
+            Body::Block(open, close) => {
+                self.emit(open + 1, close, depth, out);
+                out.push('}');
+            }
+            Body::Expr(bs, be) => {
+                out.push_str(" return ");
+                self.emit(bs, be, depth, out);
+                out.push_str("; }");
+            }
+        }
+        self.responses.pop();
+        true
     }
 
     /// Copy the template at `start`, emitting its holes one level deeper; returns its end.
@@ -141,7 +335,7 @@ impl Emitter<'_> {
             }
             if n == 0 && self.is_object(s, e) {
                 ok = self.options(s, e, depth + 1, &mut text);
-            } else {
+            } else if n == 0 || !self.callback(s, e, depth + 1, &mut text) {
                 self.emit(s, e, depth + 1, &mut text);
             }
             if !ok {
@@ -354,4 +548,95 @@ fn plain_string(src: &str, s: usize, e: usize) -> Option<&str> {
         && t.as_bytes()[t.len() - 1] == q
         && !t.contains('\\'))
     .then(|| &t[1..t.len() - 1])
+}
+
+/// `R.data`, `R.status` or `R.statusText` at `start`, as Postman reads them, and where it ends.
+fn response_member(src: &str, start: usize, head_end: usize) -> Option<(String, usize)> {
+    let b = src.as_bytes();
+    let dot = skip_ws(b, head_end);
+    if b.get(dot) != Some(&b'.') || b.get(dot + 1) == Some(&b'.') {
+        return None;
+    }
+    let (member, end) = ident_at(src, skip_ws(b, dot + 1))?;
+    let head = &src[start..head_end];
+    let text = match member {
+        "data" => format!("{head}.json()"),
+        "status" => format!("{head}.code"),
+        "statusText" => format!("{head}.status"),
+        _ => return None,
+    };
+    Some((text, end))
+}
+
+enum Body {
+    /// The braces of a block body.
+    Block(usize, usize),
+    Expr(usize, usize),
+}
+
+/// A function or arrow function spanning an argument.
+struct Callback {
+    is_async: bool,
+    params: Vec<(usize, usize)>,
+    body: Body,
+}
+
+impl Callback {
+    fn parse(src: &str, s: usize, e: usize) -> Option<Callback> {
+        let b = src.as_bytes();
+        let mut p = s;
+        let mut is_async = false;
+        if let Some(("async", end)) = ident_at(src, p) {
+            let next = skip_ws(b, end);
+            if !src[next..e].starts_with("=>") && next < e {
+                is_async = true;
+                p = next;
+            }
+        }
+        let params;
+        let body_at;
+        let is_function = matches!(ident_at(src, p), Some(("function", _)));
+        if let Some(("function", end)) = ident_at(src, p) {
+            let mut k = skip_ws(b, end);
+            if let Some((_, name_end)) = ident_at(src, k) {
+                k = skip_ws(b, name_end);
+            }
+            if b.get(k) != Some(&b'(') {
+                return None;
+            }
+            let close = find_close(src, k).filter(|c| *c < e)?;
+            params = parts(src, k + 1, close);
+            body_at = skip_ws(b, close + 1);
+            if b.get(body_at) != Some(&b'{') {
+                return None;
+            }
+        } else {
+            let after = if b.get(p) == Some(&b'(') {
+                let close = find_close(src, p).filter(|c| *c < e)?;
+                params = parts(src, p + 1, close);
+                close + 1
+            } else {
+                let (_, end) = ident_at(src, p)?;
+                params = vec![(p, end)];
+                end
+            };
+            let arrow = skip_ws(b, after);
+            if !src[arrow..e].starts_with("=>") {
+                return None;
+            }
+            body_at = skip_ws(b, arrow + 2);
+        }
+        let body = if b.get(body_at) == Some(&b'{') && find_close(src, body_at) == Some(e - 1) {
+            Body::Block(body_at, e - 1)
+        } else if is_function || body_at >= e {
+            return None;
+        } else {
+            Body::Expr(body_at, e)
+        };
+        Some(Callback {
+            is_async,
+            params,
+            body,
+        })
+    }
 }
