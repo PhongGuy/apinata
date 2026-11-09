@@ -62,11 +62,21 @@ impl CallbackPlan {
 /// Where connections come from; tests wrap the real socket to inject accept errors.
 pub(crate) trait Accept: Send + Sync {
     fn accept(&self) -> impl Future<Output = std::io::Result<(TcpStream, SocketAddr)>> + Send;
+
+    /// Stops listening on the socket itself, not only this handle; a no-op for test wrappers.
+    fn shut_down(&self) {}
 }
 
 impl Accept for TcpListener {
     async fn accept(&self) -> std::io::Result<(TcpStream, SocketAddr)> {
         TcpListener::accept(self).await
+    }
+
+    // A process spawned mid-wait holds a copy of the socket until its exec, and closing our
+    // handle alone would leave the port listening; a shutdown leaves the listen state for every
+    // copy, so the port is free for a retry. Platforms that refuse it have no such copies.
+    fn shut_down(&self) {
+        let _ = socket2::SockRef::from(self).shutdown(std::net::Shutdown::Both);
     }
 }
 
@@ -149,7 +159,9 @@ impl<A: Accept> Listener<A> {
                 }
             }
         };
-        match cancel.run(tokio::time::timeout(timeout, accept)).await {
+        let outcome = cancel.run(tokio::time::timeout(timeout, accept)).await;
+        self.listener.shut_down();
+        match outcome {
             None => Err(OAuth2Error::Cancelled),
             Some(Err(_)) => Err(OAuth2Error::CallbackTimeout),
             Some(Ok(pairs)) => Ok(pairs),
@@ -429,6 +441,23 @@ mod tests {
         });
         let err = l.wait(LONG, &cancel).await.unwrap_err();
         assert!(matches!(err, OAuth2Error::Cancelled), "{err:?}");
+    }
+
+    // A process spawned mid-wait holds a copy of the listening socket until its exec; the
+    // duplicate stands in for that copy, and the port must still be free once `wait` returns.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_cancelled_wait_frees_the_port_while_a_copy_of_the_socket_lives() {
+        use std::os::fd::AsFd;
+        let l = bound("").await;
+        let addr = l.local_addr();
+        let _copy = l.listener.as_fd().try_clone_to_owned().unwrap();
+        let cancel = CancelHandle::new();
+        cancel.cancel();
+        let err = l.wait(LONG, &cancel).await.unwrap_err();
+        assert!(matches!(err, OAuth2Error::Cancelled), "{err:?}");
+        let rebound = std::net::TcpListener::bind(addr);
+        assert!(rebound.is_ok(), "the port is still held: {rebound:?}");
     }
 
     #[tokio::test]
