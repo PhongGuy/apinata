@@ -4,17 +4,20 @@ use std::collections::{HashMap, HashSet};
 
 use super::scan::{
     MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, skip_opaque,
-    skip_ws, template_end,
+    skip_trivia, skip_ws, template_end,
 };
 
 /// Rewrites each free-standing `bru.sendRequest(...)` for Postman; returns the code and the calls rewritten.
 pub(super) fn rewrite(code: &str) -> (String, usize) {
+    let (configs, decls) = configs(code);
     let mut em = Emitter {
         src: code,
         count: 0,
-        configs: configs(code),
+        configs,
+        failing: HashSet::new(),
         responses: Vec::new(),
     };
+    em.failing = em.failing_names(&decls);
     let mut out = String::with_capacity(code.len());
     em.emit(0, code.len(), 0, &mut out);
     (out, em.count)
@@ -53,6 +56,8 @@ struct Emitter<'a> {
     count: usize,
     /// Offsets of the object literals that configs passed by name resolve to.
     configs: HashSet<usize>,
+    /// Config names that denote an object whose `data` cannot become key-value pairs.
+    failing: HashSet<&'a str>,
     /// Response parameters of the callbacks being emitted.
     responses: Vec<&'a str>,
 }
@@ -66,7 +71,7 @@ enum Init<'a> {
 // Find every name passed as a lone first argument to `bru.sendRequest(` and follow each
 // through `NAME = OTHER` declarations to the object literals it can denote. One visited set
 // serves all names, since a name reached once has already contributed its objects.
-fn configs(code: &str) -> HashSet<usize> {
+fn configs(code: &str) -> (HashSet<usize>, Decls<'_>) {
     let mut called = Vec::new();
     let mut decls: HashMap<&str, Vec<Init>> = HashMap::new();
     scan_names(code, 0, code.len(), &mut called, &mut decls);
@@ -85,8 +90,11 @@ fn configs(code: &str) -> HashSet<usize> {
             }
         }
     }
-    objects
+    (objects, decls)
 }
+
+/// Each declared name with what its declarations start with.
+type Decls<'a> = HashMap<&'a str, Vec<Init<'a>>>;
 
 /// Collect named-config calls and declarations in `code[from..to]`, template holes included.
 fn scan_names<'a>(
@@ -178,7 +186,41 @@ fn declaration(code: &str, keyword_end: usize) -> Option<(&str, Init<'_>)> {
         .then_some((name, Init::Name(other)))
 }
 
-impl Emitter<'_> {
+impl<'a> Emitter<'a> {
+    // Try each config object once; a name is failing when it reaches a failing object
+    // through `NAME = OTHER` declarations, found by walking those edges backwards.
+    fn failing_names(&mut self, decls: &Decls<'a>) -> HashSet<&'a str> {
+        let mut failed = HashSet::new();
+        let objects: Vec<usize> = self.configs.iter().copied().collect();
+        for at in objects {
+            let Some(close) = find_close(self.src, at) else {
+                continue;
+            };
+            if !self.options(at, close + 1, 1, &mut String::new()) {
+                failed.insert(at);
+            }
+        }
+        self.count = 0;
+        let mut users: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut queue = Vec::new();
+        for (name, inits) in decls {
+            for init in inits {
+                match init {
+                    Init::Object(at) if failed.contains(at) => queue.push(*name),
+                    Init::Object(_) => {}
+                    Init::Name(other) => users.entry(*other).or_default().push(*name),
+                }
+            }
+        }
+        let mut failing = HashSet::new();
+        while let Some(name) = queue.pop() {
+            if failing.insert(name) {
+                queue.extend(users.get(name).into_iter().flatten());
+            }
+        }
+        failing
+    }
+
     // Copy `src[from..to]` to `out`, literals and comments as they are, descending into
     // template holes and rewriting each `bru.sendRequest(` call reached.
     fn emit(&mut self, from: usize, to: usize, depth: usize, out: &mut String) {
@@ -268,6 +310,7 @@ impl Emitter<'_> {
             Body::Block(open, close) => {
                 self.emit(open + 1, close, depth, out);
                 out.push('}');
+                out.push_str(&self.src[close + 1..e]);
             }
             Body::Expr(bs, be) => {
                 out.push_str(" return ");
@@ -333,8 +376,13 @@ impl Emitter<'_> {
             if n > 0 {
                 text.push_str(", ");
             }
-            if n == 0 && self.is_object(s, e) {
-                ok = self.options(s, e, depth + 1, &mut text);
+            if n == 0 && self.failing.contains(&self.src[s..e]) {
+                ok = false;
+            } else if n == 0
+                && let Some(end) = self.object_end(s, e)
+            {
+                ok = self.options(s, end, depth + 1, &mut text);
+                text.push_str(&self.src[end..e]);
             } else if n == 0 || !self.callback(s, e, depth + 1, &mut text) {
                 self.emit(s, e, depth + 1, &mut text);
             }
@@ -352,8 +400,13 @@ impl Emitter<'_> {
         }
     }
 
-    fn is_object(&self, s: usize, e: usize) -> bool {
-        self.src.as_bytes()[s] == b'{' && find_close(self.src, s) == Some(e - 1)
+    /// The end of an object literal at `s` that only comments and blanks follow up to `e`.
+    fn object_end(&self, s: usize, e: usize) -> Option<usize> {
+        if self.src.as_bytes()[s] != b'{' {
+            return None;
+        }
+        let close = find_close(self.src, s).filter(|c| *c < e)?;
+        (skip_trivia(self.src, close + 1, e) == e).then_some(close + 1)
     }
 
     // Rewrite a request options object in place: `headers` becomes `header` and `data`
@@ -412,9 +465,9 @@ impl Emitter<'_> {
 
     /// The body mode a headers object selects through its first `Content-Type` key.
     fn mode(&self, s: usize, e: usize) -> Mode {
-        if !self.is_object(s, e) {
+        let Some(e) = self.object_end(s, e) else {
             return Mode::Raw;
-        }
+        };
         let value = parts(self.src, s + 1, e - 1)
             .into_iter()
             .find_map(|(ps, pe)| match self.prop(ps, pe) {
@@ -435,9 +488,9 @@ impl Emitter<'_> {
     // Write the Postman body for the `data` value at `s..e`: raw, or for an object under a
     // form content type, its properties as key-value pairs.
     fn body(&mut self, s: usize, e: usize, mode: Mode, depth: usize, out: &mut String) -> bool {
-        let name = match mode {
-            Mode::Urlencoded if self.is_object(s, e) => "urlencoded",
-            Mode::Formdata if self.is_object(s, e) => "formdata",
+        let (name, end) = match (mode, self.object_end(s, e)) {
+            (Mode::Urlencoded, Some(end)) => ("urlencoded", end),
+            (Mode::Formdata, Some(end)) => ("formdata", end),
             _ => {
                 out.push_str("{ mode: \"raw\", raw: ");
                 self.emit(s, e, depth, out);
@@ -446,7 +499,7 @@ impl Emitter<'_> {
             }
         };
         out.push_str(&format!("{{ mode: \"{name}\", {name}: ["));
-        for (n, (ps, pe)) in parts(self.src, s + 1, e - 1).into_iter().enumerate() {
+        for (n, (ps, pe)) in parts(self.src, s + 1, end - 1).into_iter().enumerate() {
             if n > 0 {
                 out.push_str(", ");
             }
@@ -484,6 +537,7 @@ impl Emitter<'_> {
             }
         }
         out.push_str("] }");
+        out.push_str(&self.src[end..e]);
         true
     }
 
@@ -502,7 +556,7 @@ impl Emitter<'_> {
                 let Some(close) = find_close(src, s).filter(|c| *c < e) else {
                     return Prop::Other;
                 };
-                let colon = skip_ws(b, close + 1);
+                let colon = skip_trivia(src, close + 1, e);
                 if b.get(colon) != Some(&b':') {
                     return Prop::Other;
                 }
@@ -510,22 +564,22 @@ impl Emitter<'_> {
                 return match expr.as_slice() {
                     [expr] => Prop::Computed {
                         expr: *expr,
-                        val: (skip_ws(b, colon + 1), e),
+                        val: (skip_trivia(src, colon + 1, e), e),
                     },
                     _ => Prop::Other,
                 };
             }
             c if is_ident_byte(c) => {
                 let end = ident_end(b, s).min(e);
-                if end == e {
-                    return Prop::Short(s, e);
+                if skip_trivia(src, end, e) == e {
+                    return Prop::Short(s, end);
                 }
                 let word = !c.is_ascii_digit();
                 (end, word.then(|| src[s..end].to_owned()), word)
             }
             _ => return Prop::Other,
         };
-        let colon = skip_ws(b, key_end);
+        let colon = skip_trivia(src, key_end, e);
         if colon >= e || b[colon] != b':' {
             return Prop::Other;
         }
@@ -533,7 +587,7 @@ impl Emitter<'_> {
             key: (s, key_end),
             name,
             ident,
-            val: (skip_ws(b, colon + 1), e),
+            val: (skip_trivia(src, colon + 1, e), e),
         }
     }
 }
@@ -626,8 +680,12 @@ impl Callback {
             }
             body_at = skip_ws(b, arrow + 2);
         }
-        let body = if b.get(body_at) == Some(&b'{') && find_close(src, body_at) == Some(e - 1) {
-            Body::Block(body_at, e - 1)
+        let block_close = (b.get(body_at) == Some(&b'{'))
+            .then(|| find_close(src, body_at))
+            .flatten()
+            .filter(|c| *c < e && skip_trivia(src, c + 1, e) == e);
+        let body = if let Some(close) = block_close {
+            Body::Block(body_at, close)
         } else if is_function || body_at >= e {
             return None;
         } else {

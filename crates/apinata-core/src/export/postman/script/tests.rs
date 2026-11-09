@@ -977,3 +977,105 @@ fn test_input_stays_bounded() {
         40_000
     );
 }
+
+#[test]
+fn a_part_ending_in_a_line_comment_keeps_its_line_break() {
+    for (src, want) in [
+        (
+            "req.setUrl(\n  u // c\n); foo();",
+            "pm.request.url = u // c\n; foo();",
+        ),
+        (
+            "req.setHeader(k // c\n, v);",
+            "pm.request.headers.upsert({ key: k // c\n, value: v });",
+        ),
+        (
+            "req.setBody(x // c\n);",
+            "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify(x // c\n) });",
+        ),
+        (
+            "req.setHeaders(h // c\n);",
+            "(function() { const _headers = h // c\n; for (const key in _headers) { pm.request.headers.upsert({ key: key, value: _headers[key] }); } })();",
+        ),
+        (
+            "bru.sendRequest({ data: x // c\n}, cb);",
+            "pm.sendRequest({ body: { mode: \"raw\", raw: x // c\n }}, cb);",
+        ),
+        (
+            "bru.sendRequest(u, (e, r) => r.data // c\n);",
+            "pm.sendRequest(u, function(e, r) { return r.json() // c\n; });",
+        ),
+        (
+            "bru.sendRequest(u // c\n, cb);",
+            "pm.sendRequest(u // c\n, cb);",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn a_block_callback_followed_by_a_comment_stays_a_block() {
+    assert_eq!(
+        t("bru.sendRequest(u, (e, r) => { log(r.data); } // done\n);"),
+        "pm.sendRequest(u, function(e, r) { log(r.json()); } // done\n);"
+    );
+}
+
+#[test]
+fn options_and_data_behind_comments_are_still_read() {
+    assert_eq!(
+        t("bru.sendRequest({ // opts\n data: x }, cb);"),
+        "pm.sendRequest({ // opts\n body: { mode: \"raw\", raw: x } }, cb);"
+    );
+    assert_eq!(
+        t("bru.sendRequest({ data: {a: 1} // c\n, headers: h });"),
+        "pm.sendRequest({ body: { mode: \"raw\", raw: {a: 1} // c\n }, header: h });"
+    );
+}
+
+#[test]
+fn a_named_config_that_cannot_become_pairs_keeps_its_call() {
+    let src = "const cfg = { headers: { 'Content-Type': 'multipart/form-data' }, data: { get a() { return 1; } } };\nbru.sendRequest(cfg, cb);";
+    let out = translate(src);
+    assert_eq!(out.code, src);
+    assert_eq!(out.rewritten, 0);
+    assert_eq!(out.leftovers, ["bru.sendRequest"]);
+}
+
+#[test]
+fn a_property_named_like_a_keyword_ends_a_statement() {
+    assert_eq!(
+        t("obj.delete\nreq.setHeaders(h)"),
+        "obj.delete\n;(function() { const _headers = h; for (const key in _headers) { pm.request.headers.upsert({ key: key, value: _headers[key] }); } })()"
+    );
+}
+
+#[test]
+fn set_headers_with_await_in_its_argument_keeps_the_call() {
+    let out = translate("req.setHeaders(await load(res.status));");
+    assert_eq!(out.code, "req.setHeaders(await load(pm.response.code));");
+    assert_eq!(out.leftovers, ["req.setHeaders"]);
+    assert_eq!(
+        t("req.setHeaders({ a: 'await' });")
+            .matches("upsert")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn deeply_nested_calls_stay_bounded() {
+    for head in [
+        "bru.x(",
+        "JSON.stringify(",
+        "req.setUrl(",
+        "bru.sendRequest(",
+        "req.setUrl(...",
+        "req.getUrl(",
+        "test(",
+    ] {
+        let deep = format!("{}1{}", head.repeat(100_000), ")".repeat(100_000));
+        bounded(move || translate(&deep).code.len());
+    }
+}

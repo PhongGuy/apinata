@@ -1,5 +1,6 @@
 //! Translation of the app's script API to Postman's on export.
 
+use std::cell::Cell;
 use std::collections::HashSet;
 
 use crate::export::ExportNote;
@@ -198,8 +199,23 @@ pub(super) fn for_postman(code: &str, source: &str, notes: &mut Vec<ExportNote>)
     out.code
 }
 
+thread_local!(static BUDGET: Cell<usize> = const { Cell::new(0) });
+
+/// `find_close` charged to the script's budget; once it is spent, no further call is reshaped
+/// and what is left is reported.
+fn budgeted_close(src: &str, open: usize) -> Option<usize> {
+    let left = BUDGET.get();
+    if left == 0 {
+        return None;
+    }
+    let close = find_close(src, open);
+    BUDGET.set(left.saturating_sub(close.unwrap_or(src.len()) - open));
+    close
+}
+
 /// Translate a script's code. Never fails: anything not in the tables is kept as written.
 pub(super) fn translate(code: &str) -> Translated {
+    BUDGET.set(code.len().saturating_mul(8).saturating_add(1 << 16));
     // A rewrite inside unbalanced brackets could land anywhere, so such a script is kept whole.
     if !balanced(code) {
         return Translated {
@@ -359,8 +375,11 @@ fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
                 continue;
             }
             out.push_str(&src[i..end]);
+            // A word after `.` is a property name, never a keyword.
             last = if b[i].is_ascii_digit() {
                 Last::Literal
+            } else if is_property_access(b, i) {
+                Last::Word("")
             } else {
                 Last::Word(&src[i..end])
             };
@@ -540,11 +559,20 @@ fn rewrite_chain(
     for &end in ends.iter().rev() {
         let key = &src[start..end];
         let open = skip_ws(b, end);
-        let close = (b.get(open) == Some(&b'('))
-            .then(|| find_close(src, open))
-            .flatten();
+        // The closing paren is looked for only once a call row matches, so nested calls no
+        // table knows cost nothing; the rest is charged to the script's budget.
+        let close = || {
+            (b.get(open) == Some(&b'('))
+                .then(|| budgeted_close(src, open))
+                .flatten()
+        };
+        if key == "JSON.stringify"
+            && !src[skip_ws(b, open + 1).min(src.len())..].starts_with("res.getBody")
+        {
+            return None;
+        }
         if RESHAPED.contains(&key) {
-            let close = close?;
+            let close = close()?;
             let (text, shape) = reshape(key, src, open, close, depth, rewritten)?;
             return Some(Rewrite {
                 text,
@@ -553,7 +581,7 @@ fn rewrite_chain(
             });
         }
         if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key)
-            && let Some(close) = close
+            && let Some(close) = close()
         {
             return Some(Rewrite {
                 text: (*text).to_owned(),
@@ -581,7 +609,7 @@ fn bare_test_call(src: &str, start: usize, end: usize) -> bool {
     }
     let open = skip_ws(b, end);
     let Some(close) = (b.get(open) == Some(&b'('))
-        .then(|| find_close(src, open))
+        .then(|| budgeted_close(src, open))
         .flatten()
     else {
         return false;
@@ -669,7 +697,8 @@ fn reshape(
         }
         "req.setHeaders" if args.is_empty() => ("pm.request.headers".to_owned(), Shape::Expr),
         "req.setHeaders" => {
-            if spread(0) {
+            // The loop is a plain function, where an `await` would not parse.
+            if spread(0) || has_await(src, args[0].0, args[0].1) {
                 return None;
             }
             (
@@ -688,6 +717,29 @@ fn reshape(
                 .then(|| ("pm.response.text()".to_owned(), Shape::Expr))?
         }
     })
+}
+
+/// Whether `src[s..e]` uses `await` outside literals and comments.
+fn has_await(src: &str, s: usize, e: usize) -> bool {
+    let b = src.as_bytes();
+    let mut i = s;
+    while i < e {
+        if let Some(end) = skip_opaque(src, i) {
+            if b[i] == b'`' && src[i..end.min(e)].contains("await") {
+                return true;
+            }
+            i = end;
+        } else if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            if &src[i..end] == "await" && !is_property_access(b, i) {
+                return true;
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    false
 }
 
 /// Whether `src[s..e]` is wholly a `res.getBody(...)` call.
