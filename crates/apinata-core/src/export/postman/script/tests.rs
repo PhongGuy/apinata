@@ -1,4 +1,6 @@
 use super::corpus::table;
+use super::scan::parts;
+use super::tokens::same;
 use super::{CALLS, SIMPLE, translate};
 
 fn t(src: &str) -> String {
@@ -277,4 +279,157 @@ fn spaced_and_optional_chains_are_reported_as_leftovers() {
         out.leftovers,
         ["bru.getVar", "req.getUrl", "res.getStatus", "bru.setVar"]
     );
+}
+
+#[track_caller]
+fn check(src: &str, want: &str) {
+    let out = translate(src).code;
+    assert!(
+        same(&out, want),
+        "\n input: {src}\noutput: {out}\n  want: {want}"
+    );
+}
+
+#[test]
+fn parts_split_at_top_level_commas() {
+    let src = "f(a, [b, c], {d: 1, e: 2}, 'x,y', `${g(1, 2)}`, /,/g, )";
+    let got: Vec<&str> = parts(src, 2, src.len() - 1)
+        .iter()
+        .map(|&(s, e)| &src[s..e])
+        .collect();
+    assert_eq!(
+        got,
+        [
+            "a",
+            "[b, c]",
+            "{d: 1, e: 2}",
+            "'x,y'",
+            "`${g(1, 2)}`",
+            "/,/g"
+        ]
+    );
+    assert!(parts("f()", 2, 2).is_empty());
+}
+
+#[test]
+fn send_request_becomes_pm_send_request_whatever_its_arguments() {
+    assert_eq!(t("bru.sendRequest();"), "pm.sendRequest();");
+    assert_eq!(
+        t("bru.sendRequest('https://x.test');"),
+        "pm.sendRequest('https://x.test');"
+    );
+    assert_eq!(
+        t("await bru.sendRequest(opts);"),
+        "await pm.sendRequest(opts);"
+    );
+    assert_eq!(
+        t("bru.sendRequest(make(), cb, extra);"),
+        "pm.sendRequest(make(), cb);"
+    );
+}
+
+#[test]
+fn the_send_request_layout_is_pinned() {
+    assert_eq!(
+        t("bru.sendRequest({url: 'u', headers: {a: '1'}, data: {k: 'v'}});"),
+        "pm.sendRequest({url: 'u', header: {a: '1'}, body: { mode: \"raw\", raw: {k: 'v'} }});"
+    );
+    assert_eq!(
+        t(
+            "bru.sendRequest({headers: {'content-type': 'application/x-www-form-urlencoded'}, data: {k: 'v', ...more}});"
+        ),
+        "pm.sendRequest({header: {'content-type': 'application/x-www-form-urlencoded'}, body: { mode: \"urlencoded\", urlencoded: [{ key: \"k\", value: 'v' }, ...Object.entries(more).map(([key, value]) => ({ key: key, value: value }))] }});"
+    );
+}
+
+#[test]
+fn the_body_mode_follows_a_plain_content_type_header() {
+    let call =
+        |h: &str, d: &str| format!("bru.sendRequest({{url: 'u', headers: {h}, data: {d}}});");
+    let want = |h: &str, b: &str| format!("pm.sendRequest({{url: 'u', header: {h}, body: {b}}});");
+    for (h, d, b) in [
+        (
+            "{'Content-Type': 'multipart/form-data; boundary=x'}",
+            "{a: 1}",
+            "{mode: 'formdata', formdata: [{key: 'a', value: 1}]}",
+        ),
+        (
+            "{\"CONTENT-TYPE\": \"Application/X-WWW-Form-Urlencoded\"}",
+            "{a: 1}",
+            "{mode: 'urlencoded', urlencoded: [{key: 'a', value: 1}]}",
+        ),
+        (
+            "{'Content-Type': `multipart/form-data`}",
+            "{a: 1}",
+            "{mode: 'raw', raw: {a: 1}}",
+        ),
+        (
+            "{'Content-Type': 'application/x-www-form-urlencoded'}",
+            "'a=1'",
+            "{mode: 'raw', raw: 'a=1'}",
+        ),
+        (
+            "{'Content-Type': 'application/json'}",
+            "{a: 1}",
+            "{mode: 'raw', raw: {a: 1}}",
+        ),
+        ("h", "{a: 1}", "{mode: 'raw', raw: {a: 1}}"),
+    ] {
+        check(&call(h, d), &want(h, b));
+    }
+    check(
+        "bru.sendRequest({url: 'u', data: {a: 1}});",
+        "pm.sendRequest({url: 'u', body: {mode: 'raw', raw: {a: 1}}});",
+    );
+    check(
+        "const data = 'x';\nbru.sendRequest({url: 'u', data});",
+        "const data = 'x';\npm.sendRequest({url: 'u', body: {mode: 'raw', raw: data}});",
+    );
+}
+
+#[test]
+fn data_properties_become_key_value_pairs() {
+    check(
+        "bru.sendRequest({headers: {'Content-Type': 'multipart/form-data'}, data: {'a-b': 1, c: x, 2: z, [k]: w, e, ...rest}});",
+        "pm.sendRequest({header: {'Content-Type': 'multipart/form-data'}, body: {mode: 'formdata', formdata: [{key: 'a-b', value: 1}, {key: 'c', value: x}, {key: 2, value: z}, {key: k, value: w}, {key: 'e', value: e}, ...Object.entries(rest).map(([key, value]) => ({key: key, value: value}))]}});",
+    );
+}
+
+#[test]
+fn templated_and_quoted_send_requests() {
+    assert_eq!(
+        t("const s = `${bru.sendRequest('u')}`;"),
+        "const s = `${pm.sendRequest('u')}`;"
+    );
+    let src = "'bru.sendRequest(1)'; // bru.sendRequest(2)";
+    assert_eq!(translate(src).code, src);
+    assert_eq!(translate(src).rewritten, 0);
+}
+
+#[test]
+fn a_send_request_shape_the_rewrite_cannot_follow_is_kept_and_reported() {
+    for src in [
+        "bru.sendRequest({headers: {'Content-Type': 'multipart/form-data'}, data: {get a() { return 1; }}});",
+        "bru . sendRequest('u');",
+        "const f = bru.sendRequest;",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+        assert_eq!(out.leftovers, ["bru.sendRequest"], "{src}");
+    }
+}
+
+#[test]
+fn send_request_input_stays_bounded() {
+    assert_eq!(
+        bounded(|| translate(&"bru.sendRequest('u');\n".repeat(20_000)).rewritten),
+        20_000
+    );
+    let deep = format!(
+        "{}1{}",
+        "bru.sendRequest({data: ".repeat(5_000),
+        "})".repeat(5_000)
+    );
+    assert!(bounded(move || translate(&deep).code.len()) > 0);
 }

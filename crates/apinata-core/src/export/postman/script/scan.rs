@@ -165,3 +165,38 @@ pub(super) fn find_close(src: &str, open: usize) -> Option<usize> {
     }
     None
 }
+
+/// Absolute ranges of the top-level comma-separated parts of `src[from..to]`, trimmed; empty parts dropped.
+pub(super) fn parts(src: &str, from: usize, to: usize) -> Vec<(usize, usize)> {
+    let b = src.as_bytes();
+    let mut out = Vec::new();
+    let mut push = |s: usize, e: usize| {
+        let s = skip_ws(&b[..e], s);
+        let e = (s..e)
+            .rev()
+            .find(|&k| !b[k].is_ascii_whitespace())
+            .map_or(s, |k| k + 1);
+        if s < e {
+            out.push((s, e));
+        }
+    };
+    let (mut start, mut depth, mut i) = (from, 0usize, from);
+    while i < to {
+        if let Some(end) = skip_opaque(src, i) {
+            i = end;
+            continue;
+        }
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => {
+                push(start, i);
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    push(start, to);
+    out
+}

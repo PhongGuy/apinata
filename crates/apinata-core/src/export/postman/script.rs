@@ -10,6 +10,7 @@ use scan::{
 };
 
 mod scan;
+mod send_request;
 
 #[cfg(test)]
 mod corpus;
@@ -206,8 +207,8 @@ pub(super) fn translate(code: &str) -> Translated {
             kept: true,
         };
     }
-    let mut rewritten = 0;
-    let code = translate_code(code, 0, &mut rewritten);
+    let (code, mut rewritten) = send_request::rewrite(code);
+    let code = translate_code(&code, 0, &mut rewritten);
     Translated {
         leftovers: leftovers(&code),
         code,
