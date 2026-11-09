@@ -25,6 +25,9 @@ pub use url::{
     CloneUrlKind, default_folder_name, redact_url, redact_url_userinfo, validate_clone_url,
     validate_folder_name,
 };
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod win_stop;
 mod write;
 
 use std::collections::{BTreeMap, HashSet};
@@ -272,8 +275,8 @@ enum Os {
     Other,
 }
 
-/// Which lock is held, and when it is safe to delete it. On Windows a timed-out git is
-/// terminated outright, so the lock may be a leftover rather than another git's.
+/// Which lock is held, and when it is safe to delete it. On Windows a timed-out git that ignores
+/// the gentle stop is terminated, so the lock may be its leftover rather than another git's.
 fn busy_text(lock: &Path, os: Os) -> String {
     let lock = lock.display();
     match os {
@@ -283,9 +286,8 @@ fn busy_text(lock: &Path, os: Os) -> String {
         ),
         Os::Windows => format!(
             "git is busy: {lock} exists. Another git process may be using this repository, or a \
-             git stopped at its time limit left it behind. That stop gives git no chance to \
-             clean up. Once no git.exe is running (check Task Manager), delete \
-             {lock} and try again."
+             git that would not stop at its time limit had to be killed and left it behind. Once \
+             no git.exe is running (check Task Manager), delete {lock} and try again."
         ),
     }
 }
@@ -550,13 +552,13 @@ mod tests {
     }
 
     #[test]
-    fn busy_text_on_windows_says_a_stopped_git_leaves_the_lock_and_how_to_clear_it() {
+    fn busy_text_on_windows_says_only_a_killed_git_leaves_the_lock_and_how_to_clear_it() {
         assert_eq!(
             busy_text(Path::new("C:/r/.git/index.lock"), Os::Windows),
             "git is busy: C:/r/.git/index.lock exists. Another git process may be using this \
-              repository, or a git stopped at its time limit left it behind. That stop gives git \
-              no chance to clean up. Once no git.exe is running (check Task \
-              Manager), delete C:/r/.git/index.lock and try again."
+              repository, or a git that would not stop at its time limit had to be killed and \
+              left it behind. Once no git.exe is running (check Task Manager), delete \
+              C:/r/.git/index.lock and try again."
         );
     }
 }

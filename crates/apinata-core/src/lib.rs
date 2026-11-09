@@ -2,7 +2,9 @@
 //! requests against collection, environment, folder and process variables, then sends them.
 //! All logic lives here; the CLI, MCP server and app are thin shells over it.
 
-#![forbid(unsafe_code)]
+// The Windows git stop needs Win32 calls; that one module is the only unsafe code here.
+#![cfg_attr(not(windows), forbid(unsafe_code))]
+#![cfg_attr(windows, deny(unsafe_code))]
 #![deny(missing_docs)]
 
 mod approval;
