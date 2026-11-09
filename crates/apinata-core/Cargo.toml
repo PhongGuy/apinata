@@ -44,6 +44,8 @@ time.workspace = true
 encoding_rs.workspace = true
 mime.workspace = true
 tokio-util.workspace = true
+# Shuts the OAuth callback listener down so a spawned process's copy cannot keep its port.
+socket2.workspace = true
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 dirs.workspace = true
@@ -112,7 +114,6 @@ update = [
 [dev-dependencies]
 # Per-thread CPU time for the linear-cost translation tests.
 cpu-time = "1"
-socket2 = { workspace = true }
 tokio = { workspace = true, features = ["time", "test-util"] }
 bytes = "1"
 http-body-util = { workspace = true, features = ["channel"] }
