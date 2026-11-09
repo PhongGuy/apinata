@@ -203,7 +203,7 @@ static PARAM_PLACEMENTS: [(OAuth2ParamPlacement, &str); 3] = [
     (OAuth2ParamPlacement::Body, "Body"),
 ];
 
-pub(crate) type Choice = Entity<SelectState<Vec<SharedString>>>;
+pub(crate) type Choice = Entity<ui::IdSelect>;
 
 /// A text cell of an additional parameter row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -245,14 +245,23 @@ impl EventEmitter<OAuth2MoveSecrets> for OAuth2Editor {}
 impl OAuth2Editor {
     /// An editor showing a fresh authorization code auth.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut choice = |items: Vec<&str>| {
-            let items: Vec<SharedString> = items.into_iter().map(SharedString::from).collect();
+        let mut choice = |id: &str, items: Vec<&str>| {
+            let items = ui::id_items(id, items);
             cx.new(|cx| SelectState::new(items, None, window, cx))
         };
-        let flow = choice(FLOWS.iter().map(|(_, l)| *l).collect());
-        let client_auth = choice(CLIENT_AUTHS.iter().map(|(_, l)| *l).collect());
-        let placement = choice(PLACEMENTS.iter().map(|(_, l)| *l).collect());
-        let source = choice(SOURCES.iter().map(|(_, l)| *l).collect());
+        let flow = choice("oauth2-flow", FLOWS.iter().map(|(_, l)| *l).collect());
+        let client_auth = choice(
+            "oauth2-client-auth",
+            CLIENT_AUTHS.iter().map(|(_, l)| *l).collect(),
+        );
+        let placement = choice(
+            "oauth2-token-placement",
+            PLACEMENTS.iter().map(|(_, l)| *l).collect(),
+        );
+        let source = choice(
+            "oauth2-token-source",
+            SOURCES.iter().map(|(_, l)| *l).collect(),
+        );
         let inputs: Vec<Entity<InputState>> = FIELDS
             .iter()
             .map(|f| {
@@ -422,7 +431,7 @@ impl OAuth2Editor {
     }
 
     /// The "Add token to" select.
-    pub fn placement_choice(&self) -> &Entity<SelectState<Vec<SharedString>>> {
+    pub fn placement_choice(&self) -> &Entity<ui::IdSelect> {
         &self.placement
     }
 
@@ -603,7 +612,10 @@ impl OAuth2Editor {
         let value = input(&p.value, "Value", cx);
         let stage = cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
         let placement = cx.new(|cx| {
-            let items = PARAM_PLACEMENTS.iter().map(|(_, l)| (*l).into()).collect();
+            let items = ui::id_items(
+                "oauth2-param-placement",
+                PARAM_PLACEMENTS.iter().map(|(_, l)| *l),
+            );
             SelectState::new(items, None, window, cx)
         });
         let typed = |input: &Entity<InputState>, window: &mut Window, cx: &mut Context<Self>| {
@@ -744,7 +756,7 @@ impl OAuth2Editor {
             .filter(|(s, _)| base.flow.stages().contains(s))
             .cloned()
             .collect();
-        let labels: Vec<SharedString> = stages.iter().map(|(_, l)| (*l).into()).collect();
+        let labels = ui::id_items("oauth2-param-stage", stages.iter().map(|(_, l)| *l));
         for (p, row) in base.params.iter().zip(&self.params) {
             row.stage
                 .update(cx, |s, cx| s.set_items(labels.clone(), window, cx));
@@ -797,7 +809,7 @@ pub(crate) fn on_choice<V: 'static, T: Clone + 'static>(
     cx.subscribe_in(
         state,
         window,
-        move |t, _, event: &SelectEvent<Vec<SharedString>>, w, cx| {
+        move |t, _, event: &SelectEvent<Vec<ui::IdItem>>, w, cx| {
             if let SelectEvent::Confirm(Some(label)) = event
                 && let Some((v, _)) = items.iter().find(|(_, l)| *l == label.as_ref())
             {
@@ -818,7 +830,7 @@ fn on_row_choice<T: Clone + 'static>(
     cx.subscribe_in(
         state,
         window,
-        move |t, select, event: &SelectEvent<Vec<SharedString>>, w, cx| {
+        move |t, select, event: &SelectEvent<Vec<ui::IdItem>>, w, cx| {
             let ix = t
                 .params
                 .iter()

@@ -139,7 +139,7 @@ enum Control {
 struct Row {
     expression: Entity<InputState>,
     value: Entity<InputState>,
-    operator: Entity<SelectState<Vec<SharedString>>>,
+    operator: Entity<ui::IdSelect>,
     op: String,
     enabled: bool,
     source: Option<usize>,
@@ -409,7 +409,7 @@ impl AssertionsSection {
             cx.subscribe_in(
                 &operator,
                 window,
-                |this, select, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, select, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(op)) = event {
                         let ix = this
                             .rows
@@ -616,15 +616,11 @@ fn fresh() -> AssertionRow {
 }
 
 // Offers Bruno's operators plus `operator` itself when it is outside them, then selects it.
-fn show_operator(
-    select: &Entity<SelectState<Vec<SharedString>>>,
-    operator: &str,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let mut items: Vec<SharedString> = OPERATORS.iter().map(|op| (*op).into()).collect();
+fn show_operator(select: &Entity<ui::IdSelect>, operator: &str, window: &mut Window, cx: &mut App) {
+    let row = |op: &str| ui::IdItem::new("as-op", op, op.to_owned());
+    let mut items: Vec<ui::IdItem> = OPERATORS.iter().map(|op| row(op)).collect();
     if !OPERATORS.contains(&operator) {
-        items.push(operator.to_owned().into());
+        items.push(row(operator));
     }
     let selected: SharedString = operator.to_owned().into();
     select.update(cx, |s, cx| {

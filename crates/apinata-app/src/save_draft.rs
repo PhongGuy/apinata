@@ -62,7 +62,7 @@ struct Choice {
     workspace: Entity<Workspace>,
     roots: Vec<PathBuf>,
     labels: Vec<SharedString>,
-    select: Entity<SelectState<Vec<SharedString>>>,
+    select: Entity<ui::IdSelect>,
     picked: Option<usize>,
     // A collection just opened whose snapshot has not arrived: its folders are listed then.
     waiting: Option<PathBuf>,
@@ -74,7 +74,7 @@ struct Choice {
 pub struct SaveDraftForm {
     folders: Vec<ItemPath>,
     name: Entity<InputState>,
-    folder: Entity<SelectState<Vec<SharedString>>>,
+    folder: Entity<ui::IdSelect>,
     choice: Option<Choice>,
     _name_changes: Subscription,
 }
@@ -91,6 +91,7 @@ impl SaveDraftForm {
     ) -> Self {
         let at = folders.iter().position(|(p, _)| *p == parent).unwrap_or(0);
         let (paths, labels): (Vec<_>, Vec<_>) = folders.into_iter().unzip();
+        let labels = ui::id_items("save-draft-folder", labels);
         let name = cx.new(|cx| InputState::new(window, cx).default_value(name.to_owned()));
         let folder = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(at)), window, cx));
         // The Save button's enabled state follows the name, so each keystroke re-renders.
@@ -162,12 +163,13 @@ impl SaveDraftForm {
         let labels: Vec<SharedString> = std::iter::once(SharedString::from(OPEN_ENTRY))
             .chain((roots.iter()).map(|r| choice.workspace.read(cx).collection_name(r, cx)))
             .collect();
+        let rows = ui::id_items("save-draft-collection", labels.iter().cloned());
         let row = picked.map(|p| IndexPath::new(p + 1));
-        let select = cx.new(|cx| SelectState::new(labels.clone(), row, window, cx));
+        let select = cx.new(|cx| SelectState::new(rows, row, window, cx));
         let confirm = cx.subscribe_in(
             &select,
             window,
-            |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+            |this, _, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
                 if let SelectEvent::Confirm(Some(_)) = event {
                     this.collection_confirmed(window, cx);
                 }
@@ -294,6 +296,7 @@ impl SaveDraftForm {
             .map(|snapshot| folders(&snapshot.content))
             .unwrap_or_else(|| vec![(ItemPath::root(), "Collection root".into())]);
         let (paths, labels): (Vec<_>, Vec<_>) = listed.into_iter().unzip();
+        let labels = ui::id_items("save-draft-folder", labels);
         self.folders = paths;
         self.folder = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(0)), window, cx));
         cx.notify();

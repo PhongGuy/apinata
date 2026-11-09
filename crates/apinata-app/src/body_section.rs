@@ -30,6 +30,7 @@ use crate::kv_table::{
 use crate::section::SectionEdit;
 use crate::style;
 use crate::theme::{VarKind, var_tint};
+use crate::ui::{IdItem, IdSelect};
 use crate::var_tokens::{VarField, tokens};
 
 /// JSON bodies larger than this are neither parsed nor marked, so typing in a huge body stays cheap.
@@ -73,6 +74,20 @@ impl BodyMode {
             BodyMode::Form => "Form URL Encoded",
             BodyMode::Multipart => "Multipart Form",
             BodyMode::File => "File",
+        }
+    }
+
+    /// The stable key the mode's select row is found by, as the file names the mode.
+    pub fn key(self) -> &'static str {
+        match self {
+            BodyMode::None => "none",
+            BodyMode::Json => "json",
+            BodyMode::Xml => "xml",
+            BodyMode::Text => "text",
+            BodyMode::Sparql => "sparql",
+            BodyMode::Form => "form-urlencoded",
+            BodyMode::Multipart => "multipart-form",
+            BodyMode::File => "file",
         }
     }
 
@@ -180,7 +195,7 @@ pub struct BodySection {
     beautify_error: Option<String>,
     // The JSON syntax error of the current text, set on edit and load, never while rendering.
     json_error: Option<JsonSyntaxError>,
-    select: Entity<SelectState<Vec<SharedString>>>,
+    select: Entity<IdSelect>,
     code: Entity<EditorState>,
     table: Entity<KvTable>,
     memory: HashMap<BodyMode, BodySpec>,
@@ -202,7 +217,10 @@ impl EventEmitter<SectionEdit> for BodySection {}
 impl BodySection {
     /// An empty body section for the collection at `root`.
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let labels: Vec<SharedString> = BodyMode::ALL.iter().map(|m| m.label().into()).collect();
+        let labels: Vec<IdItem> = BodyMode::ALL
+            .iter()
+            .map(|m| IdItem::new("body-mode", m.key(), m.label()))
+            .collect();
         let select = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(0)), window, cx));
         let default_wrap = crate::settings::wrap_editors(cx);
         let code = cx.new(|cx| {
@@ -232,7 +250,7 @@ impl BodySection {
             cx.subscribe_in(
                 &select,
                 window,
-                |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
                     let SelectEvent::Confirm(Some(label)) = event else {
                         return;
                     };

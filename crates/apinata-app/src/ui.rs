@@ -3179,3 +3179,60 @@ pub(crate) fn redraw_on_settings<V: 'static>(
     let settings = cx.try_global::<AppState>()?.settings.clone();
     Some(cx.observe(&settings, |_, _, cx| cx.notify()))
 }
+
+/// A select row valued by its label, whose drawn row registers as `{select}-option-{key}`.
+///
+/// The kit draws select rows without `.test_support()`, so the row content registers itself;
+/// a click on it bubbles to the kit row's confirm handler.
+#[derive(Debug, Clone)]
+pub struct IdItem {
+    id: SharedString,
+    label: SharedString,
+}
+
+/// A kit select over [`IdItem`] rows.
+pub type IdSelect = gpui_kit::component::select::SelectState<Vec<IdItem>>;
+
+impl IdItem {
+    /// A row of the select `select` showing `label`, found by the stable `key`.
+    pub fn new(select: &str, key: &str, label: impl Into<SharedString>) -> Self {
+        IdItem {
+            id: format!("{select}-option-{key}").into(),
+            label: label.into(),
+        }
+    }
+}
+
+/// Rows of `select`, one per label, each keyed by its label as shown so distinct labels
+/// never share an id.
+pub fn id_items<L: Into<SharedString>>(
+    select: &str,
+    labels: impl IntoIterator<Item = L>,
+) -> Vec<IdItem> {
+    labels
+        .into_iter()
+        .map(|l| {
+            let label = l.into();
+            IdItem::new(select, &label, label.clone())
+        })
+        .collect()
+}
+
+impl gpui_kit::component::select::SelectItem for IdItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &SharedString {
+        &self.label
+    }
+
+    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        div()
+            .id(self.id.clone())
+            .test_support()
+            .child(self.label.clone())
+    }
+}

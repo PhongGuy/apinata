@@ -47,8 +47,20 @@ impl TimeoutMode {
         }
     }
 
-    fn labels(default: Option<Duration>) -> Vec<SharedString> {
-        TimeoutMode::ALL.iter().map(|m| m.label(default)).collect()
+    /// The stable key the mode's select row is found by; the Inherit label names the
+    /// default, so it cannot serve.
+    pub fn key(self) -> &'static str {
+        match self {
+            TimeoutMode::Inherit => "inherit",
+            TimeoutMode::Custom => "custom",
+        }
+    }
+
+    fn rows(default: Option<Duration>) -> Vec<ui::IdItem> {
+        TimeoutMode::ALL
+            .iter()
+            .map(|m| ui::IdItem::new("set-timeout-mode", m.key(), m.label(default)))
+            .collect()
     }
 
     fn of(timeout: Timeout) -> TimeoutMode {
@@ -67,7 +79,7 @@ pub struct SettingsSection {
     // The settings last sent or loaded; the base each change builds on.
     base: RequestSettings,
     max_redirects: Entity<InputState>,
-    timeout_select: Entity<SelectState<Vec<SharedString>>>,
+    timeout_select: Entity<ui::IdSelect>,
     // The request's own timeout last loaded or typed, which Custom brings back after Default.
     custom: Timeout,
     // The Preferences timeout the Inherit label names.
@@ -106,7 +118,7 @@ impl SettingsSection {
             cx.new(|cx| InputState::new(window, cx).default_value(base.max_redirects.to_string()));
         let timeout = cx.new(|cx| InputState::new(window, cx).default_value("0"));
         let default_timeout = crate::settings::request_timeout(cx);
-        let labels = TimeoutMode::labels(default_timeout);
+        let labels = TimeoutMode::rows(default_timeout);
         let timeout_select =
             cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(1)), window, cx));
         let tags = cx.new(|cx| TagField::new(window, cx));
@@ -138,7 +150,7 @@ impl SettingsSection {
             cx.subscribe_in(
                 &timeout_select,
                 window,
-                |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, _, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(label)) = event
                         && let Some(mode) = TimeoutMode::ALL
                             .into_iter()
@@ -155,7 +167,7 @@ impl SettingsSection {
                 let default = crate::settings::request_timeout(cx);
                 if default != this.default_timeout {
                     this.default_timeout = default;
-                    let labels = TimeoutMode::labels(default);
+                    let labels = TimeoutMode::rows(default);
                     (this.timeout_select).update(cx, |s, cx| s.set_items(labels, window, cx));
                     this.show_timeout(window, cx);
                 }

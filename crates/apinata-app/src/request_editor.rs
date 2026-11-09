@@ -18,7 +18,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::tooltip::Tooltip;
@@ -70,7 +70,7 @@ use crate::tab_area::GenerateCode;
 use crate::tabs::TabId;
 use crate::tabs::TabKind;
 use crate::token_panel::{Locate, TokenPanel};
-use crate::ui::{self, RingRoom as _, RingSides};
+use crate::ui::{self, IdItem, IdSelect, RingRoom as _, RingSides};
 use crate::url_unit::{Side, UrlParamsUnit};
 use crate::var_tokens::VarField;
 use crate::workspace::{Workspace, WorkspaceEvent};
@@ -168,6 +168,14 @@ pub fn method_items(current: &str) -> Vec<SharedString> {
     items
 }
 
+// The method select's rows, each found by its method as typed.
+fn method_rows(current: &str) -> Vec<IdItem> {
+    method_items(current)
+        .into_iter()
+        .map(|m| IdItem::new("method", &m, m.clone()))
+        .collect()
+}
+
 /// What the last import paste into the URL bar produced, while its banner shows.
 #[derive(Debug, Clone)]
 pub enum Pasted {
@@ -184,7 +192,7 @@ pub struct RequestEditor {
     compare: Option<Entity<crate::compare_dialog::CompareDialog>>,
     tab: TabId,
     url: Entity<InputState>,
-    method: Entity<SelectState<Vec<SharedString>>>,
+    method: Entity<IdSelect>,
     // Takes any other verb; the select shows it once committed, so this stays empty.
     custom_method: Entity<InputState>,
     // Why the last commit was refused; cleared by a valid commit or any method change.
@@ -340,10 +348,10 @@ impl RequestEditor {
         });
 
         let current = view.as_ref().map(|v| v.method.clone()).unwrap_or_default();
-        let methods = method_items(&current);
+        let methods = method_rows(&current);
         let selected = methods
             .iter()
-            .position(|m| *m == current)
+            .position(|m| m.value() == current.as_str())
             .map(IndexPath::new);
         let method = cx.new(|cx| SelectState::new(methods, selected, window, cx));
         let custom_method =
@@ -494,7 +502,7 @@ impl RequestEditor {
             cx.subscribe_in(
                 &method,
                 window,
-                |this, _, event: &SelectEvent<Vec<SharedString>>, window, cx| {
+                |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(method)) = event {
                         // A user pick supersedes any draft; undo refreshes leave it alone.
                         this.custom_method
@@ -867,7 +875,7 @@ impl RequestEditor {
     }
 
     /// The method picker's state.
-    pub fn method_select(&self) -> &Entity<SelectState<Vec<SharedString>>> {
+    pub fn method_select(&self) -> &Entity<IdSelect> {
         &self.method
     }
 
@@ -1728,7 +1736,7 @@ impl RequestEditor {
             let method = SharedString::from(view.method.clone());
             self.custom_error = None;
             self.method.update(cx, |s, cx| {
-                s.set_items(method_items(&view.method), window, cx);
+                s.set_items(method_rows(&view.method), window, cx);
                 s.set_selected_value(&method, window, cx);
             });
         }
