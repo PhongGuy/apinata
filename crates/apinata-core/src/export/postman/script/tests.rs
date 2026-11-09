@@ -229,8 +229,8 @@ fn plan_a_cases_match_the_reference() {
         "deviations that now match: {:?}",
         report.stale
     );
-    assert_eq!(report.plan_a, 158);
-    assert_eq!(report.matched + report.deviated, 158);
+    assert_eq!(report.plan_a, 167);
+    assert_eq!(report.matched + report.deviated, 167);
 }
 
 #[test]
@@ -534,4 +534,219 @@ fn configs_by_name_stay_bounded() {
         + "const c0 = {headers: {}};\n"
         + &"bru.sendRequest(c5000);\n".repeat(5_000);
     assert_eq!(bounded(move || translate(&chain).rewritten), 5_000);
+}
+
+fn iife(h: &str) -> String {
+    format!(
+        "(function() {{ const _headers = {h}; for (const key in _headers) {{ pm.request.headers.upsert({{ key: key, value: _headers[key] }}); }} }})()"
+    )
+}
+
+#[test]
+fn set_url_and_set_method_become_assignments() {
+    assert_eq!(
+        t("req.setUrl(\"https://x.test/b\");"),
+        "pm.request.url = \"https://x.test/b\";"
+    );
+    assert_eq!(t("req.setMethod(m)"), "pm.request.method = m");
+    assert_eq!(t("req.setUrl()"), "pm.request.url");
+    assert_eq!(t("req.setUrl(a, b)"), "pm.request.url = a");
+    assert_eq!(
+        t("req.setUrl(bru.getVar('u'));"),
+        "pm.request.url = pm.variables.get('u');"
+    );
+    assert_eq!(
+        t("req.setUrl(req.setUrl(u))"),
+        "pm.request.url = pm.request.url = u"
+    );
+}
+
+#[test]
+fn an_assignment_is_parenthesized_where_an_operator_would_bind_it() {
+    for (src, want) in [
+        ("if (x) req.setUrl(u);", "if (x) pm.request.url = u;"),
+        ("{ req.setUrl(u) }", "{ pm.request.url = u }"),
+        ("f(req.setUrl(u), 1)", "f(pm.request.url = u, 1)"),
+        ("const v = req.setUrl(u);", "const v = pm.request.url = u;"),
+        ("() => req.setUrl(u)", "() => pm.request.url = u"),
+        ("ok ? req.setUrl(u) : 0", "ok ? pm.request.url = u : 0"),
+        ("return req.setUrl(u);", "return pm.request.url = u;"),
+        (
+            "bar()\nreq.setUrl(u)\nfoo()",
+            "bar()\npm.request.url = u\nfoo()",
+        ),
+        ("a + req.setUrl(u)", "a + (pm.request.url = u)"),
+        ("a == req.setUrl(u)", "a == (pm.request.url = u)"),
+        ("a ?? req.setUrl(u)", "a ?? (pm.request.url = u)"),
+        ("!req.setUrl(u)", "!(pm.request.url = u)"),
+        ("typeof req.setUrl(u)", "typeof (pm.request.url = u)"),
+        ("req.setUrl(u).length", "(pm.request.url = u).length"),
+        ("req.setUrl(u) + 1", "(pm.request.url = u) + 1"),
+        (
+            "const v = req.setUrl(u)\n.trim()",
+            "const v = (pm.request.url = u)\n.trim()",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn set_header_and_set_body_take_postman_shapes() {
+    assert_eq!(
+        t("req.setHeader(\"h\", \"v\");"),
+        "pm.request.headers.upsert({ key: \"h\", value: \"v\" });"
+    );
+    assert_eq!(t("req.setHeader(k)"), "pm.request.headers.upsert(k)");
+    assert_eq!(t("req.setHeader()"), "pm.request.headers.upsert()");
+    assert_eq!(
+        t("req.setHeader(...pair)"),
+        "pm.request.headers.upsert(...pair)"
+    );
+    assert_eq!(
+        t("req.setHeader(k, v, extra)"),
+        "pm.request.headers.upsert({ key: k, value: v })"
+    );
+    assert_eq!(
+        t("req.setHeader('a', res.getHeader('b'))"),
+        "pm.request.headers.upsert({ key: 'a', value: pm.response.headers.get('b') })"
+    );
+    assert_eq!(
+        t("req.setBody({a: 1});"),
+        "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify({a: 1}) });"
+    );
+    assert_eq!(t("req.setBody()"), "pm.request.body");
+    assert_eq!(
+        t("req.setBody(res.getBody())"),
+        "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify(pm.response.json()) })"
+    );
+}
+
+#[test]
+fn set_headers_becomes_an_upsert_loop() {
+    assert_eq!(
+        t("req.setHeaders({h: \"v\"});"),
+        format!("{};", iife("{h: \"v\"}"))
+    );
+    assert_eq!(t("req.setHeaders()"), "pm.request.headers");
+    assert_eq!(
+        t("req.setHeaders(res.headers, 2)"),
+        iife("pm.response.headers")
+    );
+}
+
+#[test]
+fn a_loop_starting_a_line_after_an_unterminated_one_gets_a_semicolon() {
+    let h = iife("h");
+    for (src, want) in [
+        ("bar()\nreq.setHeaders(h)", format!("bar()\n;{h}")),
+        (
+            "const a = b\n  req.setHeaders(h)",
+            format!("const a = b\n  ;{h}"),
+        ),
+        ("x = [1]\nreq.setHeaders(h)", format!("x = [1]\n;{h}")),
+        ("a;\nreq.setHeaders(h)", format!("a;\n{h}")),
+        ("if (x)\n  req.setHeaders(h)", format!("if (x)\n  {h}")),
+        (
+            "while (x)\n  req.setHeaders(h)",
+            format!("while (x)\n  {h}"),
+        ),
+        (
+            "if (x) {} else\n  req.setHeaders(h)",
+            format!("if (x) {{}} else\n  {h}"),
+        ),
+        ("{\nreq.setHeaders(h)\n}", format!("{{\n{h}\n}}")),
+        (
+            "const v =\n  req.setHeaders(h)",
+            format!("const v =\n  {h}"),
+        ),
+        ("f(a)(req.setHeaders(h))", format!("f(a)({h})")),
+        (
+            "const o = {a: 1}\nreq.setHeaders(h)",
+            format!("const o = {{a: 1}}\n;{h}"),
+        ),
+        (
+            "const f = function() {}\nreq.setHeaders(h)",
+            format!("const f = function() {{}}\n;{h}"),
+        ),
+        ("if (x) {}\nreq.setHeaders(h)", format!("if (x) {{}}\n;{h}")),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn stringified_response_body_becomes_response_text() {
+    assert_eq!(
+        t("const s = JSON.stringify(res.getBody());"),
+        "const s = pm.response.text();"
+    );
+    assert_eq!(t("JSON.stringify(res.getBody('x'))"), "pm.response.text()");
+    assert_eq!(
+        t("JSON.stringify(res.getBody(), null, 2)"),
+        "JSON.stringify(pm.response.json(), null, 2)"
+    );
+    assert_eq!(
+        t("JSON.stringify(res.getBody().a)"),
+        "JSON.stringify(pm.response.json().a)"
+    );
+    assert_eq!(t("JSON.stringify(x)"), "JSON.stringify(x)");
+}
+
+#[test]
+fn a_spread_where_an_argument_is_reshaped_keeps_the_call() {
+    for (src, chain) in [
+        ("req.setHeader(...a, b)", "req.setHeader"),
+        ("req.setUrl(...u)", "req.setUrl"),
+        ("req.setBody(...b)", "req.setBody"),
+        ("req.setHeaders(...h)", "req.setHeaders"),
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.leftovers, [chain]);
+    }
+}
+
+#[test]
+fn reshaped_calls_count_once_plus_their_arguments() {
+    assert_eq!(
+        translate("req.setHeader('a', res.getHeader('b'))").rewritten,
+        2
+    );
+    assert_eq!(
+        translate("req.setBody(JSON.stringify(res.getBody()))").rewritten,
+        2
+    );
+    let out = translate("const f = req.setUrl;");
+    assert_eq!(out.code, "const f = req.setUrl;");
+    assert_eq!(out.leftovers, ["req.setUrl"]);
+}
+
+#[test]
+fn reshaped_input_stays_bounded() {
+    assert_eq!(
+        bounded(|| translate(&"req.setUrl(u);\n".repeat(50_000)).rewritten),
+        50_000
+    );
+    assert_eq!(
+        bounded(|| translate(&"bar()\nreq.setHeaders(h)\n".repeat(20_000)).rewritten),
+        20_000
+    );
+    let deep = format!("{}1{}", "req.setBody(".repeat(5_000), ")".repeat(5_000));
+    let out = bounded(move || translate(&deep));
+    assert!(!out.kept);
+    assert_eq!(out.leftovers, ["req.setBody"]);
+}
+
+#[test]
+fn a_parenthesized_assignment_starting_a_line_after_an_unterminated_one_gets_a_semicolon() {
+    assert_eq!(
+        t("x = [1]\nreq.setUrl(u)"),
+        "x = [1]\n;(pm.request.url = u)"
+    );
+    assert_eq!(
+        t("const s = 'a'\nreq.setUrl(u).trim()"),
+        "const s = 'a'\n;(pm.request.url = u).trim()"
+    );
+    assert_eq!(t("a +\nreq.setUrl(u)"), "a +\n(pm.request.url = u)");
 }

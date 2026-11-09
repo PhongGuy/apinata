@@ -9,18 +9,12 @@ use super::tokens::{Tok, contains, same, tokens};
 
 /// Script API words whose translation reshapes arguments; a case using one waits for that port.
 const PENDING_WORDS: &[&str] = &[
-    "setBody",
-    "setHeaders",
-    "setHeader",
-    "setUrl",
-    "setMethod",
     "getCookie",
     "getCookies",
     "setCookie",
     "deleteCookie",
     "deleteCookies",
 ];
-const STRINGIFY_BODY: &str = "JSON.stringify(res.getBody())";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub(super) enum Kind {
@@ -124,7 +118,7 @@ pub(super) fn pending(input: &str) -> Option<&'static str> {
             return Some("test or expect call");
         }
     }
-    contains(input, STRINGIFY_BODY).then_some(STRINGIFY_BODY)
+    None
 }
 
 /// Whether `output` satisfies `check`, on exact text first and then on tokens.
@@ -200,7 +194,6 @@ mod tests {
 
     #[test]
     fn plan_b_cases_are_recognised_by_their_markers() {
-        assert_eq!(pending("req.setHeader('a', 'b');"), Some("setHeader"));
         assert_eq!(
             pending("test('ok', () => {});"),
             Some("test or expect call")
@@ -211,21 +204,23 @@ mod tests {
         );
         assert_eq!(pending("expect.fail('x');"), None);
         assert_eq!(pending("x.test(1);"), None);
-        assert_eq!(
-            pending("const s = JSON.stringify(res.getBody());"),
-            Some("JSON.stringify(res.getBody())")
-        );
-        assert_eq!(pending("const s = JSON.stringify(res.getBody().a);"), None);
-        assert_eq!(pending("// sendRequest\nconst a = 'setBody';"), None);
         assert_eq!(pending("jar.getCookie(u, 'a');"), Some("getCookie"));
+        assert_eq!(pending("// getCookie\nconst a = 'setCookie';"), None);
         assert_eq!(pending("bru.cookies.jar();"), None);
         assert_eq!(pending("bru.sendRequest({});"), None);
+        assert_eq!(
+            pending(
+                "req.setHeader(a, b); req.setBody(1); req.setUrl(u); req.setMethod(m); req.setHeaders(h);"
+            ),
+            None
+        );
+        assert_eq!(pending("const s = JSON.stringify(res.getBody());"), None);
         assert_eq!(
             cases()
                 .iter()
                 .filter(|c| pending(&c.input).is_none())
                 .count(),
-            158
+            167
         );
     }
 
@@ -255,9 +250,9 @@ mod tests {
     fn an_identity_translation_matches_no_plan_a_case() {
         let report = run(&|s: &str| s.to_owned());
         eprintln!("{}", report.summary());
-        assert_eq!((report.plan_a, report.pending), (158, 37));
+        assert_eq!((report.plan_a, report.pending), (167, 28));
         assert_eq!(report.matched, 0);
-        assert_eq!(report.differing.len(), 158);
+        assert_eq!(report.differing.len(), 167);
         assert!(report.stale.is_empty());
     }
 }

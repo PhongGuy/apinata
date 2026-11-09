@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use crate::export::ExportNote;
 
 use scan::{
-    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, skip_opaque, skip_ws,
-    template_end,
+    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, skip_opaque,
+    skip_ws, template_end,
 };
 
 mod scan;
@@ -279,36 +279,168 @@ fn template_closes(src: &str, start: usize, level: usize) -> Option<usize> {
     None
 }
 
+/// The last significant token `translate_code` passed, as far as statement boundaries need it.
+#[derive(Clone, Copy)]
+enum Last<'a> {
+    None,
+    /// A punctuator byte, at its index.
+    Punct(usize),
+    Word(&'a str),
+    /// A number, string, template or regex literal.
+    Literal,
+    /// A `)`; true when it closes an `if`, `for`, `while` or `with` header.
+    Close(bool),
+}
+
+/// Words that keep an operator's place before an expression.
+const OPERATOR_WORDS: &[&str] = &[
+    "typeof",
+    "void",
+    "delete",
+    "await",
+    "new",
+    "in",
+    "instanceof",
+];
+
 // Copy literals and comments as they are, descend into template holes, and try a rewrite at
-// each identifier that starts a chain rather than continuing one.
+// each identifier that starts a chain rather than continuing one. The last token and the open
+// parens are tracked so reshaped calls can respect the statement around them.
 fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
     let b = src.as_bytes();
     let mut out = String::with_capacity(src.len());
+    let mut last = Last::None;
+    let mut last_end = 0;
+    let mut parens: Vec<bool> = Vec::new();
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'`' {
             i = copy_template(src, i, depth, &mut out, rewritten);
+            (last, last_end) = (Last::Literal, i);
         } else if let Some(end) = skip_opaque(src, i) {
             out.push_str(&src[i..end]);
+            if !(b[i] == b'/' && matches!(b.get(i + 1), Some(b'/' | b'*'))) {
+                (last, last_end) = (Last::Literal, end);
+            }
             i = end;
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
             if !is_property_access(b, i)
-                && let Some((text, next)) = rewrite_chain(src, i, end)
+                && let Some(found) = rewrite_chain(src, i, end, depth, rewritten)
             {
-                out.push_str(text);
+                let semicolon = needs_semicolon(src, last, last_end, i);
+                match found.shape {
+                    Shape::Assign if needs_parens(src, last, found.next) => {
+                        if semicolon {
+                            out.push(';');
+                        }
+                        out.push('(');
+                        out.push_str(&found.text);
+                        out.push(')');
+                    }
+                    Shape::Loop if semicolon => {
+                        out.push(';');
+                        out.push_str(&found.text);
+                    }
+                    _ => out.push_str(&found.text),
+                }
                 *rewritten += 1;
-                i = next;
+                last = if b[found.next - 1] == b')' {
+                    Last::Close(false)
+                } else {
+                    Last::Word("")
+                };
+                (i, last_end) = (found.next, found.next);
                 continue;
             }
             out.push_str(&src[i..end]);
-            i = end;
+            last = if b[i].is_ascii_digit() {
+                Last::Literal
+            } else {
+                Last::Word(&src[i..end])
+            };
+            (i, last_end) = (end, end);
         } else {
+            if !b[i].is_ascii_whitespace() {
+                last = match b[i] {
+                    b'(' => {
+                        let header = matches!(last, Last::Word("if" | "for" | "while" | "with"));
+                        parens.push(header);
+                        Last::Punct(i)
+                    }
+                    b')' => Last::Close(parens.pop().unwrap_or(false)),
+                    _ => Last::Punct(i),
+                };
+                last_end = i + 1;
+            }
             out.push(b[i] as char);
             i += 1;
         }
     }
     out
+}
+
+// An assignment can stand bare where the token before it starts an expression slot and the
+// token after it ends that expression; anywhere else a neighbouring operator would bind it.
+fn needs_parens(src: &str, last: Last, end: usize) -> bool {
+    let b = src.as_bytes();
+    let before = |k: usize, n: usize| k.checked_sub(n).map(|j| b[j]);
+    let bare_before = match last {
+        Last::None | Last::Close(_) => true,
+        Last::Word(w) => !OPERATOR_WORDS.contains(&w),
+        Last::Literal => false,
+        Last::Punct(k) => match b[k] {
+            b';' | b'{' | b'}' | b'(' | b'[' | b',' | b':' => true,
+            b'?' => before(k, 1) != Some(b'?'),
+            b'>' => before(k, 1) == Some(b'='),
+            b'=' => match before(k, 1) {
+                Some(b'=' | b'!') => false,
+                Some(c @ (b'<' | b'>')) => before(k, 2) == Some(c),
+                _ => true,
+            },
+            _ => false,
+        },
+    };
+    let (next, newline) = skip_trivia(src, end);
+    let bare_after = match b.get(next) {
+        None | Some(b';' | b',' | b')' | b']' | b'}' | b':') => true,
+        Some(&c) => newline && (is_ident_byte(c) || matches!(c, b'\'' | b'"' | b'`' | b'{')),
+    };
+    !(bare_before && bare_after)
+}
+
+// New text starting a line continues the previous statement unless that one ended where ASI
+// would end it anyway; after a value-like token, a leading `;` keeps the statements apart.
+fn needs_semicolon(src: &str, last: Last, last_end: usize, start: usize) -> bool {
+    let newline = src[last_end..start].contains('\n');
+    newline
+        && match last {
+            Last::None => false,
+            Last::Punct(k) => matches!(src.as_bytes()[k], b']' | b'}'),
+            Last::Literal => true,
+            Last::Word(w) => !matches!(w, "else" | "do" | "return") && !OPERATOR_WORDS.contains(&w),
+            Last::Close(header) => !header,
+        }
+}
+
+/// The first byte at or after `i` outside whitespace and comments, and whether a line break
+/// was passed on the way.
+fn skip_trivia(src: &str, mut i: usize) -> (usize, bool) {
+    let b = src.as_bytes();
+    let mut newline = false;
+    loop {
+        let k = skip_ws(b, i);
+        newline |= src[i..k].contains('\n');
+        i = k;
+        match (b.get(i), b.get(i + 1)) {
+            (Some(b'/'), Some(b'/' | b'*')) => {
+                let end = skip_opaque(src, i).unwrap_or(b.len());
+                newline |= src[i..end].contains('\n');
+                i = end;
+            }
+            _ => return (i, newline),
+        }
+    }
 }
 
 /// Copy a template literal, translating only its `${}` holes; past the depth cap, verbatim.
@@ -343,10 +475,44 @@ fn copy_template(
     end
 }
 
+/// Calls whose arguments move into new syntax; rewritten only when called.
+const RESHAPED: &[&str] = &[
+    "req.setUrl",
+    "req.setMethod",
+    "req.setHeader",
+    "req.setBody",
+    "req.setHeaders",
+    "JSON.stringify",
+];
+
+/// The statement shape a rewrite produces.
+enum Shape {
+    Expr,
+    /// `pm.request.url = x`, which an operator next to it would bind.
+    Assign,
+    /// A call of a function expression, which a previous unterminated line would call.
+    Loop,
+}
+
+struct Rewrite {
+    text: String,
+    next: usize,
+    shape: Shape,
+}
+
 // Gather the `.name` segments that follow the head with no space between, then try the
 // longest key first; at each length a call row needs a `(` and wins over a plain row.
-fn rewrite_chain(src: &str, start: usize, head_end: usize) -> Option<(&'static str, usize)> {
-    if !matches!(&src[start..head_end], "bru" | "req" | "res" | "expect") {
+fn rewrite_chain(
+    src: &str,
+    start: usize,
+    head_end: usize,
+    depth: usize,
+    rewritten: &mut usize,
+) -> Option<Rewrite> {
+    if !matches!(
+        &src[start..head_end],
+        "bru" | "req" | "res" | "expect" | "JSON"
+    ) {
         return None;
     }
     let b = src.as_bytes();
@@ -361,19 +527,139 @@ fn rewrite_chain(src: &str, start: usize, head_end: usize) -> Option<(&'static s
     }
     for &end in ends.iter().rev() {
         let key = &src[start..end];
-        if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key) {
-            let open = skip_ws(b, end);
-            if b.get(open) == Some(&b'(')
-                && let Some(close) = find_close(src, open)
-            {
-                return Some((text, close + 1));
-            }
+        let open = skip_ws(b, end);
+        let close = (b.get(open) == Some(&b'('))
+            .then(|| find_close(src, open))
+            .flatten();
+        if RESHAPED.contains(&key) {
+            let close = close?;
+            let (text, shape) = reshape(key, src, open, close, depth, rewritten)?;
+            return Some(Rewrite {
+                text,
+                next: close + 1,
+                shape,
+            });
+        }
+        if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key)
+            && let Some(close) = close
+        {
+            return Some(Rewrite {
+                text: (*text).to_owned(),
+                next: close + 1,
+                shape: Shape::Expr,
+            });
         }
         if let Some((_, text)) = SIMPLE.iter().find(|(k, _)| *k == key) {
-            return Some((text, end));
+            return Some(Rewrite {
+                text: (*text).to_owned(),
+                next: end,
+                shape: Shape::Expr,
+            });
         }
     }
     None
+}
+
+// Move a reshaped call's arguments into Postman's syntax, later arguments dropped. A spread
+// where an argument would land inside new syntax keeps the call as written.
+fn reshape(
+    key: &str,
+    src: &str,
+    open: usize,
+    close: usize,
+    depth: usize,
+    rewritten: &mut usize,
+) -> Option<(String, Shape)> {
+    let args = parts(src, open + 1, close);
+    let spread = |n: usize| {
+        args.get(n)
+            .is_some_and(|&(s, e)| src[s..e].starts_with("..."))
+    };
+    let mut arg = |n: usize| {
+        let (s, e) = args[n];
+        if depth + 1 >= MAX_DEPTH {
+            src[s..e].to_owned()
+        } else {
+            translate_code(&src[s..e], depth + 1, rewritten)
+        }
+    };
+    Some(match key {
+        "req.setUrl" | "req.setMethod" => {
+            let prop = if key == "req.setUrl" {
+                "pm.request.url"
+            } else {
+                "pm.request.method"
+            };
+            if args.is_empty() {
+                (prop.to_owned(), Shape::Expr)
+            } else if spread(0) {
+                return None;
+            } else {
+                (format!("{prop} = {}", arg(0)), Shape::Assign)
+            }
+        }
+        "req.setHeader" if args.len() >= 2 => {
+            if spread(0) || spread(1) {
+                return None;
+            }
+            let (k, v) = (arg(0), arg(1));
+            (
+                format!("pm.request.headers.upsert({{ key: {k}, value: {v} }})"),
+                Shape::Expr,
+            )
+        }
+        "req.setHeader" => {
+            let passed: Vec<String> = (0..args.len()).map(&mut arg).collect();
+            (
+                format!("pm.request.headers.upsert({})", passed.join(", ")),
+                Shape::Expr,
+            )
+        }
+        "req.setBody" if args.is_empty() => ("pm.request.body".to_owned(), Shape::Expr),
+        "req.setBody" => {
+            if spread(0) {
+                return None;
+            }
+            (
+                format!(
+                    "pm.request.body.update({{ mode: \"raw\", raw: JSON.stringify({}) }})",
+                    arg(0)
+                ),
+                Shape::Expr,
+            )
+        }
+        "req.setHeaders" if args.is_empty() => ("pm.request.headers".to_owned(), Shape::Expr),
+        "req.setHeaders" => {
+            if spread(0) {
+                return None;
+            }
+            (
+                format!(
+                    "(function() {{ const _headers = {}; for (const key in _headers) {{ pm.request.headers.upsert({{ key: key, value: _headers[key] }}); }} }})()",
+                    arg(0)
+                ),
+                Shape::Loop,
+            )
+        }
+        _ => {
+            let [(s, e)] = args.as_slice() else {
+                return None;
+            };
+            response_body_call(src, *s, *e)
+                .then(|| ("pm.response.text()".to_owned(), Shape::Expr))?
+        }
+    })
+}
+
+/// Whether `src[s..e]` is wholly a `res.getBody(...)` call.
+fn response_body_call(src: &str, s: usize, e: usize) -> bool {
+    let b = src.as_bytes();
+    let name_end = s + "res.getBody".len();
+    if !src[s..e].starts_with("res.getBody") || ident_end(b, name_end) != name_end {
+        return false;
+    }
+    let open = skip_ws(b, name_end);
+    b.get(open) == Some(&b'(') && find_close(src, open) == Some(e - 1)
 }
 
 /// The distinct `bru.`/`req.`/`res.` member chains in `code`, template holes included.
