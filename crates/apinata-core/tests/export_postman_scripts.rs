@@ -174,3 +174,39 @@ fn every_mapped_call_is_translated() {
         )])
     );
 }
+
+#[test]
+fn every_reshaped_call_is_translated() {
+    let code = "|-\n        req.setUrl(\"u\");\n        req.setMethod(\"POST\");\n        req.setHeader(\"h\", \"v\");\n        req.setBody({a: 1});\n        req.setHeaders({h: \"v\"});\n        JSON.stringify(res.getBody());\n        bru.cookies.jar().getCookie(\"u\", \"n\");\n        const jar = bru.cookies.jar();\n        jar.getCookies(\"u\");\n        test(\"t\", function() { expect(1).to.equal(1); });\n        bru.sendRequest({url: \"u\", headers: {a: \"1\"}, data: \"x\"}, (err, r) => { r.data; });\n        const rs = res;\n        rs.getBody();\n";
+    let (_d, c) = with_pre_request(code);
+    let lines: Vec<String> = exec(&exported(&c)["item"][0])
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "pm.request.url = \"u\";",
+            "pm.request.method = \"POST\";",
+            "pm.request.headers.upsert({ key: \"h\", value: \"v\" });",
+            "pm.request.body.update({ mode: \"raw\", raw: JSON.stringify({a: 1}) });",
+            "(function() { const _headers = {h: \"v\"}; for (const key in _headers) { pm.request.headers.upsert({ key: key, value: _headers[key] }); } })();",
+            "pm.response.text();",
+            "pm.cookies.jar().get(\"u\", \"n\");",
+            "const jar = pm.cookies.jar();",
+            "jar.getAll(\"u\");",
+            "pm.test(\"t\", function() { pm.expect(1).to.equal(1); });",
+            "pm.sendRequest({url: \"u\", header: {a: \"1\"}, body: { mode: \"raw\", raw: \"x\" }}, function(err, r) { r.json(); });",
+            "pm.response.json();",
+        ]
+    );
+    assert_eq!(
+        notes(&c),
+        pairs(&[(
+            "a / pre-request script",
+            "script translated; 14 calls rewritten for Postman"
+        )])
+    );
+}
