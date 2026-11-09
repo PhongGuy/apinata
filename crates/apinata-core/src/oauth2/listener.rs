@@ -445,7 +445,8 @@ mod tests {
 
     // A process spawned mid-wait holds a copy of the listening socket until its exec; the
     // duplicate stands in for that copy, and the port must still be free once `wait` returns.
-    #[cfg(unix)]
+    // Linux ends the listen state on shutdown; the BSDs refuse a shutdown of a listening socket.
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_cancelled_wait_frees_the_port_while_a_copy_of_the_socket_lives() {
         use std::os::fd::AsFd;
