@@ -97,6 +97,9 @@ actions!(
         SwitchBranch,
         /// Prompts for a file and exports the current collection there as Postman JSON.
         ExportCollection,
+        /// Prompts for a file and exports the current collection there as Postman JSON with its
+        /// scripts kept as written.
+        ExportCollectionPostmanKeepScripts,
         /// Prompts for a file and exports the current collection there as OpenAPI JSON.
         ExportCollectionOpenApi,
         /// Prompts for a file and exports the current collection there as an HTML documentation
@@ -2728,10 +2731,26 @@ impl Render for Shell {
             )
             .on_action(cx.listener(|this, _: &ExportCollection, window, cx| {
                 if let Some(root) = this.workspace.read(cx).current_root() {
-                    let format = ExportFormat::Postman;
+                    let format = ExportFormat::Postman {
+                        keep_scripts: false,
+                    };
                     crate::export::export_collection(&this.workspace, &root, format, window, cx);
                 }
             }))
+            .on_action(
+                cx.listener(|this, _: &ExportCollectionPostmanKeepScripts, window, cx| {
+                    if let Some(root) = this.workspace.read(cx).current_root() {
+                        let format = ExportFormat::Postman { keep_scripts: true };
+                        crate::export::export_collection(
+                            &this.workspace,
+                            &root,
+                            format,
+                            window,
+                            cx,
+                        );
+                    }
+                }),
+            )
             .on_action(
                 cx.listener(|this, _: &ExportCollectionOpenApi, window, cx| {
                     if let Some(root) = this.workspace.read(cx).current_root() {

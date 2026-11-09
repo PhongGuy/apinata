@@ -30,9 +30,10 @@ use crate::row_move::{MoveRowDown, MoveRowUp};
 use crate::search_dialog::OpenCollectionSearch;
 use crate::shell::{
     CloneRepository, CloseCollection, ExportCollection, ExportCollectionHtml,
-    ExportCollectionOpenApi, ExportEnvironment, ExportEnvironments, ImportCollection, ImportCurl,
-    ImportEnvironment, NewCollection, OpenCollection, OpenCookies, OpenDemoCollection,
-    OpenGlobalEnvironments, OpenRuntimeVariables, OpenVariablesOverview, SwitchBranch,
+    ExportCollectionOpenApi, ExportCollectionPostmanKeepScripts, ExportEnvironment,
+    ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, NewCollection,
+    OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments, OpenRuntimeVariables,
+    OpenVariablesOverview, SwitchBranch,
 };
 use crate::sidebar::{
     CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, FocusFilter,
@@ -309,6 +310,13 @@ pub fn registry() -> Vec<Command> {
             "Export collection to Postman",
             Collection,
             shell(ExportCollection),
+            &[],
+        ),
+        command(
+            "collection.export_keep_scripts",
+            "Export collection to Postman (keep scripts as written)",
+            Collection,
+            shell(ExportCollectionPostmanKeepScripts),
             &[],
         ),
         command(

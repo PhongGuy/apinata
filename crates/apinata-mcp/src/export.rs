@@ -25,6 +25,8 @@ pub(crate) struct ExportOpenapiArgs {
 pub(crate) struct ExportPostmanArgs {
     /// The most text to return, in bytes; 32 KiB when absent, 1 MiB at most.
     pub max_bytes: Option<u64>,
+    /// Export scripts exactly as written instead of translating their API calls for Postman; false when absent.
+    pub keep_scripts: Option<bool>,
 }
 
 /// What an export tool returns.
@@ -70,9 +72,15 @@ pub(crate) fn openapi(
     Ok(doc(format, &text, &exported.notes, max_bytes, seen))
 }
 
-/// The collection as a Postman v2.1 collection.
-pub(crate) fn postman(c: &Collection, max_bytes: Option<u64>, seen: &Redactor) -> ExportDoc {
-    let exported = export::postman(c);
+/// The collection as a Postman v2.1 collection, its scripts translated unless `keep_scripts`.
+pub(crate) fn postman(
+    c: &Collection,
+    max_bytes: Option<u64>,
+    keep_scripts: bool,
+    seen: &Redactor,
+) -> ExportDoc {
+    let options = export::PostmanOptions::new().keep_scripts(keep_scripts);
+    let exported = export::postman_with(c, &options);
     doc("json", &exported.json, &exported.notes, max_bytes, seen)
 }
 

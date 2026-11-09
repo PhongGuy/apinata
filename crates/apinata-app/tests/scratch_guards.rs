@@ -5,6 +5,7 @@ use crate::support;
 
 use apinata_app::shell::{
     CloseCollection, ExportCollection, ExportCollectionHtml, ExportCollectionOpenApi,
+    ExportCollectionPostmanKeepScripts,
 };
 use apinata_app::sidebar::menu::MenuEntry;
 use apinata_app::sidebar::model::NodeKind;
@@ -63,6 +64,14 @@ fn export_on_a_scratch_tab_shows_a_notice(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn export_keeping_scripts_on_a_scratch_tab_shows_a_notice(cx: &mut TestAppContext) {
+    let s = scratch_open(cx);
+    assert_refused(cx, &s, |cx| {
+        dispatch(cx, &s, ExportCollectionPostmanKeepScripts)
+    });
+}
+
+#[gpui_kit::test]
 fn export_openapi_on_a_scratch_tab_shows_a_notice(cx: &mut TestAppContext) {
     let s = scratch_open(cx);
     assert_refused(cx, &s, |cx| dispatch(cx, &s, ExportCollectionOpenApi));
@@ -116,7 +125,15 @@ fn exporting_the_scratch_root_directly_shows_the_notice(cx: &mut TestAppContext)
     assert_refused(cx, &s, |cx| {
         let (ws, root) = (s.ws.clone(), s.root.clone());
         cx.update_window(s.win, |_, w, cx| {
-            apinata_app::export::export_collection(&ws, &root, ExportFormat::Postman, w, cx)
+            apinata_app::export::export_collection(
+                &ws,
+                &root,
+                ExportFormat::Postman {
+                    keep_scripts: false,
+                },
+                w,
+                cx,
+            )
         })
         .unwrap();
         cx.run_until_parked();
@@ -130,6 +147,7 @@ fn the_scratch_row_menu_disables_collection_only_entries(cx: &mut TestAppContext
         MenuEntry::RunCollection,
         MenuEntry::CollectionSettings,
         MenuEntry::ExportPostman,
+        MenuEntry::ExportPostmanKeepScripts,
         MenuEntry::ExportOpenApi,
         MenuEntry::ExportHtml,
         MenuEntry::Close,

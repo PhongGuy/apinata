@@ -461,3 +461,75 @@ fn html_section_flags_are_a_usage_error_for_other_formats() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+fn scripted() -> tempfile::TempDir {
+    let a = get("a", 1, "http://x.test/a", &check("res.status", "eq", "200"))
+        + "  scripts:\n    - type: before-request\n      code: \"bru.setVar('k', 1);\"\n";
+    write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)])
+}
+
+fn postman_stdout(dir: &Path, extra: &[&str]) -> (Value, String) {
+    let out = apinata()
+        .arg("export")
+        .arg(dir)
+        .args(["--format", "postman", "--out", "-"])
+        .args(extra)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert_eq!(out.status.code(), Some(0), "{stderr}");
+    (serde_json::from_slice(&out.stdout).expect("JSON"), stderr)
+}
+
+#[test]
+fn postman_scripts_are_translated_by_default() {
+    let col = scripted();
+    let (v, stderr) = postman_stdout(col.path(), &[]);
+    assert_eq!(
+        v["item"][0]["event"][0]["script"]["exec"],
+        json!(["pm.variables.set('k', 1);"])
+    );
+    assert!(
+        stderr.contains(
+            "note: a / pre-request script: script translated; 1 call rewritten for Postman"
+        ),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn keep_scripts_writes_them_as_written() {
+    let col = scripted();
+    let (v, stderr) = postman_stdout(col.path(), &["--keep-scripts"]);
+    assert_eq!(
+        v["item"][0]["event"][0]["script"]["exec"],
+        json!(["bru.setVar('k', 1);"])
+    );
+    assert!(
+        stderr.contains(
+            "note: scripts: scripts exported as written; their API calls are not translated"
+        ),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn keep_scripts_is_a_usage_error_for_other_formats() {
+    let col = scripted();
+    for format in ["openapi", "openapi-yaml", "html"] {
+        let out = apinata()
+            .arg("export")
+            .arg(col.path())
+            .args(["--format", format, "--out", "-", "--keep-scripts"])
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(3), "{format}: {stderr}");
+        assert!(
+            stderr.contains(
+                "--keep-scripts does not apply to this format; it applies to --format postman"
+            ),
+            "{format}: {stderr}"
+        );
+    }
+}

@@ -30,6 +30,7 @@ const IDS: &[&str] = &[
     "collection.import",
     "collection.import_curl",
     "collection.export",
+    "collection.export_keep_scripts",
     "collection.export_openapi",
     "collection.export_html",
     "collection.new",
@@ -496,7 +497,7 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.focus_previous_control");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
-    assert_eq!(menu.len(), 22);
+    assert_eq!(menu.len(), 23);
     for (label, action) in menu {
         let c = cmds.iter().find(|c| c.label == label).expect(label);
         assert!(action.partial_eq(c.targets[0].action.as_ref()), "{label}");

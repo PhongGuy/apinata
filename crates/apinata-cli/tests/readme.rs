@@ -95,8 +95,10 @@ fn check_commands(file: &str, text: &str, top: &[String]) {
         for flag in words.iter().filter(|w| w.starts_with("--")) {
             let name = flag.split('=').next().unwrap();
             assert!(
-                // An optional value prints as `--name[=<V>]`.
-                options.contains(&format!("{name} ")) || options.contains(&format!("{name}[")),
+                // An optional value prints as `--name[=<V>]`; long help puts a bare flag alone on its line.
+                options.contains(&format!("{name} "))
+                    || options.contains(&format!("{name}["))
+                    || options.contains(&format!("{name}\n")),
                 "{file} uses `{name}` in `{line}`, which `apinata {} --help` lacks",
                 command.join(" ")
             );

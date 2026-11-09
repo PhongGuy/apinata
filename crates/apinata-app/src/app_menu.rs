@@ -18,6 +18,7 @@ const MENU_GROUPS: [&[&str]; 4] = [
         "collection.import",
         "collection.import_curl",
         "collection.export",
+        "collection.export_keep_scripts",
         "collection.export_openapi",
         "collection.export_html",
         "collection.run",
@@ -129,8 +130,9 @@ pub fn app_menu(
 }
 
 /// Command ids of the entries that act on a collection, which need a real one open.
-pub(crate) const COLLECTION_ONLY: [&str; 5] = [
+pub(crate) const COLLECTION_ONLY: [&str; 6] = [
     "collection.export",
+    "collection.export_keep_scripts",
     "collection.export_openapi",
     "collection.export_html",
     "collection.run",

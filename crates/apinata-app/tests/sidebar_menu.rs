@@ -57,6 +57,7 @@ fn entries_follow_the_row_kind() {
             E::RunCollection,
             E::CollectionSettings,
             E::ExportPostman,
+            E::ExportPostmanKeepScripts,
             E::ExportOpenApi,
             E::ExportHtml,
             E::ShowInFileManager,
@@ -399,6 +400,10 @@ fn tree_entries_take_the_registry_names() {
         (E::RunFolder, "collection.run_folder"),
         (E::CollectionSettings, "collection.settings"),
         (E::ExportPostman, "collection.export"),
+        (
+            E::ExportPostmanKeepScripts,
+            "collection.export_keep_scripts",
+        ),
         (E::ExportOpenApi, "collection.export_openapi"),
         (E::ExportHtml, "collection.export_html"),
     ] {

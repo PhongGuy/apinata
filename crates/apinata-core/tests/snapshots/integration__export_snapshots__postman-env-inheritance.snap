@@ -54,7 +54,7 @@ expression: rendered(&postman(&c))
             "exec": [
               "// Tests",
               "// The echo endpoint hands the request body back as a raw string.",
-              "const sent = () => JSON.parse(res.getBody().body);",
+              "const sent = () => JSON.parse(pm.response.json().body);",
               "",
               "test(\"every kind of row the environment inherits resolves under dev\", function() {",
               "  expect(sent()).to.eql({",
@@ -135,7 +135,7 @@ expression: rendered(&postman(&c))
             "exec": [
               "// Tests",
               "// The echo endpoint hands the request body back as a raw string.",
-              "const sent = () => JSON.parse(res.getBody().body);",
+              "const sent = () => JSON.parse(pm.response.json().body);",
               "",
               "test(\"every kind of row the workspace environment inherits resolves under workspace_dev\", function() {",
               "  expect(sent()).to.eql({",
@@ -203,8 +203,8 @@ expression: rendered(&postman(&c))
             "packages": {},
             "requests": {},
             "exec": [
-              "bru.setEnvVar('base_only', 'base_only_value');",
-              "bru.setEnvVar('session_id', 'script_session');"
+              "pm.environment.set('base_only', 'base_only_value');",
+              "pm.environment.set('session_id', 'script_session');"
             ]
           }
         }
@@ -243,8 +243,8 @@ expression: rendered(&postman(&c))
             "packages": {},
             "requests": {},
             "exec": [
-              "bru.setGlobalEnvVar('workspace_base_only', 'from_workspace_base');",
-              "bru.setGlobalEnvVar('workspace_session_id', 'script_session');"
+              "pm.globals.set('workspace_base_only', 'from_workspace_base');",
+              "pm.globals.set('workspace_session_id', 'script_session');"
             ]
           }
         }
@@ -254,4 +254,7 @@ expression: rendered(&postman(&c))
   "variable": []
 }
 --- notes
-scripts: scripts are exported as written; their API calls are not translated
+echo / tests script: script translated; 1 call rewritten for Postman
+workspace-vars / tests script: script translated; 1 call rewritten for Postman
+set-env-var / post-response script: script translated; 2 calls rewritten for Postman
+set-global-env-var / post-response script: script translated; 2 calls rewritten for Postman

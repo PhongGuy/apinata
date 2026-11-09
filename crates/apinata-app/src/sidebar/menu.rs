@@ -48,6 +48,8 @@ pub enum MenuEntry {
     Delete,
     /// Export the collection as a Postman collection file.
     ExportPostman,
+    /// Export the collection as a Postman collection file with its scripts kept as written.
+    ExportPostmanKeepScripts,
     /// Export the collection as an OpenAPI 3.1 document.
     ExportOpenApi,
     /// Export the collection as an HTML documentation page.
@@ -93,6 +95,7 @@ impl MenuEntry {
             MenuEntry::Rename => "Rename",
             MenuEntry::Delete => "Delete",
             MenuEntry::ExportPostman => label("collection.export"),
+            MenuEntry::ExportPostmanKeepScripts => label("collection.export_keep_scripts"),
             MenuEntry::ExportOpenApi => label("collection.export_openapi"),
             MenuEntry::ExportHtml => label("collection.export_html"),
             MenuEntry::ShowInFileManager => label("request.show_in_file_manager"),
@@ -116,6 +119,7 @@ pub fn scratch_blocked(entry: MenuEntry) -> bool {
         E::RunCollection
             | E::CollectionSettings
             | E::ExportPostman
+            | E::ExportPostmanKeepScripts
             | E::ExportOpenApi
             | E::ExportHtml
             | E::Close
@@ -135,6 +139,7 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
             E::RunCollection,
             E::CollectionSettings,
             E::ExportPostman,
+            E::ExportPostmanKeepScripts,
             E::ExportOpenApi,
             E::ExportHtml,
             E::ShowInFileManager,
