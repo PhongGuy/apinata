@@ -280,6 +280,7 @@ dependencies = [
  "tokio",
  "tree-sitter-c-sharp",
  "tree-sitter-graphql",
+ "tree-sitter-powershell",
  "url",
  "winresource",
 ]
@@ -3316,7 +3317,7 @@ dependencies = [
 [[package]]
 name = "gpui-pilot-host"
 version = "0.2.0"
-source = "git+https://github.com/PhongGuy/gpui-pilot?rev=562bf36#562bf36a6d66c77ecf8fe46a864e60e1e1c4df90"
+source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.2.0#60554f9756cb6045b92f5a5cd293aeb69d6617a5"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3331,7 +3332,7 @@ dependencies = [
 [[package]]
 name = "gpui-pilot-protocol"
 version = "0.2.0"
-source = "git+https://github.com/PhongGuy/gpui-pilot?rev=562bf36#562bf36a6d66c77ecf8fe46a864e60e1e1c4df90"
+source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.2.0#60554f9756cb6045b92f5a5cd293aeb69d6617a5"
 dependencies = [
  "serde",
  "serde_json",
@@ -9022,6 +9023,16 @@ name = "tree-sitter-php"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d8c17c3ab69052c5eeaa7ff5cd972dd1bc25d1b97ee779fec391ad3b5df5592"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-powershell"
+version = "0.26.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa49d15e5b291030a548447445e0547992eff1438e7cd9133bfec99a9ba962a9"
 dependencies = [
  "cc",
  "tree-sitter-language",
