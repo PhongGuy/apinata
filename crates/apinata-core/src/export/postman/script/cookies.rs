@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::alias::Bindings;
 use super::scan::{ident_end, is_ident_byte, is_property_access, skip_opaque, skip_ws};
 
 pub(super) const JAR_METHODS: &[(&str, &str)] = &[
@@ -13,20 +14,34 @@ pub(super) const JAR_METHODS: &[(&str, &str)] = &[
 ];
 
 /// Renames jar methods to Postman's where the receiver is a jar; returns the code and the renames.
-pub(super) fn rename_jar_methods(code: &str) -> (String, usize) {
+pub(super) fn rename_jar_methods(code: &str, bindings: &Bindings) -> (String, usize) {
     if !JAR_METHODS.iter().any(|(m, _)| code.contains(m)) {
         return (code.to_owned(), 0);
     }
+    // The member path from each receiver word to its `jar`: the API objects and their aliases.
+    let mut heads: HashMap<&str, &str> =
+        HashMap::from([("bru", ".cookies.jar"), ("pm", ".cookies.jar")]);
+    for (name, chain) in bindings.aliases() {
+        match chain {
+            "bru" => heads.insert(name, ".cookies.jar"),
+            "bru.cookies" => heads.insert(name, ".jar"),
+            _ => None,
+        };
+    }
     let words = words(code);
     let closes = closing_parens(code);
-    let jars = jar_names(code, &words, &closes);
+    let jar_call = |s: usize| jar_call(code, s, &heads, &closes);
+    let jars: HashSet<&str> = jar_names(code, &words, &jar_call)
+        .into_iter()
+        .filter(|name| bindings.usable(name))
+        .collect();
     let b = code.as_bytes();
     let mut out = String::with_capacity(code.len());
     let mut at = 0;
     let mut renamed = 0;
     for &(s, e) in &words {
         // The receiver ends after a jar call's `)` or after a name bound to one.
-        let receiver_end = match jar_call(code, s, &closes) {
+        let receiver_end = match jar_call(s) {
             Some(end) => end,
             None if jars.contains(&code[s..e]) => e,
             None => continue,
@@ -88,14 +103,21 @@ fn closing_parens(code: &str) -> HashMap<usize, usize> {
     out
 }
 
-/// The end of a `bru.cookies.jar(...)` or `pm.cookies.jar(...)` call starting at `s`.
-fn jar_call(code: &str, s: usize, closes: &HashMap<usize, usize>) -> Option<usize> {
-    let rest = &code[s..];
-    let len = ["bru.cookies.jar", "pm.cookies.jar"]
-        .iter()
-        .find(|h| rest.starts_with(**h))?
-        .len();
+/// The end of a jar call (`bru.cookies.jar(...)`, `pm.cookies.jar(...)` or one on an alias)
+/// whose receiver word starts at `s`.
+fn jar_call(
+    code: &str,
+    s: usize,
+    heads: &HashMap<&str, &str>,
+    closes: &HashMap<usize, usize>,
+) -> Option<usize> {
     let b = code.as_bytes();
+    let word_end = ident_end(b, s);
+    let path = heads.get(&code[s..word_end])?;
+    if !code[word_end..].starts_with(path) {
+        return None;
+    }
+    let len = word_end - s + path.len();
     if b.get(s + len).is_some_and(|c| is_ident_byte(*c)) {
         return None;
     }
@@ -104,12 +126,12 @@ fn jar_call(code: &str, s: usize, closes: &HashMap<usize, usize>) -> Option<usiz
     closes.get(&open).map(|c| c + 1)
 }
 
-// A name declared with exactly a jar call as its value is a jar wherever it is used; scopes
-// are not tracked.
+// A name declared with exactly a jar call as its value is a jar; the caller keeps only names
+// declared once and never rebound, so every use is that jar.
 fn jar_names<'a>(
     code: &'a str,
     words: &[(usize, usize)],
-    closes: &HashMap<usize, usize>,
+    jar_call: &dyn Fn(usize) -> Option<usize>,
 ) -> HashSet<&'a str> {
     let b = code.as_bytes();
     let mut out = HashSet::new();
@@ -122,7 +144,7 @@ fn jar_names<'a>(
         if b.get(eq) != Some(&b'=') || matches!(b.get(eq + 1), Some(b'=' | b'>')) {
             continue;
         }
-        let Some(end) = jar_call(code, skip_ws(b, eq + 1), closes) else {
+        let Some(end) = jar_call(skip_ws(b, eq + 1)) else {
             continue;
         };
         let after = skip_ws(b, end);

@@ -199,14 +199,15 @@ fn every_reshaped_call_is_translated() {
             "jar.getAll(\"u\");",
             "pm.test(\"t\", function() { pm.expect(1).to.equal(1); });",
             "pm.sendRequest({url: \"u\", header: {a: \"1\"}, body: { mode: \"raw\", raw: \"x\" }}, function(err, r) { r.json(); });",
-            "pm.response.json();",
+            "const rs = pm.response;",
+            "rs.json();",
         ]
     );
     assert_eq!(
         notes(&c),
         pairs(&[(
             "a / pre-request script",
-            "script translated; 14 calls rewritten for Postman"
+            "script translated; 15 calls rewritten for Postman"
         )])
     );
 }

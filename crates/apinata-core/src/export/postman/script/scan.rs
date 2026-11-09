@@ -64,10 +64,37 @@ pub(super) fn skip_opaque(src: &str, i: usize) -> Option<usize> {
     }
 }
 
+/// Words after which a `/` starts an expression, so it opens a regex.
+pub(super) const REGEX_AFTER: &[&str] = &[
+    "return",
+    "typeof",
+    "case",
+    "do",
+    "else",
+    "in",
+    "of",
+    "new",
+    "delete",
+    "void",
+    "throw",
+    "instanceof",
+    "yield",
+    "await",
+];
+
 /// A `/` starts a regex literal only where an expression may begin.
 pub(super) fn regex_end(b: &[u8], i: usize) -> Option<usize> {
     let starts_expr = match prev_significant(b, i) {
         None => true,
+        Some((k, c)) if is_ident_byte(c) => {
+            let from = (0..=k)
+                .rev()
+                .take_while(|&j| is_ident_byte(b[j]))
+                .last()
+                .unwrap_or(k);
+            let word = std::str::from_utf8(&b[from..=k]).unwrap_or("");
+            REGEX_AFTER.contains(&word) && !is_property_access(b, from)
+        }
         Some((_, c)) => b"(,=:[!&|?{};+-*%<>~^".contains(&c),
     };
     if !starts_expr {

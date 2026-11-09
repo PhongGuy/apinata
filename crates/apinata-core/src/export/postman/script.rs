@@ -225,17 +225,37 @@ pub(super) fn translate(code: &str) -> Translated {
             kept: true,
         };
     }
-    let code = alias::resolve(code);
-    let (code, mut rewritten) = send_request::rewrite(&code);
-    let (code, renamed) = cookies::rename_jar_methods(&code);
-    rewritten += renamed;
-    let code = translate_code(&code, 0, &mut rewritten);
+    let (code, values, bindings) = alias::resolve(code);
+    let (code, sent, kept) = send_request::rewrite(&code, &bindings);
+    let (code, renamed) = cookies::rename_jar_methods(&code, &bindings);
+    let mut cx = Cx {
+        rewritten: values + sent + renamed,
+        bindings: &bindings,
+        skipped: Vec::new(),
+    };
+    let code = translate_code(&code, 0, &mut cx);
+    let mut found = leftovers(&code);
+    let mut seen: HashSet<String> = found.iter().cloned().collect();
+    let more = bindings.unsafe_chains.iter().map(|c| (*c).to_owned());
+    for chain in more.chain(kept).chain(cx.skipped) {
+        if seen.insert(chain.clone()) {
+            found.push(chain);
+        }
+    }
     Translated {
-        leftovers: leftovers(&code),
+        leftovers: found,
         code,
-        rewritten,
+        rewritten: cx.rewritten,
         kept: false,
     }
+}
+
+/// State shared by the scan of one script.
+struct Cx<'b> {
+    rewritten: usize,
+    bindings: &'b alias::Bindings,
+    /// Heads of `test`/`expect` calls the budget left as written.
+    skipped: Vec<String>,
 }
 
 /// Whether every bracket outside literals and comments closes in order, and every template
@@ -327,7 +347,7 @@ const OPERATOR_WORDS: &[&str] = &[
 // Copy literals and comments as they are, descend into template holes, and try a rewrite at
 // each identifier that starts a chain rather than continuing one. The last token and the open
 // parens are tracked so reshaped calls can respect the statement around them.
-fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
+fn translate_code(src: &str, depth: usize, cx: &mut Cx) -> String {
     let b = src.as_bytes();
     let mut out = String::with_capacity(src.len());
     let mut last = Last::None;
@@ -336,7 +356,7 @@ fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'`' {
-            i = copy_template(src, i, depth, &mut out, rewritten);
+            i = copy_template(src, i, depth, &mut out, cx);
             (last, last_end) = (Last::Literal, i);
         } else if let Some(end) = skip_opaque(src, i) {
             out.push_str(&src[i..end]);
@@ -346,8 +366,10 @@ fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
             i = end;
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
+            let before = cx.rewritten;
             if !is_property_access(b, i)
-                && let Some(found) = rewrite_chain(src, i, end, depth, rewritten)
+                && let Some(found) = rewrite_chain(src, i, end, depth, cx)
+                && !(matches!(found.shape, Shape::Assign) && updated(src, last, found.next))
             {
                 let semicolon = needs_semicolon(src, last, last_end, i);
                 match found.shape {
@@ -365,7 +387,7 @@ fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
                     }
                     _ => out.push_str(&found.text),
                 }
-                *rewritten += 1;
+                cx.rewritten += 1;
                 last = if b[found.next - 1] == b')' {
                     Last::Close(false)
                 } else {
@@ -374,6 +396,9 @@ fn translate_code(src: &str, depth: usize, rewritten: &mut usize) -> String {
                 (i, last_end) = (found.next, found.next);
                 continue;
             }
+            // An assignment that an update operator would target is kept with its arguments
+            // as written; they are scanned on like any other code.
+            cx.rewritten = before;
             out.push_str(&src[i..end]);
             // A word after `.` is a property name, never a keyword.
             last = if b[i].is_ascii_digit() {
@@ -468,13 +493,7 @@ fn skip_trivia(src: &str, mut i: usize) -> (usize, bool) {
 }
 
 /// Copy a template literal, translating only its `${}` holes; past the depth cap, verbatim.
-fn copy_template(
-    src: &str,
-    start: usize,
-    depth: usize,
-    out: &mut String,
-    rewritten: &mut usize,
-) -> usize {
+fn copy_template(src: &str, start: usize, depth: usize, out: &mut String, cx: &mut Cx) -> usize {
     let b = src.as_bytes();
     let end = template_end(src, start);
     let mut i = start + 1;
@@ -487,7 +506,7 @@ fn copy_template(
                     break;
                 };
                 out.push_str(&src[text_from..i + 2]);
-                out.push_str(&translate_code(&src[i + 2..close], depth + 1, rewritten));
+                out.push_str(&translate_code(&src[i + 2..close], depth + 1, cx));
                 out.push('}');
                 i = close + 1;
                 text_from = i;
@@ -525,26 +544,30 @@ struct Rewrite {
 }
 
 // Gather the `.name` segments that follow the head with no space between, then try the
-// longest key first; at each length a call row needs a `(` and wins over a plain row.
+// longest key first; at each length a call row needs a `(` and wins over a plain row. A safe
+// alias reads as the chain it stands for, and its rewrite keeps the alias as the receiver.
 fn rewrite_chain(
     src: &str,
     start: usize,
     head_end: usize,
     depth: usize,
-    rewritten: &mut usize,
+    cx: &mut Cx,
 ) -> Option<Rewrite> {
-    if !matches!(
-        &src[start..head_end],
-        "bru" | "req" | "res" | "test" | "expect" | "JSON"
-    ) {
-        return None;
-    }
-    if bare_test_call(src, start, head_end) {
-        return Some(Rewrite {
-            text: format!("pm.{}", &src[start..head_end]),
-            next: head_end,
-            shape: Shape::Expr,
-        });
+    let head = &src[start..head_end];
+    let alias = cx.bindings.alias(head);
+    if alias.is_none() {
+        let known = matches!(head, "bru" | "req" | "res" | "test" | "expect" | "JSON");
+        // A script's own `test` or `expect` is not the API.
+        if !known || (matches!(head, "test" | "expect") && cx.bindings.binds(head)) {
+            return None;
+        }
+        if bare_test_call(src, start, head_end, cx) {
+            return Some(Rewrite {
+                text: format!("pm.{head}"),
+                next: head_end,
+                shape: Shape::Expr,
+            });
+        }
     }
     let b = src.as_bytes();
     let mut ends = Vec::new();
@@ -557,61 +580,121 @@ fn rewrite_chain(
         ends.push(pos);
     }
     for &end in ends.iter().rev() {
-        let key = &src[start..end];
-        let open = skip_ws(b, end);
-        // The closing paren is looked for only once a call row matches, so nested calls no
-        // table knows cost nothing; the rest is charged to the script's budget.
-        let close = || {
-            (b.get(open) == Some(&b'('))
-                .then(|| budgeted_close(src, open))
-                .flatten()
+        let key = match alias {
+            Some(chain) => format!("{chain}{}", &src[head_end..end]),
+            None => src[start..end].to_owned(),
         };
-        if key == "JSON.stringify"
-            && !src[skip_ws(b, open + 1).min(src.len())..].starts_with("res.getBody")
-        {
-            return None;
-        }
-        if RESHAPED.contains(&key) {
-            let close = close()?;
-            let (text, shape) = reshape(key, src, open, close, depth, rewritten)?;
-            return Some(Rewrite {
-                text,
-                next: close + 1,
-                shape,
-            });
-        }
-        if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key)
-            && let Some(close) = close()
-        {
-            return Some(Rewrite {
-                text: (*text).to_owned(),
-                next: close + 1,
-                shape: Shape::Expr,
-            });
-        }
-        if let Some((_, text)) = SIMPLE.iter().find(|(k, _)| *k == key) {
-            return Some(Rewrite {
-                text: (*text).to_owned(),
-                next: end,
-                shape: Shape::Expr,
-            });
-        }
+        let Some(found) = row_rewrite(&key, src, end, depth, cx) else {
+            continue;
+        };
+        return match alias {
+            None => Some(found?),
+            Some(chain) => {
+                let found = found?;
+                let text = localize(found.text, chain, head);
+                (text != src[start..found.next]).then_some(Rewrite { text, ..found })
+            }
+        };
     }
     None
 }
 
+/// The rewrite of the chain ending at `end` under `key`: `None` when no row has the key,
+/// `Some(None)` when a row has it but the call cannot be rewritten.
+fn row_rewrite(
+    key: &str,
+    src: &str,
+    end: usize,
+    depth: usize,
+    cx: &mut Cx,
+) -> Option<Option<Rewrite>> {
+    let b = src.as_bytes();
+    let open = skip_ws(b, end);
+    // The closing paren is looked for only once a call row matches, so nested calls no
+    // table knows cost nothing; the rest is charged to the script's budget.
+    let close = || {
+        (b.get(open) == Some(&b'('))
+            .then(|| budgeted_close(src, open))
+            .flatten()
+    };
+    if key == "JSON.stringify"
+        && !src[skip_ws(b, open + 1).min(src.len())..].starts_with("res.getBody")
+    {
+        return Some(None);
+    }
+    if RESHAPED.contains(&key) {
+        let Some(close) = close() else {
+            return Some(None);
+        };
+        return Some(
+            reshape(key, src, open, close, depth, cx).map(|(text, shape)| Rewrite {
+                text,
+                next: close + 1,
+                shape,
+            }),
+        );
+    }
+    if let Some((_, text)) = CALLS.iter().find(|(k, _)| *k == key)
+        && let Some(close) = close()
+    {
+        return Some(Some(Rewrite {
+            text: (*text).to_owned(),
+            next: close + 1,
+            shape: Shape::Expr,
+        }));
+    }
+    SIMPLE.iter().find(|(k, _)| *k == key).map(|(_, text)| {
+        Some(Rewrite {
+            text: (*text).to_owned(),
+            next: end,
+            shape: Shape::Expr,
+        })
+    })
+}
+
+/// `text` with the Postman object `chain` stands for written as the alias `name`.
+fn localize(text: String, chain: &str, name: &str) -> String {
+    let object = alias::postman_object(chain).unwrap_or("pm");
+    match text.strip_prefix(object) {
+        Some(rest) if rest.is_empty() || rest.starts_with('.') => format!("{name}{rest}"),
+        _ => text,
+    }
+}
+
+// An update operator next to an assignment would target it: `++x = y` and `(x = y)++` do not
+// parse.
+fn updated(src: &str, last: Last, next: usize) -> bool {
+    let b = src.as_bytes();
+    let prefix =
+        matches!(last, Last::Punct(k) if k > 0 && matches!(b[k], b'+' | b'-') && b[k - 1] == b[k]);
+    let rest = &src[skip_trivia(src, next).0..];
+    let assigned = (rest.starts_with('=') && !rest.starts_with("==") && !rest.starts_with("=>"))
+        || ASSIGN_OPS.iter().any(|o| rest.starts_with(o));
+    prefix || rest.starts_with("++") || rest.starts_with("--") || assigned
+}
+
+const ASSIGN_OPS: [&str; 15] = [
+    "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**=", "<<=", ">>=", ">>>=", "&&=", "||=",
+    "??=",
+];
+
 // A free-standing `test(` or `expect(` that is neither declared (`function test(`, a method
 // `test() {`) nor constructed; only the head changes, so the arguments are scanned on.
-fn bare_test_call(src: &str, start: usize, end: usize) -> bool {
+fn bare_test_call(src: &str, start: usize, end: usize, cx: &mut Cx) -> bool {
     let b = src.as_bytes();
-    if !matches!(&src[start..end], "test" | "expect") {
+    let head = &src[start..end];
+    if !matches!(head, "test" | "expect") {
         return false;
     }
     let open = skip_ws(b, end);
-    let Some(close) = (b.get(open) == Some(&b'('))
-        .then(|| budgeted_close(src, open))
-        .flatten()
-    else {
+    if b.get(open) != Some(&b'(') {
+        return false;
+    }
+    let Some(close) = budgeted_close(src, open) else {
+        // Only the budget leaves a call of a balanced script unclosed.
+        if !cx.skipped.iter().any(|h| h == head) {
+            cx.skipped.push(head.to_owned());
+        }
         return false;
     };
     let declared = prev_significant(b, start).is_some_and(|(k, c)| {
@@ -635,7 +718,7 @@ fn reshape(
     open: usize,
     close: usize,
     depth: usize,
-    rewritten: &mut usize,
+    cx: &mut Cx,
 ) -> Option<(String, Shape)> {
     let args = parts(src, open + 1, close);
     let spread = |n: usize| {
@@ -647,7 +730,7 @@ fn reshape(
         if depth + 1 >= MAX_DEPTH {
             src[s..e].to_owned()
         } else {
-            translate_code(&src[s..e], depth + 1, rewritten)
+            translate_code(&src[s..e], depth + 1, cx)
         }
     };
     Some(match key {

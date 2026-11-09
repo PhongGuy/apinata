@@ -1,4 +1,3 @@
-use super::alias::resolve;
 use super::corpus::table;
 use super::scan::parts;
 use super::tokens::same;
@@ -459,10 +458,6 @@ fn callbacks_become_plain_functions_reading_the_postman_response() {
         ),
         ("async function (e, r) {}", "async function(e, r) {}"),
         ("r => r.data", "function(r, response) { return r.data; }"),
-        (
-            "(e, {data}) => data",
-            "function(e, response) { return data; }",
-        ),
         ("() => 1", "function(error, response) { return 1; }"),
         (
             "(e, r) => [r.dataset, x.r.data, r?.data, r.headers, r\n.data]",
@@ -752,88 +747,136 @@ fn a_parenthesized_assignment_starting_a_line_after_an_unterminated_one_gets_a_s
 }
 
 #[test]
-fn aliases_of_the_script_api_are_resolved_and_their_declarations_dropped() {
+fn an_alias_keeps_its_declaration_and_its_member_chains_are_translated() {
     for (src, want) in [
         (
             "const r = res;\nconst b = r.getBody();",
-            "const b = res.getBody();",
+            "const r = pm.response;\nconst b = r.json();",
         ),
-        ("const a = req;\nconst b = a;\nb.getUrl();", "req.getUrl();"),
+        (
+            "const r = res;\nr.getStatus()",
+            "const r = pm.response;\nr.code",
+        ),
+        (
+            "const a = req;\nconst b = a;\nb.getUrl();",
+            "const a = pm.request;\nconst b = a;\nb.url;",
+        ),
         (
             "const c = bru.cookies;\nc.get('a');",
-            "bru.cookies.get('a');",
+            "const c = pm.cookies;\nc.get('a');",
         ),
         (
             "const { cookies, runner: r } = bru;\ncookies.get('a');\nr.skipRequest();",
-            "bru.cookies.get('a');\nbru.runner.skipRequest();",
+            "const { cookies, runner: r } = pm;\ncookies.get('a');\nr.skipRequest();",
         ),
         (
             "const t = test;\nconst e = expect;\nt('x', () => e(1).to.equal(1));",
-            "test('x', () => expect(1).to.equal(1));",
+            "const t = pm.test;\nconst e = pm.expect;\nt('x', () => e(1).to.equal(1));",
         ),
         (
             "const r = res;\nconsole.log(`${r.status}`);",
-            "console.log(`${res.status}`);",
+            "const r = pm.response;\nconsole.log(`${r.code}`);",
+        ),
+        (
+            "const b = bru;\nb.getEnvVar('x');",
+            "const b = pm;\nb.environment.get('x');",
+        ),
+        (
+            "const r = req;\nr.getName();",
+            "const r = pm.request;\npm.info.requestName;",
+        ),
+        (
+            "const r = req;\nr.setUrl(u);",
+            "const r = pm.request;\nr.url = u;",
+        ),
+        (
+            "const r = bru.runner;\nr.stopExecution();",
+            "const r = pm.execution;\nr.setNextRequest(null);",
+        ),
+        (
+            "let a = b\nconst r = res\n;(f)()\nr.getStatus()",
+            "let a = b\nconst r = pm.response\n;(f)()\nr.code",
+        ),
+        (
+            "const r = res, s = 1; r.getStatus()",
+            "const r = pm.response, s = 1; r.code",
+        ),
+        (
+            "var r = res;\nr.getStatus()",
+            "var r = pm.response;\nr.code",
+        ),
+        (
+            "if (x) {\n  const r = res;\n  r.getBody();\n}",
+            "if (x) {\n  const r = pm.response;\n  r.json();\n}",
+        ),
+        (
+            "const r = res; o.r.getStatus(); r.getStatus()",
+            "const r = pm.response; o.r.getStatus(); r.code",
         ),
     ] {
-        let got = resolve(src);
-        assert!(same(&got, want), "{src:?} gave {got:?}");
+        assert_eq!(t(src), want, "{src:?}");
     }
-}
-
-#[test]
-fn a_dropped_declaration_takes_its_line_and_nothing_else() {
-    assert_eq!(resolve("const r = res; r.getBody();"), "res.getBody();");
-    assert_eq!(
-        t("foo();\nconst r = res;\nr.getBody();"),
-        "foo();\npm.response.json();"
-    );
-    assert_eq!(
-        t("// lead\nconst r = res;\n\nr.getBody();\nbar();"),
-        "pm.response.json();\nbar();"
-    );
-    assert_eq!(
-        t("if (x) {\n  const r = res;\n  r.getBody();\n}"),
-        "if (x) {\n  pm.response.json();\n}"
-    );
-}
-
-#[test]
-fn aliases_the_resolver_cannot_follow_are_left_alone() {
-    for src in [
-        "let r = res;\nr++;\nr.getBody()",
-        "const r = res;\nconst o = { r };\nr.getBody();",
-        "const r = res;\nconst o = { r: 1 };\nr.getBody();",
-        "const r = res;\nconst f = (r) => r.getBody();",
-        "const r = res;\nconst f = r => r.getBody();",
-        "const r = res;\ntry { x() } catch (r) { r.getBody() }",
-        "const r = res;\n{ const r = 1; }\nr.getBody();",
-        "const g = bru.getVar;\ng('a');",
-        "for (const r = res; r.status < 0; ) {}",
-    ] {
-        assert_eq!(resolve(src), src, "{src:?}");
-    }
-}
-
-#[test]
-fn resolved_aliases_translate_and_unresolved_ones_are_reported() {
     let out = translate("const r = res;\nconst b = r.getBody();");
-    assert_eq!(out.code, "const b = pm.response.json();");
-    assert_eq!(out.rewritten, 1);
+    assert_eq!(out.rewritten, 2);
     assert!(out.leftovers.is_empty(), "{:?}", out.leftovers);
-    assert_eq!(
-        t("const b = bru;\nb.sendRequest('u');"),
-        "pm.sendRequest('u');"
-    );
-    let out = translate("let r = res;\nr = next();\nr.getBody();");
-    assert_eq!(out.code, "let r = res;\nr = next();\nr.getBody();");
-    assert_eq!(out.leftovers, ["res"]);
-    assert_eq!(translate("let b = bru;\nb = 1;").leftovers, ["bru"]);
+}
+
+#[test]
+fn keys_methods_and_labels_named_like_an_alias_are_not_uses() {
+    for mid in [
+        "o = { r: 1 };",
+        "o = { r() { return 1 } };",
+        "class A { r() {} };",
+        "o = { get r() { return 1 } };",
+        "r: for (;;) break r;",
+        "const o = { r };",
+    ] {
+        let src = format!("const r = res; {mid} r.getStatus()");
+        let want = format!("const r = pm.response; {mid} r.code");
+        assert_eq!(t(&src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn an_alias_that_is_not_safe_is_left_as_written_and_reported() {
+    for (src, chain) in [
+        ("let r = res;\nr++;\nr.getBody()", "res"),
+        ("let r = res;\nr = next();\nr.getBody();", "res"),
+        ("const r = res;\nconst f = (r) => r.getBody();", "res"),
+        ("const r = res;\nconst f = r => r.getBody();", "res"),
+        (
+            "const r = res;\ntry { x() } catch (r) { r.getBody() }",
+            "res",
+        ),
+        ("const r = res;\n{ const r = 1; }\nr.getBody();", "res"),
+        ("if (a) var r = res\nr.getStatus()", "res"),
+        ("for (const r = res; r.status < 0; ) {}", "res"),
+        ("const r = res; [r] = [1]", "res"),
+        ("let r = res; ({ a: r } = o); r.getStatus()", "res"),
+        ("let r = res; for (r of xs) {} r.getStatus()", "res"),
+        ("let r = res; for (r in xs) {} r.getStatus()", "res"),
+        (
+            "const r = res; function f(r) { return r.getStatus() } r.getStatus()",
+            "res",
+        ),
+        (
+            "const r = res; const fn = function r() { return r }; r.getStatus()",
+            "res",
+        ),
+        ("const t = test;\nfunction g(t) {}\nt('x');", "test"),
+        ("let c = bru.cookies;\nc = 1;", "bru.cookies"),
+        ("const { getVar } = bru;\ngetVar('a');", "bru"),
+        ("let b = bru;\nb = 1;", "bru"),
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src, "{src:?}");
+        assert!(
+            out.leftovers.iter().any(|l| l == chain),
+            "{src:?}: {:?}",
+            out.leftovers
+        );
+    }
     assert_eq!(translate("x = req\nf()").leftovers, ["req"]);
-    assert_eq!(
-        translate("const { getVar } = bru;\ngetVar('a');").leftovers,
-        ["bru"]
-    );
     for src in [
         "f(res)",
         "if (a === res) {}",
@@ -848,21 +891,42 @@ fn resolved_aliases_translate_and_unresolved_ones_are_reported() {
 }
 
 #[test]
+fn aliases_of_bru_reach_send_request_and_the_cookie_jar() {
+    assert_eq!(
+        t("const b = bru;\nb.sendRequest({data: x}, (e, r) => r.data);"),
+        "const b = pm;\npm.sendRequest({body: { mode: \"raw\", raw: x }}, function(e, r) { return r.json(); });"
+    );
+    assert_eq!(
+        t("const b = bru;\nb.cookies.jar().getCookie(u);"),
+        "const b = pm;\nb.cookies.jar().get(u);"
+    );
+    assert_eq!(
+        t("const c = bru.cookies;\nconst jar = c.jar();\njar.deleteCookies(u);"),
+        "const c = pm.cookies;\nconst jar = c.jar();\njar.clear(u);"
+    );
+}
+
+#[test]
 fn aliases_in_hostile_input_stay_bounded() {
-    bounded(|| resolve(&"const r = res;\n".repeat(50_000)).len());
+    bounded(|| translate(&"const r = res;\n".repeat(50_000)).code.len());
     let many: String = (0..40_000)
         .map(|i| format!("const a{i} = res; a{i}.getBody();\n"))
         .collect();
-    assert_eq!(bounded(move || translate(&many).rewritten), 40_000);
+    assert_eq!(bounded(move || translate(&many).rewritten), 80_000);
     let chain = (0..2_000)
         .map(|i| format!("const c{} = c{i};\n", i + 1))
         .collect::<String>()
-        + "const c0 = bru.cookies;\n";
-    bounded(move || resolve(&chain).len());
-    bounded(|| resolve(&"const a = 1 +\n".repeat(50_000)).len());
-    bounded(|| resolve(&("const f = (".repeat(30_000) + &") => 1".repeat(30_000))).len());
-    bounded(|| resolve(&"`${const r = res; r".repeat(5_000)).len());
-    bounded(|| resolve(&"const {a, ".repeat(50_000)).len());
+        + "const c0 = bru.cookies;\nc2000.get('a');\n";
+    let out = bounded(move || translate(&chain).code);
+    assert!(out.ends_with("const c0 = pm.cookies;\nc2000.get('a');\n"));
+    bounded(|| translate(&"const a = 1 +\n".repeat(50_000)).code.len());
+    bounded(|| {
+        translate(&("const f = (".repeat(30_000) + &") => 1".repeat(30_000)))
+            .code
+            .len()
+    });
+    bounded(|| translate(&"`${const r = res; r".repeat(5_000)).code.len());
+    bounded(|| translate(&"const {a, ".repeat(50_000)).code.len());
 }
 
 #[test]
@@ -891,7 +955,7 @@ fn cookie_jar_methods_take_postman_names() {
     );
     assert_eq!(
         t("const c = bru.cookies;\nconst jar = c.jar();\njar.deleteCookies(u);"),
-        "const jar = pm.cookies.jar();\njar.clear(u);"
+        "const c = pm.cookies;\nconst jar = c.jar();\njar.clear(u);"
     );
     assert_eq!(
         translate("const jar = bru.cookies.jar();\njar.getCookie(u, 'a');").rewritten,
@@ -932,7 +996,9 @@ fn only_jar_receivers_are_renamed() {
 
 #[test]
 fn jar_input_stays_bounded() {
-    let jars = "const jar = bru.cookies.jar();\njar.getCookie(u);\n".repeat(20_000);
+    let jars: String = (0..20_000)
+        .map(|i| format!("const jar{i} = bru.cookies.jar();\njar{i}.getCookie(u);\n"))
+        .collect();
     assert_eq!(bounded(move || translate(&jars).rewritten), 40_000);
 }
 
@@ -1078,4 +1144,155 @@ fn deeply_nested_calls_stay_bounded() {
         let deep = format!("{}1{}", head.repeat(100_000), ")".repeat(100_000));
         bounded(move || translate(&deep).code.len());
     }
+}
+
+#[test]
+fn a_script_that_declares_test_or_expect_keeps_its_own() {
+    for src in [
+        "function test(a) {} test(1)",
+        "const test = require('t'); test('a')",
+        "function f(expect) { expect(1) }",
+        "let expect; expect(1)",
+        "const f = (test) => test(1);",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+    }
+}
+
+#[test]
+fn a_shadowed_jar_name_keeps_its_methods() {
+    for (src, want) in [
+        (
+            "const j = bru.cookies.jar(); function f(j) { j.getCookie() } j.setCookie(u, 'n', 'v')",
+            "const j = pm.cookies.jar(); function f(j) { j.getCookie() } j.setCookie(u, 'n', 'v')",
+        ),
+        (
+            "const j = bru.cookies.jar(); { const j = new Map(); j.deleteCookie('x') }",
+            "const j = pm.cookies.jar(); { const j = new Map(); j.deleteCookie('x') }",
+        ),
+        (
+            "let j = bru.cookies.jar(); j = other; j.getCookie(u)",
+            "let j = pm.cookies.jar(); j = other; j.getCookie(u)",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn a_callback_with_patterned_parameters_keeps_its_call() {
+    for src in [
+        "bru.sendRequest(o, (err, {data}) => data)",
+        "bru.sendRequest(o, (err, r = 1) => r.data)",
+        "bru.sendRequest(o, (err, ...rest) => rest)",
+        "bru.sendRequest(o, ([e]) => e)",
+        "bru.sendRequest(o, function (e, {data}) { return data })",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.leftovers, ["bru.sendRequest"], "{src}");
+    }
+}
+
+#[test]
+fn an_added_callback_parameter_takes_an_unused_name() {
+    assert_eq!(
+        t("const response = 1; bru.sendRequest(o, (err) => response)"),
+        "const response = 1; pm.sendRequest(o, function(err, response2) { return response; })"
+    );
+    assert_eq!(
+        t(
+            "const response = 1, response2 = 2; bru.sendRequest(o, function (err) { return response })"
+        ),
+        "const response = 1, response2 = 2; pm.sendRequest(o, function(err, response3) { return response })"
+    );
+    assert_eq!(
+        t("const error = 1; bru.sendRequest(o, () => error)"),
+        "const error = 1; pm.sendRequest(o, function(error2, response) { return error; })"
+    );
+}
+
+#[test]
+fn an_assigned_response_read_is_kept_and_reported() {
+    for (src, want) in [
+        (
+            "bru.sendRequest(o, (err, r) => r.data = 1)",
+            "pm.sendRequest(o, function(err, r) { return r.data = 1; })",
+        ),
+        (
+            "bru.sendRequest(o, (err, r) => { r.data++ })",
+            "pm.sendRequest(o, function(err, r) { r.data++ })",
+        ),
+        (
+            "bru.sendRequest(o, (err, r) => { ++r.data })",
+            "pm.sendRequest(o, function(err, r) { ++r.data })",
+        ),
+        (
+            "bru.sendRequest(o, (err, r) => { r.data += 'x' })",
+            "pm.sendRequest(o, function(err, r) { r.data += 'x' })",
+        ),
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, want, "{src:?}");
+        assert!(
+            out.leftovers.iter().any(|l| l == "r.data"),
+            "{src:?}: {:?}",
+            out.leftovers
+        );
+    }
+    assert_eq!(
+        t("bru.sendRequest(o, (err, r) => r.data == 1)"),
+        "pm.sendRequest(o, function(err, r) { return r.json() == 1; })"
+    );
+}
+
+#[test]
+fn an_updated_assignment_keeps_its_call() {
+    for src in [
+        "x = a\n++req.setUrl(u)",
+        "req.setUrl(u)++",
+        "--req.setMethod(m)",
+    ] {
+        let out = translate(src);
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+        assert_eq!(out.leftovers.len(), 1, "{src}");
+    }
+}
+
+#[test]
+fn a_regex_after_a_keyword_is_not_division() {
+    for (src, want) in [
+        (
+            "function f() { return /\"/.test(s) }\nbru.setVar('a', \"b\")",
+            "function f() { return /\"/.test(s) }\npm.variables.set('a', \"b\")",
+        ),
+        (
+            "x = typeof /'/; bru.setVar('a', 'b')",
+            "x = typeof /'/; pm.variables.set('a', 'b')",
+        ),
+        (
+            "switch (x) { case /'/: bru.getVar('a') }",
+            "switch (x) { case /'/: pm.variables.get('a') }",
+        ),
+        (
+            "x = o.return / 2 / bru.getVar('a')",
+            "x = o.return / 2 / pm.variables.get('a')",
+        ),
+    ] {
+        assert_eq!(t(src), want, "{src:?}");
+    }
+}
+
+#[test]
+fn a_test_call_past_the_budget_is_reported() {
+    let deep = format!("{}1{}", "test(".repeat(100_000), ")".repeat(100_000));
+    let out = bounded(move || translate(&deep));
+    assert!(
+        out.leftovers.iter().any(|l| l == "test"),
+        "{:?}",
+        &out.leftovers[..out.leftovers.len().min(5)]
+    );
 }

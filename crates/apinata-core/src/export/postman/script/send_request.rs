@@ -2,25 +2,36 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::alias::Bindings;
 use super::scan::{
-    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, skip_opaque,
-    skip_trivia, skip_ws, template_end,
+    MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, parts, prev_significant,
+    skip_opaque, skip_trivia, skip_ws, template_end,
 };
 
-/// Rewrites each free-standing `bru.sendRequest(...)` for Postman; returns the code and the calls rewritten.
-pub(super) fn rewrite(code: &str) -> (String, usize) {
-    let (configs, decls) = configs(code);
+/// Rewrites each free-standing `bru.sendRequest(...)`, or one on a safe alias of `bru`, for
+/// Postman; returns the code, the calls rewritten and the reads kept as written.
+pub(super) fn rewrite(code: &str, bindings: &Bindings) -> (String, usize, Vec<String>) {
+    let bru_names: HashSet<&str> = bindings
+        .aliases()
+        .filter(|(_, chain)| *chain == "bru")
+        .map(|(name, _)| name)
+        .chain(["bru"])
+        .collect();
+    let (configs, decls) = configs(code, &bru_names);
     let mut em = Emitter {
         src: code,
         count: 0,
         configs,
         failing: HashSet::new(),
         responses: Vec::new(),
+        bru_names,
+        words: None,
+        kept: Vec::new(),
     };
     em.failing = em.failing_names(&decls);
     let mut out = String::with_capacity(code.len());
     em.emit(0, code.len(), 0, &mut out);
-    (out, em.count)
+    (out, em.count, em.kept)
 }
 
 /// The body mode a plain `Content-Type` header selects for an object `data`.
@@ -60,6 +71,20 @@ struct Emitter<'a> {
     failing: HashSet<&'a str>,
     /// Response parameters of the callbacks being emitted.
     responses: Vec<&'a str>,
+    /// `bru` and its safe aliases.
+    bru_names: HashSet<&'a str>,
+    /// Every identifier-like word of the script, gathered when a parameter must be named.
+    words: Option<HashSet<&'a str>>,
+    /// Response reads kept as written, as `R.data`.
+    kept: Vec<String>,
+}
+
+/// What became of an argument read as a callback.
+enum Cb {
+    NotCallback,
+    /// A callback whose parameters cannot be carried over; the call is kept.
+    Unsupported,
+    Written,
 }
 
 /// What a `const|let|var NAME = ...` declaration starts with.
@@ -71,10 +96,10 @@ enum Init<'a> {
 // Find every name passed as a lone first argument to `bru.sendRequest(` and follow each
 // through `NAME = OTHER` declarations to the object literals it can denote. One visited set
 // serves all names, since a name reached once has already contributed its objects.
-fn configs(code: &str) -> (HashSet<usize>, Decls<'_>) {
+fn configs<'a>(code: &'a str, bru_names: &HashSet<&str>) -> (HashSet<usize>, Decls<'a>) {
     let mut called = Vec::new();
     let mut decls: HashMap<&str, Vec<Init>> = HashMap::new();
-    scan_names(code, 0, code.len(), &mut called, &mut decls);
+    scan_names(code, 0, code.len(), bru_names, &mut called, &mut decls);
     let mut objects = HashSet::new();
     let mut visited = HashSet::new();
     while let Some(name) = called.pop() {
@@ -101,6 +126,7 @@ fn scan_names<'a>(
     code: &'a str,
     from: usize,
     to: usize,
+    bru_names: &HashSet<&str>,
     called: &mut Vec<&'a str>,
     decls: &mut HashMap<&'a str, Vec<Init<'a>>>,
 ) {
@@ -117,7 +143,7 @@ fn scan_names<'a>(
                         let Some(close) = find_close(code, k + 1).filter(|c| *c < end) else {
                             break;
                         };
-                        scan_names(code, k + 2, close, called, decls);
+                        scan_names(code, k + 2, close, bru_names, called, decls);
                         k = close;
                     }
                     _ => k += 1,
@@ -130,7 +156,9 @@ fn scan_names<'a>(
             let end = ident_end(b, i).min(to);
             if !is_property_access(b, i) {
                 match &code[i..end] {
-                    "bru" if code[end..to].starts_with(".sendRequest") => {
+                    head if bru_names.contains(head)
+                        && code[end..to].starts_with(".sendRequest") =>
+                    {
                         let open = skip_ws(b, end + ".sendRequest".len());
                         if b.get(open) == Some(&b'(')
                             && let Some((name, after)) = ident_at(code, skip_ws(b, open + 1))
@@ -250,10 +278,18 @@ impl<'a> Emitter<'a> {
                     && self.responses.contains(&&src[i..end])
                     && let Some((text, next)) = response_member(src, i, end)
                 {
-                    out.push_str(&src[copied..i]);
-                    out.push_str(&text);
+                    // `R.json()` cannot be assigned to, so an assigned read stays as written.
+                    if text.ends_with(')') && assigned(src, i, next) {
+                        let read = format!("{}.data", &src[i..end]);
+                        if !self.kept.contains(&read) {
+                            self.kept.push(read);
+                        }
+                    } else {
+                        out.push_str(&src[copied..i]);
+                        out.push_str(&text);
+                        copied = next;
+                    }
                     i = next;
-                    copied = i;
                 } else {
                     i = end;
                 }
@@ -280,32 +316,38 @@ impl<'a> Emitter<'a> {
     }
 
     // Rewrite a function or arrow callback as a plain Postman `function(E, R) {...}`, reading
-    // the response the Postman way inside its body. False when `s..e` is no such function.
-    fn callback(&mut self, s: usize, e: usize, depth: usize, out: &mut String) -> bool {
+    // the response the Postman way inside its body. Parameters must be plain names; a missing
+    // one gets a name the script does not use.
+    fn callback(&mut self, s: usize, e: usize, depth: usize, out: &mut String) -> Cb {
         let Some(cb) = Callback::parse(self.src, s, e) else {
-            return false;
+            return Cb::NotCallback;
         };
+        let mut names = Vec::new();
+        for &(ps, pe) in &cb.params {
+            match ident_at(self.src, ps).filter(|(_, end)| *end == pe) {
+                Some((name, _)) => names.push(name),
+                None => return Cb::Unsupported,
+            }
+        }
         if depth >= MAX_DEPTH {
             out.push_str(&self.src[s..e]);
-            return true;
+            return Cb::Written;
         }
-        let names: Vec<Option<&str>> = cb
-            .params
-            .iter()
-            .take(2)
-            .map(|&(ps, pe)| {
-                ident_at(self.src, ps)
-                    .filter(|(_, end)| *end == pe)
-                    .map(|(n, _)| n)
-            })
-            .collect();
-        let error = names.first().copied().flatten().unwrap_or("error");
-        let response = names.get(1).copied().flatten().unwrap_or("response");
+        let error = match names.first() {
+            Some(name) => (*name).to_owned(),
+            None => self.fresh("error"),
+        };
+        let response = match names.get(1) {
+            Some(name) => (*name).to_owned(),
+            None => self.fresh("response"),
+        };
+
         if cb.is_async {
             out.push_str("async ");
         }
         out.push_str(&format!("function({error}, {response}) {{"));
-        self.responses.push(response);
+        // A fresh name is used nowhere in the body, so there are no reads of it to rewrite.
+        self.responses.push(names.get(1).copied().unwrap_or(""));
         match cb.body {
             Body::Block(open, close) => {
                 self.emit(open + 1, close, depth, out);
@@ -319,7 +361,20 @@ impl<'a> Emitter<'a> {
             }
         }
         self.responses.pop();
-        true
+        Cb::Written
+    }
+
+    /// `base`, or `base` with the first number from 2 that makes it a word the script lacks.
+    fn fresh(&mut self, base: &str) -> String {
+        let src = self.src;
+        let words = self.words.get_or_insert_with(|| words(src));
+        if !words.contains(base) {
+            return base.to_owned();
+        }
+        (2..)
+            .map(|n| format!("{base}{n}"))
+            .find(|w| !words.contains(w.as_str()))
+            .unwrap_or_default()
     }
 
     /// Copy the template at `start`, emitting its holes one level deeper; returns its end.
@@ -350,7 +405,8 @@ impl<'a> Emitter<'a> {
     fn send_request_at(&self, start: usize, head_end: usize, to: usize) -> Option<usize> {
         let (src, b) = (self.src, self.src.as_bytes());
         const MEMBER: &str = ".sendRequest";
-        if &src[start..head_end] != "bru" || !src[head_end..to].starts_with(MEMBER) {
+        if !self.bru_names.contains(&src[start..head_end]) || !src[head_end..to].starts_with(MEMBER)
+        {
             return None;
         }
         let name_end = head_end + MEMBER.len();
@@ -367,8 +423,8 @@ impl<'a> Emitter<'a> {
     // Emit `pm.sendRequest(` with the first two arguments; a shape that cannot be followed
     // keeps the whole call as written and counts nothing.
     fn call(&mut self, start: usize, close: usize, depth: usize, out: &mut String) {
-        let open = start + "bru.sendRequest".len();
-        let open = skip_ws(self.src.as_bytes(), open);
+        let b = self.src.as_bytes();
+        let open = skip_ws(b, ident_end(b, start) + ".sendRequest".len());
         let before = self.count;
         let mut text = String::from("pm.sendRequest(");
         let mut ok = true;
@@ -383,8 +439,14 @@ impl<'a> Emitter<'a> {
             {
                 ok = self.options(s, end, depth + 1, &mut text);
                 text.push_str(&self.src[end..e]);
-            } else if n == 0 || !self.callback(s, e, depth + 1, &mut text) {
+            } else if n == 0 {
                 self.emit(s, e, depth + 1, &mut text);
+            } else {
+                match self.callback(s, e, depth + 1, &mut text) {
+                    Cb::Written => {}
+                    Cb::Unsupported => ok = false,
+                    Cb::NotCallback => self.emit(s, e, depth + 1, &mut text),
+                }
             }
             if !ok {
                 break;
@@ -602,6 +664,40 @@ fn plain_string(src: &str, s: usize, e: usize) -> Option<&str> {
         && t.as_bytes()[t.len() - 1] == q
         && !t.contains('\\'))
     .then(|| &t[1..t.len() - 1])
+}
+
+/// Whether the expression at `start..end` is the target of an assignment or an update.
+fn assigned(src: &str, start: usize, end: usize) -> bool {
+    const OPS: [&str; 15] = [
+        "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**=", "<<=", ">>=", ">>>=", "&&=", "||=",
+        "??=",
+    ];
+    let b = src.as_bytes();
+    let prefix = prev_significant(b, start)
+        .is_some_and(|(k, c)| matches!(c, b'+' | b'-') && k > 0 && b[k - 1] == c);
+    let rest = &src[skip_trivia(src, end, src.len())..];
+    prefix
+        || rest.starts_with("++")
+        || rest.starts_with("--")
+        || (rest.starts_with('=') && !rest.starts_with("==") && !rest.starts_with("=>"))
+        || OPS.iter().any(|o| rest.starts_with(o))
+}
+
+/// Every identifier-like run in `src`, literals and comments included.
+fn words(src: &str) -> HashSet<&str> {
+    let b = src.as_bytes();
+    let mut out = HashSet::new();
+    let mut i = 0;
+    while i < b.len() {
+        if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            out.insert(&src[i..end]);
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    out
 }
 
 /// `R.data`, `R.status` or `R.statusText` at `start`, as Postman reads them, and where it ends.

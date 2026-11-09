@@ -1,36 +1,45 @@
-//! Alias resolution: `const r = res; r.getBody()` becomes `res.getBody()` and the
-//! declaration is dropped, so the chain translation sees the whole chain. Works on a token
-//! list, in a few linear passes. A name that is declared more than once, reassigned, used as
-//! a parameter or as an object key is left alone.
+//! Alias analysis. A name bound to a piece of the script API (`const r = res`) keeps its
+//! declaration with the value translated (`const r = pm.response`), and member chains on it
+//! are translated where they are used. An alias is safe when its name is declared once and
+//! never rebound or shadowed; any other is left as written and reported. The analysis also
+//! records which names the script declares, so its own `test` or a shadowed jar is kept.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::scan::{
     MAX_DEPTH, find_close, ident_end, is_ident_byte, is_property_access, skip_opaque, template_end,
 };
 
-/// Resolve and remove at most this often, which settles chains of aliases
-/// (`const a = req; const b = a;`).
-const MAX_PASSES: usize = 5;
-
-/// Chains a name may stand for.
-const ALIASABLE: [&str; 7] = [
-    "bru",
-    "req",
-    "res",
-    "bru.cookies",
-    "bru.runner",
-    "test",
-    "expect",
+/// Chains a name may stand for, with the Postman object each one is.
+const ALIASABLE: [(&str, &str); 7] = [
+    ("bru", "pm"),
+    ("req", "pm.request"),
+    ("res", "pm.response"),
+    ("bru.cookies", "pm.cookies"),
+    ("bru.runner", "pm.execution"),
+    ("test", "pm.test"),
+    ("expect", "pm.expect"),
 ];
 
-/// Script heads; a name equal to one is never resolved.
+/// Script heads; a name equal to one is never an alias.
 const HEADS: [&str; 5] = ["bru", "req", "res", "test", "expect"];
 
 /// Heads a destructuring may bind properties of.
 const DESTRUCTURABLE: [&str; 3] = ["bru", "req", "res"];
 
-/// Scan budget shared by the bracket matching of one pass.
+/// The Postman object an aliasable chain is.
+pub(super) fn postman_object(chain: &str) -> Option<&'static str> {
+    ALIASABLE
+        .iter()
+        .find(|(c, _)| *c == chain)
+        .map(|(_, pm)| *pm)
+}
+
+fn aliasable(key: &str) -> Option<&'static str> {
+    ALIASABLE.iter().find(|(c, _)| *c == key).map(|(c, _)| *c)
+}
+
+/// Scan budget for the bracket matching of template holes.
 struct Ctx {
     budget: usize,
 }
@@ -70,23 +79,79 @@ struct Lexed {
     comments: Vec<(usize, usize)>,
 }
 
-/// Replaces each name bound to an aliasable chain with the chain and drops its declaration;
-/// returns the text unchanged when there is none.
-pub(super) fn resolve(src: &str) -> String {
-    if !HEADS.iter().any(|h| src.contains(h)) {
-        return src.to_owned();
+#[derive(Default, Clone, Copy)]
+struct Name {
+    decls: u32,
+    /// Reassigned, destructured into, a loop target or a parameter.
+    bad: bool,
+    param: bool,
+}
+
+/// What the analysis found about the names of one script.
+#[derive(Default)]
+pub(super) struct Bindings {
+    aliases: HashMap<String, &'static str>,
+    /// Chains of aliases left as written, first seen first.
+    pub unsafe_chains: Vec<&'static str>,
+    names: HashMap<String, Name>,
+    /// The scan ran out of budget: nothing is known to be safe.
+    exhausted: bool,
+}
+
+impl Bindings {
+    /// The chain a safe alias stands for.
+    pub fn alias(&self, name: &str) -> Option<&'static str> {
+        self.aliases.get(name).copied()
     }
-    let budget = src.len().saturating_mul(8).saturating_add(1 << 16);
-    let mut code = src.to_owned();
-    // Each pass gets the full scan budget.
-    for _ in 0..MAX_PASSES {
-        let mut cx = Ctx { budget };
-        let Some(next) = pass(&code, &mut cx) else {
-            break;
+
+    /// Safe aliases with the chains they stand for.
+    pub fn aliases(&self) -> impl Iterator<Item = (&str, &'static str)> {
+        self.aliases.iter().map(|(n, c)| (n.as_str(), *c))
+    }
+
+    /// Declared exactly once and never rebound, so every use is the declared value.
+    pub fn usable(&self, name: &str) -> bool {
+        !self.exhausted && self.names.get(name).is_some_and(|n| n.decls == 1 && !n.bad)
+    }
+
+    /// The script declares `name` or takes it as a parameter.
+    pub fn binds(&self, name: &str) -> bool {
+        self.names.get(name).is_some_and(|n| n.decls > 0 || n.param)
+    }
+}
+
+/// Analyse `src`; returns it with the value of each safe alias declaration translated, the
+/// number of values translated, and the bindings.
+pub(super) fn resolve(src: &str) -> (String, usize, Bindings) {
+    if !HEADS.iter().any(|h| src.contains(h)) && !src.contains("jar") {
+        return (src.to_owned(), 0, Bindings::default());
+    }
+    let mut cx = Ctx {
+        budget: src.len().saturating_mul(8).saturating_add(1 << 16),
+    };
+    let mut lx = Lexed::default();
+    lex(src, 0, src.len(), 0, &mut cx, &mut lx);
+    let mate = match_brackets(&lx.toks);
+    let mut sc = Scan {
+        src,
+        toks: &lx.toks,
+        mate: &mate,
+        names: HashMap::new(),
+        cands: Vec::new(),
+        skip: vec![false; lx.toks.len()],
+        stack: Vec::new(),
+        exhausted: false,
+        work: src.len().saturating_mul(4).saturating_add(1 << 16),
+    };
+    sc.run();
+    if sc.exhausted {
+        let bindings = Bindings {
+            exhausted: true,
+            ..Bindings::default()
         };
-        code = next;
+        return (src.to_owned(), 0, bindings);
     }
-    code
+    sc.settle()
 }
 
 fn lex(src: &str, from: usize, to: usize, depth: usize, cx: &mut Ctx, out: &mut Lexed) {
@@ -193,79 +258,34 @@ fn match_brackets(toks: &[Tok]) -> Vec<Option<usize>> {
     mate
 }
 
-#[derive(Default)]
-struct Name {
-    decls: u32,
-    bad: bool,
-}
-
-/// How a resolved declaration leaves the source.
-enum Removal {
-    /// The whole statement, from the `const` token to the last token of the statement.
-    Stmt(usize, usize),
-    /// A byte range inside a statement that keeps other declarators.
-    Range(usize, usize),
-    Keep,
+/// Where an alias's value comes from.
+#[derive(Clone, Copy)]
+enum Source<'a> {
+    Chain(&'static str),
+    /// Another name, itself possibly an alias.
+    Name(&'a str),
 }
 
 struct Cand<'a> {
-    binds: Vec<(&'a str, &'static str)>,
-    removal: Removal,
-    /// A destructuring of a head leaves its statement unless every property resolved.
-    complete: bool,
+    binds: Vec<(&'a str, Source<'a>)>,
+    /// Byte span and chain of a value written as a script chain, translated when safe.
+    value: Option<(usize, usize, &'static str)>,
+    /// In statement position and, for a destructuring, every key aliasable.
+    ok: bool,
 }
 
 struct Scan<'a> {
     src: &'a str,
     toks: &'a [Tok],
-    comments: &'a [(usize, usize)],
     mate: &'a [Option<usize>],
     names: HashMap<&'a str, Name>,
     cands: Vec<Cand<'a>>,
-    /// Tokens that declare a name or sit in a declaring pattern; never replaced.
+    /// Tokens that declare a name or open a declaring pattern.
     skip: Vec<bool>,
     stack: Vec<u8>,
     exhausted: bool,
-    /// Work left in this pass; hostile input exhausts it and the pass is dropped.
+    /// Work left; hostile input exhausts it and the analysis is dropped.
     work: usize,
-}
-
-fn pass(src: &str, cx: &mut Ctx) -> Option<String> {
-    let mut lx = Lexed::default();
-    lex(src, 0, src.len(), 0, cx, &mut lx);
-    let mate = match_brackets(&lx.toks);
-    let mut sc = Scan {
-        src,
-        toks: &lx.toks,
-        comments: &lx.comments,
-        mate: &mate,
-        names: HashMap::new(),
-        cands: Vec::new(),
-        skip: vec![false; lx.toks.len()],
-        stack: Vec::new(),
-        exhausted: false,
-        work: src.len().saturating_mul(4).saturating_add(1 << 16),
-    };
-    sc.run();
-    if sc.exhausted {
-        return None;
-    }
-    let edits = sc.edits();
-    if edits.is_empty() {
-        return None;
-    }
-    let mut out = String::with_capacity(src.len());
-    let mut at = 0;
-    for (s, e, text) in edits {
-        if s < at {
-            continue;
-        }
-        out.push_str(&src[at..s]);
-        out.push_str(text);
-        at = e;
-    }
-    out.push_str(&src[at..]);
-    Some(out)
 }
 
 const CONTROL: [&str; 6] = ["if", "while", "for", "switch", "with", "catch"];
@@ -291,7 +311,11 @@ impl<'a> Scan<'a> {
         self.toks.get(i).is_some_and(|t| t.k == K::Ident)
     }
 
-    /// Charge `n` tokens of work; once the budget is gone the pass gives up.
+    fn text_at(&self, i: usize) -> Option<&'a str> {
+        self.is_ident(i).then(|| self.text(i))
+    }
+
+    /// Charge `n` tokens of work; once the budget is gone the analysis gives up.
     fn charge(&mut self, n: usize) {
         self.work = self.work.saturating_sub(n);
         if self.work == 0 {
@@ -308,17 +332,19 @@ impl<'a> Scan<'a> {
         self.names.entry(self.text(i)).or_default().decls += 1;
     }
 
-    fn mark_bad(&mut self, i: usize) {
-        self.names.entry(self.text(i)).or_default().bad = true;
+    fn mark_bad(&mut self, i: usize, param: bool) {
+        let name = self.names.entry(self.text(i)).or_default();
+        name.bad = true;
+        name.param |= param;
     }
 
-    /// Mark every identifier inside the bracket at `open` as bad (parameters).
-    fn bad_group(&mut self, open: usize) {
+    /// Mark every identifier inside the bracket at `open` as rebound.
+    fn bad_group(&mut self, open: usize, param: bool) {
         let Some(close) = self.mate[open] else { return };
         self.charge(close - open);
         for k in open + 1..close {
             if self.is_ident(k) {
-                self.mark_bad(k);
+                self.mark_bad(k, param);
             }
         }
     }
@@ -336,34 +362,79 @@ impl<'a> Scan<'a> {
         }
     }
 
+    /// Whether the token at `i` starts a `for (` or `for await (` head's first slot.
+    fn loop_target(&self, first: usize) -> bool {
+        first >= 2
+            && self.punct(first - 1) == Some(b'(')
+            && (self.text_at(first - 2) == Some("for")
+                || (self.text_at(first - 2) == Some("await")
+                    && first >= 3
+                    && self.text_at(first - 3) == Some("for")))
+    }
+
     fn on_punct(&mut self, i: usize, c: u8) {
         match c {
             b'(' | b'[' | b'{' => self.stack.push(c),
             b')' | b']' | b'}' => {
                 self.stack.pop();
+                let Some(open) = self.mate[i] else { return };
                 // `name(params) {` is a method or a function body.
                 if c == b')'
                     && self.punct(i + 1) == Some(b'{')
-                    && let Some(open) = self.mate[i]
                     && open > 0
                     && self.is_ident(open - 1)
                     && !CONTROL.contains(&self.text(open - 1))
                 {
-                    self.bad_group(open);
+                    self.bad_group(open, true);
+                }
+                // A pattern assigned to, or the target of a `for (... of|in`.
+                let pattern = c == b'}' || (c == b']' && self.array_start(open));
+                let assigned = self.punct(i + 1) == Some(b'=')
+                    && !matches!(self.punct(i + 2), Some(b'=' | b'>'));
+                let iterated =
+                    matches!(self.text_at(i + 1), Some("of" | "in")) && self.loop_target(open);
+                if pattern && !self.skip[open] && (assigned || iterated) {
+                    self.bad_group(open, false);
                 }
             }
             b'=' if self.punct(i + 1) == Some(b'>') && self.toks[i + 1].s == self.toks[i].e => {
                 // Arrow function: the parameters shadow whatever they are called.
                 if i > 0 && self.is_ident(i - 1) {
-                    self.mark_bad(i - 1);
+                    self.mark_bad(i - 1, true);
                 } else if i > 0
                     && self.punct(i - 1) == Some(b')')
                     && let Some(open) = self.mate[i - 1]
                 {
-                    self.bad_group(open);
+                    self.bad_group(open, true);
                 }
             }
             _ => {}
+        }
+    }
+
+    /// A `[` that starts an array rather than indexing what precedes it.
+    fn array_start(&self, open: usize) -> bool {
+        match open.checked_sub(1).map(|p| self.toks[p].k) {
+            None => true,
+            Some(K::Ident) => matches!(
+                self.text(open - 1),
+                "return"
+                    | "typeof"
+                    | "case"
+                    | "do"
+                    | "else"
+                    | "in"
+                    | "of"
+                    | "new"
+                    | "void"
+                    | "await"
+                    | "yield"
+                    | "let"
+                    | "const"
+                    | "var"
+            ),
+            Some(K::Value) => false,
+            Some(K::Punct(p)) => !matches!(p, b')' | b']'),
         }
     }
 
@@ -384,15 +455,19 @@ impl<'a> Scan<'a> {
                     j += 1;
                 }
                 if self.punct(j) == Some(b'(') {
-                    self.bad_group(j);
+                    self.bad_group(j, true);
                 }
             }
             "class" if self.is_ident(i + 1) => self.declare(i + 1),
-            "catch" if self.punct(i + 1) == Some(b'(') => self.bad_group(i + 1),
+            "catch" if self.punct(i + 1) == Some(b'(') => self.bad_group(i + 1, true),
             _ => {}
         }
-        if !self.skip[i] && (self.assigned(i) || self.object_key(i)) {
-            self.mark_bad(i);
+        if self.skip[i] {
+            return;
+        }
+        let iterated = matches!(self.text_at(i + 1), Some("of" | "in")) && self.loop_target(i);
+        if self.assigned(i) || iterated {
+            self.mark_bad(i, false);
         }
     }
 
@@ -423,14 +498,6 @@ impl<'a> Scan<'a> {
             && self.punct(i - 2) == self.punct(i - 1)
             && self.toks[i - 1].s == self.toks[i - 2].e
             && self.toks[i - 1].e == self.toks[i].s
-    }
-
-    /// An object literal key or shorthand property: replacing it would be invalid.
-    fn object_key(&self, i: usize) -> bool {
-        self.stack.last() == Some(&b'{')
-            && i > 0
-            && matches!(self.punct(i - 1), Some(b'{' | b','))
-            && matches!(self.punct(i + 1), Some(b'}' | b',' | b':'))
     }
 
     fn cont_prev(&self, i: usize) -> bool {
@@ -470,8 +537,8 @@ impl<'a> Scan<'a> {
         len
     }
 
-    /// A script head followed by `.name` segments, as the chain and its last token; the chain
-    /// only counts when it is an aliasable one.
+    /// A script head followed by `.name` segments that together form an aliasable chain, with
+    /// its last token.
     fn chain(&self, i: usize) -> Option<(&'static str, usize)> {
         let head = self.text_at(i)?;
         if !HEADS.contains(&head) {
@@ -484,29 +551,35 @@ impl<'a> Scan<'a> {
             key.push_str(self.text(last + 2));
             last += 2;
         }
-        let known = ALIASABLE.iter().find(|k| **k == key)?;
-        Some((known, last))
+        Some((aliasable(&key)?, last))
     }
 
-    fn text_at(&self, i: usize) -> Option<&'a str> {
-        self.is_ident(i).then(|| self.text(i))
+    /// A declaration keyword where a statement starts: not the bare body of an `if`, a loop,
+    /// `else` or `do`, where a `var` would be hoisted out of its condition.
+    fn statement_position(&self, kw: usize) -> bool {
+        let Some(p) = kw.checked_sub(1) else {
+            return true;
+        };
+        match self.toks[p].k {
+            K::Ident => !matches!(self.text(p), "else" | "do"),
+            K::Punct(b')') => !self.mate[p].is_some_and(|o| {
+                o > 0 && matches!(self.text_at(o - 1), Some("if" | "for" | "while" | "with"))
+            }),
+            _ => true,
+        }
     }
 
     /// Register one `var`/`let`/`const` statement: every name it declares, and any declarator
-    /// that aliases a script chain.
+    /// whose value is a script chain, a lone head destructured, or another name.
     fn declaration(&mut self, kw: usize) {
-        let usable_scope = matches!(self.stack.last(), None | Some(b'{'));
+        let ok_scope =
+            matches!(self.stack.last(), None | Some(b'{')) && self.statement_position(kw);
         let mut i = kw + 1;
-        let mut first = true;
-        // Last token of the previous declarator, for removing a later one with its comma.
-        let mut prev_last = kw;
         loop {
             if self.exhausted || i >= self.toks.len() {
                 return;
             }
             let target = i;
-            let mut binds: Vec<(&'a str, &'static str)> = Vec::new();
-            let mut total_props = 0;
             let mut flat = None;
             match self.toks[i].k {
                 K::Ident => {
@@ -516,87 +589,65 @@ impl<'a> Scan<'a> {
                 K::Punct(b'{' | b'[') => {
                     let Some(close) = self.mate[i] else { return };
                     self.charge(close - i);
-                    let simple = self.toks[i].k == K::Punct(b'{') && self.pattern(i, close);
+                    self.skip[i] = true;
+                    if self.toks[i].k == K::Punct(b'{') && self.pattern(i, close) {
+                        flat = Some((i, close));
+                    }
                     for k in i + 1..close {
                         if self.is_ident(k) && !self.skip[k] {
                             self.declare(k);
                         }
                     }
-                    if simple {
-                        flat = Some((i, close));
-                    }
                     i = close + 1;
                 }
                 _ => return,
             }
-            let pattern = matches!(self.toks[target].k, K::Punct(_));
-            let mut alias: Option<(&'a str, &'static str)> = None;
-            let mut chain_last = None;
             let init_end;
             if self.punct(i) == Some(b'=') && !matches!(self.punct(i + 1), Some(b'=' | b'>')) {
                 let init = i + 1;
                 init_end = self.expr_end(init);
-                if pattern {
-                    // `{ a, b: c } = bru` only when the initializer is exactly a head.
+                let whole = |last: usize| init_end == last + 1;
+                if self.toks[target].k != K::Ident {
                     if let Some((open, close)) = flat
-                        && init_end == init + 1
+                        && whole(init)
                         && let Some(head) = self.text_at(init)
                         && DESTRUCTURABLE.contains(&head)
                     {
-                        total_props = self.pattern_binds(open, close, head, &mut binds);
+                        let (binds, all) = self.pattern_binds(open, close, head);
+                        let chain = aliasable(head).unwrap_or("bru");
+                        let t = self.toks[init];
+                        self.cands.push(Cand {
+                            binds,
+                            value: Some((t.s, t.e, chain)),
+                            ok: ok_scope && all,
+                        });
                     }
-                } else if let Some((value, last)) = self.chain(init)
-                    && init_end == last + 1
+                } else if let Some((chain, last)) = self.chain(init)
+                    && whole(last)
                 {
-                    alias = Some((self.text(target), value));
-                    chain_last = Some(last);
+                    let (s, e) = (self.toks[init].s, self.toks[last].e);
+                    self.cands.push(Cand {
+                        binds: vec![(self.text(target), Source::Chain(chain))],
+                        value: Some((s, e, chain)),
+                        ok: ok_scope,
+                    });
+                } else if let Some(other) = self.text_at(init)
+                    && whole(init)
+                    && !HEADS.contains(&other)
+                {
+                    self.cands.push(Cand {
+                        binds: vec![(self.text(target), Source::Name(other))],
+                        value: None,
+                        ok: ok_scope,
+                    });
                 }
             } else {
                 init_end = i;
             }
-            let more = self.punct(init_end) == Some(b',');
-            let stmt_last = if self.punct(init_end) == Some(b';') {
-                init_end
-            } else {
-                init_end.saturating_sub(1)
-            };
-            if usable_scope {
-                if let (Some(bind), Some(last)) = (alias, chain_last) {
-                    let removal = if first && !more {
-                        Removal::Stmt(kw, stmt_last)
-                    } else if first {
-                        match self.toks.get(init_end + 1) {
-                            Some(n) => Removal::Range(self.toks[target].s, n.s),
-                            None => Removal::Keep,
-                        }
-                    } else {
-                        Removal::Range(self.toks[prev_last].e, self.toks[last].e)
-                    };
-                    self.cands.push(Cand {
-                        binds: vec![bind],
-                        removal,
-                        complete: true,
-                    });
-                } else if !binds.is_empty() {
-                    let complete = binds.len() == total_props;
-                    let removal = if first && !more && complete {
-                        Removal::Stmt(kw, stmt_last)
-                    } else {
-                        Removal::Keep
-                    };
-                    self.cands.push(Cand {
-                        binds,
-                        removal,
-                        complete,
-                    });
-                }
-            }
-            if !more {
+            if self.punct(init_end) != Some(b',') {
                 return;
             }
-            prev_last = init_end - 1;
             i = init_end + 1;
-            first = false;
         }
     }
 
@@ -623,15 +674,14 @@ impl<'a> Scan<'a> {
         true
     }
 
-    /// Bindings of a flat destructuring of `head`; returns the number of properties listed.
+    /// Bindings of a flat destructuring of `head`, and whether every key was aliasable.
     fn pattern_binds(
-        &mut self,
+        &self,
         open: usize,
         close: usize,
         head: &str,
-        binds: &mut Vec<(&'a str, &'static str)>,
-    ) -> usize {
-        let (mut k, mut total) = (open + 1, 0);
+    ) -> (Vec<(&'a str, Source<'a>)>, bool) {
+        let (mut k, mut binds, mut all) = (open + 1, Vec::new(), true);
         while k < close {
             let key = self.text(k);
             let local = if self.punct(k + 1) == Some(b':') {
@@ -640,100 +690,112 @@ impl<'a> Scan<'a> {
             } else {
                 key
             };
-            total += 1;
-            let chain = format!("{head}.{key}");
-            if let Some(known) = ALIASABLE.iter().find(|c| **c == chain) {
-                binds.push((local, known));
+            match aliasable(&format!("{head}.{key}")) {
+                Some(chain) => binds.push((local, Source::Chain(chain))),
+                None => all = false,
             }
             k += 1;
             if self.punct(k) == Some(b',') {
                 k += 1;
             }
         }
-        total
+        (binds, all)
     }
 
     fn usable(&self, name: &str) -> bool {
-        self.names.get(name).is_some_and(|n| n.decls == 1 && !n.bad)
+        !HEADS.contains(&name) && self.names.get(name).is_some_and(|n| n.decls == 1 && !n.bad)
     }
 
-    /// Byte span of a removed statement: leading own-line comments, the statement, a
-    /// trailing same-line comment and the whitespace up to what follows.
-    fn stmt_span(&self, kw: usize, last: usize) -> (usize, usize) {
-        let b = self.src.as_bytes();
-        let kw_s = self.toks[kw].s;
-        let prev_end = if kw > 0 { self.toks[kw - 1].e } else { 0 };
-        let from_idx = self.comments.partition_point(|c| c.0 < prev_end);
-        let mut lead = None;
-        for c in &self.comments[from_idx..] {
-            if c.1 > kw_s {
-                break;
-            }
-            let own_line = kw == 0 || prev_end == 0 || self.src[prev_end..c.0].contains('\n');
-            if lead.is_none() && own_line {
-                lead = Some(c.0);
+    // Decide every candidate. A name's chain and safety follow `NAME = OTHER` links, memoised
+    // so long chains of names stay linear; a cycle resolves to nothing.
+    fn settle(self) -> (String, usize, Bindings) {
+        // A declaration is safe when it is in place and every name it binds is usable.
+        let cand_safe: Vec<bool> = self
+            .cands
+            .iter()
+            .map(|c| c.ok && c.binds.iter().all(|(n, _)| self.usable(n)))
+            .collect();
+        let mut by_name: HashMap<&str, (Source, bool)> = HashMap::new();
+        for (c, safe) in self.cands.iter().zip(&cand_safe) {
+            for (local, source) in &c.binds {
+                by_name.entry(local).or_insert((*source, *safe));
             }
         }
-        let mut from = lead.unwrap_or(kw_s);
-        if lead.is_none()
-            && kw > 0
-            && matches!(b[prev_end.saturating_sub(1)], b';' | b'{' | b'}')
-            && self.src[prev_end..kw_s]
-                .bytes()
-                .all(|c| c == b' ' || c == b'\t')
-        {
-            from = prev_end;
-        }
-        let mut to = self.toks[last].e;
-        loop {
-            while to < b.len() && matches!(b[to], b' ' | b'\t' | b'\r') {
-                to += 1;
-            }
-            match self.comments.binary_search_by_key(&to, |c| c.0) {
-                Ok(k) => to = self.comments[k].1,
-                Err(_) => break,
-            }
-        }
-        while to < b.len() && b[to].is_ascii_whitespace() {
-            to += 1;
-        }
-        (from, to)
-    }
-
-    /// Removals and replacements as `(start, end, text)`, in source order.
-    fn edits(&self) -> Vec<(usize, usize, &'static str)> {
-        let mut out = Vec::new();
-        let mut value: HashMap<&str, &'static str> = HashMap::new();
-        for c in &self.cands {
-            for (name, v) in &c.binds {
-                if !HEADS.contains(name) && self.usable(name) {
-                    value.insert(name, v);
+        let mut memo: HashMap<&str, (Option<&'static str>, bool)> = HashMap::new();
+        let mut resolve_name = |start: &'a str| -> (Option<&'static str>, bool) {
+            let mut path = Vec::new();
+            let mut seen = HashSet::new();
+            let mut at = start;
+            let mut result = (None, false);
+            loop {
+                if let Some(r) = memo.get(at) {
+                    result = *r;
+                    break;
+                }
+                if !seen.insert(at) {
+                    break;
+                }
+                path.push(at);
+                match by_name.get(at) {
+                    Some((Source::Chain(chain), _)) => {
+                        result = (Some(*chain), true);
+                        break;
+                    }
+                    Some((Source::Name(other), _)) => at = other,
+                    None => break,
                 }
             }
-            let all = c.binds.iter().all(|(n, _)| value.contains_key(n));
-            match c.removal {
-                Removal::Stmt(kw, last) if all && c.complete => {
-                    let (s, e) = self.stmt_span(kw, last);
-                    out.push((s, e, ""));
+            // Walk back: each link is safe when its own declaration is and the next one is.
+            for name in path.into_iter().rev() {
+                let own = by_name.get(name).is_some_and(|(_, safe)| *safe);
+                result = (result.0, result.1 && own);
+                memo.insert(name, result);
+            }
+            result
+        };
+        let mut bindings = Bindings::default();
+        let mut edits = Vec::new();
+        for (c, safe) in self.cands.iter().zip(&cand_safe) {
+            let mut all_safe = *safe;
+            for (local, _) in &c.binds {
+                let (chain, safe) = resolve_name(local);
+                match chain {
+                    Some(chain) if safe => {
+                        bindings.aliases.insert((*local).to_owned(), chain);
+                    }
+                    Some(chain) => {
+                        all_safe = false;
+                        if !bindings.unsafe_chains.contains(&chain) {
+                            bindings.unsafe_chains.push(chain);
+                        }
+                    }
+                    None => all_safe = false,
                 }
-                Removal::Range(s, e) if all => out.push((s, e, "")),
-                _ => {}
+            }
+            if let Some((s, e, chain)) = c.value {
+                if all_safe {
+                    edits.push((s, e, postman_object(chain).unwrap_or("pm")));
+                } else {
+                    if !bindings.unsafe_chains.contains(&chain) {
+                        bindings.unsafe_chains.push(chain);
+                    }
+                }
             }
         }
-        if value.is_empty() {
-            return Vec::new();
+        bindings.names = self
+            .names
+            .iter()
+            .map(|(n, v)| ((*n).to_owned(), *v))
+            .collect();
+        edits.sort_unstable_by_key(|e| e.0);
+        let mut out = String::with_capacity(self.src.len());
+        let mut at = 0;
+        for (s, e, text) in &edits {
+            out.push_str(&self.src[at..*s]);
+            out.push_str(text);
+            at = *e;
         }
-        for (i, t) in self.toks.iter().enumerate() {
-            if t.k != K::Ident || self.skip[i] {
-                continue;
-            }
-            if let Some(v) = value.get(&self.src[t.s..t.e])
-                && !is_property_access(self.src.as_bytes(), t.s)
-            {
-                out.push((t.s, t.e, *v));
-            }
-        }
-        out.sort_by_key(|e| e.0);
-        out
+        out.push_str(&self.src[at..]);
+        (out, edits.len(), bindings)
     }
 }
