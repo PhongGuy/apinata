@@ -704,7 +704,27 @@ fn close_returns(returns: &mut Vec<(usize, usize, usize)>, src: &str, at: usize,
 /// has an argument and no `;`. A line break ends it only where the next line surely starts a
 /// new statement; where that is unsure, `None`, since a wrong `;` breaks the script.
 fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
+    expression_end(src, from, cx)
+        .filter(|e| !e.semicolon)
+        .map(|e| e.end)
+}
+
+/// Where an expression ends, and whether a `;` follows it there.
+struct ExprEnd {
+    end: usize,
+    semicolon: bool,
+}
+
+/// Where the expression starting at `from` ends: at a `;`, a closing bracket, the end of the
+/// text, or a line break that surely starts a new statement. `None` when that is unsure.
+fn expression_end(src: &str, from: usize, cx: &mut Ctx) -> Option<ExprEnd> {
     let b = src.as_bytes();
+    let done = |end: Option<usize>| {
+        end.map(|end| ExprEnd {
+            end,
+            semicolon: false,
+        })
+    };
     // `after_op`: the last token leaves the expression open; `postfix`: it was `++` or `--`,
     // after which a line break may or may not end the statement.
     let (mut i, mut end, mut after_op, mut postfix) = (from, None, false, false);
@@ -713,7 +733,7 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
         i = skip_ws(b, i);
         let broke = src[ws..i].contains('\n');
         let Some(&c) = b.get(i) else {
-            return end;
+            return done(end);
         };
         if c == b'/' && matches!(b.get(i + 1), Some(b'/' | b'*')) {
             if broke && end.is_none() {
@@ -729,13 +749,21 @@ fn unterminated_return(src: &str, from: usize, cx: &mut Ctx) -> Option<usize> {
             }
             if !after_op && !continues_line(src, i) {
                 let starts_statement = c == b'}' || (is_ident_byte(c) && !c.is_ascii_digit());
-                return starts_statement.then_some(e);
+                return starts_statement.then_some(ExprEnd {
+                    end: e,
+                    semicolon: false,
+                });
             }
         }
         postfix = false;
         match c {
-            b';' => return None,
-            b')' | b']' | b'}' => return end,
+            b';' => {
+                return end.map(|end| ExprEnd {
+                    end,
+                    semicolon: true,
+                });
+            }
+            b')' | b']' | b'}' => return done(end),
             b':' if end.is_none() => return None,
             b'(' | b'[' | b'{' => {
                 i = cx.find_close(src, i)? + 1;
@@ -893,6 +921,15 @@ fn rewrite_chain(
             let call_at = skip_ws(b, chain_end);
             let called = b.get(call_at) == Some(&b'(');
             match rule {
+                // A call result cannot be assigned to: an assignment becomes the setter where
+                // there is one, and any other write leaves the chain as written.
+                Rule::Replace(text) if text.ends_with(')') => {
+                    return match mutation_at(b, start, chain_end) {
+                        None => Some((text, chain_end)),
+                        Some(Mutation::Assign(rhs)) => assign_with_setter(src, &key, rhs, cx),
+                        Some(Mutation::Other) => None,
+                    };
+                }
                 Rule::Replace(text) => return Some((text, chain_end)),
                 Rule::Statement(text) if cx.at_stmt => {
                     // `ok()` is read as the helper called with no arguments, as the reference does.
@@ -927,6 +964,57 @@ fn rewrite_chain(
         }
     }
     None
+}
+
+/// How the chain spanning `start..end` is written to, when it is.
+enum Mutation {
+    /// A plain `=`, with the offset of the value assigned.
+    Assign(usize),
+    /// A compound assignment or an increment or decrement.
+    Other,
+}
+
+fn mutation_at(b: &[u8], start: usize, end: usize) -> Option<Mutation> {
+    const COMPOUND: [&[u8]; 15] = [
+        b"**=", b">>>=", b"<<=", b">>=", b"&&=", b"||=", b"??=", b"+=", b"-=", b"*=", b"/=", b"%=",
+        b"&=", b"|=", b"^=",
+    ];
+    if let Some((k, c @ (b'+' | b'-'))) = prev_significant(b, start)
+        && k > 0
+        && b[k - 1] == c
+    {
+        return Some(Mutation::Other);
+    }
+    let n = skip_ws(b, end);
+    let rest = &b[n..];
+    // A `++` or `--` after a line break begins the next statement instead.
+    let postfix =
+        !b[end..n].contains(&b'\n') && (rest.starts_with(b"++") || rest.starts_with(b"--"));
+    if postfix || COMPOUND.iter().any(|op| rest.starts_with(op)) {
+        return Some(Mutation::Other);
+    }
+    (rest.first() == Some(&b'=') && !matches!(rest.get(1), Some(b'=' | b'>')))
+        .then(|| Mutation::Assign(skip_ws(b, n + 1)))
+}
+
+/// `pm.request.url = x` as `req.setUrl(x)`, and the same for the method. Only a whole
+/// statement with a single right-hand expression is rewritten; anything else keeps its text.
+fn assign_with_setter(src: &str, key: &str, rhs: usize, cx: &mut Ctx) -> Option<(String, usize)> {
+    let setter = match key {
+        "pm.request.url" => "req.setUrl",
+        "pm.request.method" => "req.setMethod",
+        _ => return None,
+    };
+    if !cx.at_stmt {
+        return None;
+    }
+    let end = expression_end(src, rhs, cx)?.end;
+    let value = &src[rhs..end];
+    if split_top_level(value, b',').len() != 1 {
+        return None;
+    }
+    let value = translate_code(value, cx);
+    Some((format!("{setter}({value})"), end))
 }
 
 /// Rewrites that need the call's parsed arguments. `open` is the `(` index.
@@ -1664,6 +1752,61 @@ mod tests {
         assert_eq!(t("pm.execution.skipRequest()"), "bru.runner.skipRequest()");
         assert_eq!(t("request.method"), "req.getMethod()");
         assert_eq!(t("responseCode.code"), "res.getStatus()");
+    }
+
+    #[test]
+    fn assignment_to_url_or_method_becomes_the_setter() {
+        assert_eq!(
+            t("pm.request.url = 'http://127.0.0.1/x';"),
+            "req.setUrl('http://127.0.0.1/x');"
+        );
+        assert_eq!(t("pm.request.method = 'POST'"), "req.setMethod('POST')");
+        assert_eq!(
+            t("postman.request.url = pm.environment.get('u') + '/a'\nfoo()"),
+            "req.setUrl(bru.getEnvVar('u') + '/a')\nfoo()"
+        );
+        assert_eq!(
+            t("if (a) { pm.request.method = m }"),
+            "if (a) { req.setMethod(m) }"
+        );
+        assert_eq!(
+            t("pm.request.url =\n  base +\n  path;\nx()"),
+            "req.setUrl(base +\n  path);\nx()"
+        );
+    }
+
+    #[test]
+    fn comparison_with_url_or_method_stays_a_read() {
+        assert_eq!(
+            t("if (pm.request.url == u) {}"),
+            "if (req.getUrl() == u) {}"
+        );
+        assert_eq!(
+            t("pm.request.method === 'GET'"),
+            "req.getMethod() === 'GET'"
+        );
+    }
+
+    /// A call result cannot be assigned to, so a target with no setter keeps its text
+    /// and is reported unsupported rather than turned into invalid code.
+    #[test]
+    fn assignment_without_a_setter_is_left_as_written() {
+        for src in [
+            "pm.request.url += '/a';",
+            "pm.request.method ??= 'GET';",
+            "pm.request.headers = h;",
+            "pm.request.body = b;",
+            "pm.response.code = 200;",
+            "pm.response.code++;",
+            "--pm.response.code;",
+            "x = pm.request.url = u;",
+            "pm.request.url = a, b;",
+        ] {
+            let out = translate(src);
+            assert_eq!(out.code, src, "{src}");
+            assert!(!out.unsupported.is_empty(), "{src}");
+        }
+        assert_eq!(t("request.url = u;"), "request.url = u;");
     }
 
     #[test]
