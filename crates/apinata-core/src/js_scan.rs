@@ -40,6 +40,19 @@ pub(crate) mod keyword_regex {
     }
 }
 
+/// Scanning where only punctuation before a `/` makes it a regex, so `return /a/` is division.
+pub(crate) mod punct_regex {
+    pub(crate) fn skip_opaque(src: &str, i: usize) -> Option<usize> {
+        super::skip_opaque::<false>(src, i)
+    }
+    pub(crate) fn template_end(src: &str, i: usize) -> usize {
+        super::template_end::<false>(src, i)
+    }
+    pub(crate) fn find_close(src: &str, open: usize) -> Option<usize> {
+        super::find_close::<false>(src, open)
+    }
+}
+
 pub(crate) fn is_ident_byte(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80
 }
