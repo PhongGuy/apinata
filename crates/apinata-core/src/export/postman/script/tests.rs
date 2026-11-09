@@ -147,7 +147,13 @@ fn hostile_input_stays_bounded() {
         50_000
     );
     assert!(bounded(|| translate(&"res.status(".repeat(50_000)).kept));
-    assert!(bounded(|| translate(&format!("{}x", "`${".repeat(10_000))).code.len()) > 0);
+    let deep = format!("{}x", "`${".repeat(10_000));
+    let out = bounded({
+        let deep = deep.clone();
+        move || translate(&deep)
+    });
+    assert!(out.kept);
+    assert_eq!(out.code, deep);
     assert_eq!(
         bounded(|| translate(&format!("bru{}", ".a".repeat(50_000)))
             .leftovers
@@ -223,4 +229,52 @@ fn plan_a_cases_match_the_reference() {
     );
     assert_eq!(report.plan_a, 123);
     assert_eq!(report.matched + report.deviated, 123);
+}
+
+#[test]
+fn an_unclosed_template_or_hole_keeps_the_script_and_reports_what_follows() {
+    for src in [
+        "`${ f( }` ; bru.getVar('a')",
+        "`${ bru.getVar('a')",
+        "const s = `a ${b} bru.getVar('a')",
+    ] {
+        let out = translate(src);
+        assert!(out.kept, "{src}");
+        assert_eq!(out.code, src);
+        assert_eq!(out.rewritten, 0, "{src}");
+        assert_eq!(out.leftovers, ["bru.getVar"], "{src}");
+    }
+}
+
+// Wraps `inner` in `levels` templates, each holding the next in its only hole.
+fn nested(levels: usize, inner: &str) -> String {
+    (0..levels).fold(inner.to_owned(), |s, _| format!("`${{{s}}}`"))
+}
+
+#[test]
+fn templates_nested_past_the_depth_cap_are_kept_with_their_leftovers() {
+    let out = translate(&nested(31, "bru.getVar('a')"));
+    assert!(!out.kept);
+    assert_eq!(out.code, nested(31, "pm.variables.get('a')"));
+    assert_eq!(out.rewritten, 1);
+    assert!(out.leftovers.is_empty());
+    for levels in [32, 33, 40] {
+        let src = nested(levels, "bru.getVar('a')");
+        let out = translate(&src);
+        assert!(out.kept, "{levels}");
+        assert_eq!(out.code, src);
+        assert_eq!(out.leftovers, ["bru.getVar"], "{levels}");
+    }
+}
+
+#[test]
+fn spaced_and_optional_chains_are_reported_as_leftovers() {
+    let src = "bru\n  .getVar('a');\nreq .getUrl();\nres?.getStatus();\nbru?.\n  setVar(1);\nconst n = res ? .5 : res?.5:1;";
+    let out = translate(src);
+    assert_eq!(out.code, src);
+    assert_eq!(out.rewritten, 0);
+    assert_eq!(
+        out.leftovers,
+        ["bru.getVar", "req.getUrl", "res.getStatus", "bru.setVar"]
+    );
 }

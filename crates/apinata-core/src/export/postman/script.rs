@@ -211,12 +211,24 @@ pub(super) fn translate(code: &str) -> Translated {
     }
 }
 
-/// Whether every bracket outside literals and comments closes in order.
+/// Whether every bracket outside literals and comments closes in order, and every template
+/// and `${}` hole closes within the nesting the translator descends into.
 fn balanced(src: &str) -> bool {
+    brackets_close(src, 0, Vec::new(), 0) == Some(src.len())
+}
+
+// Match brackets from `start` with `open` already pending; a template recurses one level.
+// Returns the index just past the bracket that empties `open`, or the end when `open` started
+// empty and every bracket closed.
+fn brackets_close(src: &str, start: usize, mut open: Vec<u8>, level: usize) -> Option<usize> {
     let b = src.as_bytes();
-    let mut open = Vec::new();
-    let mut i = 0;
+    let waits_for_close = !open.is_empty();
+    let mut i = start;
     while i < b.len() {
+        if b[i] == b'`' {
+            i = template_closes(src, i, level + 1)?;
+            continue;
+        }
         if let Some(end) = skip_opaque(src, i) {
             i = end;
             continue;
@@ -225,12 +237,40 @@ fn balanced(src: &str) -> bool {
             b'(' => open.push(b')'),
             b'[' => open.push(b']'),
             b'{' => open.push(b'}'),
-            c @ (b')' | b']' | b'}') if open.pop() != Some(c) => return false,
+            c @ (b')' | b']' | b'}') => {
+                if open.pop() != Some(c) {
+                    return None;
+                }
+                if waits_for_close && open.is_empty() {
+                    return Some(i + 1);
+                }
+            }
             _ => {}
         }
         i += 1;
     }
-    open.is_empty()
+    (!waits_for_close && open.is_empty()).then_some(b.len())
+}
+
+/// End of the template at `start` when it and all its holes close and `level` is one the
+/// translator still descends into.
+fn template_closes(src: &str, start: usize, level: usize) -> Option<usize> {
+    if level >= MAX_DEPTH {
+        return None;
+    }
+    let b = src.as_bytes();
+    let mut i = start + 1;
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 2,
+            b'`' => return Some(i + 1),
+            b'$' if b.get(i + 1) == Some(&b'{') => {
+                i = brackets_close(src, i + 2, vec![b'}'], level)?;
+            }
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 // Copy literals and comments as they are, descend into template holes, and try a rewrite at
@@ -347,28 +387,73 @@ fn each_chain(code: &str, depth: usize, each: &mut dyn FnMut(String)) {
     let mut i = 0;
     while i < b.len() {
         if let Some(end) = skip_opaque(code, i) {
-            if b[i] == b'`' && depth + 1 < MAX_DEPTH {
-                template_holes(code, i, end, depth + 1, each);
+            if b[i] == b'`' {
+                // A template the translator could not descend into is scanned as plain text,
+                // so calls swallowed by an unclosed hole or deep nesting are still reported.
+                if template_closes(code, i, depth + 1).is_some() {
+                    template_holes(code, i, end, depth + 1, each);
+                } else {
+                    flat_chains(&code[i..end], each);
+                }
             }
             i = end;
         } else if is_ident_byte(b[i]) {
             let end = ident_end(b, i);
-            let mut next = end;
-            if matches!(&code[i..end], "bru" | "req" | "res") && !is_property_access(b, i) {
-                while b.get(next) == Some(&b'.')
-                    && b.get(next + 1).is_some_and(|c| is_ident_byte(*c))
-                {
-                    next = ident_end(b, next + 1);
-                }
-                if next > end {
-                    each(code[i..next].to_owned());
-                }
-            }
-            i = next;
+            i = report_chain(code, i, end, each);
         } else {
             i += 1;
         }
     }
+}
+
+/// Every chain in `code`, ignoring literals and comments: a fallback for text whose structure
+/// could not be followed.
+fn flat_chains(code: &str, each: &mut dyn FnMut(String)) {
+    let b = code.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if is_ident_byte(b[i]) {
+            let end = ident_end(b, i);
+            i = report_chain(code, i, end, each);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+// Report the chain headed by the identifier at `start..head_end` when it is a free-standing
+// `bru`, `req` or `res`; segments may be spaced or optional (`bru ?. getVar`). Returns where
+// scanning resumes.
+fn report_chain(code: &str, start: usize, head_end: usize, each: &mut dyn FnMut(String)) -> usize {
+    let b = code.as_bytes();
+    let head = &code[start..head_end];
+    if !matches!(head, "bru" | "req" | "res") || is_property_access(b, start) {
+        return head_end;
+    }
+    let mut chain = head.to_owned();
+    let mut next = head_end;
+    loop {
+        let dot = skip_ws(b, next);
+        let after = match (b.get(dot), b.get(dot + 1)) {
+            (Some(b'.'), _) => dot + 1,
+            (Some(b'?'), Some(b'.')) => dot + 2,
+            _ => break,
+        };
+        let name = skip_ws(b, after);
+        if !b
+            .get(name)
+            .is_some_and(|c| is_ident_byte(*c) && !c.is_ascii_digit())
+        {
+            break;
+        }
+        next = ident_end(b, name);
+        chain.push('.');
+        chain.push_str(&code[name..next]);
+    }
+    if next > head_end {
+        each(chain);
+    }
+    next
 }
 
 fn template_holes(
