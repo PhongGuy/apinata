@@ -331,7 +331,10 @@ fn icon_button_tooltips_find_their_shortcut_without_focus(cx: &mut TestAppContex
             .highest_precedence_binding_for_action_in_context(&OpenEnvironments, ctx)
             .and_then(|b| b.keystrokes().first().map(|k| k.inner().clone()))
             .expect("bound");
-        assert!(env.key == "e" && env.modifiers.secondary(), "{env:?}");
+        assert!(
+            env.key == "e" && apinata_app::shortcuts::is_secondary(&env.modifiers),
+            "{env:?}"
+        );
     })
     .unwrap();
 }

@@ -102,9 +102,10 @@ fn listed() -> BTreeSet<&'static str> {
     palette_items().iter().map(|e| e.action.name()).collect()
 }
 
-#[test]
-fn every_app_action_is_listed() {
-    let bound: BTreeSet<&str> = bindings()
+#[gpui_kit::test]
+fn every_app_action_is_listed(cx: &mut TestAppContext) {
+    let bound: BTreeSet<&str> = cx
+        .update(|cx| bindings(cx))
         .iter()
         .map(|b| b.action().name())
         .filter(|n| !NOT_LISTED.contains(n))
@@ -174,7 +175,8 @@ fn index_paths_round_trip() {
 fn each_bound_entry_has_a_key_in_its_context(cx: &mut TestAppContext) {
     support::init(cx);
     cx.update(apinata_app::keymap::init);
-    let bound: BTreeSet<&str> = bindings().iter().map(|b| b.action().name()).collect();
+    let bindings = cx.update(|cx| bindings(cx));
+    let bound: BTreeSet<&str> = bindings.iter().map(|b| b.action().name()).collect();
     assert!(
         bound.contains("apinata::OpenCommandPalette"),
         "secondary-shift-p is bound"
@@ -194,10 +196,13 @@ fn each_bound_entry_has_a_key_in_its_context(cx: &mut TestAppContext) {
         .find(|e| e.action.partial_eq(&apinata_app::keymap::ToggleSidebar))
         .expect("Toggle sidebar is listed");
     assert_eq!(toggle.context, "Shell");
-    assert!(bindings().iter().any(
-        |b| b.action().partial_eq(&apinata_app::keymap::ToggleSidebar)
-            && b.keystrokes().first().map(|k| k.as_keystroke().unparse()) == Some(secondary("b"))
-    ));
+    assert!(bindings.iter().any(|b| {
+        b.action().partial_eq(&apinata_app::keymap::ToggleSidebar)
+            && b.keystrokes()
+                .first()
+                .map(|k| k.as_keystroke().unparse(apinata_app::shortcuts::HOST_OS))
+                == Some(secondary("b"))
+    }));
 }
 
 #[test]

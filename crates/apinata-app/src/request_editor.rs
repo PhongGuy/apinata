@@ -265,6 +265,8 @@ pub struct RequestEditor {
     _subs: Vec<Subscription>,
     _restore: Option<Task<()>>,
     variables: Option<Arc<VariableSet>>,
+    // The context generation `variables` was built in.
+    variables_context: u64,
     vars_key: Option<VarsKey>,
     _variables: Option<Task<()>>,
     // What the request sends, the selected environment and what it inherits as the last
@@ -730,6 +732,7 @@ impl RequestEditor {
             _subs: subs,
             _restore: restore,
             variables: None,
+            variables_context: 0,
             vars_key: None,
             _variables: None,
             seen_view: None,
@@ -1625,6 +1628,7 @@ impl RequestEditor {
         if self.vars_key.as_ref() == Some(&key) {
             return;
         }
+        let context = key.context;
         self.vars_key = Some(key);
         let (reply, answer) = async_channel::bounded(1);
         let command = Command::Variables { item, reply };
@@ -1637,13 +1641,27 @@ impl RequestEditor {
                 return;
             };
             let set = reply.ok().map(Arc::new);
-            let _ = this.update(cx, |e, cx| e.set_variables(set, cx));
+            let _ = this.update(cx, |e, cx| e.set_variables(set, context, cx));
         }));
     }
 
     // Keep the set the URL reads its placeholders from and hand it to the params, headers,
     // auth and body; the vars tables are left out, as they define names rather than use them.
-    fn set_variables(&mut self, set: Option<Arc<VariableSet>>, cx: &mut Context<Self>) {
+    // A set built in the same context from the same request inputs answers every lookup as the
+    // current one does, so the current one stays and nothing that reads it redraws.
+    fn set_variables(
+        &mut self,
+        set: Option<Arc<VariableSet>>,
+        context: u64,
+        cx: &mut Context<Self>,
+    ) {
+        if let (Some(old), Some(new)) = (&self.variables, &set)
+            && self.variables_context == context
+            && old.same_request_inputs(new)
+        {
+            return;
+        }
+        self.variables_context = context;
         for table in [&self.params, &self.headers] {
             table.update(cx, |t, cx| t.set_variables(set.clone(), cx));
         }
@@ -3288,7 +3306,7 @@ impl RequestEditor {
             .id("section-strip")
             .test_support()
             .relative()
-            .on_scroll_wheel(ui::wheel_on_intent(&self.section_scroll))
+            .on_scroll(ui::wheel_on_intent(&self.section_scroll))
             .child(bar)
             .children(self.section_fades.render(
                 "section-strip",

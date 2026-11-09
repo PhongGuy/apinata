@@ -185,6 +185,8 @@ struct SearchForm {
     scroll: ScrollHandle,
     // Where focus goes when the dialog closes on a hit.
     target: FocusHandle,
+    // Replace all's own focus, so locking it can hand focus to the query.
+    replace_all_focus: FocusHandle,
     _search: Option<Task<()>>,
     _typing: Subscription,
 }
@@ -492,6 +494,14 @@ impl Render for SearchForm {
         });
         let replacing = self.replacing;
         let empty = hits.is_empty();
+        // The kit keeps focus on a button disabled under it; a locked Replace all gives it to
+        // the query instead, so typing searches again.
+        if empty && self.replace_all_focus.is_focused(window) {
+            let input = self.input.clone();
+            window.defer(cx, move |window, cx| {
+                input.update(cx, |i, cx| i.focus(window, cx));
+            });
+        }
         let toggle_name = if replacing {
             "Hide replace"
         } else {
@@ -519,6 +529,7 @@ impl Render for SearchForm {
             .aria_label("Replace all")
             .child(
                 Button::new("search-replace-all-button")
+                    .track_focus(&self.replace_all_focus)
                     .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
                     .compact()
                     .label("Replace all")
@@ -640,6 +651,7 @@ pub fn open(
         selected: 0,
         scroll: ScrollHandle::new(),
         target,
+        replace_all_focus: cx.focus_handle(),
         _search: None,
         _typing: cx.subscribe(
             &input,

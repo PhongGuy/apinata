@@ -24,19 +24,22 @@ use apinata_app::tabs::{Side as TabSide, TabId};
 use apinata_app::url_unit::Side;
 use apinata_core::{
     BodySpec, ItemPath, KeyValue, Outcome, RequestResult, Response, ScriptDecision, ScriptPhase,
-    ScriptTrust,
+    ScriptTrust, VarValue, Variable,
 };
 use git_support::{Sandbox, write as git_write};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
     AnyWindowHandle, AppContext, ElementId, Entity, InputEvent as _, Keystroke, Modifiers,
-    MouseMoveEvent, Pixels, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext,
-    point, px, size,
+    MouseMoveEvent, Pixels, ScrollDelta, ScrollEvent, TestAppContext, VisualTestContext, point, px,
+    size,
 };
 use support::sse_server::{Script, Step};
 use support::*;
 
 const KEYS: usize = 20;
+
+// The first edit shows Save, which resizes the buttons and so the Url part.
+const FIRST_EDIT_URL_RENDERS: usize = 3;
 
 // A text body to type into, and a URL whose undefined variable fails the send before it
 // leaves the machine, so the response pane shows its error block.
@@ -103,8 +106,12 @@ fn typing_after_a_send(
 
 // Every key of a pilot `type` call in one update: the window draws before each key.
 fn type_burst(cx: &mut TestAppContext, win: AnyWindowHandle) {
+    type_keys(cx, win, KEYS);
+}
+
+fn type_keys(cx: &mut TestAppContext, win: AnyWindowHandle, keys: usize) {
     cx.update_window(win, |_, w, cx| {
-        for _ in 0..KEYS {
+        for _ in 0..keys {
             let mut key = Keystroke::parse("a").unwrap();
             key.key_char = Some("a".into());
             w.dispatch_keystroke(key, cx);
@@ -528,15 +535,54 @@ fn j() -> Target {
 #[gpui_kit::test]
 fn a_body_key_redraws_none_of_the_request_chrome(cx: &mut TestAppContext) {
     let (s, editor, _col) = typing_after_a_send(cx);
-    let before = chrome_renders(cx, &editor);
+    let start = chrome_renders(cx, &editor);
+    type_keys(cx, s.win, 1);
+    let warm = chrome_renders(cx, &editor);
     type_burst(cx, s.win);
     let after = chrome_renders(cx, &editor);
-    // The counts measured: the URL follows the edits' variable sets and the buttons show
-    // Save once the body is dirty; nothing else redraws.
-    let most = [0, 0, 0, 3, 2, 0];
-    for (((part, b), a), most) in ChromePart::ALL.iter().zip(before).zip(after).zip(most) {
-        assert!(a - b <= most, "{KEYS} keys redrew {part:?} {} times", a - b);
+    // The first edit shows Save: the buttons draw it and the URL takes the narrower width.
+    let first = [0, 0, 0, FIRST_EDIT_URL_RENDERS, 2, 0];
+    for (((part, b), a), most) in ChromePart::ALL.iter().zip(&start).zip(&warm).zip(first) {
+        assert!(
+            a - b <= most,
+            "the first key redrew {part:?} {} times",
+            a - b
+        );
     }
+    for ((part, b), a) in ChromePart::ALL.iter().zip(&warm).zip(&after) {
+        assert_eq!(a - b, 0, "{KEYS} more keys redrew {part:?} {} times", a - b);
+    }
+}
+
+// The editor's variable set as `(allocation, revision)`.
+fn variable_set(cx: &mut TestAppContext, editor: &Entity<RequestEditor>) -> (usize, u64) {
+    editor.read_with(cx, |e, _| {
+        let set = e.variables().expect("a set");
+        (Arc::as_ptr(set) as usize, set.revision())
+    })
+}
+
+#[gpui_kit::test]
+fn a_body_key_keeps_the_variable_set_and_the_url(cx: &mut TestAppContext) {
+    let (s, editor, _col) = typing_after_a_send(cx);
+    type_keys(cx, s.win, 1);
+    let set = variable_set(cx, &editor);
+    let url = chrome_renders(cx, &editor)[ChromePart::Url as usize];
+    type_keys(cx, s.win, 1);
+    assert_eq!(variable_set(cx, &editor), set);
+    assert_eq!(chrome_renders(cx, &editor)[ChromePart::Url as usize], url);
+}
+
+#[gpui_kit::test]
+fn a_request_variable_edit_replaces_the_variable_set(cx: &mut TestAppContext) {
+    let (s, editor, _col) = typing_after_a_send(cx);
+    let (before, _) = variable_set(cx, &editor);
+    let nope = Variable::new("nope", VarValue::Text("x".into()));
+    edit_j(cx, &s, j(), Edit::Vars(vec![nope]));
+    draw(cx, s.win);
+    let (after, _) = variable_set(cx, &editor);
+    assert_ne!(after, before);
+    assert!(editor.read_with(cx, |e, _| e.variables().unwrap().get("nope").is_some()));
 }
 
 #[gpui_kit::test]
@@ -1068,7 +1114,7 @@ fn the_tab_strip_keeps_the_active_tab_in_view(cx: &mut TestAppContext) {
         .update_window(s.win, |_, w, _| w.find("tab-strip").bounds())
         .unwrap();
     cx.update_window(s.win, |_, w, cx| {
-        let event = ScrollWheelEvent {
+        let event = ScrollEvent {
             position: strip.center(),
             delta: ScrollDelta::Pixels(point(px(0.), px(-2000.))),
             ..Default::default()

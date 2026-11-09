@@ -204,7 +204,7 @@ fn the_focus_ring_reaches_three_to_one() {
     }
 }
 
-/// The kit's keyboard focus band alpha (gpui-component 0.7.1 `FOCUS_RING_OPACITY`, styled.rs).
+/// The kit's keyboard focus band alpha (gpui-component 0.9.0 `FOCUS_RING_OPACITY`, styled.rs).
 const KIT_FOCUS_BAND_ALPHA: f64 = 0.5;
 
 /// Every opaque surface a focus ring can sit on; the editable input fill is `secondary.background`.
@@ -755,7 +755,7 @@ fn disabled_buttons_reach_aa_in_high_contrast(cx: &mut gpui_kit::TestAppContext)
 
 /// A real disabled `Button` as the views build it: in a high-contrast theme its own text
 /// colour is the full-strength `muted_foreground`. The kit replays a button's own style inside
-/// its disabled state (`instance_style` in gpui-component 0.7.1 `button.rs`), so that colour
+/// its disabled state (`instance_style` in gpui-component 0.9.0 `button.rs`), so that colour
 /// wins over the kit's half-alpha `muted_foreground`; elsewhere the button carries none.
 #[gpui_kit::test]
 fn a_disabled_button_draws_the_override_label_in_high_contrast(cx: &mut gpui_kit::TestAppContext) {

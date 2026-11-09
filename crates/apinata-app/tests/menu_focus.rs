@@ -4,6 +4,7 @@
 use crate::support;
 
 use apinata_app::body_view::Shown;
+use apinata_app::menu_focus::{self, Before};
 use apinata_app::request_editor::SendRequest;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
@@ -45,7 +46,7 @@ fn real_right_click(cx: &mut TestAppContext, s: &Started, id: impl Into<ElementI
 // One keystroke as a driver delivers it: press and release in a single update.
 fn press_and_release(cx: &mut TestAppContext, s: &Started, keys: &str) {
     use gpui_kit::{KeyUpEvent, Keystroke, PlatformInput};
-    let stroke = Keystroke::parse(keys).unwrap();
+    let stroke = Keystroke::parse_with_os(keys, apinata_app::shortcuts::HOST_OS).unwrap();
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_keystroke(stroke.clone(), cx);
         w.dispatch_event(PlatformInput::KeyUp(KeyUpEvent { keystroke: stroke }), cx);
@@ -192,4 +193,66 @@ fn escape_on_the_response_rows_menu_keeps_the_keys_working(cx: &mut TestAppConte
     real_right_click(cx, &s, ("body-line", 3usize));
     assert!(menu_open(cx, &s), "the rows menu opened");
     escape_then_palette(cx, &s);
+}
+
+// A bare host for `settle`: `target` sits where the app's keys work, `menu` stands for a closed
+// menu's handle.
+struct SettleHost {
+    menu: gpui_kit::FocusHandle,
+    target: gpui_kit::FocusHandle,
+}
+
+impl gpui_kit::Render for SettleHost {
+    fn render(
+        &mut self,
+        _: &mut gpui_kit::Window,
+        _: &mut gpui_kit::Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        use gpui_kit::{InteractiveElement as _, ParentElement as _, div};
+        div()
+            .track_focus(&self.target)
+            .on_action(|_: &apinata_app::palette::OpenCommandPalette, _, _| {})
+            .child(div().track_focus(&self.menu))
+    }
+}
+
+// Focuses the host's target as a menu item would, settles with `before`, and tells whether the
+// fallback ran and whether the target still holds focus.
+fn settle_after_a_move(cx: &mut TestAppContext, before: Before) -> (bool, bool) {
+    support::init(cx);
+    let (win, host) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |_, cx| {
+                cx.new(|cx| SettleHost {
+                    menu: cx.focus_handle(),
+                    target: cx.focus_handle(),
+                })
+            })
+        })
+        .unwrap();
+    frame(cx, win);
+    let (menu, target) = host.read_with(cx, |h, _| (h.menu.clone(), h.target.clone()));
+    cx.update_window(win, |_, w, cx| w.focus(&target, cx))
+        .unwrap();
+    frame(cx, win);
+    let fell = std::rc::Rc::new(std::cell::Cell::new(false));
+    let sink = fell.clone();
+    cx.update_window(win, |_, w, cx| {
+        menu_focus::settle(&menu, before, w, cx, move |_, _| sink.set(true))
+    })
+    .unwrap();
+    let kept = cx
+        .update_window(win, |_, w, _| target.is_focused(w))
+        .unwrap();
+    (fell.get(), kept)
+}
+
+#[gpui_kit::test]
+fn focus_a_menu_item_moved_stays_when_nothing_was_focused_before(cx: &mut TestAppContext) {
+    assert_eq!(settle_after_a_move(cx, Before::Nothing), (false, true));
+}
+
+#[gpui_kit::test]
+fn focus_falls_back_when_what_was_focused_before_is_gone(cx: &mut TestAppContext) {
+    assert!(settle_after_a_move(cx, Before::Gone).0, "the fallback ran");
 }

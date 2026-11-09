@@ -732,7 +732,7 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
                 .children(key.map(|k| {
                     div()
                         .id(("palette-kbd", ix))
-                        .aria_label(k.unparse())
+                        .aria_label(crate::shortcuts::unparse(&k))
                         .test_support()
                         .child(Kbd::new(k))
                 })),

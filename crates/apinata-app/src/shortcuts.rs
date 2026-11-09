@@ -4,12 +4,36 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use gpui_kit::{KeyBinding, KeyBindingContextPredicate, Keystroke, Modifiers};
+use gpui_kit::{KeyBinding, KeyBindingContextPredicate, Keystroke, Modifiers, OperatingSystem};
 
 use crate::commands::{Command, Place, Scope, places, registry};
 
 /// keymap.json: command id to keystroke strings; absent means defaults, [] means unbound.
 pub type Overrides = BTreeMap<String, Vec<String>>;
+
+/// The OS the app is built for. The keymap model is pure, so it reads the target instead of
+/// asking an `App`; a native app's runtime OS is always its build target.
+pub const HOST_OS: OperatingSystem = if cfg!(target_os = "macos") {
+    OperatingSystem::Mac
+} else if cfg!(target_os = "windows") {
+    OperatingSystem::Windows
+} else {
+    OperatingSystem::Linux
+};
+
+/// Whether the platform's secondary modifier is held: Cmd on macOS, Ctrl elsewhere.
+pub fn is_secondary(m: &Modifiers) -> bool {
+    if HOST_OS == OperatingSystem::Mac {
+        m.platform
+    } else {
+        m.control
+    }
+}
+
+/// A keystroke in file syntax with the host's modifier names (`cmd-`, `super-`, `win-`).
+pub fn unparse(k: &Keystroke) -> String {
+    k.unparse(HOST_OS)
+}
 
 const MODIFIER_KEYS: [&str; 5] = ["control", "shift", "alt", "platform", "function"];
 
@@ -31,7 +55,7 @@ impl Chord {
         if text.chars().any(char::is_whitespace) {
             return None;
         }
-        let k = Keystroke::parse(text).ok()?;
+        let k = Keystroke::parse_with_os(text, HOST_OS).ok()?;
         let refused = k.key.is_empty()
             || k.key_char.is_some()
             || MODIFIER_KEYS.contains(&k.key.as_str())
@@ -68,7 +92,7 @@ impl Chord {
         let mut out = String::new();
         // The secondary modifier is written once as `secondary` and never again by its own name.
         let parts = [
-            (m.secondary(), "secondary-"),
+            (is_secondary(&m), "secondary-"),
             (m.control && mac, "ctrl-"),
             (m.alt, "alt-"),
             (m.shift, "shift-"),

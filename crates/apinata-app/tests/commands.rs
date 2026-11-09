@@ -136,7 +136,7 @@ fn triples(list: &[KeyBinding]) -> Vec<Triple> {
             let keys: Vec<String> = b
                 .keystrokes()
                 .iter()
-                .map(|k| k.as_keystroke().unparse())
+                .map(|k| k.as_keystroke().unparse(apinata_app::shortcuts::HOST_OS))
                 .collect();
             let context = b.predicate().map(|p| p.to_string()).unwrap_or_default();
             (keys.join(" "), b.action().name().to_string(), context)
@@ -426,9 +426,9 @@ fn today() -> Vec<Triple> {
     t
 }
 
-#[test]
-fn the_generated_bindings_are_todays() {
-    assert_eq!(triples(&bindings()), today());
+#[gpui_kit::test]
+fn the_generated_bindings_are_todays(cx: &mut gpui_kit::TestAppContext) {
+    assert_eq!(triples(&cx.update(|cx| bindings(cx))), today());
 }
 
 #[test]

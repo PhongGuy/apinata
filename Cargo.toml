@@ -74,7 +74,7 @@ keyring-core = "1.0.0"
 zbus-secret-service-keyring-store = { version = "1.0.1", features = ["crypto-rust"] }
 apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 windows-native-keyring-store = "1.1.0"
-gpui-kit = { version = "=0.7.1", features = ["tree-sitter", "tree-sitter-bash", "tree-sitter-csharp", "tree-sitter-go", "tree-sitter-html", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-markdown", "tree-sitter-php", "tree-sitter-python", "tree-sitter-rust", "tree-sitter-graphql"] }
+gpui-kit = { version = "=0.9.0", features = ["tree-sitter", "tree-sitter-bash", "tree-sitter-csharp", "tree-sitter-go", "tree-sitter-html", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-markdown", "tree-sitter-php", "tree-sitter-python", "tree-sitter-rust", "tree-sitter-graphql"] }
 async-channel = "2.5.0"
 # The kit links this grammar but ships no highlights query for it; the app registers one.
 tree-sitter-c-sharp = "=0.23.5"

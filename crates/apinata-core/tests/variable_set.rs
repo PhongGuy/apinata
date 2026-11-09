@@ -3,8 +3,8 @@
 use crate::common;
 
 use apinata_core::{
-    Collection, ContextOptions, RuntimeVars, VarContext, VarScope, VariableInfo, VariableSet,
-    dynamic_variables, placeholders, resolve,
+    Collection, ContextOptions, RequestFile, RuntimeVars, VarContext, VarScope, VariableInfo,
+    VariableSet, dynamic_variables, placeholders, resolve,
 };
 use common::{request, write_tree};
 use tempfile::TempDir;
@@ -286,4 +286,50 @@ fn overview_effective_values_equal_what_a_send_interpolates() {
             .map(|(_, v)| v.as_str());
         assert_eq!(effective[0].value(), sent_value, "{name}");
     }
+}
+
+const BODY_A: &str = "info:\n  name: r\n  type: http\nhttp:\n  method: POST\n  url: \"https://{{own}}\"\n  body:\n    type: text\n    data: a\nruntime:\n  variables:\n    - name: own\n      value: \"1\"\n";
+
+/// The set `ctx` builds for the request file at `rel` once it holds `yaml`.
+fn set_holding(dir: &TempDir, ctx: &VarContext, rel: &str, yaml: &str) -> VariableSet {
+    let path = dir.path().join(rel);
+    std::fs::write(&path, yaml).unwrap();
+    ctx.variables(&RequestFile::load(&path).unwrap())
+}
+
+#[test]
+fn a_body_edit_keeps_the_request_inputs_of_a_set() {
+    let (dir, _c, ctx, _) = fixture();
+    let before = set_holding(&dir, &ctx, "a/r.yml", BODY_A);
+    let after = set_holding(
+        &dir,
+        &ctx,
+        "a/r.yml",
+        &BODY_A.replace("data: a", "data: ab"),
+    );
+    assert!(before.same_request_inputs(&after));
+}
+
+#[test]
+fn a_request_variable_edit_changes_the_request_inputs() {
+    let (dir, _c, ctx, _) = fixture();
+    let before = set_holding(&dir, &ctx, "a/r.yml", BODY_A);
+    let after = set_holding(&dir, &ctx, "a/r.yml", &BODY_A.replace("\"1\"", "\"2\""));
+    assert!(!before.same_request_inputs(&after));
+}
+
+#[test]
+fn a_request_variable_of_another_yaml_type_changes_the_request_inputs() {
+    let (dir, _c, ctx, _) = fixture();
+    let before = set_holding(&dir, &ctx, "a/r.yml", BODY_A);
+    let after = set_holding(&dir, &ctx, "a/r.yml", &BODY_A.replace("\"1\"", "1"));
+    assert!(!before.same_request_inputs(&after));
+}
+
+#[test]
+fn another_path_changes_the_request_inputs() {
+    let (dir, _c, ctx, _) = fixture();
+    let here = set_holding(&dir, &ctx, "a/r.yml", BODY_A);
+    let there = set_holding(&dir, &ctx, "s.yml", BODY_A);
+    assert!(!here.same_request_inputs(&there));
 }

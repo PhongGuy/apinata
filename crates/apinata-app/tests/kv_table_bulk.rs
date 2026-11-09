@@ -453,7 +453,7 @@ fn in_the_app_a_key_on_the_bulk_toggle_keeps_focus_on_it(cx: &mut TestAppContext
 // the key-up, deferred work included, settled before the next frame is drawn.
 fn real_key(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
     use gpui_kit::{InputEvent as _, KeyDownEvent, KeyUpEvent, Keystroke};
-    let stroke = Keystroke::parse(key).unwrap();
+    let stroke = Keystroke::parse_with_os(key, apinata_app::shortcuts::HOST_OS).unwrap();
     let down = KeyDownEvent {
         keystroke: stroke.clone(),
         is_held: false,

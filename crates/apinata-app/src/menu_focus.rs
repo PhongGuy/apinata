@@ -17,13 +17,30 @@ pub fn held(window: &Window, cx: &App) -> Option<FocusHandle> {
     window.focused(cx)
 }
 
+/// What held focus before a menu opened, as seen once it closes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Before {
+    /// Nothing held focus.
+    Nothing,
+    /// Something held focus and is gone by now.
+    Gone,
+    /// This handle held focus and is still there.
+    Held(FocusHandle),
+}
+
+impl From<Option<FocusHandle>> for Before {
+    fn from(held: Option<FocusHandle>) -> Self {
+        held.map_or(Before::Nothing, Before::Held)
+    }
+}
+
 /// Settles focus once `menu` closes. `previous` yields what held focus before the menu opened
-/// (None if it is gone by now) and `fallback` focuses a drawn element; both run after the
-/// dismissal has settled. A dialog opened by a menu item keeps focus.
+/// and `fallback` focuses a drawn element; both run after the dismissal has settled. A dialog
+/// opened by a menu item keeps focus.
 pub fn watch(
     menu: &mut Context<PopupMenu>,
     window: &mut Window,
-    previous: impl FnOnce(&mut App) -> Option<FocusHandle> + 'static,
+    previous: impl FnOnce(&mut App) -> Before + 'static,
     fallback: impl FnOnce(&mut Window, &mut App) + 'static,
 ) {
     let mut slots = Some((previous, fallback));
@@ -36,7 +53,7 @@ pub fn watch(
             };
             let menu_focus = menu.focus_handle(cx);
             window.defer(cx, move |window, cx| {
-                settle(&menu_focus, previous(cx).as_ref(), window, cx, fallback)
+                settle(&menu_focus, previous(cx), window, cx, fallback)
             });
         },
     )
@@ -48,7 +65,7 @@ pub fn watch(
 pub fn watch_built(
     menu: &PopupMenu,
     cx: &mut App,
-    previous: impl FnOnce(&mut App) -> Option<FocusHandle> + 'static,
+    previous: impl FnOnce(&mut App) -> Before + 'static,
     fallback: impl FnOnce(&mut Window, &mut App) + 'static,
 ) {
     let mine = menu.focus_handle(cx);
@@ -71,9 +88,12 @@ pub fn watch_built(
     ));
 }
 
-fn settle(
+/// Settles focus after the menu holding `menu` closed: back to `previous` when focus is still
+/// on the closed menu, or to `fallback` when what held focus is gone or focus sits outside the
+/// app's keys. Focus a menu item moved elsewhere stays.
+pub fn settle(
     menu: &FocusHandle,
-    previous: Option<&FocusHandle>,
+    previous: Before,
     window: &mut Window,
     cx: &mut App,
     fallback: impl FnOnce(&mut Window, &mut App),
@@ -86,12 +106,15 @@ fn settle(
     // read the stale frame and call it live.
     if window.focused(cx).as_ref() == Some(menu) {
         match previous {
-            Some(handle) => handle.focus(window, cx),
-            None => fallback(window, cx),
+            Before::Held(handle) => handle.focus(window, cx),
+            Before::Nothing | Before::Gone => fallback(window, cx),
         }
         return;
     }
-    if !window.is_action_available(&OpenCommandPalette, cx) {
+    // What held focus is gone, and the kit's own restore may have put focus back on its stale
+    // handle, which the action check below would also call live. Focus a menu item moved
+    // elsewhere stays.
+    if previous == Before::Gone || !window.is_action_available(&OpenCommandPalette, cx) {
         fallback(window, cx);
     }
 }

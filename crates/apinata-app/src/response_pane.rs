@@ -4953,7 +4953,7 @@ impl Render for ResponsePane {
                                         false => strip.flex_shrink_0(),
                                     })
                             })
-                            .on_scroll_wheel(ui::wheel_sideways(&self.tab_scroll))
+                            .on_scroll(ui::wheel_sideways(&self.tab_scroll))
                             .child(self.tab_bar(window, cx))
                             .child(self.tabs_probe())
                             .children(self.tab_fades.render(

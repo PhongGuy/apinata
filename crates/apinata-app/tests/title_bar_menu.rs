@@ -100,12 +100,13 @@ fn the_menu_keeps_every_action_that_left_the_title_bar() {
     }
 }
 
-#[test]
-fn the_collection_actions_keep_their_keys() {
+#[gpui_kit::test]
+fn the_collection_actions_keep_their_keys(cx: &mut gpui_kit::TestAppContext) {
+    let bindings = cx.update(|cx| bindings(cx));
     let actions: [&dyn Action; 3] = [&OpenCollection, &ImportCollection, &NewCollection];
     for action in actions {
         assert!(
-            bindings().iter().any(|b| b.action().partial_eq(action)),
+            bindings.iter().any(|b| b.action().partial_eq(action)),
             "{} keeps its key",
             action.name()
         );

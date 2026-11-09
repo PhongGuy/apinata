@@ -25,7 +25,7 @@ use gpui_kit::{
 use crate::header_complete::Hint;
 use crate::kv_bulk::{bulk_rows, bulk_text, editable};
 use crate::kv_grid::{
-    self, ActionShow, KvColumn, Reloaded, action_slot_focusing, check_slot, kv_head, kv_row,
+    self, ActionShow, KvColumn, Reloaded, action_slot, check_slot, kv_head, kv_row,
 };
 use crate::row_move::{
     self, DraggedRow, MoveRowDown, MoveRowUp, drop_line, drop_side, grip_slot, real_move_target,
@@ -1029,6 +1029,18 @@ impl KvTable {
         let fixed = row.meta.fixed;
         let off = !row.meta.enabled;
         let slotted = blank || fixed;
+        let remove_id = (
+            if slotted {
+                "kv-slot-delete"
+            } else {
+                "kv-delete"
+            },
+            ix,
+        );
+        let take_remove_focus = !slotted && self.remove_focus.get() == Some(ix);
+        if take_remove_focus {
+            self.remove_focus.set(None);
+        }
         let clears = self.has_file_rows();
         let has_files = columns.name && row.meta.files.is_some();
         // The empty row reserves a hidden tag slot whenever a real row is tagged.
@@ -1279,23 +1291,15 @@ impl KvTable {
                         .child(tag),
                 )
             })
-            .child(action_slot_focusing(
-                ui::icon_button(
-                    (
-                        if slotted {
-                            "kv-slot-delete"
-                        } else {
-                            "kv-delete"
-                        },
-                        ix,
-                    ),
-                    IconName::Close,
-                    "Remove row",
-                    None,
-                )
-                .lock(locked || fixed, cx)
-                .tab_stop(!slotted)
-                .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
+            .child(action_slot(
+                kv_grid::button_focusing(
+                    remove_id,
+                    ui::icon_button(remove_id, IconName::Close, "Remove row", None)
+                        .lock(locked || fixed, cx)
+                        .tab_stop(!slotted)
+                        .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
+                    take_remove_focus,
+                ),
                 if slotted {
                     ActionShow::Never
                 } else if focused {
@@ -1303,10 +1307,6 @@ impl KvTable {
                 } else {
                     ActionShow::OnHover
                 },
-                (!slotted && self.remove_focus.get() == Some(ix)).then(|| {
-                    self.remove_focus.set(None);
-                    ("kv-delete", ix).into()
-                }),
             ))
     }
 

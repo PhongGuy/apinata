@@ -644,7 +644,7 @@ fn real_right_click_tab(cx: &mut TestAppContext, s: &Started, ix: usize) {
 // update, so nothing settles between them.
 fn press_and_release(cx: &mut TestAppContext, s: &Started, keys: &str) {
     use gpui_kit::{KeyUpEvent, Keystroke, PlatformInput};
-    let stroke = Keystroke::parse(keys).unwrap();
+    let stroke = Keystroke::parse_with_os(keys, apinata_app::shortcuts::HOST_OS).unwrap();
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_keystroke(stroke.clone(), cx);
         w.dispatch_event(PlatformInput::KeyUp(KeyUpEvent { keystroke: stroke }), cx);

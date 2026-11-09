@@ -32,10 +32,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, Corners, Div, ElementId,
     Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Rems, Render, RenderOnce, ScrollHandle,
-    ScrollWheelEvent, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _,
-    TestSupportExt as _, Window, actions, canvas, div, fill, linear_color_stop, linear_gradient,
-    outline, px, relative, svg, transparent_black,
+    MouseButton, ParentElement as _, Pixels, Rems, Render, RenderOnce, ScrollEvent, ScrollHandle,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _,
+    Window, actions, canvas, div, fill, linear_color_stop, linear_gradient, outline, px, relative,
+    svg, transparent_black,
 };
 
 use crate::app::AppState;
@@ -1492,16 +1492,16 @@ pub fn strip_overflows(scroll: &ScrollHandle) -> bool {
     scroll.max_offset().x > px(0.)
 }
 
-/// A wheel handler for a strip that scrolls only sideways: a purely vertical wheel moves
-/// `handle` along x by the same amount, clamped to the strip. Events with an x part are
-/// left to the strip's own scroller.
+/// A wheel handler for a kit tab strip, which scrolls only sideways: a purely vertical
+/// trackpad swipe moves `handle` along x by the same amount, clamped to the strip. A mouse
+/// wheel is the kit strip's own, and events with an x part are left to its scroller.
 pub(crate) fn wheel_sideways(
     handle: &ScrollHandle,
-) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static {
+) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {
     let handle = handle.clone();
     move |event, window, cx| {
         let delta = event.delta.pixel_delta(window.line_height());
-        if delta.x != px(0.) || delta.y == px(0.) {
+        if !event.delta.precise() || delta.x != px(0.) || delta.y == px(0.) {
             return;
         }
         let mut offset = handle.offset();
@@ -1524,7 +1524,7 @@ pub(crate) fn wheel_sideways(
 /// an x delta as vertical. A plain vertical wheel is left to bubble to the column.
 pub(crate) fn wheel_on_intent(
     handle: &ScrollHandle,
-) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static {
+) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {
     let handle = handle.clone();
     move |event, window, cx| {
         let delta = event.delta.pixel_delta(window.line_height());
@@ -2040,23 +2040,20 @@ pub fn tab_strip(id: impl Into<ElementId>, cx: &App) -> TabBar {
 
 impl RenderOnce for Segmented {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        // The kit button keys its own focus handle under its id, inside the track and its
-        // component scope; reading the same keyed state lets the track's key handlers tell
-        // which segment holds focus and move it to a neighbour.
+        // The track keeps each segment's focus handle and hands it to the kit button, so the
+        // track's key handlers can tell which segment holds focus and move it to a neighbour.
         let ids: Vec<ElementId> = (0..self.options.len())
             .map(|ix| self.ids.get(ix).cloned().unwrap_or(ix.into()))
             .collect();
         let handles: Rc<[FocusHandle]> = window.with_id(self.id.clone(), |window| {
-            window.with_id(std::any::type_name::<Button>(), |window| {
-                ids.iter()
-                    .map(|id| {
-                        window
-                            .use_keyed_state(id.clone(), cx, |_, cx| cx.focus_handle())
-                            .read(cx)
-                            .clone()
-                    })
-                    .collect()
-            })
+            ids.iter()
+                .map(|id| {
+                    window
+                        .use_keyed_state(id.clone(), cx, |_, cx| cx.focus_handle())
+                        .read(cx)
+                        .clone()
+                })
+                .collect()
         });
         let t = cx.theme();
         let (fg, muted) = (t.foreground, t.muted_foreground);
@@ -2095,6 +2092,7 @@ impl RenderOnce for Segmented {
                 let on_select = Rc::clone(&self.on_select);
                 // `selected` stops the kit painting its hover over the current choice.
                 let button = Button::new(id)
+                    .track_focus(&handles[ix])
                     .ghost()
                     .label(label)
                     .toggled(sel)

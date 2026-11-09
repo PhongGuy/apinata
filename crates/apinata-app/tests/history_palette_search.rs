@@ -192,7 +192,8 @@ fn enter_before_the_next_frame_opens_the_first_match(cx: &mut TestAppContext) {
     // before any frame draws the rows for the new query.
     cx.update_window(s.win, |_, w, cx| {
         for key in ["p", "o", "s", "t"] {
-            let mut stroke = gpui_kit::Keystroke::parse(key).unwrap();
+            let mut stroke =
+                gpui_kit::Keystroke::parse_with_os(key, apinata_app::shortcuts::HOST_OS).unwrap();
             stroke.key_char = Some(key.to_owned());
             w.dispatch_keystroke(stroke, cx);
         }

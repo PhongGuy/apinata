@@ -31,25 +31,34 @@ impl PilotApp for Apinata {
     }
 
     fn open(&self, launch: &Launch, cx: &mut App) -> anyhow::Result<()> {
-        let paths = Paths::in_dir(&launch.data_dir);
-        prepare_session(&paths, &launch.args, launch.reused)?;
-        // Secrets live in a file in the launch data dir and no update checker is installed, so
-        // a piloted run never reaches the keyring or the network on its own.
-        let secrets = launch_secrets(&launch.data_dir, launch.reused)?;
-        // Deletes go to a folder in the data dir, so Undo works without the platform trash.
-        let trash = Arc::new(folder_trash::FolderTrash::new(
-            launch.data_dir.join("pilot-trash"),
-        ));
-        let (_, shell) = start_with_trash(&paths, secrets, Vec::new(), trash, cx)?;
-        let workspace = shell.read(cx).workspace().clone();
-        workspace.update(cx, |w, cx| w.set_watch_factory(Some(notify_factory()), cx));
-        // Git status as in the real app, so a piloted run shows letters and the change count.
-        workspace.update(cx, |w, cx| w.set_git(Some(GitOptions::new()), cx));
-        let approvals = cx.global::<AppState>().approvals.clone();
-        approvals.update(cx, |a, cx| a.set_watch_factory(Some(notify_factory()), cx));
-        install_opener(&launch.data_dir, cx)?;
-        Ok(())
+        open_app(&launch.data_dir, &launch.args, launch.reused, cx)
     }
+}
+
+/// Opens Apinata's window on `data_dir` with the collection roots `args`, as a launch does;
+/// `reused` keeps the saved session and secrets of a kept data dir.
+pub fn open_app(
+    data_dir: &Path,
+    args: &[String],
+    reused: bool,
+    cx: &mut App,
+) -> anyhow::Result<()> {
+    let paths = Paths::in_dir(data_dir);
+    prepare_session(&paths, args, reused)?;
+    // Secrets live in a file in the launch data dir and no update checker is installed, so
+    // a piloted run never reaches the keyring or the network on its own.
+    let secrets = launch_secrets(data_dir, reused)?;
+    // Deletes go to a folder in the data dir, so Undo works without the platform trash.
+    let trash = Arc::new(folder_trash::FolderTrash::new(data_dir.join("pilot-trash")));
+    let (_, shell) = start_with_trash(&paths, secrets, Vec::new(), trash, cx)?;
+    let workspace = shell.read(cx).workspace().clone();
+    workspace.update(cx, |w, cx| w.set_watch_factory(Some(notify_factory()), cx));
+    // Git status as in the real app, so a piloted run shows letters and the change count.
+    workspace.update(cx, |w, cx| w.set_git(Some(GitOptions::new()), cx));
+    let approvals = cx.global::<AppState>().approvals.clone();
+    approvals.update(cx, |a, cx| a.set_watch_factory(Some(notify_factory()), cx));
+    install_opener(data_dir, cx)?;
+    Ok(())
 }
 
 /// Installs the system opener so "Open in browser" shows: bodies are written under

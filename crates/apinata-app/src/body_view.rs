@@ -1858,7 +1858,7 @@ impl BodyView {
                         // The pointer may have left while the row was frozen; the next move
                         // over a row picks the hover up again.
                         release.update(cx, |v, cx| v.release_hovered_row(cx)).ok();
-                        held.borrow_mut().take()
+                        held.borrow_mut().take().into()
                     },
                     move |window, cx| {
                         focus_view
@@ -3157,7 +3157,7 @@ impl BodyView {
                 menu_focus::watch(
                     cx,
                     window,
-                    move |_| held.borrow_mut().take(),
+                    move |_| held.borrow_mut().take().into(),
                     move |window, cx| {
                         focus_view
                             .update(cx, |v, cx| v.focus.focus(window, cx))
@@ -3857,7 +3857,7 @@ fn image_format(kind: ImageKind) -> ImageFormat {
     }
 }
 
-// A copy of the style gpui-component 0.7.1's `Input` projects onto an editor (input.rs, its
+// A copy of the style gpui-component 0.9.0's `Input` projects onto an editor (input.rs, its
 // render), with the find selection in place of the theme's; re-check it when gpui-kit moves.
 fn editor_style(cx: &App) -> InputEditorStyle {
     let theme = cx.theme();

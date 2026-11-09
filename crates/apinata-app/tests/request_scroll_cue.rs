@@ -6,8 +6,8 @@ use crate::support;
 use apinata_app::request_editor::Section;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, InputEvent as _, Modifiers, Pixels, ScrollDelta,
-    ScrollWheelEvent, TestAppContext, point, px, size,
+    AnyWindowHandle, AppContext as _, InputEvent as _, Modifiers, Pixels, ScrollDelta, ScrollEvent,
+    TestAppContext, point, px, size,
 };
 use support::*;
 
@@ -38,7 +38,7 @@ fn wheel(cx: &mut TestAppContext, win: AnyWindowHandle, delta: (f32, f32), modif
         w.hover("section-strip", cx);
         let position = w.find("section-strip").bounds().center();
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position,
                 delta: ScrollDelta::Pixels(point(px(delta.0), px(delta.1))),
                 modifiers,

@@ -76,7 +76,8 @@ fn dialog_open(cx: &mut TestAppContext, win: AnyWindowHandle) -> bool {
 // A full key press, down then up, as the kit's own button tests send it.
 fn press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
     let mut v = gpui_kit::VisualTestContext::from_window(win, cx);
-    let keystroke = gpui_kit::Keystroke::parse(key).unwrap();
+    let keystroke =
+        gpui_kit::Keystroke::parse_with_os(key, apinata_app::shortcuts::HOST_OS).unwrap();
     v.simulate_event(gpui_kit::KeyDownEvent {
         keystroke: keystroke.clone(),
         is_held: false,

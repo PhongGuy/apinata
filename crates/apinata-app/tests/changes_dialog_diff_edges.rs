@@ -8,7 +8,7 @@ use crate::support::*;
 use apinata_app::diff_doc::{DiffBody, RowKind};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AppContext as _, InputEvent as _, ScrollDelta, ScrollWheelEvent, TestAppContext, point, px,
+    AppContext as _, InputEvent as _, ScrollDelta, ScrollEvent, TestAppContext, point, px,
 };
 
 fn rows(cx: &mut TestAppContext) -> Vec<apinata_app::diff_doc::DiffRow> {
@@ -87,7 +87,7 @@ fn a_line_wider_than_the_pane_scrolls_sideways_to_its_end(cx: &mut TestAppContex
     assert!(row.right() > pane.right() + px(100.), "{row:?} in {pane:?}");
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position: pane.center(),
                 delta: ScrollDelta::Pixels(point(px(-100000.), px(0.))),
                 ..Default::default()

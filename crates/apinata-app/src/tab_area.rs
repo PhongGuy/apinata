@@ -34,7 +34,7 @@ use crate::keymap::{
     DiscardChanges, FocusResponse, FocusUrl, NewRequest, NextSection, OpenEnvironments,
     PreviousSection, RedoActive, SHELL_CONTEXT, SaveActive, UndoActive,
 };
-use crate::menu_focus;
+use crate::menu_focus::{self, Before};
 use crate::palette::OpenCommandPalette;
 use crate::request_editor::{RequestEditor, SendRequest};
 use crate::runner_view::RunnerView;
@@ -2258,14 +2258,18 @@ impl TabArea {
                     window,
                     move |cx| {
                         area.update(cx, |a, cx| {
-                            let (handle, owner) = a.before_menu.take()?;
+                            let Some((handle, owner)) = a.before_menu.take() else {
+                                return Before::Nothing;
+                            };
                             let open = |id: &TabId| {
                                 (a.workspace.read(cx).tabs().entries().iter()).any(|e| e.id == *id)
                             };
-                            owner.as_ref().is_none_or(open).then_some(handle)
+                            match owner.as_ref().is_none_or(open) {
+                                true => Before::Held(handle),
+                                false => Before::Gone,
+                            }
                         })
-                        .ok()
-                        .flatten()
+                        .unwrap_or(Before::Gone)
                     },
                     move |window, cx| {
                         fallback_area
@@ -2360,8 +2364,13 @@ impl TabArea {
         let (over, dropped) = (weak.clone(), weak.clone());
         let payload = DraggedTab::new(id, entry.root.clone(), name_for_drag);
         let landing = self.drop.filter(|(t, _)| *t == id).map(|(_, side)| side);
-        Tab::new()
-            .relative()
+        let workspace = self.workspace.clone();
+        // A click activates through the tab's own element, not `Tab::on_click`: the bar wraps
+        // that in its own reveal, which would fight the strip's least-scroll reveal.
+        let tab = StatefulInteractiveElement::on_click(Tab::new(), move |_, _, cx| {
+            workspace.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
+        });
+        tab.relative()
             .on_drag(payload, |d: &DraggedTab, _, _, cx| {
                 cx.new(|_| TabDragPreview(d.label.clone()))
             })
@@ -2583,7 +2592,6 @@ impl TabArea {
             .enumerate()
             .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, cx))
             .collect();
-        let workspace = self.workspace.clone();
         let overflow = self.overflow_menu(labels, selected);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
         // gap precedes it, so the filler pulls back by that gap and trails the tab by its width.
@@ -2605,11 +2613,9 @@ impl TabArea {
             .last_empty_space(div().flex_none().w(pad).ml(-gap))
             .selected_index(selected)
             .children(tabs)
-            .suffix(overflow)
-            .on_click(move |ix, _, cx| {
-                workspace.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(*ix)));
-            });
-        // The wrapper lends the strip a vertical wheel, which the kit's x-only scroller ignores.
+            .suffix(overflow);
+        // The kit strip turns a mouse wheel sideways itself; the wrapper does the same for a
+        // vertical trackpad swipe, which the kit leaves to the page.
         let fades = self
             .fades
             .render("tab-strip", &self.scroll, entries.len(), cx);
@@ -2617,7 +2623,7 @@ impl TabArea {
             .id("tab-strip")
             .test_support()
             .relative()
-            .on_scroll_wheel(ui::wheel_sideways(&self.scroll))
+            .on_scroll(ui::wheel_sideways(&self.scroll))
             .child(bar)
             .children(fades)
             .child(self.reveal.watch(&self.scroll, selected))

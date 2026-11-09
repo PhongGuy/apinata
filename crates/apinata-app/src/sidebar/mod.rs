@@ -2948,7 +2948,11 @@ impl Render for Sidebar {
                                     cx,
                                     move |cx| {
                                         let idle = idle.read_with(cx, |s, _| s.rename.is_none());
-                                        before.filter(|_| idle.unwrap_or(false))
+                                        match (before, idle.unwrap_or(false)) {
+                                            (None, _) => menu_focus::Before::Nothing,
+                                            (Some(held), true) => menu_focus::Before::Held(held),
+                                            (Some(_), false) => menu_focus::Before::Gone,
+                                        }
                                     },
                                     move |window, cx| {
                                         tree_owner
@@ -3056,7 +3060,7 @@ pub const SCRATCH_HINT: &str = "Unsaved requests; save to keep them in a collect
 
 // What a modifier click means: Some(true) toggles (secondary wins), Some(false) extends a range.
 fn click_kind(m: &Modifiers) -> Option<bool> {
-    if m.secondary() {
+    if crate::shortcuts::is_secondary(m) {
         Some(true)
     } else {
         m.shift.then_some(false)

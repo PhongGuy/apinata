@@ -257,7 +257,7 @@ impl KeyboardPrefs {
         } else {
             chords
                 .iter()
-                .map(|c| c.keystroke().unparse())
+                .map(|c| crate::shortcuts::unparse(c.keystroke()))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
@@ -368,7 +368,7 @@ fn answer(
 fn row_terms(cmd: &Command, chords: &[crate::shortcuts::Chord]) -> Vec<String> {
     let mut terms = vec![cmd.group.label().to_string()];
     for chord in chords {
-        terms.push(chord.keystroke().unparse());
+        terms.push(crate::shortcuts::unparse(chord.keystroke()));
         terms.push(Kbd::format(chord.keystroke()));
     }
     terms

@@ -156,7 +156,10 @@ fn keys(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, text: &str, key
     for k in keys {
         cx.update_window(win, |_, w, cx| {
             w.render_frame(cx);
-            w.dispatch_keystroke(gpui_kit::Keystroke::parse(k).unwrap(), cx);
+            w.dispatch_keystroke(
+                gpui_kit::Keystroke::parse_with_os(k, apinata_app::shortcuts::HOST_OS).unwrap(),
+                cx,
+            );
             w.render_frame(cx);
         })
         .unwrap();

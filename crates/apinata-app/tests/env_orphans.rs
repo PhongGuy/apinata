@@ -1083,7 +1083,9 @@ fn one_input_onto_old_is_refused(
     // Every key lands before any Change is handled, so each handler reads the whole name.
     cx.update_window(win, |_, w, cx| {
         for c in "old".chars() {
-            let mut key = gpui_kit::Keystroke::parse(&c.to_string()).unwrap();
+            let mut key =
+                gpui_kit::Keystroke::parse_with_os(&c.to_string(), apinata_app::shortcuts::HOST_OS)
+                    .unwrap();
             key.key_char = Some(c.to_string());
             w.dispatch_keystroke(key, cx);
         }

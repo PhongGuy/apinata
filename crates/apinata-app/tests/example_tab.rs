@@ -321,8 +321,8 @@ fn reactivating_a_dragged_example_keeps_its_place(cx: &mut TestAppContext) {
 fn a_short_example_tab_scrolls_to_its_response(cx: &mut TestAppContext) {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{
-        AppContext as _, InputEvent as _, ScrollDelta, ScrollWheelEvent, VisualTestContext, point,
-        px, size,
+        AppContext as _, InputEvent as _, ScrollDelta, ScrollEvent, VisualTestContext, point, px,
+        size,
     };
     let col = write_tree(&[("opencollection.yml", ROOT), ("users.yml", USERS)]);
     let s = started(cx, &col);
@@ -348,7 +348,7 @@ fn a_short_example_tab_scrolls_to_its_response(cx: &mut TestAppContext) {
         .unwrap();
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position: title,
                 delta: ScrollDelta::Lines(point(0., -1000.)),
                 ..Default::default()
@@ -433,7 +433,7 @@ fn long_request_example() -> String {
 fn a_long_example_request_scrolls_with_the_wheel(cx: &mut TestAppContext) {
     use gpui_kit::AppContext as _;
     use gpui_kit::test::TestWindowExt as _;
-    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollWheelEvent, point, px};
+    use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, point, px};
     let long = long_request_example();
     let col = write_tree(&[("opencollection.yml", ROOT), ("big.yml", &long)]);
     let s = started(cx, &col);
@@ -455,7 +455,7 @@ fn a_long_example_request_scrolls_with_the_wheel(cx: &mut TestAppContext) {
         .unwrap();
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_event(
-            ScrollWheelEvent {
+            ScrollEvent {
                 position: row0.center(),
                 delta: ScrollDelta::Lines(point(0., -1000.)),
                 ..Default::default()

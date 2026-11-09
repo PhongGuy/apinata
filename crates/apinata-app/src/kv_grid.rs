@@ -268,20 +268,9 @@ pub enum ActionShow {
 /// never on the button, so a click on a transparent button still lands; a hover-only slot
 /// also shows while focus is within it.
 pub fn action_slot(button: impl IntoElement, show: ActionShow) -> AnyElement {
-    action_slot_focusing(button, show, None)
-}
-
-/// [`action_slot`] whose kit button, with element id `take_focus`, takes keyboard focus on
-/// this draw when one is given.
-pub fn action_slot_focusing(
-    button: impl IntoElement,
-    show: ActionShow,
-    take_focus: Option<ElementId>,
-) -> AnyElement {
     ActionSlot {
         button: button.into_any_element(),
         show,
-        take_focus,
     }
     .into_any_element()
 }
@@ -290,29 +279,14 @@ pub fn action_slot_focusing(
 struct ActionSlot {
     button: AnyElement,
     show: ActionShow,
-    take_focus: Option<ElementId>,
 }
 
-/// Focus the kit button with element id `id` that is drawn as a child of the element being
-/// laid out now, with no id between them.
-fn focus_kit_button(id: ElementId, window: &mut Window, cx: &mut App) {
-    // The kit button keys its focus handle under its id inside its component scope; reading
-    // that keyed state is the only way to focus it from outside. This relies on the kit's
-    // internal id scoping, guarded by the reload focus tests of kv_table, env and assertions.
-    let button = window.with_id(std::any::type_name::<Button>(), |window| {
-        window
-            .use_keyed_state(id, cx, |_, cx| cx.focus_handle())
-            .read(cx)
-            .clone()
-    });
-    ui::focus_in_draw(&button, window, cx);
-}
-
-/// `button`, a kit button with element id `take_focus`, taking keyboard focus on this draw
-/// when one is given.
-pub fn button_focusing(button: impl IntoElement, take_focus: Option<ElementId>) -> AnyElement {
+/// `button` on a focus handle this element keeps under `id`, so a reload can move keyboard
+/// focus onto it; it takes focus on this draw when `take_focus`.
+pub fn button_focusing(id: impl Into<ElementId>, button: Button, take_focus: bool) -> AnyElement {
     FocusingButton {
-        button: button.into_any_element(),
+        id: id.into(),
+        button,
         take_focus,
     }
     .into_any_element()
@@ -320,24 +294,26 @@ pub fn button_focusing(button: impl IntoElement, take_focus: Option<ElementId>) 
 
 #[derive(IntoElement)]
 struct FocusingButton {
-    button: AnyElement,
-    take_focus: Option<ElementId>,
+    id: ElementId,
+    button: Button,
+    take_focus: bool,
 }
 
 impl RenderOnce for FocusingButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        if let Some(id) = self.take_focus {
-            focus_kit_button(id, window, cx);
+        let focus = window
+            .use_keyed_state(self.id, cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        if self.take_focus {
+            ui::focus_in_draw(&focus, window, cx);
         }
-        self.button
+        self.button.track_focus(&focus)
     }
 }
 
 impl RenderOnce for ActionSlot {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        if let Some(id) = self.take_focus {
-            window.with_id("kv-action", |window| focus_kit_button(id, window, cx));
-        }
         // A focus handle that is no tab stop, only to see focus inside the slot.
         let focus = window
             .use_keyed_state("kv-action-focus", cx, |_, cx| cx.focus_handle())
