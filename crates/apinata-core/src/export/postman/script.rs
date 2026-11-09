@@ -172,15 +172,20 @@ const UNBALANCED: &str =
     "script kept as written; its brackets do not balance, so no calls were rewritten";
 
 /// Translate `code` for Postman, pushing a summary note at `source` and one note per call
-/// left untranslated; returns the code to write.
+/// left untranslated; returns the code to write. A script with nothing to translate gets no note.
 pub(super) fn for_postman(code: &str, source: &str, notes: &mut Vec<ExportNote>) -> String {
     let out = translate(code);
-    let summary = match (out.kept, out.rewritten) {
-        (true, _) => UNBALANCED.to_owned(),
-        (false, 1) => "script translated; 1 call rewritten for Postman".to_owned(),
-        (false, n) => format!("script translated; {n} calls rewritten for Postman"),
+    let summary = match (out.kept, out.rewritten, out.leftovers.is_empty()) {
+        (true, _, _) => Some(UNBALANCED.to_owned()),
+        (false, 0, true) => None,
+        (false, 1, _) => Some("script translated; 1 call rewritten for Postman".to_owned()),
+        (false, n, _) => Some(format!(
+            "script translated; {n} calls rewritten for Postman"
+        )),
     };
-    notes.push(ExportNote::new(source, summary));
+    if let Some(summary) = summary {
+        notes.push(ExportNote::new(source, summary));
+    }
     for chain in &out.leftovers {
         let detail = format!(
             "uses `{chain}`, which was not translated for Postman; the line was kept as written"

@@ -5,8 +5,6 @@ use crate::export_support;
 use export_support::*;
 use serde_json::{Value, json};
 
-const ZERO: &str = "script translated; 0 calls rewritten for Postman";
-
 fn event(listen: &str, exec: Value) -> Value {
     json!({"listen": listen, "script": {"type": "text/javascript", "packages": {}, "requests": {}, "exec": exec}})
 }
@@ -82,16 +80,8 @@ fn tests_follow_the_post_response_script_in_one_test_event() {
         keys(&v["item"][1]),
         ["name", "protocolProfileBehavior", "request", "event"]
     );
-    assert_eq!(
-        notes(&c),
-        pairs(&[
-            ("f / tests script", ZERO),
-            ("a / pre-request script", ZERO),
-            ("a / post-response script", ZERO),
-            ("a / tests script", ZERO),
-            ("b / tests script", ZERO),
-        ])
-    );
+    // Scripts with no calls to rewrite export silently.
+    assert_eq!(notes(&c), pairs(&[]));
 }
 
 #[test]
