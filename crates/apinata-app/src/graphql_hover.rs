@@ -5,9 +5,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use apinata_core::{QUERY_VALIDATE_LIMIT, Schema, SchemaSymbol, TypeKind};
-use gpui_kit::component::input::{DefinitionProvider, HoverProvider};
+use gpui_kit::component::input::{DefinitionProvider, EditorState, HoverProvider};
 use gpui_kit::component::{Rope, RopeExt as _};
-use gpui_kit::{App, Result, Task, Window};
+use gpui_kit::{App, Context, Result, SharedString, Task, Window};
 use lsp_types::{Hover, HoverContents, LocationLink, MarkupContent, MarkupKind, Range, Uri};
 
 use crate::graphql_docs::DocsView;
@@ -226,21 +226,97 @@ pub(crate) fn lsp_range(text: &Rope, range: &std::ops::Range<usize>) -> Range {
     )
 }
 
+/// The live check's last diagnostics as byte ranges and messages, with the text they belong to.
+#[derive(Debug, Default)]
+#[non_exhaustive]
+pub struct Squiggles {
+    text: Rope,
+    found: Vec<(std::ops::Range<usize>, SharedString)>,
+}
+
+impl Squiggles {
+    /// The diagnostics of `set`, computed for `text`.
+    pub fn of(text: &Rope, set: &gpui_kit::base::input::DiagnosticSet) -> Self {
+        Squiggles {
+            text: text.clone(),
+            found: set
+                .iter()
+                .map(|e| (e.range.clone(), e.diagnostic.message.clone()))
+                .collect(),
+        }
+    }
+}
+
+/// `hover` with every diagnostic over its name appended below a rule, when `squiggles` were
+/// computed for this very text; a stale or empty set leaves the hover as it is.
+pub fn fold_squiggles(mut answer: Hover, text: &Rope, squiggles: &Squiggles) -> Hover {
+    let (Some(range), HoverContents::Markup(markup)) = (answer.range, &mut answer.contents) else {
+        return answer;
+    };
+    if squiggles.text != *text {
+        return answer;
+    }
+    let name = text.position_to_offset(&range.start)..text.position_to_offset(&range.end);
+    let notes: Vec<String> = squiggles
+        .found
+        .iter()
+        .filter(|(at, _)| at.start < name.end && name.start < at.end)
+        .map(|(_, message)| plain(message))
+        .collect();
+    if !notes.is_empty() {
+        markup.value = format!("{}\n\n---\n\n{}", markup.value, notes.join("\n\n"));
+    }
+    answer
+}
+
+/// Closes the kit's diagnostic popover while the open hover already carries that diagnostic,
+/// so one popover shows. Run on every editor change; the popover returns once the hover goes.
+pub fn hide_folded_diagnostic(editor: &mut EditorState, cx: &mut Context<EditorState>) {
+    let (Some(open), Some(diagnostic)) = (editor.hover_popover(), editor.diagnostic_popover())
+    else {
+        return;
+    };
+    let HoverContents::Markup(markup) = &open.hover.contents else {
+        return;
+    };
+    let name = &open.symbol_range;
+    let overlaps = diagnostic.range.start < name.end && name.start < diagnostic.range.end;
+    if overlaps
+        && markup
+            .value
+            .contains(&plain(&diagnostic.diagnostic.message))
+    {
+        editor.clear_diagnostic_popover(cx);
+    }
+}
+
 /// Hover and definitions from the store's loaded schema for the URL the cell holds.
 pub struct SchemaSymbols {
     url: Rc<RefCell<String>>,
+    squiggles: Rc<RefCell<Squiggles>>,
 }
 
 impl SchemaSymbols {
     /// A provider for whatever URL `url` holds when asked.
     pub fn new(url: Rc<RefCell<String>>) -> Self {
-        SchemaSymbols { url }
+        SchemaSymbols {
+            url,
+            squiggles: Rc::default(),
+        }
     }
 
-    /// `hover` for the URL's loaded schema; None while it is absent, loading or failed.
+    /// The same provider, folding the live check's diagnostics from `squiggles` into hovers.
+    pub fn with_squiggles(mut self, squiggles: Rc<RefCell<Squiggles>>) -> Self {
+        self.squiggles = squiggles;
+        self
+    }
+
+    /// `hover` for the URL's loaded schema with the diagnostics over the name folded in; None
+    /// while the schema is absent, loading or failed.
     pub fn hover_answer(&self, text: &Rope, offset: usize, cx: &App) -> Option<Hover> {
         match graphql_schema_store::state(cx, &self.url.borrow()) {
-            Some(SchemaState::Loaded(schema)) => hover(&schema, text, offset),
+            Some(SchemaState::Loaded(schema)) => hover(&schema, text, offset)
+                .map(|answer| fold_squiggles(answer, text, &self.squiggles.borrow())),
             _ => None,
         }
     }

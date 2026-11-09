@@ -22,7 +22,7 @@ use crate::graphql_check::{
 };
 use crate::graphql_complete::SchemaCompletions;
 use crate::graphql_docs::{DocsPanel, DocsView};
-use crate::graphql_hover::{SchemaSymbols, docs_view};
+use crate::graphql_hover::{SchemaSymbols, Squiggles, docs_view, hide_folded_diagnostic};
 use crate::graphql_schema_store::{self, CheckKey, Lookup, SchemaState, SchemaStore};
 use crate::graphql_variables::VariableTools;
 use crate::schema_load::load_from_file;
@@ -77,6 +77,8 @@ pub struct GraphqlSection {
     running_check: Option<Task<()>>,
     checked_key: Option<CheckKey>,
     basis: Option<CheckBasis>,
+    // The last applied check's diagnostics, shared with the hover provider.
+    squiggles: Rc<RefCell<Squiggles>>,
     // The last refused Beautify, and the off-thread format a second Beautify replaces.
     beautify_error: Option<String>,
     beautify_task: Option<Task<()>>,
@@ -98,7 +100,10 @@ impl GraphqlSection {
         let query = cx.new(|cx| EditorState::new(window, cx).language("graphql"));
         let completion_url = Rc::new(RefCell::new(String::new()));
         let provider = SchemaCompletions::new(Rc::clone(&completion_url));
-        let symbols = Rc::new(SchemaSymbols::new(Rc::clone(&completion_url)));
+        let squiggles = Rc::new(RefCell::new(Squiggles::default()));
+        let symbols = Rc::new(
+            SchemaSymbols::new(Rc::clone(&completion_url)).with_squiggles(Rc::clone(&squiggles)),
+        );
         let section = cx.weak_entity();
         // The handler runs inside the query editor's update, so it must not read that editor.
         let show_document: ShowDocumentHandler = Rc::new(move |params, _, cx| {
@@ -150,6 +155,11 @@ impl GraphqlSection {
                 }
             }),
             cx.subscribe(&variables, on_change),
+            // A hover that already carries the diagnostic under the pointer closes the kit's
+            // diagnostic popover, so the two never stack.
+            cx.observe(&query, |_, query, cx| {
+                query.update(cx, hide_folded_diagnostic)
+            }),
             // A schema that settles on a key other than the last check's gets a new check.
             cx.observe_global::<SchemaStore>(|this, cx| {
                 let key = graphql_schema_store::compiled(&this.schema_url, cx).key();
@@ -173,6 +183,7 @@ impl GraphqlSection {
             running_check: None,
             checked_key: None,
             basis: None,
+            squiggles,
             beautify_error: None,
             beautify_task: None,
             _subs: subs,
@@ -360,6 +371,7 @@ impl GraphqlSection {
                     if let Some(set) = e.diagnostics_mut() {
                         set.reset(&rope);
                         set.extend(editor_diagnostics(&rope, check.diagnostics()));
+                        *this.squiggles.borrow_mut() = Squiggles::of(&rope, set);
                     }
                     cx.notify();
                 });
