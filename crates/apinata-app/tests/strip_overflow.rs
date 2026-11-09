@@ -4,11 +4,14 @@
 use crate::support;
 
 use apinata_app::command::{Command, Edit, Target};
+use apinata_app::config_editor::{ConfigEditor, ConfigTarget};
 use apinata_app::request_editor::Section;
 use apinata_app::response_pane::{ResponsePane, ResponseTab};
 use apinata_core::KeyValue;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AnyWindowHandle, AppContext as _, ElementId, TestAppContext, px, size};
+use gpui_kit::{
+    AnyWindowHandle, AppContext as _, ElementId, Entity, Pixels, TestAppContext, px, size,
+};
 use support::*;
 
 // Two frames: the strip measures its overflow in one and draws the menu in the next.
@@ -603,4 +606,81 @@ fn tab_onto_a_hidden_response_tab_scrolls_it_into_view(cx: &mut TestAppContext) 
     let (inside, at) = in_viewport(cx, win, item, "response-tab-strip");
     assert!(inside, "the focused Tests tab scrolls into view: {at}");
     assert_eq!(pane.read_with(cx, |p, _| p.tab()), ResponseTab::Body);
+}
+
+// Each section label's width, and whether it sits whole inside the strip's viewport.
+fn section_widths(cx: &mut TestAppContext, win: AnyWindowHandle) -> Vec<(Pixels, bool)> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let strip = w.find("section-strip").bounds();
+        let right = w.find("section-strip-viewport").bounds().right();
+        (0..Section::ALL.len())
+            .map(|ix| {
+                let b = w.find(("section", ix)).bounds();
+                let whole = b.left() >= strip.left() - px(0.5) && b.right() <= right + px(0.5);
+                (b.size.width, whole)
+            })
+            .collect()
+    })
+    .unwrap()
+}
+
+// In the whole app at 700x500 the request column is narrow: every section tab keeps its
+// natural width, and any that the strip cannot show whole is reached through the menu.
+#[gpui_kit::test]
+fn a_narrow_app_window_keeps_every_section_tab_whole(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    cx.simulate_window_resize(s.win, size(px(1600.), px(900.)));
+    settle(cx, s.win);
+    let natural = section_widths(cx, s.win);
+    cx.simulate_window_resize(s.win, size(px(700.), px(500.)));
+    settle(cx, s.win);
+    let narrow = section_widths(cx, s.win);
+    let menu = present(cx, s.win, "section-overflow");
+    for (ix, ((wide, _), (now, whole))) in natural.iter().zip(&narrow).enumerate() {
+        assert!(
+            *now >= *wide - px(0.5),
+            "section {ix} squashed from {wide:?} to {now:?}"
+        );
+        assert!(*whole || menu, "section {ix} is cut and no menu reaches it");
+    }
+}
+
+// Collection settings offer more sections than a narrow tab has room for: the strip scrolls,
+// a menu lists them all, and the chosen one scrolls into view.
+#[gpui_kit::test]
+fn a_narrow_settings_strip_reaches_every_section(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, root) = open_dir(cx, &col);
+    support::init(cx);
+    let (win, ed): (_, Entity<ConfigEditor>) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| ConfigEditor::new(ws, root, ConfigTarget::Collection, w, cx))
+            })
+        })
+        .unwrap();
+    cx.simulate_window_resize(win, size(px(1400.), px(700.)));
+    settle(cx, win);
+    assert!(
+        !present(cx, win, "config-section-overflow"),
+        "a wide strip has no menu"
+    );
+    cx.simulate_window_resize(win, size(px(360.), px(700.)));
+    settle(cx, win);
+    assert!(present(cx, win, "config-section-overflow"));
+    let sections = ed.read_with(cx, |e, _| e.sections());
+    let last = sections.len() - 1;
+    assert!(
+        !inside(cx, win, ("config-section", last), "config-section-strip"),
+        "the last section starts clipped"
+    );
+    pick(cx, win, "config-section-overflow", last);
+    assert_eq!(ed.read_with(cx, |e, _| e.section()), sections[last]);
+    assert!(
+        inside(cx, win, ("config-section", last), "config-section-strip"),
+        "the chosen section scrolls into view"
+    );
 }
