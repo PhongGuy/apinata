@@ -152,20 +152,67 @@ pub fn docs_view(uri: &str) -> Option<DocsView> {
 // image, link or HTML renders. Line breaks become hard breaks, since the kit folds a soft one
 // into a space, and leading whitespace goes, since four spaces or a tab would open a code block.
 pub(crate) fn plain(text: &str) -> String {
-    let lines: Vec<String> = text
-        .lines()
-        .map(|line| {
-            let mut out = String::with_capacity(line.len());
-            for c in line.trim_start().chars() {
-                if c.is_ascii_punctuation() {
-                    out.push('\\');
-                }
-                out.push(c);
-            }
-            out
-        })
-        .collect();
+    join_lines(text.lines().map(|line| escape(line.trim_start())).collect())
+}
+
+// Like `plain`, but a backtick-quoted span becomes inline code. A run of backticks closes at the
+// next run of the same length on that line, as in CommonMark; a run that never closes is text.
+pub(crate) fn plain_with_code(text: &str) -> String {
+    join_lines(
+        text.lines()
+            .map(|line| line_with_code(line.trim_start()))
+            .collect(),
+    )
+}
+
+fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_ascii_punctuation() {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn line_with_code(line: &str) -> String {
+    let fence_at = |from: usize| -> Option<(usize, usize)> {
+        let start = from + line[from..].find('`')?;
+        let len = line[start..].len() - line[start..].trim_start_matches('`').len();
+        Some((start, len))
+    };
+    let mut out = String::with_capacity(line.len());
+    let mut done = 0;
+    let mut from = 0;
+    while let Some((open, len)) = fence_at(from) {
+        let body = open + len;
+        let mut search = body;
+        let close = loop {
+            match fence_at(search) {
+                Some((at, l)) if l == len => break Some(at),
+                Some((at, l)) => search = at + l,
+                None => break None,
+            }
+        };
+        match close {
+            Some(close) => {
+                out.push_str(&escape(&line[done..open]));
+                out.push_str(&code_span(&line[body..close]));
+                done = close + len;
+                from = done;
+            }
+            None => from = body,
+        }
+    }
+    out.push_str(&escape(&line[done..]));
+    out
+}
+
+// Escaped lines joined so each break shows: the kit folds a soft break into a space, so a line
+// followed by a non-empty one ends in a hard break.
+fn join_lines(lines: Vec<String>) -> String {
+    let mut out = String::new();
     for (i, line) in lines.iter().enumerate() {
         out.push_str(line);
         match lines.get(i + 1) {
@@ -261,7 +308,7 @@ pub fn fold_squiggles(mut answer: Hover, text: &Rope, squiggles: &Squiggles) -> 
         .found
         .iter()
         .filter(|(at, _)| at.start < name.end && name.start < at.end)
-        .map(|(_, message)| plain(message))
+        .map(|(_, message)| plain_with_code(message))
         .collect();
     if !notes.is_empty() {
         markup.value = format!("{}\n\n---\n\n{}", markup.value, notes.join("\n\n"));
@@ -284,7 +331,7 @@ pub fn hide_folded_diagnostic(editor: &mut EditorState, cx: &mut Context<EditorS
     if overlaps
         && markup
             .value
-            .contains(&plain(&diagnostic.diagnostic.message))
+            .contains(&plain_with_code(&diagnostic.diagnostic.message))
     {
         editor.clear_diagnostic_popover(cx);
     }
@@ -353,5 +400,40 @@ impl DefinitionProvider for SchemaSymbols {
         cx: &mut App,
     ) -> Task<Result<Vec<LocationLink>>> {
         Task::ready(Ok(self.definition_answer(text, offset, cx)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_with_code;
+
+    #[test]
+    fn a_backtick_quoted_name_becomes_a_code_span() {
+        assert_eq!(
+            plain_with_code("`User.legacyName` is deprecated: Use name"),
+            "`User.legacyName` is deprecated\\: Use name"
+        );
+    }
+
+    #[test]
+    fn an_unmatched_backtick_stays_escaped() {
+        assert_eq!(
+            plain_with_code("`a` and `b is open"),
+            "`a` and \\`b is open"
+        );
+    }
+
+    #[test]
+    fn markdown_outside_backticks_stays_escaped() {
+        assert_eq!(
+            plain_with_code("see [link](x) or <b>`<i>`</b>"),
+            "see \\[link\\]\\(x\\) or \\<b\\>`<i>`\\<\\/b\\>"
+        );
+    }
+
+    #[test]
+    fn a_double_fence_keeps_a_backtick_inside_the_span() {
+        assert_eq!(plain_with_code("x ``a`b`` y"), "x ``a`b`` y");
+        assert_eq!(plain_with_code("``"), "\\`\\`");
     }
 }

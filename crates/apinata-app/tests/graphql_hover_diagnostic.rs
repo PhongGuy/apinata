@@ -119,7 +119,7 @@ fn a_deprecated_field_folds_its_warning_into_the_hover(cx: &mut TestAppContext) 
     let text = "{ me { legacyName } }";
     let (win, query) = section(cx, text);
     let messages = squiggle_messages(cx, &query);
-    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert_eq!(messages, ["`User.legacyName` is deprecated: Use name"]);
     hover_over(cx, win, &query, span(text, "legacyName"));
     let (hover, diagnostic) = popovers(cx, &query);
     let hover = hover.expect("a hover");
@@ -128,7 +128,7 @@ fn a_deprecated_field_folds_its_warning_into_the_hover(cx: &mut TestAppContext) 
         "{hover}"
     );
     assert!(
-        hover.ends_with(&format!("\n\n---\n\n{}", plain_md(&messages[0]))),
+        hover.ends_with("\n\n---\n\n`User.legacyName` is deprecated\\: Use name"),
         "{hover}"
     );
     assert!(!diagnostic, "the diagnostic popover stays closed");
@@ -175,16 +175,4 @@ fn a_clean_name_shows_the_hover_alone(cx: &mut TestAppContext) {
             false
         )
     );
-}
-
-// Diagnostic text as the hover shows it: ASCII punctuation backslash-escaped.
-fn plain_md(text: &str) -> String {
-    let mut out = String::new();
-    for c in text.chars() {
-        if c.is_ascii_punctuation() {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
 }
