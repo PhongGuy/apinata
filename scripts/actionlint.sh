@@ -28,7 +28,8 @@ if [[ ! -x $bin ]]; then
   mkdir -p "$dir"
   archive=$dir/actionlint_${VERSION}_$asset.tar.gz
   base=${ACTIONLINT_BASE_URL:-https://github.com/rhysd/actionlint/releases/download}
-  curl -sSLf -A apinata-actionlint -o "$archive" "$base/v$VERSION/actionlint_${VERSION}_$asset.tar.gz"
+  # The release CDN answers an occasional 5xx, so transient failures are retried.
+  curl -sSLf --retry 3 --retry-all-errors --retry-delay 2 -A apinata-actionlint -o "$archive" "$base/v$VERSION/actionlint_${VERSION}_$asset.tar.gz"
   if [[ $(sha256sum "$archive" | cut -d' ' -f1) != "$sha" ]]; then
     rm -f "$archive"
     echo "actionlint.sh: sha256 mismatch for actionlint_${VERSION}_$asset.tar.gz" >&2
