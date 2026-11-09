@@ -1407,6 +1407,7 @@ impl Executor {
             // A hop in NTLM mode runs its three legs on a pinned connection; negotiate pushes the
             // earlier legs onto the timeline and this loop records the last.
             let mut ntlm_sent = None;
+            let mut ntlm_warning = None;
             let mut leg_started = started;
             // Set for a plain send only: the recorder and the instant its headers arrived.
             let mut measured = None;
@@ -1440,6 +1441,7 @@ impl Executor {
                         )
                         .await?;
                     ntlm_sent = done.authorization;
+                    ntlm_warning = done.warning;
                     leg_started = done.started;
                     total += done.earlier;
                     leg = done.deadline;
@@ -1765,6 +1767,9 @@ impl Executor {
                 }
                 if let Some(path) = saved {
                     response = response.with_body_file(path);
+                }
+                if let Some(warning) = ntlm_warning {
+                    response = response.with_warning(warning);
                 }
                 return Ok(response);
             };

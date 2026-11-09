@@ -1588,6 +1588,9 @@ async fn exchange(
     result
         .warnings
         .extend(done.pac.into_iter().map(Warning::ProxyAutoConfig));
+    if let Ok(response) = &done.sent {
+        result.warnings.extend(response.warnings().iter().cloned());
+    }
     // A cancel in the pause before a retry keeps the attempt before it: its response, or its
     // failure in `last_attempt_error`. Nothing after the response runs.
     if done.cancelled {

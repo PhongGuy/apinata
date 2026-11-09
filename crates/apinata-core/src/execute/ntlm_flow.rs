@@ -23,6 +23,7 @@ use super::{
 use crate::cookies::SetCookie;
 use crate::network::{ClientKey, ResolvedProxy};
 use crate::ntlm;
+use crate::resolve::Warning;
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 
@@ -130,6 +131,8 @@ pub(super) struct Negotiated {
     pub started: Instant,
     /// The time the earlier legs took, already on the timeline.
     pub earlier: Duration,
+    /// Set when a full handshake through an http(s) proxy ended in 401.
+    pub warning: Option<Warning>,
 }
 
 /// What a leg sent, taken before the request is consumed.
@@ -285,6 +288,7 @@ impl Executor {
         if first.status() != StatusCode::UNAUTHORIZED || !ntlm::offers_ntlm(&offered) {
             return Ok(Negotiated {
                 response: first,
+                warning: None,
                 authorization: None,
                 deadline: leg,
                 started,
@@ -325,6 +329,7 @@ impl Executor {
         if second.status() != StatusCode::UNAUTHORIZED {
             return Ok(Negotiated {
                 response: second,
+                warning: None,
                 authorization: Some(value),
                 deadline: leg,
                 started,
@@ -366,8 +371,13 @@ impl Executor {
             .ok_or_else(timed_out)?
             .map_err(later)?;
         check_pinned(url, pinned, &third, lost(NOT_ONE_CONNECTION))?;
+        // A proxy that quietly switched upstream connections ends the handshake on the same 401
+        // as a wrong password, so that case is told apart from a plain rejection.
+        let warning = (absolute && third.status() == StatusCode::UNAUTHORIZED)
+            .then_some(Warning::NtlmProxyUnauthorized);
         Ok(Negotiated {
             response: third,
+            warning,
             authorization: Some(value),
             deadline: leg,
             started,

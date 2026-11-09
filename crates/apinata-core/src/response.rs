@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 
 use crate::cookies::SetCookie;
 use crate::http_version::HttpVersion;
-use crate::resolve::redact_url;
+use crate::resolve::{Warning, redact_url};
 use crate::script::ScriptPhase;
 use crate::sse::SseEvent;
 use crate::stream::StreamEnd;
@@ -33,6 +33,7 @@ pub struct Response {
     derived: Vec<String>,
     /// The cookies the request's scripts wrote, each with its phase, in write order.
     scripted: Vec<(ScriptPhase, SetCookie)>,
+    warnings: Vec<Warning>,
 }
 
 /// Where a [`Response::set_cookies`] or [`crate::RequestResult::set_cookies`] row came from.
@@ -189,7 +190,19 @@ impl Response {
             body_file: None,
             derived: Vec::new(),
             scripted: Vec::new(),
+            warnings: Vec::new(),
         }
+    }
+
+    /// What the executor noticed about this send that the caller should be told.
+    pub fn warnings(&self) -> &[Warning] {
+        &self.warnings
+    }
+
+    /// Adds a warning about this send.
+    pub(crate) fn with_warning(mut self, warning: Warning) -> Response {
+        self.warnings.push(warning);
+        self
     }
 
     /// Values the executor computed for this send (signatures, nonces, answers), for redaction.
@@ -439,6 +452,7 @@ impl fmt::Debug for Response {
             .field("body_file", &self.body_file)
             .field("derived_credentials", &self.derived.len())
             .field("script_cookies", &self.scripted)
+            .field("warnings", &self.warnings)
             .finish()
     }
 }
