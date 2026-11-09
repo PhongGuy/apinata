@@ -353,6 +353,9 @@ pub struct BodyView {
     node_pending: Rc<RefCell<(Vec<NodeCopy>, bool)>>,
     // What held focus when the rows menu opened, for `menu_focus` to hand back.
     node_held: Rc<RefCell<Option<FocusHandle>>>,
+    // Whether the chosen node entry handed focus to the host, as Assert this value does by
+    // focusing the new row; the menu's focus fallback must not take it back.
+    node_handed_focus: Rc<Cell<bool>>,
     // Whether the node menu offers Assert this value: only a host that owns a request does.
     assert_offered: bool,
     // The rows-mode row the pointer last rested on, which the value-actions button follows.
@@ -570,6 +573,7 @@ impl BodyView {
             compact: false,
             node_pending: Rc::default(),
             node_held: Rc::default(),
+            node_handed_focus: Rc::default(),
             assert_offered: false,
             hovered_row: None,
             current_row: None,
@@ -1764,6 +1768,7 @@ impl BodyView {
             return;
         }
         if let Some(assertion) = &entry.assertion {
+            self.node_handed_focus.set(true);
             cx.emit(AssertValue(assertion.clone()));
             return;
         }
@@ -1787,6 +1792,7 @@ impl BodyView {
     // here, once per open, never per frame or hover.
     fn prime_value_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         *self.node_held.borrow_mut() = menu_focus::held(window, cx);
+        self.node_handed_focus.set(false);
         let entries = match self.shown {
             Shown::Editor => self.node_copies(self.editor.read(cx).cursor(), cx),
             Shown::Lines(_) => self
@@ -1862,7 +1868,11 @@ impl BodyView {
                     },
                     move |window, cx| {
                         focus_view
-                            .update(cx, |v, cx| v.focus_after_value_menu(window, cx))
+                            .update(cx, |v, cx| {
+                                if !v.node_handed_focus.get() {
+                                    v.focus_after_value_menu(window, cx)
+                                }
+                            })
                             .ok();
                     },
                 );
@@ -3144,11 +3154,13 @@ impl BodyView {
         frame
             .capture_any_mouse_down({
                 let (held, pending) = (Rc::clone(&held), Rc::clone(&pending));
+                let handed = Rc::clone(&self.node_handed_focus);
                 move |e, window, cx| {
                     if e.button == MouseButton::Right {
                         // Cleared first so a press that hits no row offers nothing stale.
                         *pending.borrow_mut() = Default::default();
                         *held.borrow_mut() = menu_focus::held(window, cx);
+                        handed.set(false);
                     }
                 }
             })
@@ -3160,7 +3172,11 @@ impl BodyView {
                     move |_| held.borrow_mut().take().into(),
                     move |window, cx| {
                         focus_view
-                            .update(cx, |v, cx| v.focus.focus(window, cx))
+                            .update(cx, |v, cx| {
+                                if !v.node_handed_focus.get() {
+                                    v.focus.focus(window, cx)
+                                }
+                            })
                             .ok();
                     },
                 );
