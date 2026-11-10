@@ -478,8 +478,13 @@ fn a_restored_scrubbed_body_shows_a_disabled_eye(cx: &mut TestAppContext) {
         "the eye is shown and says why"
     );
     assert!(present(cx, win, "body-reveal"), "it shows its masked face");
-    // The kit reports no disabled flag to tests; what the lock changes is that the eye takes
-    // no focus, so a full lap of Tab never rests on it.
+    // The locked eye reads as disabled and takes no focus, so a full lap of Tab never rests on it.
+    let disabled = cx
+        .update_window(win, |_, w, _| {
+            w.try_find("body-eye").and_then(|e| e.disabled())
+        })
+        .unwrap();
+    assert_eq!(disabled, Some(true), "the locked eye reads as disabled");
     cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
     frame(cx, win);
     let first = cx.update_window(win, |_, w, cx| w.focused(cx)).unwrap();
