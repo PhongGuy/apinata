@@ -1893,8 +1893,9 @@ impl Workspace {
         Some(self.update_tabs(cx, |t| t.open(&root, kind, false)))
     }
 
-    /// Targets the selected collection environment, else the first, else a new one; stores
-    /// the intent for `root` and opens its Environments tab. Never a global environment.
+    /// Targets the selected collection environment, else the first, which becomes selected so
+    /// the next send uses it, else a new one; stores the intent for `root` and opens its
+    /// Environments tab. Never a global environment.
     pub fn add_variable_to_environment(
         &mut self,
         root: &Path,
@@ -1902,12 +1903,13 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Option<TabId> {
         let root = absolute(root);
-        let select = self
-            .selected_environment(&root, cx)
+        let selected = self.selected_environment(&root, cx);
+        let select = selected
+            .clone()
             .or_else(|| self.environments(&root, cx).into_iter().next());
         let intent = EnvIntent {
             create: select.is_none(),
-            select,
+            select: select.clone(),
             add_var: name.to_string(),
         };
         // Stored before the tab opens, so an open editor's observer sees it on the notify;
@@ -1916,6 +1918,8 @@ impl Workspace {
         let tab = self.open_settings(&root, TabKind::Environments, cx);
         if tab.is_none() {
             self.env_intents.remove(&root);
+        } else if selected.is_none() && select.is_some() {
+            self.select_environment(&root, select, cx);
         }
         tab
     }

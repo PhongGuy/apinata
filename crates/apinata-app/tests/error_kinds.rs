@@ -368,8 +368,9 @@ fn an_undefined_variable_hint_is_worded_for_the_app() {
     assert!(
         view.sentence
             .unwrap()
-            .ends_with("base is defined in environment dev; switch to it.")
+            .ends_with("base is defined in environment dev.")
     );
+    assert_eq!(view.use_environments, ["dev"]);
     let two = UndefinedHint::DefinedElsewhere {
         environments: vec!["dev".into(), "prod".into()],
     };
@@ -377,13 +378,15 @@ fn an_undefined_variable_hint_is_worded_for_the_app() {
     assert!(
         view.sentence
             .unwrap()
-            .ends_with("base is defined in environments dev, prod; switch to one of them.")
+            .ends_with("base is defined in environments dev, prod.")
     );
+    assert_eq!(view.use_environments, ["dev", "prod"]);
     let oauth = RunError::OAuth2(OAuth2Error::Resolve(ResolveError::UndefinedVariable {
         name: "tok".into(),
         hint: Some(secret),
     }));
     let view = describe_error(&oauth, "x", Some("dev"));
+    assert!(view.use_environments.is_empty());
     assert!(
         view.sentence
             .unwrap()
