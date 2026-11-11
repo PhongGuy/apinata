@@ -179,7 +179,7 @@ pub enum ResolveError {
         host: String,
         /// The address as written in the row.
         address: String,
-        /// What is wrong.
+        /// What is wrong and, once resolved for a request, where the row is set.
         reason: String,
     },
     /// Two enabled host override rows name the same host.
@@ -195,7 +195,8 @@ pub enum ResolveError {
     /// The collection's proxy has an unsupported protocol, or a bad host or port.
     #[error("invalid proxy: {reason}")]
     InvalidProxy {
-        /// What is wrong, never quoting a field's value.
+        /// What is wrong, never quoting a field's value; for the collection's proxy, also
+        /// where it is set.
         reason: String,
     },
 }

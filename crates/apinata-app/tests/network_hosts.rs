@@ -60,8 +60,10 @@ fn loaded_rows_show_their_host_and_address(cx: &mut TestAppContext) {
 fn add_then_type_a_host_and_an_address(cx: &mut TestAppContext) {
     let (win, host) = section(cx, vec![]);
     click(cx, win, "host-add");
-    assert_eq!(sent(cx, &host), Some(vec![HostOverride::new("", "")]));
+    assert_eq!(sent(cx, &host), None, "an empty row is a draft");
     type_at_end(cx, win, None, ("host-name", 0usize), "fake.test");
+    cx.run_until_parked();
+    assert_eq!(sent(cx, &host), None, "a row without an address is a draft");
     type_at_end(cx, win, None, ("host-address", 0usize), "127.0.0.1");
     cx.run_until_parked();
     assert_eq!(
@@ -334,4 +336,44 @@ fn the_danger_ring_is_painted_over_the_accent_ring(cx: &mut TestAppContext) {
         })
         .unwrap();
     assert_eq!(last, Some(danger));
+}
+
+#[gpui_kit::test]
+fn an_incomplete_row_says_it_is_not_saved_until_both_fields_are_filled(cx: &mut TestAppContext) {
+    let (win, _host) = section(cx, vec![]);
+    click(cx, win, "host-add");
+    assert!(shown(cx, win, ("host-incomplete", 0)));
+    type_at_end(cx, win, None, ("host-name", 0usize), "fake.test");
+    type_at_end(cx, win, None, ("host-address", 0usize), "127.0.0.1");
+    frame(cx, win);
+    assert!(!shown(cx, win, ("host-incomplete", 0)));
+}
+
+#[gpui_kit::test]
+fn clearing_a_saved_rows_host_holds_the_row_back(cx: &mut TestAppContext) {
+    let (win, host) = section(
+        cx,
+        vec![
+            HostOverride::new("a.test", "127.0.0.1"),
+            HostOverride::new("b.test", "127.0.0.2"),
+        ],
+    );
+    replace_input(cx, win, None, ("host-name", 0usize), "");
+    cx.run_until_parked();
+    frame(cx, win);
+    assert_eq!(
+        sent(cx, &host),
+        Some(vec![HostOverride::new("b.test", "127.0.0.2")])
+    );
+    assert!(shown(cx, win, ("host-incomplete", 0)));
+    assert!(!shown(cx, win, ("host-error", 0)));
+    type_at_end(cx, win, None, ("host-name", 0usize), "c.test");
+    cx.run_until_parked();
+    assert_eq!(
+        sent(cx, &host),
+        Some(vec![
+            HostOverride::new("c.test", "127.0.0.1"),
+            HostOverride::new("b.test", "127.0.0.2"),
+        ])
+    );
 }

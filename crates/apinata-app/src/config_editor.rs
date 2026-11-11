@@ -563,7 +563,7 @@ impl ConfigEditor {
     /// The warnings a save gives for typed values it cannot take.
     pub fn unsaved(&self, cx: &App) -> Vec<String> {
         self.network()
-            .map(|n| n.read(cx).unsaved())
+            .map(|n| n.read(cx).unsaved(cx))
             .unwrap_or_default()
     }
 

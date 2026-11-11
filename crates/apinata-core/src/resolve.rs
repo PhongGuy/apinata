@@ -1067,6 +1067,27 @@ pub(crate) fn script_request(
     })
 }
 
+// A bad proxy or host override fails every request of the collection, so its error says where
+// to fix it rather than skipping the entry and sending somewhere the person did not intend.
+fn set_in_collection(e: ResolveError) -> ResolveError {
+    const WHERE: &str = " (set in the collection's Network settings, opencollection.yml)";
+    match e {
+        ResolveError::InvalidProxy { reason } => ResolveError::InvalidProxy {
+            reason: reason + WHERE,
+        },
+        ResolveError::InvalidHostOverride {
+            host,
+            address,
+            reason,
+        } => ResolveError::InvalidHostOverride {
+            host,
+            address,
+            reason: reason + WHERE,
+        },
+        other => other,
+    }
+}
+
 /// The request's proxy and client certificate. It runs after the host judgement, so proxy
 /// credentials and the passphrase join `sensitive` too late to make the request host look secret.
 /// Only substitutions into the proxy's protocol, host and port mark the proxy.
@@ -1097,7 +1118,8 @@ fn resolve_network(
                 &expand(&address, &config.protocol)?,
                 &expand(&address, &config.hostname)?,
                 &expand(&address, &config.port)?,
-            )?;
+            )
+            .map_err(set_in_collection)?;
             if let Some(auth) = &config.auth {
                 let username = expand(&extras, &auth.username)?;
                 let password = expand(&extras, &auth.password)?;
@@ -1145,7 +1167,8 @@ fn resolve_network(
         break;
     }
     let host_overrides =
-        resolve_host_overrides(&block.host_overrides, |text| expand(&extras, text))?;
+        resolve_host_overrides(&block.host_overrides, |text| expand(&extras, text))
+            .map_err(set_in_collection)?;
     let secret_in_proxy = !address.is_empty();
     let found = address
         .into_values()
