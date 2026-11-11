@@ -102,7 +102,7 @@ fn only_the_collection_row_offers_export() {
     assert!(!menu_entries(NodeKind::Request).contains(&MenuEntry::ExportPostman));
     assert_eq!(
         MenuEntry::ExportPostman.label(),
-        "Export collection to Postman"
+        "Export collection to Postman (translate scripts)"
     );
 }
 
@@ -302,7 +302,7 @@ fn only_the_collection_row_offers_export_keeping_scripts() {
     assert!(!menu_entries(NodeKind::Request).contains(&entry));
     assert_eq!(
         entry.label(),
-        "Export collection to Postman (keep scripts as written)"
+        "Export collection to Postman (copy scripts unchanged)"
     );
     let at = |e| entries.iter().position(|x| *x == e).unwrap();
     assert_eq!(at(entry), at(MenuEntry::ExportPostman) + 1);
@@ -337,10 +337,10 @@ fn the_keep_scripts_entry_exports_them_as_written(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_palette_exports_keeping_scripts_as_written(cx: &mut TestAppContext) {
+fn the_palette_exports_copying_scripts_unchanged(cx: &mut TestAppContext) {
     let col = scripted();
     let s = started(cx, &col);
-    palette(cx, &s, "keep scripts as written");
+    palette(cx, &s, "copy scripts unchanged");
     assert_eq!(saved_pre_request(cx), "bru.setVar('k', 1);");
 }
 
@@ -495,4 +495,69 @@ fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
         gap(cx) >= gpui_kit::px(0.),
         "the last item scrolled into view"
     );
+}
+
+const TRANSLATE: &str = "Export collection to Postman (translate scripts)";
+const UNCHANGED: &str = "Export collection to Postman (copy scripts unchanged)";
+
+#[gpui_kit::test]
+fn the_collection_menu_says_what_each_postman_export_does_with_scripts(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let col = two_requests();
+    let s = started(cx, &col);
+    let entries = menu_entries(NodeKind::Collection);
+    let at = |e| entries.iter().position(|x| *x == e).unwrap();
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.right_click(row(""), cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    let labels = cx
+        .update_window(s.win, |_, w, _| {
+            [
+                MenuEntry::ExportPostman,
+                MenuEntry::ExportPostmanKeepScripts,
+            ]
+            .map(|e| {
+                let found = w.within("popup-menu").find(at(e));
+                found.label().unwrap_or_default().to_owned()
+            })
+        })
+        .unwrap();
+    assert_eq!(labels, [TRANSLATE, UNCHANGED]);
+}
+
+#[gpui_kit::test]
+fn the_palette_says_what_each_postman_export_does_with_scripts(cx: &mut TestAppContext) {
+    use apinata_app::palette::{index_path, palette_items};
+    use apinata_app::shell::{ExportCollection, ExportCollectionPostmanKeepScripts};
+    use gpui_kit::Action;
+    use gpui_kit::test::TestWindowExt as _;
+    let col = two_requests();
+    let s = started(cx, &col);
+    focus_shell(cx, &s);
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input("postman", cx))
+        .unwrap();
+    frame(cx, s.win);
+    let items = palette_items();
+    let labels = cx
+        .update_window(s.win, |_, w, _| {
+            [
+                &ExportCollection as &dyn Action,
+                &ExportCollectionPostmanKeepScripts,
+            ]
+            .map(|action| {
+                let ix = items
+                    .iter()
+                    .position(|e| e.action.partial_eq(action))
+                    .expect("listed");
+                let found = w.within("command-palette").find(index_path(&items, ix));
+                found.label().unwrap_or_default().to_owned()
+            })
+        })
+        .unwrap();
+    assert_eq!(labels, [TRANSLATE, UNCHANGED]);
 }
