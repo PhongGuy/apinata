@@ -234,6 +234,7 @@ mod env_edit_undo;
 mod env_editor;
 mod env_fileless;
 mod env_move;
+mod env_naming;
 mod env_orphans;
 mod env_rename;
 mod env_table;
