@@ -11,12 +11,11 @@ use gpui_kit::{Action, Anchor, App, FocusHandle, IntoElement};
 use crate::commands::registry;
 use crate::stand_in::StandIn;
 
-const MENU_GROUPS: [&[&str]; 4] = [
+const MENU_GROUPS: [&[&str]; 5] = [
     &[
         "collection.open",
         "collection.close",
         "collection.new",
-        "collection.clone",
         "collection.import",
         "collection.import_curl",
         "collection.export",
@@ -25,6 +24,9 @@ const MENU_GROUPS: [&[&str]; 4] = [
         "collection.export_html",
         "collection.run",
         "collection.settings",
+    ],
+    &[
+        "collection.clone",
         "collection.switch_branch",
         "collection.show_changes",
     ],

@@ -28,7 +28,7 @@ fn history_has_a_default_chord_and_ends_the_data_group() {
         .expect("listed");
     assert_eq!(history.default_chords, [CHORD]);
     let groups = app_menu_groups();
-    let (label, action) = groups[2].last().expect("an item");
+    let (label, action) = groups[3].last().expect("an item");
     assert_eq!(*label, "History");
     assert_eq!(action.name(), "apinata::OpenHistory");
 }
