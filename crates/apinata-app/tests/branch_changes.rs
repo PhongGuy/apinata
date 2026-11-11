@@ -510,9 +510,10 @@ fn the_comma_sits_between_the_name_and_the_count(cx: &mut TestAppContext) {
     let (name, count) = (name.expect("the name"), count.expect("the count"));
     let text = text.expect("the name's text");
     let comma = comma.expect("a comma is drawn between the name and the count");
-    // The comma follows the name as in running text, not a padding's width away.
+    // The comma follows the name as in running text: only the ring's 1 px border lies
+    // between them, never a padding that reads as a space before the comma.
     assert!(
-        comma.0 - text.1 <= 4.,
+        comma.0 - text.1 <= 1.5,
         "the comma {comma:?} floats {} px after the name's text {text:?}",
         comma.0 - text.1
     );

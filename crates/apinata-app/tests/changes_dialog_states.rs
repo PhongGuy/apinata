@@ -259,8 +259,10 @@ fn opening_refreshes_a_status_committed_elsewhere(cx: &mut TestAppContext) {
     assert!(present(cx, s.win, "changes-empty"));
 }
 
+// A clean tree has no list or diff to show, so the note takes the whole panes area, centred
+// and whole on one line, rather than a cut line in the narrow list column.
 #[gpui_kit::test]
-fn the_empty_note_keeps_to_one_line_in_the_list(cx: &mut TestAppContext) {
+fn the_empty_note_is_centred_across_the_dialog(cx: &mut TestAppContext) {
     use apinata_app::style::{SPACE_2, at_zoom};
     use gpui_kit::px;
     let sb = Sandbox::new();
@@ -273,11 +275,12 @@ fn the_empty_note_keeps_to_one_line_in_the_list(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert!(files(cx).is_empty());
     cx.update_window(s.win, |_, w, _| {
-        let list = w.find("changes-files").bounds();
+        let panes = w.find("changes-panes").bounds();
         let note = w.find("changes-empty").bounds();
+        let (pc, nc) = (panes.center(), note.center());
         assert!(
-            note.right() <= list.right() + px(0.5),
-            "{note:?} leaves {list:?}"
+            (pc.x - nc.x).abs() <= px(1.) && (pc.y - nc.y).abs() <= px(1.),
+            "the note {note:?} is not centred in the panes {panes:?}"
         );
         assert!(
             note.size.height <= at_zoom(SPACE_2, 1.0) * 2. + px(24.),
@@ -285,4 +288,8 @@ fn the_empty_note_keeps_to_one_line_in_the_list(cx: &mut TestAppContext) {
         );
     })
     .unwrap();
+    assert!(
+        !present(cx, s.win, "changes-files"),
+        "an empty list column is left beside the note"
+    );
 }
