@@ -1,4 +1,4 @@
-use apinata_app::tabs::{Side, TabEntry, TabId, TabKind, Tabs, tab_details};
+use apinata_app::tabs::{Side, TabEntry, TabId, TabKind, Tabs, tab_details, tab_place};
 use apinata_core::ItemPath;
 use std::path::{Path, PathBuf};
 
@@ -210,6 +210,22 @@ fn the_environments_tabs_of_two_collections_name_their_collections() {
     assert_eq!(
         tab_details(&entries, &labels, &places(&[&["Demo"], &["Shop"]])),
         vec![Some("Demo".to_string()), Some("Shop".to_string())]
+    );
+}
+
+#[test]
+fn same_named_examples_of_two_requests_name_their_requests() {
+    let example = |rel: &str| TabKind::Example {
+        item: ip(rel),
+        index: 0,
+    };
+    let entries = [entry(1, example("f/a.yml")), entry(2, example("f/b.yml"))];
+    let places: Vec<Vec<String>> = (entries.iter()).map(|e| tab_place(e, "c", None)).collect();
+    assert_eq!(places[0], ["c", "f", "a.yml"], "the request ends the place");
+    let labels = vec!["Success".to_string(), "Success".to_string()];
+    assert_eq!(
+        tab_details(&entries, &labels, &places),
+        vec![Some("a.yml".to_string()), Some("b.yml".to_string())]
     );
 }
 

@@ -3177,7 +3177,10 @@ fn switcher_row(
                     div()
                         .id((hint_id(id.0), id.1))
                         .test_support()
-                        .flex_none()
+                        // The heavier shrink weight empties the hint before the name.
+                        .min_w_0()
+                        .flex_shrink(8.)
+                        .truncate()
                         .text_color(muted)
                         .child(hint)
                 })),

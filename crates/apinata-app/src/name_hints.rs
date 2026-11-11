@@ -3,7 +3,7 @@
 //! shares, and siblings fall back to their file names.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use apinata_core::ItemPath;
 
@@ -29,23 +29,38 @@ pub fn hints(items: &[Shown]) -> Vec<Option<String>> {
     }
     let mut out = vec![None; items.len()];
     for group in groups.values().filter(|g| g.len() > 1) {
-        for &ix in group {
-            out[ix] = hint(items, group, ix);
+        let first = &items[group[0]].place;
+        let common = (0..first.len())
+            .take_while(|&k| group.iter().all(|&o| items[o].place.get(k) == first.get(k)))
+            .count();
+        let found: Vec<Option<String>> = (group.iter())
+            .map(|&ix| hint(items, group, common, ix))
+            .collect();
+        // A top-level item names its collection, which a folder of the same name echoes; such
+        // twins show their whole place instead.
+        for (&ix, h) in group.iter().zip(&found) {
+            let twin = h.is_some() && found.iter().filter(|o| *o == h).count() > 1;
+            out[ix] = if twin {
+                let mut parts = items[ix].place.clone();
+                parts.extend(sibling_file(items, group, ix));
+                Some(parts.join("/"))
+            } else {
+                h.clone()
+            };
         }
     }
     out
 }
 
-// The leading segments every item of the group shares say nothing, so the search runs on what
-// is left; an item with nothing left sits at the top of the last shared place and names it.
-fn hint(items: &[Shown], group: &[usize], ix: usize) -> Option<String> {
+// The leading `common` segments every item of the group shares say nothing, so the search runs
+// on what is left; an item with nothing left sits at the top of the last shared place and
+// names it.
+fn hint(items: &[Shown], group: &[usize], common: usize, ix: usize) -> Option<String> {
     let place = &items[ix].place;
-    let common = (0..place.len())
-        .take_while(|&k| group.iter().all(|&o| items[o].place.get(k) == place.get(k)))
-        .count();
     let rest = |o: usize| &items[o].place[common..];
-    let others = || group.iter().copied().filter(|&o| o != ix);
-    let differing: Vec<usize> = others().filter(|&o| items[o].place != *place).collect();
+    let differing: Vec<usize> = (group.iter().copied())
+        .filter(|&o| items[o].place != *place)
+        .collect();
     let longest = differing.iter().map(|&o| rest(o).len()).max().unwrap_or(0);
     let k = (1..=longest.max(rest(ix).len()))
         .find(|&k| {
@@ -59,10 +74,16 @@ fn hint(items: &[Shown], group: &[usize], ix: usize) -> Option<String> {
     if k > 0 && parts.is_empty() && common > 0 {
         parts.push(place[common - 1].clone());
     }
-    if others().any(|o| items[o].place == *place) {
-        parts.extend(items[ix].file.clone());
-    }
+    parts.extend(sibling_file(items, group, ix));
     (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+// The item's file name when another item of the group shares its whole place.
+fn sibling_file(items: &[Shown], group: &[usize], ix: usize) -> Option<String> {
+    let place = &items[ix].place;
+    (group.iter().any(|&o| o != ix && items[o].place == *place))
+        .then(|| items[ix].file.clone())
+        .flatten()
 }
 
 // The last `k` segments, or all of them when there are fewer.
@@ -77,8 +98,8 @@ pub fn collection_hints(collections: &[(&Path, &str)]) -> Vec<Option<String>> {
         .iter()
         .map(|&(root, name)| Shown {
             name: name.to_owned(),
-            place: root
-                .components()
+            place: (root.components())
+                .filter(|c| matches!(c, Component::Normal(_)))
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
                 .collect(),
             file: None,

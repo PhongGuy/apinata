@@ -18,10 +18,6 @@ fn shown(name: &str, place: &[&str], file: Option<String>) -> Shown {
     }
 }
 
-fn hint_strings(items: &[Shown]) -> Vec<Option<String>> {
-    hints(items)
-}
-
 fn some(s: &str) -> Option<String> {
     Some(s.to_owned())
 }
@@ -32,7 +28,7 @@ fn unique_names_get_no_hint() {
         shown("Get user", &["Demo", "Users"], some("get.yml")),
         shown("List users", &["Demo", "Users"], some("list.yml")),
     ];
-    assert_eq!(hint_strings(&items), [None::<String>, None]);
+    assert_eq!(hints(&items), [None::<String>, None]);
 }
 
 #[test]
@@ -47,7 +43,7 @@ fn shared_names_get_the_shortest_folder_path_that_differs() {
         shown("Get user", &["Demo", "GraphQL"], some("Get user.yml")),
     ];
     assert_eq!(
-        hint_strings(&items),
+        hints(&items),
         [some("Users"), some("Admin/Users"), some("GraphQL")]
     );
 }
@@ -58,7 +54,7 @@ fn an_item_at_the_top_of_its_collection_shows_the_collection() {
         shown("Get user", &["Demo"], some("a.yml")),
         shown("Get user", &["Demo", "Users"], some("b.yml")),
     ];
-    assert_eq!(hint_strings(&items), [some("Demo"), some("Users")]);
+    assert_eq!(hints(&items), [some("Demo"), some("Users")]);
 }
 
 #[test]
@@ -67,10 +63,27 @@ fn items_in_two_collections_show_the_collection_where_the_folders_match() {
         shown("Get user", &["Demo", "Users"], some("a.yml")),
         shown("Get user", &["Shop", "Users"], some("a.yml")),
     ];
-    assert_eq!(
-        hint_strings(&items),
-        [some("Demo/Users"), some("Shop/Users")]
-    );
+    assert_eq!(hints(&items), [some("Demo/Users"), some("Shop/Users")]);
+}
+
+#[test]
+fn a_deeper_folder_path_and_its_last_folder_stay_apart() {
+    let items = [
+        shown("Get user", &["Demo", "a", "b"], some("x.yml")),
+        shown("Get user", &["Demo", "b"], some("x.yml")),
+    ];
+    assert_eq!(hints(&items), [some("a/b"), some("b")]);
+}
+
+#[test]
+fn a_folder_named_like_its_collection_stays_apart_from_the_top_level() {
+    let items = [
+        shown("Get user", &["Demo"], some("x.yml")),
+        shown("Get user", &["Demo", "Demo"], some("x.yml")),
+    ];
+    let got = hints(&items);
+    assert_ne!(got[0], got[1], "{got:?}");
+    assert_eq!(got, [some("Demo"), some("Demo/Demo")]);
 }
 
 #[test]
@@ -79,7 +92,7 @@ fn siblings_sharing_a_name_show_their_file_names() {
         shown("echo", &["Demo"], some("one.yml")),
         shown("echo", &["Demo"], some("two.yml")),
     ];
-    assert_eq!(hint_strings(&items), [some("one.yml"), some("two.yml")]);
+    assert_eq!(hints(&items), [some("one.yml"), some("two.yml")]);
 }
 
 #[test]

@@ -2162,7 +2162,7 @@ impl TabArea {
         });
     }
 
-    // A tab is its method tag, name and any muted folder detail, then a fixed slot that
+    // A tab is its method tag, name and any muted hint, then a fixed slot that
     // holds the close button, or the unsaved dot while a dirty tab is neither active nor
     // hovered.
     fn tab(

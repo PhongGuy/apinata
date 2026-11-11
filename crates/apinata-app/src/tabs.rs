@@ -84,20 +84,31 @@ pub fn tab_details(
         .map(|((entry, label), place)| Shown {
             name: label.clone(),
             place: place.clone(),
-            file: entry.item().map(|item| item.file_name().to_owned()),
+            file: match &entry.kind {
+                TabKind::Request(item) | TabKind::Example { item, .. } => {
+                    Some(item.file_name().to_owned())
+                }
+                _ => None,
+            },
         })
         .collect();
     hints(&shown)
 }
 
 /// Where a tab's subject sits, for its hint: the collection's `tag`, then the folders above
-/// the request, folder or example it shows; collection-wide tabs have the tag alone.
+/// the request, folder or example it shows, and an example's request; collection-wide tabs
+/// have the tag alone.
 pub fn tab_place(entry: &TabEntry, tag: &str, content: Option<&Content>) -> Vec<String> {
     match &entry.kind {
-        TabKind::Request(path)
-        | TabKind::Folder(path)
-        | TabKind::Runner(path)
-        | TabKind::Example { item: path, .. } => item_place(tag, content, path),
+        TabKind::Request(path) | TabKind::Folder(path) | TabKind::Runner(path) => {
+            item_place(tag, content, path)
+        }
+        TabKind::Example { item, .. } => {
+            let mut place = item_place(tag, content, item);
+            let request = content.and_then(|c| c.requests.get(item));
+            place.push(request.map_or_else(|| item.file_name().to_owned(), |r| r.name.clone()));
+            place
+        }
         TabKind::Collection | TabKind::Environments | TabKind::RunSelection(_) => {
             vec![tag.to_owned()]
         }
