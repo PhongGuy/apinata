@@ -1223,22 +1223,28 @@ pub fn git_letter(id: ElementId, change: &GitChange, cx: &App) -> impl IntoEleme
 }
 
 /// A request mode marker: a hollow circle the size of [`dirty_dot`], so a chosen mode never
-/// reads as unsaved changes.
-pub fn mode_ring(id: impl Into<ElementId>) -> Stateful<Div> {
+/// reads as unsaved changes. `words` names it and is its hover text.
+pub fn mode_ring(id: impl Into<ElementId>, words: &'static str) -> Stateful<Div> {
     // Painted like `dirty_dot`, since the builder has no `App` to read the theme from.
-    div().id(id).size(DOT).flex_none().child(
-        canvas(
-            |_, _, _| {},
-            |bounds, _, window, cx| {
-                let color = cx.theme().muted_foreground;
-                window.paint_quad(
-                    outline(bounds, color, BorderStyle::Solid)
-                        .corner_radii(Corners::all(resolve(DOT, window) / 2.)),
-                );
-            },
+    div()
+        .id(id)
+        .size(DOT)
+        .flex_none()
+        .aria_label(words)
+        .tooltip(move |window, cx| Tooltip::new(words).build(window, cx))
+        .child(
+            canvas(
+                |_, _, _| {},
+                |bounds, _, window, cx| {
+                    let color = cx.theme().muted_foreground;
+                    window.paint_quad(
+                        outline(bounds, color, BorderStyle::Solid)
+                            .corner_radii(Corners::all(resolve(DOT, window) / 2.)),
+                    );
+                },
+            )
+            .size_full(),
         )
-        .size_full(),
-    )
 }
 
 /// The key context an [`icon_button`]'s tooltip finds its action's shortcut in. Each such
@@ -2018,6 +2024,7 @@ pub struct Segmented {
     selected: usize,
     on_select: OnSelect,
     ids: Vec<ElementId>,
+    tips: Vec<(SharedString, SharedString)>,
 }
 
 /// A row of ghost buttons, one per option, ids `0..n` inside `id` unless [`Segmented::ids`]
@@ -2036,6 +2043,7 @@ pub fn segmented(
         selected,
         on_select: Rc::new(on_select),
         ids: Vec::new(),
+        tips: Vec::new(),
     }
 }
 
@@ -2043,6 +2051,18 @@ impl Segmented {
     /// Gives segment `ix` the element id `ids[ix]` instead of `ix`; focus and arrow keys follow it.
     pub fn ids(mut self, ids: impl IntoIterator<Item = impl Into<ElementId>>) -> Self {
         self.ids = ids.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Gives segment `ix` the hover text `tips[ix].1`, found by tests as element `tips[ix].0`.
+    pub fn tooltips(
+        mut self,
+        tips: impl IntoIterator<Item = (impl Into<SharedString>, impl Into<SharedString>)>,
+    ) -> Self {
+        self.tips = tips
+            .into_iter()
+            .map(|(id, text)| (id.into(), text.into()))
+            .collect();
         self
     }
 }
@@ -2125,10 +2145,19 @@ impl RenderOnce for Segmented {
                     .toggled(sel)
                     .selected(sel)
                     .on_click(move |_, window, cx| on_select(&ix, window, cx));
-                if sel {
+                let button = if sel {
                     button.bg(segment_fill(true, cx)).text_color(fg)
                 } else {
                     button.text_color(muted)
+                };
+                // The kit button's own tooltip is not findable, so a hint rides on a wrapper.
+                match self.tips.get(ix).cloned() {
+                    Some((tip_id, text)) => div()
+                        .id(("segment-tip", ix))
+                        .tooltip(text_tooltip(tip_id, text))
+                        .child(button)
+                        .into_any_element(),
+                    None => button.into_any_element(),
                 }
             });
         // The track hugs its segments; `form-control` is a flex row, so it keeps its content width.

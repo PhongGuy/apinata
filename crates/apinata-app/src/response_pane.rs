@@ -4329,7 +4329,7 @@ impl ResponsePane {
         if self.compact.get() {
             return None;
         }
-        self.compare_menu("response-compare", "Compare", Some(AssetIcon::Columns2), cx)
+        self.compare_menu("response-compare", "Compare", Some(COMPARE_ICON), cx)
     }
 
     // Reveals or masks both sides of one header row of the comparison.
@@ -5493,6 +5493,9 @@ fn tipped(id: &'static str, label: SharedString, dropdown: impl IntoElement) -> 
 
 /// The glyph of the header's Export as HAR button.
 pub const EXPORT_HAR_ICON: AssetIcon = AssetIcon::FileOutput;
+
+/// The Compare dropdown's icon, a diff so it never reads as the layout toggle.
+pub const COMPARE_ICON: AssetIcon = AssetIcon::FileDiff;
 
 // "Export as HAR", an icon button: enabled when the response still has the request it
 // answered, which a response kept from an earlier session does not.

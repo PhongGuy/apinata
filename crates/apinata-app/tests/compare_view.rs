@@ -106,7 +106,22 @@ fn volatile_headers_fold_until_opened() {
             .count(),
         3
     );
-    assert_eq!(summary(&c), "Status same, 1 header, body same");
+    assert_eq!(
+        summary(&c),
+        "Status same, 1 header (+2 that change on every send), body same"
+    );
+}
+
+#[test]
+fn the_summary_mentions_volatile_headers_even_when_nothing_else_differs() {
+    let c = compare(
+        &snap(200, "x").with_header("date", "1"),
+        &snap(200, "x").with_header("date", "2"),
+    );
+    assert_eq!(
+        summary(&c),
+        "Status same, headers same (+1 that changes on every send), body same"
+    );
 }
 
 #[test]

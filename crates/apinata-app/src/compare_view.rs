@@ -251,11 +251,18 @@ pub fn summary(c: &Comparison) -> String {
         StatusChange::Changed { .. } => "changed",
         _ => "same",
     };
-    let headers = match c.headers.iter().filter(|h| !h.volatile).count() {
+    // Volatile headers stay out of the count but are named beside it, so expanding the fold
+    // never looks like a miscount.
+    let mut headers = match c.headers.iter().filter(|h| !h.volatile).count() {
         0 => "headers same".to_string(),
         1 => "1 header".to_string(),
         n => format!("{n} headers"),
     };
+    match c.headers.iter().filter(|h| h.volatile).count() {
+        0 => {}
+        1 => headers.push_str(" (+1 that changes on every send)"),
+        n => headers.push_str(&format!(" (+{n} that change on every send)")),
+    }
     let counted = |k: usize| match k {
         0 => "body same".to_string(),
         1 => "1 body change".to_string(),

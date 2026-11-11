@@ -99,6 +99,7 @@ pub fn start_with_trash(
 ) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
     crate::keymap::init(cx);
     crate::zoom::install_dialog_zoom(cx);
+    crate::input_rest::install(cx);
     crate::generate_code::init();
     crate::graphql_highlight::init();
     let settings = load_json::<Settings>(&paths.settings);

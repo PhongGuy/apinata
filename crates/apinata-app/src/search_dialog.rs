@@ -330,6 +330,10 @@ impl SearchForm {
         } else {
             self.selected.saturating_sub(1)
         };
+        // The first hit's place is the top of the list, which needs no bounds to reach.
+        if self.selected == 0 {
+            self.scroll.set_offset(Point::default());
+        }
         cx.notify();
     }
 
@@ -338,10 +342,6 @@ impl SearchForm {
     // sits above the row going up and is never pushed out going down. Bounds are last frame's.
     fn scroll_target(&self, row: usize, header: Option<usize>) -> usize {
         let Some(header) = header else { return row };
-        // The top of the list is always the first header, whatever the last list scrolled to.
-        if self.selected == 0 {
-            return header;
-        }
         let (Some(h), Some(r)) = (
             self.scroll.bounds_for_item(header),
             self.scroll.bounds_for_item(row),
@@ -474,7 +474,9 @@ impl Render for SearchForm {
             }
             rows.push(self.row(ix, hit, cx).into_any_element());
         }
-        if !hits.is_empty() {
+        // The first hit is shown by a zero offset, set when it is selected. Scrolling to it here
+        // would use last frame's list bounds, stale while the list itself moves on a new answer.
+        if self.selected > 0 {
             self.scroll.scroll_to_item(self.scroll_target(at, header));
         }
         let danger = cx.theme().danger;
