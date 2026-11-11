@@ -28,13 +28,13 @@ use gpui_kit::component::menu::PopupMenuItem;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::tree::{TreeEvent, TreeState, tree};
-use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     App, AppContext, ClickEvent, Context, DragMoveEvent, Edges, ElementId, Entity, EventEmitter,
     FocusHandle, Hsla, InteractiveElement, IntoElement, Modifiers, MouseButton, ParentElement,
     Pixels, Render, RenderOnce, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, TestSupportExt, WeakEntity, Window, actions, canvas, div, px,
+    Subscription, TestSupportExt, WeakEntity, Window, actions, anchored, canvas, deferred, div, px,
 };
 
 use crate::command::{Command, NoticeKind, TreeOp};
@@ -45,7 +45,7 @@ use crate::history_palette::OpenHistory;
 use crate::keymap::{NewGraphqlRequest, NewRequest, SHELL_CONTEXT};
 use crate::menu_focus;
 use crate::shell::collection_row;
-use crate::snapshot::{CollectionSnapshot, Content, DiskState};
+use crate::snapshot::{CollectionSnapshot, Content, DiskState, RowKind};
 use crate::stale::rebase;
 use crate::tabs::TabId;
 use crate::workspace::{Workspace, WorkspaceEvent};
@@ -294,6 +294,8 @@ struct Rename {
     example: Option<usize>,
     // A folder this view just created, which a cancelled naming removes again.
     fresh: bool,
+    // Why Enter refused the typed name, until the name is edited.
+    error: Option<String>,
     input: Entity<InputState>,
     _subscription: Subscription,
 }
@@ -967,6 +969,7 @@ impl Sidebar {
             old,
             example: node.example,
             fresh: false,
+            error: None,
             _subscription: cx.subscribe_in(&input, window, Self::rename_event),
             input,
         });
@@ -1091,6 +1094,38 @@ impl Sidebar {
             .map(|r| (r.root.clone(), r.path.clone()))
     }
 
+    /// Why the typed name was refused, while the rename shows it.
+    pub fn rename_error(&self) -> Option<&str> {
+        self.rename.as_ref()?.error.as_deref()
+    }
+
+    // The refusal for a name a sibling of the same kind already shows, which would leave two
+    // rows alike. Folders clash only with folders, request files with request files.
+    fn name_clash(&self, r: &Rename, cx: &App) -> Option<String> {
+        let name = r.input.read(cx).value().trim().to_string();
+        if r.example.is_some() || name.is_empty() || name == r.old {
+            return None;
+        }
+        let snapshot = self.workspace.read(cx).snapshot(&r.root, cx)?;
+        let rows = &snapshot.content.rows;
+        let folder = rows.iter().find(|row| row.path == r.path)?.kind == RowKind::Folder;
+        let parent = r.path.parent()?;
+        rows.iter().find(|row| {
+            row.path != r.path
+                && row.path.parent().as_ref() == Some(&parent)
+                && (row.kind == RowKind::Folder) == folder
+                && row.name == name
+        })?;
+        let place = if parent.is_root() {
+            let collection = self.nodes.iter().find(|n| n.root == r.root)?;
+            collection.name.clone()
+        } else {
+            rows.iter().find(|row| row.path == parent)?.name.clone()
+        };
+        let what = if folder { "folder" } else { "request" };
+        Some(format!("A {what} named {name} is already in {place}"))
+    }
+
     // Enter and clicking away both commit a real change and end the rename; only Enter hands
     // focus back to the tree. Escape ends it through the sidebar's own action handler, since
     // the input lets an idle Escape propagate.
@@ -1102,18 +1137,47 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) {
         match event {
+            // A taken name keeps the field open with its refusal, so one keystroke fixes it.
             InputEvent::PressEnter { .. } => {
+                let clash = (self.rename.as_ref()).and_then(|r| self.name_clash(r, cx));
+                if let Some(r) = &mut self.rename
+                    && let Some(error) = clash
+                {
+                    r.error = Some(error);
+                    cx.notify();
+                    return;
+                }
                 if let Some(r) = self.rename.take() {
                     self.commit_rename(r, false, cx);
                 }
                 self.end_rename(window, cx);
             }
-            // Switching to another window keeps the field focused, so the rename goes on.
+            // Switching to another window keeps the field focused, so the rename goes on. A
+            // field left behind cannot stay open, so a taken name is dropped with a toast.
             InputEvent::Blur if window.is_window_active() => {
                 if let Some(r) = self.rename.take() {
-                    self.commit_rename(r, true, cx);
+                    match self.name_clash(&r, cx) {
+                        Some(error) => {
+                            let outcome = if r.fresh {
+                                "the folder was not created"
+                            } else {
+                                "the name was not changed"
+                            };
+                            self.discard_fresh(r, cx);
+                            let message = format!("{error}, so {outcome}.");
+                            window.push_notification(Notification::error(message), cx);
+                        }
+                        None => self.commit_rename(r, true, cx),
+                    }
                 }
                 cx.notify();
+            }
+            InputEvent::Change => {
+                if let Some(r) = &mut self.rename
+                    && r.error.take().is_some()
+                {
+                    cx.notify();
+                }
             }
             _ => {}
         }
@@ -2466,7 +2530,7 @@ impl Render for Sidebar {
                 Some(ix) => request.map(|n| model::example_id(n.collection, &r.path, ix)),
                 None => request.map(|n| n.id.clone()),
             };
-            (id, r.input.clone())
+            (id, r.input.clone(), r.error.clone().map(SharedString::from))
         });
         div()
             .id("sidebar-view")
@@ -2652,7 +2716,7 @@ impl Render for Sidebar {
                         )
                     })
                     .child(
-                        tree(&self.tree, move |_, entry, selected, _, cx| {
+                        tree(&self.tree, move |_, entry, selected, window, cx| {
                             let id = entry.item().id.clone();
                             // Selection is the kit's active fill plus an overlay on the row's own
                             // box: a left edge, accent while the tree has focus. Only
@@ -2686,16 +2750,31 @@ impl Render for Sidebar {
                             let Some(n) = rows.get(&id) else {
                                 return item.child(entry.item().label.clone());
                             };
-                            if let Some((Some(rid), input)) = &renaming
+                            if let Some((Some(rid), input, error)) = &renaming
                                 && *rid == id
                             {
-                                return item.child(
-                                    div().id(marker_id("rename", &id)).test_support().child(
-                                        ui::padded_input(
-                                            Input::new(input).bg(ui::field_fill(false, cx)),
-                                            input,
-                                        ),
+                                let field = ui::invalid_input(
+                                    Input::new(input).bg(ui::field_fill(false, cx)),
+                                    div(),
+                                    input,
+                                    error.is_some(),
+                                    (
+                                        "sidebar-rename-danger-ring".into(),
+                                        "sidebar-rename-invalid-icon".into(),
                                     ),
+                                    window,
+                                    cx,
+                                );
+                                return item.child(
+                                    v_flex()
+                                        .id(marker_id("rename", &id))
+                                        .test_support()
+                                        .child(field)
+                                        .when_some(error.clone(), |d, message| {
+                                            // An empty box after the field puts the anchor
+                                            // at the field's bottom edge.
+                                            d.child(div().child(rename_refusal(message, cx)))
+                                        }),
                                 );
                             }
                             let zone = hover.as_ref().filter(|(h, _)| *h == id).map(|(_, z)| *z);
@@ -3155,6 +3234,29 @@ impl Render for Sidebar {
                     ),
             )
     }
+}
+
+// A refused rename's reason, floating just under its field: rows keep one height, so it
+// cannot take a line of its own, and floating it shifts no row.
+fn rename_refusal(message: SharedString, cx: &App) -> impl IntoElement {
+    deferred(
+        anchored().snap_to_window().child(
+            div()
+                .id("sidebar-rename-error")
+                .test_support()
+                .aria_label(message.clone())
+                .max_w(style::VAR_TIP_MAX_WIDTH)
+                .px(style::SPACE_2)
+                .py(style::SPACE_1)
+                .rounded(style::POPOVER_RADIUS)
+                .border_1()
+                .border_color(cx.theme().danger)
+                .bg(cx.theme().popover)
+                .text_color(cx.theme().danger)
+                .text_size(style::TEXT_SMALL)
+                .child(message),
+        ),
+    )
 }
 
 /// The note under a scratch-only sidebar.
