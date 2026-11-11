@@ -5,6 +5,7 @@ use apinata_app::command::{Command, Edit, Target};
 use apinata_app::oauth2_editor::{
     OAuth2Editor, OAuth2Field, OAuth2Toggle, ParamCell, PlacementKind,
 };
+use apinata_app::snapshot::DotenvNames;
 use apinata_core::{
     AuthSpec, ClientAuth, OAuth2Flow, OAuth2Param, OAuth2ParamPlacement, OAuth2Spec, OAuth2Stage,
     TokenPlacement, TokenSource,
@@ -583,7 +584,7 @@ fn reveal(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<gpui_kit:
 }
 
 #[gpui_kit::test]
-fn a_moved_secret_shows_the_notice(cx: &mut TestAppContext) {
+fn a_moved_secret_shows_the_badge_and_writes_nothing(cx: &mut TestAppContext) {
     let col = write_tree(&[
         ("opencollection.yml", ROOT),
         ("a.yml", &request("a", "http://x")),
@@ -626,17 +627,14 @@ fn a_moved_secret_shows_the_notice(cx: &mut TestAppContext) {
     cx.run_until_parked();
     frame(cx, win);
     let e = editor(cx, &auth);
+    assert_eq!(e.read_with(cx, |e, _| e.notice().map(str::to_owned)), None);
+    assert!(!col.path().join(".env").exists() && !col.path().join(".gitignore").exists());
+    // The field now shows where the secret goes, never the reference text.
     assert_eq!(
-        e.read_with(cx, |e, _| e.notice().map(str::to_owned))
-            .as_deref(),
-        Some("Added .env to .gitignore")
+        badge_text(cx, win).as_deref(),
+        Some("Saved to .env when you save")
     );
-    assert!(present(cx, win, "oauth2-notice"));
-    let secret = e.read_with(cx, |e, _| e.input(OAuth2Field::ClientSecret).clone());
-    assert_eq!(
-        secret.read_with(cx, |i, _| i.value().to_string()),
-        "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"
-    );
+    assert!(!present(cx, win, OAuth2Field::ClientSecret.id()));
 }
 
 const PLAIN_FILE: &str = "info:\n  name: a\n  type: http\n  seq: 1\n\nhttp:\n  method: GET\n  url: http://x\n  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: http://id/token\n    credentials:\n      clientId: svc\n      clientSecret: old-plain\n";
@@ -865,7 +863,7 @@ fn closing_with_focus_in_the_secret_offers_to_save_it(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_template_secret_shows_and_a_literal_stays_masked(cx: &mut TestAppContext) {
     let mut spec = cc();
-    spec.client_secret = "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}".into();
+    spec.client_secret = "{{client_secret}}".into();
     spec.password = "hunter2".into();
     let (_win, _host, s) = section(cx, AuthSpec::OAuth2(spec));
     let e = editor(cx, &s);
@@ -1081,4 +1079,111 @@ fn the_token_rows_share_the_field_column(cx: &mut TestAppContext) {
         }
     })
     .unwrap();
+}
+
+// Tells the section which `.env` names are stored and which its draft holds.
+fn names(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    s: &Entity<AuthSection>,
+    stored: &[&str],
+    held: &[&str],
+) {
+    let names = DotenvNames {
+        stored: std::sync::Arc::new(stored.iter().map(|n| n.to_string()).collect()),
+        held: held.iter().map(|n| n.to_string()).collect(),
+    };
+    cx.update_window(win, |_, _, cx| {
+        s.update(cx, |s, cx| s.set_dotenv(names, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+}
+
+fn badge_text(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let found = w.try_find("oauth2-client-secret-stored")?;
+        found.label().map(str::to_owned)
+    })
+    .unwrap()
+}
+
+const SECRET_NAME: &str = "APINATA_OAUTH2_CLIENT_SECRET";
+
+fn stored_secret() -> OAuth2Spec {
+    let mut spec = cc();
+    spec.client_secret = "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}".into();
+    spec
+}
+
+#[gpui_kit::test]
+fn a_dotenv_secret_shows_a_badge_instead_of_its_reference(cx: &mut TestAppContext) {
+    let (win, _host, s) = section(cx, AuthSpec::OAuth2(stored_secret()));
+    // A reference to a name neither `.env` has nor the draft holds is the user's own text.
+    assert!(!present(cx, win, "oauth2-client-secret-stored"));
+    assert!(present(cx, win, OAuth2Field::ClientSecret.id()));
+    names(cx, win, &s, &[], &[SECRET_NAME]);
+    assert_eq!(
+        badge_text(cx, win).as_deref(),
+        Some("Saved to .env when you save")
+    );
+    names(cx, win, &s, &[SECRET_NAME], &[]);
+    assert_eq!(badge_text(cx, win).as_deref(), Some("Stored in .env"));
+    assert!(present(cx, win, "oauth2-client-secret-replace"));
+    assert!(!present(cx, win, OAuth2Field::ClientSecret.id()));
+    // A reference that is no `.env` key is the user's own template and stays visible.
+    let mut odd = cc();
+    odd.client_secret = "{{process.env.my-key}}".into();
+    let (win, _host, s) = section(cx, AuthSpec::OAuth2(odd));
+    names(cx, win, &s, &["my-key"], &[]);
+    assert!(!present(cx, win, "oauth2-client-secret-stored"));
+    assert!(present(cx, win, OAuth2Field::ClientSecret.id()));
+}
+
+#[gpui_kit::test]
+fn replace_takes_a_new_value_in_an_empty_masked_field(cx: &mut TestAppContext) {
+    let (win, host, s) = section(cx, AuthSpec::OAuth2(stored_secret()));
+    names(cx, win, &s, &[SECRET_NAME], &[]);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    frame(cx, win);
+    let before = edit_count(cx, &host);
+    cx.update_window(win, |_, w, cx| w.click("oauth2-client-secret-replace", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(!present(cx, win, "oauth2-client-secret-stored"));
+    let input = editor(cx, &s).read_with(cx, |e, _| e.input(OAuth2Field::ClientSecret).clone());
+    assert_eq!(input.read_with(cx, |i, _| i.value().to_string()), "");
+    cx.update_window(win, |_, w, cx| w.input("my-client", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(input.read_with(cx, |i, _| i.presentation().is_masked()));
+    assert_eq!(
+        input.read_with(cx, |i, _| i.value().to_string()),
+        "my-client"
+    );
+    cx.update_window(win, |_, w, cx| w.click(OAuth2Field::ClientId.id(), cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(edit_count(cx, &host), before + 1);
+    assert_eq!(last(cx, &host).client_secret, "my-client");
+}
+
+#[gpui_kit::test]
+fn replacing_with_nothing_keeps_the_stored_secret(cx: &mut TestAppContext) {
+    let (win, host, s) = section(cx, AuthSpec::OAuth2(stored_secret()));
+    names(cx, win, &s, &[SECRET_NAME], &[]);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    frame(cx, win);
+    let before = edit_count(cx, &host);
+    cx.update_window(win, |_, w, cx| w.click("oauth2-client-secret-replace", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click(OAuth2Field::ClientId.id(), cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(edit_count(cx, &host), before);
+    assert!(present(cx, win, "oauth2-client-secret-stored"));
 }

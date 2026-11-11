@@ -563,7 +563,7 @@ impl ConfigEditor {
     /// The warnings a save gives for typed values it cannot take.
     pub fn unsaved(&self, cx: &App) -> Vec<String> {
         self.network()
-            .map(|n| n.read(cx).unsaved())
+            .map(|n| n.read(cx).unsaved(cx))
             .unwrap_or_default()
     }
 
@@ -759,6 +759,14 @@ impl ConfigEditor {
             let rows = post_response_rows(&self.post_response_base);
             self.post_response
                 .update(cx, |t, cx| t.load(rows, window, cx));
+        }
+        if let Some(snap) = self.workspace.read(cx).snapshot(&self.root, cx) {
+            let names = snap.dotenv_names(&self.target.target());
+            self.auth
+                .update(cx, |a, cx| a.set_dotenv(names.clone(), cx));
+            if let Some(network) = self.network.clone() {
+                network.update(cx, |n, cx| n.set_dotenv(names, cx));
+            }
         }
         if !self.busy(Field::Auth, cx) {
             load_auth(&self.auth, &view.auth, window, cx);

@@ -55,6 +55,11 @@ fn apply(cx: &mut TestAppContext, model: &Entity<CollectionModel>, edit: Edit) {
     cx.run_until_parked();
 }
 
+fn save(cx: &mut TestAppContext, model: &Entity<CollectionModel>) {
+    send(cx, model, Command::Save(Target::Collection));
+    cx.run_until_parked();
+}
+
 fn read(dir: &TempDir, rel: &str) -> String {
     std::fs::read_to_string(dir.path().join(rel)).unwrap_or_default()
 }
@@ -80,6 +85,11 @@ fn a_new_literal_moves_to_dotenv_and_dotenv_is_ignored(cx: &mut TestAppContext) 
         password_of(&network(cx, &model).proxy),
         "{{process.env.APINATA_PROXY_PASSWORD}}"
     );
+    // Nothing reaches the disk before the save.
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+    assert!(notices(cx, &model).is_empty());
+    assert!(!snap(cx, &model).content.collection.plain_secrets);
+    save(cx, &model);
     assert_eq!(read(&dir, ".env"), "APINATA_PROXY_PASSWORD='hunter2'\n");
     assert_eq!(read(&dir, ".gitignore"), ".env\n");
     assert_eq!(
@@ -88,9 +98,6 @@ fn a_new_literal_moves_to_dotenv_and_dotenv_is_ignored(cx: &mut TestAppContext) 
             "Added .env to .gitignore".into()
         ])]
     );
-    assert!(!snap(cx, &model).content.collection.plain_secrets);
-    send(cx, &model, Command::Save(Target::Collection));
-    cx.run_until_parked();
     let saved = read(&dir, "opencollection.yml");
     assert!(
         saved.contains("{{process.env.APINATA_PROXY_PASSWORD}}") && !saved.contains("hunter2"),
@@ -117,6 +124,7 @@ fn an_unclosed_brace_pair_is_a_secret_not_a_template(cx: &mut TestAppContext) {
         password_of(&network(cx, &model).proxy),
         "{{process.env.APINATA_PROXY_PASSWORD}}"
     );
+    save(cx, &model);
     assert_eq!(read(&dir, ".env"), "APINATA_PROXY_PASSWORD='ab{{c'\n");
 }
 
@@ -133,8 +141,10 @@ fn an_existing_literal_stays_until_moved(cx: &mut TestAppContext) {
         password_of(&network(cx, &model).proxy),
         "{{process.env.APINATA_PROXY_PASSWORD}}"
     );
-    assert!(read(&dir, ".env").contains("APINATA_PROXY_PASSWORD='hunter2'"));
     assert!(!snap(cx, &model).content.collection.plain_secrets);
+    assert!(!dir.path().join(".env").exists());
+    save(cx, &model);
+    assert!(read(&dir, ".env").contains("APINATA_PROXY_PASSWORD='hunter2'"));
 }
 
 #[gpui_kit::test]
@@ -155,6 +165,11 @@ fn a_reference_keeps_its_name_and_taken_names_get_a_suffix(cx: &mut TestAppConte
     );
     assert_eq!(
         read(&dir, ".env"),
+        "APINATA_PROXY_PASSWORD=other\nMY_PW=old\n"
+    );
+    save(cx, &model);
+    assert_eq!(
+        read(&dir, ".env"),
         "APINATA_PROXY_PASSWORD=other\nMY_PW='new'\n"
     );
     assert_eq!(read(&dir, ".gitignore"), "/.env\n");
@@ -173,6 +188,7 @@ fn a_reference_keeps_its_name_and_taken_names_get_a_suffix(cx: &mut TestAppConte
         certs[1].passphrase,
         "{{process.env.APINATA_CERT_PASSPHRASE_2}}"
     );
+    save(cx, &model);
     assert!(read(&dir, ".env").ends_with("APINATA_CERT_PASSPHRASE_2='pp'\n"));
     let dir2 = write_tree(&[
         ("opencollection.yml", ROOT),
@@ -198,7 +214,7 @@ fn a_tracked_dotenv_refuses_and_writes_nothing(cx: &mut TestAppContext) {
         notices(cx, &model),
         [NoticeKind::Failed {
             target: Some(Target::Collection),
-            message: ".env is tracked by git, so the secret was not saved; untrack it first".into(),
+            message: ".env is tracked by git, so nothing was saved; untrack .env first".into(),
             row: None
         }]
     );
@@ -323,6 +339,7 @@ fn an_inserted_row_never_takes_another_rows_name(cx: &mut TestAppContext) {
         certs[1].passphrase,
         "{{process.env.APINATA_CERT_PASSPHRASE_1}}"
     );
+    save(cx, &model);
     assert_eq!(
         read(&dir, ".env"),
         "APINATA_CERT_PASSPHRASE_1='old'\nAPINATA_CERT_PASSPHRASE_1_2='new'\n"
@@ -351,4 +368,38 @@ fn switching_an_unauthenticated_proxy_on_writes_the_empty_auth_block(cx: &mut Te
             ROOT.replacen('\n', "\n\n", 1)
         )
     );
+}
+
+#[gpui_kit::test]
+fn dont_save_leaves_dotenv_untouched(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT)]);
+    let model = open(cx, &dir);
+    apply(cx, &model, Edit::Proxy(custom("proxy.local", "hunter2")));
+    let mut cert = ClientCertificate::pem("a.test", "c.pem", "k.pem");
+    cert.passphrase = "pp-secret".into();
+    apply(cx, &model, Edit::ClientCertificates(vec![cert]));
+    send(cx, &model, Command::Revert(Target::Collection));
+    cx.run_until_parked();
+    assert_eq!(network(cx, &model).proxy, CollectionProxy::Inherit);
+    save(cx, &model);
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+}
+
+#[gpui_kit::test]
+fn a_proxy_reference_that_is_no_env_key_is_never_reused(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        (
+            "opencollection.yml",
+            &root_with_password("{{process.env.APINATA_PRmy-xOXY_PASSWORD}}"),
+        ),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    apply(cx, &model, Edit::Proxy(custom("proxy.local", "topsecret")));
+    assert_eq!(
+        password_of(&network(cx, &model).proxy),
+        "{{process.env.APINATA_PROXY_PASSWORD}}"
+    );
+    save(cx, &model);
+    assert_eq!(read(&dir, ".env"), "APINATA_PROXY_PASSWORD='topsecret'\n");
 }

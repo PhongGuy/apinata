@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use apinata_core::{ItemPath, RequestKind};
 
 use super::model::NodeKind;
+use super::multi::Tally;
 use crate::commands::label;
 
 /// One context menu entry.
@@ -224,8 +225,8 @@ pub enum BulkEntry {
     Copy(usize),
     /// Cut the n selected items.
     Cut(usize),
-    /// Delete the n selected items.
-    Delete(usize),
+    /// Delete the selected items, told apart as folders and the rest.
+    Delete(Tally),
 }
 
 impl BulkEntry {
@@ -235,18 +236,18 @@ impl BulkEntry {
             BulkEntry::Run(n) => format!("Run {n} request{}", if n == 1 { "" } else { "s" }),
             BulkEntry::Copy(n) => format!("Copy {n} item{}", if n == 1 { "" } else { "s" }),
             BulkEntry::Cut(n) => format!("Cut {n} item{}", if n == 1 { "" } else { "s" }),
-            BulkEntry::Delete(n) => format!("Delete {n} item{}", if n == 1 { "" } else { "s" }),
+            BulkEntry::Delete(t) => format!("Delete {}", t.describe()),
         }
     }
 }
 
 /// The bulk menu in order: Run first when `run` is `Some`, then Copy, Cut and Delete.
-pub fn bulk_entries(items: usize, run: Option<usize>) -> Vec<BulkEntry> {
+pub fn bulk_entries(items: Tally, run: Option<usize>) -> Vec<BulkEntry> {
     run.map(BulkEntry::Run)
         .into_iter()
         .chain([
-            BulkEntry::Copy(items),
-            BulkEntry::Cut(items),
+            BulkEntry::Copy(items.total()),
+            BulkEntry::Cut(items.total()),
             BulkEntry::Delete(items),
         ])
         .collect()

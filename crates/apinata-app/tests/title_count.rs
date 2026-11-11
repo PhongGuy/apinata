@@ -359,3 +359,20 @@ fn a_hidden_named_label_leaves_no_gap_before_the_chevron(cx: &mut TestAppContext
 fn a_hidden_nameless_label_leaves_no_gap_before_the_chevron(cx: &mut TestAppContext) {
     hidden_label_leaves_no_gap(cx, &["--ref-format=reftable"]);
 }
+
+#[gpui_kit::test]
+fn the_changed_file_count_says_it_shows_changes(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_col, s) = with_changed(cx, &sb, 1);
+    cx.run_until_parked();
+    frame(cx, s.win);
+    let tip = cx
+        .update_window(s.win, |_, w, _| {
+            w.within("title-bar")
+                .find("git-changes")
+                .description()
+                .map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(tip.as_deref(), Some("Show changes"));
+}

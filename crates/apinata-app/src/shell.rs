@@ -95,6 +95,8 @@ actions!(
         OpenDemoCollection,
         /// Opens the remote branch picker for the current collection.
         SwitchBranch,
+        /// Opens the Changes dialog, where the current collection's files are staged and committed.
+        ShowChanges,
         /// Prompts for a file and exports the current collection there as Postman JSON.
         ExportCollection,
         /// Prompts for a file and exports the current collection there as Postman JSON with its
@@ -1004,21 +1006,42 @@ impl Shell {
         .detach();
     }
 
-    // The picker needs a repository; its events refresh the label, since a switch keeps the root
-    // and `refresh_branch` would otherwise leave the old name up.
-    fn open_branch_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    // The current collection's root when it sits in a git repository; otherwise a notice says
+    // why the git command cannot run.
+    fn repository_root(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<PathBuf> {
         let ws = self.workspace.read(cx);
         let Some(root) = ws.current_root().filter(|r| !ws.is_scratch(r)) else {
             window.push_notification(ui::info_toast("Open a collection first"), cx);
-            return;
+            return None;
         };
         if self.branch().is_none() {
             window.push_notification(
                 ui::info_toast("This collection is not in a git repository"),
                 cx,
             );
+            return None;
+        }
+        Some(root)
+    }
+
+    // Opens the Changes dialog, as the title bar's changed-file count does.
+    fn show_changes(&mut self, _: &ShowChanges, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(root) = self.repository_root(window, cx) else {
+            return;
+        };
+        if self.workspace.read(cx).git_changes(&root).is_none() {
+            window.push_notification(ui::info_toast("Changes are not available yet"), cx);
             return;
         }
+        open_changes(&self.workspace, &root, None, window, cx);
+    }
+
+    // The picker needs a repository; its events refresh the label, since a switch keeps the root
+    // and `refresh_branch` would otherwise leave the old name up.
+    fn open_branch_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(root) = self.repository_root(window, cx) else {
+            return;
+        };
         let picker = crate::branch_dialog::open(&self.workspace, root, window, cx);
         cx.subscribe_in(&picker, window, Self::on_picker_event)
             .detach();
@@ -2166,6 +2189,7 @@ impl Shell {
         let branch = name.map(|name| {
             let cell = (!hidden).then_some(&self.branch_clipped);
             part("git-branch", name.clone(), Self::BRANCH_SHRINK, hidden)
+                .tooltip(format!("Switch branch ({name})"))
                 // A slim right padding keeps the comma beside the name, still outside its ring.
                 .when(comma_shows, |b| b.pr(Self::NAME_COMMA_PAD))
                 .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)))
@@ -2208,6 +2232,7 @@ impl Shell {
                 false => text_box(count.clone(), lead),
             };
             part("git-changes", count.clone().into(), factor, count_hidden)
+                .tooltip("Show changes")
                 .on_click(move |event, window, cx| {
                     focus_pressed_part(event, &label_focus, has_name as usize, window, cx);
                     open_changes(&ws, &root, None, window, cx)
@@ -2239,6 +2264,7 @@ impl Shell {
             .small()
             .icon(IconName::ChevronDown)
             .accessibility_label("Switch branch")
+            .tooltip("Switch branch")
             .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)));
         Some(
             h_flex()
@@ -2581,6 +2607,7 @@ impl Shell {
                                     Rc::clone(&self.stand_in),
                                     Rc::clone(&self.app_menu_open),
                                     scratch_only,
+                                    self.branch.is_some(),
                                     cx,
                                 ),
                                 self.app_menu_open.get(),
@@ -2759,6 +2786,7 @@ impl Render for Shell {
                     this.open_branch_picker(window, cx)
                 }),
             )
+            .on_action(cx.listener(Self::show_changes))
             .on_action(
                 cx.listener(|this, _: &NewCollection, window, cx| this.prompt_new(window, cx)),
             )
@@ -2876,6 +2904,7 @@ impl Render for Shell {
                     sidebar,
                     Some(this.workspace.clone()),
                     Some(this.tab_area.clone()),
+                    this.branch.is_some(),
                     window,
                     cx,
                 )
@@ -3389,8 +3418,13 @@ async fn place_bundles(
     let job = cx.background_spawn(async move { write_bundles(&bundles, &parent, &*store) });
     let (roots, report, error) = job.await;
     let _ = this.update_in(cx, |this, window, cx| {
-        // Open what landed before any error, so the user sees it behind the alert.
-        for root in roots {
+        // Open what landed before any error, so the user sees it behind the alert. Each opens
+        // in the first environment its import produced, so its first send has the variables.
+        for (root, environment) in roots {
+            if let Some(name) = environment {
+                this.workspace
+                    .update(cx, |w, _| w.select_on_open(&root, name));
+            }
             this.open(root, window, cx);
         }
         if let Some(report) = report {
@@ -3420,6 +3454,9 @@ pub fn parse_bundles_from(file: &Path, input: &[u8]) -> Result<Vec<ImportBundle>
     parse_collections(None, input, &options).map_err(|e| crate::ui::plain_quotes(&e.to_string()))
 }
 
+// Each written root with the first environment its import produced.
+type Written = Vec<(PathBuf, Option<String>)>;
+
 // Writes `bundles` in order into `parent`, stopping at the first failure. Answers the roots
 // written, their merged report (none if nothing landed), and the failure naming what was not
 // written.
@@ -3427,13 +3464,14 @@ fn write_bundles(
     bundles: &[ImportBundle],
     parent: &Path,
     store: &dyn apinata_core::SecretStore,
-) -> (Vec<PathBuf>, Option<ImportReport>, Option<String>) {
+) -> (Written, Option<ImportReport>, Option<String>) {
     let mut roots = Vec::new();
     let mut merged = ImportReport::default();
     for (i, bundle) in bundles.iter().enumerate() {
         match write_collection(parent, &bundle.collection, &bundle.environments, store) {
             Ok((collection, report)) => {
-                roots.push(collection.root().to_path_buf());
+                let first = report.environments.first().cloned();
+                roots.push((collection.root().to_path_buf(), first));
                 merged.notes.extend(report.notes);
                 merged.items.extend(report.items);
                 merged.environments.extend(report.environments);

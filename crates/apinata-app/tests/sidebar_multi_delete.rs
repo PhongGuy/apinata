@@ -130,3 +130,69 @@ fn a_partial_failure_leaves_one_toast_and_keeps_the_failed_row_selected(cx: &mut
         "the failed row stays selected"
     );
 }
+
+fn prompt(cx: &mut TestAppContext) -> (String, String) {
+    let win = confirm_window(cx).expect("a confirm dialog is open");
+    let text = |cx: &mut TestAppContext, id: &'static str| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find(id)
+                .and_then(|e| e.label().map(str::to_owned))
+                .unwrap_or_default()
+        })
+        .unwrap()
+    };
+    (text(cx, "confirm-dialog"), text(cx, "confirm-detail"))
+}
+
+// Even with a trash to undo from, a range that swept up a folder row asks before the request
+// nobody selected inside it goes too.
+#[gpui_kit::test]
+fn a_range_over_a_folder_row_asks_first_even_with_a_trash(cx: &mut TestAppContext) {
+    let bin = std::sync::Arc::new(support::fake_trash::FakeTrash::new());
+    let h = open_sidebar_trash(cx, range_files(), Some(bin));
+    for f in ["e", "f"] {
+        cx.update_window(h.win, |_, w, cx| w.click(row(f), cx))
+            .unwrap(); // expands the folder
+    }
+    cx.update_window(h.win, |_, w, cx| w.click(row("e/y.yml"), cx))
+        .unwrap();
+    shift_click(cx, h.win, row("f/x.yml"));
+    focus_tree(cx, &h);
+    press(cx, h.win, "delete");
+    assert!(
+        confirm_open(cx),
+        "the folder's unselected request needs a yes"
+    );
+    let (title, detail) = prompt(cx);
+    assert_eq!(title, "Delete 1 folder and 1 request?");
+    assert_eq!(
+        detail,
+        "1 request in this folder was not selected and will be deleted too."
+    );
+    answer_confirm(cx, "confirm-cancel");
+    frame(cx, h.win);
+    assert!(h.root.join("e/y.yml").exists() && h.root.join("f/z.yml").exists());
+    focus_tree(cx, &h);
+    press(cx, h.win, "delete");
+    answer_confirm(cx, "confirm-delete");
+    frame(cx, h.win);
+    assert!(!h.root.join("e/y.yml").exists() && !h.root.join("f").exists());
+    assert!(h.root.join("a.yml").exists() && h.root.join("e").exists());
+}
+
+// A folder whose every row was selected holds no surprise, so the trash still stands in for
+// the prompt.
+#[gpui_kit::test]
+fn a_folder_picked_with_all_its_rows_goes_to_the_trash_without_asking(cx: &mut TestAppContext) {
+    let bin = std::sync::Arc::new(support::fake_trash::FakeTrash::new());
+    let h = open_sidebar_trash(cx, multi_files(), Some(bin));
+    cx.update_window(h.win, |_, w, cx| w.click(row("f"), cx))
+        .unwrap(); // expands f
+    secondary_click(cx, h.win, row("f/x.yml")); // seeded with f: the set is f and f/x.yml
+    secondary_click(cx, h.win, row("a.yml"));
+    focus_tree(cx, &h);
+    press(cx, h.win, "delete");
+    assert!(!confirm_open(cx));
+    assert!(!h.root.join("f").exists() && !h.root.join("a.yml").exists());
+}

@@ -1,4 +1,4 @@
-//! Every way into the clone dialog: palette action, switcher row, welcome screen, no menu entry.
+//! Every way into the clone dialog: palette action, switcher row, welcome screen, app menu.
 
 use crate::support::*;
 
@@ -17,7 +17,7 @@ fn dialog_open(cx: &mut TestAppContext, s: &Started) -> bool {
 }
 
 #[test]
-fn clone_is_a_palette_only_command() {
+fn clone_is_in_the_palette_and_the_app_menu() {
     let cmd = registry()
         .into_iter()
         .find(|c| c.id == "collection.clone")
@@ -32,7 +32,7 @@ fn clone_is_a_palette_only_command() {
     assert!(
         app_menu_items()
             .iter()
-            .all(|(label, _)| *label != "Clone repository…")
+            .any(|(label, _)| *label == "Clone repository…")
     );
 }
 

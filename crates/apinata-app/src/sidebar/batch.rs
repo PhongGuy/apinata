@@ -8,6 +8,7 @@ use apinata_core::ItemPath;
 
 use crate::command::{Notice, NoticeKind};
 use crate::confirm::{Ask, delete_ask};
+use crate::sidebar::multi::Tally;
 use crate::ui::ToastKind;
 
 /// What a batch does to each of its items.
@@ -281,16 +282,41 @@ pub fn items_label(n: usize) -> String {
     }
 }
 
-/// The detail line shared by the bulk prompts, before any permanence note.
-fn bulk_detail(folder: bool, dirty: bool) -> Option<&'static str> {
-    match (folder, dirty) {
-        (true, true) => {
-            Some("Folders are deleted with everything inside them. Unsaved edits are lost.")
-        }
-        (true, false) => Some("Folders are deleted with everything inside them."),
-        (false, true) => Some("Unsaved edits are lost."),
-        (false, false) => None,
-    }
+/// The detail line shared by the bulk prompts, before any permanence note: the `unpicked` rows
+/// a selected folder takes along (or that folders go whole when there are none) and lost edits.
+fn bulk_detail(items: Tally, unpicked: Tally, dirty: bool) -> Option<String> {
+    let count = |n: usize, noun: &str| format!("{n} {noun}{}", if n == 1 { "" } else { "s" });
+    let along: Vec<String> = [
+        (unpicked.requests, "request"),
+        (unpicked.others, "other file"),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, noun)| count(n, noun))
+    .collect();
+    let folder = match (items.folders, along.is_empty()) {
+        (0, _) => None,
+        (_, true) => Some("Folders are deleted with everything inside them.".to_owned()),
+        (f, false) => Some(format!(
+            "{} in {} {} not selected and will be deleted too.",
+            along.join(" and "),
+            if f == 1 {
+                "this folder"
+            } else {
+                "these folders"
+            },
+            if unpicked.requests + unpicked.others == 1 {
+                "was"
+            } else {
+                "were"
+            },
+        )),
+    };
+    let parts: Vec<String> = folder
+        .into_iter()
+        .chain(dirty.then(|| "Unsaved edits are lost.".to_owned()))
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 /// The prompt for deleting one row. `permanent` says the delete cannot be undone, as it is
@@ -308,20 +334,19 @@ pub fn single_delete_ask(name: &str, folder: bool, permanent: bool) -> Ask {
 }
 
 /// `bulk_delete_ask` for when there is no trash: the detail ends by saying it is permanent.
-pub fn permanent_delete_ask(count: usize, folder: bool, dirty: bool) -> Ask {
-    let mut ask = bulk_delete_ask(count, folder, dirty);
-    ask.detail = Some(match bulk_detail(folder, dirty) {
+pub fn permanent_delete_ask(items: Tally, unpicked: Tally, dirty: bool) -> Ask {
+    let mut ask = bulk_delete_ask(items, unpicked, dirty);
+    ask.detail = Some(match bulk_detail(items, unpicked, dirty) {
         Some(text) => format!("{text} This is permanent.").into(),
         None => "This is permanent.".into(),
     });
     ask
 }
 
-/// The delete prompt for a multi-selection of `count` items; the folder sentence appears only
-/// when the set holds a `folder`.
-pub fn bulk_delete_ask(count: usize, folder: bool, dirty: bool) -> Ask {
-    delete_ask(
-        format!("Delete {}?", items_label(count)),
-        bulk_detail(folder, dirty),
-    )
+/// The delete prompt for a multi-selection of `items`; `unpicked` counts the rows inside
+/// selected folders that were not selected themselves.
+pub fn bulk_delete_ask(items: Tally, unpicked: Tally, dirty: bool) -> Ask {
+    let mut ask = delete_ask(format!("Delete {}?", items.describe()), None);
+    ask.detail = bulk_detail(items, unpicked, dirty).map(Into::into);
+    ask
 }

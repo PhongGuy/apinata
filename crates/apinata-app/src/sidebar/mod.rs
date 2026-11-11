@@ -54,7 +54,7 @@ use batch::{Batch, Verb, bulk_delete_ask, permanent_delete_ask, single_delete_as
 use drop::{DragPreview, DraggedRow, DropZone, drop_target, drop_zone, multi_drop};
 use menu::{BulkEntry, MenuEntry, NEW_FOLDER_NAME, bulk_entries, clone_name, menu_entries};
 use model::{Expanded, Node, NodeKind, OpenDraft};
-use multi::{Multi, SelKey, row_keys, selectable, visible_keys};
+use multi::{Multi, SelKey, Tally, row_keys, selectable, visible_keys};
 use paste::{ClipMode, paste_target};
 
 /// The key context the sidebar's bindings live in.
@@ -1091,8 +1091,9 @@ impl Sidebar {
             .map(|r| (r.root.clone(), r.path.clone()))
     }
 
-    // Enter commits a real change; Enter and blur both end the rename. Escape ends it through
-    // the sidebar's own action handler, since the input lets an idle Escape propagate.
+    // Enter and clicking away both commit a real change and end the rename; only Enter hands
+    // focus back to the tree. Escape ends it through the sidebar's own action handler, since
+    // the input lets an idle Escape propagate.
     fn rename_event(
         &mut self,
         _: &Entity<InputState>,
@@ -1102,40 +1103,49 @@ impl Sidebar {
     ) {
         match event {
             InputEvent::PressEnter { .. } => {
-                let Some(r) = self.rename.take() else {
-                    return;
-                };
-                let name = r.input.read(cx).value().trim().to_string();
-                if !name.is_empty() && name != r.old {
-                    let op = match r.example {
-                        Some(index) => TreeOp::RenameExample {
-                            item: r.path,
-                            index,
-                            name,
-                        },
-                        None => TreeOp::Rename {
-                            item: r.path,
-                            name,
-                            rename_file: true,
-                        },
-                    };
-                    self.workspace
-                        .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
+                if let Some(r) = self.rename.take() {
+                    self.commit_rename(r, false, cx);
                 }
                 self.end_rename(window, cx);
             }
             // Switching to another window keeps the field focused, so the rename goes on.
             InputEvent::Blur if window.is_window_active() => {
-                let Some(r) = self.rename.take() else {
-                    return;
-                };
-                if *r.input.read(cx).value() == *r.old {
-                    self.discard_fresh(r, cx);
+                if let Some(r) = self.rename.take() {
+                    self.commit_rename(r, true, cx);
                 }
                 cx.notify();
             }
             _ => {}
         }
+    }
+
+    // Sends the typed name unless it is blank or unchanged; a name core refuses shows its
+    // error as any failed tree op does. On blur, a just-created folder left unnamed goes again.
+    fn commit_rename(&mut self, r: Rename, blur: bool, cx: &mut Context<Self>) {
+        let name = r.input.read(cx).value().trim().to_string();
+        if name == r.old {
+            if blur {
+                self.discard_fresh(r, cx);
+            }
+            return;
+        }
+        if name.is_empty() {
+            return;
+        }
+        let op = match r.example {
+            Some(index) => TreeOp::RenameExample {
+                item: r.path,
+                index,
+                name,
+            },
+            None => TreeOp::Rename {
+                item: r.path,
+                name,
+                rename_file: true,
+            },
+        };
+        self.workspace
+            .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
     }
 
     // Escape cancels the rename, and with it the naming of a folder this view just created.
@@ -1771,18 +1781,17 @@ impl Sidebar {
         }))
     }
 
-    // How many top-level items a bulk verb would act on.
-    fn bulk_count(&self, cx: &App) -> usize {
+    // The top-level items a bulk verb would act on, by kind.
+    fn bulk_tally(&self, cx: &App) -> Tally {
         let Some(root) = self.multi.keys().first().map(|k| k.root.clone()) else {
-            return 0;
+            return Tally::default();
         };
         self.workspace
             .read(cx)
             .snapshot(&root, cx)
-            .map_or(0, |snap| {
-                self.multi
-                    .normalised(&row_keys(&root, &snap.content.rows))
-                    .len()
+            .map_or(Tally::default(), |snap| {
+                let rows = &snap.content.rows;
+                multi::tally(rows, &self.multi.normalised(&row_keys(&root, rows)))
             })
     }
 
@@ -1800,21 +1809,23 @@ impl Sidebar {
         if keys.is_empty() {
             return;
         }
+        let rows = &snapshot.content.rows;
         let dirty = self.dirty_within(&root, keys.iter().map(|k| &k.path));
-        let folder = snapshot.content.rows.iter().any(|r| {
-            r.kind == crate::snapshot::RowKind::Folder && keys.iter().any(|k| k.path == r.path)
-        });
+        let items = multi::tally(rows, &keys);
+        let unpicked = self.multi.unpicked(rows);
+        let unpicked_rows = multi::tally_rows(unpicked.iter().copied());
         let paths: Vec<ItemPath> = keys.into_iter().map(|k| k.path).collect();
         let trash = self.workspace.read(cx).trash_available();
-        // The trash makes a prompt needless unless unsaved edits would go with the items.
-        if trash && !dirty {
+        // The trash makes a prompt needless unless unsaved edits, or rows nobody selected inside
+        // a selected folder, would go with the items.
+        if trash && !dirty && unpicked.is_empty() {
             self.send_deletes(&root, paths, true, window, cx);
             return;
         }
         let ask = if trash {
-            bulk_delete_ask(paths.len(), folder, dirty)
+            bulk_delete_ask(items, unpicked_rows, dirty)
         } else {
-            permanent_delete_ask(paths.len(), folder, dirty)
+            permanent_delete_ask(items, unpicked_rows, dirty)
         };
         let answer = crate::confirm::ask(ask, window, cx);
         cx.spawn_in(window, async move |this, cx| {
@@ -3058,9 +3069,10 @@ impl Render for Sidebar {
                                 // ends the set (deferred, the tree is busy building this menu).
                                 if multi_on {
                                     if menu_members.contains(&entry.item().id) {
-                                        let count = menu_view
-                                            .upgrade()
-                                            .map_or(0, |v| v.read(cx).bulk_count(cx));
+                                        let count =
+                                            menu_view.upgrade().map_or(Tally::default(), |v| {
+                                                v.read(cx).bulk_tally(cx)
+                                            });
                                         let run = menu_view.upgrade().and_then(|v| {
                                             let plan = v.read(cx).run_plan(cx)?;
                                             (!plan.1.is_empty()).then_some(plan.2)

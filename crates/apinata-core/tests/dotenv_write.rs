@@ -173,3 +173,56 @@ fn names_outside_the_shared_variable_rule_are_refused() {
     }
     assert!(!dir.path().join(".env").exists());
 }
+
+#[test]
+fn a_restore_puts_both_files_back_and_a_reload_sees_no_change() {
+    let (dir, mut c) = opened(Some("A=1\n"));
+    let backup = c.backup_dotenv().expect("backed up");
+    c.set_dotenv("K", "v").expect("written");
+    assert!(c.ensure_dotenv_ignored().expect("ignored"));
+    c.restore_dotenv(&backup).expect("restored");
+    assert_eq!(dotenv(&dir), "A=1\n");
+    assert!(!dir.path().join(".gitignore").exists());
+    assert!(c.reload_path(&dir.path().join(".env")).is_empty());
+
+    let (dir, mut c) = opened(None);
+    let backup = c.backup_dotenv().expect("backed up");
+    c.set_dotenv("K", "v").expect("written");
+    c.restore_dotenv(&backup).expect("restored");
+    assert!(!dir.path().join(".env").exists());
+    assert!(c.reload_path(&dir.path().join(".env")).is_empty());
+}
+
+#[test]
+fn a_backup_debug_shows_no_value() {
+    let (_dir, c) = opened(Some("K=hunter2-s3cret\n"));
+    let backup = c.backup_dotenv().expect("backed up");
+    let shown = format!("{backup:?}");
+    // Neither as text nor as the list of bytes a derived Debug would print.
+    let bytes = format!("{:?}", "hunter2".as_bytes());
+    let bytes = bytes.trim_matches(['[', ']']);
+    assert!(
+        !shown.contains("hunter2") && !shown.contains(bytes),
+        "{shown}"
+    );
+    assert!(shown.contains("DotenvBackup"), "{shown}");
+}
+
+#[test]
+fn an_undo_keeps_files_changed_since_the_write() {
+    let (dir, mut c) = opened(Some("A=1\n"));
+    let backup = c.backup_dotenv().expect("backed up");
+    c.set_dotenv("K", "v").expect("written");
+    let written = c.backup_dotenv().expect("backed up");
+    fs::write(dir.path().join(".env"), "A=1\nK=v\nB=elsewhere\n").expect("changed");
+    assert!(!c.undo_dotenv(&backup, &written).expect("checked"));
+    assert_eq!(dotenv(&dir), "A=1\nK=v\nB=elsewhere\n");
+
+    // Unchanged since the write, the undo puts the old file back.
+    let (dir, mut c) = opened(Some("A=1\n"));
+    let backup = c.backup_dotenv().expect("backed up");
+    c.set_dotenv("K", "v").expect("written");
+    let written = c.backup_dotenv().expect("backed up");
+    assert!(c.undo_dotenv(&backup, &written).expect("undone"));
+    assert_eq!(dotenv(&dir), "A=1\n");
+}

@@ -22,7 +22,9 @@ use gpui_kit::{
 use crate::body_section::collection_relative;
 use crate::command::Edit;
 use crate::kv_table::set_text;
+use crate::network_secrets::env_name;
 use crate::section::SectionEdit;
+use crate::snapshot::{DotenvNames, SecretHome};
 use crate::{style, ui};
 
 /// How the collection picks its proxy, in segment order.
@@ -72,6 +74,9 @@ pub enum HostField {
     Address,
 }
 
+const HOST_INCOMPLETE: &str = "Not saved until both the host and the address are filled in.";
+const PROXY_HOST_INCOMPLETE: &str = "Not saved until a host is filled in.";
+const PROXY_HOST_FAILS: &str = "Requests fail until a host is filled in.";
 const OUTSIDE_NOTICE: &str = "Outside the collection: saved as an absolute path";
 const PKCS12_HINT: &str =
     "PKCS#12 is not supported yet; convert with openssl pkcs12 -in x.pfx -nodes -out x.pem";
@@ -92,10 +97,20 @@ struct CertRow {
     // The outside answer for the certificate and key texts it was computed from, so a render
     // reads it and only an edited path pays for the filesystem check again.
     outside: RefCell<Option<([String; 2], bool)>>,
+    // Whether its `.env` passphrase is being replaced, so the passphrase input shows.
+    replacing: bool,
     _subs: Vec<Subscription>,
 }
 
 impl CertRow {
+    // Where the passphrase's `.env` value is when it shows the badge rather than its input.
+    fn stored_home(&self, names: &DotenvNames) -> Option<SecretHome> {
+        if self.replacing {
+            return None;
+        }
+        names.home(env_name(&self.cert.passphrase)?)
+    }
+
     fn outside(&self, root: &Path, canonical_root: Option<&Path>) -> bool {
         let [_, certificate, key, _] = pem_texts(&self.cert);
         let mut cache = self.outside.borrow_mut();
@@ -121,6 +136,9 @@ struct HostRow {
     checked: bool,
     // Whether the user changed the row; leaving an untouched row does not check it.
     edited: bool,
+    // A row added or edited without both a host and an address stays local until both are
+    // filled, as an unfilled certificate row does; loaded rows are never drafts.
+    draft: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -131,6 +149,9 @@ pub struct NetworkSection {
     // The root's resolved form, read once rather than per outside check.
     canonical_root: Option<PathBuf>,
     choice: ProxyChoice,
+    // The choice the file holds, as last loaded or sent. A custom choice without a host is
+    // not sent, so the file keeps this one meanwhile.
+    filed: ProxyChoice,
     // A loaded protocol outside `PROTOCOLS`, such as a template, stays until a segment is
     // clicked.
     protocol: String,
@@ -141,6 +162,10 @@ pub struct NetworkSection {
     bypass: Entity<InputState>,
     // The password last loaded or sent; every edit carries it, never half-typed text.
     password_committed: String,
+    // Whether the `.env` password is being replaced, so its input shows.
+    password_replacing: bool,
+    // The `.env` names that are stored or held for the collection, which decide the badges.
+    dotenv: DotenvNames,
     // The port last loaded or typed valid; a refused port shows `port_error` and every edit
     // carries this one instead.
     port_committed: String,
@@ -201,6 +226,7 @@ impl NetworkSection {
             canonical_root: root.canonicalize().ok(),
             root,
             choice: ProxyChoice::Inherit,
+            filed: ProxyChoice::Inherit,
             protocol: PROTOCOLS[0].into(),
             host,
             port,
@@ -208,6 +234,8 @@ impl NetworkSection {
             password,
             bypass,
             password_committed: String::new(),
+            password_replacing: false,
+            dotenv: DotenvNames::default(),
             port_committed: String::new(),
             port_error: None,
             loaded_proxy: ProxyConfig::new(PROTOCOLS[0], "", ""),
@@ -238,11 +266,17 @@ impl NetworkSection {
             CollectionProxy::Custom(proxy) => (ProxyChoice::Custom, Some(proxy)),
             _ => (ProxyChoice::Inherit, network.stored_proxy.as_ref()),
         };
-        self.choice = choice;
-        // Inherit and Off keep the file's custom fields, so switching back sends them, never
-        // blanks over them.
-        if let Some(proxy) = fields {
-            self.show_fields(proxy, window, cx);
+        self.filed = choice;
+        // A custom proxy still waiting for its host stays on screen with its typing while the
+        // file holds another choice.
+        let waiting = self.held_back(cx) && choice != ProxyChoice::Custom;
+        if !waiting {
+            self.choice = choice;
+            // Inherit and Off keep the file's custom fields, so switching back sends them,
+            // never blanks over them.
+            if let Some(proxy) = fields {
+                self.show_fields(proxy, window, cx);
+            }
         }
         self.load_certificates(&network.certificates, window, cx);
         self.load_hosts(&network.host_overrides, window, cx);
@@ -250,9 +284,13 @@ impl NetworkSection {
     }
 
     fn show_fields(&mut self, proxy: &ProxyConfig, window: &mut Window, cx: &mut Context<Self>) {
+        // A snapshot echoing the last loaded host leaves a cleared, unsent host blank; any
+        // other host replaces it.
+        if !(self.held_back(cx) && proxy.hostname == self.loaded_proxy.hostname) {
+            set_text(&self.host, &proxy.hostname, window, cx);
+        }
         self.loaded_proxy = proxy.clone();
         self.protocol.clone_from(&proxy.protocol);
-        set_text(&self.host, &proxy.hostname, window, cx);
         // A snapshot echoing the last valid port leaves a refused port's typing and error in
         // place; any other port replaces both.
         if self.port_error.is_none() || proxy.port != self.port_committed {
@@ -319,9 +357,14 @@ impl NetworkSection {
     }
 
     // Rows keep their input entities while the count matches, so a snapshot echoing the user's
-    // own typing leaves focus and caret alone.
+    // own typing leaves focus and caret alone. The file never holds a draft, so drafts are left
+    // out of the match and kept after the loaded rows.
     fn load_hosts(&mut self, rows: &[HostOverride], window: &mut Window, cx: &mut Context<Self>) {
-        if self.hosts.len() != rows.len() {
+        if self.hosts.iter().filter(|slot| !slot.draft).count() != rows.len() {
+            let drafts: Vec<HostRow> = std::mem::take(&mut self.hosts)
+                .into_iter()
+                .filter(|slot| slot.draft)
+                .collect();
             self.hosts = rows
                 .iter()
                 .map(|row| {
@@ -330,9 +373,11 @@ impl NetworkSection {
                     slot
                 })
                 .collect();
+            self.hosts.extend(drafts);
             return;
         }
-        for (slot, row) in self.hosts.iter_mut().zip(rows) {
+        let committed = self.hosts.iter_mut().filter(|slot| !slot.draft);
+        for (slot, row) in committed.zip(rows) {
             slot.row = row.clone();
             set_text(&slot.host, &row.host, window, cx);
             set_text(&slot.address, &row.address, window, cx);
@@ -377,6 +422,7 @@ impl NetworkSection {
             address,
             checked: false,
             edited: false,
+            draft: false,
             _subs: subs,
         }
     }
@@ -401,15 +447,17 @@ impl NetworkSection {
 
     /// The host override rows as they would be sent, in order.
     pub fn host_overrides(&self) -> Vec<HostOverride> {
-        self.hosts.iter().map(|slot| slot.row.clone()).collect()
+        let sent = self.hosts.iter().filter(|slot| !slot.draft);
+        sent.map(|slot| slot.row.clone()).collect()
     }
 
-    /// Appends an empty host override row and sends the list.
+    /// Appends an empty host override row, sent once its host and address are filled.
     pub fn add_host_override(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let slot = self.new_host_row(HostOverride::new("", ""), window, cx);
+        let mut slot = self.new_host_row(HostOverride::new("", ""), window, cx);
+        slot.draft = true;
         slot.host.focus_handle(cx).focus(window, cx);
         self.hosts.push(slot);
-        self.emit_hosts(cx);
+        cx.notify();
     }
 
     /// Removes host override row `row`, moves focus to the next row's host, else the previous
@@ -421,7 +469,7 @@ impl NetworkSection {
         cx: &mut Context<Self>,
     ) {
         if row < self.hosts.len() {
-            self.hosts.remove(row);
+            let draft = self.hosts.remove(row).draft;
             let next = self
                 .hosts
                 .get(row)
@@ -430,7 +478,10 @@ impl NetworkSection {
                 Some(slot) => slot.host.focus_handle(cx).focus(window, cx),
                 None => self.focus.focus(window, cx),
             }
-            self.emit_hosts(cx);
+            match draft {
+                true => cx.notify(),
+                false => self.emit_hosts(cx),
+            }
         }
     }
 
@@ -457,14 +508,24 @@ impl NetworkSection {
         slot.row.address = slot.address.read(cx).value().to_string();
         if slot.row != before {
             slot.edited = true;
-            self.emit_hosts(cx);
+            // A row that was and stays incomplete changes nothing the file holds; one that
+            // turns incomplete leaves the list, one that completes joins it.
+            let was_draft = slot.draft;
+            slot.draft = incomplete(&slot.row);
+            match was_draft && slot.draft {
+                true => cx.notify(),
+                false => self.emit_hosts(cx),
+            }
         }
     }
 
     fn set_host_enabled(&mut self, row: usize, on: bool, cx: &mut Context<Self>) {
         if let Some(slot) = self.hosts.get_mut(row) {
             slot.row.enabled = on;
-            self.emit_hosts(cx);
+            match slot.draft {
+                true => cx.notify(),
+                false => self.emit_hosts(cx),
+            }
         }
     }
 
@@ -487,6 +548,7 @@ impl NetworkSection {
                 inputs: None,
                 draft: false,
                 outside: RefCell::default(),
+                replacing: false,
                 _subs: Vec::new(),
             };
         }
@@ -522,6 +584,7 @@ impl NetworkSection {
             inputs: Some(CertInputs(inputs)),
             draft: false,
             outside: RefCell::default(),
+            replacing: false,
             _subs: subs,
         }
     }
@@ -589,9 +652,22 @@ impl NetworkSection {
                 certificate,
                 private_key: key,
             };
-            // Other fields carry the last committed passphrase, never half-typed text.
+            // Other fields carry the last committed passphrase, never half-typed text. A
+            // stored passphrase stays unless replaced, and a replace left empty keeps it.
             if *state == inputs.0[CertField::Passphrase as usize] {
-                row.cert.passphrase = passphrase;
+                let replacing = std::mem::take(&mut row.replacing);
+                let stored = row.stored_home(&self.dotenv).is_some();
+                let keep = if replacing {
+                    passphrase.is_empty()
+                } else {
+                    stored
+                };
+                if !keep {
+                    row.cert.passphrase = passphrase;
+                }
+                if replacing {
+                    cx.notify();
+                }
             }
         }
         let completed = row.draft && is_complete(&row.cert);
@@ -739,11 +815,29 @@ impl NetworkSection {
 
     /// The warnings a save gives for typed values this tab cannot take: a refused port, whose
     /// last valid value is what gets saved.
-    pub fn unsaved(&self) -> Vec<String> {
-        self.port_error
+    pub fn unsaved(&self, cx: &App) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .port_error
             .iter()
             .map(|reason| format!("Not saved: Port: {reason}"))
-            .collect()
+            .collect();
+        if self.held_back(cx) && !self.saved_without_host() {
+            out.push("Not saved: Proxy: fill in a host to use a custom proxy".into());
+        }
+        if self.hosts.iter().any(|slot| slot.draft) {
+            out.push("Not saved: Host override: fill in both the host and the address".into());
+        }
+        out
+    }
+
+    // Whether the file itself holds a custom proxy without a host, which fails every request.
+    fn saved_without_host(&self) -> bool {
+        self.filed == ProxyChoice::Custom && self.loaded_proxy.hostname.trim().is_empty()
+    }
+
+    // Whether a custom proxy is shown without a host, which is never sent.
+    fn held_back(&self, cx: &App) -> bool {
+        self.choice == ProxyChoice::Custom && self.host.read(cx).value().trim().is_empty()
     }
 
     // A port is blank, 1 to 65535 or a template; anything else stays typed but unsent.
@@ -762,12 +856,62 @@ impl NetworkSection {
     }
 
     // Sends the typed password once per change, as the environment table does for secrets.
+    // A stored password stays unless replaced, and a replace left empty keeps it.
     fn commit_password(&mut self, cx: &mut Context<Self>) {
         let text = self.password.read(cx).value().to_string();
-        if text != self.password_committed {
+        let replacing = std::mem::take(&mut self.password_replacing);
+        let keep = if replacing {
+            text.is_empty()
+        } else {
+            self.password_home().is_some()
+        };
+        if replacing {
+            cx.notify();
+        }
+        if !keep && text != self.password_committed {
             self.password_committed = text;
             self.emit(cx);
         }
+    }
+
+    /// Sets the `.env` names stored or held for the collection, which decide the badges.
+    pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
+        if self.dotenv != names {
+            self.dotenv = names;
+            cx.notify();
+        }
+    }
+
+    // Where the proxy password's `.env` value is when it shows the badge rather than its input.
+    fn password_home(&self) -> Option<SecretHome> {
+        if self.password_replacing {
+            return None;
+        }
+        self.dotenv.home(env_name(&self.password_committed)?)
+    }
+
+    // Opens the proxy password empty and focused for a new value in place of the stored one.
+    fn replace_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.password_replacing = true;
+        let input = self.password.clone();
+        set_text(&input, "", window, cx);
+        input.update(cx, |i, cx| i.focus(window, cx));
+        cx.notify();
+    }
+
+    // Opens row `ix`'s passphrase empty and focused for a new value in place of the stored one.
+    fn replace_passphrase(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.certs.get_mut(ix) else {
+            return;
+        };
+        let Some(inputs) = &row.inputs else {
+            return;
+        };
+        row.replacing = true;
+        let input = inputs.0[CertField::Passphrase as usize].clone();
+        set_text(&input, "", window, cx);
+        input.update(cx, |i, cx| i.focus(window, cx));
+        cx.notify();
     }
 
     // A password typed but not yet committed goes first, since a click does not blur it.
@@ -813,9 +957,15 @@ impl NetworkSection {
         }
     }
 
+    // A custom proxy without a host is held back, and so is a return to the choice the file
+    // already holds, so an abandoned custom proxy leaves the file as it was.
     fn emit(&mut self, cx: &mut Context<Self>) {
-        let proxy = self.current(cx);
-        cx.emit(SectionEdit::new(Edit::Proxy(proxy)).after_loads(self.loads));
+        let unchanged = self.choice != ProxyChoice::Custom && self.choice == self.filed;
+        if !self.held_back(cx) && !unchanged {
+            let proxy = self.current(cx);
+            self.filed = self.choice;
+            cx.emit(SectionEdit::new(Edit::Proxy(proxy)).after_loads(self.loads));
+        }
         cx.notify();
     }
 
@@ -837,14 +987,21 @@ impl NetworkSection {
                 state,
             )
         };
+        let mut host_row = ui::form_row(
+            "proxy-host-row",
+            "Host",
+            field("proxy-host", &self.host, style::WIDE_INPUT_WIDTH),
+        );
+        if self.held_back(cx) {
+            host_row = match self.saved_without_host() {
+                true => host_row.hint("proxy-host-fails", PROXY_HOST_FAILS),
+                false => host_row.hint("proxy-host-incomplete", PROXY_HOST_INCOMPLETE),
+            };
+        }
         v_flex()
             .gap(style::SPACE_2)
             .child(ui::form_row("proxy-protocol-row", "Protocol", protocols))
-            .child(ui::form_row(
-                "proxy-host-row",
-                "Host",
-                field("proxy-host", &self.host, style::WIDE_INPUT_WIDTH),
-            ))
+            .child(host_row)
             .child(ui::form_row(
                 "proxy-port-row",
                 "Port",
@@ -875,7 +1032,19 @@ impl NetworkSection {
             .child(ui::form_row(
                 "proxy-password-row",
                 "Password",
-                field("proxy-password", &self.password, style::WIDE_INPUT_WIDTH),
+                if let Some(home) = self.password_home() {
+                    ui::stored_secret(
+                        "proxy-password-stored",
+                        "proxy-password-replace",
+                        home,
+                        cx.listener(|this, _, window, cx| this.replace_password(window, cx)),
+                        cx,
+                    )
+                    .into_any_element()
+                } else {
+                    field("proxy-password", &self.password, style::WIDE_INPUT_WIDTH)
+                        .into_any_element()
+                },
             ))
             .child(
                 ui::form_row(
@@ -898,7 +1067,10 @@ impl NetworkSection {
             .iter()
             .enumerate()
             .map(|(ix, slot)| {
-                let reason = slot.row.check().err().map(|e| e.to_string());
+                let reason = (!slot.draft)
+                    .then(|| slot.row.check().err().map(|e| e.to_string()))
+                    .flatten();
+                let draft = slot.draft;
                 let error = reason.clone().filter(|_| slot.row.enabled && slot.checked);
                 let muted = reason.filter(|_| !slot.row.enabled && slot.checked);
                 // check() does not say which field failed, so both inputs are marked, by
@@ -968,6 +1140,13 @@ impl NetworkSection {
                 v_flex()
                     .gap(style::SPACE_1)
                     .child(row)
+                    .when(draft, |el| {
+                        el.child(host_note(
+                            ("host-incomplete", ix),
+                            HOST_INCOMPLETE,
+                            cx.theme().muted_foreground,
+                        ))
+                    })
                     .when_some(error, |el, reason| {
                         el.child(host_note(("host-error", ix), reason, cx.theme().danger))
                     })
@@ -1012,7 +1191,7 @@ impl NetworkSection {
             .map(|(ix, row)| match &row.inputs {
                 Some(inputs) => v_flex()
                     .gap(style::SPACE_1)
-                    .child(self.pem_row(ix, row.cert.enabled, inputs, window, cx))
+                    .child(self.pem_row(ix, row, inputs, window, cx))
                     .when(
                         row.outside(&self.root, self.canonical_root.as_deref()),
                         |el| el.child(muted_note(("cert-outside", ix), OUTSIDE_NOTICE, cx)),
@@ -1037,7 +1216,7 @@ impl NetworkSection {
     fn pem_row(
         &self,
         ix: usize,
-        enabled: bool,
+        row: &CertRow,
         inputs: &CertInputs,
         window: &Window,
         cx: &mut Context<Self>,
@@ -1064,7 +1243,7 @@ impl NetworkSection {
             .items_center()
             .w_full()
             .child(
-                ui::checkbox(("cert-enabled", ix), enabled)
+                ui::checkbox(("cert-enabled", ix), row.cert.enabled)
                     .tab_stop(false)
                     .on_click(cx.listener(move |this, on: &bool, _, cx| {
                         this.set_cert_enabled(ix, *on, cx)
@@ -1080,7 +1259,23 @@ impl NetworkSection {
             ))
             .child(field("cert-key", key, cx))
             .child(picker("cert-key-pick", "Choose key", CertField::Key, cx))
-            .child(field("cert-passphrase", passphrase, cx))
+            .child(if let Some(home) = row.stored_home(&self.dotenv) {
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(ui::stored_secret(
+                        ("cert-passphrase-stored", ix),
+                        ("cert-passphrase-replace", ix),
+                        home,
+                        cx.listener(move |this, _, window, cx| {
+                            this.replace_passphrase(ix, window, cx)
+                        }),
+                        cx,
+                    ))
+                    .into_any_element()
+            } else {
+                field("cert-passphrase", passphrase, cx).into_any_element()
+            })
             .child(
                 ui::icon_button(
                     ("cert-remove", ix),
@@ -1179,6 +1374,11 @@ fn pem_texts(cert: &ClientCertificate) -> [&str; 4] {
     }
 }
 
+// Whether a host override row lacks its host or its address, so it cannot be sent yet.
+fn incomplete(row: &HostOverride) -> bool {
+    row.host.trim().is_empty() || row.address.trim().is_empty()
+}
+
 /// Whether a row has what the reference app requires before adding it: a domain and the
 /// paths its type needs.
 fn is_complete(cert: &ClientCertificate) -> bool {
@@ -1202,6 +1402,22 @@ impl Render for NetworkSection {
         });
         for input in std::iter::once(&self.password).chain(passphrases) {
             ui::mask_unless_template(input, window, cx);
+        }
+        // Inputs hidden behind the badge keep the stored value, so nothing reads as typed.
+        let mut hidden = Vec::new();
+        if self.password_home().is_some() {
+            hidden.push((self.password.clone(), self.password_committed.clone()));
+        }
+        for row in (self.certs.iter()).filter(|row| row.stored_home(&self.dotenv).is_some()) {
+            if let Some(inputs) = &row.inputs {
+                let input = inputs.0[CertField::Passphrase as usize].clone();
+                hidden.push((input, row.cert.passphrase.clone()));
+            }
+        }
+        for (input, value) in hidden {
+            if input.read(cx).value() != value.as_str() {
+                set_text(&input, &value, window, cx);
+            }
         }
         let this = cx.entity();
         let selected = CHOICES
