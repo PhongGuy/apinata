@@ -857,7 +857,28 @@ impl TabArea {
         if target.is_none() || target.as_ref() == Some(&self.focus) {
             self.focus_fallback(window, cx);
             crate::focus_redraw::after_draw_move(window, cx);
+        } else if let Some(target) = target.filter(|t| self.holds_inside_view(t, window, cx)) {
+            // A control gone from inside a tab's view, such as an editor a segment hid, hands
+            // focus to its nearest drawn holder there, so the next key stays in that section.
+            target.focus(window, cx);
+            crate::focus_redraw::after_draw_move(window, cx);
         }
+    }
+
+    // Whether `target` sits strictly inside the active tab's view, with no dialog open (a
+    // dialog repairs its own losses).
+    fn holds_inside_view(&self, target: &FocusHandle, window: &mut Window, cx: &mut App) -> bool {
+        if window.has_active_dialog(cx) {
+            return false;
+        }
+        let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) else {
+            return false;
+        };
+        let Some((_, view)) = self.editors.get(&id) else {
+            return false;
+        };
+        let root = view.focus_handle(cx);
+        root != *target && root.contains(target, window)
     }
 
     /// Where focus goes once the element that held it is gone: the active tab's ringed stop.
