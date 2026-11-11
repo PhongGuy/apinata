@@ -826,6 +826,10 @@ impl OAuth2Editor {
     fn emit(&mut self, cx: &mut Context<Self>) {
         let spec = self.spec(cx);
         self.forget_filled(&spec);
+        if let Some(panel) = &self.token_panel {
+            let labels = self.missing.iter().map(|f| f.label()).collect();
+            panel.update(cx, |p, cx| p.set_missing(labels, cx));
+        }
         cx.emit(OAuth2Edit(spec, self.stamp));
         cx.notify();
     }
@@ -997,8 +1001,14 @@ impl Render for OAuth2Editor {
             && let Some(first) = self.missing.first()
         {
             let input = self.input(*first).clone();
+            // The field may hold focus already, when no focus change would scroll to it.
+            let follow = self.follow.clone();
             cx.defer_in(window, move |_, window, cx| {
                 input.update(cx, |i, cx| i.focus(window, cx));
+                if let Some(follow) = follow {
+                    follow.reveal();
+                    window.refresh();
+                }
             });
         }
         let o = self.base.clone();

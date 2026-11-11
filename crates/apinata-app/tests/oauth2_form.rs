@@ -129,6 +129,84 @@ fn get_token_scrolls_the_first_missing_field_into_view(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
+fn a_second_get_token_brings_the_focused_missing_field_back_into_view(cx: &mut TestAppContext) {
+    let (_col, _state, win, panel) = auth_editor_sized(cx, BLANK, 600.);
+    let to_bottom = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            let down = gpui_kit::ScrollDelta::Pixels(gpui_kit::point(
+                gpui_kit::px(0.),
+                gpui_kit::px(-5000.),
+            ));
+            w.scroll("section-body", down, cx)
+        })
+        .unwrap();
+        frame(cx, win);
+    };
+    let outside = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let body = w.find("section-body").bounds();
+            let field = w.find("oauth2-access-token-url").bounds();
+            (field.top() < body.top() || field.bottom() > body.bottom()).then_some((field, body))
+        })
+        .unwrap()
+    };
+    let get_token = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| w.click("oauth2-get-token", cx))
+            .unwrap();
+        settle(cx, &panel);
+        for _ in 0..4 {
+            frame(cx, win);
+        }
+    };
+    to_bottom(cx);
+    get_token(cx);
+    assert_eq!(
+        outside(cx),
+        None,
+        "the first click leaves the field out of view"
+    );
+
+    // The field keeps focus while the form is wheeled away, so only the click itself can
+    // bring it back.
+    to_bottom(cx);
+    assert!(outside(cx).is_some(), "the form is scrolled past the field");
+    get_token(cx);
+    assert_eq!(
+        outside(cx),
+        None,
+        "the second click leaves the focused field out of view"
+    );
+    assert!(
+        present(cx, win, "oauth2-token-error"),
+        "the summary of the empty fields is gone"
+    );
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.error()).as_deref(),
+        Some("Access token URL and Client ID are empty")
+    );
+
+    // A letter lands in the field the user now sees, and the summary keeps the field still empty.
+    cx.simulate_keystrokes(win, "h");
+    for _ in 0..4 {
+        frame(cx, win);
+    }
+    assert_eq!(
+        outside(cx),
+        None,
+        "the keystroke went to a field out of view"
+    );
+    assert!(
+        present(cx, win, "oauth2-token-error"),
+        "a keystroke wiped the summary although Client ID is still empty"
+    );
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.error()).as_deref(),
+        Some("Client ID is empty")
+    );
+}
+
+#[gpui_kit::test]
 fn a_folder_get_token_scrolls_the_first_missing_field_into_view(cx: &mut TestAppContext) {
     use apinata_app::config_editor::{ConfigEditor, ConfigSection, ConfigTarget};
     http_ready(cx);
