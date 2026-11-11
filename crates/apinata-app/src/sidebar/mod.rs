@@ -28,13 +28,13 @@ use gpui_kit::component::menu::PopupMenuItem;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::tree::{TreeEvent, TreeState, tree};
-use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     App, AppContext, ClickEvent, Context, DragMoveEvent, Edges, ElementId, Entity, EventEmitter,
     FocusHandle, Hsla, InteractiveElement, IntoElement, Modifiers, MouseButton, ParentElement,
     Pixels, Render, RenderOnce, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, TestSupportExt, WeakEntity, Window, actions, canvas, div, px,
+    Subscription, TestSupportExt, WeakEntity, Window, actions, anchored, canvas, deferred, div, px,
 };
 
 use crate::command::{Command, NoticeKind, TreeOp};
@@ -1158,8 +1158,14 @@ impl Sidebar {
                 if let Some(r) = self.rename.take() {
                     match self.name_clash(&r, cx) {
                         Some(error) => {
+                            let outcome = if r.fresh {
+                                "the folder was not created"
+                            } else {
+                                "the name was not changed"
+                            };
                             self.discard_fresh(r, cx);
-                            window.push_notification(Notification::error(error), cx);
+                            let message = format!("{error}, so {outcome}.");
+                            window.push_notification(Notification::error(message), cx);
                         }
                         None => self.commit_rename(r, true, cx),
                     }
@@ -2524,9 +2530,8 @@ impl Render for Sidebar {
                 Some(ix) => request.map(|n| model::example_id(n.collection, &r.path, ix)),
                 None => request.map(|n| n.id.clone()),
             };
-            (id, r.input.clone(), r.error.is_some())
+            (id, r.input.clone(), r.error.clone().map(SharedString::from))
         });
-        let rename_error = self.rename_error().map(str::to_owned);
         div()
             .id("sidebar-view")
             .test_support()
@@ -2745,24 +2750,31 @@ impl Render for Sidebar {
                             let Some(n) = rows.get(&id) else {
                                 return item.child(entry.item().label.clone());
                             };
-                            if let Some((Some(rid), input, refused)) = &renaming
+                            if let Some((Some(rid), input, error)) = &renaming
                                 && *rid == id
                             {
-                                return item.child(
-                                    div().id(marker_id("rename", &id)).test_support().child(
-                                        ui::invalid_input(
-                                            Input::new(input).bg(ui::field_fill(false, cx)),
-                                            div(),
-                                            input,
-                                            *refused,
-                                            (
-                                                "sidebar-rename-danger-ring".into(),
-                                                "sidebar-rename-invalid-icon".into(),
-                                            ),
-                                            window,
-                                            cx,
-                                        ),
+                                let field = ui::invalid_input(
+                                    Input::new(input).bg(ui::field_fill(false, cx)),
+                                    div(),
+                                    input,
+                                    error.is_some(),
+                                    (
+                                        "sidebar-rename-danger-ring".into(),
+                                        "sidebar-rename-invalid-icon".into(),
                                     ),
+                                    window,
+                                    cx,
+                                );
+                                return item.child(
+                                    v_flex()
+                                        .id(marker_id("rename", &id))
+                                        .test_support()
+                                        .child(field)
+                                        .when_some(error.clone(), |d, message| {
+                                            // An empty box after the field puts the anchor
+                                            // at the field's bottom edge.
+                                            d.child(div().child(rename_refusal(message, cx)))
+                                        }),
                                 );
                             }
                             let zone = hover.as_ref().filter(|(h, _)| *h == id).map(|(_, z)| *z);
@@ -3213,23 +3225,30 @@ impl Render for Sidebar {
                         ),
                     ),
             )
-            // The refusal sits under the tree: rows keep one height, so it cannot go under the
-            // field, and here it shifts no row the user is looking at.
-            .when_some(rename_error, |d, message| {
-                d.child(
-                    div()
-                        .id("sidebar-rename-error")
-                        .test_support()
-                        .flex_none()
-                        .px(style::SPACE_2)
-                        .py(style::SPACE_1)
-                        .whitespace_normal()
-                        .text_xs()
-                        .text_color(cx.theme().danger)
-                        .child(message),
-                )
-            })
     }
+}
+
+// A refused rename's reason, floating just under its field: rows keep one height, so it
+// cannot take a line of its own, and floating it shifts no row.
+fn rename_refusal(message: SharedString, cx: &App) -> impl IntoElement {
+    deferred(
+        anchored().snap_to_window().child(
+            div()
+                .id("sidebar-rename-error")
+                .test_support()
+                .aria_label(message.clone())
+                .max_w(style::VAR_TIP_MAX_WIDTH)
+                .px(style::SPACE_2)
+                .py(style::SPACE_1)
+                .rounded(style::POPOVER_RADIUS)
+                .border_1()
+                .border_color(cx.theme().danger)
+                .bg(cx.theme().popover)
+                .text_color(cx.theme().danger)
+                .text_size(style::TEXT_SMALL)
+                .child(message),
+        ),
+    )
 }
 
 /// The note under a scratch-only sidebar.

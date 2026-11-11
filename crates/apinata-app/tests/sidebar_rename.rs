@@ -323,8 +323,21 @@ fn enter_on_a_siblings_name_keeps_the_rename_open_with_an_error(cx: &mut TestApp
         rename_error(cx, &h).as_deref(),
         Some("A request named Status is already in c")
     );
-    assert!(shown(cx, h.win, "sidebar-rename-error"));
     assert!(shown(cx, h.win, "sidebar-rename-invalid-icon"));
+    // The reason floats just under the field, not somewhere else in the sidebar.
+    let marker = apinata_app::sidebar::marker_id("rename", &row("health.yml"));
+    cx.update_window(h.win, |_, w, _| {
+        let (field, error) = (
+            w.find(marker).bounds(),
+            w.find("sidebar-rename-error").bounds(),
+        );
+        assert!(
+            error.top() >= field.bottom() - gpui_kit::px(1.)
+                && error.top() <= field.bottom() + gpui_kit::px(8.),
+            "{error:?} sits just under {field:?}"
+        );
+    })
+    .unwrap();
     assert!(h.root.join("health.yml").exists());
     let s = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
     assert_eq!(s.acked, 0, "no command reached the actor");
@@ -336,8 +349,13 @@ fn typing_after_a_refused_name_clears_the_error_and_a_free_name_renames(cx: &mut
     rename(cx, &h, "health.yml");
     type_and(cx, &h, "Status", "enter");
     assert!(rename_error(cx, &h).is_some());
-    type_and(cx, &h, " check", "enter");
-    assert_eq!(rename_error(cx, &h), None);
+    cx.update_window(h.win, |_, w, cx| w.input(" check", cx))
+        .unwrap();
+    frame(cx, h.win);
+    assert_eq!(rename_error(cx, &h), None, "an edit clears the refusal");
+    assert!(!shown(cx, h.win, "sidebar-rename-error"));
+    assert!(h.view.read_with(cx, |s, _| s.renaming()).is_some());
+    type_and(cx, &h, "", "enter");
     assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
     assert!(h.root.join("Status check.yml").exists());
 }
@@ -385,4 +403,59 @@ fn clicking_away_from_a_siblings_name_sends_nothing(cx: &mut TestAppContext) {
     assert!(h.root.join("health.yml").exists());
     let s = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
     assert_eq!(s.acked, 0, "no command reached the actor");
+}
+
+#[gpui_kit::test]
+fn escape_after_a_refused_name_clears_the_error(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    rename(cx, &h, "health.yml");
+    type_and(cx, &h, "Status", "enter");
+    assert!(rename_error(cx, &h).is_some());
+    type_and(cx, &h, "", "escape");
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert_eq!(rename_error(cx, &h), None);
+    assert!(!shown(cx, h.win, "sidebar-rename-error"));
+    assert!(h.root.join("health.yml").exists());
+}
+
+// A new folder left on a taken name is not created under its default name either.
+#[gpui_kit::test]
+fn clicking_away_from_a_new_folder_on_a_taken_name_removes_it_with_a_toast(
+    cx: &mut TestAppContext,
+) {
+    use gpui_kit::component::WindowExt as _;
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    new_folder(cx, &h);
+    cx.update_window(h.win, |_, w, cx| w.input("Users", cx))
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.click(row("health.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(gone(cx, &h, FRESH));
+    assert!(h.root.join("users/list.yml").exists());
+    let toasts = cx
+        .update_window(h.win, |_, w, cx| w.notifications(cx).len())
+        .unwrap();
+    assert_eq!(toasts, 1, "the refusal shows as a toast");
+}
+
+#[gpui_kit::test]
+fn the_refusal_names_the_folder_the_clash_is_in(cx: &mut TestAppContext) {
+    let mut files = sidebar_files();
+    files.push(("users/one.yml", request("One", "http://x/one")));
+    let h = open_sidebar_with(cx, files);
+    cx.update_window(h.win, |_, w, cx| w.click(row("users"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    assert!(shown(cx, h.win, row("users/list.yml")), "users is open");
+    rename(cx, &h, "users/list.yml");
+    type_and(cx, &h, "One", "enter");
+    assert_eq!(
+        rename_error(cx, &h).as_deref(),
+        Some("A request named One is already in Users")
+    );
 }
