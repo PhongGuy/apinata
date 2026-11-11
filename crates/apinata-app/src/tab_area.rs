@@ -865,10 +865,10 @@ impl TabArea {
         }
     }
 
-    // Whether `target` sits strictly inside the active tab's view, with no dialog open (a
-    // dialog repairs its own losses).
+    // Whether `target` sits strictly inside the active tab's view, for a control that went
+    // away rather than focus dropped on purpose, with no dialog open (a dialog repairs its own).
     fn holds_inside_view(&self, target: &FocusHandle, window: &mut Window, cx: &mut App) -> bool {
-        if window.has_active_dialog(cx) {
+        if window.focused(cx).is_none() || window.has_active_dialog(cx) {
             return false;
         }
         let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) else {
