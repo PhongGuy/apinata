@@ -613,6 +613,60 @@ fn a_dotenv_password_shows_a_badge_and_replace_takes_a_new_value(cx: &mut TestAp
 }
 
 #[gpui_kit::test]
+fn a_custom_proxy_without_a_host_is_held_back_and_named(cx: &mut TestAppContext) {
+    let (win, host) = section(cx, CollectionNetwork::default(), false);
+    segment(cx, win, "proxy-mode", 2);
+    assert_eq!(last_proxy(cx, &host), None, "no host, nothing sent");
+    assert!(present(cx, win, "proxy-host-incomplete"));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let unsaved = s.read_with(cx, |s, cx| s.unsaved(cx));
+    assert!(
+        unsaved.iter().any(|w| w.starts_with("Not saved: Proxy")),
+        "{unsaved:?}"
+    );
+    type_at_end(cx, win, None, "proxy-host", "p.test");
+    cx.run_until_parked();
+    frame(cx, win);
+    let mut sent = ProxyConfig::new("http", "p.test", "");
+    sent.auth = None;
+    assert_eq!(last_proxy(cx, &host), Some(CollectionProxy::Custom(sent)));
+    assert!(!present(cx, win, "proxy-host-incomplete"));
+    assert!(s.read_with(cx, |s, cx| s.unsaved(cx)).is_empty());
+}
+
+#[gpui_kit::test]
+fn a_held_back_custom_proxy_survives_a_reload(cx: &mut TestAppContext) {
+    let (win, host) = section(cx, CollectionNetwork::default(), false);
+    segment(cx, win, "proxy-mode", 2);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| {
+            s.load(&CollectionNetwork::default(), false, w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, win);
+    assert_eq!(s.read_with(cx, |s, _| s.choice()), ProxyChoice::Custom);
+    assert!(present(cx, win, "proxy-host"));
+}
+
+#[gpui_kit::test]
+fn an_empty_custom_proxy_and_an_empty_host_override_never_reach_the_file(cx: &mut TestAppContext) {
+    let (col, win, ed) = network_editor(cx, ROOT);
+    segment(cx, win, "proxy-mode", 2);
+    cx.update_window(win, |_, w, cx| w.click("host-add", cx))
+        .unwrap();
+    frame(cx, win);
+    assert_eq!(save_and_read(cx, win, &ed, &col), ROOT);
+    segment(cx, win, "proxy-mode", 0);
+    assert_eq!(
+        save_and_read(cx, win, &ed, &col),
+        ROOT,
+        "no empty proxy block"
+    );
+}
+
+#[gpui_kit::test]
 fn a_dotenv_passphrase_shows_a_badge_and_replace_takes_a_new_value(cx: &mut TestAppContext) {
     let mut cert = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
     cert.passphrase = "{{process.env.APINATA_CERT_PASSPHRASE_1}}".into();
@@ -643,4 +697,39 @@ fn a_dotenv_passphrase_shows_a_badge_and_replace_takes_a_new_value(cx: &mut Test
         })
     });
     assert_eq!(sent.expect("certificates sent")[0].passphrase, "new-pp");
+}
+
+#[gpui_kit::test]
+fn a_saved_custom_proxy_without_a_host_says_requests_fail(cx: &mut TestAppContext) {
+    let (win, host) = section(cx, with_proxy(custom("http", "", None)), false);
+    assert!(present(cx, win, "proxy-host-fails"));
+    assert!(!present(cx, win, "proxy-host-incomplete"));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let unsaved = s.read_with(cx, |s, cx| s.unsaved(cx));
+    assert!(
+        !unsaved.iter().any(|w| w.starts_with("Not saved: Proxy")),
+        "{unsaved:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn an_echo_keeps_a_cleared_proxy_host_cleared(cx: &mut TestAppContext) {
+    let network = with_proxy(custom("http", "proxy.local", None));
+    let (win, host) = section(cx, network.clone(), false);
+    let before = edit_count(cx, &host);
+    replace_input(cx, win, None, "proxy-host", "");
+    cx.run_until_parked();
+    assert_eq!(edit_count(cx, &host), before, "a blank host is not sent");
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    use apinata_app::network_section::NetworkField;
+    let typed = s.read_with(cx, |s, cx| {
+        s.input(NetworkField::Host).read(cx).value().to_string()
+    });
+    assert_eq!(typed, "");
+    assert!(present(cx, win, "proxy-host-incomplete"));
 }

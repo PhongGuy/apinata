@@ -16,7 +16,7 @@ use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::multipart::{Part, PartValue, file_type};
+use crate::multipart::{Part, PartValue, file_content_type};
 use crate::resolve::{Body, ResolvedRequest, SendAuth};
 
 /// A language or tool `generate` writes. `ALL` is the picker's order.
@@ -248,7 +248,7 @@ pub(crate) fn disposition_escape(name: &str) -> String {
 /// looks up from its extension, as curl does. An untyped text part has none.
 pub(crate) fn part_type(part: &Part) -> Option<&str> {
     match part.value() {
-        PartValue::File(path) => Some(part.content_type().unwrap_or(file_type(path))),
+        PartValue::File(path) => Some(part.content_type().unwrap_or(file_content_type(path))),
         PartValue::Text(_) => part.content_type(),
     }
 }

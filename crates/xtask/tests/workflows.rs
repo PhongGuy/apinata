@@ -177,7 +177,7 @@ fn ci_runs_the_make_gate_on_linux_for_master_and_pull_requests() {
         }
         assert_eq!(
             str_of(&body["runs-on"]),
-            "ubuntu-24.04",
+            "ubuntu-26.04",
             "{job:?} runs off Linux"
         );
     }

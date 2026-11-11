@@ -137,9 +137,9 @@ pub(crate) fn new_boundary() -> String {
     format!("{}{high:016x}{low:08x}", "-".repeat(26))
 }
 
-/// The MIME type form-data gives a file part: mime-db's type for the lower-cased extension,
-/// else `application/octet-stream`.
-pub(crate) fn file_type(path: &Path) -> &'static str {
+/// The MIME type of the file at `path`, looked up in mime-db by its lower-cased extension;
+/// `application/octet-stream` when it has no extension or an unknown one.
+pub fn file_content_type(path: &Path) -> &'static str {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(str::to_ascii_lowercase)
@@ -174,7 +174,7 @@ pub(crate) async fn encode(
                 })?;
                 let file_name = path.file_name().unwrap_or_default().to_string_lossy();
                 head.push_str(&format!("; filename=\"{file_name}\""));
-                (bytes, Some(file_type(path)))
+                (bytes, Some(file_content_type(path)))
             }
         };
         head.push_str("\r\n");
@@ -311,7 +311,7 @@ mod tests {
             ("/x/.json", "application/octet-stream"),
         ];
         for (path, want) in cases {
-            assert_eq!(file_type(Path::new(path)), want, "{path}");
+            assert_eq!(file_content_type(Path::new(path)), want, "{path}");
         }
     }
 

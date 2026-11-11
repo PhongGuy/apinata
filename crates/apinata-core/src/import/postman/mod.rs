@@ -497,7 +497,7 @@ fn request_body(body: &Body, headers: &[Value]) -> Result<BodySpec, String> {
         Some("file") => {
             let path = ensure_string(body.file.as_ref().and_then(|f| field(f, "src")));
             let mut entry = FileEntry::new(path.as_str());
-            entry.content_type = multipart::file_type(Path::new(&path)).to_owned();
+            entry.content_type = multipart::file_content_type(Path::new(&path)).to_owned();
             entry.selected = true;
             BodySpec::File(vec![entry])
         }

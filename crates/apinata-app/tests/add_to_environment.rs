@@ -5,6 +5,7 @@ use crate::support;
 use apinata_app::command::{Command, EnvOp};
 use apinata_app::env_editor::EnvEditor;
 use apinata_app::response_pane::ResponsePane;
+use apinata_app::send_model::SendState;
 use apinata_app::tabs::TabKind;
 use apinata_app::workspace::{EnvIntent, Workspace};
 use gpui_kit::test::TestWindowExt as _;
@@ -13,6 +14,7 @@ use gpui_kit::{
 };
 use std::path::Path;
 use support::*;
+use wiremock::ResponseTemplate;
 
 const DEV: &str = "name: dev\nvariables:\n  - name: host\n    value: x\n  - name: off\n    value: \"1\"\n    enabled: false\n";
 const PROD: &str = "name: prod\n";
@@ -317,4 +319,126 @@ fn a_create_that_cannot_be_sent_forgets_the_pending_variable(cx: &mut TestAppCon
         ed.read_with(cx, |e, _| e.pending_add().map(str::to_owned)),
         None
     );
+}
+
+fn selected(cx: &mut TestAppContext, ws: &Entity<Workspace>, root: &Path) -> Option<String> {
+    ws.read_with(cx, |w, cx| w.selected_environment(root, cx))
+}
+
+#[gpui_kit::test]
+fn with_no_selection_the_add_selects_its_target_and_never_moves_one(cx: &mut TestAppContext) {
+    let col = with_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    assert_eq!(selected(cx, &ws, &root), None);
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("dev"));
+
+    ws.update(cx, |w, cx| {
+        w.select_environment(&root, Some("prod".into()), cx)
+    });
+    cx.run_until_parked();
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "y", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("prod"));
+}
+
+#[gpui_kit::test]
+fn an_environment_created_for_the_variable_is_selected(cx: &mut TestAppContext) {
+    let col = without_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    let (_win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    ed.update(cx, |e, cx| e.create("qa", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("qa"));
+}
+
+#[gpui_kit::test]
+fn a_plain_create_leaves_the_selection_alone(cx: &mut TestAppContext) {
+    let col = with_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (_win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    ed.update(cx, |e, cx| e.create("qa", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root), None);
+}
+
+#[gpui_kit::test]
+fn a_create_while_another_env_is_selected_keeps_that_selection(cx: &mut TestAppContext) {
+    let col = without_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    let (_win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    // Another environment is made and selected while the one for the variable is created.
+    ed.update(cx, |e, cx| e.create("qa", cx));
+    let other = Command::Env(EnvOp::Create {
+        name: "other".into(),
+    });
+    ws.update(cx, |w, cx| {
+        w.send(&root, other, cx);
+        w.select_environment(&root, Some("other".into()), cx)
+    });
+    cx.run_until_parked();
+    assert!(rows(cx, &ed).iter().any(|r| r.0 == "x"), "the row is added");
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("other"));
+}
+
+fn switch_label(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(("response-switch-env", ix))
+            .and_then(|b| b.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn switching_to_the_defining_environment_sends_again(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200));
+    let prod = format!(
+        "name: prod\nvariables:\n  - name: base\n    value: \"{}\"\n",
+        server.uri()
+    );
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "{{base}}/ok")),
+        ("environments/dev.yml", DEV),
+        ("environments/prod.yml", &prod),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = ed.read_with(cx, |e, _| e.send_model().clone());
+    cx.update_window(win, |_, w, cx| w.click("send", cx))
+        .unwrap();
+    wait_real(cx, |cx| model.read_with(cx, |m, _| !m.is_sending()));
+    assert_eq!(switch_label(cx, win, 0).as_deref(), Some("Switch to prod"));
+    assert_eq!(switch_label(cx, win, 1), None);
+    // Offered first: switching is the fix that needs no typing.
+    let (switch, add) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let switch = w.find(("response-switch-env", 0usize)).bounds().left();
+            (switch, w.find("response-add-env").bounds().left())
+        })
+        .unwrap();
+    assert!(switch < add, "{switch:?} {add:?}");
+    cx.update_window(win, |_, w, cx| w.click(("response-switch-env", 0usize), cx))
+        .unwrap();
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| match m.state() {
+            SendState::Done(r) => r.response.as_ref().map(|r| r.status()) == Some(200),
+            _ => false,
+        })
+    });
+    assert_eq!(served(cx, &server), ["/ok"]);
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("prod"));
+
+    let bare = with_envs();
+    let (win2, _ws2, _root2, _state2) = pane_after_undefined(cx, &bare);
+    assert_eq!(switch_label(cx, win2, 0), None);
 }

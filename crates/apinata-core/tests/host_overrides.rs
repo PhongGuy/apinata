@@ -285,3 +285,15 @@ fn a_zone_id_in_an_override_address_is_a_typed_error_naming_it() {
         }
     }
 }
+
+#[test]
+fn an_incomplete_row_in_the_file_fails_naming_the_setting_and_the_file() {
+    for (host, address) in [("", ""), ("fake.test", ""), ("", "127.0.0.1")] {
+        let err = resolve(&[(host, address, false)], "http://x.test/").unwrap_err();
+        let text = err.to_string();
+        assert!(
+            text.contains("Network settings") && text.contains("opencollection.yml"),
+            "{text}"
+        );
+    }
+}

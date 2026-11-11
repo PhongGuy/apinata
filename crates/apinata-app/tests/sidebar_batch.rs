@@ -1,5 +1,8 @@
 use apinata_app::command::{Notice, NoticeKind, Target};
-use apinata_app::sidebar::batch::{Batch, Verb, bulk_delete_ask, items_label};
+use apinata_app::sidebar::batch::{
+    Batch, Verb, bulk_delete_ask, items_label, permanent_delete_ask,
+};
+use apinata_app::sidebar::multi::Tally;
 use apinata_app::ui::ToastKind;
 use apinata_core::ItemPath;
 use std::path::PathBuf;
@@ -142,25 +145,75 @@ fn settle_counts_a_silent_command_as_done_once_acknowledged() {
 
 #[test]
 fn counts_and_the_delete_prompt_text() {
+    let t = |folders, requests| Tally {
+        folders,
+        requests,
+        others: 0,
+    };
+    let none = Tally::default();
     assert_eq!(items_label(1), "1 item");
     assert_eq!(items_label(5), "5 items");
-    let clean = bulk_delete_ask(3, true, false);
-    assert_eq!(&*clean.title, "Delete 3 items?");
+    let clean = bulk_delete_ask(t(1, 2), none, false);
+    assert_eq!(&*clean.title, "Delete 1 folder and 2 requests?");
     assert_eq!(
         clean.detail.as_deref(),
         Some("Folders are deleted with everything inside them.")
     );
-    let dirty = bulk_delete_ask(2, true, true);
+    let dirty = bulk_delete_ask(t(1, 1), none, true);
     assert_eq!(
         dirty.detail.as_deref(),
         Some("Folders are deleted with everything inside them. Unsaved edits are lost.")
     );
     assert_eq!((dirty.default, dirty.cancel), (1, 0));
     // Without a folder in the set, the folder sentence is left out.
-    assert_eq!(bulk_delete_ask(2, false, false).detail, None);
     assert_eq!(
-        bulk_delete_ask(2, false, true).detail.as_deref(),
+        &*bulk_delete_ask(t(0, 2), none, false).title,
+        "Delete 2 requests?"
+    );
+    assert_eq!(bulk_delete_ask(t(0, 2), none, false).detail, None);
+    assert_eq!(
+        bulk_delete_ask(t(0, 2), none, true).detail.as_deref(),
         Some("Unsaved edits are lost.")
+    );
+}
+
+// Rows nobody selected that go with their folder are counted out in the prompt.
+#[test]
+fn the_delete_prompt_counts_rows_inside_folders_that_were_not_selected() {
+    let t = |folders, requests, others| Tally {
+        folders,
+        requests,
+        others,
+    };
+    let detail = |ask: apinata_app::confirm::Ask| ask.detail.map(|d| d.to_string());
+    assert_eq!(
+        detail(bulk_delete_ask(t(1, 5, 0), t(0, 1, 0), false)).as_deref(),
+        Some("1 request in this folder was not selected and will be deleted too.")
+    );
+    assert_eq!(
+        detail(bulk_delete_ask(t(2, 4, 0), t(0, 3, 0), true)).as_deref(),
+        Some(
+            "3 requests in these folders were not selected and will be deleted too. \
+             Unsaved edits are lost."
+        )
+    );
+    assert_eq!(
+        detail(permanent_delete_ask(t(1, 0, 0), t(0, 2, 0), false)).as_deref(),
+        Some(
+            "2 requests in this folder were not selected and will be deleted too. \
+             This is permanent."
+        )
+    );
+    assert_eq!(
+        detail(bulk_delete_ask(t(1, 1, 0), t(0, 0, 1), false)).as_deref(),
+        Some("1 other file in this folder was not selected and will be deleted too.")
+    );
+    assert_eq!(
+        detail(bulk_delete_ask(t(2, 0, 0), t(0, 1, 2), false)).as_deref(),
+        Some(
+            "1 request and 2 other files in these folders were not selected and will be \
+             deleted too."
+        )
     );
 }
 

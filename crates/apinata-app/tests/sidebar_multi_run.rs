@@ -3,7 +3,7 @@ use crate::support;
 use apinata_app::palette::{Availability, index_path, palette_items, palette_items_for};
 use apinata_app::runner_model::{RunState, RunnerModel};
 use apinata_app::sidebar::menu::MenuEntry;
-use apinata_app::sidebar::multi::{SelKey, run_count, run_items};
+use apinata_app::sidebar::multi::{Multi, SelKey, Tally, row_keys, run_count, run_items, tally};
 use apinata_app::sidebar::{RunSelected, SidebarEvent};
 use apinata_app::snapshot::SnapshotCache;
 use apinata_app::tabs::TabKind;
@@ -29,6 +29,41 @@ fn run_count_expands_folders_from_the_snapshot_rows() {
     assert_eq!(run_count(&c.rows, &[k("f")]), 2);
     assert_eq!(run_count(&c.rows, &[k("f"), k("a.yml")]), 3);
     assert_eq!(run_count(&c.rows, &[k("w.yml")]), 0);
+}
+
+// Rows inside a selected folder that were not selected themselves, at any depth.
+#[test]
+fn unpicked_rows_are_those_a_selected_folder_carries_along() {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("f/folder.yml", &folder("F")),
+        ("f/x.yml", &request("X", "http://x/x")),
+        ("f/g/folder.yml", &folder("G")),
+        ("f/g/y.yml", &request("Y", "http://x/y")),
+        ("a.yml", &request("A", "http://x/a")),
+        ("w.yml", SOCKET),
+    ]);
+    let c = SnapshotCache::new().build(&Collection::open(dir.path()).unwrap());
+    let k = |p: &str| SelKey::new(dir.path(), ip(p));
+    let mut m = Multi::default();
+    m.admit([k("f"), k("f/x.yml"), k("a.yml"), k("w.yml")]);
+    let unpicked: Vec<&str> = m
+        .unpicked(&c.rows)
+        .iter()
+        .map(|r| r.path.as_str())
+        .collect();
+    assert_eq!(unpicked, ["f/g", "f/g/y.yml"]);
+    let top = m.normalised(&row_keys(dir.path(), &c.rows));
+    assert_eq!(
+        tally(&c.rows, &top),
+        Tally {
+            folders: 1,
+            requests: 1,
+            others: 1
+        }
+    );
+    m.admit([k("f/g"), k("f/g/y.yml")]);
+    assert!(m.unpicked(&c.rows).is_empty());
 }
 
 #[gpui_kit::test]

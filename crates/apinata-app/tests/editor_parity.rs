@@ -244,15 +244,19 @@ fn body_multipart_disable(cx: &mut TestAppContext) {
 fn body_file(cx: &mut TestAppContext) {
     let c = case(cx, "body-file");
     body_mode(cx, &c, BodyMode::File);
+    // A pick fills a blank content type, which the reference editor does not; the cells are
+    // retyped and cleared so the saved entries still match the reference's.
     pick(cx, &c, 0, &["data/a.bin"]);
-    typed(
+    replace_input(
         cx,
-        &c,
-        "body",
+        c.win,
+        Some("body"),
         ("kv-ctype", 0usize),
         "application/octet-stream",
     );
+    cx.run_until_parked();
     pick(cx, &c, 1, &["b.json"]);
+    replace_input(cx, c.win, Some("body"), ("kv-ctype", 1usize), "");
     finish(cx, &c, "body-file");
 }
 
