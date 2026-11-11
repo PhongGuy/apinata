@@ -337,7 +337,8 @@ impl Sidebar {
                         t.set_selected_index(Some(0), cx);
                     }
                     t.focus(window, cx)
-                })
+                });
+                this.settle_selection(cx);
             }),
             cx.subscribe_in(&filter, window, Self::filter_event),
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -515,6 +516,12 @@ impl Sidebar {
         if !self.key_of(&id).is_some_and(|k| self.multi.contains(&k)) {
             self.clear_multi(cx);
         }
+    }
+
+    // Takes a selection the sidebar made itself as seen, so only a user's move of the
+    // selection changes the current collection.
+    fn settle_selection(&mut self, cx: &App) {
+        self.seen_selection = self.tree.read(cx).selected_item().map(|i| i.id.clone());
     }
 
     // Selecting a row in another collection makes that collection current.
@@ -2091,6 +2098,7 @@ impl Sidebar {
             self.followed = Some(tab);
         }
         self.apply_pending_focus(window, cx);
+        self.settle_selection(cx);
     }
 
     // The row that takes a removed row's place: its old index clamped to the rows left, or

@@ -449,13 +449,6 @@ impl apinata_core::Trash for NoTrash {
     }
 }
 
-// A collection made current by hand and the tab activation count it was made at; the next tab
-// activation hands the current collection back to the active tab.
-struct Chosen {
-    root: PathBuf,
-    at: u64,
-}
-
 /// The window's open collections and its session.
 pub struct Workspace {
     store: Arc<dyn SecretStore>,
@@ -465,7 +458,6 @@ pub struct Workspace {
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
-    chosen: Option<Chosen>,
     factory: Option<WatchFactory>,
     // `CreateDraft` commands sent by `new_draft`, by root and command id, awaiting `Created`;
     // ids restart with each actor, so a closed root's entries are dropped.
@@ -567,7 +559,6 @@ impl Workspace {
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
-            chosen: None,
             factory: None,
             drafts: HashSet::new(),
             draft_imports: HashMap::new(),
@@ -905,6 +896,9 @@ impl Workspace {
         let root = absolute(root);
         self.collections.retain(|c| c.root != root);
         self.tabs.retain(|e| e.root != root);
+        if self.tabs.chosen_root() == Some(root.as_path()) {
+            self.tabs.choose_root(None);
+        }
         self.drafts.retain(|(r, _)| *r != root);
         self.draft_keys.retain(|(r, _), _| *r != root);
         self.saved_drafts.retain(|(r, _), _| *r != root);
@@ -1595,10 +1589,9 @@ impl Workspace {
     /// The collection the environment controls act on: the one last chosen by hand while no
     /// tab has been activated since, else the active tab's, else the first open.
     pub fn current_root(&self) -> Option<PathBuf> {
-        let chosen = (self.chosen.as_ref())
-            .filter(|c| c.at == self.tabs.activations() && self.entry(&c.root).is_some());
-        chosen
-            .map(|c| c.root.clone())
+        (self.tabs.chosen_root())
+            .filter(|root| self.entry(root).is_some())
+            .map(Path::to_path_buf)
             .or_else(|| self.tabs.active().map(|t| t.root.clone()))
             .or_else(|| self.user_collections().first().map(|c| c.root.clone()))
     }
@@ -1609,8 +1602,7 @@ impl Workspace {
         if self.entry(&root).is_none() || self.current_root().as_ref() == Some(&root) {
             return;
         }
-        let at = self.tabs.activations();
-        self.chosen = Some(Chosen { root, at });
+        self.tabs.choose_root(Some(root));
         cx.notify();
     }
 

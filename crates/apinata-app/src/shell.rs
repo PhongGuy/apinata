@@ -760,8 +760,13 @@ impl Shell {
         }
     }
 
-    fn on_open_collection(&mut self, _: &OpenCollection, _: &mut Window, cx: &mut Context<Self>) {
-        self.prompt_open(cx);
+    fn on_open_collection(
+        &mut self,
+        _: &OpenCollection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.prompt_open(window, cx);
     }
 
     // A hidden panel leaves the rendered tree, and focus inside it would drop to the window
@@ -906,21 +911,21 @@ impl Shell {
     }
 
     // Asks for one directory and opens it; a cancelled or failed prompt does nothing.
-    fn prompt_open(&mut self, cx: &mut Context<Self>) {
+    fn prompt_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
             prompt: Some("Open collection".into()),
         });
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = reply.await else {
                 return;
             };
             let Some(root) = paths.into_iter().next() else {
                 return;
             };
-            let _ = this.update(cx, |shell, cx| shell.open(root, cx));
+            let _ = this.update_in(cx, |shell, window, cx| shell.open(root, window, cx));
         })
         .detach();
     }
@@ -1073,7 +1078,7 @@ impl Shell {
             let job = cx.background_spawn(async move { crate::demo_collection::install(&parent) });
             let result = job.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
-                Ok(root) => this.open(root, cx),
+                Ok(root) => this.open(root, window, cx),
                 Err(e) => {
                     let text: SharedString = crate::ui::plain_quotes(&e.to_string()).into();
                     window.open_alert_dialog(cx, move |dialog, _, _| {
@@ -1159,7 +1164,7 @@ impl Shell {
             for dropped in sniffed {
                 match dropped {
                     Dropped::Folder(root) => {
-                        let _ = this.update(cx, |this, cx| this.open(root, cx));
+                        let _ = this.update_in(cx, |this, window, cx| this.open(root, window, cx));
                     }
                     Dropped::Request(request) => {
                         let _ = this.update(cx, |this, cx| this.draft_from_drop(*request, cx));
@@ -1206,7 +1211,7 @@ impl Shell {
                 cx.background_spawn(async move { crate::save_draft::create_collection(&dir) });
             let result = job.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
-                Ok(root) => this.open(root, cx),
+                Ok(root) => this.open(root, window, cx),
                 Err(message) => {
                     let text: SharedString = message.into();
                     window.open_alert_dialog(cx, move |dialog, _, _| {
@@ -1369,14 +1374,19 @@ impl Shell {
         (self.recent_names.get(root).cloned()).unwrap_or_else(|| display_name(root))
     }
 
-    // A collection already open becomes current at once; a new one once it has loaded.
-    fn open(&mut self, root: PathBuf, cx: &mut Context<Self>) {
+    // A collection already open becomes current and is revealed at once; a new one once it has
+    // loaded. A folder of collections only opens them.
+    fn open(&mut self, root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let absolute = crate::workspace::absolute(&root);
-        self.opening = Some(absolute.clone());
-        self.workspace.update(cx, |w, cx| {
-            w.set_current_root(&absolute, cx);
-            w.open_path(root, cx);
-        });
+        let is_open = |w: &Workspace| w.collections().iter().any(|c| c.root() == absolute);
+        let was_open = is_open(self.workspace.read(cx));
+        self.workspace.update(cx, |w, cx| w.open_path(root, cx));
+        self.opening = None;
+        if was_open {
+            self.reveal_collection(&absolute, window, cx);
+        } else if is_open(self.workspace.read(cx)) {
+            self.opening = Some(absolute);
+        }
         cx.notify();
     }
 
@@ -1396,6 +1406,9 @@ impl Shell {
                 self.refresh_recent_names(cx);
             }
             WorkspaceEvent::OpenFailed { root, message } => {
+                if self.opening.as_ref() == Some(root) {
+                    self.opening = None;
+                }
                 let text: SharedString = crate::import_report::open_failure(root, message).into();
                 window.open_alert_dialog(cx, move |dialog, _, _| {
                     dialog
@@ -1515,7 +1528,9 @@ impl Shell {
                 .rounded(cx.theme().radius)
                 .cursor_pointer()
                 .hover(move |d| d.bg(hover))
-                .on_click(cx.listener(move |this, _, _, cx| this.open(root.clone(), cx)))
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.open(root.clone(), window, cx)),
+                )
                 .child(div().truncate().child(name))
                 .child(
                     div()
@@ -1807,7 +1822,7 @@ impl Shell {
                     );
                     let button = switcher_row(("recent", ix), names[&root].clone(), false)
                         .on_click(cx.listener(move |state, _, window, cx| {
-                            shell.update(cx, |s, cx| s.open(root.clone(), cx));
+                            shell.update(cx, |s, cx| s.open(root.clone(), window, cx));
                             state.dismiss(window, cx);
                         }));
                     v_flex().w_full().min_w_0().child(button).child(path)
@@ -1862,7 +1877,7 @@ impl Shell {
                             .on_click(cx.listener(move |state, _, window, cx| {
                                 state.dismiss(window, cx);
                                 shell.update(cx, |s, cx| match id {
-                                    "switcher-open-collection" => s.prompt_open(cx),
+                                    "switcher-open-collection" => s.prompt_open(window, cx),
                                     "switcher-import-collection" => s.prompt_import(window, cx),
                                     "switcher-clone-repository" => {
                                         s.clone_repository(&CloneRepository, window, cx)
@@ -3328,7 +3343,7 @@ async fn place_bundles(
     let _ = this.update_in(cx, |this, window, cx| {
         // Open what landed before any error, so the user sees it behind the alert.
         for root in roots {
-            this.open(root, cx);
+            this.open(root, window, cx);
         }
         if let Some(report) = report {
             if !report.notes.is_empty() {
