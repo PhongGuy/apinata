@@ -29,19 +29,7 @@ pub(crate) async fn sign_in(
     tag: &SendTag,
 ) -> Result<Map<String, Value>, OAuth2Error> {
     let implicit = cfg.flow == OAuth2Flow::Implicit;
-    if implicit && cfg.callback_url.is_empty() {
-        return Err(OAuth2Error::MissingField {
-            field: "callbackUrl",
-        });
-    }
-    if !implicit {
-        cfg.require_token_request()?;
-    }
-    if cfg.authorization_url.is_empty() {
-        return Err(OAuth2Error::MissingField {
-            field: "authorizationUrl",
-        });
-    }
+    cfg.require_sign_in()?;
     let state = state_for(&cfg.state)?;
     let pkce = if cfg.pkce {
         Some(Pkce::generate()?)

@@ -144,6 +144,28 @@ pub fn oauth2_field_label(key: &str) -> &'static str {
     }
 }
 
+/// The file keys of the settings `spec`'s grant cannot fetch a token without that are blank,
+/// in the editor's order. A placeholder counts as set, since only resolving it can tell.
+pub fn oauth2_missing_fields(spec: &crate::OAuth2Spec) -> Vec<&'static str> {
+    use crate::{OAuth2Flow, TokenPlacement};
+    let (flow, implicit) = (spec.flow, spec.flow == OAuth2Flow::Implicit);
+    let interactive = implicit || flow == OAuth2Flow::AuthorizationCode;
+    let query_key =
+        matches!(&spec.token_placement, TokenPlacement::Query { key } if key.is_empty());
+    [
+        (interactive, "authorizationUrl", &spec.authorization_url),
+        (!implicit, "accessTokenUrl", &spec.access_token_url),
+        (implicit, "callbackUrl", &spec.callback_url),
+        (true, "clientId", &spec.client_id),
+        (flow == OAuth2Flow::Password, "username", &spec.username),
+    ]
+    .into_iter()
+    .filter(|(needed, _, text)| *needed && text.is_empty())
+    .map(|(_, key, _)| key)
+    .chain(query_key.then_some("tokenConfig.placement.query"))
+    .collect()
+}
+
 /// Why an OAuth 2.0 token could not be obtained or placed. Text from the provider is already
 /// scrubbed of secrets, so the derived `Debug` is safe.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -243,5 +265,42 @@ impl From<ResolveError> for OAuth2Error {
 impl From<ExecError> for OAuth2Error {
     fn from(e: ExecError) -> OAuth2Error {
         OAuth2Error::Exec(e)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::oauth2_missing_fields;
+    use crate::{OAuth2Flow, OAuth2Spec, TokenPlacement};
+
+    #[test]
+    fn every_blank_required_setting_is_listed_in_form_order() {
+        let blank = |flow| oauth2_missing_fields(&OAuth2Spec::new(flow));
+        assert_eq!(
+            blank(OAuth2Flow::ClientCredentials),
+            ["accessTokenUrl", "clientId"]
+        );
+        assert_eq!(
+            blank(OAuth2Flow::Password),
+            ["accessTokenUrl", "clientId", "username"]
+        );
+        assert_eq!(
+            blank(OAuth2Flow::AuthorizationCode),
+            ["authorizationUrl", "accessTokenUrl", "clientId"]
+        );
+        assert_eq!(
+            blank(OAuth2Flow::Implicit),
+            ["authorizationUrl", "callbackUrl", "clientId"]
+        );
+    }
+
+    #[test]
+    fn a_placeholder_counts_as_set_and_an_empty_query_key_is_missing() {
+        let mut o = OAuth2Spec::new(OAuth2Flow::ClientCredentials);
+        o.access_token_url = "{{tokenUrl}}".into();
+        o.client_id = "app".into();
+        assert!(oauth2_missing_fields(&o).is_empty());
+        o.token_placement = TokenPlacement::Query { key: String::new() };
+        assert_eq!(oauth2_missing_fields(&o), ["tokenConfig.placement.query"]);
     }
 }

@@ -167,6 +167,25 @@ impl TokenConfig {
         Ok(())
     }
 
+    /// Fails with `MissingField` for the first setting a browser sign-in cannot go without.
+    pub(crate) fn require_sign_in(&self) -> Result<(), OAuth2Error> {
+        let implicit = self.flow == OAuth2Flow::Implicit;
+        if implicit && self.callback_url.is_empty() {
+            return Err(OAuth2Error::MissingField {
+                field: "callbackUrl",
+            });
+        }
+        if !implicit {
+            self.require_token_request()?;
+        }
+        if self.authorization_url.is_empty() {
+            return Err(OAuth2Error::MissingField {
+                field: "authorizationUrl",
+            });
+        }
+        Ok(())
+    }
+
     /// Whether the grant needs a browser sign-in.
     pub(crate) fn is_interactive(&self) -> bool {
         matches!(
@@ -411,5 +430,69 @@ mod tests {
         assert_eq!(cfg.token_url, "https://id.test/token");
         let cc = config_of(CC, vars()).unwrap();
         assert!(!cc.pkce && cc.callback_url.is_empty() && cc.authorization_url.is_empty());
+    }
+
+    // The first blank setting core refuses for `spec`, by the checks a Get token runs.
+    fn first_refused(spec: &OAuth2Spec) -> Option<&'static str> {
+        let (_dir, c, ctx) = open(
+            &[
+                ("opencollection.yml", ROOT),
+                ("r.yml", &request("    type: none\n")),
+            ],
+            ContextOptions::new(),
+        );
+        let req = c.request(&ItemPath::new("r.yml").unwrap()).unwrap();
+        let checked = TokenConfig::new(spec, req, &ctx).and_then(|cfg| {
+            if !cfg.is_interactive() {
+                return cfg.require_token_request();
+            }
+            cfg.require_sign_in()?;
+            super::super::authorize::authorization_url(&cfg, "http://127.0.0.1:9/cb", "s", None)
+                .map(drop)
+        });
+        match checked {
+            Ok(()) => None,
+            Err(OAuth2Error::MissingField { field }) => Some(field),
+            Err(other) => panic!("expected MissingField, got {other:?}"),
+        }
+    }
+
+    // `oauth2_missing_fields` lists exactly what core refuses: blanking each setting in turn on
+    // a complete spec, the list holds that setting if and only if core stops on it.
+    #[test]
+    fn the_editor_check_matches_what_core_refuses() {
+        type Blank = fn(&mut OAuth2Spec);
+        let blanks: [(&str, Blank); 6] = [
+            ("authorizationUrl", |o| o.authorization_url.clear()),
+            ("accessTokenUrl", |o| o.access_token_url.clear()),
+            ("callbackUrl", |o| o.callback_url.clear()),
+            ("clientId", |o| o.client_id.clear()),
+            ("username", |o| o.username.clear()),
+            ("tokenConfig.placement.query", |o| {
+                o.token_placement = TokenPlacement::Query { key: String::new() }
+            }),
+        ];
+        for flow in [
+            OAuth2Flow::ClientCredentials,
+            OAuth2Flow::Password,
+            OAuth2Flow::AuthorizationCode,
+            OAuth2Flow::Implicit,
+        ] {
+            let mut full = OAuth2Spec::new(flow);
+            full.authorization_url = "https://id.test/authorize".into();
+            full.access_token_url = "https://id.test/token".into();
+            full.callback_url = "http://127.0.0.1:9/cb".into();
+            full.client_id = "app".into();
+            full.username = "u".into();
+            full.token_placement = TokenPlacement::Query { key: "t".into() };
+            assert_eq!(first_refused(&full), None, "{flow:?}");
+            assert!(crate::oauth2_missing_fields(&full).is_empty(), "{flow:?}");
+            for (key, blank) in blanks {
+                let mut o = full.clone();
+                blank(&mut o);
+                let refused: Vec<_> = first_refused(&o).into_iter().collect();
+                assert_eq!(crate::oauth2_missing_fields(&o), refused, "{flow:?} {key}");
+            }
+        }
     }
 }

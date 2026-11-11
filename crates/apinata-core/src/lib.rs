@@ -249,7 +249,7 @@ pub use network::{
 pub use oauth2::{
     AuthorizationPrompt, AuthorizeCancelled, AuthorizeOptions, Authorizer, OAuth2Error,
     OAuth2Target, TokenCache, TokenStatus, check_redirect, clear_oauth2_token, is_oauth2,
-    oauth2_field_label, oauth2_name_hidden, oauth2_status,
+    oauth2_field_label, oauth2_missing_fields, oauth2_name_hidden, oauth2_status,
 };
 pub use opaque::OpaqueItem;
 pub use paging::{MAX_PAGE_LIMIT, PageError};

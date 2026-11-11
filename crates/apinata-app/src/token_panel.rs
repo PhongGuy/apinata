@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use apinata_core::{
-    AuthorizeOptions, CancelHandle, ItemPath, OAuth2Target, Persistence, RequestFile, RunPlan,
-    TokenStatus, VarContext, clear_oauth2_token, oauth2_status,
+    AuthorizeOptions, CancelHandle, ItemPath, OAuth2Error, OAuth2Target, Persistence, RequestFile,
+    RunPlan, TokenStatus, VarContext, clear_oauth2_token, oauth2_status,
 };
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -22,6 +22,12 @@ use crate::{executor, oauth2_tokens, settings, style, tokio_bridge, ui};
 
 /// Where the panel's auth lives, read on every refresh (requests can be renamed).
 pub type Locate = Box<dyn Fn(&App) -> Option<(PathBuf, Target)>>;
+
+/// Run before Get token: the labels of the required fields left blank, which it marks.
+pub type Check = Box<dyn Fn(&mut App) -> Vec<&'static str>>;
+
+/// The neutral line a sign-in the user cancelled leaves.
+pub const CANCELLED: &str = "Sign-in cancelled";
 
 // How often the status is read again, for the expiry countdown and environment switches.
 const REREAD: Duration = Duration::from_secs(15);
@@ -49,8 +55,14 @@ impl Planned {
     }
 }
 
-// An action's error, if it had one, and the status read after it.
-type Outcome = (Option<String>, Result<Option<TokenStatus>, String>);
+// How an action ended short: an error, or a sign-in the user cancelled, which is none.
+enum Stopped {
+    Failed(String),
+    Cancelled,
+}
+
+// An action's stop, if it had one, and the status read after it.
+type Outcome = (Option<Stopped>, Result<Option<TokenStatus>, String>);
 
 /// Shows the cached token of one auth and offers Get token, Refresh and Clear.
 pub struct TokenPanel {
@@ -58,6 +70,8 @@ pub struct TokenPanel {
     locate: Locate,
     status: Option<TokenStatus>,
     action_error: Option<String>,
+    action_note: Option<&'static str>,
+    check: Option<Check>,
     read_error: Option<String>,
     memory_only: Option<String>,
     // A read can be replaced at any time; an action is never cut short by a read.
@@ -83,6 +97,8 @@ impl TokenPanel {
             locate,
             status: None,
             action_error: None,
+            action_note: None,
+            check: None,
             read_error: None,
             memory_only: None,
             read: None,
@@ -100,11 +116,30 @@ impl TokenPanel {
             return;
         }
         self.action_error = None;
+        self.action_note = None;
         self.reread(cx);
+    }
+
+    /// Sets the check Get token runs first; blank required fields stop it with one message.
+    pub fn set_check(&mut self, check: Check) {
+        self.check = Some(check);
     }
 
     /// Fetches a token, signing in through the browser for interactive grants.
     pub fn get_token(&mut self, cx: &mut Context<Self>) {
+        if self.action.is_some() {
+            return;
+        }
+        // Only an auth the panel acts on is checked; otherwise the action says why it cannot run.
+        let missing = match &self.check {
+            Some(check) if (self.locate)(cx).is_some() => check(cx),
+            _ => Vec::new(),
+        };
+        if !missing.is_empty() {
+            self.action_error = Some(missing_message(&missing));
+            self.action_note = None;
+            return cx.notify();
+        }
         let how = crate::oauth2_signin::authorize_options(cx);
         self.act(Action::Get(how), cx);
     }
@@ -130,9 +165,11 @@ impl TokenPanel {
         Some(format!("Scopes granted: {scope}"))
     }
 
-    /// The last action's error, else the cache's MemoryOnly reason.
+    /// The last action's error, else its neutral note, else the cache's MemoryOnly reason.
     pub fn notice(&self) -> Option<String> {
-        self.error().or_else(|| self.memory_only.clone())
+        self.error()
+            .or_else(|| self.action_note.map(str::to_owned))
+            .or_else(|| self.memory_only.clone())
     }
 
     /// The last action's error, else the last status read's error.
@@ -171,6 +208,7 @@ impl TokenPanel {
         }
         self.read = None;
         self.action_error = None;
+        self.action_note = None;
         let Some(exec) = executor::shared(cx) else {
             self.action_error = Some("the HTTP client is not ready".into());
             return cx.notify();
@@ -248,7 +286,11 @@ impl TokenPanel {
 
     fn apply(&mut self, (acted, status): Outcome, is_action: bool, persistence: &Persistence) {
         if is_action {
-            self.action_error = acted;
+            (self.action_error, self.action_note) = match acted {
+                Some(Stopped::Failed(e)) => (Some(e), None),
+                Some(Stopped::Cancelled) => (None, Some(CANCELLED)),
+                None => (None, None),
+            };
         }
         match status {
             Ok(status) => {
@@ -296,7 +338,20 @@ async fn perform(
         Some((Action::Clear, _)) => clear_oauth2_token(target, ctx).await.map(drop),
     };
     let status = oauth2_status(target, ctx).map_err(|e| e.to_string());
-    (acted.err().map(|e| e.to_string()), status)
+    let stopped = acted.err().map(|e| match e {
+        OAuth2Error::Cancelled => Stopped::Cancelled,
+        e => Stopped::Failed(e.to_string()),
+    });
+    (stopped, status)
+}
+
+// "A is empty", "A and B are empty" or "A, B and C are empty".
+fn missing_message(labels: &[&str]) -> String {
+    match labels {
+        [] => String::new(),
+        [one] => format!("{one} is empty"),
+        [rest @ .., last] => format!("{} and {last} are empty", rest.join(", ")),
+    }
 }
 
 /// "No token", "Valid, expires in 54 min", "Valid, expires in 2 h 5 min",
@@ -346,6 +401,11 @@ impl Render for TokenPanel {
                 .aria_label(text)
                 .text_color(cx.theme().danger)
         });
+        let note = self.action_note.map(|text| {
+            small("oauth2-token-note", text.to_owned())
+                .aria_label(text)
+                .text_color(cx.theme().muted_foreground)
+        });
         let notice = self.memory_only.clone().map(|text| {
             small("oauth2-token-notice", text.clone())
                 .aria_label(text)
@@ -388,6 +448,7 @@ impl Render for TokenPanel {
                         .map(|text| small("oauth2-token-scope", text)),
                 )
                 .children(error)
+                .children(note)
                 .children(notice),
         ))
     }

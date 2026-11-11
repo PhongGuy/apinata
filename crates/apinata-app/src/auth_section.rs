@@ -962,6 +962,37 @@ pub(crate) fn field(
     )
 }
 
+/// Like `field`, but marked invalid (the danger icon, and a ring while focused) when `invalid`.
+pub(crate) fn checked_field(
+    label: &'static str,
+    id: &'static str,
+    state: &Entity<InputState>,
+    vars: Option<Arc<VariableSet>>,
+    invalid: bool,
+    window: &Window,
+    cx: &App,
+) -> ui::FormRow {
+    let input = ui::invalid_input(
+        Input::new(state)
+            .id(id)
+            .w_full()
+            .bg(ui::field_fill(false, cx)),
+        div().w_full(),
+        state,
+        invalid,
+        (
+            SharedString::from(format!("{id}-danger-ring")).into(),
+            SharedString::from(format!("{id}-invalid-icon")).into(),
+        ),
+        window,
+        cx,
+    );
+    let field = VarField::new(SharedString::from(format!("{id}-vars")), state, input, vars)
+        .w(style::WIDE_INPUT_WIDTH)
+        .max_w_full();
+    ui::form_row(SharedString::from(format!("{id}-row")), label, field)
+}
+
 /// A masked input's row: like `field`, but with variables (tint only) only while its text
 /// is one reference, so a literal is never tokenised.
 pub(crate) fn secret_field(

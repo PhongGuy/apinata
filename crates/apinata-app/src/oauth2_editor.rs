@@ -8,8 +8,7 @@ use apinata_core::{
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::IndexPath;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -19,7 +18,7 @@ use gpui_kit::{
     App, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
 };
 
-use crate::auth_section::{field, secret_field};
+use crate::auth_section::{checked_field, secret_field};
 use crate::kv_table::set_text;
 use crate::network_secrets::{env_name, is_template};
 use crate::snapshot::{DotenvNames, SecretHome};
@@ -28,6 +27,15 @@ use crate::{style, ui};
 
 /// The notice beside a client secret or password the file holds as plain text.
 pub const PLAIN_NOTICE: &str = "Stored in plain text";
+
+/// The hint under "Token ID".
+pub const TOKEN_ID_HINT: &str =
+    "Names the saved token. Settings with the same ID and URL share it.";
+/// The hint under "Token to send".
+pub const TOKEN_SOURCE_HINT: &str = "Which token from the provider's reply goes on the request.";
+/// The hint under "Client authentication".
+pub const CLIENT_AUTH_HINT: &str =
+    "How the client ID and secret are sent: in the body or as a Basic auth header.";
 
 /// The whole spec after any change in the editor, with the owner's load stamp at sending.
 pub struct OAuth2Edit(pub OAuth2Spec, pub u64);
@@ -112,6 +120,11 @@ impl OAuth2Field {
     // Labels come from core so the editor and its error messages name a field alike.
     fn label(self) -> &'static str {
         apinata_core::oauth2_field_label(self.key())
+    }
+
+    // A short explanation under the fields whose label is jargon.
+    fn hint(self) -> Option<&'static str> {
+        (self == OAuth2Field::TokenId).then_some(TOKEN_ID_HINT)
     }
 
     fn masked(self) -> bool {
@@ -241,6 +254,8 @@ pub struct OAuth2Editor {
     replacing: Vec<OAuth2Field>,
     // The `.env` names that are stored or held for the target, which decide the badge.
     dotenv: DotenvNames,
+    // Required fields Get token found blank; each stays marked until it holds text.
+    missing: Vec<OAuth2Field>,
     _subs: Vec<Subscription>,
 }
 
@@ -365,6 +380,7 @@ impl OAuth2Editor {
             stamp: 0,
             replacing: Vec::new(),
             dotenv: DotenvNames::default(),
+            missing: Vec::new(),
             _subs: subs,
         };
         // A query key never set starts as the conventional name.
@@ -581,10 +597,37 @@ impl OAuth2Editor {
         self.notice.as_deref()
     }
 
-    /// Shows `panel` after the parameters table, or none.
+    /// Shows `panel` after the parameters table, or none; its Get token first checks this
+    /// editor's required fields, through a weak handle so the two do not keep each other.
     pub fn set_token_panel(&mut self, panel: Option<Entity<TokenPanel>>, cx: &mut Context<Self>) {
+        if let Some(panel) = &panel {
+            let this = cx.entity().downgrade();
+            panel.update(cx, |p, _| {
+                p.set_check(Box::new(move |cx| {
+                    this.update(cx, |e, cx| e.check_required(cx))
+                        .unwrap_or_default()
+                }))
+            });
+        }
         self.token_panel = panel;
         cx.notify();
+    }
+
+    /// Marks every required field left blank and returns their labels, in form order.
+    pub fn check_required(&mut self, cx: &mut Context<Self>) -> Vec<&'static str> {
+        let keys = apinata_core::oauth2_missing_fields(&self.spec(cx));
+        self.missing = FIELDS
+            .into_iter()
+            .filter(|f| keys.contains(&f.key()))
+            .collect();
+        cx.notify();
+        self.missing.iter().map(|f| f.label()).collect()
+    }
+
+    // Unmarks the fields that now hold text, or that the spec no longer shows.
+    fn forget_filled(&mut self, spec: &OAuth2Spec) {
+        self.missing
+            .retain(|f| f.shown_for(spec.flow) && f.text(spec).is_some_and(str::is_empty));
     }
 
     /// The token panel shown after the parameters table.
@@ -769,6 +812,7 @@ impl OAuth2Editor {
 
     fn emit(&mut self, cx: &mut Context<Self>) {
         let spec = self.spec(cx);
+        self.forget_filled(&spec);
         cx.emit(OAuth2Edit(spec, self.stamp));
         cx.notify();
     }
@@ -799,6 +843,7 @@ impl OAuth2Editor {
                 set_text(&row.value, &p.value, window, cx);
             }
         }
+        self.forget_filled(spec);
         self.show_choices(window, cx);
     }
 
@@ -837,7 +882,7 @@ impl OAuth2Editor {
         id: &'static str,
         state: &Choice,
         unknown: Option<String>,
-    ) -> impl IntoElement {
+    ) -> ui::FormRow {
         ui::form_row(
             SharedString::from(format!("{id}-row")),
             label,
@@ -960,7 +1005,14 @@ impl Render for OAuth2Editor {
             } else if f.masked() {
                 secret_field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()
             } else {
-                field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()
+                let invalid = self.missing.contains(&f);
+                let row =
+                    checked_field(f.label(), f.id(), self.input(f), vars, invalid, window, cx);
+                match f.hint() {
+                    Some(hint) => row.hint(SharedString::from(format!("{}-hint", f.id())), hint),
+                    None => row,
+                }
+                .into_any_element()
             }
         };
         let shown = |f: OAuth2Field| f.shown_for(flow);
@@ -1007,20 +1059,23 @@ impl Render for OAuth2Editor {
                 .text_color(cx.theme().muted_foreground)
                 .child(text)
         });
-        // The token panel leads so its buttons stay in view above the long parameter list.
+        // The token panel comes last, after every field it reads, so its growing status and
+        // error lines never move a field under the pointer.
         v_flex()
             .gap_2()
-            .children(self.token_panel.clone())
             .child(grant)
             .children(plain)
             .children(notice)
             .when(flow != OAuth2Flow::Implicit, |el| {
-                el.child(self.select(
-                    "Client authentication",
-                    "oauth2-client-auth",
-                    &self.client_auth,
-                    unknown_auth,
-                ))
+                el.child(
+                    self.select(
+                        "Client authentication",
+                        "oauth2-client-auth",
+                        &self.client_auth,
+                        unknown_auth,
+                    )
+                    .hint("oauth2-client-auth-hint", CLIENT_AUTH_HINT),
+                )
             })
             .when(flow == OAuth2Flow::AuthorizationCode, |el| {
                 // An empty label keeps the label cell, so the box lines up with the fields.
@@ -1043,12 +1098,15 @@ impl Render for OAuth2Editor {
             .when(kind != Some(PlacementKind::Header), |el| {
                 el.child(input(OAuth2Field::QueryKey, cx))
             })
-            .child(self.select(
-                "Token to send",
-                "oauth2-token-source",
-                &self.source,
-                unknown_source,
-            ))
+            .child(
+                self.select(
+                    "Token to send",
+                    "oauth2-token-source",
+                    &self.source,
+                    unknown_source,
+                )
+                .hint("oauth2-token-source-hint", TOKEN_SOURCE_HINT),
+            )
             .child(ui::form_row(
                 "oauth2-auto-fetch-row",
                 "",
@@ -1072,6 +1130,7 @@ impl Render for OAuth2Editor {
                 ),
             ))
             .child(self.render_params(cx))
+            .children(self.token_panel.clone())
     }
 }
 
@@ -1140,8 +1199,6 @@ impl OAuth2Editor {
             .child(
                 h_flex().child(
                     Button::new("oauth2-param-add")
-                        .ghost()
-                        .small()
                         .label("Add parameter")
                         .on_click(cx.listener(|t, _, w, cx| t.add_param(w, cx))),
                 ),
