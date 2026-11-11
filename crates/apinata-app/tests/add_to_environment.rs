@@ -318,3 +318,81 @@ fn a_create_that_cannot_be_sent_forgets_the_pending_variable(cx: &mut TestAppCon
         None
     );
 }
+
+fn selected(cx: &mut TestAppContext, ws: &Entity<Workspace>, root: &Path) -> Option<String> {
+    ws.read_with(cx, |w, cx| w.selected_environment(root, cx))
+}
+
+#[gpui_kit::test]
+fn with_no_selection_the_add_selects_its_target_and_never_moves_one(cx: &mut TestAppContext) {
+    let col = with_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    assert_eq!(selected(cx, &ws, &root), None);
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("dev"));
+
+    ws.update(cx, |w, cx| {
+        w.select_environment(&root, Some("prod".into()), cx)
+    });
+    cx.run_until_parked();
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "y", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("prod"));
+}
+
+#[gpui_kit::test]
+fn an_environment_created_for_the_variable_is_selected(cx: &mut TestAppContext) {
+    let col = without_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    ws.update(cx, |w, cx| w.add_variable_to_environment(&root, "x", cx));
+    let (_win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    ed.update(cx, |e, cx| e.create("qa", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("qa"));
+}
+
+#[gpui_kit::test]
+fn a_plain_create_leaves_the_selection_alone(cx: &mut TestAppContext) {
+    let col = with_envs();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (_win, ed) = env_editor(cx, &ws, &root);
+    cx.run_until_parked();
+    ed.update(cx, |e, cx| e.create("qa", cx));
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root), None);
+}
+
+fn use_env_label(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(("response-use-env", ix))
+            .and_then(|b| b.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_variable_defined_in_another_environment_offers_a_switch(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://x/{{nope}}")),
+        ("environments/dev.yml", DEV),
+        (
+            "environments/prod.yml",
+            "name: prod\nvariables:\n  - name: nope\n    value: y\n",
+        ),
+    ]);
+    let (win, ws, root, _state) = pane_after_undefined(cx, &col);
+    assert_eq!(use_env_label(cx, win, 0).as_deref(), Some("Use prod"));
+    assert_eq!(use_env_label(cx, win, 1), None);
+    cx.update_window(win, |_, w, cx| w.click(("response-use-env", 0usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("prod"));
+
+    let bare = with_envs();
+    let (win2, _ws2, _root2, _state2) = pane_after_undefined(cx, &bare);
+    assert_eq!(use_env_label(cx, win2, 0), None);
+}

@@ -1310,6 +1310,13 @@ impl EnvEditor {
                     self.list_orphans(cx);
                     if let Some(var) = pending {
                         self.table.update(cx, |t, cx| t.add_row(&var, window, cx));
+                        // Made for an undefined variable: with no active environment, it
+                        // becomes the active one so the next send finds the variable.
+                        self.workspace.update(cx, |w, cx| {
+                            if w.selected_environment(root, cx).is_none() {
+                                w.select_environment(root, Some(name.clone()), cx);
+                            }
+                        });
                     }
                 }
                 (NoticeKind::Failed { message, .. }, sent) => {

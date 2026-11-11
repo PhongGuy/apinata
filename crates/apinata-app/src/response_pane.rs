@@ -30,7 +30,7 @@ use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Action, Anchor, AnyElement, App, ClipboardItem, Div, Entity, FocusHandle, Focusable,
+    Action, Anchor, AnyElement, App, ClipboardItem, Div, ElementId, Entity, FocusHandle, Focusable,
     FontFeatures, FontWeight, Global, Hsla, Pixels, Rems, ScrollHandle, ScrollStrategy,
     SharedString, Subscription, Svg, Task, TestSupportExt, UniformListScrollHandle, WeakEntity,
     Window, canvas, div, relative, rems, svg, uniform_list,
@@ -115,6 +115,8 @@ pub struct ErrorView {
     pub retry: bool,
     /// The variable an "Add to environment" button offers to define.
     pub add_variable: Option<String>,
+    /// The other environments defining the variable, each offered as a "Use" button.
+    pub use_environments: Vec<String>,
 }
 
 /// The block for a run's `error`; `details` is its redacted text and `env` the selected
@@ -128,6 +130,7 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
         tone: ErrorTone::Danger,
         retry,
         add_variable: None,
+        use_environments: Vec::new(),
     };
     let undefined = match error {
         RunError::Resolve(ResolveError::UndefinedVariable { name, .. })
@@ -139,11 +142,16 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
     if let Some(name) = undefined {
         let (mut sentence, add) = undefined_sentence(name, env);
         // The hint says why it is undefined; the app words the remedy with its own controls.
+        let mut use_environments = Vec::new();
         if let Some(hint) = error.hint() {
             sentence = format!("{sentence} {}.", app_hint(hint, name));
+            if let UndefinedHint::DefinedElsewhere { environments } = hint {
+                use_environments = environments.clone();
+            }
         }
         return ErrorView {
             add_variable: add,
+            use_environments,
             ..view(
                 ErrorKind::UndefinedVariable,
                 "Undefined variable",
@@ -162,6 +170,7 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
             tone: ErrorTone::Neutral,
             retry: true,
             add_variable: None,
+            use_environments: Vec::new(),
         },
         RunError::Exec(ExecError::Connect { url, cause, .. }) => {
             let hint = ConnectHint::new(url, *cause);
@@ -243,6 +252,7 @@ pub fn describe_failure(message: &str) -> ErrorView {
         tone: ErrorTone::Danger,
         retry: false,
         add_variable: None,
+        use_environments: Vec::new(),
     }
 }
 
@@ -261,12 +271,10 @@ fn app_hint(hint: &UndefinedHint, name: &str) -> String {
         } => format!(
             "{name} is a secret in environment {environment}; its stored value could not be read ({reason}); set it in the environment editor"
         ),
+        // The block offers a "Use" button per environment, so the text only names them.
         UndefinedHint::DefinedElsewhere { environments } => match environments.as_slice() {
-            [one] => format!("{name} is defined in environment {one}; switch to it"),
-            many => format!(
-                "{name} is defined in environments {}; switch to one of them",
-                many.join(", ")
-            ),
+            [one] => format!("{name} is defined in environment {one}"),
+            many => format!("{name} is defined in environments {}", many.join(", ")),
         },
         // A future hint kind reads in the core's words until the app words it.
         other => other.cli_text(name),
@@ -1355,6 +1363,7 @@ impl ResponsePane {
             tone: ErrorTone::Neutral,
             retry: self.retry,
             add_variable: None,
+            use_environments: Vec::new(),
         }
     }
 
@@ -2472,7 +2481,8 @@ impl ResponsePane {
                 h_flex()
                     .gap(style::SPACE_2)
                     .children(view.retry.then(|| retry_button(cx)))
-                    .children(self.add_env_button(view, cx)),
+                    .children(self.add_env_button(view, cx))
+                    .children(self.use_env_buttons(view, cx)),
             )
             .children(self.error_cookies_list(cx));
         div()
@@ -2543,6 +2553,30 @@ impl ResponsePane {
                     });
                 }),
         )
+    }
+
+    // One button per other environment defining the undefined variable; a click makes it the
+    // collection's active environment, so a retry finds the variable.
+    fn use_env_buttons(&self, view: &ErrorView, cx: &App) -> Vec<Button> {
+        let send = self.send.read(cx);
+        let Some(root) = send.root().map(Path::to_path_buf) else {
+            return Vec::new();
+        };
+        let workspace = send.workspace().clone();
+        (view.use_environments.iter().enumerate())
+            .map(|(ix, env)| {
+                let label = format!("Use {env}");
+                let (root, workspace, env) = (root.clone(), workspace.clone(), env.clone());
+                error_action(("response-use-env", ix), cx)
+                    .label(label.clone())
+                    .accessibility_label(label)
+                    .on_click(move |_, _, cx| {
+                        workspace.update(cx, |w, cx| {
+                            w.select_environment(&root, Some(env.clone()), cx);
+                        });
+                    })
+            })
+            .collect()
     }
 
     // An error view under a right-aligned header holding the History dropdown, so kept sends
@@ -5511,7 +5545,7 @@ fn save_example_button(response: &Response, blocked: Option<&'static str>, cx: &
 
 // A button in the error block. The plain fill barely differs from a light pane, so the
 // input outline marks its boundary at the 3:1 a control needs.
-fn error_action(id: &'static str, cx: &App) -> Button {
+fn error_action(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::new(id).border_1().border_color(cx.theme().input)
 }
 
