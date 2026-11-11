@@ -2145,6 +2145,7 @@ impl Shell {
         let branch = name.map(|name| {
             let cell = (!hidden).then_some(&self.branch_clipped);
             part("git-branch", name.clone(), Self::BRANCH_SHRINK, hidden)
+                .tooltip("Switch branch")
                 // A slim right padding keeps the comma beside the name, still outside its ring.
                 .when(comma_shows, |b| b.pr(Self::NAME_COMMA_PAD))
                 .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)))
@@ -2187,6 +2188,7 @@ impl Shell {
                 false => text_box(count.clone(), lead),
             };
             part("git-changes", count.clone().into(), factor, count_hidden)
+                .tooltip("Show changes")
                 .on_click(move |event, window, cx| {
                     focus_pressed_part(event, &label_focus, has_name as usize, window, cx);
                     open_changes(&ws, &root, None, window, cx)
@@ -2218,6 +2220,7 @@ impl Shell {
             .small()
             .icon(IconName::ChevronDown)
             .accessibility_label("Switch branch")
+            .tooltip("Switch branch")
             .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)));
         Some(
             h_flex()

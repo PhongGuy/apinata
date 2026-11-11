@@ -308,6 +308,33 @@ fn a_filtered_palette_list_ends_on_a_whole_row(cx: &mut TestAppContext) {
     }
 }
 
+// Rows found by a keyword count toward the list's height, so none is cut at its bottom edge.
+#[gpui_kit::test]
+fn a_keyword_matched_list_ends_on_a_whole_row(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_palette(cx, &s);
+    type_query(cx, &s, "environment");
+    cx.update_window(s.win, |_, w, _| {
+        let bottom = w.find("command-palette").bounds().bottom();
+        let items = palette_items();
+        let found_by_keyword = (0..items.len())
+            .filter(|&ix| !items[ix].label.to_lowercase().contains("environment"))
+            .filter_map(|ix| w.within("command-palette").try_find(index_path(&items, ix)))
+            .count();
+        assert!(found_by_keyword > 0, "a keyword match is listed");
+        for ix in 0..items.len() {
+            if let Some(row) = w.within("command-palette").try_find(index_path(&items, ix)) {
+                let b = row.bounds();
+                if b.top() < bottom - gpui_kit::px(1.) {
+                    assert!(b.bottom() <= bottom + gpui_kit::px(1.), "row {ix} cut");
+                }
+            }
+        }
+    })
+    .unwrap();
+}
+
 // Scrolls the palette list by `dy` px and returns where `row` lands.
 fn scrolled(
     cx: &mut TestAppContext,

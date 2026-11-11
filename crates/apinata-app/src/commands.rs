@@ -129,6 +129,8 @@ pub struct Command {
     pub default_chords: Vec<&'static str>,
     /// Whether the palette lists the command.
     pub in_palette: bool,
+    /// Words a palette search also finds the command by, for names its label lacks.
+    pub keywords: &'static [&'static str],
 }
 
 // The rows of a structured table; a focused cell or checkbox inside it counts.
@@ -190,6 +192,7 @@ fn command(
         targets,
         default_chords: default_chords.to_vec(),
         in_palette: true,
+        keywords: &[],
     }
 }
 
@@ -232,6 +235,10 @@ pub fn registry() -> Vec<Command> {
     use PaletteGroup::*;
     let hidden = |mut c: Command| {
         c.in_palette = false;
+        c
+    };
+    let found_by = |keywords: &'static [&'static str], mut c: Command| {
+        c.keywords = keywords;
         c
     };
     let mut cmds = vec![
@@ -340,12 +347,15 @@ pub fn registry() -> Vec<Command> {
             shell(NewCollection),
             &["secondary-shift-n"],
         ),
-        command(
-            "collection.clone",
-            "Clone repository…",
-            Collection,
-            shell(CloneRepository),
-            &[],
+        found_by(
+            &["git"],
+            command(
+                "collection.clone",
+                "Clone repository…",
+                Collection,
+                shell(CloneRepository),
+                &[],
+            ),
         ),
         command(
             "collection.open_demo",
@@ -354,12 +364,15 @@ pub fn registry() -> Vec<Command> {
             shell(OpenDemoCollection),
             &[],
         ),
-        command(
-            "collection.switch_branch",
-            "Switch branch…",
-            Collection,
-            shell(SwitchBranch),
-            &[],
+        found_by(
+            &["git", "checkout"],
+            command(
+                "collection.switch_branch",
+                "Switch branch…",
+                Collection,
+                shell(SwitchBranch),
+                &[],
+            ),
         ),
         command(
             "collection.settings",
@@ -773,12 +786,15 @@ pub fn registry() -> Vec<Command> {
             shell(ToggleConsole),
             &["ctrl-@", "ctrl-`"],
         ),
-        command(
-            "view.toggle_theme",
-            "Toggle theme",
-            View,
-            shell(ToggleTheme),
-            &[],
+        found_by(
+            &["dark mode", "light mode"],
+            command(
+                "view.toggle_theme",
+                "Toggle theme",
+                View,
+                shell(ToggleTheme),
+                &[],
+            ),
         ),
         command(
             "view.zoom_in",
@@ -945,12 +961,15 @@ pub fn registry() -> Vec<Command> {
             vec![at(FocusPreviousControl, CODE_EDITOR)],
             &["ctrl-shift-tab"],
         )),
-        command(
-            "view.preferences",
-            "Preferences",
-            View,
-            shell(OpenPreferences),
-            &["secondary-,"],
+        found_by(
+            &["settings"],
+            command(
+                "view.preferences",
+                "Preferences",
+                View,
+                shell(OpenPreferences),
+                &["secondary-,"],
+            ),
         ),
         command(
             "view.history",
@@ -1026,26 +1045,35 @@ pub fn registry() -> Vec<Command> {
             shell(OpenCookies),
             &[],
         ),
-        command(
-            "environment.variables_overview",
-            "Variables",
-            Environment,
-            shell(OpenVariablesOverview),
-            &[],
+        found_by(
+            &["environment"],
+            command(
+                "environment.variables_overview",
+                "Variables",
+                Environment,
+                shell(OpenVariablesOverview),
+                &[],
+            ),
         ),
-        command(
-            "environment.runtime_variables",
-            "Runtime variables",
-            Environment,
-            shell(OpenRuntimeVariables),
-            &[],
+        found_by(
+            &["environment"],
+            command(
+                "environment.runtime_variables",
+                "Runtime variables",
+                Environment,
+                shell(OpenRuntimeVariables),
+                &[],
+            ),
         ),
-        command(
-            "environment.manage_globals",
-            "Manage globals…",
-            Environment,
-            shell(OpenGlobalEnvironments),
-            &[],
+        found_by(
+            &["environment"],
+            command(
+                "environment.manage_globals",
+                "Manage globals…",
+                Environment,
+                shell(OpenGlobalEnvironments),
+                &[],
+            ),
         ),
     ]);
     cmds

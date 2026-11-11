@@ -24,6 +24,7 @@ use crate::body_node::{
 };
 use crate::commands::registry;
 use crate::keymap::{DiscardChanges, RedoActive, SaveActive, UndoActive};
+use crate::shell::SwitchBranch;
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar, UndoDelete,
@@ -159,6 +160,8 @@ pub struct PaletteEntry {
     pub group: PaletteGroup,
     /// The row's text, also what the filter matches.
     pub label: &'static str,
+    /// Further words the filter matches.
+    pub keywords: &'static [&'static str],
     /// The action dispatched when the row is chosen.
     pub action: Box<dyn Action>,
     /// The key context the action is bound in, for looking up its key hint.
@@ -224,6 +227,8 @@ pub struct Availability {
     pub not_last: bool,
     /// "Undo delete": a delete into the trash is still undoable.
     pub undo_delete: bool,
+    /// "Switch branch": the current collection sits in a git repository.
+    pub git_repo: bool,
 }
 
 impl Availability {
@@ -256,6 +261,7 @@ impl Availability {
             multi_tab: true,
             not_last: true,
             undo_delete: true,
+            git_repo: true,
         }
     }
 }
@@ -346,6 +352,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.multi_tab, ActivatePrevTab.name()),
         (available.not_last, ActivateLastTab.name()),
         (available.undo_delete, UndoDelete.name()),
+        (available.git_repo, SwitchBranch.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -370,6 +377,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
             PaletteEntry {
                 group: c.group,
                 label: c.label,
+                keywords: c.keywords,
                 action: target.action,
                 context: target.context,
                 area: crate::shortcuts::scope_label(c.scope),
@@ -425,6 +433,12 @@ pub fn open_with(
     let requests: Rc<[RequestEntry]> = requests.into();
     // The state outlives the dialog's per-render rebuild, so the query and highlight persist.
     let state = cx.new(|cx| CommandState::new(window, cx));
+    // Read once: the palette is modal, so the current collection cannot change under it.
+    let in_repo = workspace.as_ref().is_none_or(|w| {
+        let w = w.read(cx);
+        (w.current_root().filter(|r| !w.is_scratch(r)))
+            .is_some_and(|r| crate::git_head::branch_label(&r).is_some())
+    });
     let dialog_state = state.clone();
     let rows_key = Rc::new(RowsKey::new());
     // The dialog layer redraws only with its host, so a selection change must refresh the window.
@@ -443,8 +457,13 @@ pub fn open_with(
     window.open_dialog(cx, move |dialog, window, cx| {
         // The key holds everything the rows are built from but the keymap's hint widths, so
         // an unchanged frame skips building them, and `palette` with them.
-        let available =
-            availability_now(sidebar.as_ref(), workspace.as_ref(), tab_area.as_ref(), cx);
+        let available = availability_now(
+            sidebar.as_ref(),
+            workspace.as_ref(),
+            tab_area.as_ref(),
+            in_repo,
+            cx,
+        );
         let (rem, cap) = (window.rem_size(), list_cap(window));
         let key = (dialog_state.read(cx).query(cx), available, rem, cap);
         let command = rows_key.render(&dialog_state, key, || {
@@ -457,6 +476,7 @@ pub fn open_with(
                         sidebar.as_ref(),
                         workspace.as_ref(),
                         tab_area.as_ref(),
+                        in_repo,
                         cx,
                     );
                     confirm(path, &requests, available, &target, window, cx)
@@ -483,6 +503,7 @@ fn availability_now(
     sidebar: Option<&Entity<Sidebar>>,
     workspace: Option<&Entity<Workspace>>,
     tab_area: Option<&Entity<TabArea>>,
+    git_repo: bool,
     cx: &App,
 ) -> Availability {
     let (close_to_right, reveal) = workspace.map_or((true, true), |w| {
@@ -518,6 +539,7 @@ fn availability_now(
         not_last: tabs.is_none_or(|t| t.not_last),
         undo_delete: sidebar.is_none_or(|s| s.read(cx).can_undo_delete(cx)),
         collection_open: workspace.is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
+        git_repo,
     }
 }
 
@@ -671,11 +693,12 @@ fn list_height(
 ) -> Pixels {
     let query = query.trim().to_lowercase();
     let hits = |label: &str| label.to_lowercase().contains(&query);
+    let entry_hits = |e: &PaletteEntry| hits(e.label) || e.keywords.iter().any(|k| hits(k));
     let counts = PaletteGroup::ALL
         .into_iter()
         .map(|group| {
             (items.iter())
-                .filter(|e| e.group == group && hits(e.label))
+                .filter(|e| e.group == group && entry_hits(e))
                 .count()
         })
         .chain([requests.iter().filter(|e| hits(&e.label)).count()]);
@@ -709,7 +732,9 @@ fn list_height(
 fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
     let (label, context, area) = (entry.label, entry.context, entry.area);
     let action = entry.action.boxed_clone();
-    CommandItem::new().label(label).child(move |window, cx| {
+    let item = CommandItem::new().label(label);
+    let item = item.keywords(entry.keywords.iter().copied());
+    item.child(move |window, cx| {
         count_row_build();
         let key = KeyContext::parse(context)
             .ok()

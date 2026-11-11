@@ -365,3 +365,54 @@ fn an_unsaved_edit_refuses_a_switch_from_the_title_bar_picker(cx: &mut TestAppCo
     assert!(!s.ws.read_with(cx, |w, _| w.collections().is_empty()));
     assert_eq!(toasts(cx, &s), 0);
 }
+
+// Opens the command palette, types `query` and returns the labels of the rows it lists.
+fn palette_rows(cx: &mut TestAppContext, s: &Started, query: &str) -> Vec<String> {
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(query, cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        gpui_kit::base::test_support::snapshots(w)
+            .iter()
+            .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
+            .filter_map(|n| n.label().map(str::to_owned))
+            .collect()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn searching_git_in_the_palette_lists_the_git_commands(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_dir, s) = app(cx, &sb, |_| {});
+    let mut rows = palette_rows(cx, &s, "git");
+    rows.sort();
+    assert_eq!(rows, ["Clone repository…", "Switch branch…"]);
+}
+
+#[gpui_kit::test]
+fn outside_a_repository_the_palette_leaves_out_switch_branch(cx: &mut TestAppContext) {
+    let plain = collection();
+    let p = started(cx, &plain);
+    assert_eq!(palette_rows(cx, &p, "git"), ["Clone repository…"]);
+    // Leaving it out of a search for its own name too keeps the palette consistent.
+    cx.simulate_keystrokes(p.win, "escape");
+    frame(cx, p.win);
+    assert!(palette_rows(cx, &p, "switch branch").is_empty());
+}
+
+#[gpui_kit::test]
+fn the_branch_name_and_chevron_say_they_switch_branch(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_dir, s) = app(cx, &sb, |_| {});
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        let bar = w.within("title-bar");
+        for id in ["git-branch", "git-branch-chevron"] {
+            assert_eq!(bar.find(id).description(), Some("Switch branch"), "{id}");
+        }
+    })
+    .unwrap();
+}
