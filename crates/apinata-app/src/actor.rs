@@ -1516,8 +1516,8 @@ impl Actor {
     }
 
     /// The draft variable context for `item`, or for collection-wide settings with None:
-    /// held secrets of the collection, of `item`'s folders and of `item` itself (or what it
-    /// holds, for a folder) read as `.env` values, the nearest winning a shared name.
+    /// held secrets of the collection, of `item`'s folders and of `item` itself read as `.env`
+    /// values, the nearest winning a shared name.
     fn draft_context(
         &mut self,
         item: Option<&ItemPath>,
@@ -1554,8 +1554,18 @@ impl Actor {
         };
         let backup = (self.collection.backup_dotenv())
             .map_err(|e| refused(format!("Could not read .env: {e}")))?;
-        match network_secrets::write(&mut self.collection, &planned) {
-            Ok(warnings) => Ok(Some(HeldWrite { backup, warnings })),
+        // What the write left behind is kept too, so an undo can tell if anything changed since.
+        let wrote = network_secrets::write(&mut self.collection, &planned).and_then(|warnings| {
+            let written = (self.collection.backup_dotenv())
+                .map_err(|e| format!("Could not read .env: {e}"))?;
+            Ok((written, warnings))
+        });
+        match wrote {
+            Ok((written, warnings)) => Ok(Some(HeldWrite {
+                backup,
+                written,
+                warnings,
+            })),
             Err(message) => {
                 // A write that failed partway is undone, so `.env` stays as it was.
                 let _ = self.collection.restore_dotenv(&backup);
@@ -1567,7 +1577,8 @@ impl Actor {
 
     /// After the save `write_held` went before: on success the held secrets of `target` are
     /// done and its warnings become a notice for command `id`; on failure `.env` and
-    /// `.gitignore` go back as they were, so nothing is left that no file refers to.
+    /// `.gitignore` go back as they were, so nothing is left that no file refers to, unless
+    /// something else changed them since the write: then they stay, with a warning.
     fn finish_held(&mut self, id: u64, target: &Target, written: Option<HeldWrite>, saved: bool) {
         let Some(written) = written else {
             return;
@@ -1578,8 +1589,11 @@ impl Actor {
             self.release(|t| t == target);
             written.warnings
         } else {
-            match self.collection.restore_dotenv(&written.backup) {
-                Ok(()) => Vec::new(),
+            match (self.collection).undo_dotenv(&written.backup, &written.written) {
+                Ok(true) => Vec::new(),
+                Ok(false) => vec![
+                    ".env changed while saving, so it was kept as it is; check its values".into(),
+                ],
                 Err(e) => vec![format!("Could not undo the .env change: {e}")],
             }
         };
@@ -2046,18 +2060,19 @@ impl Actor {
 /// A `.env` write done ahead of a save: the files before it, and its warnings.
 struct HeldWrite {
     backup: apinata_core::DotenvBackup,
+    written: apinata_core::DotenvBackup,
     warnings: Vec<String>,
 }
 
 /// Where a secret held by `target` ranks in the draft context of `item` (None: collection-wide
-/// settings), higher overriding lower; None when it does not apply there.
+/// settings), higher overriding lower; None when it does not apply there. Only `item` and
+/// what it inherits from count, never what it contains, so planning a folder sends no
+/// request's unsaved value.
 fn held_rank(target: &Target, item: Option<&ItemPath>) -> Option<usize> {
     let depth = |p: &ItemPath| p.as_str().split('/').count();
     match (target, item) {
         (Target::Collection, _) => Some(0),
-        (Target::Folder(p) | Target::Request(p), Some(item))
-            if is_within(item, p) || is_within(p, item) =>
-        {
+        (Target::Folder(p) | Target::Request(p), Some(item)) if is_within(item, p) => {
             Some(depth(p) * 2 + usize::from(matches!(target, Target::Request(_))))
         }
         _ => None,

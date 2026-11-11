@@ -10,11 +10,22 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::Path;
 
 /// `<root>/.env` and `<root>/.gitignore` as they were, for [`Collection::restore_dotenv`].
-#[derive(Debug, Clone)]
+/// Its `Debug` shows only the sizes, since `.env` holds secret values.
+#[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DotenvBackup {
     dotenv: Option<Vec<u8>>,
     gitignore: Option<Vec<u8>>,
+}
+
+impl std::fmt::Debug for DotenvBackup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let size = |bytes: &Option<Vec<u8>>| bytes.as_ref().map(Vec::len);
+        f.debug_struct("DotenvBackup")
+            .field("dotenv_len", &size(&self.dotenv))
+            .field("gitignore_len", &size(&self.gitignore))
+            .finish()
+    }
 }
 
 impl Collection {
@@ -35,6 +46,21 @@ impl Collection {
         restore(&self.root().join(".gitignore"), backup.gitignore.as_deref())?;
         self.dotenv_hash = backup.dotenv.as_deref().map(hash_bytes);
         Ok(())
+    }
+
+    /// Undo a write: restore `backup` only while both files are still exactly as `written`
+    /// recorded them after the write. Ok(false) means something else changed them since, and
+    /// they are left alone.
+    pub fn undo_dotenv(
+        &mut self,
+        backup: &DotenvBackup,
+        written: &DotenvBackup,
+    ) -> std::io::Result<bool> {
+        if self.backup_dotenv()? != *written {
+            return Ok(false);
+        }
+        self.restore_dotenv(backup)?;
+        Ok(true)
     }
 
     /// The keys `<root>/.env` defines; empty when there is no file, or a pipe, socket or device

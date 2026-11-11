@@ -561,6 +561,47 @@ fn drafts_sharing_a_reference_keep_their_own_values(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_folder_run_never_takes_a_request_drafts_secret(cx: &mut TestAppContext) {
+    let shared = cc_request("      clientSecret: \"{{process.env.MY_CS}}\"\n");
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("f/a.yml", &shared),
+        ("f/b.yml", &shared),
+        ("f/c.yml", &shared),
+        (".env", "MY_CS=old-secret\n"),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    type_secret(cx, &model, "f/a.yml", "a-secret");
+    type_secret(cx, &model, "f/b.yml", "b-secret");
+    // Each request sends its own draft's value, and the untouched one the file's.
+    assert_eq!(sent_secret(cx, &model, "f/a.yml"), "a-secret");
+    assert_eq!(sent_secret(cx, &model, "f/b.yml"), "b-secret");
+    assert_eq!(sent_secret(cx, &model, "f/c.yml"), "old-secret");
+    // The folder's own context holds no request's draft, so it sends the file's value too.
+    assert_eq!(sent_secret(cx, &model, "f"), "old-secret");
+    // A run plans from the saved files, so every request in it sends the file's value.
+    let (reply, answer) = async_channel::bounded(1);
+    send(
+        cx,
+        &model,
+        Command::PlanSaved {
+            item: ip("f"),
+            reply,
+        },
+    );
+    cx.run_until_parked();
+    let run = answer
+        .try_recv()
+        .expect("the actor replied")
+        .expect("planned");
+    assert_eq!(run.plan.requests().count(), 3);
+    let secrets = run.context.secret_values();
+    let found: Vec<&String> = secrets.iter().filter(|v| v.ends_with("-secret")).collect();
+    assert_eq!(found, ["old-secret"], "{secrets:?}");
+}
+
+#[gpui_kit::test]
 fn a_conflicted_save_leaves_dotenv_as_it_was_until_overwrite(cx: &mut TestAppContext) {
     let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &cc_request(""))]);
     let model = open(cx, &dir);
