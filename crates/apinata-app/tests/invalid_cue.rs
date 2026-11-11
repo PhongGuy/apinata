@@ -187,6 +187,8 @@ fn the_cookie_form_marks_the_field_its_error_is_about(cx: &mut TestAppContext) {
     frame(cx, s.win);
     click(cx, s.win, "jar-add");
     replace_input(cx, s.win, None, "jar-form-domain", ".app.test");
+    // The bad value is typed before the name, so the value is not focused when Save refuses.
+    replace_input(cx, s.win, None, "jar-form-value", "a;b");
     replace_input(cx, s.win, None, "jar-form-name", "sid");
     click(cx, s.win, "jar-form-save");
     let value = ("jar-form-value-danger-ring", "jar-form-value-invalid-icon");
@@ -290,6 +292,7 @@ fn the_cookie_form_value_keeps_its_bounds_when_marked(cx: &mut TestAppContext) {
     click(cx, s.win, "jar-add");
     replace_input(cx, s.win, None, "jar-form-domain", ".app.test");
     replace_input(cx, s.win, None, "jar-form-name", "sid");
+    replace_input(cx, s.win, None, "jar-form-value", "a;b");
     let rest = bounds(cx, s.win, "jar-form-value").size;
     click(cx, s.win, "jar-form-save");
     assert!(shown(cx, s.win, "jar-form-value-invalid-icon"), "marked");

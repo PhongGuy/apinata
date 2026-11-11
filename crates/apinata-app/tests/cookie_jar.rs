@@ -418,14 +418,11 @@ fn invalid_input_shows_an_inline_error_and_inserts_nothing(cx: &mut TestAppConte
     click(cx, s.win, "jar-add");
     replace_input(cx, s.win, None, "jar-form-domain", ".app.test");
     replace_input(cx, s.win, None, "jar-form-name", "sid");
-    click(cx, s.win, "jar-form-save");
-    assert!(form_error(cx, &view).expect("an error").contains("value"));
-    assert!(present(cx, s.win, "jar-form-error") && present(cx, s.win, "jar-form"));
-
     replace_input(cx, s.win, None, "jar-form-value", "v");
     replace_input(cx, s.win, None, "jar-form-expires", "2001-01-01 00:00");
     click(cx, s.win, "jar-form-save");
     assert!(form_error(cx, &view).expect("an error").contains("future"));
+    assert!(present(cx, s.win, "jar-form-expires-error") && present(cx, s.win, "jar-form"));
     replace_input(cx, s.win, None, "jar-form-expires", "soon");
     click(cx, s.win, "jar-form-save");
     assert!(form_error(cx, &view).is_some());
@@ -550,16 +547,16 @@ fn jar_label(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<Elemen
 fn jar_values_stay_masked_until_their_eye_is_clicked(cx: &mut TestAppContext) {
     let (win, _exec, _view) = dialog(cx, true);
     let value = |cx: &mut TestAppContext, ix: usize| jar_label(cx, win, ("jar-value", ix));
-    assert_eq!(value(cx, 0), "[redacted]");
-    assert_eq!(value(cx, 1), "[redacted]");
+    assert_eq!(value(cx, 0), apinata_app::response_pane::NAME_MASK);
+    assert_eq!(value(cx, 1), apinata_app::response_pane::NAME_MASK);
     click(cx, win, ("jar-reveal", 0usize));
     frame(cx, win);
     assert_eq!(value(cx, 0), "S1");
-    assert_eq!(value(cx, 1), "[redacted]");
+    assert_eq!(value(cx, 1), apinata_app::response_pane::NAME_MASK);
     assert!(present(cx, win, ("jar-hide", 0usize)));
     click(cx, win, ("jar-hide", 0usize));
     frame(cx, win);
-    assert_eq!(value(cx, 0), "[redacted]");
+    assert_eq!(value(cx, 0), apinata_app::response_pane::NAME_MASK);
 }
 
 #[gpui_kit::test]
@@ -658,7 +655,7 @@ fn every_invalid_cookie_field_is_marked_not_only_the_first(cx: &mut TestAppConte
     let s = started(cx, &col);
     let view = dialog_on(cx, s.win);
     click(cx, s.win, "jar-add");
-    // A bad domain and a bad expiry together, then an empty value and a bad expiry.
+    // A bad domain and a bad expiry together, then a bad value and a bad expiry.
     replace_input(cx, s.win, None, "jar-form-domain", "a b");
     replace_input(cx, s.win, None, "jar-form-name", "sid");
     replace_input(cx, s.win, None, "jar-form-value", "v");
@@ -672,7 +669,7 @@ fn every_invalid_cookie_field_is_marked_not_only_the_first(cx: &mut TestAppConte
     }
     assert!(form_error(cx, &view).is_some());
     replace_input(cx, s.win, None, "jar-form-domain", "a.test");
-    replace_input(cx, s.win, None, "jar-form-value", "");
+    replace_input(cx, s.win, None, "jar-form-value", "a;b");
     click(cx, s.win, "jar-form-save");
     for id in ["jar-form-value", "jar-form-expires"] {
         assert!(present(cx, s.win, format!("{id}-invalid-icon")), "{id}");
@@ -711,7 +708,10 @@ fn enter_on_the_cookie_eye_keeps_focus(cx: &mut TestAppContext) {
         "the flipped eye holds focus"
     );
     press_key(cx, win, "enter");
-    assert_eq!(jar_label(cx, win, ("jar-value", 0usize)), "[redacted]");
+    assert_eq!(
+        jar_label(cx, win, ("jar-value", 0usize)),
+        apinata_app::response_pane::NAME_MASK
+    );
     assert!(
         holds_focus(cx, win, ("jar-eye", 0usize)),
         "focus stays through the flip back"
@@ -791,7 +791,7 @@ fn enter_in_an_invalid_form_shows_the_error_and_saves_nothing(cx: &mut TestAppCo
     type_at_end(cx, s.win, None, "jar-form-domain", "");
     press(cx, s.win, "enter");
     assert!(form_error(cx, &view).is_some(), "the form shows its error");
-    assert!(present(cx, s.win, "jar-form-error") && present(cx, s.win, "jar-form"));
+    assert!(present(cx, s.win, "jar-form-domain-error") && present(cx, s.win, "jar-form"));
     assert!(jar_open(cx, s.win), "the jar stays open");
     assert!(listed_names(cx).is_empty());
 }
