@@ -184,7 +184,7 @@ pub enum OAuth2Error {
     #[error(transparent)]
     Exec(ExecError),
     /// The token endpoint refused the request.
-    #[error("the token endpoint answered {status}: {error}{}", .description.as_ref().map(|d| format!(" ({d})")).unwrap_or_default())]
+    #[error("The token endpoint answered {status}: {error}{}", .description.as_ref().map(|d| format!(" ({d})")).unwrap_or_default())]
     Provider {
         /// The HTTP status.
         status: u16,
@@ -194,7 +194,7 @@ pub enum OAuth2Error {
         description: Option<String>,
     },
     /// The token endpoint answered with something that is not a token.
-    #[error("the token endpoint answered {status} with {reason}")]
+    #[error("The token endpoint answered {status} with {reason}")]
     InvalidResponse {
         /// The HTTP status.
         status: u16,
@@ -218,7 +218,7 @@ pub enum OAuth2Error {
         credentials_id: String,
     },
     /// The user or provider denied the authorization.
-    #[error("authorization was denied: {error}{}", .description.as_ref().map(|d| format!(" ({d})")).unwrap_or_default())]
+    #[error("Authorization was denied: {error}{}", .description.as_ref().map(|d| format!(" ({d})")).unwrap_or_default())]
     AuthorizationDenied {
         /// The provider's `error` code.
         error: String,
@@ -226,13 +226,13 @@ pub enum OAuth2Error {
         description: Option<String>,
     },
     /// The callback carried a different `state` than the request.
-    #[error("the authorization callback carried an unexpected state")]
+    #[error("The authorization callback carried an unexpected state")]
     StateMismatch,
     /// No callback arrived in time.
-    #[error("timed out waiting for the authorization callback")]
+    #[error("Timed out waiting for the authorization callback")]
     CallbackTimeout,
     /// The local callback listener could not start.
-    #[error("could not listen for the authorization callback on {address}: {message}")]
+    #[error("Could not listen for the authorization callback on {address}: {message}")]
     CallbackBind {
         /// The address tried.
         address: String,
@@ -240,19 +240,19 @@ pub enum OAuth2Error {
         message: String,
     },
     /// The callback URL cannot be used.
-    #[error("the callback URL is not usable: {reason}")]
+    #[error("The callback URL is not usable: {reason}")]
     InvalidRedirect {
         /// What was wrong with it.
         reason: &'static str,
     },
     /// The user cancelled.
-    #[error("cancelled")]
+    #[error("Cancelled")]
     Cancelled,
     /// The target's auth is not OAuth 2.0.
-    #[error("this auth is not OAuth 2.0")]
+    #[error("This auth is not OAuth 2.0")]
     NotOAuth2,
     /// The operating system's random source failed.
-    #[error("the system random source failed")]
+    #[error("The system random source failed")]
     NoRandomness,
 }
 
@@ -272,6 +272,49 @@ impl From<ExecError> for OAuth2Error {
 mod tests {
     use super::oauth2_missing_fields;
     use crate::{OAuth2Flow, OAuth2Spec, TokenPlacement};
+
+    // Errors show on their own in the token panel and the CLI, so each reads as a sentence.
+    #[test]
+    fn every_error_starts_in_sentence_case() {
+        use super::OAuth2Error as E;
+        let id = || "t".to_owned();
+        let all = [
+            E::MissingField { field: "clientId" },
+            E::Provider {
+                status: 401,
+                error: "invalid_client".into(),
+                description: None,
+            },
+            E::InvalidResponse {
+                status: 200,
+                reason: "no access_token",
+            },
+            E::NoToken {
+                credentials_id: id(),
+            },
+            E::InteractionRequired {
+                credentials_id: id(),
+            },
+            E::AuthorizationDenied {
+                error: "access_denied".into(),
+                description: None,
+            },
+            E::StateMismatch,
+            E::CallbackTimeout,
+            E::CallbackBind {
+                address: "127.0.0.1:1".into(),
+                message: "in use".into(),
+            },
+            E::InvalidRedirect { reason: "no host" },
+            E::Cancelled,
+            E::NotOAuth2,
+            E::NoRandomness,
+        ];
+        for e in all {
+            let text = e.to_string();
+            assert!(text.starts_with(char::is_uppercase), "{text}");
+        }
+    }
 
     #[test]
     fn every_blank_required_setting_is_listed_in_form_order() {

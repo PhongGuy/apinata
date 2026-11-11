@@ -1,4 +1,4 @@
-//! Import cURL: a dialog that parses a curl command into a new draft.
+//! Import curl: a dialog that parses a curl command into a new draft.
 
 use crate::support;
 

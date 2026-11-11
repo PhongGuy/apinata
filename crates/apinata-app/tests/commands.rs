@@ -504,7 +504,7 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.focus_previous_control");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
-    assert_eq!(menu.len(), 26);
+    assert_eq!(menu.len(), 27);
     for (label, action) in menu {
         let c = cmds.iter().find(|c| c.label == label).expect(label);
         assert!(action.partial_eq(c.targets[0].action.as_ref()), "{label}");
@@ -557,14 +557,38 @@ fn environment_and_example_labels_read_as_elsewhere() {
 }
 
 #[test]
-fn the_four_dialog_commands_end_in_an_ellipsis() {
+fn the_dialog_commands_end_in_an_ellipsis() {
     let cmds = registry();
     let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
     assert_eq!(label("collection.open"), "Open collection…");
     assert_eq!(label("collection.new"), "New collection…");
     assert_eq!(label("collection.import"), "Import collection…");
-    assert_eq!(label("environment.export"), "Export environment…");
-    assert_eq!(label("environment.export_all"), "Export environments…");
+    assert_eq!(label("collection.import_curl"), "Import curl…");
+    assert_eq!(label("environment.export"), "Export current environment…");
+    assert_eq!(label("environment.export_all"), "Export all environments…");
+}
+
+// One spelling for curl and one ellipsis character, so like commands read alike in the palette.
+#[test]
+fn labels_spell_curl_and_the_ellipsis_one_way() {
+    for c in registry() {
+        assert!(!c.label.contains("..."), "{} uses three dots", c.label);
+        assert!(!c.label.contains("cURL"), "{} spells cURL", c.label);
+    }
+}
+
+#[test]
+fn the_two_variables_commands_say_what_each_does() {
+    let cmds = registry();
+    let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
+    assert_eq!(
+        label("environment.variables_overview"),
+        "Show all variables"
+    );
+    assert_eq!(
+        label("environment.runtime_variables"),
+        "Edit runtime variables"
+    );
 }
 
 #[test]

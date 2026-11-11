@@ -12,8 +12,7 @@ use crate::command::MockSource;
 use crate::tokio_bridge;
 
 /// The toggle's tooltip. Core builds the routes once, so later edits need a restart.
-pub const MOCK_TIP: &str = "Serve this collection's saved examples on 127.0.0.1. \
-    Example edits and environment changes take effect after turning it off and on.";
+pub const MOCK_TIP: &str = "Serve saved examples on 127.0.0.1 (turn off and on to apply edits)";
 
 /// Where one collection's mock server stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

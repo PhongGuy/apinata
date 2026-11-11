@@ -1,5 +1,5 @@
 //! Convert to GraphQL and Convert to HTTP, from the sidebar menu and the palette, and the
-//! GraphQL detection of the Import cURL dialog.
+//! GraphQL detection of the Import curl dialog.
 
 use crate::support;
 

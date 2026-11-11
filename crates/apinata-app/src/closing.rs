@@ -638,9 +638,9 @@ pub fn unsaved_detail(workspace: &Workspace, unsaved: &[Unsaved]) -> String {
     close_detail(docs, collections, scratch)
 }
 
-/// The close prompt's detail line for `documents` unsaved documents across `collections`
-/// collections and, when `scratch`, the scratch pad, with nouns and verb agreeing in number;
-/// zero documents means only pending writes.
+/// The close prompt's detail line for `documents` unsaved changes across `collections`
+/// collections and, when `scratch`, the scratch pad, with nouns agreeing in number; zero
+/// documents means only pending writes.
 pub fn close_detail(documents: usize, collections: usize, scratch: bool) -> String {
     let plural =
         |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
@@ -654,8 +654,8 @@ pub fn close_detail(documents: usize, collections: usize, scratch: bool) -> Stri
     let places = places.join(" and ");
     match documents {
         0 => format!("Changes to {places} are still being applied."),
-        1 => format!("1 document in {places} has unsaved changes."),
-        n => format!("{n} documents in {places} have unsaved changes."),
+        1 => format!("1 unsaved change in {places}."),
+        n => format!("{n} unsaved changes in {places}."),
     }
 }
 
