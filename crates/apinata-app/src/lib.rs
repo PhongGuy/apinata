@@ -87,6 +87,7 @@ pub mod import_curl;
 pub mod import_link;
 pub mod import_report;
 pub mod inherited_headers_section;
+pub mod input_rest;
 pub mod keyboard_prefs;
 pub mod keymap;
 pub mod kv_bulk;
