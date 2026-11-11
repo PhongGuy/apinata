@@ -115,7 +115,7 @@ pub struct ErrorView {
     pub retry: bool,
     /// The variable an "Add to environment" button offers to define.
     pub add_variable: Option<String>,
-    /// The other environments defining the variable, each offered as a "Use" button.
+    /// The other environments defining the variable, each offered as a "Switch to" button.
     pub use_environments: Vec<String>,
 }
 
@@ -271,7 +271,7 @@ fn app_hint(hint: &UndefinedHint, name: &str) -> String {
         } => format!(
             "{name} is a secret in environment {environment}; its stored value could not be read ({reason}); set it in the environment editor"
         ),
-        // The block offers a "Use" button per environment, so the text only names them.
+        // The block offers a "Switch to" button per environment, so the text only names them.
         UndefinedHint::DefinedElsewhere { environments } => match environments.as_slice() {
             [one] => format!("{name} is defined in environment {one}"),
             many => format!("{name} is defined in environments {}", many.join(", ")),
@@ -2481,8 +2481,8 @@ impl ResponsePane {
                 h_flex()
                     .gap(style::SPACE_2)
                     .children(view.retry.then(|| retry_button(cx)))
-                    .children(self.add_env_button(view, cx))
-                    .children(self.use_env_buttons(view, cx)),
+                    .children(self.switch_env_buttons(view, cx))
+                    .children(self.add_env_button(view, cx)),
             )
             .children(self.error_cookies_list(cx));
         div()
@@ -2556,8 +2556,8 @@ impl ResponsePane {
     }
 
     // One button per other environment defining the undefined variable; a click makes it the
-    // collection's active environment, so a retry finds the variable.
-    fn use_env_buttons(&self, view: &ErrorView, cx: &App) -> Vec<Button> {
+    // collection's active environment and sends again as Retry does, queued behind the switch.
+    fn switch_env_buttons(&self, view: &ErrorView, cx: &App) -> Vec<Button> {
         let send = self.send.read(cx);
         let Some(root) = send.root().map(Path::to_path_buf) else {
             return Vec::new();
@@ -2565,15 +2565,16 @@ impl ResponsePane {
         let workspace = send.workspace().clone();
         (view.use_environments.iter().enumerate())
             .map(|(ix, env)| {
-                let label = format!("Use {env}");
+                let label = format!("Switch to {env}");
                 let (root, workspace, env) = (root.clone(), workspace.clone(), env.clone());
-                error_action(("response-use-env", ix), cx)
+                error_action(("response-switch-env", ix), cx)
                     .label(label.clone())
                     .accessibility_label(label)
-                    .on_click(move |_, _, cx| {
+                    .on_click(move |_, window, cx| {
                         workspace.update(cx, |w, cx| {
                             w.select_environment(&root, Some(env.clone()), cx);
                         });
+                        window.dispatch_action(SendRequest.boxed_clone(), cx);
                     })
             })
             .collect()
