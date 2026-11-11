@@ -256,7 +256,7 @@ pub fn transport_text(error: &ExecError) -> Option<String> {
             | ErrorKind::Proxy
             | ErrorKind::Certificate
     );
-    Some(format!("{}: {}", view.title, view.sentence?)).filter(|_| transport)
+    transport.then_some(format!("{}: {}", view.title, view.sentence?))
 }
 
 /// The block for a send stopped before any run (a plan error, a closed collection).
