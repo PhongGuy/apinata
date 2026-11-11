@@ -257,3 +257,28 @@ fn generate_codes_ring_stays_inside_the_column_at_low_zoom(cx: &mut TestAppConte
         .unwrap();
     }
 }
+
+#[gpui_kit::test]
+fn save_appearing_keeps_the_url_field_in_place(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    let url_bounds = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("url").bounds()
+        })
+        .unwrap()
+    };
+    assert!(!shown(cx, win, "save-request"));
+    let clean = url_bounds(cx);
+    ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("a.yml", "http://127.0.0.1:9/changed"), cx)
+    });
+    assert!(shown(cx, win, "save-request"));
+    assert_eq!(
+        url_bounds(cx),
+        clean,
+        "the URL field moved when Save appeared"
+    );
+}

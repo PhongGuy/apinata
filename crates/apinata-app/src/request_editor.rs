@@ -2604,7 +2604,7 @@ impl RequestEditor {
             ChromePart::Buttons => h_flex()
                 .flex_none()
                 .gap(style::SPACE_1)
-                .children(self.save_button(cx))
+                .child(self.save_button(cx))
                 .child(self.send_button(window, cx))
                 .child(self.generate_code_button(cx))
                 .into_any_element(),
@@ -2894,9 +2894,23 @@ impl RequestEditor {
         !(autosave && !draft) && self.view(cx).is_some_and(|v| v.dirty)
     }
 
-    fn save_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    // A clean request keeps Save's slot, invisible and inert, so the URL field never
+    // changes width when an edit makes Save appear.
+    fn save_button(&self, cx: &mut Context<Self>) -> AnyElement {
         if !self.save_shown(cx) {
-            return None;
+            let ghost = Button::new("save-slot-button")
+                .ghost()
+                .small()
+                .label("Save")
+                .tab_stop(false);
+            return div()
+                .id("save-slot")
+                .test_support()
+                .flex_none()
+                .mr(style::SPACE_1)
+                .invisible()
+                .child(ghost)
+                .into_any_element();
         }
         // Called directly: a dispatched action reaches the editor only while it holds focus.
         let button = Button::new("save-request-button")
@@ -2915,7 +2929,7 @@ impl RequestEditor {
             .test_support()
             .flex_none()
             .mr(style::SPACE_1);
-        Some(slot.child(button).into_any_element())
+        slot.child(button).into_any_element()
     }
 
     // Opens Generate code on this editor's own request, which need not be the active tab.
