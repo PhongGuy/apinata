@@ -2,7 +2,7 @@
 //! directories core reports and passes each debounced batch on as a `WatchMsg`.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_channel::{Receiver, Sender};
 use gpui_kit::{App, Task};
@@ -40,14 +40,10 @@ impl CollectionWatcher {
         let handler: EventHandler = Box::new(move |r| {
             let _ = events.try_send(Input::Events(r));
         });
-        let git_events = inputs.clone();
-        let git_handler: EventHandler = Box::new(move |r| {
-            let _ = git_events.try_send(Input::GitEvents(r));
-        });
         let task = cx.background_executor().spawn(watch_loop(
             root,
             factory,
-            (handler, git_handler),
+            (handler, inputs.clone()),
             rx,
             out,
         ));
@@ -68,7 +64,7 @@ impl CollectionWatcher {
 async fn watch_loop(
     root: PathBuf,
     factory: WatchFactory,
-    (handler, git_handler): (EventHandler, EventHandler),
+    (handler, git_inputs): (EventHandler, Sender<Input>),
     inputs: Receiver<Input>,
     out: Sender<WatchMsg>,
 ) {
@@ -84,7 +80,8 @@ async fn watch_loop(
     // The git watches sit in a watcher of their own, placed before the first input so that
     // anything done after the collection loads is seen. A repository that cannot be watched
     // only costs the automatic refresh, never the collection's own watching.
-    let _git_watch = watch_git(&root, &factory, git_handler);
+    let mut git_watch = None;
+    sync_git(&root, &factory, &git_inputs, &mut git_watch);
     let mut desired = BTreeSet::new();
     while let Ok(input) = inputs.recv().await {
         // An event naming a watched directory itself means it was removed or replaced, and its
@@ -105,25 +102,34 @@ async fn watch_loop(
                 continue;
             }
             Input::Dirs(dirs) => desired = dirs,
-            Input::Events(result) => match translate(result, &root, &real_root) {
-                Some(WatchMsg::Failed(m)) => {
-                    let _ = out.send(WatchMsg::Failed(m)).await;
+            Input::Events(result) => {
+                // A repository made or removed after opening shows up as a change in the
+                // collection, so its watches follow; a new one is read at once.
+                if sync_git(&root, &factory, &git_inputs, &mut git_watch)
+                    && out.send(WatchMsg::Git).await.is_err()
+                {
                     return;
                 }
-                Some(msg) => {
-                    if let WatchMsg::Paths(paths) = &msg {
-                        replace = paths
-                            .iter()
-                            .filter(|p| set.placed().contains(*p))
-                            .cloned()
-                            .collect();
-                    }
-                    if out.send(msg).await.is_err() {
+                match translate(result, &root, &real_root) {
+                    Some(WatchMsg::Failed(m)) => {
+                        let _ = out.send(WatchMsg::Failed(m)).await;
                         return;
                     }
+                    Some(msg) => {
+                        if let WatchMsg::Paths(paths) = &msg {
+                            replace = paths
+                                .iter()
+                                .filter(|p| set.placed().contains(*p))
+                                .cloned()
+                                .collect();
+                        }
+                        if out.send(msg).await.is_err() {
+                            return;
+                        }
+                    }
+                    None => {}
                 }
-                None => {}
-            },
+            }
         }
         match set.reconcile(&desired, &replace) {
             Ok(placed) => {
@@ -150,19 +156,30 @@ async fn watch_loop(
     }
 }
 
-// Places the git directory's watches, or nothing outside a repository. The returned set keeps
-// the watches alive for as long as the loop holds it.
-fn watch_git(
-    root: &std::path::Path,
+// Keeps the git watches on the directories the repository has now, building their watcher on
+// first need. True when a directory was newly placed, so its state may not have been read yet.
+fn sync_git(
+    root: &Path,
     factory: &WatchFactory,
-    handler: EventHandler,
-) -> Option<WatchSet> {
+    inputs: &Sender<Input>,
+    git_watch: &mut Option<WatchSet>,
+) -> bool {
     let dirs = git::dirs(root);
-    if dirs.is_empty() {
-        return None;
+    if git_watch.is_none() {
+        if dirs.is_empty() {
+            return false;
+        }
+        let inputs = inputs.clone();
+        let handler: EventHandler = Box::new(move |r| {
+            let _ = inputs.try_send(Input::GitEvents(r));
+        });
+        let Ok(watch) = factory(handler) else {
+            return false;
+        };
+        *git_watch = Some(WatchSet::new(watch, PathBuf::new()));
     }
-    let watch = factory(handler).ok()?;
-    let mut set = WatchSet::new(watch, PathBuf::new());
-    set.reconcile(&dirs, &[]).ok()?;
-    Some(set)
+    git_watch
+        .as_mut()
+        .and_then(|set| set.reconcile(&dirs, &[]).ok())
+        .is_some_and(|placed| !placed.is_empty())
 }
