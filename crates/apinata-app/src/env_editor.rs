@@ -20,8 +20,9 @@ use gpui_kit::component::{ActiveTheme as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, App, Div, ElementId, Entity, FocusHandle, Focusable, FontWeight, Hsla, Result,
-    ScrollHandle, SharedString, Subscription, Task, TestSupportExt, Window, actions, div, px,
+    Anchor, AnyElement, App, Div, ElementId, Entity, FocusHandle, Focusable, FontWeight, Hsla,
+    Result, ScrollHandle, SharedString, Subscription, Task, TestSupportExt, Window, actions, div,
+    px,
 };
 
 use crate::banner::{self, Banner, Choice};
@@ -595,7 +596,7 @@ impl EnvEditor {
             return;
         }
         if self.names(cx).iter().any(|n| n == to) {
-            self.error = Some(format!("environment `{to}` already exists"));
+            self.error = Some(format!("An environment named `{to}` already exists"));
             self.refused = (self.naming == Some(Naming::Rename)).then(|| to.to_owned());
             cx.notify();
             return;
@@ -720,6 +721,16 @@ impl EnvEditor {
     /// The last refusal or failure of a command this editor sent, as the error line shows it.
     pub fn error(&self) -> Option<String> {
         self.error.as_deref().map(ui::plain_quotes)
+    }
+
+    // The error that refused the open name field's text, as a sentence; it shows under the
+    // field, so the pane's error line leaves it out.
+    fn field_error(&self) -> Option<String> {
+        let refused = self.refused.is_some() && self.naming.is_some();
+        refused
+            .then(|| self.error())
+            .flatten()
+            .map(|message| crate::import_report::failure_text(&message))
     }
 
     /// Exports the selected environment as saved, noting unsaved edits in the toast; nothing
@@ -1969,8 +1980,19 @@ impl Render for EnvEditor {
         let theme = cx.theme();
         let (active, hover) = (theme.list_active, theme.list_hover);
         let mark_color = self.mark_color(window, cx);
-        let items = names.iter().enumerate().map(|(ix, name)| {
+        let mut naming = self.naming_field(window, cx);
+        let renaming = self.naming == Some(Naming::Rename);
+        let mut items = Vec::with_capacity(names.len() + 1);
+        for (ix, name) in names.iter().enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
+            // Rename edits the name in its row's place, as the sidebar's rename does.
+            if chosen
+                && renaming
+                && let Some(field) = naming.take()
+            {
+                items.push(field);
+                continue;
+            }
             let mark = div()
                 .w(px(2.))
                 .h_full()
@@ -2013,8 +2035,12 @@ impl Render for EnvEditor {
                         .child(name.clone()),
                 )
                 .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)));
-            Followed::new(("env-item-follow", ix), &self.follow, item)
-        });
+            items.push(
+                Followed::new(("env-item-follow", ix), &self.follow, item).into_any_element(),
+            );
+        }
+        // A new environment's name is typed in a new entry at the list's end.
+        items.extend(naming);
         // The list gives up width only as far as the pane's minimum content needs it.
         let list = v_flex()
             .id("env-list")
@@ -2061,30 +2087,6 @@ impl Render for EnvEditor {
                     .self_stretch()
                     .bg(cx.theme().border),
             );
-        // The label sits directly above the input, so New and Rename read differently.
-        let naming = self.naming_label().map(|label| {
-            v_flex()
-                .gap_1()
-                // The input lets an idle Escape propagate, so the wrapper dismisses the prompt.
-                .on_action(cx.listener(|e, _: &Escape, window, cx| e.cancel_naming(window, cx)))
-                .child(div().id("env-name-label").test_support().child(label))
-                .child(ui::invalid_input(
-                    Input::new(&self.name_input)
-                        .id("env-name-input")
-                        .w(style::NAME_INPUT_WIDTH)
-                        .bg(ui::field_fill(false, cx)),
-                    // The frame hugs the input, so the danger ring covers it and no more.
-                    div().w(style::NAME_INPUT_WIDTH).flex_none(),
-                    &self.name_input,
-                    self.refused.is_some() && self.naming.is_some(),
-                    (
-                        "env-name-danger-ring".into(),
-                        "env-name-invalid-icon".into(),
-                    ),
-                    window,
-                    cx,
-                ))
-        });
         let notice = self.notice.map(|text| {
             div()
                 .id("env-notice")
@@ -2095,7 +2097,8 @@ impl Render for EnvEditor {
                 .text_color(cx.theme().muted_foreground)
                 .child(text)
         });
-        let error = self.error().map(|message| {
+        let field_error = self.field_error().is_some();
+        let error = self.error().filter(|_| !field_error).map(|message| {
             // Bounded to the pane so a long path wraps instead of widening it.
             div()
                 .id("env-error")
@@ -2145,7 +2148,6 @@ impl Render for EnvEditor {
                         .justify_center()
                         .gap_2()
                         .child(empty)
-                        .children(naming)
                         .children(fileless.map(|f| div().w_full().child(f)))
                         .children(error),
                 )
@@ -2204,7 +2206,6 @@ impl Render for EnvEditor {
                     .children(banners)
                     .children(secrets_kept)
                     .child(header)
-                    .children(naming)
                     .child(ui::form_row("env-color-row", "Color", swatches))
                     .child(ui::form_row(
                         "env-extends-row",
@@ -2234,6 +2235,46 @@ fn writes_draft(command: &Command) -> bool {
 }
 
 impl EnvEditor {
+    // The name field with its label above it, so New and Rename read differently, and a
+    // refusal floating just under it; `None` while no name is being collected.
+    fn naming_field(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let label = self.naming_label()?;
+        let refusal = self.field_error();
+        let field = v_flex()
+            .w_full()
+            .gap_1()
+            // The input lets an idle Escape propagate, so the wrapper dismisses the prompt.
+            .on_action(cx.listener(|e, _: &Escape, window, cx| e.cancel_naming(window, cx)))
+            .child(
+                div()
+                    .id("env-name-label")
+                    .test_support()
+                    .text_size(style::TEXT_SMALL)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label),
+            )
+            .child(ui::invalid_input(
+                Input::new(&self.name_input)
+                    .id("env-name-input")
+                    .w_full()
+                    .bg(ui::field_fill(false, cx)),
+                // The frame hugs the input, so the danger ring covers it and no more.
+                div().w_full(),
+                &self.name_input,
+                refusal.is_some(),
+                (
+                    "env-name-danger-ring".into(),
+                    "env-name-invalid-icon".into(),
+                ),
+                window,
+                cx,
+            ))
+            .when_some(refusal, |d, message| {
+                d.child(div().child(ui::field_refusal("env-name-error", message.into(), cx)))
+            });
+        Some(field.into_any_element())
+    }
+
     /// Wraps the editor's scrolling box so the kit scrollbar overlays its right edge, with the
     /// sideways bar in a row of its own under it, so the page's bottom stays clear of it.
     fn scrolled(&self, scrolling: impl IntoElement) -> Div {
