@@ -540,7 +540,7 @@ impl EnvEditor {
         match self.naming? {
             Naming::Create => Some("New environment name".into()),
             Naming::Rename => Some(format!(
-                "Rename \"{}\" to",
+                "Rename \"{}\"",
                 self.selected.as_deref().unwrap_or_default()
             )),
         }
@@ -551,8 +551,8 @@ impl EnvEditor {
         &self.name_input
     }
 
-    /// Creates the environment `name`; core suffixes a taken name. It is selected once its
-    /// creation is reported.
+    /// Creates the environment `name`; core suffixes a taken name, which the New field
+    /// refuses before calling this. It is selected once its creation is reported.
     pub fn create(&mut self, name: &str, cx: &mut Context<Self>) {
         let op = EnvOp::Create {
             name: name.to_string(),
@@ -595,8 +595,8 @@ impl EnvEditor {
         if from == to {
             return;
         }
-        if self.names(cx).iter().any(|n| n == to) {
-            self.error = Some(format!("An environment named `{to}` already exists"));
+        if let Some(taken) = self.taken(to, cx) {
+            self.error = Some(taken);
             self.refused = (self.naming == Some(Naming::Rename)).then(|| to.to_owned());
             cx.notify();
             return;
@@ -761,6 +761,25 @@ impl EnvEditor {
 
     fn names(&self, cx: &App) -> Vec<String> {
         self.workspace.read(cx).environments(&self.root, cx)
+    }
+
+    // Why `name` cannot be a new or renamed environment's name: another one has it.
+    fn taken(&self, name: &str, cx: &App) -> Option<String> {
+        (self.names(cx).iter().any(|n| n == name))
+            .then(|| format!("An environment named `{name}` already exists"))
+    }
+
+    // Why New refuses `name`, as Rename would: core would make a taken name a copy and fit an
+    // invalid one to a file name, so both are refused here instead of changed unseen.
+    fn create_refusal(&self, name: &str, cx: &App) -> Option<String> {
+        let invalid = || apinata_core::EnvError::InvalidName {
+            name: name.to_owned(),
+        };
+        match apinata_core::check_environment_name(name) {
+            Err(err) => Some(err.to_string()),
+            Ok(fitted) if fitted != name => Some(invalid().to_string()),
+            Ok(_) => self.taken(name, cx),
+        }
     }
 
     // The other environments extending `name`. This mirrors core's `extended_by` over the
@@ -1630,9 +1649,9 @@ impl EnvEditor {
         // Both land by selecting a new name, which would take held typing with it; a create
         // leaves a dirty environment, so a new row's typing goes too.
         let create = self.naming == Some(Naming::Create);
-        // A name core would refuse is refused before the check, whose Replace saves.
-        if create && let Err(err) = apinata_core::check_environment_name(text) {
-            self.error = Some(err.to_string());
+        // A name New refuses is refused before the check, whose Replace saves.
+        if create && let Some(reason) = self.create_refusal(text, cx) {
+            self.error = Some(reason);
             self.refused = Some(text.to_owned());
             cx.notify();
             return;
@@ -1805,9 +1824,10 @@ impl EnvEditor {
     }
 
     // The pane's header: the name as a title that truncates, then the "…" menu, then Save
-    // as the one primary action at the right.
+    // at the right, the primary action only while there are edits to save.
     fn header(&self, locked: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let name = self.selected.clone().unwrap_or_default();
+        let dirty = self.view(cx).is_some_and(|v| v.dirty);
         let this = cx.entity();
         let followed = |id: &'static str, button: Button| Followed::new(id, &self.follow, button);
         let more = Button::new("env-more")
@@ -1849,7 +1869,7 @@ impl EnvEditor {
             .child(followed(
                 "env-save-follow",
                 Button::new("env-save")
-                    .primary()
+                    .when(dirty, |b| b.primary())
                     .label("Save")
                     .on_click(cx.listener(|e, _, window, cx| e.save_asking(window, cx))),
             ))
@@ -2236,7 +2256,7 @@ fn writes_draft(command: &Command) -> bool {
 
 impl EnvEditor {
     // The name field with its label above it, so New and Rename read differently, and a
-    // refusal floating just under it; `None` while no name is being collected.
+    // refusal under it that wraps in the list's width; `None` while no name is being collected.
     fn naming_field(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let label = self.naming_label()?;
         let refusal = self.field_error();
@@ -2249,8 +2269,10 @@ impl EnvEditor {
                 div()
                     .id("env-name-label")
                     .test_support()
+                    .aria_label(label.clone())
                     .text_size(style::TEXT_SMALL)
                     .text_color(cx.theme().muted_foreground)
+                    .truncate()
                     .child(label),
             )
             .child(ui::invalid_input(
@@ -2270,7 +2292,11 @@ impl EnvEditor {
                 cx,
             ))
             .when_some(refusal, |d, message| {
-                d.child(div().child(ui::field_refusal("env-name-error", message.into(), cx)))
+                d.child(ui::field_refusal_in_column(
+                    "env-name-error",
+                    message.into(),
+                    cx,
+                ))
             });
         Some(field.into_any_element())
     }

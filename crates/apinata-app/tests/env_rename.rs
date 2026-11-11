@@ -441,7 +441,7 @@ fn a_late_refusal_leaves_a_field_opened_on_another_environment(cx: &mut TestAppC
     assert_eq!(selected(cx, &t.ed).as_deref(), Some("prod"));
     assert_eq!(
         t.ed.read_with(cx, |e, _| e.naming_label()).as_deref(),
-        Some("Rename \"prod\" to")
+        Some("Rename \"prod\"")
     );
     assert!(!present(cx, t.win, "env-name-invalid-icon"));
     assert!(!present(cx, t.win, "env-name-danger-ring"));

@@ -496,22 +496,36 @@ pub fn field_refusal(
 ) -> impl IntoElement + use<> {
     gpui_kit::deferred(
         gpui_kit::anchored().snap_to_window().child(
-            div()
-                .id(id)
-                .test_support()
-                .aria_label(message.clone())
+            refusal_bubble(id, message, cx)
                 .max_w(crate::style::VAR_TIP_MAX_WIDTH)
-                .px(crate::style::SPACE_2)
-                .py(crate::style::SPACE_1)
-                .rounded(crate::style::POPOVER_RADIUS)
-                .border_1()
-                .border_color(cx.theme().danger)
-                .bg(cx.theme().popover)
-                .text_color(cx.theme().danger)
-                .text_size(crate::style::TEXT_SMALL)
-                .child(message),
+                .test_support(),
         ),
     )
+}
+
+/// A refused name's reason as [`field_refusal`] draws it, but in the layout under its field:
+/// it takes its column's width and wraps there, for a column too narrow to float it over.
+pub fn field_refusal_in_column(
+    id: &'static str,
+    message: SharedString,
+    cx: &App,
+) -> impl IntoElement + use<> {
+    refusal_bubble(id, message, cx).w_full().test_support()
+}
+
+fn refusal_bubble(id: &'static str, message: SharedString, cx: &App) -> Stateful<Div> {
+    div()
+        .id(id)
+        .aria_label(message.clone())
+        .px(crate::style::SPACE_2)
+        .py(crate::style::SPACE_1)
+        .rounded(crate::style::POPOVER_RADIUS)
+        .border_1()
+        .border_color(cx.theme().danger)
+        .bg(cx.theme().popover)
+        .text_color(cx.theme().danger)
+        .text_size(crate::style::TEXT_SMALL)
+        .child(message)
 }
 
 /// An `input` in `frame`, marked while it is invalid: a danger-coloured CircleAlert icon at
