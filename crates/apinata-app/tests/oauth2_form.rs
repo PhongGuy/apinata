@@ -183,4 +183,61 @@ fn a_cancelled_sign_in_is_not_an_error(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert!(present(cx, s.win, "oauth2-token-note"));
     assert!(!present(cx, s.win, "oauth2-token-error"));
+
+    // A real failure on the next try is an error again, and the note goes.
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    handle.block_on(server.reset());
+    handle.block_on(
+        wiremock::Mock::given(wiremock::matchers::path("/token"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(401)
+                    .set_body_string(r#"{"error":"invalid_client"}"#),
+            )
+            .mount(&server),
+    );
+    let _playing = opener(cx, true);
+    panel.update(cx, |p, cx| p.get_token(cx));
+    wait_real(cx, |cx| panel.read_with(cx, |p, _| p.error()).is_some());
+    settle(cx, &panel);
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.error()).as_deref(),
+        Some("the token endpoint answered 401: invalid_client")
+    );
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "oauth2-token-error"));
+    assert!(!present(cx, s.win, "oauth2-token-note"));
+}
+
+#[gpui_kit::test]
+fn a_folder_get_token_marks_its_missing_fields(cx: &mut TestAppContext) {
+    use apinata_app::config_editor::{ConfigEditor, ConfigTarget};
+    http_ready(cx);
+    let folder = format!("info:\n  name: F\n  type: folder\n  seq: 1\nrequest:\n  auth:\n{BLANK}");
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("f/folder.yml", &folder),
+        ("f/a.yml", &request("a", "http://x.test/r")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    support::init(cx);
+    cx.update(apinata_app::keymap::init);
+    let (_win, view) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| ConfigEditor::new(ws, root, ConfigTarget::Folder(ip("f")), w, cx))
+            })
+        })
+        .unwrap();
+    cx.run_until_parked();
+    let editor = view.read_with(cx, |v, cx| v.auth().read(cx).oauth2().clone());
+    let panel = editor
+        .read_with(cx, |e, _| e.token_panel().cloned())
+        .expect("a token panel");
+    settle(cx, &panel);
+    panel.update(cx, |p, cx| p.get_token(cx));
+    settle(cx, &panel);
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.error()).as_deref(),
+        Some("Access token URL and Client ID are empty")
+    );
 }

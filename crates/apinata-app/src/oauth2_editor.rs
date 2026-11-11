@@ -30,12 +30,12 @@ pub const PLAIN_NOTICE: &str = "Stored in plain text";
 
 /// The hint under "Token ID".
 pub const TOKEN_ID_HINT: &str =
-    "Names the saved token. Auths with the same ID and token URL share one token.";
+    "Names the saved token. Settings with the same ID and URL share it.";
 /// The hint under "Token to send".
 pub const TOKEN_SOURCE_HINT: &str = "Which token from the provider's reply goes on the request.";
 /// The hint under "Client authentication".
 pub const CLIENT_AUTH_HINT: &str =
-    "How the client ID and secret reach the token URL: as form fields or a Basic auth header.";
+    "How the client ID and secret are sent: in the body or as a Basic auth header.";
 
 /// The whole spec after any change in the editor, with the owner's load stamp at sending.
 pub struct OAuth2Edit(pub OAuth2Spec, pub u64);
