@@ -316,6 +316,7 @@ mod inherited_headers_editor;
 mod inherited_headers_section;
 mod input_focus_ring;
 mod input_padding;
+mod input_rest;
 mod invalid_cue;
 mod item_chords_scope;
 mod kept_digests;
