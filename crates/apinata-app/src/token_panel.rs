@@ -10,6 +10,7 @@ use apinata_core::{
     RunPlan, TokenStatus, VarContext, clear_oauth2_token, oauth2_status,
 };
 use gpui_kit::component::button::Button;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
@@ -18,7 +19,7 @@ use gpui_kit::{App, Entity, Result, Task, TestSupportExt, Window, div};
 use crate::command::{Command, Target};
 use crate::send_model::plan_message;
 use crate::workspace::Workspace;
-use crate::{executor, oauth2_tokens, settings, style, tokio_bridge, ui};
+use crate::{executor, oauth2_tokens, response_pane, settings, style, tokio_bridge, ui};
 
 /// Where the panel's auth lives, read on every refresh (requests can be renamed).
 pub type Locate = Box<dyn Fn(&App) -> Option<(PathBuf, Target)>>;
@@ -57,7 +58,8 @@ impl Planned {
 
 // How an action ended short: an error, or a sign-in the user cancelled, which is none.
 enum Stopped {
-    Failed(String),
+    // The line shown, and the error's own text when the line rewords it.
+    Failed(String, Option<String>),
     Cancelled,
 }
 
@@ -70,6 +72,8 @@ pub struct TokenPanel {
     locate: Locate,
     status: Option<TokenStatus>,
     action_error: Option<String>,
+    // The raw text behind a reworded action error, shown as its tooltip.
+    action_detail: Option<String>,
     action_note: Option<&'static str>,
     check: Option<Check>,
     read_error: Option<String>,
@@ -97,6 +101,7 @@ impl TokenPanel {
             locate,
             status: None,
             action_error: None,
+            action_detail: None,
             action_note: None,
             check: None,
             read_error: None,
@@ -116,6 +121,7 @@ impl TokenPanel {
             return;
         }
         self.action_error = None;
+        self.action_detail = None;
         self.action_note = None;
         self.reread(cx);
     }
@@ -137,6 +143,7 @@ impl TokenPanel {
         };
         if !missing.is_empty() {
             self.action_error = Some(missing_message(&missing));
+            self.action_detail = None;
             self.action_note = None;
             return cx.notify();
         }
@@ -208,6 +215,7 @@ impl TokenPanel {
         }
         self.read = None;
         self.action_error = None;
+        self.action_detail = None;
         self.action_note = None;
         let Some(exec) = executor::shared(cx) else {
             self.action_error = Some("the HTTP client is not ready".into());
@@ -286,10 +294,10 @@ impl TokenPanel {
 
     fn apply(&mut self, (acted, status): Outcome, is_action: bool, persistence: &Persistence) {
         if is_action {
-            (self.action_error, self.action_note) = match acted {
-                Some(Stopped::Failed(e)) => (Some(e), None),
-                Some(Stopped::Cancelled) => (None, Some(CANCELLED)),
-                None => (None, None),
+            (self.action_error, self.action_detail, self.action_note) = match acted {
+                Some(Stopped::Failed(e, detail)) => (Some(e), detail, None),
+                Some(Stopped::Cancelled) => (None, None, Some(CANCELLED)),
+                None => (None, None, None),
             };
         }
         match status {
@@ -340,7 +348,18 @@ async fn perform(
     let status = oauth2_status(target, ctx).map_err(|e| e.to_string());
     let stopped = acted.err().map(|e| match e {
         OAuth2Error::Cancelled => Stopped::Cancelled,
-        e => Stopped::Failed(e.to_string()),
+        // A transport failure reads as a failed send does; its raw text stays as the detail.
+        e => {
+            let raw = e.to_string();
+            let text = match &e {
+                OAuth2Error::Exec(x) => response_pane::transport_text(x),
+                _ => None,
+            };
+            match text {
+                Some(text) => Stopped::Failed(text, Some(raw)),
+                None => Stopped::Failed(raw, None),
+            }
+        }
     });
     (stopped, status)
 }
@@ -396,10 +415,15 @@ impl Render for TokenPanel {
                 .child(text)
         };
         // A failure reads as an error; the memory-only reason is information and stays muted.
+        // A reworded error keeps the raw text it came from as its tooltip.
+        let detail = self.action_error.as_ref().and(self.action_detail.clone());
         let error = self.error().map(|text| {
             small("oauth2-token-error", text.clone())
                 .aria_label(text)
                 .text_color(cx.theme().danger)
+                .when_some(detail, |d, detail| {
+                    d.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+                })
         });
         let note = self.action_note.map(|text| {
             small("oauth2-token-note", text.to_owned())

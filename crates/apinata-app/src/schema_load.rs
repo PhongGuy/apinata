@@ -4,13 +4,14 @@
 use std::path::{Path, PathBuf};
 
 use apinata_core::{
-    CancelHandle, IntrospectError, ItemPath, ResolveError, Schema, SchemaError,
+    CancelHandle, IntrospectError, ItemPath, OAuth2Error, ResolveError, Schema, SchemaError,
     fetch_introspection, introspection_request,
 };
 use gpui_kit::{App, AppContext as _, Entity, Window};
 
 use crate::copy_curl::plan_and_resolve_with;
-use crate::graphql_schema_store::SchemaStore;
+use crate::graphql_schema_store::{SchemaFailure, SchemaStore};
+use crate::response_pane::transport_text;
 use crate::workspace::Workspace;
 use crate::{executor, tokio_bridge};
 
@@ -60,14 +61,14 @@ pub fn load_from_server(
                 });
                 match fetch {
                     Some(task) => match task.await {
-                        Ok(answer) => answer.map_err(|e| e.to_string()),
-                        Err(_) => Err("the schema load stopped".to_owned()),
+                        Ok(answer) => answer.map_err(|e| server_failure(e.error())),
+                        Err(_) => Err("the schema load stopped".into()),
                     },
-                    None => Err("the network is not available".to_owned()),
+                    None => Err("the network is not available".into()),
                 }
             }
-            Ok(Err(message)) => Err(message),
-            Err(_) => Err("the schema load stopped".to_owned()),
+            Ok(Err(message)) => Err(message.into()),
+            Err(_) => Err("the schema load stopped".into()),
         };
         cx.update(|cx| finish_and_keep(url, generation, result, cx));
     })
@@ -83,10 +84,10 @@ pub fn load_from_file(url: String, path: PathBuf, cx: &mut App) {
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
         // The file is the user's own and nothing was sent, so there is no secret to scrub.
         let schema = Schema::from_text(&text).map_err(|e| e.to_string())?;
-        Ok((schema, text, Vec::new()))
+        Ok::<_, String>((schema, text, Vec::new()))
     });
     cx.spawn(async move |cx| {
-        let result = read.await;
+        let result = read.await.map_err(SchemaFailure::from);
         cx.update(|cx| finish_and_keep(url, generation, result, cx));
     })
     .detach();
@@ -115,13 +116,13 @@ pub fn load_from_cache(url: String, cx: &mut App) {
 fn finish_and_keep(
     url: String,
     generation: u64,
-    result: Result<(Schema, String, Vec<String>), String>,
+    result: Result<(Schema, String, Vec<String>), SchemaFailure>,
     cx: &mut App,
 ) {
     let store = cx.default_global::<SchemaStore>();
     let (result, kept) = match result {
         Ok((schema, text, secrets)) => (Ok(schema), Some((text, secrets))),
-        Err(message) => (Err(message), None),
+        Err(failure) => (Err(failure), None),
     };
     let cache = store.cache().cloned();
     if !store.finish(&url, generation, result) {
@@ -133,4 +134,32 @@ fn finish_and_keep(
         })
         .detach();
     }
+}
+
+// An unreachable server reads as a failed send does, keeping the raw text as the detail. Any
+// other failure leads with what failed, and an answer without a schema points at the file load.
+fn server_failure(error: &SchemaError) -> SchemaFailure {
+    let raw = error.to_string();
+    let exec = match error {
+        SchemaError::Send(e) | SchemaError::Auth(OAuth2Error::Exec(e)) => Some(e),
+        _ => None,
+    };
+    if let Some(message) = exec.and_then(transport_text) {
+        return SchemaFailure {
+            message,
+            detail: Some(raw),
+        };
+    }
+    let mut message = format!("Could not load schema: {}.", raw.trim_end_matches('.'));
+    if matches!(
+        error,
+        SchemaError::Status { .. }
+            | SchemaError::NotJson { .. }
+            | SchemaError::NoData
+            | SchemaError::Graphql { .. }
+    ) {
+        message
+            .push_str(" The server may not share its schema; use Load schema from file instead.");
+    }
+    message.into()
 }

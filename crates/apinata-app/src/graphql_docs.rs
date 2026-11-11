@@ -517,7 +517,9 @@ pub(crate) fn schema_state<V: EventEmitter<SchemaAction>>(
         Some(SchemaState::Loading) => status(ids.loading, "Loading schema".into())
             .test_support()
             .into_any_element(),
-        Some(SchemaState::Failed(message)) => status(ids.error, message)
+        // The schema row above says why; the panel only names the failure, so it reads once.
+        Some(SchemaState::Failed(_)) => status(ids.error, "Could not load schema".into())
+            .aria_label("Could not load schema")
             .text_color(cx.theme().danger)
             .test_support()
             .into_any_element(),

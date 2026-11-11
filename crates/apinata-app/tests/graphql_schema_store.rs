@@ -101,10 +101,68 @@ fn a_failed_load_shows_the_error_inline(cx: &mut TestAppContext) {
         .unwrap();
     wait_real(cx, |cx| failed(cx, &url).is_some());
     assert_eq!(
-        failed(cx, &url).unwrap(),
-        "the server answered 500 Internal Server Error"
+        drawn_label(cx, win, "graphql-schema-error").as_deref(),
+        Some(
+            "Could not load schema: the server answered 500 Internal Server Error. \
+             The server may not share its schema; use Load schema from file instead."
+        )
     );
-    assert!(present(cx, win, "graphql-schema-error"));
+}
+
+// A 404 leads with what failed and points at the file load, in sentence case.
+#[gpui_kit::test]
+fn a_missing_schema_endpoint_suggests_a_schema_file(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(404));
+    let url = format!("{}/graphql", server.uri());
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &gql("a", &url))]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _) = editor_for(cx, &ws, &root, "a.yml", false);
+    query_tab(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("graphql-schema-load", cx))
+        .unwrap();
+    wait_real(cx, |cx| failed(cx, &url).is_some());
+    assert_eq!(
+        drawn_label(cx, win, "graphql-schema-error").as_deref(),
+        Some(
+            "Could not load schema: the server answered 404 Not Found. \
+             The server may not share its schema; use Load schema from file instead."
+        )
+    );
+}
+
+// An unreachable server reads in the words a failed send uses, once: the Builder only names
+// the failure and leaves the sentence to the schema row.
+#[gpui_kit::test]
+fn a_refused_schema_load_reads_like_a_failed_send_once(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let url = "http://127.0.0.1:9/graphql";
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &gql("a", url))]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _) = editor_for(cx, &ws, &root, "a.yml", false);
+    query_tab(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("graphql-schema-load", cx))
+        .unwrap();
+    wait_real(cx, |cx| failed(cx, url).is_some());
+    cx.update_window(win, |_, w, cx| w.click("graphql-builder-toggle", cx))
+        .unwrap();
+    assert_eq!(
+        drawn_label(cx, win, "graphql-schema-error").as_deref(),
+        Some("Connection refused: Nothing is listening at 127.0.0.1:9. Is the server running?")
+    );
+    assert_eq!(
+        drawn_label(cx, win, "graphql-builder-error").as_deref(),
+        Some("Could not load schema")
+    );
+}
+
+// The label of the element `id` in the last drawn frame, `None` when it is not drawn.
+fn drawn_label(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
 }
 
 #[gpui_kit::test]

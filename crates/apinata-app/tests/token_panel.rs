@@ -691,3 +691,30 @@ fn the_scope_and_error_lines_sit_in_the_field_column(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// An unreachable token endpoint reads in the words a failed send uses, not the transport text.
+#[gpui_kit::test]
+fn a_refused_token_fetch_reads_like_a_failed_send(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let file = format!(
+        "{}  auth:\n{}",
+        request("a", "http://x.test/r"),
+        cc("http://127.0.0.1:9")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, view) = editor_for(cx, &ws, &root, "a.yml", false);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Auth as usize), cx);
+        w.render_frame(cx)
+    })
+    .unwrap();
+    let panel = request_panel(cx, &view);
+    settle_panel(cx, &panel);
+    panel.update(cx, |p, cx| p.get_token(cx));
+    settle_panel(cx, &panel);
+    assert_eq!(
+        drawn_label(cx, win, "oauth2-token-error").as_deref(),
+        Some("Connection refused: Nothing is listening at 127.0.0.1:9. Is the server running?")
+    );
+}
