@@ -1206,7 +1206,7 @@ impl Shell {
         .detach();
     }
 
-    // The dropped curl command lands at the current root or the scratch, as Import cURL does.
+    // The dropped curl command lands at the current root or the scratch, as Import curl does.
     fn draft_from_drop(&mut self, request: ImportedRequest, cx: &mut Context<Self>) {
         let Some(root) = self.workspace.update(cx, |w, cx| w.draft_root(cx)) else {
             return;

@@ -291,7 +291,7 @@ fn the_first_group_header_is_visible_after_a_search(cx: &mut TestAppContext) {
 }
 
 /// Twelve requests with three hits each (url, header name, header value), so hit `n` is in group `n / 3` and multiples of 3 are first.
-fn two_hit_groups(cx: &mut TestAppContext) -> Started {
+fn two_hit_groups_unsearched(cx: &mut TestAppContext) -> Started {
     let two = |name: &str| {
         format!(
             "info:\n  name: {name}\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"http://x/needle\"\n  headers:\n    - name: X-Needle\n      value: needle-value\n"
@@ -304,6 +304,12 @@ fn two_hit_groups(cx: &mut TestAppContext) -> Started {
     refs.extend(many.iter().map(|(p, t)| (p.as_str(), t.as_str())));
     let s = started(cx, &write_tree(&refs));
     open_search(cx, &s);
+    s
+}
+
+/// The same collection, searched for "needle".
+fn two_hit_groups(cx: &mut TestAppContext) -> Started {
+    let s = two_hit_groups_unsearched(cx);
     type_query(cx, &s, "needle");
     s
 }
@@ -821,5 +827,36 @@ fn a_clean_open_tab_follows_a_replace(cx: &mut TestAppContext) {
     assert!(
         on_disk(&s, "a.yml").contains("http://x/pin"),
         "the tab wrote nothing back"
+    );
+}
+
+#[gpui_kit::test]
+fn the_first_frame_with_hits_shows_the_first_group_header(cx: &mut TestAppContext) {
+    // The first answer also adds the summary above the list, moving it. Tasks run one at a
+    // time, so the frame that first draws the hits is read before any later update redraws it.
+    let s = two_hit_groups_unsearched(cx);
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input("needle", cx))
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let shown = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, _| {
+            w.try_find(("search-group", 0usize))
+                .map(|header| (header.bounds(), w.find("search-hits").bounds()))
+        })
+        .unwrap()
+    };
+    let (header, list) = loop {
+        if let Some(found) = shown(cx) {
+            break found;
+        }
+        if !cx.executor().tick() {
+            assert!(std::time::Instant::now() < deadline, "no hits drawn");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    assert!(
+        header.top() >= list.top() && header.bottom() <= list.bottom(),
+        "header {header:?} outside list {list:?}"
     );
 }

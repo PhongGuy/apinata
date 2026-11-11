@@ -105,7 +105,7 @@ fn the_palette_exports_the_active_environment(cx: &mut TestAppContext) {
         w.select_environment(&s.root, Some("dev".into()), cx)
     });
     cx.run_until_parked();
-    palette(cx, &s, "export environment");
+    palette(cx, &s, "export current environment");
     assert_dev(&exported(cx, &s));
 }
 
@@ -114,7 +114,7 @@ fn the_palette_without_an_active_environment_says_so(cx: &mut TestAppContext) {
     let col = tree();
     let s = started(cx, &col);
     let before = toasts(cx, &s);
-    palette(cx, &s, "export environment");
+    palette(cx, &s, "export current environment");
     assert!(!cx.did_prompt_for_new_path());
     assert_eq!(toasts(cx, &s), before + 1);
 }
@@ -204,7 +204,7 @@ fn the_environment_editor_exports_every_environment_to_a_folder(cx: &mut TestApp
 fn the_palette_exports_every_environment_to_a_folder(cx: &mut TestAppContext) {
     let col = two();
     let s = started(cx, &col);
-    palette(cx, &s, "export environments");
+    palette(cx, &s, "export all environments");
     let files = exported_to_folder(cx, &s);
     assert_eq!(files, collection_files(col.path()));
     assert_dev_file(&files);
@@ -215,7 +215,7 @@ fn the_palette_without_environments_says_so(cx: &mut TestAppContext) {
     let col = write_tree(&[("opencollection.yml", ROOT)]);
     let s = started(cx, &col);
     let before = toasts(cx, &s);
-    palette(cx, &s, "export environments");
+    palette(cx, &s, "export all environments");
     assert!(!cx.did_prompt_for_paths());
     assert_eq!(toasts(cx, &s), before + 1);
 }

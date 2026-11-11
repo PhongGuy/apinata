@@ -211,15 +211,15 @@ fn a_collection_whose_save_fails_is_reported_kept(cx: &mut TestAppContext) {
 fn the_detail_agrees_in_number() {
     assert_eq!(
         close_detail(1, 1, false),
-        "1 document in 1 collection has unsaved changes."
+        "1 unsaved change in 1 collection."
     );
     assert_eq!(
         close_detail(2, 1, false),
-        "2 documents in 1 collection have unsaved changes."
+        "2 unsaved changes in 1 collection."
     );
     assert_eq!(
         close_detail(3, 2, false),
-        "3 documents in 2 collections have unsaved changes."
+        "3 unsaved changes in 2 collections."
     );
     assert_eq!(
         close_detail(0, 2, false),
@@ -231,11 +231,11 @@ fn the_detail_agrees_in_number() {
 fn the_detail_names_the_scratch_pad_as_itself() {
     assert_eq!(
         close_detail(1, 0, true),
-        "1 document in the scratch pad has unsaved changes."
+        "1 unsaved change in the scratch pad."
     );
     assert_eq!(
         close_detail(3, 2, true),
-        "3 documents in 2 collections and the scratch pad have unsaved changes."
+        "3 unsaved changes in 2 collections and the scratch pad."
     );
     assert_eq!(
         close_detail(0, 0, true),
@@ -257,7 +257,7 @@ fn a_scratch_draft_is_named_as_the_scratch_pad(cx: &mut TestAppContext) {
     )];
     let detail =
         s.ws.read_with(cx, |w, _| apinata_app::closing::unsaved_detail(w, &unsaved));
-    assert_eq!(detail, "1 document in the scratch pad has unsaved changes.");
+    assert_eq!(detail, "1 unsaved change in the scratch pad.");
 }
 
 // Types into a saved request and closes its tab in the same breath, before the actor has

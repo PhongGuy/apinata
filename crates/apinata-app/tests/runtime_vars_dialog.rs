@@ -65,7 +65,7 @@ fn the_palette_offers_runtime_variables() {
     assert!(
         palette_items()
             .iter()
-            .any(|e| e.label == "Runtime variables")
+            .any(|e| e.label == "Edit runtime variables")
     );
 }
 
