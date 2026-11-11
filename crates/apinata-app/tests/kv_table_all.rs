@@ -2,7 +2,7 @@
 
 use crate::support;
 
-use apinata_app::kv_table::{KvEvent, KvRow, KvTable, Tri, enabled_state};
+use apinata_app::kv_table::{KvColumns, KvEvent, KvRow, KvTable, Tri, enabled_state};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
     AnyWindowHandle, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled,
@@ -141,13 +141,24 @@ fn a_locked_table_ignores_the_heading(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_table_without_togglable_rows_emits_nothing(cx: &mut TestAppContext) {
-    for rows in [vec![], vec![row("id", false, true)]] {
+fn a_table_without_togglable_rows_has_no_heading_box(cx: &mut TestAppContext) {
+    for rows in [vec![], vec![row("id", true, true)]] {
         let (win, h) = host(cx, rows);
-        cx.update_window(win, |_, w, cx| w.click("kv-head-enabled", cx))
-            .unwrap();
+        assert!(!present(cx, win, "kv-head-enabled"));
         assert!(h.read_with(cx, |h, _| h.events.is_empty()));
     }
+    // Positive control: one togglable row next to a fixed one brings the box back.
+    let (win, _h) = host(cx, vec![row("id", true, true), row("a", true, false)]);
+    assert!(present(cx, win, "kv-head-enabled"));
+}
+
+#[gpui_kit::test]
+fn a_file_body_has_no_heading_box(cx: &mut TestAppContext) {
+    let (win, h) = host(cx, vec![row("a", true, false), row("b", false, false)]);
+    assert!(present(cx, win, "kv-head-enabled"));
+    let t = h.read_with(cx, |h, _| h.table.clone());
+    t.update(cx, |t, cx| t.set_columns(KvColumns::FILE_BODY, cx));
+    assert!(!present(cx, win, "kv-head-enabled"));
 }
 
 #[gpui_kit::test]
