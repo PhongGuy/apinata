@@ -492,8 +492,13 @@ fn the_branch_name_and_chevron_say_they_switch_branch(cx: &mut TestAppContext) {
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, _| {
         let bar = w.within("title-bar");
-        for id in ["git-branch", "git-branch-chevron"] {
-            assert_eq!(bar.find(id).description(), Some("Switch branch"), "{id}");
+        // The name can be cut short, so its tip names the branch in full.
+        let tips = [
+            ("git-branch", "Switch branch (main)"),
+            ("git-branch-chevron", "Switch branch"),
+        ];
+        for (id, tip) in tips {
+            assert_eq!(bar.find(id).description(), Some(tip), "{id}");
         }
     })
     .unwrap();

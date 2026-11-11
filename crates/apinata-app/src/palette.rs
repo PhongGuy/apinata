@@ -414,18 +414,22 @@ pub fn entry_index(items: &[PaletteEntry], path: IndexPath) -> Option<usize> {
 /// Opens the palette over `window`, recording the focused handle (else `fallback`) to
 /// restore and dispatch from on confirm.
 pub fn open(fallback: FocusHandle, window: &mut Window, cx: &mut App) {
-    open_with(fallback, Vec::new(), None, None, None, window, cx);
+    open_with(fallback, Vec::new(), None, None, None, true, window, cx);
 }
 
 /// `open` with a "Requests" group listing `requests` after the registry's groups;
 /// `sidebar` and `workspace` are read live for which commands apply, and the palette redraws
-/// when either changes; with none, their commands are always listed.
+/// when either changes; with none, their commands are always listed. `in_repo` is the host's
+/// own view of whether the current collection sits in a git repository.
+// Each view the palette reads is its own optional argument, so a host passes only what it has.
+#[allow(clippy::too_many_arguments)]
 pub fn open_with(
     fallback: FocusHandle,
     requests: Vec<RequestEntry>,
     sidebar: Option<Entity<Sidebar>>,
     workspace: Option<Entity<Workspace>>,
     tab_area: Option<Entity<TabArea>>,
+    in_repo: bool,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -434,12 +438,6 @@ pub fn open_with(
     let requests: Rc<[RequestEntry]> = requests.into();
     // The state outlives the dialog's per-render rebuild, so the query and highlight persist.
     let state = cx.new(|cx| CommandState::new(window, cx));
-    // Read once: the palette is modal, so the current collection cannot change under it.
-    let in_repo = workspace.as_ref().is_none_or(|w| {
-        let w = w.read(cx);
-        (w.current_root().filter(|r| !w.is_scratch(r)))
-            .is_some_and(|r| crate::git_head::branch_label(&r).is_some())
-    });
     let dialog_state = state.clone();
     let rows_key = Rc::new(RowsKey::new());
     // The dialog layer redraws only with its host, so a selection change must refresh the window.

@@ -1006,8 +1006,6 @@ impl Shell {
         .detach();
     }
 
-    // The picker needs a repository; its events refresh the label, since a switch keeps the root
-    // and `refresh_branch` would otherwise leave the old name up.
     // The current collection's root when it sits in a git repository; otherwise a notice says
     // why the git command cannot run.
     fn repository_root(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<PathBuf> {
@@ -1038,6 +1036,8 @@ impl Shell {
         open_changes(&self.workspace, &root, None, window, cx);
     }
 
+    // The picker needs a repository; its events refresh the label, since a switch keeps the root
+    // and `refresh_branch` would otherwise leave the old name up.
     fn open_branch_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(root) = self.repository_root(window, cx) else {
             return;
@@ -2168,7 +2168,7 @@ impl Shell {
         let branch = name.map(|name| {
             let cell = (!hidden).then_some(&self.branch_clipped);
             part("git-branch", name.clone(), Self::BRANCH_SHRINK, hidden)
-                .tooltip("Switch branch")
+                .tooltip(format!("Switch branch ({name})"))
                 // A slim right padding keeps the comma beside the name, still outside its ring.
                 .when(comma_shows, |b| b.pr(Self::NAME_COMMA_PAD))
                 .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)))
@@ -2883,6 +2883,7 @@ impl Render for Shell {
                     sidebar,
                     Some(this.workspace.clone()),
                     Some(this.tab_area.clone()),
+                    this.branch.is_some(),
                     window,
                     cx,
                 )
