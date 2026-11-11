@@ -253,7 +253,7 @@ pub fn bulk_entries(items: usize, run: Option<usize>) -> Vec<BulkEntry> {
 }
 
 /// The name a new folder starts with, before the inline rename.
-pub const NEW_FOLDER_NAME: &str = "New Folder";
+pub const NEW_FOLDER_NAME: &str = "New folder";
 
 /// The name of a request's clone, as Bruno names it.
 pub fn clone_name(name: &str) -> String {

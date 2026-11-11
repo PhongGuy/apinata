@@ -243,8 +243,8 @@ fn the_collection_row_creates_in_the_root(cx: &mut TestAppContext) {
     };
     assert_eq!(ip(draft).parent(), Some(ItemPath::root()));
     choose(cx, &h, "", NodeKind::Collection, MenuEntry::NewFolder);
-    assert!(h.root.join("New Folder").is_dir());
-    assert_eq!(renaming(cx, &h), Some((h.root.clone(), ip("New Folder"))));
+    assert!(h.root.join("New folder").is_dir());
+    assert_eq!(renaming(cx, &h), Some((h.root.clone(), ip("New folder"))));
 }
 
 // A row created under a filter it does not match would stay hidden with its rename pending.
@@ -257,7 +257,7 @@ fn a_create_under_a_filter_clears_it_and_renames_at_once(cx: &mut TestAppContext
     cx.update_window(h.win, |_, w, cx| w.input("health", cx))
         .unwrap();
     choose(cx, &h, "", NodeKind::Collection, MenuEntry::NewFolder);
-    assert_eq!(renaming(cx, &h), Some((h.root.clone(), ip("New Folder"))));
+    assert_eq!(renaming(cx, &h), Some((h.root.clone(), ip("New folder"))));
     assert_eq!(filter.read_with(cx, |i, _| i.value().to_string()), "");
 }
 

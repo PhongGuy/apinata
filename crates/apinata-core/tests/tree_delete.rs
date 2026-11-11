@@ -229,3 +229,45 @@ fn a_delete_that_fails_part_way_reloads_the_tree() {
     }
     assert!(c.folder(&ip("p/f/g")).is_none());
 }
+
+#[test]
+fn an_empty_folder_is_removed_with_its_folder_file() {
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("a.yml", &request("a", 1))]);
+    let made = c.create_folder(&ItemPath::root(), "New folder").unwrap();
+    c.delete_empty_folder(&made).expect("deletes");
+    assert!(!exists(&dir, made.as_str()) && c.folder(&made).is_none());
+    assert!(exists(&dir, "a.yml"));
+}
+
+// Anything inside, loaded or not, keeps the folder and every file in it.
+#[test]
+fn a_folder_with_anything_inside_is_kept() {
+    let (dir, mut c) = open(&[
+        ("opencollection.yml", ROOT),
+        ("f/folder.yml", &folder("f", 1)),
+        ("f/a.yml", &request("a", 1)),
+        ("g/folder.yml", &folder("g", 2)),
+        ("h/folder.yml", &folder("h", 3)),
+    ]);
+    write(&dir, "g/notes.txt", "keep me");
+    assert!(c.delete_empty_folder(&ip("f")).is_err());
+    assert!(c.delete_empty_folder(&ip("g")).is_err());
+    assert_eq!(read(&dir, "f/a.yml"), request("a", 1));
+    assert_eq!(read(&dir, "g/notes.txt"), "keep me");
+    assert!(exists(&dir, "f/folder.yml") && exists(&dir, "g/folder.yml"));
+    assert!(c.folder(&ip("f")).is_some() && c.folder(&ip("g")).is_some());
+    let draft = c.create_draft(&ip("h")).unwrap();
+    assert!(c.delete_empty_folder(&ip("h")).is_err());
+    assert!(exists(&dir, "h/folder.yml") && c.is_draft(&draft));
+}
+
+#[test]
+fn only_a_folder_is_removed_that_way() {
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("a.yml", &request("a", 1))]);
+    assert!(matches!(
+        c.delete_empty_folder(&ip("a.yml")),
+        Err(TreeError::NotFound { .. })
+    ));
+    assert!(c.delete_empty_folder(&ItemPath::root()).is_err());
+    assert!(exists(&dir, "a.yml"));
+}

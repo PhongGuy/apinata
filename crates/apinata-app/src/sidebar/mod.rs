@@ -290,6 +290,8 @@ struct Rename {
     old: String,
     // The example being renamed, else the request or folder at `path` itself.
     example: Option<usize>,
+    // A folder this view just created, which a cancelled naming removes again.
+    fresh: bool,
     input: Entity<InputState>,
     _subscription: Subscription,
 }
@@ -605,7 +607,7 @@ impl Sidebar {
             return;
         }
         if let Some(node) = self.selected_node(cx).cloned() {
-            self.begin_rename(&node, window, cx);
+            self.begin_rename(&node, false, window, cx);
         }
     }
 
@@ -910,13 +912,19 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) {
         if let Some(node) = self.find(root, path).cloned() {
-            self.begin_rename(&node, window, cx);
+            self.begin_rename(&node, false, window, cx);
         }
     }
 
     // Renames `node` itself, so an example row brings its own index and name rather than
     // its request's, with which it shares a path.
-    fn begin_rename(&mut self, node: &Node, window: &mut Window, cx: &mut Context<Self>) {
+    fn begin_rename(
+        &mut self,
+        node: &Node,
+        fresh: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !matches!(
             node.kind,
             NodeKind::Folder | NodeKind::Request | NodeKind::Example
@@ -934,6 +942,7 @@ impl Sidebar {
             path: node.path.clone(),
             old,
             example: node.example,
+            fresh,
             _subscription: cx.subscribe_in(&input, window, Self::rename_event),
             input,
         });
@@ -1091,11 +1100,34 @@ impl Sidebar {
                 }
                 self.end_rename(window, cx);
             }
-            InputEvent::Blur if self.rename.is_some() => {
-                self.rename = None;
+            InputEvent::Blur => {
+                let Some(r) = self.rename.take() else {
+                    return;
+                };
+                if *r.input.read(cx).value() == *r.old {
+                    self.discard_fresh(r, cx);
+                }
                 cx.notify();
             }
             _ => {}
+        }
+    }
+
+    // Escape cancels the rename, and with it the naming of a folder this view just created.
+    fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(r) = self.rename.take() {
+            self.discard_fresh(r, cx);
+        }
+        self.end_rename(window, cx);
+    }
+
+    // Removes a just-created folder whose naming was dropped. Core keeps it if anything is
+    // inside, and a failure shows as any failed tree op does.
+    fn discard_fresh(&mut self, r: Rename, cx: &mut Context<Self>) {
+        if r.fresh {
+            let op = TreeOp::DeleteEmptyFolder { item: r.path };
+            self.workspace
+                .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
         }
     }
 
@@ -1352,7 +1384,7 @@ impl Sidebar {
             MenuEntry::Rename => {
                 let (view, node) = (cx.entity().downgrade(), node.clone());
                 window.defer(cx, move |window, cx| {
-                    view.update(cx, |s, cx| s.begin_rename(&node, window, cx))
+                    view.update(cx, |s, cx| s.begin_rename(&node, false, window, cx))
                         .ok();
                 });
             }
@@ -2080,8 +2112,11 @@ impl Sidebar {
             return;
         };
         self.select(&id, cx);
-        if f.rename {
-            self.start_rename(&f.root, &f.path, window, cx);
+        // Only a new folder renames on arrival, so its rename is a fresh one.
+        if f.rename
+            && let Some(node) = self.find(&f.root, &f.path).cloned()
+        {
+            self.begin_rename(&node, true, window, cx);
         }
     }
 
@@ -2434,7 +2469,7 @@ impl Render for Sidebar {
             .capture_action(cx.listener(|this, _: &SelectDown, _, cx| this.clear_multi(cx)))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
                 if this.rename.is_some() {
-                    this.end_rename(window, cx);
+                    this.cancel_rename(window, cx);
                 }
             }))
             .child(

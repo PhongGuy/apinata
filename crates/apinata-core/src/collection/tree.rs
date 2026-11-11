@@ -617,6 +617,50 @@ impl Collection {
         removal.renumber
     }
 
+    /// Delete the folder at `item` only while it holds nothing but its `folder.yml`, then
+    /// renumber its siblings as [`Collection::delete`] does.
+    ///
+    /// Fails with `NotFound` when `item` is not a folder, `InvalidMove` for the root, and `Io`
+    /// (kind `DirectoryNotEmpty`) when the folder holds an item, a draft or any other file, in
+    /// which case nothing is deleted. Otherwise fails as `delete` does.
+    pub fn delete_empty_folder(&mut self, item: &ItemPath) -> Result<(), TreeError> {
+        let folder = self
+            .folder(item)
+            .ok_or_else(|| TreeError::NotFound { item: item.clone() })?;
+        let full = item.to_path(&self.root);
+        let not_empty = |path: &Path| {
+            let source = std::io::Error::new(
+                ErrorKind::DirectoryNotEmpty,
+                "the folder is not empty, so it was kept",
+            );
+            io_error(path, source)
+        };
+        let loaded = !folder.folders.is_empty()
+            || !folder.requests.is_empty()
+            || !folder.opaque.is_empty()
+            || self.drafts.iter().any(|d| d.path().starts_with(&full));
+        if loaded {
+            return Err(not_empty(&full));
+        }
+        // The disk may hold files the walk ignores; only a lone folder.yml goes. Removing the
+        // directory with `remove_dir` keeps anything that lands in it after this check.
+        let removal = self.remove_with(item, |full, _| {
+            for entry in fs::read_dir(full).map_err(|e| io_error(full, e))? {
+                let entry = entry.map_err(|e| io_error(full, e))?;
+                if entry.file_name() != FOLDER_FILE {
+                    return Err(not_empty(full));
+                }
+            }
+            let file = full.join(FOLDER_FILE);
+            match fs::remove_file(&file) {
+                Err(e) if e.kind() != ErrorKind::NotFound => return Err(io_error(&file, e)),
+                _ => {}
+            }
+            fs::remove_dir(full).map_err(|e| io_error(full, e))
+        })?;
+        removal.renumber
+    }
+
     /// Like [`Collection::delete`], but the item goes into `bin` and the returned [`Trashed`]
     /// brings it back through [`Collection::restore_trashed`].
     ///
