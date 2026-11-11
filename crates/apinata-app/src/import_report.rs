@@ -1,5 +1,5 @@
 //! The import report: a summary and the notes an import left, grouped by kind, shown in a
-//! dialog after the import.
+//! dialog after the import. The export report shows its notes in the same dialog.
 
 use crate::style::{DIALOG_FOOTER_GAP, ROW_HEIGHT, SPACE_1, SPACE_2, SPACE_3, resolve};
 use crate::ui::{dialog_footer, form_heading, plain_quotes};
@@ -89,8 +89,46 @@ pub fn open_failure(root: &Path, message: &str) -> String {
 /// ("import-group", g) and notes ("import-note", ix counted across groups), then a Close button
 /// ("import-report-close").
 pub fn open(title: &'static str, report: &ImportReport, window: &mut Window, cx: &mut App) {
-    let summary = summary(report);
-    let groups = groups(report);
+    let groups = groups(report)
+        .into_iter()
+        .map(|(heading, lines)| (Some(heading), lines))
+        .collect();
+    open_report(title, IMPORT_IDS, summary(report), groups, window, cx);
+}
+
+/// The element ids of one kind of report dialog.
+#[derive(Clone, Copy)]
+pub struct ReportIds {
+    /// The summary line.
+    pub summary: &'static str,
+    /// Each group's heading, numbered.
+    pub group: &'static str,
+    /// Each note, numbered across groups.
+    pub note: &'static str,
+    /// The scrolling box around the notes.
+    pub scroll: &'static str,
+    /// The Close button.
+    pub close: &'static str,
+}
+
+const IMPORT_IDS: ReportIds = ReportIds {
+    summary: "import-summary",
+    group: "import-group",
+    note: "import-note",
+    scroll: "import-report-scroll",
+    close: "import-report-close",
+};
+
+/// A report dialog titled `title`: `summary`, then each group's optional heading and its lines
+/// in a box that scrolls when they outgrow the window, then a Close button.
+pub fn open_report(
+    title: &'static str,
+    ids: ReportIds,
+    summary: String,
+    groups: Vec<(Option<&'static str>, Vec<String>)>,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let scroll = ScrollHandle::new();
     window.open_dialog(cx, move |d, window, _| {
         let d = crate::dialog_frame::place(d, window);
@@ -101,15 +139,16 @@ pub fn open(title: &'static str, report: &ImportReport, window: &mut Window, cx:
             first += lines.len();
             let notes = lines.iter().enumerate().map(move |(i, l)| {
                 div()
-                    .id(("import-note", start + i))
+                    .id((ids.note, start + i))
                     .test_support()
+                    .aria_label(l.clone())
                     .child(l.clone())
             });
             div()
                 .flex()
                 .flex_col()
                 .gap(SPACE_1)
-                .child(form_heading(("import-group", g), *heading))
+                .children(heading.map(|h| form_heading((ids.group, g), h)))
                 .children(notes)
         });
         // The notes scroll inside the room above the status bar, less a row each for the
@@ -123,8 +162,9 @@ pub fn open(title: &'static str, report: &ImportReport, window: &mut Window, cx:
             .close_button(false)
             .child(
                 div()
-                    .id("import-summary")
+                    .id(ids.summary)
                     .test_support()
+                    .aria_label(summary.clone())
                     .mb(SPACE_2)
                     .child(summary.clone()),
             )
@@ -135,7 +175,7 @@ pub fn open(title: &'static str, report: &ImportReport, window: &mut Window, cx:
                     .relative()
                     .child(
                         div()
-                            .id("import-report-scroll")
+                            .id(ids.scroll)
                             .max_h(room.max(px(0.)))
                             .overflow_y_scroll()
                             .track_scroll(&scroll)
@@ -146,7 +186,7 @@ pub fn open(title: &'static str, report: &ImportReport, window: &mut Window, cx:
             .child(dialog_footer(
                 None,
                 [],
-                Button::new("import-report-close")
+                Button::new(ids.close)
                     .label("Close")
                     .primary()
                     .on_click(|_, window, cx| window.close_dialog(cx)),
