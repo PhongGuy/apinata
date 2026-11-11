@@ -921,18 +921,19 @@ impl Sidebar {
             .update(cx, |w, cx| w.send(root, Command::Tree(op), cx));
     }
 
-    // The folder a new item goes in: the selected folder, the selected request's folder, or
-    // the collection root when the selection is elsewhere.
+    // The folder a new item goes in: the selected folder or the one an Empty row stands in,
+    // the selected request's or example's folder, or the collection root otherwise.
     fn selection_parent(&self, root: &Path, cx: &App) -> ItemPath {
-        self.selected(cx)
-            .filter(|(r, _)| r == root)
-            .and_then(|(r, path)| {
-                let node = self.find(&r, &path)?;
-                match node.kind {
-                    NodeKind::Folder => Some(path),
-                    NodeKind::Request => path.parent(),
-                    _ => None,
-                }
+        let node = self
+            .tree
+            .read(cx)
+            .selected_item()
+            .and_then(|i| self.rows.get(&i.id));
+        node.filter(|n| n.root == root)
+            .and_then(|n| match n.kind {
+                NodeKind::Folder | NodeKind::Empty => Some(n.path.clone()),
+                NodeKind::Request | NodeKind::Example => n.path.parent(),
+                _ => None,
             })
             .unwrap_or_else(ItemPath::root)
     }
@@ -998,7 +999,10 @@ impl Sidebar {
     fn drag_over(&mut self, target: &Node, e: &DragMoveEvent<DraggedRow>, cx: &mut Context<Self>) {
         let id = &target.id;
         let over = e.bounds.contains(&e.event.position);
-        let zone = drop_zone(e.event.position.y, e.bounds);
+        let zone = match target.kind {
+            NodeKind::Empty => DropZone::Inside,
+            _ => drop_zone(e.event.position.y, e.bounds),
+        };
         let dragged = e.drag(cx);
         let allowed = dragged.also.is_empty()
             || (dragged.root == target.root
@@ -3289,7 +3293,7 @@ struct DragSet {
 }
 
 /// Makes `item` a drop target with `zone`'s indicator drawn, and a drag source when its row
-/// can move; invalid and example rows take neither part.
+/// can move; invalid and example rows take neither part, and an Empty row is a target only.
 fn drag_and_drop(
     item: ListItem,
     n: &Node,
@@ -3300,11 +3304,7 @@ fn drag_and_drop(
 ) -> ListItem {
     if matches!(
         n.kind,
-        NodeKind::Invalid
-            | NodeKind::Example
-            | NodeKind::UnsavedGroup
-            | NodeKind::Draft
-            | NodeKind::Empty
+        NodeKind::Invalid | NodeKind::Example | NodeKind::UnsavedGroup | NodeKind::Draft
     ) {
         return item;
     }

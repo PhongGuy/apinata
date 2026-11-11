@@ -1602,6 +1602,7 @@ impl Shell {
         if offer_demo {
             actions.push(("Open the demo collection…", &OpenDemoCollection));
         }
+        let demo = (actions.iter()).position(|(_, a)| a.partial_eq(&OpenDemoCollection));
         div()
             .id("no-collection")
             .test_support()
@@ -1619,18 +1620,14 @@ impl Shell {
                     .size(style::APP_ICON_SIZE)
                     .child(img(APP_ICON.clone()).size_full()),
             )
-            .child(div().flex_none().child(
-                ui::empty_state("no-collection-actions", "No collection open", &actions).when(
-                    offer_demo,
-                    |e| {
-                        e.note(
-                            actions.len() - 1,
-                            "demo-hint",
-                            "Sample requests; sending needs internet",
-                        )
-                    },
+            .child(
+                div().flex_none().child(
+                    ui::empty_state("no-collection-actions", "No collection open", &actions)
+                        .when_some(demo, |e, ix| {
+                            e.note(ix, "demo-hint", "Sample requests; sending needs internet")
+                        }),
                 ),
-            ))
+            )
             .children(self.recent_list(window, cx))
     }
 
