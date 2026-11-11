@@ -1,6 +1,6 @@
 //! Two open collections that share a name stay apart in the window: their runner and
-//! environment tabs and the breadcrumb carry the folder hint, and the sidebar root keeps its
-//! name whole while the hint gives way.
+//! environment tabs, the breadcrumb and the palette's request rows carry the folder hint, and
+//! the sidebar root keeps its name whole while the hint gives way.
 
 use crate::support::{self, *};
 
@@ -21,18 +21,7 @@ struct Twins {
 
 // The folders `demo` and `demo-twin`, both named "Apinata Demo", open in one shell.
 fn twins(cx: &mut TestAppContext, sidebar_width: Option<f32>) -> Twins {
-    let tmp = tempfile::tempdir().unwrap();
-    let roots = [tmp.path().join("demo"), tmp.path().join("demo-twin")];
-    for dir in &roots {
-        std::fs::create_dir_all(dir.join("users")).unwrap();
-        std::fs::write(
-            dir.join("opencollection.yml"),
-            "opencollection: 1.0.0\ninfo:\n  name: Apinata Demo\n",
-        )
-        .unwrap();
-        std::fs::write(dir.join("users/folder.yml"), folder("Users")).unwrap();
-        std::fs::write(dir.join("users/get.yml"), request("Get user", "http://x/")).unwrap();
-    }
+    let (tmp, roots) = twin_dirs();
     support::init(cx);
     let state = tempfile::tempdir().unwrap();
     let start = Session {
@@ -61,6 +50,23 @@ fn twins(cx: &mut TestAppContext, sidebar_width: Option<f32>) -> Twins {
         ws,
         win,
     }
+}
+
+// The folders `demo` and `demo-twin` on disk, each a collection named "Apinata Demo".
+fn twin_dirs() -> (tempfile::TempDir, [std::path::PathBuf; 2]) {
+    let tmp = tempfile::tempdir().unwrap();
+    let roots = [tmp.path().join("demo"), tmp.path().join("demo-twin")];
+    for dir in &roots {
+        std::fs::create_dir_all(dir.join("users")).unwrap();
+        std::fs::write(
+            dir.join("opencollection.yml"),
+            "opencollection: 1.0.0\ninfo:\n  name: Apinata Demo\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("users/folder.yml"), folder("Users")).unwrap();
+        std::fs::write(dir.join("users/get.yml"), request("Get user", "http://x/")).unwrap();
+    }
+    (tmp, roots)
 }
 
 fn bounds(
@@ -185,4 +191,65 @@ fn a_twin_root_keeps_its_name_and_the_hint_gives_way(cx: &mut TestAppContext) {
             );
         }
     }
+}
+
+// The text each drawn request row of the palette shows on its right, its pieces in paint order
+// joined by "|".
+fn palette_details(cx: &mut TestAppContext, win: AnyWindowHandle, query: &str) -> Vec<String> {
+    cx.simulate_keystrokes(win, &key("shift-p"));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.input(query, cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let texts = gpui_kit::base::test_support::texts(w);
+        (0usize..)
+            .map(|r| gpui_kit::ElementId::from(("palette-request-detail", r)))
+            .map(|id| {
+                (texts.iter())
+                    .filter(|t| t.path().contains(&id))
+                    .map(|t| t.text().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .take_while(|parts| !parts.is_empty())
+            .map(|parts| parts.join("|"))
+            .collect()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn palette_rows_of_twins_name_their_folders(cx: &mut TestAppContext) {
+    // The real app binds the palette's key; the twins open beside its first collection.
+    let other = write_tree(&[("opencollection.yml", ROOT)]);
+    let s = started(cx, &other);
+    let (_tmp, roots) = twin_dirs();
+    for root in &roots {
+        s.ws.update(cx, |w, cx| w.open(root.clone(), cx));
+    }
+    cx.run_until_parked();
+    let mut got = palette_details(cx, s.win, "Get user");
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            "Apinata Demo|demo-twin| / users",
+            "Apinata Demo|demo| / users",
+        ],
+        "each row keeps its whole path and names its folder after the collection"
+    );
+}
+
+#[gpui_kit::test]
+fn palette_rows_of_a_lone_name_are_unchanged(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/get.yml", &request("Get user", "http://x/")),
+    ]);
+    let s = started(cx, &col);
+    // The collection, then its folders: no hint between them.
+    assert_eq!(palette_details(cx, s.win, "Get user"), ["c| / users"]);
+    assert!(!present(cx, s.win, ("palette-request-hint", 0usize)));
 }

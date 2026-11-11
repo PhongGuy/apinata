@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use apinata_core::ItemPath;
 
+use gpui_kit::base::TestTextExt as _;
 use gpui_kit::base::actions::Cancel;
 use gpui_kit::component::command::{Command, CommandGroup, CommandItem, CommandState};
 use gpui_kit::component::kbd::Kbd;
@@ -57,8 +58,24 @@ pub struct RequestEntry {
     pub path: ItemPath,
     /// The row's text, the request's name; also what the filter matches.
     pub label: String,
+    /// The name of the request's collection.
+    pub collection: String,
+    /// The part of the collection's folder path that tells it apart from another open
+    /// collection showing the same name; `None` when no other one does.
+    pub hint: Option<String>,
+    /// The folders holding the request, outermost first, by their directory names.
+    pub folders: Vec<String>,
+}
+
+impl RequestEntry {
     /// The collection name and the folders holding the request, joined by " / ".
-    pub detail: String,
+    pub fn detail(&self) -> String {
+        std::iter::once(&self.collection)
+            .chain(&self.folders)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(" / ")
+    }
 }
 
 /// Opens a request as a kept tab; the Shell handles it.
@@ -74,6 +91,7 @@ pub struct OpenRequest {
 /// Every request row of every open collection, collections in open order and rows in
 /// snapshot order; folders and request types the app does not model are left out.
 pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
+    let hints = ws.collection_hints(cx);
     let mut entries = Vec::new();
     for collection in ws.collections() {
         let root = collection.root();
@@ -85,18 +103,18 @@ pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
             if row.kind != RowKind::Request {
                 continue;
             }
-            // The detail names the folders by their directory segments, below the collection.
             let path = row.path.as_str();
             let folders = path.rsplit_once('/').map(|(dirs, _)| dirs);
-            let detail = std::iter::once(name.as_ref())
-                .chain(folders.into_iter().flat_map(|d| d.split('/')))
-                .collect::<Vec<_>>()
-                .join(" / ");
             entries.push(RequestEntry {
                 root: root.to_path_buf(),
                 path: row.path.clone(),
                 label: row.name.clone(),
-                detail,
+                collection: name.to_string(),
+                hint: hints.get(root).cloned(),
+                folders: (folders.into_iter())
+                    .flat_map(|d| d.split('/'))
+                    .map(str::to_owned)
+                    .collect(),
             });
         }
     }
@@ -770,21 +788,42 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
 }
 
 // A request row shows its name, with its collection and folders muted on the right where a
-// command row shows its key.
+// command row shows its key. A collection whose name another open one shares is followed by
+// its folder hint, as its tab and breadcrumb show it.
 fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
-    let (label, detail) = (entry.label.clone(), entry.detail.clone());
+    let label = entry.label.clone();
+    let collection = entry.collection.clone();
+    let hint = entry.hint.clone();
+    let folders: String = entry.folders.iter().map(|f| format!(" / {f}")).collect();
     CommandItem::new().label(label.clone()).child(move |_, cx| {
         count_row_build();
+        let muted = cx.theme().muted_foreground;
         h_flex()
             .flex_1()
             .justify_between()
             .pr(style::SCROLLBAR_GUTTER)
             .child(label.clone())
             .child(
-                div()
+                h_flex()
                     .id(("palette-request-detail", r))
-                    .text_color(cx.theme().muted_foreground)
-                    .child(detail.clone()),
+                    .text_color(muted)
+                    .child(
+                        div()
+                            .child(collection.clone())
+                            .test_text(collection.clone()),
+                    )
+                    .children(hint.clone().map(|hint| {
+                        div()
+                            .id(("palette-request-hint", r))
+                            .test_support()
+                            .ml(style::SPACE_1)
+                            .child(hint.clone())
+                            .test_text(hint)
+                    }))
+                    .children(
+                        (!folders.is_empty())
+                            .then(|| div().child(folders.clone()).test_text(folders.clone())),
+                    ),
             )
     })
 }
