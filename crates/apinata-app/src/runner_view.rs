@@ -856,6 +856,7 @@ impl Render for RunnerView {
             .on_click(move |on: &bool, _, cx| m1.update(cx, |m, cx| m.set_bail(*on, cx)));
         let data =
             h_flex()
+                .min_w_0()
                 .gap_2()
                 .items_center()
                 .child(
@@ -864,7 +865,9 @@ impl Render for RunnerView {
                         .on_click(cx.listener(|this, _, window, cx| this.pick_data(window, cx))),
                 )
                 .children(data_name.map(|name| {
+                    // A long file name is cut short so Clear stays inside the pane.
                     h_flex()
+                        .min_w_0()
                         .gap_1()
                         .items_center()
                         .child(
@@ -872,6 +875,9 @@ impl Render for RunnerView {
                                 .id("run-data-name")
                                 .test_support()
                                 .aria_label(name.clone())
+                                .min_w_0()
+                                .max_w(style::FORM_INPUT_WIDTH)
+                                .truncate()
                                 .text_size(style::TEXT_CONTROL)
                                 .child(name),
                         )
@@ -1012,12 +1018,13 @@ impl Render for RunnerView {
             || matches!(model.state(), RunState::Running | RunState::Finished(_));
         let choosing = self.choosing && has_results && !running;
         let toggle = (has_results && !running).then(|| {
-            let (id, text) = if choosing {
-                ("run-show-results", "Show results")
+            let text = if choosing {
+                "Show results"
             } else {
-                ("run-change-selection", "Change selection")
+                "Change selection"
             };
-            Button::new(id)
+            // One id for both labels, so focus stays on the button after a press.
+            Button::new("run-selection-toggle")
                 .label(text)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.choosing = !this.choosing;

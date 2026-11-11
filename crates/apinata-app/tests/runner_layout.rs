@@ -333,6 +333,18 @@ fn click(cx: &mut TestAppContext, s: &Started, id: impl Into<gpui_kit::ElementId
     frame(cx, s.win);
 }
 
+// One button swaps results and checklist, keeping its id so focus stays on it.
+const TOGGLE: &str = "run-selection-toggle";
+
+fn toggle_label(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        w.try_find(TOGGLE)
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
 #[gpui_kit::test]
 fn change_selection_brings_the_checklist_back_after_a_run(cx: &mut TestAppContext) {
     let (s, model) = ran(cx, 3, 1280., 800.);
@@ -344,7 +356,9 @@ fn change_selection_brings_the_checklist_back_after_a_run(cx: &mut TestAppContex
         !present(cx, s.win, "run-plan"),
         "the plan gives way to results"
     );
-    click(cx, &s, "run-change-selection");
+    assert_eq!(toggle_label(cx, &s).as_deref(), Some("Change selection"));
+    click(cx, &s, TOGGLE);
+    assert_eq!(toggle_label(cx, &s).as_deref(), Some("Show results"));
     assert!(
         present(cx, s.win, ("run-plan-row", 2usize)),
         "the checklist is back"
@@ -355,14 +369,14 @@ fn change_selection_brings_the_checklist_back_after_a_run(cx: &mut TestAppContex
     );
     assert!(present(cx, s.win, "run-summary"), "the last summary stays");
     // The results are kept and come back without running again.
-    click(cx, &s, "run-show-results");
+    click(cx, &s, TOGGLE);
     assert!(
         present(cx, s.win, "run-table-header"),
         "results shown again"
     );
     assert_eq!(model.read_with(cx, |m, _| m.rows().len()), 3);
     // A changed selection runs only what is checked, and the results replace the checklist.
-    click(cx, &s, "run-change-selection");
+    click(cx, &s, TOGGLE);
     click(cx, &s, ("run-plan-check", 0usize));
     click(cx, &s, "run-start");
     wait_real(cx, |cx| {
@@ -376,4 +390,45 @@ fn change_selection_brings_the_checklist_back_after_a_run(cx: &mut TestAppContex
         "a new run shows its results"
     );
     assert!(present(cx, s.win, "run-table-header"));
+}
+
+#[gpui_kit::test]
+fn the_selection_toggle_is_hidden_while_a_run_is_going(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(
+        cx,
+        ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(30)),
+    );
+    let col = many(&server.uri(), 2);
+    let s = started(cx, &col);
+    let model = open_sized(cx, &s, 1280., 800.);
+    click(cx, &s, "run-start");
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| matches!(m.state(), RunState::Running))
+    });
+    frame(cx, s.win);
+    assert!(!present(cx, s.win, TOGGLE), "a toggle during the run");
+    click(cx, &s, "run-cancel");
+    wait_real(cx, |cx| model.read_with(cx, |m, _| !m.is_running()));
+    frame(cx, s.win);
+    assert!(present(cx, s.win, TOGGLE), "no toggle once the run stopped");
+}
+
+#[gpui_kit::test]
+fn a_long_data_file_name_stays_inside_the_options_at_800px(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 2);
+    let s = started(cx, &col);
+    let model = open_sized(cx, &s, 800., 800.);
+    let long = format!("{}.csv", "rows-from-the-nightly-export-".repeat(8));
+    model.update(cx, |m, cx| m.set_data_file(Some(col.path().join(long)), cx));
+    frame(cx, s.win);
+    frame(cx, s.win);
+    let options = find(cx, &s, "run-options");
+    for id in ["run-data-name", "run-data-clear"] {
+        let b = find(cx, &s, id);
+        assert!(
+            b.right() <= options.right() + SLACK,
+            "{id} {b:?} past the options {options:?}"
+        );
+    }
 }
