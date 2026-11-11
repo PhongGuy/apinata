@@ -5,8 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
+use apinata_core::export::ExportNote;
 use apinata_core::{Collection, GlobalEnvironments, IgnorePolicy, OpenOptions};
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::{App, AppContext as _, Entity, PathPromptOptions, Window};
 
@@ -96,6 +98,58 @@ pub fn exported_message(file: &Path, notes: usize) -> String {
     }
 }
 
+/// The export report's summary: how many items `file` could not carry, singular or plural.
+pub fn report_summary(file: &Path, notes: usize) -> String {
+    let shown = file.display();
+    match notes {
+        1 => format!("1 item was not carried over to {shown}."),
+        n => format!("{n} items were not carried over to {shown}."),
+    }
+}
+
+/// One line per note in note order, "<where>: <what was lost>", with every backtick removed.
+pub fn report_lines(notes: &[ExportNote]) -> Vec<String> {
+    notes
+        .iter()
+        .map(|n| format!("{}: {}", n.source, n.detail).replace('`', ""))
+        .collect()
+}
+
+// The toast after a collection export. When something was not carried over, its "Show details"
+// opens the report that names each item, so the reader can judge the file before sharing it.
+fn exported_toast(path: &Path, notes: Vec<String>) -> Notification {
+    let toast = ui::info_toast(exported_message(path, notes.len()));
+    if notes.is_empty() {
+        return toast;
+    }
+    let summary = report_summary(path, notes.len());
+    toast.action(move |_, _, cx| {
+        let (summary, notes, this) = (summary.clone(), notes.clone(), cx.entity());
+        Button::new("export-details")
+            .ghost()
+            .label("Show details")
+            .on_click(move |_, window, cx| {
+                this.update(cx, |n, cx| n.dismiss(window, cx));
+                crate::import_report::open_report(
+                    "Export report",
+                    REPORT_IDS,
+                    summary.clone(),
+                    vec![(None, notes.clone())],
+                    window,
+                    cx,
+                );
+            })
+    })
+}
+
+const REPORT_IDS: crate::import_report::ReportIds = crate::import_report::ReportIds {
+    summary: "export-summary",
+    group: "export-group",
+    note: "export-note",
+    scroll: "export-report-scroll",
+    close: "export-report-close",
+};
+
 /// Writes the export atomically; the error names the file, as the CLI's does.
 pub fn write_export(path: &Path, bytes: &[u8]) -> Result<(), String> {
     apinata_core::export::write_atomic(path, bytes)
@@ -142,7 +196,7 @@ pub fn export_collection(
                         let options =
                             apinata_core::export::PostmanOptions::new().keep_scripts(keep_scripts);
                         let out = apinata_core::export::postman_with(&collection, &options);
-                        (out.json, out.notes.len())
+                        (out.json, report_lines(&out.notes))
                     }
                     ExportFormat::OpenApi => {
                         let out = apinata_core::export::openapi(&collection);
@@ -152,18 +206,18 @@ pub fn export_collection(
                         } else {
                             out.json.clone()
                         };
-                        (text, out.notes.len())
+                        (text, report_lines(&out.notes))
                     }
                     ExportFormat::Html => {
                         let out = apinata_core::export::html(&collection);
-                        (out.html, out.notes.len())
+                        (out.html, report_lines(&out.notes))
                     }
                 };
                 write_export(&path, text.as_bytes())?;
                 Ok::<_, String>((path, notes))
             });
             let note = match job.await {
-                Ok((path, notes)) => ui::info_toast(exported_message(&path, notes)),
+                Ok((path, notes)) => exported_toast(&path, notes),
                 Err(e) => Notification::error(format!("Could not export the collection: {e}")),
             };
             cx.update(|window, cx| window.push_notification(note, cx))
