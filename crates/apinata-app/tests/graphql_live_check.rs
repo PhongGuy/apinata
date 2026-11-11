@@ -29,7 +29,7 @@ fn store_schema(cx: &mut TestAppContext, sdl: Result<&str, &str>) {
             URL,
             g,
             sdl.map(|t| Schema::from_sdl(t).unwrap())
-                .map_err(str::to_owned),
+                .map_err(Into::into),
         );
     });
     cx.update(|cx| compiled(URL, cx));

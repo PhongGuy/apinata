@@ -242,6 +242,23 @@ pub fn describe_error(error: &RunError, details: &str, env: Option<&str>) -> Err
     }
 }
 
+/// A connection, timeout, proxy or certificate failure as "Title: sentence", in the words a
+/// failed send's block uses; `None` for any other error.
+pub fn transport_text(error: &ExecError) -> Option<String> {
+    let view = describe_error(&RunError::Exec(error.clone()), "", None);
+    let transport = matches!(
+        view.kind,
+        ErrorKind::Refused
+            | ErrorKind::Dns
+            | ErrorKind::Tls
+            | ErrorKind::Connect
+            | ErrorKind::Timeout
+            | ErrorKind::Proxy
+            | ErrorKind::Certificate
+    );
+    Some(format!("{}: {}", view.title, view.sentence?)).filter(|_| transport)
+}
+
 /// The block for a send stopped before any run (a plan error, a closed collection).
 pub fn describe_failure(message: &str) -> ErrorView {
     ErrorView {
