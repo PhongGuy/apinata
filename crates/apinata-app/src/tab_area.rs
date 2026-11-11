@@ -851,13 +851,34 @@ impl TabArea {
     // above the shell's keys. When the tab area is what remains of the lost focus, it moves
     // to the new active tab, or to the sidebar tree once no tab is open. A loss with no
     // owner at all is claimed too: a dialog may hand focus back to a tab that its answer
-    // closes before a frame is drawn, and then the loss is seen along the dialog's path.
+    // closes before a frame is drawn, and then the loss is seen along the dialog's path. A
+    // control gone from inside the active tab's view hands focus to its nearest drawn holder.
     fn focus_lost(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let target = window.focus_lost_restore_target(cx);
         if target.is_none() || target.as_ref() == Some(&self.focus) {
             self.focus_fallback(window, cx);
             crate::focus_redraw::after_draw_move(window, cx);
+        } else if let Some(target) = target.filter(|t| self.holds_inside_view(t, window, cx)) {
+            // Such as an editor a segment hid, so the next key stays in that section.
+            target.focus(window, cx);
+            crate::focus_redraw::after_draw_move(window, cx);
         }
+    }
+
+    // Whether `target` sits strictly inside the active tab's view, for a control that went
+    // away rather than focus dropped on purpose, with no dialog open (a dialog repairs its own).
+    fn holds_inside_view(&self, target: &FocusHandle, window: &mut Window, cx: &mut App) -> bool {
+        if window.focused(cx).is_none() || window.has_active_dialog(cx) {
+            return false;
+        }
+        let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) else {
+            return false;
+        };
+        let Some((_, view)) = self.editors.get(&id) else {
+            return false;
+        };
+        let root = view.focus_handle(cx);
+        root != *target && root.contains(target, window)
     }
 
     /// Where focus goes once the element that held it is gone: the active tab's ringed stop.

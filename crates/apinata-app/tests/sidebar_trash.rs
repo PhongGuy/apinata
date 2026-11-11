@@ -543,9 +543,9 @@ fn an_old_toast_closing_after_a_reopen_keeps_the_new_delete_undoable(cx: &mut Te
     frame(cx, h.win);
     // The reopened instance numbers its commands afresh, so this delete's ticket can equal
     // the first one's; the first toast then expires while the second still shows.
-    cx.executor().advance_clock(Duration::from_secs(3));
+    cx.executor().advance_clock(Duration::from_secs(6));
     select_and_delete(cx, &h, "b.yml");
-    cx.executor().advance_clock(Duration::from_secs(3));
+    cx.executor().advance_clock(Duration::from_secs(6));
     frame(cx, h.win);
     assert!(has(cx, &h, "undo-delete"), "the second toast still shows");
     click_undo(cx, &h);
@@ -1096,4 +1096,100 @@ fn with_the_sidebar_hidden_a_palette_delete_keeps_focus_in_the_tab(cx: &mut Test
     click_undo(cx, &h);
     frame(cx, h.win);
     assert_restored(cx, &h, "a.yml", &bin);
+}
+
+// The Undo button of the toast showing, as its tooltip describes it.
+fn undo_tooltip(cx: &mut TestAppContext, h: &SidebarHarness) -> Option<String> {
+    cx.update_window(h.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("undo-delete").description().map(str::to_owned)
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_undo_toast_stays_for_ten_seconds(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    // The pointer rests on the tree, so nothing pauses a timer.
+    cx.update_window(h.win, |_, w, cx| w.hover("sidebar-view", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(9));
+    frame(cx, h.win);
+    assert!(has(cx, &h, "undo-delete"), "still offered after 9 seconds");
+    cx.executor().advance_clock(Duration::from_secs(2));
+    frame(cx, h.win);
+    cx.executor().advance_clock(Duration::from_secs(1));
+    frame(cx, h.win);
+    assert!(!has(cx, &h, "undo-delete"), "gone after about 10 seconds");
+    assert_eq!(toasts(cx, &h), 0);
+}
+
+#[gpui_kit::test]
+fn the_undo_button_names_its_key(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    let key = if cfg!(target_os = "macos") {
+        "Cmd+Z"
+    } else {
+        "Ctrl+Z"
+    };
+    assert_eq!(undo_tooltip(cx, &h), Some(format!("Undo ({key})")));
+}
+
+#[gpui_kit::test]
+fn the_undo_button_follows_a_rebound_key(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    let mut rebound = apinata_app::shortcuts::Overrides::new();
+    rebound.insert("request.undo_delete".into(), vec!["alt-u".into()]);
+    cx.update(|cx| apinata_app::keymap::apply(&rebound, cx));
+    frame(cx, h.win);
+    assert_eq!(undo_tooltip(cx, &h), Some("Undo (Alt+U)".to_owned()));
+}
+
+// A pointer resting on the toast keeps it up past the timeout; once it leaves, the toast gets a
+// fresh countdown rather than closing at once.
+#[gpui_kit::test]
+fn a_hovered_undo_toast_outlives_the_timeout(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    cx.update_window(h.win, |_, w, cx| w.hover("undo-delete", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(15));
+    frame(cx, h.win);
+    assert!(
+        has(cx, &h, "undo-delete"),
+        "kept while the pointer is on it"
+    );
+    cx.update_window(h.win, |_, w, cx| w.hover("sidebar-view", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(5));
+    frame(cx, h.win);
+    assert!(
+        has(cx, &h, "undo-delete"),
+        "a fresh countdown after the pointer leaves"
+    );
+    cx.executor().advance_clock(Duration::from_secs(6));
+    frame(cx, h.win);
+    cx.executor().advance_clock(Duration::from_secs(1));
+    frame(cx, h.win);
+    assert!(
+        !has(cx, &h, "undo-delete"),
+        "closes once that countdown ends"
+    );
+}
+
+#[gpui_kit::test]
+fn a_pointer_anywhere_on_the_toast_keeps_it(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    cx.update_window(h.win, |_, w, cx| w.hover("undo-toast-hover", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(15));
+    frame(cx, h.win);
+    assert!(
+        has(cx, &h, "undo-delete"),
+        "kept while the pointer is on the toast"
+    );
 }

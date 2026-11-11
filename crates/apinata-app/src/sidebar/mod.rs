@@ -1677,11 +1677,10 @@ impl Sidebar {
             }
             let entry = self.push_delete(root, generation, batch.trashed(), cx);
             let sidebar = cx.weak_entity();
-            let toast =
-                crate::undo_toast::undo_toast(batch.trashed_message(), entry, move |_, cx| {
-                    sidebar.update(cx, |s, cx| s.undo_entry(entry, cx)).ok();
-                });
-            window.push_notification(toast, cx);
+            let undo = move |_: &mut Window, cx: &mut App| {
+                sidebar.update(cx, |s, cx| s.undo_entry(entry, cx)).ok();
+            };
+            crate::undo_toast::show_undo_toast(batch.trashed_message(), entry, undo, window, cx);
         }
     }
 
@@ -1714,10 +1713,10 @@ impl Sidebar {
             let message = batch::removed_message(&trashed);
             let entry = self.push_delete(root.to_path_buf(), generation, trashed, cx);
             let sidebar = cx.weak_entity();
-            let toast = crate::undo_toast::undo_toast(message, entry, move |_, cx| {
+            let undo = move |_: &mut Window, cx: &mut App| {
                 sidebar.update(cx, |s, cx| s.undo_entry(entry, cx)).ok();
-            });
-            window.push_notification(toast, cx);
+            };
+            crate::undo_toast::show_undo_toast(message, entry, undo, window, cx);
         }
     }
 
