@@ -261,13 +261,14 @@ fn preferences_at_half_zoom_leaves_little_empty_room(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_save_name_field_fills_its_column(cx: &mut TestAppContext) {
-    use apinata_app::style::NAME_INPUT_WIDTH;
+    // The width a name input had when it had a size of its own.
+    let name_input = apinata_app::style::ui(240.);
     let col = two_requests();
     let s = started(cx, &col);
     let (name, folder) = save_form_inputs(cx, &s, 1.0);
     assert_eq!(name.size.width, folder.size.width, "{name:?} vs {folder:?}");
     assert!(
-        name.size.width >= at_zoom(NAME_INPUT_WIDTH, 1.0),
+        name.size.width >= at_zoom(name_input, 1.0),
         "{name:?} narrower than a name input"
     );
 }

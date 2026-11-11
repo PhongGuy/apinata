@@ -336,10 +336,14 @@ show("jwk", () => k.export({ format: "jwk", cipher: "aes-256-cbc", passphrase: "
 show("public", () => crypto.createPublicKey(k).export({ type: "spki", format: "pem", cipher: "aes-256-cbc", passphrase: "p" }));
 const enc = k.export({ type: "pkcs8", format: "pem", cipher: "aes-128-cbc", passphrase: "p" });
 show("open none", () => crypto.createPrivateKey(enc));
-show("open wrong", () => crypto.createPrivateKey({ key: enc, passphrase: "q" }));
+// A random salt lets a wrong passphrase pass CBC padding about 1 time in 256, and Node then
+// names the garbage instead; this key's fixed salt and IV always fail with "bad decrypt".
+const fixed = Buffer.from("MIH0MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBCOkH/JMHt2a83MRvgce7sxAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBAgQQjPhj6ryKNEq2265d2fRTcgSBkAkj8wq7QkbtcBEK3gnFsjW6KGpaTM8OA+w5h5a5YS3Fq/9xEP60OW0E/OFw9P67AsMAbj4RGg0fUqLNE4QmFs/jl4rgwfnB329vUjMsKGSzUYEKVGpJpoIjHaIFGE1UR/pdx4orhddQTs31lDqjUUb81gpeuAWzIHgUddS/yDCVVHrCaqQZat1AzQjjblaqdA==", "base64");
+const fixedPem = `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${fixed.toString("base64").match(/.{1,64}/g).join("\n")}\n-----END ENCRYPTED PRIVATE KEY-----\n`;
+show("open wrong", () => crypto.createPrivateKey({ key: fixedPem, passphrase: "q" }));
 const der = k.export({ type: "pkcs8", format: "der", cipher: "aes-128-cbc", passphrase: "p" });
 show("open der none", () => crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8" }));
-show("open der wrong", () => crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8", passphrase: "q" }));"#;
+show("open der wrong", () => crypto.createPrivateKey({ key: fixed, format: "der", type: "pkcs8", passphrase: "q" }));"#;
     let refused = |cipher: &str| {
         format!(
             "log:{cipher} Error KeyObject export not supported: cipher \"{cipher}\" (supported: aes-128-cbc, aes-192-cbc and aes-256-cbc)"

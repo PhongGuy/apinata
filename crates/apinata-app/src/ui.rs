@@ -1503,6 +1503,7 @@ pub fn select(
     let id: SharedString = id.into();
     // The value text carries the shown name, so tests and assistive tools can read it.
     let value_id = SharedString::from(format!("{id}-value"));
+    let chevron_id = SharedString::from(format!("{id}-chevron"));
     let accessible = format!("{name}: {current}");
     Button::new(id)
         .outline()
@@ -1525,10 +1526,15 @@ pub fn select(
                         .aria_label(current.clone())
                         .child(current),
                 )
+                // An svg paints only with a text colour of its own; it does not inherit one.
                 .child(
                     svg()
+                        .flex_none()
                         .path(IconName::ChevronDown.path())
-                        .size(SELECT_CHEVRON),
+                        .size(SELECT_CHEVRON)
+                        .text_color(cx.theme().muted_foreground)
+                        .id(chevron_id)
+                        .test_support(),
                 ),
         )
         .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, window, cx| {

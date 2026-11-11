@@ -193,3 +193,37 @@ fn enter_on_a_focused_reset_button_restores_the_command(cx: &mut TestAppContext)
         "Enter pressed Reset"
     );
 }
+
+// A command with keys offers Unbind, which leaves it with none; its Reset brings the defaults
+// back. A command already without keys offers no Unbind.
+#[gpui_kit::test]
+fn unbind_removes_a_default_shortcut(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    assert!(!shown(cx, &s, "key-view.toggle_theme-unbind"));
+    let name = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("key-view.toggle_sidebar-unbind-button")
+                .label()
+                .map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(name.as_deref(), Some("Unbind"));
+    click(cx, &s, "key-view.toggle_sidebar-unbind");
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("view.toggle_sidebar", &[])])
+    );
+    assert_eq!(
+        key_label(cx, &s, "view.toggle_sidebar"),
+        Some("Unbound".into())
+    );
+    assert!(!shown(cx, &s, "key-view.toggle_sidebar-unbind"));
+    click(cx, &s, "key-view.toggle_sidebar-reset");
+    assert_eq!(
+        key_label(cx, &s, "view.toggle_sidebar"),
+        Some(secondary("b"))
+    );
+}

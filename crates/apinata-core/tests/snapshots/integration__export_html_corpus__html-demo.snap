@@ -1,5 +1,6 @@
 ---
 source: crates/apinata-core/tests/export_html_corpus.rs
+assertion_line: 25
 expression: rendered(&out)
 ---
 <!doctype html>
@@ -85,7 +86,6 @@ tr.disabled td { opacity: 0.55; }
 <header>
 <h1>Apinata Demo</h1>
 <div class="docs">
-<h1>Apinata Demo</h1>
 <p>A small tour of Apinata.</p>
 <ul>
 <li><strong>Posts</strong> and <strong>Users</strong> call <a href="https://jsonplaceholder.typicode.com">JSONPlaceholder</a>, a free fake REST API.</li>

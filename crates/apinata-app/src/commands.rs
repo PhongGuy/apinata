@@ -314,14 +314,14 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "collection.export",
-            "Export collection to Postman",
+            "Export collection to Postman (translate scripts)",
             Collection,
             shell(ExportCollection),
             &[],
         ),
         command(
             "collection.export_keep_scripts",
-            "Export collection to Postman (keep scripts as written)",
+            "Export collection to Postman (copy scripts unchanged)",
             Collection,
             shell(ExportCollectionPostmanKeepScripts),
             &[],

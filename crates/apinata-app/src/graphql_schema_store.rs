@@ -24,6 +24,30 @@ pub enum SchemaState {
     Failed(String),
 }
 
+/// Why a load failed: the line shown, and the error's own text when that line rewords it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SchemaFailure {
+    /// The line the schema row shows.
+    pub message: String,
+    /// The raw error text, offered as the line's tooltip.
+    pub detail: Option<String>,
+}
+
+impl From<String> for SchemaFailure {
+    fn from(message: String) -> SchemaFailure {
+        SchemaFailure {
+            message,
+            detail: None,
+        }
+    }
+}
+
+impl From<&str> for SchemaFailure {
+    fn from(message: &str) -> SchemaFailure {
+        message.to_owned().into()
+    }
+}
+
 /// What a query check can use for one URL.
 #[derive(Debug, Clone)]
 pub enum Lookup {
@@ -83,6 +107,7 @@ pub struct SchemaStore {
     entries: HashMap<String, (u64, SchemaState)>,
     compiled: HashMap<String, (u64, Slot)>,
     sources: HashMap<String, String>,
+    details: HashMap<String, String>,
     next: u64,
     cache: Option<SchemaCache>,
     probed: HashSet<String>,
@@ -141,12 +166,22 @@ impl SchemaStore {
     }
 
     /// Stores `result` for `url` only when `generation` is still its newest load; true if stored.
-    pub fn finish(&mut self, url: &str, generation: u64, result: Result<Schema, String>) -> bool {
+    pub fn finish(
+        &mut self,
+        url: &str,
+        generation: u64,
+        result: Result<Schema, SchemaFailure>,
+    ) -> bool {
         match self.entries.get_mut(url) {
             Some((current, state)) if *current == generation => {
                 *state = match result {
                     Ok(schema) => SchemaState::Loaded(Arc::new(schema)),
-                    Err(message) => SchemaState::Failed(message),
+                    Err(failure) => {
+                        if let Some(detail) = failure.detail {
+                            self.details.insert(url.to_owned(), detail);
+                        }
+                        SchemaState::Failed(failure.message)
+                    }
                 };
                 true
             }
@@ -165,6 +200,11 @@ impl SchemaStore {
     /// The schema file the current load of `url` came from, if it came from one.
     pub fn source(&self, url: &str) -> Option<&str> {
         self.sources.get(url).map(String::as_str)
+    }
+
+    /// The raw error text behind the reworded failure of `url`'s last load, if there is one.
+    pub fn detail(&self, url: &str) -> Option<&str> {
+        self.details.get(url).map(String::as_str)
     }
 
     /// What a query check of `url` can use right now.
@@ -234,11 +274,12 @@ impl SchemaStore {
         }
     }
 
-    // A new load makes the old compiled form and file name stale; dropping them frees the
+    // A new load makes the old compiled form, file name and failure detail stale; dropping them frees the
     // compiled schema once no running check holds it.
     fn forget_derived(&mut self, url: &str) {
         self.compiled.remove(url);
         self.sources.remove(url);
+        self.details.remove(url);
     }
 }
 
@@ -283,5 +324,12 @@ pub fn compiled(url: &str, cx: &mut App) -> Lookup {
 pub fn source(cx: &App, url: &str) -> Option<String> {
     cx.try_global::<SchemaStore>()?
         .source(url)
+        .map(str::to_owned)
+}
+
+/// The raw error text behind the failure of `url` in the app's store, if it was reworded.
+pub fn detail(cx: &App, url: &str) -> Option<String> {
+    cx.try_global::<SchemaStore>()?
+        .detail(url)
         .map(str::to_owned)
 }

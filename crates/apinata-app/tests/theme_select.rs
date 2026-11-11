@@ -233,3 +233,33 @@ fn one_down_from_a_later_current_theme_picks_the_one_after_it(cx: &mut TestAppCo
     frame(cx, s.win);
     assert_eq!(settings(cx).dark_theme.as_deref(), Some("Zed Night"));
 }
+
+// Each theme picker shows a chevron at its right end, so it reads as a menu, not a text field.
+#[gpui_kit::test]
+fn each_theme_picker_shows_a_chevron_after_its_value(cx: &mut TestAppContext) {
+    use apinata_app::style::{SELECT_CHEVRON, at_zoom};
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let side = at_zoom(SELECT_CHEVRON, 1.0);
+    for id in ["light-theme", "dark-theme"] {
+        prefs_reveal(cx, &s, id);
+        cx.update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let select = w.find(id).bounds();
+            let value = w.find(format!("{id}-value")).bounds();
+            let chevron = w.find(format!("{id}-chevron"));
+            let at = chevron.bounds();
+            assert!(chevron.visible(), "{id}: the chevron is drawn");
+            assert!(
+                (at.size.width - side).abs() < gpui_kit::px(0.5),
+                "{id}: {at:?}"
+            );
+            assert!(
+                at.left() >= value.right() && at.right() <= select.right(),
+                "{id}: {at:?}"
+            );
+        })
+        .unwrap();
+    }
+}

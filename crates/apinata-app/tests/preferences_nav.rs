@@ -340,3 +340,106 @@ fn the_appearance_heading_and_theme_row_show_whole_in_a_short_window(cx: &mut Te
         "Theme {theme:?} ends inside {rows:?}"
     );
 }
+
+/// The sections whose entry the frame just drawn marks selected, read without drawing again.
+fn drawn_highlight(w: &gpui_kit::Window) -> Vec<&'static str> {
+    SECTIONS
+        .into_iter()
+        .filter(|id| w.find(entry(id)).selected() == Some(true))
+        .collect()
+}
+
+/// The bounds of the text the last frame painted inside element `id`.
+fn drawn_text_in(w: &gpui_kit::Window, id: &str) -> Vec<(String, Bounds<Pixels>)> {
+    let id = gpui_kit::ElementId::Name(id.to_string().into());
+    gpui_kit::base::test_support::texts(w)
+        .into_iter()
+        .filter(|t| t.path().contains(&id))
+        .map(|t| (t.text().to_string(), t.bounds()))
+        .collect()
+}
+
+// A click on an entry marks it in the very frame that answers the click, not a frame later.
+#[gpui_kit::test]
+fn a_click_highlights_its_entry_in_the_same_frame(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    for section in [
+        "prefs-history",
+        "prefs-scripts",
+        "prefs-keyboard",
+        "prefs-updates",
+        "prefs-general",
+    ] {
+        let drawn = cx
+            .update_window(s.win, |_, w, cx| {
+                w.click(entry(section), cx);
+                drawn_highlight(w)
+            })
+            .unwrap();
+        assert_eq!(drawn, [section], "the frame after clicking {section}");
+    }
+}
+
+// With only the end of the previous section left as a thin band at the top, the section that
+// fills the view is the one marked, in the frame the wheel draws.
+#[gpui_kit::test]
+fn the_wheel_highlights_the_section_filling_the_view(cx: &mut TestAppContext) {
+    const BAND: f32 = 24.;
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    for section in ["prefs-scripts", "prefs-keyboard"] {
+        let heading = format!("{section}-heading");
+        // The first pass lands near the band; the second, checked in its own frame, on it.
+        let rows = bounds(cx, &s, "preferences-rows");
+        let at = bounds(cx, &s, &heading);
+        scroll_rows(cx, &s, -f32::from(at.top() - rows.top() - px(BAND)));
+        let (drawn, at, rows) = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                let rows = w.find("preferences-rows").bounds();
+                let at = w.find(heading.clone()).bounds();
+                let dy = -f32::from(at.top() - rows.top() - px(BAND));
+                w.scroll(
+                    "preferences-rows",
+                    ScrollDelta::Pixels(point(px(0.), px(dy))),
+                    cx,
+                );
+                (drawn_highlight(w), w.find(heading.clone()).bounds(), rows)
+            })
+            .unwrap();
+        let band = at.top() - rows.top();
+        assert!(
+            band >= px(BAND - 4.) && band <= px(BAND + 4.),
+            "{section}: heading {at:?} sits {band:?} below the top of {rows:?}"
+        );
+        assert_eq!(
+            drawn,
+            [section],
+            "the wheel frame with {section} filling the view"
+        );
+    }
+}
+
+// Each entry's name starts at the entry's left edge rather than sitting centred in it.
+#[gpui_kit::test]
+fn the_entries_read_from_the_left(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        for id in SECTIONS {
+            let e = w.find(entry(id)).bounds();
+            let texts = drawn_text_in(w, &entry(id));
+            let (text, t) = texts.first().expect("the entry draws its name");
+            assert!(
+                t.left() - e.left() < (e.right() - t.right()) / 2.,
+                "{text:?} at {t:?} in {e:?}"
+            );
+        }
+    })
+    .unwrap();
+}

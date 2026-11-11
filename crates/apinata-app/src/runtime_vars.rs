@@ -23,6 +23,10 @@ use gpui_kit::{
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
+// What runtime variables are, shown above the rows whether or not any exist.
+const ABOUT_NOTE: &str = "Values set by scripts and by responses while the app is open. They are \
+used instead of environment values with the same name and are never saved to files.";
+
 // The name column both row kinds share, so their value columns start at one x.
 const NAME_WIDTH: Rems = rems(7.);
 
@@ -671,24 +675,36 @@ impl Render for RuntimeVarsView {
                 .text_color(muted)
                 .child("Global environment")
         });
-        root.when(empty, |d| {
-            d.child(div().id("runtime-vars-empty").test_support().child(
-                "No runtime variables yet. Post-response variables set them when a request runs.",
-            ))
-        })
-        .children(captured)
-        .children(scripted)
-        .children(heading)
-        .children(global)
-        .child(self.render_add(window, cx))
-        .when(!empty, |d| {
-            d.child(
-                Button::new("runtime-vars-clear")
-                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                    .label("Clear all")
-                    .on_click(cx.listener(|this, _, _, cx| this.clear(cx))),
-            )
-        })
+        // The note opens the body, so a full list explains itself as an empty one does.
+        let about = div()
+            .id("runtime-vars-about")
+            .text_size(style::TEXT_SMALL)
+            .text_color(muted)
+            .aria_label(ABOUT_NOTE)
+            .child(ABOUT_NOTE)
+            .test_support();
+        root.child(about)
+            .when(empty, |d| {
+                d.child(
+                    div()
+                        .id("runtime-vars-empty")
+                        .test_support()
+                        .child("No runtime variables yet."),
+                )
+            })
+            .children(captured)
+            .children(scripted)
+            .children(heading)
+            .children(global)
+            .child(self.render_add(window, cx))
+            .when(!empty, |d| {
+                d.child(
+                    Button::new("runtime-vars-clear")
+                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                        .label("Clear all")
+                        .on_click(cx.listener(|this, _, _, cx| this.clear(cx))),
+                )
+            })
     }
 }
 

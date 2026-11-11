@@ -3,6 +3,7 @@
 //! global proxy password goes to the secret store, never to the settings file.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -13,9 +14,9 @@ use gpui_kit::component::{ActiveTheme as _, ThemeMode, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, ClickEvent, Div, Entity, FocusHandle, Focusable, FontWeight, PathPromptOptions, Result,
-    Role, ScrollHandle, SharedString, Subscription, TestSupportExt, Window, actions, div,
-    linear_color_stop, linear_gradient, px, relative,
+    App, ClickEvent, Div, Entity, FocusHandle, Focusable, FontWeight, PathPromptOptions, Pixels,
+    Result, Role, ScrollHandle, SharedString, Subscription, TestSupportExt, Window, actions, div,
+    linear_color_stop, linear_gradient, point, px, relative,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -163,7 +164,7 @@ impl Field {
             Field::Zoom => "Zoom",
             Field::EditorFont => "Editor font size",
             Field::ResponseFont => "Response font size",
-            Field::BodyCap => "Body cap",
+            Field::BodyCap => "Largest response to keep",
             Field::HistoryLimit => "Responses kept per request",
             Field::ScriptTimeout => "Script time limit",
             Field::RequestTimeout => "Request timeout",
@@ -208,6 +209,9 @@ pub struct PreferencesView {
     scroll: ScrollHandle,
     // The ids of the sections the last render showed, in order: the scroll column's children.
     shown_sections: Vec<SharedString>,
+    // The section a list click jumped to and the offset it left; it stays current until the
+    // rows move, since a short section at the end may not fill the view.
+    jumped: Option<(SharedString, Pixels)>,
     focus: FocusHandle,
     _subs: Vec<Subscription>,
 }
@@ -374,6 +378,7 @@ impl PreferencesView {
             status: None,
             scroll: ScrollHandle::new(),
             shown_sections: Vec::new(),
+            jumped: None,
             focus: cx.focus_handle(),
             _subs: subs,
         }
@@ -746,7 +751,11 @@ impl PreferencesView {
                 }
             },
         );
-        let section = section.row("pref-proxy-mode", "Proxy", mode);
+        let section = section.row(
+            "pref-proxy-mode",
+            "Proxy",
+            after_restart("pref-proxy-mode", mode, cx),
+        );
         match current.mode {
             ProxyMode::Manual => {}
             ProxyMode::Pac => {
@@ -965,6 +974,22 @@ fn with_reset(
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .on_click(on_reset),
         ),
+    )
+}
+
+const RESTART: &str = "Takes effect after restart";
+
+// A control whose setting the executor reads only at start, with that said right under it in
+// the control's column, so the wait is seen where the change is made.
+fn after_restart(row: &str, control: impl IntoElement, cx: &App) -> impl IntoElement {
+    v_flex().items_start().gap(SPACE_1).child(control).child(
+        div()
+            .id(SharedString::from(format!("{row}-restart")))
+            .test_support()
+            .text_size(TEXT_SMALL)
+            .text_color(cx.theme().muted_foreground)
+            .child(RESTART)
+            .test_text(RESTART),
     )
 }
 
@@ -1189,17 +1214,22 @@ impl PreferencesView {
             .row(
                 "pref-verify-tls",
                 "Verify TLS certificates",
-                ui::checkbox("verify-tls", !current.insecure).on_click(cx.listener(
-                    |this, on: &bool, _, cx| {
-                        let insecure = !*on;
-                        this.edit(|s| s.insecure = insecure, cx)
-                    },
-                )),
+                after_restart(
+                    "pref-verify-tls",
+                    ui::checkbox("verify-tls", !current.insecure).on_click(cx.listener(
+                        |this, on: &bool, _, cx| {
+                            let insecure = !*on;
+                            this.edit(|s| s.insecure = insecure, cx)
+                        },
+                    )),
+                    cx,
+                ),
             )
-            .row(
+            .row_with_terms(
                 "pref-body-cap",
-                "Body cap (MB, blank for none)",
-                self.field(Field::BodyCap, window, cx),
+                "Largest response to keep (MB, blank for no limit)",
+                ["body cap", "size limit"],
+                after_restart("pref-body-cap", self.field(Field::BodyCap, window, cx), cx),
             )
             .row_with_terms(
                 "pref-request-timeout",
@@ -1207,37 +1237,49 @@ impl PreferencesView {
                 ["request", "timeout", "limit"],
                 self.field(Field::RequestTimeout, window, cx),
             )
-            .row("pref-http-version", "HTTP version", http_version);
+            .row(
+                "pref-http-version",
+                "HTTP version",
+                after_restart("pref-http-version", http_version, cx),
+            );
         let network = self
             .proxy_rows(network, &current.proxy, window, cx)
             .row(
                 "pref-ca-file",
                 "CA certificate file (blank for none)",
-                self.with_error(
-                    Field::CaFile,
-                    h_flex()
-                        .gap(SPACE_1)
-                        .child(self.framed(Field::CaFile, window, cx))
-                        .child(
-                            Button::new("ca-file-choose")
-                                .label("Choose")
-                                .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.choose_ca_file(window, cx)
-                                })),
-                        ),
+                after_restart(
+                    "pref-ca-file",
+                    self.with_error(
+                        Field::CaFile,
+                        h_flex()
+                            .gap(SPACE_1)
+                            .child(self.framed(Field::CaFile, window, cx))
+                            .child(
+                                Button::new("ca-file-choose")
+                                    .label("Choose")
+                                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.choose_ca_file(window, cx)
+                                    })),
+                            ),
+                        cx,
+                    ),
                     cx,
                 ),
             )
             .row(
                 "pref-keep-default-cas",
                 "Also trust the default certificate authorities",
-                ui::checkbox("keep-default-cas", current.keep_default_cas).on_click(cx.listener(
-                    |this, on: &bool, _, cx| {
-                        let on = *on;
-                        this.edit(|s| s.keep_default_cas = on, cx)
-                    },
-                )),
+                after_restart(
+                    "pref-keep-default-cas",
+                    ui::checkbox("keep-default-cas", current.keep_default_cas).on_click(
+                        cx.listener(|this, on: &bool, _, cx| {
+                            let on = *on;
+                            this.edit(|s| s.keep_default_cas = on, cx)
+                        }),
+                    ),
+                    cx,
+                ),
             )
             // Unlike the settings above, the cookie switches reach the live executor at once.
             .row(
@@ -1266,11 +1308,6 @@ impl PreferencesView {
                     },
                 )),
             )
-            .note(ui::form_note(
-                "prefs-restart-note",
-                "Network settings, such as TLS checks, the proxy and certificates, apply the next \
-                 time the app starts.",
-            ))
             .note(ui::form_note(
                 "prefs-cookies-note",
                 "Cookie settings apply at once.",
@@ -1371,9 +1408,42 @@ impl PreferencesView {
         ]
     }
 
-    /// The shown section at the top of the rows' viewport, as of the last frame.
+    /// The shown section filling the rows' viewport: the first one that shows at least half of
+    /// itself or half the viewport, so a thin band of the section above does not count. The
+    /// offset is the one this frame paints; the sections keep the last frame's layout.
     fn current_section(&self) -> Option<SharedString> {
-        self.shown_sections.get(self.scroll.top_item()).cloned()
+        let offset = self.scroll.offset().y;
+        if let Some((id, at)) = &self.jumped
+            && *at == offset
+            && self.shown_sections.contains(id)
+        {
+            return Some(id.clone());
+        }
+        let view = self.scroll.bounds();
+        let (top, height) = (view.top() - offset, view.size.height);
+        let filling = (0..self.shown_sections.len()).find(|&ix| {
+            self.scroll.bounds_for_item(ix).is_some_and(|b| {
+                let shown = b.bottom().min(top + height) - b.top().max(top);
+                shown >= b.size.height.min(height) / 2.
+            })
+        });
+        let ix = filling.unwrap_or_else(|| self.scroll.top_item());
+        self.shown_sections.get(ix).cloned()
+    }
+
+    /// Puts section `ix`'s top at the top of the rows now, rather than at the next layout, so
+    /// the frame that answers a list click already marks that section.
+    fn jump_to(&mut self, ix: usize) {
+        let (Some(item), Some(id)) = (
+            self.scroll.bounds_for_item(ix),
+            self.shown_sections.get(ix).cloned(),
+        ) else {
+            return self.scroll.scroll_to_top_of_item(ix);
+        };
+        let max = self.scroll.max_offset().y;
+        let y = (self.scroll.bounds().top() - item.top()).clamp(-max, px(0.));
+        self.scroll.set_offset(point(self.scroll.offset().x, y));
+        self.jumped = Some((id, y));
     }
 
     /// Whether rows sit below the visible ones, with 1 px of tolerance for rounding at the end.
@@ -1423,15 +1493,24 @@ impl Render for PreferencesView {
                     .role(Role::ListItem)
                     .aria_selected(selected)
                     .child(
+                        // The kit centres a label; a full-width child holds the name at the left.
                         Button::new(("prefs-nav-entry", ix))
                             .ghost()
                             .w_full()
-                            .justify_start()
-                            .label(title)
+                            .accessibility_label(title.clone())
+                            .child(
+                                h_flex().w_full().min_w_0().child(
+                                    div()
+                                        .min_w_0()
+                                        .text_ellipsis()
+                                        .child(title.clone())
+                                        .test_text(title),
+                                ),
+                            )
                             .choose(selected, SelectedStyle::Ghost, cx)
                             .tab_stop(false)
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.scroll.scroll_to_top_of_item(ix);
+                                this.jump_to(ix);
                                 cx.notify();
                             })),
                     ),

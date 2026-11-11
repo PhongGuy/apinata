@@ -731,3 +731,55 @@ fn with_the_app_keymap_enter_in_a_field_still_saves(cx: &mut TestAppContext) {
     press_enter(cx, win);
     assert_eq!(captured(&vars), [pair("id", "43"), pair("k", "v")]);
 }
+
+const ABOUT: &str = "Values set by scripts and by responses while the app is open. They are used \
+instead of environment values with the same name and are never saved to files.";
+
+// The note explaining runtime variables shows at the top of the dialog's body, above every
+// row, whether the list is empty or holds variables of each kind.
+#[gpui_kit::test]
+fn the_dialog_explains_runtime_variables_above_its_rows(cx: &mut TestAppContext) {
+    use apinata_core::OverlayLayer;
+    let (vars, overlay) = (RuntimeVars::new(), EnvOverlay::new());
+    vars.set_text("token", "abc");
+    overlay.set_text(OverlayLayer::Environment, "host", "h");
+    overlay.set_text(OverlayLayer::Global, "region", "eu");
+    let (win, _view) = dialog(cx, &vars, &overlay, &[]);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let note = w.find("runtime-vars-about");
+        assert_eq!(note.label(), Some(ABOUT));
+        let note = note.bounds();
+        let body = w.find("runtime-vars").bounds();
+        assert_eq!(note.top(), body.top(), "the note opens the dialog's body");
+        for id in [
+            ("runtime-var-name", 0usize),
+            ("script-var-name", 0),
+            ("global-var-name", 0),
+        ] {
+            let row = w.find(id).bounds();
+            assert!(
+                note.bottom() <= row.top(),
+                "{id:?} at {row:?} sits under {note:?}"
+            );
+        }
+        assert!(
+            note.right() <= body.right() + gpui_kit::px(0.5),
+            "{note:?} wraps inside {body:?}"
+        );
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn an_empty_dialog_explains_runtime_variables_above_its_empty_note(cx: &mut TestAppContext) {
+    let (win, _view) = dialog(cx, &RuntimeVars::new(), &EnvOverlay::new(), &[]);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let note = w.find("runtime-vars-about");
+        assert_eq!(note.label(), Some(ABOUT));
+        let empty = w.find("runtime-vars-empty").bounds();
+        assert!(note.bounds().bottom() <= empty.top());
+    })
+    .unwrap();
+}
