@@ -377,3 +377,46 @@ fn clearing_a_saved_rows_host_holds_the_row_back(cx: &mut TestAppContext) {
         ])
     );
 }
+
+#[gpui_kit::test]
+fn removing_or_toggling_a_draft_row_sends_nothing(cx: &mut TestAppContext) {
+    let (win, host) = section(cx, vec![]);
+    click(cx, win, "host-add");
+    click(cx, win, ("host-enabled", 0usize));
+    assert_eq!(sent(cx, &host), None, "toggling a draft");
+    click(cx, win, ("host-remove", 0usize));
+    assert_eq!(sent(cx, &host), None, "removing a draft");
+}
+
+#[gpui_kit::test]
+fn an_echo_of_the_saved_rows_keeps_a_draft_in_place(cx: &mut TestAppContext) {
+    let b = HostOverride::new("b.test", "127.0.0.2");
+    let (win, host) = section(
+        cx,
+        vec![HostOverride::new("a.test", "127.0.0.1"), b.clone()],
+    );
+    replace_input(cx, win, None, ("host-name", 0usize), "");
+    cx.run_until_parked();
+    assert_eq!(sent(cx, &host), Some(vec![b.clone()]));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let mut network = CollectionNetwork::default();
+    network.host_overrides = vec![b];
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    let text = |cx: &mut TestAppContext, row, f| {
+        s.read_with(cx, |s, cx| {
+            s.host_input(row, f).map(|i| i.read(cx).value().to_string())
+        })
+    };
+    assert_eq!(text(cx, 0, HostField::Host).as_deref(), Some(""));
+    assert_eq!(
+        text(cx, 0, HostField::Address).as_deref(),
+        Some("127.0.0.1")
+    );
+    assert_eq!(text(cx, 1, HostField::Host).as_deref(), Some("b.test"));
+    assert_eq!(text(cx, 2, HostField::Host), None);
+    assert!(shown(cx, win, ("host-incomplete", 0)));
+}

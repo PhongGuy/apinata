@@ -601,3 +601,38 @@ fn an_empty_custom_proxy_and_an_empty_host_override_never_reach_the_file(cx: &mu
         "no empty proxy block"
     );
 }
+
+#[gpui_kit::test]
+fn a_saved_custom_proxy_without_a_host_says_requests_fail(cx: &mut TestAppContext) {
+    let (win, host) = section(cx, with_proxy(custom("http", "", None)), false);
+    assert!(present(cx, win, "proxy-host-fails"));
+    assert!(!present(cx, win, "proxy-host-incomplete"));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let unsaved = s.read_with(cx, |s, cx| s.unsaved(cx));
+    assert!(
+        !unsaved.iter().any(|w| w.starts_with("Not saved: Proxy")),
+        "{unsaved:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn an_echo_keeps_a_cleared_proxy_host_cleared(cx: &mut TestAppContext) {
+    let network = with_proxy(custom("http", "proxy.local", None));
+    let (win, host) = section(cx, network.clone(), false);
+    let before = edit_count(cx, &host);
+    replace_input(cx, win, None, "proxy-host", "");
+    cx.run_until_parked();
+    assert_eq!(edit_count(cx, &host), before, "a blank host is not sent");
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&network, false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    use apinata_app::network_section::NetworkField;
+    let typed = s.read_with(cx, |s, cx| {
+        s.input(NetworkField::Host).read(cx).value().to_string()
+    });
+    assert_eq!(typed, "");
+    assert!(present(cx, win, "proxy-host-incomplete"));
+}

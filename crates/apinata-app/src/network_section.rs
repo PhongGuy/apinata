@@ -74,6 +74,7 @@ pub enum HostField {
 
 const HOST_INCOMPLETE: &str = "Not saved until both the host and the address are filled in.";
 const PROXY_HOST_INCOMPLETE: &str = "Not saved until a host is filled in.";
+const PROXY_HOST_FAILS: &str = "Requests fail until a host is filled in.";
 const OUTSIDE_NOTICE: &str = "Outside the collection: saved as an absolute path";
 const PKCS12_HINT: &str =
     "PKCS#12 is not supported yet; convert with openssl pkcs12 -in x.pfx -nodes -out x.pem";
@@ -265,9 +266,13 @@ impl NetworkSection {
     }
 
     fn show_fields(&mut self, proxy: &ProxyConfig, window: &mut Window, cx: &mut Context<Self>) {
+        // A snapshot echoing the last loaded host leaves a cleared, unsent host blank; any
+        // other host replaces it.
+        if !(self.held_back(cx) && proxy.hostname == self.loaded_proxy.hostname) {
+            set_text(&self.host, &proxy.hostname, window, cx);
+        }
         self.loaded_proxy = proxy.clone();
         self.protocol.clone_from(&proxy.protocol);
-        set_text(&self.host, &proxy.hostname, window, cx);
         // A snapshot echoing the last valid port leaves a refused port's typing and error in
         // place; any other port replaces both.
         if self.port_error.is_none() || proxy.port != self.port_committed {
@@ -783,13 +788,18 @@ impl NetworkSection {
             .iter()
             .map(|reason| format!("Not saved: Port: {reason}"))
             .collect();
-        if self.held_back(cx) {
+        if self.held_back(cx) && !self.saved_without_host() {
             out.push("Not saved: Proxy: fill in a host to use a custom proxy".into());
         }
         if self.hosts.iter().any(|slot| slot.draft) {
             out.push("Not saved: Host override: fill in both the host and the address".into());
         }
         out
+    }
+
+    // Whether the file itself holds a custom proxy without a host, which fails every request.
+    fn saved_without_host(&self) -> bool {
+        self.filed == ProxyChoice::Custom && self.loaded_proxy.hostname.trim().is_empty()
     }
 
     // Whether a custom proxy is shown without a host, which is never sent.
@@ -900,7 +910,10 @@ impl NetworkSection {
             field("proxy-host", &self.host, style::WIDE_INPUT_WIDTH),
         );
         if self.held_back(cx) {
-            host_row = host_row.hint("proxy-host-incomplete", PROXY_HOST_INCOMPLETE);
+            host_row = match self.saved_without_host() {
+                true => host_row.hint("proxy-host-fails", PROXY_HOST_FAILS),
+                false => host_row.hint("proxy-host-incomplete", PROXY_HOST_INCOMPLETE),
+            };
         }
         v_flex()
             .gap(style::SPACE_2)
