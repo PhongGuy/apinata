@@ -201,7 +201,7 @@ fn a_cancelled_sign_in_is_not_an_error(cx: &mut TestAppContext) {
     settle(cx, &panel);
     assert_eq!(
         panel.read_with(cx, |p, _| p.error()).as_deref(),
-        Some("the token endpoint answered 401: invalid_client")
+        Some("The token endpoint answered 401: invalid_client")
     );
     frame(cx, s.win);
     assert!(present(cx, s.win, "oauth2-token-error"));
