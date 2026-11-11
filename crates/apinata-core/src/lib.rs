@@ -237,7 +237,7 @@ pub use kind_convert::{ConversionPreview, ConvertError, KindConversion};
 pub use lazy_keychain::{KEYCHAIN_TIMEOUT, LazyKeychain, TimeoutStore};
 pub use list_items::{ItemList, ItemPage, ListItemsError, ListOptions, ListedItem, ListedKind};
 pub use method::{InvalidMethod, normalize_method};
-pub use multipart::{Part, PartValue};
+pub use multipart::{Part, PartValue, file_content_type};
 pub use network::{
     AckState, CertPath, CertificateFiles, CertificateKind, ClientCertificate, CollectionNetwork,
     CollectionProxy, GlobalProxy, HostOverride, NetworkAck, NetworkAnswer, NetworkChange,

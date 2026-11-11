@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use apinata_core::collection_relative;
@@ -521,9 +521,22 @@ impl BodySection {
                     .take(take)
                     .map(|p| collection_relative(&this.root, p))
                     .collect();
+                // A file body sends its content type as written, so a blank one would go out
+                // as an empty header. The picked file's kind fills a blank type, or one that
+                // matches the replaced file's kind; a type the user chose is kept. A multipart
+                // file part with no type gets one from its name when sent.
+                let guess = (paths.first().filter(|_| !multiple))
+                    .map(|path| apinata_core::file_content_type(path));
                 if !files.is_empty() {
-                    this.table
-                        .update(cx, |t, cx| t.set_files(ix, Some(files), window, cx));
+                    this.table.update(cx, |t, cx| {
+                        if let Some(guess) = guess {
+                            let rows = t.rows(cx);
+                            let old = rows.get(ix).and_then(|r| r.files.as_ref()?.first());
+                            let stale = old.map(|p| apinata_core::file_content_type(Path::new(p)));
+                            t.fill_content_type(ix, guess, stale, window, cx);
+                        }
+                        t.set_files(ix, Some(files), window, cx)
+                    });
                 }
             });
         })
@@ -561,8 +574,13 @@ impl BodySection {
         // Columns change before rows load, so rows never show under another mode's layout.
         if let Some((columns, rows)) = table_of(body) {
             self.base = body.clone();
+            let type_hint = match mode {
+                BodyMode::File => "Filled in when you pick a file",
+                _ => "Content type",
+            };
             self.table.update(cx, |t, cx| {
                 t.set_columns(columns, cx);
+                t.set_content_type_placeholder(type_hint, window, cx);
                 t.load(rows, window, cx);
             });
         }
