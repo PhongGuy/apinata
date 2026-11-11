@@ -1972,8 +1972,6 @@ impl Shell {
     // Room beyond the count's whole text that its probe must fill before the count comes back:
     // more than the count's padding, border and the comma, so a returned count stays.
     const COUNT_BACK_SLACK: Rems = Rems(style::SPACE_5.0 + style::SPACE_2.0);
-    // The name's right padding beside the comma; with the ring's 1 px border it makes SPACE_1.
-    const NAME_COMMA_PAD: Rems = Rems(style::SPACE_1.0 - style::ui(1.).0);
     // Layout rounding the count's box may lose against its whole text and still show it whole.
     const COUNT_ROUNDING: Rems = style::ui(0.5);
     // Narrower than this the text box holds less than an ellipsis and a letter: the label is
@@ -2181,8 +2179,9 @@ impl Shell {
             let cell = (!hidden).then_some(&self.branch_clipped);
             part("git-branch", name.clone(), Self::BRANCH_SHRINK, hidden)
                 .tooltip(format!("Switch branch ({name})"))
-                // A slim right padding keeps the comma beside the name, still outside its ring.
-                .when(comma_shows, |b| b.pr(Self::NAME_COMMA_PAD))
+                // No right padding, so only the ring's border parts the comma from the name:
+                // any more reads as a space before the comma.
+                .when(comma_shows, |b| b.pr_0())
                 .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)))
                 .child(icon())
                 .child(
