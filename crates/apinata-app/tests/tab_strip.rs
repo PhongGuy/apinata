@@ -224,3 +224,24 @@ fn a_long_request_name_is_cut_to_the_tab_width(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+#[gpui_kit::test]
+fn the_all_tabs_menu_shows_the_same_detail_as_the_tabs(cx: &mut TestAppContext) {
+    let (_col, _state, ws, root, win) = duplicate_area(cx);
+    open_tab(cx, &ws, &root, "folder_1/request_1.yml");
+    open_tab(cx, &ws, &root, "request_2.yml");
+    open_tab(cx, &ws, &root, "request_1.yml");
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.click("tab-overflow", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(present(cx, win, ("tab-menu-detail", 0usize)), "folder_1");
+    assert!(
+        !present(cx, win, ("tab-menu-detail", 1usize)),
+        "request_2 is unique"
+    );
+    assert!(
+        present(cx, win, ("tab-menu-detail", 2usize)),
+        "the root one"
+    );
+}

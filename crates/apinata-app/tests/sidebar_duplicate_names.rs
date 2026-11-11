@@ -1,11 +1,12 @@
-//! A request name shared by two files shows the file name, so the rows can be told apart.
+//! Rows the tree cannot tell apart get a muted hint: sibling requests sharing a name show their
+//! file names, and collections sharing a name the part of their folder that differs.
 
 use crate::support;
 
 use apinata_app::sidebar::model::{Expanded, Node, build};
 use apinata_app::snapshot::SnapshotCache;
 use apinata_core::Collection;
-use support::{ROOT, request, write_tree};
+use support::{ROOT, folder, request, write_tree};
 
 fn nodes(files: &[(&str, &str)]) -> Vec<Node> {
     filtered(files, "")
@@ -28,7 +29,7 @@ fn file_of(nodes: &[Node], path: &str) -> Option<String> {
         .iter()
         .find(|n| n.path.as_str() == path)
         .unwrap_or_else(|| panic!("{path}"))
-        .file
+        .hint
         .clone()
 }
 
@@ -68,4 +69,43 @@ fn a_filter_hiding_one_twin_keeps_the_other_file_name() {
     );
     assert_eq!(n[0].children.len(), 1, "the filter hides the other twin");
     assert_eq!(file_of(&n, "one.yml").as_deref(), Some("one.yml"));
+}
+
+#[test]
+fn same_named_requests_in_different_folders_need_no_hint() {
+    let n = nodes(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/get.yml", &request("Get user", "http://x/1")),
+        ("graphql/folder.yml", &folder("GraphQL")),
+        ("graphql/get.yml", &request("Get user", "http://x/2")),
+    ]);
+    let hints: Vec<_> = (n[0].children.iter())
+        .flat_map(|f| f.children.iter())
+        .map(|r| r.hint.clone())
+        .collect();
+    assert_eq!(hints, [None, None], "the folders tell them apart");
+}
+
+#[test]
+fn same_named_collections_show_where_their_folders_differ() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (a, b) = (tmp.path().join("work/shop"), tmp.path().join("play/shop"));
+    let mut contents = Vec::new();
+    for dir in [&a, &b] {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("opencollection.yml"), ROOT).unwrap();
+        contents.push(SnapshotCache::new().build(&Collection::open(dir).unwrap()));
+    }
+    let n = build(
+        &[
+            (a.as_path(), "Shop", Some(&contents[0])),
+            (b.as_path(), "Shop", Some(&contents[1])),
+        ],
+        &[],
+        &Expanded::new(),
+        "",
+    );
+    assert_eq!(n[0].hint.as_deref(), Some("work/shop"));
+    assert_eq!(n[1].hint.as_deref(), Some("play/shop"));
 }

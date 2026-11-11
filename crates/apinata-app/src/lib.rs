@@ -100,6 +100,7 @@ pub mod log_feed;
 pub mod menu_focus;
 pub mod mock_server;
 pub mod model;
+pub mod name_hints;
 pub mod network_gate;
 pub mod network_secrets;
 pub mod network_section;

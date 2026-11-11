@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use apinata_core::ItemPath;
 
+use crate::name_hints::{Shown, hints, item_place};
+use crate::snapshot::Content;
 use crate::stale::rebase;
 
 /// A tab's identity; ids come from a counter and are never reused.
@@ -70,27 +72,47 @@ impl TabEntry {
     }
 }
 
-/// The muted detail each tab shows after its name, by index: for a request tab whose label
-/// another open tab shares, the request's parent folder path, `/` at the collection root;
-/// `None` for every other tab. `labels` holds each entry's label, in order.
-pub fn tab_details(entries: &[TabEntry], labels: &[String]) -> Vec<Option<String>> {
-    // Count each label once, then give a folder only to request tabs whose label repeats.
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for label in labels {
-        *counts.entry(label.as_str()).or_default() += 1;
-    }
-    entries
-        .iter()
-        .zip(labels)
-        .map(|(entry, label)| {
-            let item = entry.item().filter(|_| counts[label.as_str()] > 1)?;
-            let parent = item.parent().unwrap_or_else(ItemPath::root);
-            Some(match parent.as_str() {
-                "" => "/".to_string(),
-                path => path.to_string(),
-            })
+/// The muted detail each tab shows after its name, by index: its hint by the shared rule
+/// where another open tab shows the same label, `None` otherwise. `labels` and `places` hold
+/// each entry's label and place, in order; a request tab's file name tells siblings apart.
+pub fn tab_details(
+    entries: &[TabEntry],
+    labels: &[String],
+    places: &[Vec<String>],
+) -> Vec<Option<String>> {
+    let shown: Vec<Shown> = (entries.iter().zip(labels).zip(places))
+        .map(|((entry, label), place)| Shown {
+            name: label.clone(),
+            place: place.clone(),
+            file: match &entry.kind {
+                TabKind::Request(item) | TabKind::Example { item, .. } => {
+                    Some(item.file_name().to_owned())
+                }
+                _ => None,
+            },
         })
-        .collect()
+        .collect();
+    hints(&shown)
+}
+
+/// Where a tab's subject sits, for its hint: the collection's `tag`, then the folders above
+/// the request, folder or example it shows, and an example's request; collection-wide tabs
+/// have the tag alone.
+pub fn tab_place(entry: &TabEntry, tag: &str, content: Option<&Content>) -> Vec<String> {
+    match &entry.kind {
+        TabKind::Request(path) | TabKind::Folder(path) | TabKind::Runner(path) => {
+            item_place(tag, content, path)
+        }
+        TabKind::Example { item, .. } => {
+            let mut place = item_place(tag, content, item);
+            let request = content.and_then(|c| c.requests.get(item));
+            place.push(request.map_or_else(|| item.file_name().to_owned(), |r| r.name.clone()));
+            place
+        }
+        TabKind::Collection | TabKind::Environments | TabKind::RunSelection(_) => {
+            vec![tag.to_owned()]
+        }
+    }
 }
 
 /// The ordered tab list with its active tab and a stack of closed tabs for reopening.

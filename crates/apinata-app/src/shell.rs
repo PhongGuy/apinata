@@ -1772,15 +1772,6 @@ impl Shell {
     // popover after acting.
     fn collection_switcher(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current = self.current_name(cx);
-        let trigger = ui::solid_ring(Button::new("collection-switcher").ghost().small(), cx)
-            .min_w_0()
-            .dropdown_caret(true)
-            .map(|b| match current {
-                Some(name) => b.label(name),
-                None => b
-                    .label("No collection")
-                    .text_color(cx.theme().muted_foreground),
-            });
         let open: Vec<_> = (self.open_roots(cx).into_iter())
             .map(|root| (self.workspace.read(cx).collection_name(&root, cx), root))
             .collect();
@@ -1788,8 +1779,35 @@ impl Shell {
         let names: std::collections::HashMap<_, _> = (recent.iter())
             .map(|r| (r.clone(), self.recent_name(r)))
             .collect();
-        let (workspace, shell) = (self.workspace.clone(), cx.entity());
+        // Every row the popover lists shares one hint set, and the trigger shows its row's hint.
+        let listed: Vec<(&Path, &str)> = (open.iter())
+            .map(|(name, root)| (root.as_path(), name.as_ref()))
+            .chain(recent.iter().map(|r| (r.as_path(), names[r].as_ref())))
+            .collect();
+        let mut hints = crate::name_hints::collection_hints(&listed);
+        let recent_hints = hints.split_off(open.len());
+        let open_hints = hints;
         let current_root = self.workspace.read(cx).current_root();
+        let current_hint = (open.iter().zip(&open_hints))
+            .find(|((_, root), _)| current_root.as_ref() == Some(root))
+            .and_then(|(_, hint)| hint.clone());
+        let muted = cx.theme().muted_foreground;
+        let trigger = ui::solid_ring(Button::new("collection-switcher").ghost().small(), cx)
+            .min_w_0()
+            .dropdown_caret(true)
+            .map(|b| match current {
+                Some(name) => b.label(name).children(current_hint.map(|hint| {
+                    div()
+                        .id("collection-switcher-hint")
+                        .test_support()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(muted)
+                        .child(hint)
+                })),
+                None => b.label("No collection").text_color(muted),
+            });
+        let (workspace, shell) = (self.workspace.clone(), cx.entity());
         let (home, room) = (self.home.clone(), path_room(window));
         // The name may truncate too; the branch label's heavier shrink weight empties it first.
         let mut wrapper = gpui_kit::StyleRefinement::default();
@@ -1805,12 +1823,13 @@ impl Shell {
                         (workspace.clone(), shell.clone(), root.clone(), root.clone());
                     let path_root = root.clone();
                     let current = current_root.as_ref() == Some(&root);
-                    let reveal = switcher_row(("switch-open", ix), name.clone(), current).on_click(
-                        cx.listener(move |state, _, window, cx| {
-                            shell.update(cx, |s, cx| s.reveal_collection(&root, window, cx));
-                            state.dismiss(window, cx);
-                        }),
-                    );
+                    let hint = open_hints[ix].clone();
+                    let reveal =
+                        switcher_row(("switch-open", ix), name.clone(), hint, muted, current)
+                            .on_click(cx.listener(move |state, _, window, cx| {
+                                shell.update(cx, |s, cx| s.reveal_collection(&root, window, cx));
+                                state.dismiss(window, cx);
+                            }));
                     let gear = Button::new(("switcher-settings", ix))
                         .ghost()
                         .compact()
@@ -1843,11 +1862,13 @@ impl Shell {
                         (home.as_deref(), room, window),
                         muted,
                     );
-                    let button = switcher_row(("recent", ix), names[&root].clone(), false)
-                        .on_click(cx.listener(move |state, _, window, cx| {
-                            shell.update(cx, |s, cx| s.open(root.clone(), window, cx));
-                            state.dismiss(window, cx);
-                        }));
+                    let hint = recent_hints[ix].clone();
+                    let button =
+                        switcher_row(("recent", ix), names[&root].clone(), hint, muted, false)
+                            .on_click(cx.listener(move |state, _, window, cx| {
+                                shell.update(cx, |s, cx| s.open(root.clone(), window, cx));
+                                state.dismiss(window, cx);
+                            }));
                     v_flex().w_full().min_w_0().child(button).child(path)
                 });
                 // The collection actions head the list, so the title bar can drop their
@@ -3151,7 +3172,13 @@ fn to_tabs<A: Action>(
 
 /// A full-width switcher row for a collection: a check in the slot the action rows give their
 /// icons, drawn only when `checked` so every name starts in the actions' label column.
-fn switcher_row(id: (&'static str, usize), name: SharedString, checked: bool) -> Button {
+fn switcher_row(
+    id: (&'static str, usize),
+    name: SharedString,
+    hint: Option<String>,
+    muted: Hsla,
+    checked: bool,
+) -> Button {
     let slot = if checked {
         "switch-current"
     } else {
@@ -3173,8 +3200,29 @@ fn switcher_row(id: (&'static str, usize), name: SharedString, checked: bool) ->
                 .min_w_0()
                 .gap(style::SPACE_2)
                 .child(check)
-                .child(div().min_w_0().truncate().child(name)),
+                .child(div().min_w_0().truncate().child(name))
+                // A collection sharing its name with another listed one shows where it differs.
+                .children(hint.map(|hint| {
+                    div()
+                        .id((hint_id(id.0), id.1))
+                        .test_support()
+                        // A heavier shrink weight makes the hint give up more room than the name.
+                        .min_w_0()
+                        .flex_shrink(8.)
+                        .truncate()
+                        .text_color(muted)
+                        .child(hint)
+                })),
         )
+}
+
+// The test id of a switcher row's hint, by the row's own id.
+fn hint_id(row: &'static str) -> &'static str {
+    if row == "recent" {
+        "recent-hint"
+    } else {
+        "switch-open-hint"
+    }
 }
 
 /// A sidebar row for the open collection `name` in medium weight, carrying a spinner while

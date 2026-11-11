@@ -229,7 +229,8 @@ fn two_drafts_get_names_that_tell_their_tabs_apart(cx: &mut TestAppContext) {
         .map(|e| snap.content.requests[e.item().unwrap()].name.clone())
         .collect();
     assert_eq!(labels, ["Untitled request", "Untitled request 2"]);
-    let details = apinata_app::tabs::tab_details(&entries, &labels);
+    let places = vec![vec!["c".to_string()]; 2];
+    let details = apinata_app::tabs::tab_details(&entries, &labels, &places);
     assert_eq!(details, [None, None], "distinct names need no folder");
 }
 

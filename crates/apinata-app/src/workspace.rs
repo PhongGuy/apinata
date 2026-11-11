@@ -1718,6 +1718,18 @@ impl Workspace {
         Some(self.entry(root)?.model.read(cx).env_overlay())
     }
 
+    /// What stands for each open collection in an item's hint: its name, or the part of its
+    /// folder path that differs when another open collection shows the same name.
+    pub fn collection_tags(&self, cx: &App) -> HashMap<PathBuf, String> {
+        let names: Vec<(PathBuf, SharedString)> = (self.collections.iter())
+            .map(|c| (c.root.clone(), self.collection_name(&c.root, cx)))
+            .collect();
+        let shown: Vec<(&Path, &str)> = (names.iter())
+            .map(|(root, name)| (root.as_path(), name.as_ref()))
+            .collect();
+        crate::name_hints::collection_tags(&shown)
+    }
+
     /// The name to show for the collection at `root`: the open collection's `info.name`,
     /// found by path or by canonical path, else the directory name.
     pub fn collection_name(&self, root: &Path, cx: &App) -> SharedString {

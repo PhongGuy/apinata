@@ -43,7 +43,7 @@ use crate::save_example;
 use crate::send_model::SendState;
 use crate::sidebar::FocusFilter;
 use crate::style::{self, ROW_HEIGHT, SPACE_1, TAB_MAX_WIDTH};
-use crate::tabs::{Side, TabEntry, TabId, TabKind, Tabs, tab_details};
+use crate::tabs::{Side, TabEntry, TabId, TabKind, Tabs, tab_details, tab_place};
 use crate::ui;
 use crate::workspace::{Workspace, WorkspaceEvent, label_or_dir};
 use crate::zoom;
@@ -1886,6 +1886,20 @@ impl TabArea {
         draft_of(entry).is_none() && !dirty_targets(self.workspace.read(cx), entry, cx).is_empty()
     }
 
+    // Each tab's muted hint, by the shared rule over every open tab's label and place.
+    fn details(&self, entries: &[TabEntry], labels: &[String], cx: &App) -> Vec<Option<String>> {
+        let ws = self.workspace.read(cx);
+        let tags = ws.collection_tags(cx);
+        let places: Vec<Vec<String>> = (entries.iter())
+            .map(|e| {
+                let snapshot = ws.snapshot(&e.root, cx);
+                let tag = tags.get(&e.root).map_or("", String::as_str);
+                tab_place(e, tag, snapshot.as_ref().map(|s| &s.content))
+            })
+            .collect();
+        tab_details(entries, labels, &places)
+    }
+
     /// The title `entry`'s tab shows: a request's name, "<name> Settings" for a folder or the
     /// collection, "Environments", "Run <name>" for a runner, or an example's name.
     pub fn tab_label(&self, entry: &TabEntry, cx: &App) -> String {
@@ -2148,7 +2162,7 @@ impl TabArea {
         });
     }
 
-    // A tab is its method tag, name and any muted folder detail, then a fixed slot that
+    // A tab is its method tag, name and any muted hint, then a fixed slot that
     // holds the close button, or the unsaved dot while a dirty tab is neither active nor
     // hovered.
     fn tab(
@@ -2445,7 +2459,12 @@ impl TabArea {
 impl TabArea {
     // `#tab-overflow`: a dropdown naming every tab in order, the active one checked, so a
     // tab scrolled out of the strip is one click away.
-    fn overflow_menu(&self, labels: Vec<String>, selected: usize) -> impl IntoElement + use<> {
+    fn overflow_menu(
+        &self,
+        labels: Vec<String>,
+        details: Vec<Option<String>>,
+        selected: usize,
+    ) -> impl IntoElement + use<> {
         let workspace = self.workspace.clone();
         let reveal = self.reveal.clone();
         ui::strip_chevron(
@@ -2458,11 +2477,11 @@ impl TabArea {
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
                     menu = menu.scrollable(true);
                     crate::ui::start_on(&menu, selected, window, cx);
-                    for (ix, label) in labels.iter().enumerate() {
+                    for (ix, (label, detail)) in labels.iter().zip(&details).enumerate() {
                         let workspace = workspace.clone();
                         let reveal = reveal.clone();
                         menu = menu.item(
-                            PopupMenuItem::new(label.clone())
+                            menu_tab_item(ix, label, detail.as_deref())
                                 .checked(ix == selected)
                                 .on_click(move |_, _, cx| {
                                     // A pick of the already active tab must still scroll it back
@@ -2478,6 +2497,29 @@ impl TabArea {
                 }),
         )
     }
+}
+
+// An All tabs entry: the tab's label, then its muted hint as the tab shows it.
+fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>) -> PopupMenuItem {
+    let Some(detail) = detail else {
+        return PopupMenuItem::new(label.to_owned());
+    };
+    let (label, detail) = (SharedString::from(label.to_owned()), detail.to_owned());
+    PopupMenuItem::element(move |_, cx| {
+        h_flex()
+            .id(("tab-menu-item", ix))
+            .test_support()
+            .gap(style::SPACE_2)
+            .aria_label(format!("{label} {detail}"))
+            .child(label.clone())
+            .child(
+                div()
+                    .id(("tab-menu-detail", ix))
+                    .test_support()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(detail.clone()),
+            )
+    })
 }
 
 /// The draft `entry` shows, if it is a draft's tab.
@@ -2546,7 +2588,7 @@ impl TabArea {
     fn strip_inputs(&self, entries: &[TabEntry], active: TabId, cx: &App) -> StripInputs {
         let ws = self.workspace.read(cx);
         let labels: Vec<String> = entries.iter().map(|e| self.tab_label(e, cx)).collect();
-        let details = tab_details(entries, &labels);
+        let details = self.details(entries, &labels, cx);
         let tabs = (entries.iter().zip(labels).zip(details))
             .map(|((entry, label), detail)| TabShown {
                 method: match &entry.kind {
@@ -2585,14 +2627,14 @@ impl TabArea {
         };
         let selected = entries.iter().position(|e| e.id == active).unwrap_or(0);
         let labels: Vec<String> = entries.iter().map(|e| self.tab_label(e, cx)).collect();
-        let details = tab_details(&entries, &labels);
+        let details = self.details(&entries, &labels, cx);
         let tabs: Vec<Tab> = entries
             .iter()
-            .zip(details)
+            .zip(details.iter().cloned())
             .enumerate()
             .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, cx))
             .collect();
-        let overflow = self.overflow_menu(labels, selected);
+        let overflow = self.overflow_menu(labels, details, selected);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
         // gap precedes it, so the filler pulls back by that gap and trails the tab by its width.
         let pad = style::resolve(style::ui(12.), window);
