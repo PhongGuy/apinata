@@ -302,3 +302,87 @@ fn switching_windows_keeps_a_new_folder_and_its_rename(cx: &mut TestAppContext) 
         Some((h.root.clone(), ip(FRESH)))
     );
 }
+
+fn rename_error(cx: &mut TestAppContext, h: &SidebarHarness) -> Option<String> {
+    h.view
+        .read_with(cx, |s, _| s.rename_error().map(str::to_owned))
+}
+
+// A sibling's name is refused in the field itself: nothing is sent and the rename stays open.
+#[gpui_kit::test]
+fn enter_on_a_siblings_name_keeps_the_rename_open_with_an_error(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    rename(cx, &h, "health.yml");
+    type_and(cx, &h, "Status", "enter");
+    frame(cx, h.win);
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.renaming()),
+        Some((h.root.clone(), ip("health.yml")))
+    );
+    assert_eq!(
+        rename_error(cx, &h).as_deref(),
+        Some("A request named Status is already in c")
+    );
+    assert!(shown(cx, h.win, "sidebar-rename-error"));
+    assert!(shown(cx, h.win, "sidebar-rename-invalid-icon"));
+    assert!(h.root.join("health.yml").exists());
+    let s = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
+    assert_eq!(s.acked, 0, "no command reached the actor");
+}
+
+#[gpui_kit::test]
+fn typing_after_a_refused_name_clears_the_error_and_a_free_name_renames(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    rename(cx, &h, "health.yml");
+    type_and(cx, &h, "Status", "enter");
+    assert!(rename_error(cx, &h).is_some());
+    type_and(cx, &h, " check", "enter");
+    assert_eq!(rename_error(cx, &h), None);
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join("Status check.yml").exists());
+}
+
+#[gpui_kit::test]
+fn a_folder_named_like_a_sibling_folder_is_refused(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    new_folder(cx, &h);
+    type_and(cx, &h, "Users", "enter");
+    assert_eq!(
+        rename_error(cx, &h).as_deref(),
+        Some("A folder named Users is already in c")
+    );
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.renaming()),
+        Some((h.root.clone(), ip(FRESH)))
+    );
+}
+
+// Only a sibling of the same kind clashes: a request may share a folder's name.
+#[gpui_kit::test]
+fn a_request_may_take_a_sibling_folders_name(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    rename(cx, &h, "health.yml");
+    type_and(cx, &h, "Users", "enter");
+    assert_eq!(rename_error(cx, &h), None);
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join("Users.yml").exists());
+}
+
+// Clicking away cannot keep the field open, so a taken name is dropped and nothing is sent.
+#[gpui_kit::test]
+fn clicking_away_from_a_siblings_name_sends_nothing(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    rename(cx, &h, "health.yml");
+    cx.update_window(h.win, |_, w, cx| w.input("Status", cx))
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.click(row("users"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join("health.yml").exists());
+    let s = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
+    assert_eq!(s.acked, 0, "no command reached the actor");
+}
