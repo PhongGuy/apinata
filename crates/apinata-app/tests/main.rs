@@ -366,6 +366,7 @@ mod network_settings;
 mod new_collection_and_env_import;
 mod oauth1_editor;
 mod oauth2_editor;
+mod oauth2_form;
 mod oauth2_signin;
 mod oauth2_tokens;
 mod open_external;
