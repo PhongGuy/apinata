@@ -31,8 +31,8 @@ fn bulk_labels_count_and_pluralise() {
         requests: n,
         ..Tally::default()
     };
-    assert_eq!(BulkEntry::Delete(items(3)).label(), "Delete 3 items");
-    assert_eq!(BulkEntry::Delete(items(1)).label(), "Delete 1 item");
+    assert_eq!(BulkEntry::Delete(items(3)).label(), "Delete 3 requests");
+    assert_eq!(BulkEntry::Delete(items(1)).label(), "Delete 1 request");
     assert_eq!(BulkEntry::Run(2).label(), "Run 2 requests");
     assert_eq!(BulkEntry::Run(1).label(), "Run 1 request");
     assert_eq!(
@@ -69,6 +69,8 @@ fn the_delete_label_names_folders_apart_from_requests() {
     assert_eq!(label(t(3, 0, 0)), "Delete 3 folders");
     assert_eq!(label(t(1, 1, 1)), "Delete 1 folder and 2 items");
     assert_eq!(label(t(0, 2, 1)), "Delete 3 items");
+    assert_eq!(label(t(0, 4, 0)), "Delete 4 requests");
+    assert_eq!(label(t(0, 0, 2)), "Delete 2 items");
     assert_eq!(t(2, 4, 1).total(), 7);
     assert_eq!(
         bulk_entries(t(1, 2, 0), None),
@@ -125,7 +127,7 @@ fn right_click_inside_the_set_opens_the_bulk_menu_and_keeps_the_set(cx: &mut Tes
     cx.run_until_parked();
     assert!(
         confirm_open(cx),
-        "entry 3 is Delete 2 items (entries 0 to 2 are Run, Copy, Cut)"
+        "entry 3 is Delete 2 requests (entries 0 to 2 are Run, Copy, Cut)"
     );
     answer_confirm(cx, "confirm-delete");
     frame(cx, h.win);
@@ -217,7 +219,7 @@ fn the_four_entry_bulk_menu_fits_a_1000x480_window(cx: &mut TestAppContext) {
             "Run 2 requests",
             "Copy 2 items",
             "Cut 2 items",
-            "Delete 2 items"
+            "Delete 2 requests"
         ]
     );
     assert!(

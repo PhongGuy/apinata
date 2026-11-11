@@ -100,29 +100,32 @@ impl Tally {
         self.folders + self.requests + self.others
     }
 
-    /// "3 items" without folders; with them the folders are named apart, as in "2 folders and
-    /// 4 requests", and the rest are requests only when no other file is among them.
+    /// The rows counted for a label: folders named apart, as in "2 folders and 4 requests",
+    /// and the rest called requests unless another kind of file is among them ("3 items").
     pub fn describe(self) -> String {
         let count = |n: usize, noun: &str| format!("{n} {noun}{}", if n == 1 { "" } else { "s" });
         let rest = self.requests + self.others;
+        let noun = if self.others == 0 { "request" } else { "item" };
         match (self.folders, rest) {
-            (0, n) => count(n, "item"),
-            (f, 0) => count(f, "folder"),
-            (f, n) if self.others == 0 => {
-                format!("{} and {}", count(f, "folder"), count(n, "request"))
-            }
-            (f, n) => format!("{} and {}", count(f, "folder"), count(n, "item")),
+            (f, 0) if f > 0 => count(f, "folder"),
+            (0, n) => count(n, noun),
+            (f, n) => format!("{} and {}", count(f, "folder"), count(n, noun)),
         }
     }
 }
 
 /// The tally of `items` by the kind of their row in `rows`.
 pub fn tally(rows: &[Row], items: &[SelKey]) -> Tally {
+    tally_rows(
+        rows.iter()
+            .filter(|r| items.iter().any(|k| k.path == r.path)),
+    )
+}
+
+/// The tally of `rows` by kind.
+pub fn tally_rows<'r>(rows: impl IntoIterator<Item = &'r Row>) -> Tally {
     let mut t = Tally::default();
-    for r in rows
-        .iter()
-        .filter(|r| items.iter().any(|k| k.path == r.path))
-    {
+    for r in rows {
         match r.kind {
             RowKind::Folder => t.folders += 1,
             RowKind::Request => t.requests += 1,

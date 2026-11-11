@@ -168,7 +168,7 @@ fn a_range_over_a_folder_row_asks_first_even_with_a_trash(cx: &mut TestAppContex
     assert_eq!(title, "Delete 1 folder and 1 request?");
     assert_eq!(
         detail,
-        "This also deletes 1 request inside the folder that was not selected."
+        "1 request in this folder was not selected and will be deleted too."
     );
     answer_confirm(cx, "confirm-cancel");
     frame(cx, h.win);

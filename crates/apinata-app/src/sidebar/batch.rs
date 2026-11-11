@@ -282,17 +282,34 @@ pub fn items_label(n: usize) -> String {
     }
 }
 
-/// The detail line shared by the bulk prompts, before any permanence note: what a folder takes
-/// along (naming the `unpicked` requests inside it when there are any) and lost edits.
-fn bulk_detail(items: Tally, unpicked: usize, dirty: bool) -> Option<String> {
-    let folder = match (items.folders, unpicked) {
+/// The detail line shared by the bulk prompts, before any permanence note: the `unpicked` rows
+/// a selected folder takes along (or that folders go whole when there are none) and lost edits.
+fn bulk_detail(items: Tally, unpicked: Tally, dirty: bool) -> Option<String> {
+    let count = |n: usize, noun: &str| format!("{n} {noun}{}", if n == 1 { "" } else { "s" });
+    let along: Vec<String> = [
+        (unpicked.requests, "request"),
+        (unpicked.others, "other file"),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, noun)| count(n, noun))
+    .collect();
+    let folder = match (items.folders, along.is_empty()) {
         (0, _) => None,
-        (_, 0) => Some("Folders are deleted with everything inside them.".to_owned()),
-        (f, n) => Some(format!(
-            "This also deletes {n} request{} inside the folder{} that {} not selected.",
-            if n == 1 { "" } else { "s" },
-            if f == 1 { "" } else { "s" },
-            if n == 1 { "was" } else { "were" },
+        (_, true) => Some("Folders are deleted with everything inside them.".to_owned()),
+        (f, false) => Some(format!(
+            "{} in {} {} not selected and will be deleted too.",
+            along.join(" and "),
+            if f == 1 {
+                "this folder"
+            } else {
+                "these folders"
+            },
+            if unpicked.requests + unpicked.others == 1 {
+                "was"
+            } else {
+                "were"
+            },
         )),
     };
     let parts: Vec<String> = folder
@@ -317,7 +334,7 @@ pub fn single_delete_ask(name: &str, folder: bool, permanent: bool) -> Ask {
 }
 
 /// `bulk_delete_ask` for when there is no trash: the detail ends by saying it is permanent.
-pub fn permanent_delete_ask(items: Tally, unpicked: usize, dirty: bool) -> Ask {
+pub fn permanent_delete_ask(items: Tally, unpicked: Tally, dirty: bool) -> Ask {
     let mut ask = bulk_delete_ask(items, unpicked, dirty);
     ask.detail = Some(match bulk_detail(items, unpicked, dirty) {
         Some(text) => format!("{text} This is permanent.").into(),
@@ -326,9 +343,9 @@ pub fn permanent_delete_ask(items: Tally, unpicked: usize, dirty: bool) -> Ask {
     ask
 }
 
-/// The delete prompt for a multi-selection of `items`, of which `unpicked` requests sit inside
-/// selected folders without being selected themselves.
-pub fn bulk_delete_ask(items: Tally, unpicked: usize, dirty: bool) -> Ask {
+/// The delete prompt for a multi-selection of `items`; `unpicked` counts the rows inside
+/// selected folders that were not selected themselves.
+pub fn bulk_delete_ask(items: Tally, unpicked: Tally, dirty: bool) -> Ask {
     let mut ask = delete_ask(format!("Delete {}?", items.describe()), None);
     ask.detail = bulk_detail(items, unpicked, dirty).map(Into::into);
     ask

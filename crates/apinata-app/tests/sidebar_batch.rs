@@ -150,15 +150,16 @@ fn counts_and_the_delete_prompt_text() {
         requests,
         others: 0,
     };
+    let none = Tally::default();
     assert_eq!(items_label(1), "1 item");
     assert_eq!(items_label(5), "5 items");
-    let clean = bulk_delete_ask(t(1, 2), 0, false);
+    let clean = bulk_delete_ask(t(1, 2), none, false);
     assert_eq!(&*clean.title, "Delete 1 folder and 2 requests?");
     assert_eq!(
         clean.detail.as_deref(),
         Some("Folders are deleted with everything inside them.")
     );
-    let dirty = bulk_delete_ask(t(1, 1), 0, true);
+    let dirty = bulk_delete_ask(t(1, 1), none, true);
     assert_eq!(
         dirty.detail.as_deref(),
         Some("Folders are deleted with everything inside them. Unsaved edits are lost.")
@@ -166,40 +167,52 @@ fn counts_and_the_delete_prompt_text() {
     assert_eq!((dirty.default, dirty.cancel), (1, 0));
     // Without a folder in the set, the folder sentence is left out.
     assert_eq!(
-        &*bulk_delete_ask(t(0, 2), 0, false).title,
-        "Delete 2 items?"
+        &*bulk_delete_ask(t(0, 2), none, false).title,
+        "Delete 2 requests?"
     );
-    assert_eq!(bulk_delete_ask(t(0, 2), 0, false).detail, None);
+    assert_eq!(bulk_delete_ask(t(0, 2), none, false).detail, None);
     assert_eq!(
-        bulk_delete_ask(t(0, 2), 0, true).detail.as_deref(),
+        bulk_delete_ask(t(0, 2), none, true).detail.as_deref(),
         Some("Unsaved edits are lost.")
     );
 }
 
-// Requests nobody selected that go with their folder are counted out in the prompt.
+// Rows nobody selected that go with their folder are counted out in the prompt.
 #[test]
-fn the_delete_prompt_counts_requests_inside_folders_that_were_not_selected() {
-    let t = |folders, requests| Tally {
+fn the_delete_prompt_counts_rows_inside_folders_that_were_not_selected() {
+    let t = |folders, requests, others| Tally {
         folders,
         requests,
-        others: 0,
+        others,
     };
+    let detail = |ask: apinata_app::confirm::Ask| ask.detail.map(|d| d.to_string());
     assert_eq!(
-        bulk_delete_ask(t(1, 5), 1, false).detail.as_deref(),
-        Some("This also deletes 1 request inside the folder that was not selected.")
+        detail(bulk_delete_ask(t(1, 5, 0), t(0, 1, 0), false)).as_deref(),
+        Some("1 request in this folder was not selected and will be deleted too.")
     );
     assert_eq!(
-        bulk_delete_ask(t(2, 4), 3, true).detail.as_deref(),
+        detail(bulk_delete_ask(t(2, 4, 0), t(0, 3, 0), true)).as_deref(),
         Some(
-            "This also deletes 3 requests inside the folders that were not selected. \
+            "3 requests in these folders were not selected and will be deleted too. \
              Unsaved edits are lost."
         )
     );
     assert_eq!(
-        permanent_delete_ask(t(1, 0), 2, false).detail.as_deref(),
+        detail(permanent_delete_ask(t(1, 0, 0), t(0, 2, 0), false)).as_deref(),
         Some(
-            "This also deletes 2 requests inside the folder that were not selected. \
+            "2 requests in this folder were not selected and will be deleted too. \
              This is permanent."
+        )
+    );
+    assert_eq!(
+        detail(bulk_delete_ask(t(1, 1, 0), t(0, 0, 1), false)).as_deref(),
+        Some("1 other file in this folder was not selected and will be deleted too.")
+    );
+    assert_eq!(
+        detail(bulk_delete_ask(t(2, 0, 0), t(0, 1, 2), false)).as_deref(),
+        Some(
+            "1 request and 2 other files in these folders were not selected and will be \
+             deleted too."
         )
     );
 }

@@ -475,9 +475,9 @@ fn the_permanent_prompts_say_so_and_the_trash_prompts_do_not() {
         requests,
         others: 0,
     };
-    assert!(says(permanent_delete_ask(t(1, 2), 1, true)));
-    assert!(says(permanent_delete_ask(t(0, 2), 0, false)));
-    assert!(!says(bulk_delete_ask(t(1, 1), 1, true)));
+    assert!(says(permanent_delete_ask(t(1, 2), t(0, 1), true)));
+    assert!(says(permanent_delete_ask(t(0, 2), t(0, 0), false)));
+    assert!(!says(bulk_delete_ask(t(1, 1), t(0, 1), true)));
 }
 
 #[gpui_kit::test]

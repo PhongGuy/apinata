@@ -1803,9 +1803,7 @@ impl Sidebar {
         let dirty = self.dirty_within(&root, keys.iter().map(|k| &k.path));
         let items = multi::tally(rows, &keys);
         let unpicked = self.multi.unpicked(rows);
-        let hidden = (unpicked.iter())
-            .filter(|r| r.kind == crate::snapshot::RowKind::Request)
-            .count();
+        let unpicked_rows = multi::tally_rows(unpicked.iter().copied());
         let paths: Vec<ItemPath> = keys.into_iter().map(|k| k.path).collect();
         let trash = self.workspace.read(cx).trash_available();
         // The trash makes a prompt needless unless unsaved edits, or rows nobody selected inside
@@ -1815,9 +1813,9 @@ impl Sidebar {
             return;
         }
         let ask = if trash {
-            bulk_delete_ask(items, hidden, dirty)
+            bulk_delete_ask(items, unpicked_rows, dirty)
         } else {
-            permanent_delete_ask(items, hidden, dirty)
+            permanent_delete_ask(items, unpicked_rows, dirty)
         };
         let answer = crate::confirm::ask(ask, window, cx);
         cx.spawn_in(window, async move |this, cx| {
