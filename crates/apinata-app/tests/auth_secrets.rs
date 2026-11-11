@@ -2,7 +2,7 @@
 
 use crate::support;
 
-use apinata_app::command::{Command, Edit, NoticeKind, Target};
+use apinata_app::command::{Command, Edit, NoticeKind, Planned, Target};
 use apinata_app::model::CollectionModel;
 use apinata_core::{AuthSpec, OAuth2Flow, OAuth2Spec};
 use gpui_kit::{Entity, TestAppContext};
@@ -92,6 +92,10 @@ fn a_typed_client_secret_moves_to_dotenv(cx: &mut TestAppContext) {
         oauth(request_auth(cx, &model)).client_secret,
         "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"
     );
+    // Nothing reaches the disk before the save.
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+    assert!(notices(cx, &model).is_empty());
+    save(cx, &model, Target::Request(ip("r.yml")));
     assert_eq!(
         read(&dir, ".env"),
         "APINATA_OAUTH2_CLIENT_SECRET='CL1ENTs3cret'\n"
@@ -103,7 +107,6 @@ fn a_typed_client_secret_moves_to_dotenv(cx: &mut TestAppContext) {
             "Added .env to .gitignore".into()
         ])]
     );
-    save(cx, &model, Target::Request(ip("r.yml")));
     let saved = read(&dir, "r.yml");
     assert!(
         saved.contains("clientSecret: \"{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}\"")
@@ -134,6 +137,7 @@ fn a_password_grant_password_moves_too(cx: &mut TestAppContext) {
         oauth(request_auth(cx, &model)).password,
         "{{process.env.APINATA_OAUTH2_PASSWORD}}"
     );
+    save(cx, &model, Target::Request(ip("r.yml")));
     assert!(read(&dir, ".env").contains("APINATA_OAUTH2_PASSWORD='pw-1234'"));
 }
 
@@ -204,11 +208,12 @@ fn a_reference_keeps_its_name(cx: &mut TestAppContext) {
         Target::Request(ip("r.yml")),
         AuthSpec::OAuth2(o),
     );
-    assert_eq!(read(&dir, ".env"), "MY_CS='new-secret'\n");
     assert_eq!(
         oauth(request_auth(cx, &model)).client_secret,
         "{{process.env.MY_CS}}"
     );
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(read(&dir, ".env"), "MY_CS='new-secret'\n");
 }
 
 #[gpui_kit::test]
@@ -339,13 +344,14 @@ fn move_to_dotenv_moves_existing_literals(cx: &mut TestAppContext) {
         "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"
     );
     assert_eq!(o.password, "{{process.env.APINATA_OAUTH2_PASSWORD}}");
+    assert!(!dir.path().join(".env").exists());
+    save(cx, &model, Target::Request(ip("r.yml")));
     let env = read(&dir, ".env");
     assert!(
         env.contains("APINATA_OAUTH2_CLIENT_SECRET='old-plain'")
             && env.contains("APINATA_OAUTH2_PASSWORD='old-pw'"),
         "{env}"
     );
-    save(cx, &model, Target::Request(ip("r.yml")));
     let saved = read(&dir, "r.yml");
     assert!(
         !saved.contains("old-plain") && !saved.contains("old-pw"),
@@ -380,4 +386,136 @@ fn moving_on_an_environment_is_unsupported(cx: &mut TestAppContext) {
         notices(cx, &model).as_slice(),
         [NoticeKind::Unsupported { .. }]
     ));
+}
+
+fn plan(cx: &mut TestAppContext, model: &Entity<CollectionModel>, rel: &str) -> Planned {
+    let (reply, answer) = async_channel::bounded(1);
+    send(
+        cx,
+        model,
+        Command::Plan {
+            item: ip(rel),
+            reply,
+        },
+    );
+    cx.run_until_parked();
+    answer
+        .try_recv()
+        .expect("the actor replied")
+        .expect("planned")
+}
+
+// The `.env` value of `MY_CS` a send of request `rel` would use, read from its secrets.
+fn sent_secret(cx: &mut TestAppContext, model: &Entity<CollectionModel>, rel: &str) -> String {
+    let secrets = plan(cx, model, rel).context.secret_values();
+    let found: Vec<&String> = secrets.iter().filter(|v| v.ends_with("-secret")).collect();
+    assert_eq!(found.len(), 1, "{secrets:?}");
+    found[0].clone()
+}
+
+#[gpui_kit::test]
+fn dont_save_leaves_dotenv_untouched(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &cc_request(""))]);
+    let model = open(cx, &dir);
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        with_secret("CL1ENTs3cret"),
+    );
+    send(cx, &model, Command::Revert(Target::Request(ip("r.yml"))));
+    cx.run_until_parked();
+    assert_eq!(oauth(request_auth(cx, &model)).client_secret, "");
+    // A later save of the reverted request writes nothing for the discarded secret.
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+}
+
+#[gpui_kit::test]
+fn an_unsaved_secret_is_what_a_send_uses(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "r.yml",
+            &cc_request("      clientSecret: \"{{process.env.MY_CS}}\"\n"),
+        ),
+        (".env", "MY_CS=old-secret\n"),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    assert_eq!(sent_secret(cx, &model, "r.yml"), "old-secret");
+    let mut o = oauth(request_auth(cx, &model));
+    o.client_secret = "new-secret".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(sent_secret(cx, &model, "r.yml"), "new-secret");
+    assert_eq!(read(&dir, ".env"), "MY_CS=old-secret\n");
+    // Discarding the edit sends the stored value again.
+    send(cx, &model, Command::Revert(Target::Request(ip("r.yml"))));
+    cx.run_until_parked();
+    assert_eq!(sent_secret(cx, &model, "r.yml"), "old-secret");
+}
+
+#[gpui_kit::test]
+fn a_reference_that_is_no_env_key_is_never_reused(cx: &mut TestAppContext) {
+    let file = cc_request(
+        "      clientSecret: \"{{process.env.APINATA_OAmy-clientUTH2_CLIENT_SECRET}}\"\n",
+    );
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &file),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    let mut o = oauth(request_auth(cx, &model));
+    o.client_secret = "topsecret".into();
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        AuthSpec::OAuth2(o),
+    );
+    assert_eq!(
+        oauth(request_auth(cx, &model)).client_secret,
+        "{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"
+    );
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(
+        read(&dir, ".env"),
+        "APINATA_OAUTH2_CLIENT_SECRET='topsecret'\n"
+    );
+}
+
+#[gpui_kit::test]
+fn a_tracked_dotenv_at_save_refuses_the_save(cx: &mut TestAppContext) {
+    let file = cc_request("");
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &file),
+        (".env", "X=1\n"),
+    ]);
+    git(dir.path(), &["init", "-q"]);
+    let model = open(cx, &dir);
+    edit(
+        cx,
+        &model,
+        Target::Request(ip("r.yml")),
+        with_secret("CL1ENTs3cret"),
+    );
+    git(dir.path(), &["add", ".env"]);
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(
+        notices(cx, &model),
+        [NoticeKind::Failed {
+            target: Some(Target::Request(ip("r.yml"))),
+            message: TRACKED.into(),
+            row: None
+        }]
+    );
+    assert_eq!(read(&dir, ".env"), "X=1\n");
+    assert_eq!(read(&dir, "r.yml"), file);
 }

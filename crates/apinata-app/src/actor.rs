@@ -1,7 +1,7 @@
 //! The background actor that owns one collection: it applies commands in send order and
 //! publishes one snapshot per batch of queued commands.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
@@ -187,6 +187,9 @@ struct Actor {
     reloads: HashMap<Target, u64>,
     /// How many times `.env` changed on disk, published for views that depend on its values.
     dotenv_seq: u64,
+    /// Secrets moved out of unsaved drafts, by `.env` name, with the target that holds the
+    /// reference. Written to `.env` when that target is saved, dropped when it is discarded.
+    held_dotenv: BTreeMap<String, (Target, String)>,
     /// Test-only: see `Faults::refuse_draft_from`.
     refuse_draft_from: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Where `Trash` commands send items.
@@ -245,6 +248,7 @@ impl Actor {
             env_reloads: HashMap::new(),
             reloads: HashMap::new(),
             dotenv_seq: 0,
+            held_dotenv: BTreeMap::new(),
             refuse_draft_from: None,
             trash: Arc::new(crate::workspace::NoTrash),
             trashed: HashMap::new(),
@@ -276,12 +280,12 @@ impl Actor {
             Command::Edit {
                 target: Target::Collection,
                 edit,
-            } if edit.field() == Field::Network => self.network_edit(id, edit),
+            } if edit.field() == Field::Network => self.network_edit(edit),
             // So may an OAuth 2.0 auth edit, for its client secret and password.
             Command::Edit {
                 target,
                 edit: edit @ (Edit::Auth(AuthSpec::OAuth2(_)) | Edit::MoveAuthSecrets),
-            } if !matches!(target, Target::Environment(_)) => self.auth_edit(id, &target, edit),
+            } if !matches!(target, Target::Environment(_)) => self.auth_edit(&target, edit),
             Command::Edit { target, edit } => self.edit(&target, edit),
             // An import is never held: the user re-imports against what the reload loaded.
             Command::ApplyImport { item, .. }
@@ -988,8 +992,13 @@ impl Actor {
                 parent,
                 name,
             } => {
+                let from = Target::Request(draft.clone());
+                self.write_held(id, &from)?;
                 let to = self.collection.save_draft(&draft, &parent, &name);
-                self.moved_to(Target::Request(draft), to)
+                if to.is_ok() {
+                    self.release(|t| *t == from);
+                }
+                self.moved_to(from, to)
             }
             TreeOp::DiscardDraft { draft } => {
                 c.remove_draft(&draft);
@@ -1111,6 +1120,9 @@ impl Actor {
     /// move for commands sent before the next snapshot shows it.
     fn record_move(&mut self, from: Target, to: Target) {
         let rekey = |t: Target| moved(&t, &from, &to).unwrap_or(t);
+        for (held, _) in self.held_dotenv.values_mut() {
+            *held = rekey(held.clone());
+        }
         self.changed = mem::take(&mut self.changed)
             .into_iter()
             .map(rekey)
@@ -1126,6 +1138,7 @@ impl Actor {
     /// Drop the changed-on-disk flags and held edits of deleted targets, so an item created
     /// later under the same key starts clean.
     fn forget(&mut self, gone: impl Fn(&Target) -> bool) {
+        self.release(&gone);
         self.changed.retain(|t| !gone(t));
         if self.stale.keys().any(&gone) {
             Arc::make_mut(&mut self.stale).retain(|t, _| !gone(t));
@@ -1433,16 +1446,73 @@ impl Actor {
         })
     }
 
-    /// Apply a collection network edit; its warnings become one notice for command `id`.
-    fn network_edit(&mut self, id: u64, edit: Edit) -> Result<(), NoticeKind> {
-        let warnings = network_secrets::apply(&mut self.collection, edit).map_err(|message| {
-            NoticeKind::Failed {
-                target: Some(Target::Collection),
-                message,
-                row: None,
-            }
-        })?;
+    /// Apply a collection network edit, holding a typed secret for `.env` until the
+    /// collection is saved.
+    fn network_edit(&mut self, edit: Edit) -> Result<(), NoticeKind> {
+        let held = self.held_names();
+        let moved =
+            network_secrets::apply(&mut self.collection, edit, &held).map_err(|message| {
+                NoticeKind::Failed {
+                    target: Some(Target::Collection),
+                    message,
+                    row: None,
+                }
+            })?;
+        self.hold(&Target::Collection, moved);
         self.cache.touch(&Target::Collection);
+        Ok(())
+    }
+
+    /// The `.env` names promised to secrets of unsaved drafts.
+    fn held_names(&self) -> BTreeSet<String> {
+        self.held_dotenv.keys().cloned().collect()
+    }
+
+    /// Hold `moved` secrets of `target` until it is saved; sends see them at once.
+    fn hold(&mut self, target: &Target, moved: Vec<(String, String)>) {
+        if moved.is_empty() {
+            return;
+        }
+        for (name, value) in moved {
+            self.held_dotenv.insert(name, (target.clone(), value));
+        }
+        self.sync_held();
+    }
+
+    /// Drop the held secrets of the targets `gone` matches.
+    fn release(&mut self, gone: impl Fn(&Target) -> bool) {
+        let before = self.held_dotenv.len();
+        self.held_dotenv.retain(|_, (t, _)| !gone(t));
+        if self.held_dotenv.len() != before {
+            self.sync_held();
+        }
+    }
+
+    // The draft context reads held secrets as if `.env` already had them.
+    fn sync_held(&mut self) {
+        let values = self
+            .held_dotenv
+            .iter()
+            .map(|(name, (_, value))| (name.clone(), value.clone()));
+        self.context.set_dotenv_overrides(values.collect());
+    }
+
+    /// Write the held secrets that `target`'s draft still refers to into `.env`, before the
+    /// draft is written; a refusal stops the save. Warnings become a notice for command `id`.
+    fn write_held(&mut self, id: u64, target: &Target) -> Result<(), NoticeKind> {
+        let referenced = network_secrets::referenced_names(&self.collection, target);
+        let planned: Vec<(String, String)> = (self.held_dotenv.iter())
+            .filter(|(name, (t, _))| t == target && referenced.contains(*name))
+            .map(|(name, (_, value))| (name.clone(), value.clone()))
+            .collect();
+        let warnings =
+            network_secrets::write(&mut self.collection, &planned).map_err(|message| {
+                NoticeKind::Failed {
+                    target: Some(target.clone()),
+                    message,
+                    row: None,
+                }
+            })?;
         if !warnings.is_empty() {
             let kind = NoticeKind::Warnings(warnings);
             self.notices.push(Notice { command: id, kind });
@@ -1450,9 +1520,9 @@ impl Actor {
         Ok(())
     }
 
-    /// Apply an OAuth 2.0 auth edit, moving a typed secret to `.env` first; its warnings
-    /// become one notice for command `id`.
-    fn auth_edit(&mut self, id: u64, target: &Target, edit: Edit) -> Result<(), NoticeKind> {
+    /// Apply an OAuth 2.0 auth edit, holding a typed secret for `.env` until the target is
+    /// saved.
+    fn auth_edit(&mut self, target: &Target, edit: Edit) -> Result<(), NoticeKind> {
         // "Move to .env" rewrites the auth the draft holds, moving every literal it has.
         let all = matches!(edit, Edit::MoveAuthSecrets);
         let mut auth = match edit {
@@ -1471,7 +1541,8 @@ impl Actor {
         if !exists {
             return self.edit(target, Edit::Auth(auth));
         }
-        let warnings = auth_secrets::apply(&mut self.collection, target, &mut auth, all).map_err(
+        let held = self.held_names();
+        let moved = auth_secrets::apply(&self.collection, target, &mut auth, all, &held).map_err(
             |message| NoticeKind::Failed {
                 target: Some(target.clone()),
                 message,
@@ -1483,10 +1554,7 @@ impl Actor {
             return Ok(());
         }
         self.edit(target, Edit::Auth(auth))?;
-        if !warnings.is_empty() {
-            let kind = NoticeKind::Warnings(warnings);
-            self.notices.push(Notice { command: id, kind });
-        }
+        self.hold(target, moved);
         Ok(())
     }
 
@@ -1590,6 +1658,8 @@ impl Actor {
                 "Choose a name and folder to save this request",
             ));
         }
+        self.write_held(id, target)?;
+        let c = &mut self.collection;
         let result = match target {
             Target::Request(path) => c.request_mut(path).ok_or_else(not_found)?.save(),
             Target::Folder(path) => c.folder_file_mut(path).ok_or_else(not_found)?.save(),
@@ -1600,6 +1670,7 @@ impl Actor {
         // settle step, so the editor offers its banner instead of a failure notice.
         self.settled(target, result.is_ok());
         if result.is_ok() {
+            self.release(|t| t == target);
             self.drop_orphaned_secrets(id, target, &before);
             self.acknowledge_network_save(own_network);
         }
@@ -1693,6 +1764,8 @@ impl Actor {
     }
 
     fn revert(&mut self, target: &Target) -> Result<(), NoticeKind> {
+        // A discarded edit takes its unsaved secrets with it, even when the revert fails.
+        self.release(|t| t == target);
         let path = self.file_path(target)?;
         let result = self.collection.revert(&path);
         self.settled(target, result.is_ok());
@@ -1703,9 +1776,11 @@ impl Actor {
         self.refuse_colliding_secrets(target)?;
         let path = self.file_path(target)?;
         let before = self.saved_secrets(target);
+        self.write_held(id, target)?;
         let result = self.collection.save_overwrite(&path);
         self.settled(target, result.is_ok());
         if result.is_ok() {
+            self.release(|t| t == target);
             self.drop_orphaned_secrets(id, target, &before);
         }
         result.map_err(|e| failed(target, e))

@@ -3154,6 +3154,33 @@ pub fn mask_unless_template(
     }
 }
 
+/// What a secret field shows while its value lives in `.env`: a note and a Replace button
+/// in place of the input, so the reference text is never shown or edited by accident.
+pub fn stored_secret(
+    id: impl Into<ElementId>,
+    replace_id: impl Into<ElementId>,
+    on_replace: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
+    h_flex()
+        .id(id)
+        .test_support()
+        .gap(SPACE_2)
+        .items_center()
+        .min_w_0()
+        .child(
+            div()
+                .text_color(cx.theme().muted_foreground)
+                .child("Stored in .env"),
+        )
+        .child(
+            Button::new(replace_id)
+                .label("Replace")
+                .small()
+                .on_click(on_replace),
+        )
+}
+
 /// The step a Left or Right key takes along a tab strip: -1, +1, or none for any other key.
 pub fn arrow_step(key: &str) -> Option<isize> {
     match key {

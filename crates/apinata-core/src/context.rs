@@ -45,6 +45,7 @@ pub struct ContextOptions {
     /// Global overrides in call order; the flag marks a sensitive one.
     global_env_vars: Vec<(String, String, bool)>,
     process_env: Option<Vec<(String, String)>>,
+    dotenv_overrides: Vec<(String, String)>,
     secrets: Option<Arc<dyn SecretStore>>,
     strict_secrets: bool,
     /// Seed and clock for `{{$name}}` values; None draws them fresh on every resolve.
@@ -143,6 +144,21 @@ impl ContextOptions {
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect(),
         );
+        self
+    }
+
+    /// Read `vars` as if `<root>/.env` held them, over what the file holds: values the
+    /// caller will write to `.env` but has not yet. They are secret like every `.env` value.
+    pub fn dotenv_overrides<I, K, V>(mut self, vars: I) -> ContextOptions
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.dotenv_overrides = vars
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
         self
     }
 
@@ -258,6 +274,11 @@ impl VarContext {
     ) -> Result<VarContext, ContextError> {
         let (process, dotenv_keys) =
             process_namespace(collection.root(), options.process_env.take())?;
+        let (process, dotenv_keys) = with_dotenv_overrides(
+            process,
+            dotenv_keys,
+            std::mem::take(&mut options.dotenv_overrides),
+        );
         let mut warnings = Vec::new();
         let mut secret_failures = Vec::new();
         let store = options.secrets.as_deref();
@@ -1199,6 +1220,7 @@ impl fmt::Debug for ContextOptions {
             )
             .field("global_env_vars", &global_names)
             .field("process_env_len", &self.process_env.as_ref().map(Vec::len))
+            .field("dotenv_overrides_len", &self.dotenv_overrides.len())
             .field("oauth2_tokens", &self.oauth2_tokens)
             .finish_non_exhaustive()
     }
@@ -1264,6 +1286,23 @@ fn process_namespace(
     let mut process = Vars::new();
     process.insert("env".to_owned(), Value::Object(env));
     Ok((Value::Object(process), dotenv_keys))
+}
+
+/// `process` and `keys` with `overrides` set in `process.env` and counted as `.env` keys.
+fn with_dotenv_overrides(
+    mut process: Value,
+    mut keys: Vec<String>,
+    overrides: Vec<(String, String)>,
+) -> (Value, Vec<String>) {
+    if let Some(env) = process.get_mut("env").and_then(Value::as_object_mut) {
+        for (key, value) in overrides {
+            if !keys.contains(&key) {
+                keys.push(key.clone());
+            }
+            env.insert(key, Value::String(value));
+        }
+    }
+    (process, keys)
 }
 
 /// Why `name` is not among the loaded environments: its file failed to load, or there is none.

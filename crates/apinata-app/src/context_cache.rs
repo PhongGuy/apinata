@@ -17,6 +17,8 @@ pub(crate) struct ContextCache {
     overlay: EnvOverlay,
     tokens: TokenCache,
     globals: Option<(Arc<GlobalEnvironments>, String)>,
+    // Secrets of unsaved drafts read as `.env` values; only the draft context sees them.
+    dotenv_overrides: Vec<(String, String)>,
     generation: u64,
 }
 
@@ -28,6 +30,7 @@ impl ContextCache {
             overlay,
             tokens,
             globals: None,
+            dotenv_overrides: Vec::new(),
             generation: 0,
         }
     }
@@ -70,6 +73,12 @@ impl ContextCache {
         self.invalidate();
     }
 
+    /// Read `values` as `.env` values in the draft context, over what the file holds.
+    pub(crate) fn set_dotenv_overrides(&mut self, values: Vec<(String, String)>) {
+        self.dotenv_overrides = values;
+        self.invalidate();
+    }
+
     /// How many times the context has been invalidated, for views that cache its variables.
     pub(crate) fn generation(&self) -> u64 {
         self.generation
@@ -86,7 +95,10 @@ impl ContextCache {
         if let Some(context) = &self.context {
             return Ok(context.clone());
         }
-        let context = VarContext::new(c, self.options(env, store))?;
+        let options = self
+            .options(env, store)
+            .dotenv_overrides(self.dotenv_overrides.clone());
+        let context = VarContext::new(c, options)?;
         self.context = Some(context.clone());
         Ok(context)
     }

@@ -271,3 +271,30 @@ fn an_iteration_context_binds_the_row_and_the_index_variables() {
         Ok("https://x.test/2/3".to_owned())
     );
 }
+
+#[test]
+fn dotenv_overrides_beat_dotenv_and_are_secret() {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (".env", "A=old-value\n"),
+        (
+            "r.yml",
+            &http("https://x.test/{{process.env.A}}/{{process.env.B}}", ""),
+        ),
+    ]);
+    let c = Collection::open(dir.path()).expect("open");
+    let options = ContextOptions::new()
+        .process_env([("B", "from-process")])
+        .dotenv_overrides([("A", "held-aaaa"), ("B", "held-bbbb")]);
+    let ctx = VarContext::new(&c, options).expect("context");
+    assert_eq!(
+        url_of(&c, &ctx, "r.yml"),
+        Ok("https://x.test/held-aaaa/held-bbbb".to_owned())
+    );
+    let secrets = ctx.secret_values();
+    assert!(
+        secrets.contains(&"held-aaaa".to_owned()) && secrets.contains(&"held-bbbb".to_owned()),
+        "{secrets:?}"
+    );
+    assert!(!format!("{ctx:?}").contains("held-aaaa"));
+}

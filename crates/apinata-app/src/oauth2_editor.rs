@@ -21,7 +21,7 @@ use gpui_kit::{
 
 use crate::auth_section::{field, secret_field};
 use crate::kv_table::set_text;
-use crate::network_secrets::is_template;
+use crate::network_secrets::{env_name, is_template};
 use crate::token_panel::TokenPanel;
 use crate::{style, ui};
 
@@ -236,6 +236,8 @@ pub struct OAuth2Editor {
     notice: Option<String>,
     token_panel: Option<Entity<TokenPanel>>,
     stamp: u64,
+    // Masked fields whose `.env` value is being replaced, so they show their input.
+    replacing: Vec<OAuth2Field>,
     _subs: Vec<Subscription>,
 }
 
@@ -358,6 +360,7 @@ impl OAuth2Editor {
             notice: None,
             token_panel: None,
             stamp: 0,
+            replacing: Vec::new(),
             _subs: subs,
         };
         // A query key never set starts as the conventional name.
@@ -654,9 +657,14 @@ impl OAuth2Editor {
         }
     }
 
-    // Takes a masked field's text into the base and sends it, unless it is already there.
+    // Takes a masked field's text into the base and sends it, unless it is already there. A
+    // replace left empty ends and keeps the stored value.
     fn commit_secret(&mut self, f: OAuth2Field, cx: &mut Context<Self>) {
-        let text = self.input(f).read(cx).value().to_string();
+        let text = self.secret_text(f, cx);
+        if self.replacing.contains(&f) {
+            self.replacing.retain(|r| *r != f);
+            cx.notify();
+        }
         let slot = match f {
             OAuth2Field::ClientSecret => &mut self.base.client_secret,
             OAuth2Field::Password => &mut self.base.password,
@@ -670,7 +678,7 @@ impl OAuth2Editor {
 
     /// Whether a client secret or password is typed but not yet committed.
     pub fn has_pending_secrets(&self, cx: &App) -> bool {
-        let text = |f: OAuth2Field| self.input(f).read(cx).value().to_string();
+        let text = |f: OAuth2Field| self.secret_text(f, cx);
         text(OAuth2Field::ClientSecret) != self.base.client_secret
             || text(OAuth2Field::Password) != self.base.password
     }
@@ -678,7 +686,7 @@ impl OAuth2Editor {
     /// Takes a client secret or password typed but not yet committed into the base and
     /// returns the spec to send, without emitting; None when nothing was pending.
     pub fn take_pending_secrets(&mut self, cx: &mut Context<Self>) -> Option<OAuth2Spec> {
-        let text = |f: OAuth2Field| self.input(f).read(cx).value().to_string();
+        let text = |f: OAuth2Field| self.secret_text(f, cx);
         let (secret, password) = (text(OAuth2Field::ClientSecret), text(OAuth2Field::Password));
         if secret == self.base.client_secret && password == self.base.password {
             return None;
@@ -686,6 +694,43 @@ impl OAuth2Editor {
         self.base.client_secret = secret;
         self.base.password = password;
         Some(self.spec(cx))
+    }
+
+    // The committed value of masked field `f`.
+    fn committed(&self, f: OAuth2Field) -> &str {
+        match f {
+            OAuth2Field::ClientSecret => &self.base.client_secret,
+            OAuth2Field::Password => &self.base.password,
+            _ => "",
+        }
+    }
+
+    // Whether masked field `f` shows the stored-in-.env badge rather than its input.
+    fn shows_stored(&self, f: OAuth2Field) -> bool {
+        env_name(self.committed(f)).is_some() && !self.replacing.contains(&f)
+    }
+
+    // What masked field `f` would commit: its typing, or the committed value while it shows
+    // the badge or a replace is still empty.
+    fn secret_text(&self, f: OAuth2Field, cx: &App) -> String {
+        let text = self.input(f).read(cx).value().to_string();
+        let empty_replace = self.replacing.contains(&f) && text.is_empty();
+        if self.shows_stored(f) || empty_replace {
+            self.committed(f).to_owned()
+        } else {
+            text
+        }
+    }
+
+    // Opens masked field `f` empty and focused for a new value in place of the stored one.
+    fn replace_secret(&mut self, f: OAuth2Field, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.replacing.contains(&f) {
+            self.replacing.push(f);
+        }
+        let input = self.input(f).clone();
+        set_text(&input, "", window, cx);
+        input.update(cx, |i, cx| i.focus(window, cx));
+        cx.notify();
     }
 
     // A secret typed but not yet committed goes first, since a click does not blur it.
@@ -863,13 +908,35 @@ pub(crate) fn pick<T: PartialEq>(
 impl Render for OAuth2Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         for f in [OAuth2Field::ClientSecret, OAuth2Field::Password] {
+            // The input hidden behind the badge keeps the stored value, so nothing reads as typed.
+            if self.shows_stored(f) && self.input(f).read(cx).value() != self.committed(f) {
+                let committed = self.committed(f).to_owned();
+                set_text(self.input(f), &committed, window, cx);
+            }
             ui::mask_unless_template(self.input(f), window, cx);
         }
         let o = self.base.clone();
         let flow = o.flow;
+        let this = cx.entity();
         let input = |f: OAuth2Field, cx: &App| {
             let vars = self.vars.clone();
-            if f.masked() {
+            if f.masked() && self.shows_stored(f) {
+                let this = this.clone();
+                let stored = ui::stored_secret(
+                    SharedString::from(format!("{}-stored", f.id())),
+                    SharedString::from(format!("{}-replace", f.id())),
+                    move |_, window, cx| {
+                        this.update(cx, |e, cx| e.replace_secret(f, window, cx));
+                    },
+                    cx,
+                );
+                ui::form_row(
+                    SharedString::from(format!("{}-row", f.id())),
+                    f.label(),
+                    stored,
+                )
+                .into_any_element()
+            } else if f.masked() {
                 secret_field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()
             } else {
                 field(f.label(), f.id(), self.input(f), vars, cx).into_any_element()

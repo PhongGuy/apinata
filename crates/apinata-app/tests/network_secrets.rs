@@ -72,20 +72,30 @@ fn only_a_tracked_dotenv_counts_as_tracked() {
     assert!(git_tracks_dotenv(dir.path()));
 }
 
-/// `env_name` must follow the core variable-name rule, so the two cannot drift apart.
+/// `env_name` takes only names a `.env` key and a shell variable can both be: the core
+/// variable rule allows `.` and `-`, which would put an unusable key into `.env`.
 #[test]
-fn env_name_follows_the_core_variable_name_rule() {
-    for inner in ["", " ", "a b", "a}}", "{x", "tok en", "a/b", "é"] {
+fn env_name_takes_only_portable_env_keys() {
+    let refused = [
+        "",
+        " ",
+        "a b",
+        "a}}",
+        "{x",
+        "tok en",
+        "a/b",
+        "é",
+        "api.key",
+        "my-var_1",
+        "1abc",
+        "APINATA_OAmy-clientUTH2_CLIENT_SECRET",
+    ];
+    for inner in refused {
         let template = format!("{{{{process.env.{inner}}}}}");
-        assert!(
-            apinata_core::variable_name_problem(inner).is_some(),
-            "core accepts {inner:?}, so this case proves nothing"
-        );
         assert_eq!(env_name(&template), None, "{template:?}");
     }
-    for inner in ["tok", "api.key", "my-var_1"] {
+    for inner in ["tok", "API_KEY", "_x1", "APINATA_OAUTH2_CLIENT_SECRET"] {
         let template = format!("{{{{process.env.{inner}}}}}");
-        assert_eq!(apinata_core::variable_name_problem(inner), None, "{inner}");
         assert_eq!(env_name(&template), Some(inner), "{template:?}");
     }
 }
