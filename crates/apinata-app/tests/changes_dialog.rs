@@ -528,7 +528,8 @@ fn a_list_filled_after_open_takes_focus(cx: &mut TestAppContext) {
     let s = git_started(cx, &sb, &col);
     open_on(cx, &s, None);
     assert!(files(cx).is_empty());
-    assert_eq!(list_focused(cx, &s), Some(false));
+    // A clean tree draws its note in place of the list, so nothing there can hold focus.
+    assert!(!present(cx, s.win, "changes-files"));
     write(col.path(), "a.yml", &request("a", "http://x/changed"));
     s.ws.update(cx, |w, cx| w.refresh_git(&s.root, cx));
     frame(cx, s.win);

@@ -13,7 +13,6 @@ use gpui_kit::component::input::{
 };
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{
     ActiveTheme as _, Sizable as _, ThemeStyled as _, WindowExt as _, h_flex, v_flex,
 };
@@ -830,16 +829,6 @@ impl ChangesView {
                 .text_color(muted)
                 .child(QUIET_NOTE)
         });
-        let empty = (self.seen.is_some() && self.files.is_empty()).then(|| {
-            div()
-                .id("changes-empty")
-                .test_support()
-                .p(style::SPACE_2)
-                .text_color(muted)
-                .truncate()
-                .tooltip(|window, cx| Tooltip::new(NO_CHANGES).build(window, cx))
-                .child(NO_CHANGES)
-        });
         let truncated = self.truncated_note.clone().map(|note| {
             div()
                 .id("changes-truncated")
@@ -862,7 +851,6 @@ impl ChangesView {
                     .track_scroll(&self.files_scroll)
                     .children(rows)
                     .children(quiet)
-                    .children(empty)
                     .children(truncated),
             )
             .vertical_scrollbar(&self.files_scroll);
@@ -1169,7 +1157,11 @@ impl Render for ChangesView {
         });
         let room = base - notice_room;
         let height = style::resolve(style::CHANGES_DIALOG_HEIGHT, window).min(room.max(min_panes));
-        let panes = if stacked {
+        // A clean tree has no list or diff, so its note takes the whole panes area, centred.
+        let clean = self.seen.is_some() && self.files.is_empty();
+        let panes = if clean {
+            h_flex().items_center().justify_center()
+        } else if stacked {
             v_flex()
         } else {
             h_flex().items_start()
@@ -1185,14 +1177,27 @@ impl Render for ChangesView {
                     .w_full()
                     .h(height)
                     .gap(style::SPACE_3)
-                    .child(self.file_list(
-                        stacked.then(|| {
-                            stacked_list_height(height, style::resolve(style::ROW_HEIGHT, window))
-                        }),
-                        window,
-                        cx,
-                    ))
-                    .child(self.diff_pane(stacked, window, cx))
+                    .map(|panes| match clean {
+                        true => panes.child(
+                            div()
+                                .id("changes-empty")
+                                .test_support()
+                                .aria_label(NO_CHANGES)
+                                .p(style::SPACE_2)
+                                .text_color(cx.theme().muted_foreground)
+                                .child(NO_CHANGES),
+                        ),
+                        false => panes
+                            .child(self.file_list(
+                                stacked.then(|| {
+                                    let row = style::resolve(style::ROW_HEIGHT, window);
+                                    stacked_list_height(height, row)
+                                }),
+                                window,
+                                cx,
+                            ))
+                            .child(self.diff_pane(stacked, window, cx)),
+                    })
                     .child(watch),
             )
             .child(self.commit_area(notice_cap, window, cx))
