@@ -618,16 +618,23 @@ impl Collection {
     }
 
     /// Delete the folder at `item` only while it holds nothing but its `folder.yml`, then
-    /// renumber its siblings as [`Collection::delete`] does.
+    /// renumber its siblings as [`Collection::delete`] does. A folder already gone from disk
+    /// counts as deleted.
     ///
-    /// Fails with `NotFound` when `item` is not a folder, `InvalidMove` for the root, and `Io`
-    /// (kind `DirectoryNotEmpty`) when the folder holds an item, a draft or any other file, in
-    /// which case nothing is deleted. Otherwise fails as `delete` does.
+    /// Fails with `InvalidMove` for the root, `NotFound` when `item` is not a folder, and `Io`
+    /// (kind `DirectoryNotEmpty`) when the folder holds a draft or any file but its
+    /// `folder.yml`, in which case nothing is deleted. Otherwise fails as `delete` does.
     pub fn delete_empty_folder(&mut self, item: &ItemPath) -> Result<(), TreeError> {
-        let folder = self
-            .folder(item)
-            .ok_or_else(|| TreeError::NotFound { item: item.clone() })?;
+        if item.parent().is_none() {
+            return Err(TreeError::InvalidMove { item: item.clone() });
+        }
         let full = item.to_path(&self.root);
+        if self.folder(item).is_none() {
+            if full.exists() {
+                return Err(TreeError::NotFound { item: item.clone() });
+            }
+            return Ok(());
+        }
         let not_empty = |path: &Path| {
             let source = std::io::Error::new(
                 ErrorKind::DirectoryNotEmpty,
@@ -635,17 +642,18 @@ impl Collection {
             );
             io_error(path, source)
         };
-        let loaded = !folder.folders.is_empty()
-            || !folder.requests.is_empty()
-            || !folder.opaque.is_empty()
-            || self.drafts.iter().any(|d| d.path().starts_with(&full));
-        if loaded {
+        // Drafts live only in memory; everything else shows on disk. `remove_dir` keeps
+        // anything that lands in the folder after the scan.
+        if self.drafts.iter().any(|d| d.path().starts_with(&full)) {
             return Err(not_empty(&full));
         }
-        // The disk may hold files the walk ignores; only a lone folder.yml goes. Removing the
-        // directory with `remove_dir` keeps anything that lands in it after this check.
+        let gone = |e: &std::io::Error| e.kind() == ErrorKind::NotFound;
         let removal = self.remove_with(item, |full, _| {
-            for entry in fs::read_dir(full).map_err(|e| io_error(full, e))? {
+            let entries = match fs::read_dir(full) {
+                Err(e) if gone(&e) => return Ok(()),
+                entries => entries.map_err(|e| io_error(full, e))?,
+            };
+            for entry in entries {
                 let entry = entry.map_err(|e| io_error(full, e))?;
                 if entry.file_name() != FOLDER_FILE {
                     return Err(not_empty(full));
@@ -653,10 +661,13 @@ impl Collection {
             }
             let file = full.join(FOLDER_FILE);
             match fs::remove_file(&file) {
-                Err(e) if e.kind() != ErrorKind::NotFound => return Err(io_error(&file, e)),
+                Err(e) if !gone(&e) => return Err(io_error(&file, e)),
                 _ => {}
             }
-            fs::remove_dir(full).map_err(|e| io_error(full, e))
+            match fs::remove_dir(full) {
+                Err(e) if !gone(&e) => Err(io_error(full, e)),
+                _ => Ok(()),
+            }
         })?;
         removal.renumber
     }

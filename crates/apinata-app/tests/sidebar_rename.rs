@@ -1,7 +1,7 @@
 use crate::support;
 
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, TestAppContext};
+use gpui_kit::{AppContext, TestAppContext, VisualTestContext};
 use support::*;
 
 fn rename(cx: &mut TestAppContext, h: &SidebarHarness, path: &str) {
@@ -230,4 +230,39 @@ fn a_new_folder_that_gained_contents_is_kept(cx: &mut TestAppContext) {
         "keep me"
     );
     assert!(h.root.join(FRESH).join("folder.yml").exists());
+}
+
+// Typing then clicking away ends the rename without its name, as any rename's blur does.
+#[gpui_kit::test]
+fn typing_a_name_then_clicking_away_keeps_the_new_folder(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    new_folder(cx, &h);
+    cx.update_window(h.win, |_, w, cx| w.input("Accounts", cx))
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.click(row("health.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join(FRESH).is_dir());
+    assert!(!h.root.join("Accounts").exists());
+}
+
+// Switching to another window is not leaving the name field: the rename stays open.
+#[gpui_kit::test]
+fn switching_windows_keeps_a_new_folder_and_its_rename(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    new_folder(cx, &h);
+    VisualTestContext::from_window(h.win, cx).deactivate_window();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert!(h.root.join(FRESH).is_dir());
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.renaming()),
+        Some((h.root.clone(), ip(FRESH)))
+    );
 }

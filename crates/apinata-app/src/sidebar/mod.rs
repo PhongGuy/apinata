@@ -607,7 +607,7 @@ impl Sidebar {
             return;
         }
         if let Some(node) = self.selected_node(cx).cloned() {
-            self.begin_rename(&node, false, window, cx);
+            self.begin_rename(&node, window, cx);
         }
     }
 
@@ -912,19 +912,13 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) {
         if let Some(node) = self.find(root, path).cloned() {
-            self.begin_rename(&node, false, window, cx);
+            self.begin_rename(&node, window, cx);
         }
     }
 
     // Renames `node` itself, so an example row brings its own index and name rather than
     // its request's, with which it shares a path.
-    fn begin_rename(
-        &mut self,
-        node: &Node,
-        fresh: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn begin_rename(&mut self, node: &Node, window: &mut Window, cx: &mut Context<Self>) {
         if !matches!(
             node.kind,
             NodeKind::Folder | NodeKind::Request | NodeKind::Example
@@ -942,7 +936,7 @@ impl Sidebar {
             path: node.path.clone(),
             old,
             example: node.example,
-            fresh,
+            fresh: false,
             _subscription: cx.subscribe_in(&input, window, Self::rename_event),
             input,
         });
@@ -1100,7 +1094,8 @@ impl Sidebar {
                 }
                 self.end_rename(window, cx);
             }
-            InputEvent::Blur => {
+            // Switching to another window keeps the field focused, so the rename goes on.
+            InputEvent::Blur if window.is_window_active() => {
                 let Some(r) = self.rename.take() else {
                     return;
                 };
@@ -1384,7 +1379,7 @@ impl Sidebar {
             MenuEntry::Rename => {
                 let (view, node) = (cx.entity().downgrade(), node.clone());
                 window.defer(cx, move |window, cx| {
-                    view.update(cx, |s, cx| s.begin_rename(&node, false, window, cx))
+                    view.update(cx, |s, cx| s.begin_rename(&node, window, cx))
                         .ok();
                 });
             }
@@ -2113,10 +2108,14 @@ impl Sidebar {
         };
         self.select(&id, cx);
         // Only a new folder renames on arrival, so its rename is a fresh one.
-        if f.rename
-            && let Some(node) = self.find(&f.root, &f.path).cloned()
-        {
-            self.begin_rename(&node, true, window, cx);
+        if f.rename {
+            self.start_rename(&f.root, &f.path, window, cx);
+            if let Some(r) = &mut self.rename
+                && r.root == f.root
+                && r.path == f.path
+            {
+                r.fresh = true;
+            }
         }
     }
 

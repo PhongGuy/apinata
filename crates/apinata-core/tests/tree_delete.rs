@@ -268,6 +268,21 @@ fn only_a_folder_is_removed_that_way() {
         c.delete_empty_folder(&ip("a.yml")),
         Err(TreeError::NotFound { .. })
     ));
-    assert!(c.delete_empty_folder(&ItemPath::root()).is_err());
+    assert!(matches!(
+        c.delete_empty_folder(&ItemPath::root()),
+        Err(TreeError::InvalidMove { .. })
+    ));
+    assert!(exists(&dir, "a.yml"));
+}
+
+// A folder something else already removed is no failure, whether or not memory still has it.
+#[test]
+fn a_folder_already_gone_counts_as_removed() {
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("a.yml", &request("a", 1))]);
+    let made = c.create_folder(&ItemPath::root(), "New folder").unwrap();
+    std::fs::remove_dir_all(dir.path().join(made.as_str())).unwrap();
+    c.delete_empty_folder(&made).expect("already gone");
+    assert!(c.folder(&made).is_none());
+    c.delete_empty_folder(&made).expect("still gone");
     assert!(exists(&dir, "a.yml"));
 }
