@@ -8,13 +8,13 @@ use std::path::Path;
 
 use apinata_core::EnvVariable;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Entity, FocusHandle, Focusable, Pixels, Result, ScrollHandle, Subscription,
+    AnyElement, App, Entity, FocusHandle, Focusable, Pixels, Result, ScrollHandle, Subscription,
     TestSupportExt, Window, div, px,
 };
 
@@ -71,6 +71,8 @@ pub struct GlobalEnvEditor {
     naming_gen: u64,
     // Whether the name field holds a name the last rename refused.
     refused: bool,
+    // Why New refused the name field's text; it shows under the field.
+    create_refused: Option<String>,
     // Takes focus when the name input goes away, so the dialog keeps its Escape.
     focus: FocusHandle,
     // The dialog body's scroll position and the watch that keeps the focused row in it.
@@ -140,6 +142,7 @@ impl GlobalEnvEditor {
             followed: false,
             naming_gen: 0,
             refused: false,
+            create_refused: None,
             focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
             follow,
@@ -796,6 +799,7 @@ impl GlobalEnvEditor {
     // Drops both error sources, the workspace's and this editor's own.
     fn clear_error(&mut self, cx: &mut Context<Self>) {
         self.refused = false;
+        self.create_refused = None;
         self.error = None;
         self.workspace.update(cx, |w, cx| w.clear_global_error(cx));
         cx.notify();
@@ -906,6 +910,7 @@ impl GlobalEnvEditor {
         self.naming = Some(naming);
         self.naming_gen += 1;
         self.refused = false;
+        self.create_refused = None;
         cx.notify();
     }
 
@@ -913,6 +918,15 @@ impl GlobalEnvEditor {
         // A rename keeps its field, focused, until the outcome says whether the name took.
         if self.naming == Some(Naming::Rename) {
             return self.rename(text, window, cx);
+        }
+        // A taken or invalid name is refused under the field, which stays open on it.
+        if self.naming == Some(Naming::Create)
+            && !text.is_empty()
+            && let Some(reason) = crate::env_editor::create_refusal(text, &self.names(cx))
+        {
+            self.create_refused = Some(reason);
+            cx.notify();
+            return;
         }
         if let Some(Naming::Create) = self.naming.take()
             && !text.is_empty()
@@ -926,10 +940,21 @@ impl GlobalEnvEditor {
 
     fn render_list(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (active, muted) = (cx.theme().list_active, cx.theme().muted_foreground);
-        let items = self.names(cx).into_iter().enumerate().map(|(ix, name)| {
+        let mut naming = self.naming_field(window, cx);
+        let renaming = self.naming == Some(Naming::Rename);
+        let mut items = Vec::new();
+        for (ix, name) in self.names(cx).into_iter().enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
+            // Rename edits the name in its row's place, as the collection editor's does.
+            if chosen
+                && renaming
+                && let Some(field) = naming.take()
+            {
+                items.push(field);
+                continue;
+            }
             let in_use = self.active.as_deref() == Some(name.as_str());
-            h_flex()
+            let item = h_flex()
                 .id(("global-env-item", ix))
                 .test_support()
                 .w_full()
@@ -953,40 +978,111 @@ impl GlobalEnvEditor {
                 .on_click(cx.listener(move |e, _, window, cx| {
                     let name = name.clone();
                     e.after_asking(window, cx, move |e, window, cx| e.choose(&name, window, cx))
-                }))
-        });
-        // The list holds no input, so its New button takes Enter as a press.
+                }));
+            items.push(item.into_any_element());
+        }
+        // A new name, or a rename whose row is not listed yet, is typed at the list's end.
+        items.extend(naming);
+        // The New button takes Enter as a press; the name input keeps its own Enter.
         v_flex()
             .id("global-env-list")
             .test_support()
-            .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .w(list_width(window))
             .flex_none()
             .gap_1()
             .children(items)
-            .child(Followed::new(
-                "global-env-create-follow",
-                &self.follow,
-                Button::new("global-env-create")
-                    .label("New")
-                    .on_click(cx.listener(|e, _, window, cx| {
-                        // Don't save drops the edits here, so the name commits without asking
-                        // a second time.
-                        e.after_asking(window, cx, |e, window, cx| {
-                            if let Some(name) = e.selected.clone().filter(|_| e.has_edits(cx)) {
-                                e.select(&name, window, cx);
-                            }
-                            e.start_naming(Naming::Create, window, cx)
-                        })
-                    })),
+            .child(
+                div()
+                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                    .child(Followed::new(
+                        "global-env-create-follow",
+                        &self.follow,
+                        Button::new("global-env-create")
+                            .label("New")
+                            .on_click(cx.listener(|e, _, window, cx| {
+                                // Don't save drops the edits here, so the name commits
+                                // without asking a second time.
+                                e.after_asking(window, cx, |e, window, cx| {
+                                    if let Some(name) =
+                                        e.selected.clone().filter(|_| e.has_edits(cx))
+                                    {
+                                        e.select(&name, window, cx);
+                                    }
+                                    e.start_naming(Naming::Create, window, cx)
+                                })
+                            })),
+                    )),
+            )
+    }
+
+    // The name field with its label above it and a refusal under it that wraps in the list's
+    // width; `None` while no name is being collected.
+    fn naming_field(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let naming = self.naming?;
+        let label = match naming {
+            Naming::Create => "New global environment name".to_owned(),
+            Naming::Rename => format!(
+                "Rename \"{}\"",
+                self.selected.as_deref().unwrap_or_default()
+            ),
+        };
+        let failed = self.workspace.read(cx).global_error().is_some();
+        let renamed = self.refused && failed && naming == Naming::Rename;
+        let refusal = (self.create_refused.as_deref())
+            .filter(|_| naming == Naming::Create)
+            .map(|reason| failure_text(&ui::plain_quotes(reason)));
+        let field = v_flex()
+            .w_full()
+            .gap_1()
+            .on_action(cx.listener(|e, _: &Escape, window, cx| {
+                e.naming = None;
+                // The refused name's error goes with its field.
+                if e.refused || e.create_refused.is_some() {
+                    e.clear_error(cx);
+                }
+                e.focus.focus(window, cx);
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .id("global-env-name-label")
+                    .test_support()
+                    .aria_label(label.clone())
+                    .text_size(style::TEXT_SMALL)
+                    .text_color(cx.theme().muted_foreground)
+                    .truncate()
+                    .child(label),
+            )
+            .child(ui::invalid_input(
+                Input::new(&self.name_input)
+                    .id("global-env-name-input")
+                    .w_full()
+                    .bg(ui::field_fill(false, cx)),
+                // The frame hugs the input, so the danger ring covers it and no more.
+                div().w_full(),
+                &self.name_input,
+                renamed || refusal.is_some(),
+                (
+                    "global-env-name-danger-ring".into(),
+                    "global-env-name-invalid-icon".into(),
+                ),
+                window,
+                cx,
             ))
+            .when_some(refusal, |d, message| {
+                d.child(ui::field_refusal_in_column(
+                    "global-env-name-error",
+                    message.into(),
+                    cx,
+                ))
+            });
+        Some(field.into_any_element())
     }
 }
 
 impl Render for GlobalEnvEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace.read(cx);
-        let failed = workspace.global_error().is_some();
         let error = (workspace.global_error())
             .or(self.error.as_deref())
             .map(|message| {
@@ -1012,44 +1108,6 @@ impl Render for GlobalEnvEditor {
                 .id(("global-env-load-error", ix))
                 .test_support()
                 .child(line)
-        });
-        let naming = self.naming.map(|naming| {
-            let label = match naming {
-                Naming::Create => "New global environment name".to_owned(),
-                Naming::Rename => format!(
-                    "Rename \"{}\" to",
-                    self.selected.as_deref().unwrap_or_default()
-                ),
-            };
-            let invalid = self.refused && failed && naming == Naming::Rename;
-            v_flex()
-                .gap_1()
-                .on_action(cx.listener(|e, _: &Escape, window, cx| {
-                    e.naming = None;
-                    // The refused name's error goes with its field.
-                    if e.refused {
-                        e.clear_error(cx);
-                    }
-                    e.focus.focus(window, cx);
-                    cx.notify();
-                }))
-                .child(label)
-                .child(ui::invalid_input(
-                    Input::new(&self.name_input)
-                        .id("global-env-name-input")
-                        .w(style::NAME_INPUT_WIDTH)
-                        .bg(ui::field_fill(false, cx)),
-                    // The frame hugs the input, so the danger ring covers it and no more.
-                    div().w(style::NAME_INPUT_WIDTH).flex_none(),
-                    &self.name_input,
-                    invalid,
-                    (
-                        "global-env-name-danger-ring".into(),
-                        "global-env-name-invalid-icon".into(),
-                    ),
-                    window,
-                    cx,
-                ))
         });
         let selected = self.selected.is_some();
         let this = cx.entity().downgrade();
@@ -1127,6 +1185,8 @@ impl Render for GlobalEnvEditor {
                 "global-env-save-follow",
                 Button::new("global-env-save")
                     .label("Save")
+                    // The primary action only while there are edits to save.
+                    .when(self.has_edits(cx), |b| b.primary())
                     .on_click(cx.listener(|e, _, window, cx| {
                         let _ = e.save_asking(window, cx);
                     })),
@@ -1138,7 +1198,6 @@ impl Render for GlobalEnvEditor {
                 .gap_2()
                 .children(disk_banner)
                 .child(header)
-                .children(naming)
                 .child(self.table.clone())
                 .children(orphans)
                 .children(fileless)
@@ -1175,7 +1234,6 @@ impl Render for GlobalEnvEditor {
                 .gap_2()
                 .children(disk_banner)
                 .child(empty)
-                .children(naming)
                 .children(orphans.map(|o| div().w_full().child(o)))
                 .children(fileless.map(|f| div().w_full().child(f)))
                 .into_any_element()
