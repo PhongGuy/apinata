@@ -80,6 +80,7 @@ fn short_methods() {
         ("trace", "TRAC"),
         ("x", "X"),
         ("propfind", "PROP"),
+        ("query", "QURY"),
     ] {
         assert_eq!(short_method(m).as_ref(), want, "{m}");
         assert_eq!(method_tag(m).label().as_ref(), want);

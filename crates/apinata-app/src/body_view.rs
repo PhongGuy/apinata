@@ -23,7 +23,9 @@ use gpui_kit::component::notification::Notification;
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarMode};
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, Theme, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Icon, Sizable as _, Theme, WindowExt as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -109,9 +111,9 @@ struct WrapBasis {
 }
 
 impl WrapBasis {
-    // The columns left beside a gutter wide enough for `lines` line numbers.
+    // The columns left beside a gutter wide enough for `lines` line numbers, plus its inset.
     fn columns(&self, lines: usize) -> usize {
-        let gutter = digit_gutter(self.advance, gutter_digits(lines), self.pad);
+        let gutter = self.pad + digit_gutter(self.advance, gutter_digits(lines), self.pad);
         wrap_columns((self.room - gutter).max(Pixels::ZERO), self.advance)
     }
 }
@@ -2937,6 +2939,8 @@ impl BodyView {
         let marker = theme.list_active;
         let lines = if numbered { self.line_count } else { count };
         let gutter = mono_gutter(gutter_digits(lines), mono_size, window, cx);
+        // The numbers keep the same gap from the frame's left border as from the text.
+        let inset = style::resolve(style::SPACE_2, window);
         // Unwrapped long lines stay whole, so the list scrolls sideways by its widest row.
         let sideways = numbered && !self.wrap;
         let offered = numbered && self.node_offered();
@@ -3014,17 +3018,30 @@ impl BodyView {
                             .when(hex, |row| row.font_features(hex_features.clone()))
                             .text_size(mono_size)
                             .children(numbered.then(|| {
-                                // A continuation row of a wrapped line has a blank gutter.
+                                // A continuation row has no number. Wrapped, it reads as one
+                                // flowing line; unwrapped, the cut is forced, so a mark says so.
                                 let number = this.chunked.line_nos.get(ix).copied().unwrap_or(0);
                                 div()
                                     .id(("line-number", ix))
                                     .test_support()
                                     .flex_none()
+                                    .flex()
+                                    .justify_end()
+                                    .items_center()
                                     .w(gutter)
+                                    .ml(inset)
                                     .pr(style::SPACE_2)
-                                    .text_right()
                                     .text_color(muted)
                                     .children((number != 0).then(|| number.to_string()))
+                                    .when(number == 0 && sideways, |gutter| {
+                                        gutter.child(
+                                            div().id(("line-continued", ix)).test_support().child(
+                                                Icon::new(IconName::CornerDownRight)
+                                                    .size(mono_size)
+                                                    .text_color(muted),
+                                            ),
+                                        )
+                                    })
                             }))
                             .child(text)
                     })
@@ -3033,7 +3050,7 @@ impl BodyView {
         )
         .track_scroll(&self.lines_scroll);
         if sideways {
-            self.reveal_match_sideways(gutter, mono_advance(mono_size, window, cx));
+            self.reveal_match_sideways(inset + gutter, mono_advance(mono_size, window, cx));
         }
         let list = if sideways {
             list.with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
