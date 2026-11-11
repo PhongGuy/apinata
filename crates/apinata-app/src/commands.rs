@@ -391,6 +391,10 @@ pub fn registry() -> Vec<Command> {
                 at(SendRequest, REQUEST_EDITOR),
                 // Input depth too, so it beats the URL input's own Enter.
                 at(SendRequest, "RequestEditor > Input"),
+                // A closed dropdown too, over the kit's own Ctrl+Enter there; an open list
+                // sits deeper and keeps it.
+                at(SendRequest, "RequestEditor > Select"),
+                at(SendActive, "Shell > Select"),
             ],
             &["secondary-enter"],
         ),
