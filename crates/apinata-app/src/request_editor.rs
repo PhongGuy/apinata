@@ -30,7 +30,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Bounds, ClickEvent, ClipboardItem, ElementId, Empty, Entity,
-    FocusHandle, Focusable, Global, Pixels, Point, Rems, ScrollHandle, SharedString,
+    FocusHandle, Focusable, Global, Pixels, Point, Rems, Role, ScrollHandle, SharedString,
     StyleRefinement, Subscription, Task, TestSupportExt, Window, actions, canvas, div, px,
     relative, rems,
 };
@@ -2604,7 +2604,7 @@ impl RequestEditor {
             ChromePart::Buttons => h_flex()
                 .flex_none()
                 .gap(style::SPACE_1)
-                .child(self.save_button(cx))
+                .children(self.save_button(cx))
                 .child(self.send_button(window, cx))
                 .child(self.generate_code_button(cx))
                 .into_any_element(),
@@ -2884,24 +2884,33 @@ impl RequestEditor {
             .unwrap_or_default()
     }
 
-    // Save shows only while the request has unsaved edits that autosave will not write:
-    // autosave never writes a draft, so a dirty draft keeps Save even with autosave on.
-    fn save_shown(&self, cx: &App) -> bool {
+    // Save can show only for edits autosave will not write: autosave never writes a draft,
+    // so a draft keeps Save even with autosave on.
+    fn save_possible(&self, cx: &App) -> bool {
         let autosave = cx
             .try_global::<AppState>()
             .is_some_and(|s| s.settings.read(cx).get().autosave);
         let draft = self.target(cx).is_some_and(|(_, item)| item.is_draft());
-        !(autosave && !draft) && self.view(cx).is_some_and(|v| v.dirty)
+        !autosave || draft
     }
 
-    // A clean request keeps Save's slot, invisible and inert, so the URL field never
-    // changes width when an edit makes Save appear.
-    fn save_button(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn save_shown(&self, cx: &App) -> bool {
+        self.save_possible(cx) && self.view(cx).is_some_and(|v| v.dirty)
+    }
+
+    // A clean request keeps Save's slot, invisible, inert and unnamed to screen readers, so
+    // the URL field never changes width when an edit makes Save appear. Where Save can never
+    // show, there is no slot and no gap.
+    fn save_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.save_possible(cx) {
+            return None;
+        }
         if !self.save_shown(cx) {
             let ghost = Button::new("save-slot-button")
                 .ghost()
                 .small()
                 .label("Save")
+                .role(None::<Role>)
                 .tab_stop(false);
             return div()
                 .id("save-slot")
@@ -2910,7 +2919,8 @@ impl RequestEditor {
                 .mr(style::SPACE_1)
                 .invisible()
                 .child(ghost)
-                .into_any_element();
+                .into_any_element()
+                .into();
         }
         // Called directly: a dispatched action reaches the editor only while it holds focus.
         let button = Button::new("save-request-button")
@@ -2929,7 +2939,7 @@ impl RequestEditor {
             .test_support()
             .flex_none()
             .mr(style::SPACE_1);
-        slot.child(button).into_any_element()
+        Some(slot.child(button).into_any_element())
     }
 
     // Opens Generate code on this editor's own request, which need not be the active tab.
