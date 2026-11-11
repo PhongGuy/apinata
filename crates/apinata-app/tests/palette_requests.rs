@@ -26,7 +26,7 @@ fn entries_name_each_request_with_its_collection_and_folder(cx: &mut TestAppCont
     assert!(entries.iter().all(|e| e.root == root));
     let mut got: Vec<(String, String, String)> = entries
         .into_iter()
-        .map(|e| (e.label, e.detail, e.path.as_str().to_owned()))
+        .map(|e| (e.label.clone(), e.detail(), e.path.as_str().to_owned()))
         .collect();
     got.sort();
     let want = [
