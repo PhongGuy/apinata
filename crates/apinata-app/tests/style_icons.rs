@@ -95,6 +95,13 @@ fn the_lock_icons_are_extras() {
 }
 
 #[test]
+fn compare_has_its_own_bundled_diff_icon() {
+    use apinata_app::response_pane::COMPARE_ICON;
+    assert_eq!(COMPARE_ICON, IconName::FileDiff);
+    assert!(EXTRA.contains(&COMPARE_ICON));
+}
+
+#[test]
 fn the_environment_editor_icon_is_an_extra() {
     assert!(EXTRA.contains(&IconName::SlidersHorizontal));
 }
