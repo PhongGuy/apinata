@@ -1,0 +1,5 @@
+# actionlint 1.7.12 predates the ubuntu-26.04 hosted runner label; declaring it here
+# keeps the workflow lint accepting it until a newer actionlint knows the label.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
