@@ -257,3 +257,65 @@ fn generate_codes_ring_stays_inside_the_column_at_low_zoom(cx: &mut TestAppConte
         .unwrap();
     }
 }
+
+// How many Save buttons assistive technology would be told about.
+fn save_buttons(cx: &mut TestAppContext, win: AnyWindowHandle) -> usize {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        gpui_kit::base::test_support::snapshots(w)
+            .into_iter()
+            .filter(|e| e.role() == Some(gpui_kit::Role::Button) && e.label() == Some("Save"))
+            .count()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn save_appearing_keeps_the_url_field_in_place(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    let url_bounds = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("url").bounds()
+        })
+        .unwrap()
+    };
+    assert!(!shown(cx, win, "save-request"));
+    assert!(shown(cx, win, "save-slot"));
+    assert_eq!(
+        save_buttons(cx, win),
+        0,
+        "the hidden slot is no Save button"
+    );
+    let clean = url_bounds(cx);
+    ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("a.yml", "http://127.0.0.1:9/changed"), cx)
+    });
+    assert!(shown(cx, win, "save-request"));
+    assert_eq!(save_buttons(cx, win), 1);
+    assert_eq!(
+        url_bounds(cx),
+        clean,
+        "the URL field moved when Save appeared"
+    );
+}
+
+#[gpui_kit::test]
+fn autosave_reserves_no_slot_for_a_save_that_never_shows(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started_with(cx, &col, |p| {
+        let mut settings = test_settings();
+        settings.autosave = true;
+        apinata_app::persist::save_json(&p.settings, &settings).unwrap();
+    });
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "send-slot"));
+    assert!(
+        !shown(cx, s.win, "save-slot"),
+        "a blank gap sits before Send"
+    );
+    assert!(!shown(cx, s.win, "save-request"));
+}
