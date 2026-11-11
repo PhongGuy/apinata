@@ -40,7 +40,11 @@ pub fn html_with(collection: &Collection, options: &HtmlOptions) -> HtmlExport {
     page.push_str("</head>\n<body>\n<header>\n");
     page.push_str(&format!("<h1>{name}</h1>\n"));
     let file = collection.file();
-    page.push_str(&docs(&file.docs(), "c", 2));
+    page.push_str(&docs(
+        without_title(&file.docs(), collection.name()),
+        "c",
+        2,
+    ));
     let headers = file.headers();
     page.push_str(&kv_table("Headers", &headers));
     if !is_pass_through(file.document().get(&["request", "auth"])) {
@@ -156,6 +160,28 @@ impl Walk<'_> {
 fn anchor(prefix: &str, trail: &[usize]) -> String {
     let parts: Vec<String> = trail.iter().map(usize::to_string).collect();
     format!("{prefix}-{}", parts.join("-"))
+}
+
+/// `text` without its first line when that line is a heading that only repeats `name`, compared
+/// without regard to ASCII case, since the page already shows the name as its title.
+fn without_title<'a>(text: &'a str, name: &str) -> &'a str {
+    let body = text.trim_start_matches(['\n', '\r']);
+    let (first, rest) = body.split_once('\n').unwrap_or((body, ""));
+    // An ATX heading: up to three spaces, one to six `#`, then a space or nothing; any closing
+    // `#` run is not part of the title.
+    let line = first.trim_end_matches('\r').trim_start_matches(' ');
+    let indent = first.len() - first.trim_start_matches(' ').len();
+    let level = line.len() - line.trim_start_matches('#').len();
+    let after = &line[level..];
+    let heading = indent <= 3
+        && (1..=6).contains(&level)
+        && (after.is_empty() || after.starts_with([' ', '\t']));
+    let title = after.trim().trim_end_matches('#').trim_end();
+    if heading && title.eq_ignore_ascii_case(name.trim()) {
+        rest
+    } else {
+        text
+    }
 }
 
 #[cfg(test)]

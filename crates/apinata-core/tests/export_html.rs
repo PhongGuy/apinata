@@ -92,3 +92,31 @@ fn the_template_never_names_the_reference_app() {
     let (_d, c) = plain_collection();
     assert!(!html_page(&c).to_ascii_lowercase().contains("bruno"));
 }
+
+#[test]
+fn a_docs_heading_that_repeats_the_collection_name_is_not_written_twice() {
+    for docs in ["# c\\n\\nAbout", "  ## C ##\\nAbout", "\\n# c\\nAbout"] {
+        let root = format!("{ROOT}docs: \"{docs}\"\n");
+        let (_d, c) = open(&[("opencollection.yml", &root)]);
+        let page = html_page(&c);
+        let want = "<h1>c</h1>\n<div class=\"docs\">\n<p>About</p>\n</div>\n</header>\n";
+        assert!(page.contains(want), "{docs}: {page}");
+    }
+    let root = format!("{ROOT}docs: \"# c\"\n");
+    let (_d, c) = open(&[("opencollection.yml", &root)]);
+    assert!(html_page(&c).contains("<h1>c</h1>\n</header>\n"));
+}
+
+#[test]
+fn a_docs_heading_that_differs_from_the_collection_name_stays() {
+    for (docs, kept) in [
+        ("# Overview\\n\\nAbout", "<h1>Overview</h1>"),
+        ("# c api\\nAbout", "<h1>c api</h1>"),
+        ("About\\n\\n# c", "<h1>c</h1>\n</div>"),
+    ] {
+        let root = format!("{ROOT}docs: \"{docs}\"\n");
+        let (_d, c) = open(&[("opencollection.yml", &root)]);
+        let page = html_page(&c);
+        assert!(page.contains(kept), "{docs}: {page}");
+    }
+}
