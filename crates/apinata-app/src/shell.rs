@@ -216,6 +216,8 @@ pub struct Shell {
     pub(crate) legacy_offers: crate::legacy_convert::Offers,
     // Resolved recent-collection labels; render never reads opencollection.yml itself.
     recent_names: std::collections::HashMap<PathBuf, SharedString>,
+    // The collection the user just asked to open, made current and revealed once it loads.
+    opening: Option<PathBuf>,
     title: Slot<Shell, TitleInputs>,
     status: Slot<Shell, StatusInputs>,
     _subscriptions: Vec<Subscription>,
@@ -569,6 +571,7 @@ impl Shell {
             scroll_pending: Rc::default(),
             legacy_offers: Default::default(),
             recent_names: Default::default(),
+            opening: None,
             title: Slot::new(cx.weak_entity(), ShellPart::Title, false, cx),
             status: Slot::new(cx.weak_entity(), ShellPart::Status, false, cx),
             _subscriptions: subscriptions,
@@ -795,8 +798,11 @@ impl Shell {
             .focus(window, cx);
     }
 
-    /// Shows the sidebar, even one the narrow window hid, and selects the collection's root row.
+    /// Makes the collection current and shows the sidebar, even one the narrow window hid,
+    /// with the collection's root row selected and scrolled into view.
     pub fn reveal_collection(&mut self, root: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        self.workspace
+            .update(cx, |w, cx| w.set_current_root(root, cx));
         self.sidebar_auto_hidden = false;
         if !self.sidebar_visible {
             self.set_sidebar(true, window, cx);
@@ -1363,8 +1369,14 @@ impl Shell {
         (self.recent_names.get(root).cloned()).unwrap_or_else(|| display_name(root))
     }
 
+    // A collection already open becomes current at once; a new one once it has loaded.
     fn open(&mut self, root: PathBuf, cx: &mut Context<Self>) {
-        self.workspace.update(cx, |w, cx| w.open_path(root, cx));
+        let absolute = crate::workspace::absolute(&root);
+        self.opening = Some(absolute.clone());
+        self.workspace.update(cx, |w, cx| {
+            w.set_current_root(&absolute, cx);
+            w.open_path(root, cx);
+        });
         cx.notify();
     }
 
@@ -1376,7 +1388,13 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         match event {
-            WorkspaceEvent::Opened(_) => self.refresh_recent_names(cx),
+            WorkspaceEvent::Opened(root) => {
+                if self.opening.as_ref() == Some(root) {
+                    self.opening = None;
+                    self.reveal_collection(root, window, cx);
+                }
+                self.refresh_recent_names(cx);
+            }
             WorkspaceEvent::OpenFailed { root, message } => {
                 let text: SharedString = crate::import_report::open_failure(root, message).into();
                 window.open_alert_dialog(cx, move |dialog, _, _| {
@@ -1642,12 +1660,12 @@ impl Shell {
         )
     }
 
-    // The selected environment's secret names, so script rows under them mask, and the active
-    // global environment's, so global script rows under them mask.
-    fn secret_names(&self, cx: &App) -> (Vec<String>, Vec<String>) {
+    // The secret names of `root`'s selected environment, so script rows under them mask, and
+    // the active global environment's, so global script rows under them mask.
+    fn secret_names(&self, root: Option<&Path>, cx: &App) -> (Vec<String>, Vec<String>) {
         let ws = self.workspace.read(cx);
-        let secrets = (ws.current_root())
-            .and_then(|r| ws.snapshot(&r, cx))
+        let secrets = root
+            .and_then(|r| ws.snapshot(r, cx))
             .map(|s| {
                 let selected = s.selected_environment.as_deref();
                 (s.content.environments.iter())
@@ -1684,7 +1702,7 @@ impl Shell {
             return;
         };
         // The dialog's masking rule, so the overview hides what the dialog hides.
-        let (secrets, global_secrets) = self.secret_names(cx);
+        let (secrets, global_secrets) = self.secret_names(Some(&root), cx);
         let masking = (self.workspace.read(cx).runtime_vars(&root, cx))
             .map(|vars| crate::runtime_vars::Masking::new(vars, secrets, global_secrets));
         let (reply, answer) = async_channel::bounded(1);
@@ -1710,8 +1728,8 @@ impl Shell {
         .detach();
     }
 
-    // The title bar's collection switcher: the open collections, each revealing its root in
-    // the sidebar with a gear for its settings, then the recents not open. The popover
+    // The title bar's collection switcher: the open collections, the current one checked, each
+    // making itself current with a gear for its settings, then the recents not open. The popover
     // rebuilds its rows on every render, so the rows capture owned root lists and dismiss the
     // popover after acting.
     fn collection_switcher(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1733,6 +1751,7 @@ impl Shell {
             .map(|r| (r.clone(), self.recent_name(r)))
             .collect();
         let (workspace, shell) = (self.workspace.clone(), cx.entity());
+        let current_root = self.workspace.read(cx).current_root();
         let (home, room) = (self.home.clone(), path_room(window));
         // The name may truncate too; the branch label's heavier shrink weight empties it first.
         let mut wrapper = gpui_kit::StyleRefinement::default();
@@ -1747,13 +1766,13 @@ impl Shell {
                     let (workspace, shell, root, gear_root) =
                         (workspace.clone(), shell.clone(), root.clone(), root.clone());
                     let path_root = root.clone();
-                    let reveal = Button::new(("switch-open", ix))
-                        .ghost()
-                        .label(name.clone())
-                        .on_click(cx.listener(move |state, _, window, cx| {
+                    let current = current_root.as_ref() == Some(&root);
+                    let reveal = switcher_row(("switch-open", ix), name.clone(), current).on_click(
+                        cx.listener(move |state, _, window, cx| {
                             shell.update(cx, |s, cx| s.reveal_collection(&root, window, cx));
                             state.dismiss(window, cx);
-                        }));
+                        }),
+                    );
                     let gear = Button::new(("switcher-settings", ix))
                         .ghost()
                         .compact()
@@ -1775,7 +1794,7 @@ impl Shell {
                     h_flex()
                         .w_full()
                         .justify_between()
-                        .child(v_flex().min_w_0().child(reveal).child(path))
+                        .child(v_flex().flex_1().min_w_0().child(reveal).child(path))
                         .child(gear)
                 });
                 let recent_rows = recent.iter().enumerate().map(|(ix, root)| {
@@ -1786,14 +1805,12 @@ impl Shell {
                         (home.as_deref(), room, window),
                         muted,
                     );
-                    let button = Button::new(("recent", ix))
-                        .ghost()
-                        .label(names[&root].clone())
+                    let button = switcher_row(("recent", ix), names[&root].clone(), false)
                         .on_click(cx.listener(move |state, _, window, cx| {
                             shell.update(cx, |s, cx| s.open(root.clone(), cx));
                             state.dismiss(window, cx);
                         }));
-                    v_flex().min_w_0().child(button).child(path)
+                    v_flex().w_full().min_w_0().child(button).child(path)
                 });
                 // The collection actions head the list, so the title bar can drop their
                 // buttons; each one dismisses the popover before its native prompt opens.
@@ -2796,10 +2813,10 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|this, _: &OpenRuntimeVariables, window, cx| {
                 let ws = this.workspace.read(cx);
-                let stores = ws
-                    .current_root()
-                    .and_then(|r| Some((ws.runtime_vars(&r, cx)?, ws.env_overlay(&r, cx)?)));
-                let (secrets, global_secrets) = this.secret_names(cx);
+                let root = ws.current_root();
+                let stores = (root.as_ref())
+                    .and_then(|r| Some((ws.runtime_vars(r, cx)?, ws.env_overlay(r, cx)?)));
+                let (secrets, global_secrets) = this.secret_names(root.as_deref(), cx);
                 if let Some((vars, overlay)) = stores {
                     crate::runtime_vars::open_runtime_vars(
                         vars,
@@ -3086,6 +3103,34 @@ fn to_tabs<A: Action>(
     f: Handler<TabArea, A>,
 ) -> impl Fn(&mut Shell, &A, &mut Window, &mut Context<Shell>) {
     move |this, a, window, cx| this.tab_area.update(cx, |v, cx| f(v, a, window, cx))
+}
+
+/// A full-width switcher row for a collection: a check in the slot the action rows give their
+/// icons, drawn only when `checked` so every name starts in the actions' label column.
+fn switcher_row(id: (&'static str, usize), name: SharedString, checked: bool) -> Button {
+    let slot = if checked {
+        "switch-current"
+    } else {
+        "switch-unchecked"
+    };
+    let check = div()
+        .id((slot, id.1))
+        .test_support()
+        .flex_none()
+        .when(!checked, |d| d.invisible())
+        .child(Icon::new(IconName::Check).small());
+    Button::new(id)
+        .ghost()
+        .w_full()
+        .accessibility_label(name.clone())
+        .child(
+            h_flex()
+                .w_full()
+                .min_w_0()
+                .gap(style::SPACE_2)
+                .child(check)
+                .child(div().min_w_0().truncate().child(name)),
+        )
 }
 
 /// A sidebar row for the open collection `name` in medium weight, carrying a spinner while

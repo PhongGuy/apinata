@@ -449,6 +449,13 @@ impl apinata_core::Trash for NoTrash {
     }
 }
 
+// A collection made current by hand and the tab activation count it was made at; the next tab
+// activation hands the current collection back to the active tab.
+struct Chosen {
+    root: PathBuf,
+    at: u64,
+}
+
 /// The window's open collections and its session.
 pub struct Workspace {
     store: Arc<dyn SecretStore>,
@@ -458,6 +465,7 @@ pub struct Workspace {
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
+    chosen: Option<Chosen>,
     factory: Option<WatchFactory>,
     // `CreateDraft` commands sent by `new_draft`, by root and command id, awaiting `Created`;
     // ids restart with each actor, so a closed root's entries are dropped.
@@ -559,6 +567,7 @@ impl Workspace {
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
+            chosen: None,
             factory: None,
             drafts: HashSet::new(),
             draft_imports: HashMap::new(),
@@ -1583,12 +1592,26 @@ impl Workspace {
         }
     }
 
-    /// The collection the environment controls act on: the active tab's, else the first open.
+    /// The collection the environment controls act on: the one last chosen by hand while no
+    /// tab has been activated since, else the active tab's, else the first open.
     pub fn current_root(&self) -> Option<PathBuf> {
-        self.tabs
-            .active()
-            .map(|t| t.root.clone())
+        let chosen = (self.chosen.as_ref())
+            .filter(|c| c.at == self.tabs.activations() && self.entry(&c.root).is_some());
+        chosen
+            .map(|c| c.root.clone())
+            .or_else(|| self.tabs.active().map(|t| t.root.clone()))
             .or_else(|| self.user_collections().first().map(|c| c.root.clone()))
+    }
+
+    /// Makes the open collection at `root` current until a tab is next activated.
+    pub fn set_current_root(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let root = absolute(root);
+        if self.entry(&root).is_none() || self.current_root().as_ref() == Some(&root) {
+            return;
+        }
+        let at = self.tabs.activations();
+        self.chosen = Some(Chosen { root, at });
+        cx.notify();
     }
 
     /// `current_root` unless it is the scratch, for actions that only make sense on a user's

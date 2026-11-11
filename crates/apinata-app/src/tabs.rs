@@ -102,6 +102,7 @@ pub struct Tabs {
     next: u64,
     // Where each sent draft tab's history is kept; dropped with the tab.
     history_keys: HashMap<TabId, ItemPath>,
+    activations: u64,
 }
 
 impl Tabs {
@@ -125,6 +126,17 @@ impl Tabs {
         self.active.and_then(|id| self.get(id))
     }
 
+    /// How many times a tab was activated, counting a repeat activation of the active tab, so
+    /// a choice made after the last activation can tell it still stands.
+    pub fn activations(&self) -> u64 {
+        self.activations
+    }
+
+    fn set_active(&mut self, id: Option<TabId>) {
+        self.active = id;
+        self.activations += 1;
+    }
+
     /// Open `kind` in `root` and activate it. An already open item is reused (and pinned by a
     /// permanent open); a new preview replaces the existing preview in place, unremembered;
     /// anything else goes at the end.
@@ -136,7 +148,7 @@ impl Tabs {
         {
             entry.preview &= preview;
             let id = entry.id;
-            self.active = Some(id);
+            self.set_active(Some(id));
             return id;
         }
         let entry = TabEntry {
@@ -160,7 +172,7 @@ impl Tabs {
             }
             None => self.entries.push(entry),
         }
-        self.active = Some(id);
+        self.set_active(Some(id));
         id
     }
 
@@ -248,7 +260,7 @@ impl Tabs {
     pub fn activate(&mut self, id: TabId) -> bool {
         let found = self.get(id).is_some();
         if found {
-            self.active = Some(id);
+            self.set_active(Some(id));
         }
         found
     }
@@ -257,7 +269,8 @@ impl Tabs {
     pub fn activate_index(&mut self, ix: usize) -> bool {
         match self.entries.get(ix) {
             Some(entry) => {
-                self.active = Some(entry.id);
+                let id = entry.id;
+                self.set_active(Some(id));
                 true
             }
             None => false,
@@ -344,7 +357,8 @@ impl Tabs {
         let entry = self.entries.remove(ix);
         self.history_keys.remove(&id);
         if self.active == Some(id) {
-            self.active = self.entries.get(ix).or(self.entries.last()).map(|e| e.id);
+            let next = self.entries.get(ix).or(self.entries.last()).map(|e| e.id);
+            self.set_active(next);
         }
         let draft = entry.item().is_some_and(ItemPath::is_draft);
         if !matches!(entry.kind, TabKind::Runner(_) | TabKind::RunSelection(_)) && !draft {
@@ -422,7 +436,8 @@ impl Tabs {
         if let Some(ix) = active_ix.filter(|_| gone.iter().any(|(_, e)| Some(e.id) == self.active))
         {
             let right = kept.iter().find(|(i, _)| *i > ix);
-            self.active = right.or(kept.last()).map(|(_, e)| e.id);
+            let next = right.or(kept.last()).map(|(_, e)| e.id);
+            self.set_active(next);
         }
         self.entries = kept.into_iter().map(|(_, e)| e).collect();
         for (_, e) in &gone {
