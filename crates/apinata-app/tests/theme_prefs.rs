@@ -94,7 +94,7 @@ fn the_preferences_dialog_edits_the_settings(cx: &mut TestAppContext) {
         cx.update_window(s.win, |_, w, cx| w.has_active_dialog(cx))
             .unwrap()
     );
-    assert!(present(cx, s.win, "prefs-restart-note"));
+    assert!(present(cx, s.win, "pref-verify-tls-restart"));
     cx.update_window(s.win, |_, w, cx| {
         w.within("theme").click(2usize, cx);
         w.within("orientation").click(1usize, cx);

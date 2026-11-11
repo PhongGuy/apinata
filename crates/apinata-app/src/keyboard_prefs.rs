@@ -1,6 +1,6 @@
 //! The Keyboard section of Preferences: one row per registry command with its keys, a
-//! recorder that takes a new key with a conflict prompt, a reset per edited command and a
-//! reset for all of them.
+//! recorder that takes a new key with a conflict prompt, an unbind per command with keys, a
+//! reset per edited command and a reset for all of them.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::Confirm;
@@ -183,6 +183,12 @@ impl KeyboardPrefs {
         self.ask(chord, others, true, cx);
     }
 
+    // Leaves the command with no keys; its Reset brings the defaults back.
+    fn unbind(&mut self, id: &'static str, cx: &mut Context<Self>) {
+        self.cancel(cx);
+        set_overrides(|o| _ = o.insert(id.to_string(), Vec::new()), cx);
+    }
+
     // Writes the chord, then notes when a text field's own binding would take it first.
     fn settle(&mut self, id: &'static str, chord: Chord, how: Resolution, cx: &mut Context<Self>) {
         let shadowed = input_chord(&kit_bindings(cx), &chord);
@@ -215,17 +221,19 @@ impl KeyboardPrefs {
         let muted = cx.theme().muted_foreground;
         let mut section = PrefsSection::new("prefs-keyboard", "Keyboard");
         for cmd in &cmds {
+            let chords = effective(cmd, &overrides);
             let flags = RowFlags {
+                bound: !chords.is_empty(),
                 edited: overrides.contains_key(cmd.id),
                 invalid: diag.is_invalid(cmd.id),
                 conflict: clash.contains(cmd.id),
             };
-            let chords = effective(cmd, &overrides);
             let terms = row_terms(cmd, &chords);
             let keys = self.keys_cell(cmd.id, &chords, muted, cx);
             let id = cmd.id;
             let on_reset = cx.listener(move |this, _, _, cx| this.reset(id, cx));
-            let control = row_control(cmd, keys, flags, muted, on_reset);
+            let on_unbind = cx.listener(move |this, _, _, cx| this.unbind(id, cx));
+            let control = row_control(cmd, keys, flags, muted, on_unbind, on_reset);
             let control = self.with_prompt(cmd.id, control, muted, cx);
             section = section.row_with_terms(format!("key-{}", cmd.id), cmd.label, terms, control);
         }
@@ -377,6 +385,8 @@ fn row_terms(cmd: &Command, chords: &[crate::shortcuts::Chord]) -> Vec<String> {
 /// What a shortcut row marks beside its keys.
 #[derive(Debug, Clone, Copy)]
 struct RowFlags {
+    /// The command has keys, so the row offers Unbind.
+    bound: bool,
     /// The keys differ from the defaults, so the row offers Reset.
     edited: bool,
     /// The keymap entry for the command cannot be used.
@@ -389,11 +399,13 @@ fn row_control(
     cmd: &Command,
     keys: impl IntoElement,
     RowFlags {
+        bound,
         edited,
         invalid,
         conflict,
     }: RowFlags,
     muted: Hsla,
+    on_unbind: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let id = cmd.id;
@@ -427,22 +439,44 @@ fn row_control(
                     .child(Tag::danger().small().child("Invalid")),
             )
         })
-        .when(edited, |el| {
-            let reset_id = SharedString::from(format!("key-{id}-reset"));
-            // The press lives on the button, so Enter or Space on it resets too.
-            el.child(
-                div().id(reset_id.clone()).test_support().child(
-                    ui::icon_button(
-                        SharedString::from(format!("{reset_id}-button")),
-                        IconName::Undo2,
-                        "Reset",
-                        None,
-                    )
-                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                    .on_click(on_reset),
-                ),
-            )
+        // Like the keys it clears, Unbind is a pointer action: one per command would bury the
+        // dialog's other controls deep in the Tab order.
+        .when(bound, |el| {
+            let icon = (IconName::Close, "Unbind");
+            el.child(row_button(id, "unbind", icon, false, on_unbind))
         })
+        .when(edited, |el| {
+            el.child(row_button(
+                id,
+                "reset",
+                (IconName::Undo2, "Reset"),
+                true,
+                on_reset,
+            ))
+        })
+}
+
+// A row's icon action in a wrapper `key-{id}-{what}` that carries the id a click targets. The
+// press lives on the button, so Enter or Space on it acts while it takes Tab focus.
+fn row_button(
+    id: &str,
+    what: &str,
+    (icon, name): (IconName, &'static str),
+    tab_stop: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let wrapper = SharedString::from(format!("key-{id}-{what}"));
+    div().id(wrapper.clone()).test_support().child(
+        ui::icon_button(
+            SharedString::from(format!("{wrapper}-button")),
+            icon,
+            name,
+            None,
+        )
+        .key_context(ui::DIALOG_FOOTER_CONTEXT)
+        .tab_stop(tab_stop)
+        .on_click(on_click),
+    )
 }
 
 // The confirm sits over Preferences; only a "Reset all" answer touches the keymap.
