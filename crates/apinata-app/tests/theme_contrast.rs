@@ -488,6 +488,175 @@ fn method_colours_reach_aa_where_they_show() {
     assert!(fails.is_empty(), "{fails:#?}");
 }
 
+/// `hex` in CIELAB (D65), the space colour difference is measured in.
+fn lab(hex: &str) -> [f64; 3] {
+    let lin = |i| {
+        let c = hex_byte(hex, i) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let (r, g, b) = (lin(0), lin(1), lin(2));
+    let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+    let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+    let f = |t: f64| {
+        if t > 0.008856 {
+            t.cbrt()
+        } else {
+            7.787 * t + 16.0 / 116.0
+        }
+    };
+    [
+        116.0 * f(y) - 16.0,
+        500.0 * (f(x) - f(y)),
+        200.0 * (f(y) - f(z)),
+    ]
+}
+
+/// The CIEDE2000 colour difference of two opaque colours: how far apart they look.
+fn delta_e(a: &str, b: &str) -> f64 {
+    let ([l1, a1, b1], [l2, a2, b2]) = (lab(a), lab(b));
+    let c_bar = (a1.hypot(b1) + a2.hypot(b2)) / 2.0;
+    let g = 0.5 * (1.0 - (c_bar.powi(7) / (c_bar.powi(7) + 25f64.powi(7))).sqrt());
+    let (a1, a2) = ((1.0 + g) * a1, (1.0 + g) * a2);
+    let (c1, c2) = (a1.hypot(b1), a2.hypot(b2));
+    let hue = |b: f64, a: f64| b.atan2(a).to_degrees().rem_euclid(360.0);
+    let (h1, h2) = (hue(b1, a1), hue(b2, a2));
+    let chromatic = c1 * c2 != 0.0;
+    let mut dh = h2 - h1;
+    if dh > 180.0 {
+        dh -= 360.0;
+    } else if dh < -180.0 {
+        dh += 360.0;
+    }
+    let dh = if chromatic { dh } else { 0.0 };
+    let big_dh = 2.0 * (c1 * c2).sqrt() * (dh / 2.0).to_radians().sin();
+    let l_bar = (l1 + l2) / 2.0;
+    let c_bar = (c1 + c2) / 2.0;
+    let h_bar = if !chromatic {
+        h1 + h2
+    } else if (h1 - h2).abs() <= 180.0 {
+        (h1 + h2) / 2.0
+    } else if h1 + h2 < 360.0 {
+        (h1 + h2 + 360.0) / 2.0
+    } else {
+        (h1 + h2 - 360.0) / 2.0
+    };
+    let cos = |deg: f64| deg.to_radians().cos();
+    let t =
+        1.0 - 0.17 * cos(h_bar - 30.0) + 0.24 * cos(2.0 * h_bar) + 0.32 * cos(3.0 * h_bar + 6.0)
+            - 0.20 * cos(4.0 * h_bar - 63.0);
+    let d_theta = 30.0 * (-((h_bar - 275.0) / 25.0).powi(2)).exp();
+    let rc = 2.0 * (c_bar.powi(7) / (c_bar.powi(7) + 25f64.powi(7))).sqrt();
+    let sl = 1.0 + 0.015 * (l_bar - 50.0).powi(2) / (20.0 + (l_bar - 50.0).powi(2)).sqrt();
+    let sc = 1.0 + 0.045 * c_bar;
+    let sh = 1.0 + 0.015 * c_bar * t;
+    let rt = -(2.0 * d_theta).to_radians().sin() * rc;
+    let (dl, dc, dh) = ((l2 - l1) / sl, (c2 - c1) / sc, big_dh / sh);
+    (dl * dl + dc * dc + dh * dh + rt * dc * dh).sqrt()
+}
+
+#[test]
+fn delta_e_matches_the_published_reference_pairs() {
+    // Identity, black against white and a one-step red pair anchor the formula's scale.
+    assert!(delta_e("#336699", "#336699") < 1e-9);
+    assert!((delta_e("#000000", "#FFFFFF") - 100.0).abs() < 0.01);
+    let near = delta_e("#FF0000", "#FE0000");
+    assert!(near > 0.0 && near < 1.0, "{near}");
+}
+
+// Method labels are told apart by hue alone, so each pair of method colours and each colour
+// against plain text must differ at a glance, not just in name. 25 is the most the 7:1
+// high-contrast floor leaves room for across all four hues.
+#[test]
+fn method_colours_stay_apart_from_each_other_and_from_text() {
+    use apinata_app::ui::{StatusClass, method_class};
+    const APART: f64 = 25.0;
+    let mut fails = Vec::new();
+    for (_, t) in themes() {
+        let name = t["name"].as_str().unwrap();
+        let key = |m| match method_class(m) {
+            StatusClass::Success => "success.background",
+            StatusClass::Info => "info.background",
+            StatusClass::Warning => "warning.background",
+            StatusClass::Danger => "danger.background",
+            StatusClass::Muted => panic!("{m} is coloured"),
+        };
+        // PUT and PATCH share a colour by design, so PATCH adds nothing to compare.
+        let methods = ["GET", "POST", "PUT", "DELETE"];
+        let text = col(&t, "foreground");
+        for (i, a) in methods.iter().enumerate() {
+            let ca = col(&t, key(a));
+            let d = delta_e(&ca, &text);
+            if d < APART {
+                fails.push(format!("{name}: {a} {ca} against text {text} = {d:.1}"));
+            }
+            for b in &methods[i + 1..] {
+                let cb = col(&t, key(b));
+                let d = delta_e(&ca, &cb);
+                if d < APART {
+                    fails.push(format!("{name}: {a} {ca} against {b} {cb} = {d:.1}"));
+                }
+            }
+        }
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
+// A placeholder is drawn in `muted.foreground`; against entered text it must look clearly
+// dimmer. 1.9:1 is what the high-contrast themes can spare while muted text keeps 7:1.
+#[test]
+fn placeholders_are_clearly_dimmer_than_entered_text() {
+    let mut fails = Vec::new();
+    for (_, t) in themes() {
+        let (text, hint) = (col(&t, "foreground"), col(&t, "muted.foreground"));
+        let r = ratio(&text, &hint);
+        if r < 1.9 {
+            fails.push(format!(
+                "{}: text {text} on hint {hint} = {r:.2}",
+                t["name"]
+            ));
+        }
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
+// The selected row is marked by its edge, drawn in the ring colour while the tree has focus
+// and in muted text otherwise: that edge must reach 3:1 against the panel and the fill, and
+// the row's text and method labels must reach the text floor on the fill.
+#[test]
+fn the_selected_row_reads_against_the_panel() {
+    let mut fails = Vec::new();
+    for (_, t) in themes() {
+        let name = t["name"].as_str().unwrap();
+        let fill = col(&t, "list.active.background");
+        for edge in ["ring", "muted.foreground"] {
+            for under in ["sidebar.background", "background", "list.active.background"] {
+                let r = ratio(&col(&t, edge), &col(&t, under));
+                if r < 3.0 {
+                    fails.push(format!("{name}: {edge} edge on {under} = {r:.2}"));
+                }
+            }
+        }
+        for text in [
+            "foreground",
+            "success.background",
+            "info.background",
+            "warning.background",
+            "danger.background",
+        ] {
+            let r = ratio(&col(&t, text), &fill);
+            if r < floor(&t) {
+                fails.push(format!("{name}: {text} on the selected fill = {r:.2}"));
+            }
+        }
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
 #[test]
 fn both_sets_are_checked_and_high_contrast_foreground_reaches_seven() {
     let all = themes();
@@ -548,6 +717,39 @@ fn high_contrast_placeholders_and_disabled_text_stay_readable() {
         }
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
+/// The selected segment's raised fill is too close to its track to carry the choice, so its
+/// edge must: 3:1 against the track it sits on and the fill it surrounds, in every theme, and
+/// never the focus ring or brand colour. An unselected segment has no edge.
+#[gpui_kit::test]
+fn the_selected_segment_edge_reaches_three_to_one_on_its_track(cx: &mut gpui_kit::TestAppContext) {
+    use apinata_app::focus_mode::Modality;
+    use apinata_app::theme::{DARK, LIGHT};
+    use apinata_app::ui::{segment_edge, segment_fill};
+    use gpui_kit::component::ActiveTheme as _;
+    let mut fails = Vec::new();
+    for name in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
+        crate::support::use_theme(cx, name);
+        cx.update(|cx| apinata_app::focus_mode::set(Modality::Keyboard, cx));
+        cx.update(|cx| {
+            assert_eq!(segment_edge(false, cx), None, "{name}: unselected edge");
+            let Some(edge) = segment_edge(true, cx) else {
+                fails.push(format!("{name}: the selected segment has no edge"));
+                return;
+            };
+            let t = cx.theme();
+            assert_ne!(edge, t.ring, "{name}: the edge reads as focus");
+            assert_ne!(edge, t.primary, "{name}: the edge reads as brand");
+            for (what, under) in [("track", t.muted), ("fill", segment_fill(true, cx))] {
+                let r = hsla_ratio(edge, under);
+                if r < 3.0 {
+                    fails.push(format!("{name}: edge on the {what} = {r:.2}"));
+                }
+            }
+        });
+    }
+    assert!(fails.is_empty(), "{fails:#?}");
 }
 
 /// WCAG contrast of two opaque colours.

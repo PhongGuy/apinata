@@ -2072,7 +2072,7 @@ pub struct Segmented {
 }
 
 /// A row of ghost buttons, one per option, ids `0..n` inside `id` unless [`Segmented::ids`]
-/// names them; the `selected` one sits on a raised fill and reports itself toggled. A click
+/// names them; the `selected` one sits on a raised, edged fill and reports itself toggled. A click
 /// calls `on_select(ix)`, as do Enter and Space on a focused segment; the arrow keys choose
 /// and focus a neighbour.
 pub fn segmented(
@@ -2111,14 +2111,20 @@ impl Segmented {
     }
 }
 
-/// The fill of a segment: `popover` when selected, transparent otherwise. No segment has a
-/// border, so the raised fill alone carries the selection and never reads as focus or brand.
+/// The fill of a segment: `popover` when selected, transparent otherwise. It never reads as
+/// focus or brand; the selected segment's edge carries the contrast.
 pub fn segment_fill(selected: bool, cx: &App) -> Hsla {
     if selected {
         cx.theme().popover
     } else {
         transparent_black()
     }
+}
+
+/// The 1 px edge around the selected segment: the control outline colour, which clears 3:1 on
+/// the track and the raised fill where the fill alone does not. Unselected segments have none.
+pub fn segment_edge(selected: bool, cx: &App) -> Option<Hsla> {
+    selected.then(|| cx.theme().input)
 }
 
 /// The app's underline tab strip: `TabBar::new(id).underline()` sized for the current zoom.
@@ -2147,7 +2153,7 @@ impl RenderOnce for Segmented {
                 .collect()
         });
         let t = cx.theme();
-        let (fg, muted) = (t.foreground, t.muted_foreground);
+        let (fg, muted, radius) = (t.foreground, t.muted_foreground, t.radius);
         let track = t.muted;
         let focused = {
             let handles = Rc::clone(&handles);
@@ -2194,14 +2200,30 @@ impl RenderOnce for Segmented {
                 } else {
                     button.text_color(muted)
                 };
+                // The edge floats over the button so the segment keeps a ghost button's size.
+                let edge = segment_edge(sel, cx).map(|edge| {
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(radius)
+                        .border_1()
+                        .border_color(edge)
+                });
                 // The kit button's own tooltip is not findable, so a hint rides on a wrapper.
-                match self.tips.get(ix).cloned() {
-                    Some((tip_id, text)) => div()
+                match (self.tips.get(ix).cloned(), edge) {
+                    (Some((tip_id, text)), edge) => div()
                         .id(("segment-tip", ix))
                         .tooltip(text_tooltip(tip_id, text))
+                        .relative()
                         .child(button)
+                        .children(edge)
                         .into_any_element(),
-                    None => button.into_any_element(),
+                    (None, Some(edge)) => div()
+                        .relative()
+                        .child(button)
+                        .child(edge)
+                        .into_any_element(),
+                    (None, None) => button.into_any_element(),
                 }
             });
         // The track hugs its segments; `form-control` is a flex row, so it keeps its content width.

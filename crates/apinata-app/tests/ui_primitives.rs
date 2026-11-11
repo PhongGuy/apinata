@@ -291,7 +291,7 @@ fn empty_state_hints_shell_keys_outside_the_shell(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_selected_segment_is_a_raised_fill_without_an_outline(cx: &mut TestAppContext) {
+fn a_selected_segment_is_a_raised_fill_edged_in_neither_ring_nor_brand(cx: &mut TestAppContext) {
     support::init(cx);
     cx.update(|cx| apinata_app::focus_mode::set(Modality::Keyboard, cx));
     cx.update(|cx| {
@@ -304,6 +304,10 @@ fn a_selected_segment_is_a_raised_fill_without_an_outline(cx: &mut TestAppContex
         assert_ne!(selected, ring);
         assert_ne!(selected, brand);
         assert_eq!(segment_fill(false, cx).a, 0.0);
+        let edge = segment_edge(true, cx).expect("the selected segment has an edge");
+        assert_ne!(edge, ring);
+        assert_ne!(edge, brand);
+        assert_eq!(segment_edge(false, cx), None);
     });
 }
 
