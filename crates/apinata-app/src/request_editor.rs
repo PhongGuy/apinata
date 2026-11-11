@@ -1774,6 +1774,10 @@ impl RequestEditor {
                 _ => self.body.update(cx, |s, cx| s.load(&view.body, window, cx)),
             }
         }
+        if let Some(snap) = self.workspace.read(cx).snapshot(&root, cx) {
+            let names = snap.dotenv_names(&Target::Request(item.clone()));
+            self.auth.update(cx, |a, cx| a.set_dotenv(names, cx));
+        }
         if !self.busy(Field::Auth, cx) {
             let inherited = Some(view.inherited_auth.clone().into());
             self.auth.update(cx, |s, cx| s.set_inherited(inherited, cx));

@@ -1,5 +1,6 @@
 //! Moving a typed OAuth 2.0 client secret or resource-owner password to the collection's
 //! `.env`, referenced from the request, folder or collection file as `{{process.env.NAME}}`.
+//! The draft takes the reference at once; `.env` is written only when the target is saved.
 
 use crate::command::Target;
 use crate::network_secrets::{self, Moves, env_name, is_template};
@@ -11,15 +12,17 @@ pub const CLIENT_SECRET: &str = "APINATA_OAUTH2_CLIENT_SECRET";
 /// The base `.env` name of an OAuth 2.0 resource-owner password.
 pub const PASSWORD: &str = "APINATA_OAUTH2_PASSWORD";
 
-/// Rewrites a new literal secret in `auth` to a `.env` reference and writes it to `.env`; Ok
-/// holds warnings, Err a message. On Err nothing is written and `auth` is unchanged. A literal
-/// the target's file already holds stays unless `all`. Other auth modes pass through.
+/// Rewrites a new literal secret in `auth` to a `.env` reference; Ok holds the moved secrets
+/// as (name, value), which the caller writes to `.env` when the target is saved, Err a
+/// message. `held` names are promised to other unsaved secrets. On Err `auth` is unchanged.
+/// A literal the target's file already holds stays unless `all`. Other auth modes pass through.
 pub fn apply(
-    c: &mut Collection,
+    c: &Collection,
     target: &Target,
     auth: &mut AuthSpec,
     all: bool,
-) -> Result<Vec<String>, String> {
+    held: &BTreeSet<String>,
+) -> Result<Vec<(String, String)>, String> {
     let AuthSpec::OAuth2(edited) = auth else {
         return Ok(Vec::new());
     };
@@ -41,15 +44,16 @@ pub fn apply(
         .dotenv_keys()
         .map_err(|e| format!("Could not read .env: {e}"))?;
     taken.extend(referenced.iter().cloned());
+    taken.extend(held.iter().cloned());
 
     // Plan on a copy, so a refusal leaves the caller's edit as it was.
     let mut planned = edited.clone();
     let mut moves = Moves::new(known, all, taken, referenced);
     moves.plan(&mut planned.client_secret, &previous_secret, CLIENT_SECRET);
     moves.plan(&mut planned.password, &previous_password, PASSWORD);
-    let warnings = network_secrets::commit(c, &moves)?;
+    network_secrets::check(c, &moves.planned)?;
     *edited = planned;
-    Ok(warnings)
+    Ok(moves.planned)
 }
 
 /// The auth the target's draft holds now, or None for a target that is gone.

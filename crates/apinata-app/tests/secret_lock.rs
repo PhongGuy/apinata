@@ -2247,7 +2247,7 @@ mod oauth {
     use apinata_app::oauth2_editor::OAuth2Field;
     use apinata_app::request_editor::Section;
     use apinata_app::shell::CloseCollection;
-    use apinata_app::tab_area::{CloseAllTabs, CloseOtherTabs, CloseTab};
+    use apinata_app::tab_area::{CloseAllTabs, CloseOtherTabs, CloseTab, SaveAll};
     use apinata_app::tabs::TabKind;
     use apinata_core::{AuthSpec, OAuth2Flow, OAuth2Spec};
 
@@ -2384,6 +2384,17 @@ mod oauth {
             Close::Window => cx.update(|cx| cx.windows().is_empty()),
             Close::Collection => s.ws.read_with(cx, |w, _| w.collections().is_empty()),
         }
+    }
+
+    // Saves every tab as Save all does; called on the tab area, since a blurred window
+    // routes no action.
+    fn save_all_tabs(cx: &mut TestAppContext, s: &Started) {
+        let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
+        cx.update_window(s.win, |_, w, cx| {
+            area.update(cx, |a, cx| a.save_all(&SaveAll, w, cx))
+        })
+        .unwrap();
+        cx.run_until_parked();
     }
 
     // The typing still shown in the active tab's client secret field.
@@ -2583,7 +2594,8 @@ mod oauth {
         a_discarded_tab_close_stores_no_settings_secret_with_another_edit => (Tab::Settings, true);
     }
 
-    // The hold a cancelled tab close set is released, so a plain blur stores the secret.
+    // The hold a cancelled tab close set is released, so a plain blur commits the secret to
+    // the draft, and the next save stores it.
     fn blur_after_tab_cancel_stores(cx: &mut TestAppContext, tab: Tab) {
         let (col, s) = app_with(cx, tab, false, false);
         start_tab_close(cx, &s, false);
@@ -2592,6 +2604,9 @@ mod oauth {
         assert!(!read(&col, ".env").contains("typed-s3cret"));
         cx.update_window(s.win, |_, w, cx| w.blur(cx)).unwrap();
         cx.run_until_parked();
+        assert!(!read(&col, ".env").contains("typed-s3cret"));
+        assert_eq!(shown(cx, &s, tab), MOVED);
+        save_all_tabs(cx, &s);
         let env = read(&col, ".env");
         assert!(env.contains(STORED), "{env}");
         assert_eq!(tabs_open(cx, &s), 1);
@@ -2603,7 +2618,7 @@ mod oauth {
     }
 
     // Closing the other tabs by keyboard saves them and leaves the focused tab's typing in its
-    // field, unstored until its own Save or blur; a blur then stores it once.
+    // field, unstored until its own Save; a blur commits it and the next save stores it once.
     #[gpui_kit::test]
     fn closing_other_tabs_leaves_the_focused_tabs_typing(cx: &mut TestAppContext) {
         let (col, s) = app_with(cx, Tab::Request, true, true);
@@ -2619,6 +2634,8 @@ mod oauth {
         assert_eq!(shown(cx, &s, Tab::Request), "typed-s3cret");
         cx.update_window(s.win, |_, w, cx| w.blur(cx)).unwrap();
         cx.run_until_parked();
+        assert!(!read(&col, ".env").contains("typed-s3cret"));
+        save_all_tabs(cx, &s);
         let env = read(&col, ".env");
         assert_eq!(env.matches("typed-s3cret").count(), 1, "{env}");
         assert!(env.contains(STORED), "{env}");

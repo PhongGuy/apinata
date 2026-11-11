@@ -1,7 +1,7 @@
 //! The background actor that owns one collection: it applies commands in send order and
 //! publishes one snapshot per batch of queued commands.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
@@ -187,6 +187,12 @@ struct Actor {
     reloads: HashMap<Target, u64>,
     /// How many times `.env` changed on disk, published for views that depend on its values.
     dotenv_seq: u64,
+    /// Secrets moved out of unsaved drafts, by the target whose draft holds the reference and
+    /// the `.env` name. Written to `.env` when that target is saved, dropped when discarded.
+    held_dotenv: HashMap<(Target, String), String>,
+    /// The keys `.env` defines, read again after `.env` changes.
+    dotenv_stored: Arc<BTreeSet<String>>,
+    dotenv_stored_stale: bool,
     /// Test-only: see `Faults::refuse_draft_from`.
     refuse_draft_from: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Where `Trash` commands send items.
@@ -245,6 +251,9 @@ impl Actor {
             env_reloads: HashMap::new(),
             reloads: HashMap::new(),
             dotenv_seq: 0,
+            held_dotenv: HashMap::new(),
+            dotenv_stored: Arc::default(),
+            dotenv_stored_stale: true,
             refuse_draft_from: None,
             trash: Arc::new(crate::workspace::NoTrash),
             trashed: HashMap::new(),
@@ -276,12 +285,12 @@ impl Actor {
             Command::Edit {
                 target: Target::Collection,
                 edit,
-            } if edit.field() == Field::Network => self.network_edit(id, edit),
+            } if edit.field() == Field::Network => self.network_edit(edit),
             // So may an OAuth 2.0 auth edit, for its client secret and password.
             Command::Edit {
                 target,
                 edit: edit @ (Edit::Auth(AuthSpec::OAuth2(_)) | Edit::MoveAuthSecrets),
-            } if !matches!(target, Target::Environment(_)) => self.auth_edit(id, &target, edit),
+            } if !matches!(target, Target::Environment(_)) => self.auth_edit(&target, edit),
             Command::Edit { target, edit } => self.edit(&target, edit),
             // An import is never held: the user re-imports against what the reload loaded.
             Command::ApplyImport { item, .. }
@@ -464,10 +473,11 @@ impl Actor {
                 Ok(())
             }
             Command::SecretValues { reply } => {
+                let held: Vec<String> = self.held_dotenv.values().cloned().collect();
                 let values = self
                     .context
                     .get(&self.collection, self.selected.as_deref(), &self.store)
-                    .map(|context| context.secret_values())
+                    .map(|context| with_held_values(context.secret_values(), held))
                     .map_err(|e| e.to_string());
                 let _ = reply.try_send(values);
                 Ok(())
@@ -612,8 +622,7 @@ impl Actor {
             .plan(&item.to_path(c.root()))
             .map_err(|e| PlanError::Select(e.to_string()))?;
         let context = self
-            .context
-            .get(c, self.selected.as_deref(), &self.store)
+            .draft_context(Some(item))
             .map_err(|e| PlanError::Context(e.to_string()))?;
         Ok(Planned { plan, context })
     }
@@ -656,13 +665,14 @@ impl Actor {
     /// The variables request `item` sees, from its draft and the cached variable context.
     fn variables(&mut self, item: &ItemPath) -> Result<VariableSet, PlanError> {
         let c = &self.collection;
-        let req = c
-            .request(item)
-            .ok_or_else(|| PlanError::NotFound(item.clone()))?;
+        if c.request(item).is_none() {
+            return Err(PlanError::NotFound(item.clone()));
+        }
         let context = self
-            .context
-            .get(c, self.selected.as_deref(), &self.store)
+            .draft_context(Some(item))
             .map_err(|e| PlanError::Context(e.to_string()))?;
+        let req =
+            (self.collection.request(item)).ok_or_else(|| PlanError::NotFound(item.clone()))?;
         Ok(context.variables(req))
     }
 
@@ -988,8 +998,11 @@ impl Actor {
                 parent,
                 name,
             } => {
+                let from = Target::Request(draft.clone());
+                let written = self.write_held(&from)?;
                 let to = self.collection.save_draft(&draft, &parent, &name);
-                self.moved_to(Target::Request(draft), to)
+                self.finish_held(id, &from, written, to.is_ok());
+                self.moved_to(from, to)
             }
             TreeOp::DiscardDraft { draft } => {
                 c.remove_draft(&draft);
@@ -1111,6 +1124,10 @@ impl Actor {
     /// move for commands sent before the next snapshot shows it.
     fn record_move(&mut self, from: Target, to: Target) {
         let rekey = |t: Target| moved(&t, &from, &to).unwrap_or(t);
+        self.held_dotenv = mem::take(&mut self.held_dotenv)
+            .into_iter()
+            .map(|((t, name), value)| ((rekey(t), name), value))
+            .collect();
         self.changed = mem::take(&mut self.changed)
             .into_iter()
             .map(rekey)
@@ -1126,6 +1143,7 @@ impl Actor {
     /// Drop the changed-on-disk flags and held edits of deleted targets, so an item created
     /// later under the same key starts clean.
     fn forget(&mut self, gone: impl Fn(&Target) -> bool) {
+        self.release(&gone);
         self.changed.retain(|t| !gone(t));
         if self.stale.keys().any(&gone) {
             Arc::make_mut(&mut self.stale).retain(|t, _| !gone(t));
@@ -1412,6 +1430,23 @@ impl Actor {
         Ok(summary)
     }
 
+    // The keys `.env` defines, read again only after it changed.
+    fn dotenv_stored(&mut self) -> Arc<BTreeSet<String>> {
+        if mem::take(&mut self.dotenv_stored_stale) {
+            self.dotenv_stored = Arc::new(self.collection.dotenv_keys().unwrap_or_default());
+        }
+        Arc::clone(&self.dotenv_stored)
+    }
+
+    // The held `.env` names per target.
+    fn held_by_target(&self) -> HashMap<Target, BTreeSet<String>> {
+        let mut by: HashMap<Target, BTreeSet<String>> = HashMap::new();
+        for (target, name) in self.held_dotenv.keys() {
+            by.entry(target.clone()).or_default().insert(name.clone());
+        }
+        by
+    }
+
     /// The next snapshot, carrying every notice since the last one.
     fn publish(&mut self) -> Arc<CollectionSnapshot> {
         self.seq += 1;
@@ -1427,32 +1462,150 @@ impl Actor {
             selected_environment: self.selected.clone(),
             context_generation: self.context.generation(),
             dotenv_seq: self.dotenv_seq,
+            dotenv_stored: self.dotenv_stored(),
+            dotenv_held: Arc::new(self.held_by_target()),
             network_notice: self.network_notice(),
             stale: Arc::clone(&self.stale),
             notices: mem::take(&mut self.notices).into(),
         })
     }
 
-    /// Apply a collection network edit; its warnings become one notice for command `id`.
-    fn network_edit(&mut self, id: u64, edit: Edit) -> Result<(), NoticeKind> {
-        let warnings = network_secrets::apply(&mut self.collection, edit).map_err(|message| {
-            NoticeKind::Failed {
-                target: Some(Target::Collection),
-                message,
-                row: None,
-            }
-        })?;
+    /// Apply a collection network edit, holding a typed secret for `.env` until the
+    /// collection is saved.
+    fn network_edit(&mut self, edit: Edit) -> Result<(), NoticeKind> {
+        let held = self.held_names();
+        let moved =
+            network_secrets::apply(&mut self.collection, edit, &held).map_err(|message| {
+                NoticeKind::Failed {
+                    target: Some(Target::Collection),
+                    message,
+                    row: None,
+                }
+            })?;
+        self.hold(&Target::Collection, moved);
         self.cache.touch(&Target::Collection);
+        Ok(())
+    }
+
+    /// The `.env` names promised to secrets of unsaved drafts.
+    fn held_names(&self) -> BTreeSet<String> {
+        self.held_dotenv
+            .keys()
+            .map(|(_, name)| name.clone())
+            .collect()
+    }
+
+    /// Hold `moved` secrets of `target` until it is saved; its sends see them at once.
+    fn hold(&mut self, target: &Target, moved: Vec<(String, String)>) {
+        if moved.is_empty() {
+            return;
+        }
+        for (name, value) in moved {
+            self.held_dotenv.insert((target.clone(), name), value);
+        }
+        self.context.invalidate();
+    }
+
+    /// Drop the held secrets of the targets `gone` matches.
+    fn release(&mut self, gone: impl Fn(&Target) -> bool) {
+        let before = self.held_dotenv.len();
+        self.held_dotenv.retain(|(t, _), _| !gone(t));
+        if self.held_dotenv.len() != before {
+            self.context.invalidate();
+        }
+    }
+
+    /// The draft variable context for `item`, or for collection-wide settings with None:
+    /// held secrets of the collection, of `item`'s folders and of `item` itself read as `.env`
+    /// values, the nearest winning a shared name.
+    fn draft_context(
+        &mut self,
+        item: Option<&ItemPath>,
+    ) -> Result<VarContext, apinata_core::ContextError> {
+        let base = (self.context).get(&self.collection, self.selected.as_deref(), &self.store)?;
+        let mut values: Vec<(usize, &String, &String)> = (self.held_dotenv.iter())
+            .filter_map(|((t, name), value)| Some((held_rank(t, item)?, name, value)))
+            .collect();
+        if values.is_empty() {
+            return Ok(base);
+        }
+        values.sort_by_key(|(rank, ..)| *rank);
+        Ok(base.with_dotenv_overrides(values.into_iter().map(|(_, n, v)| (n.clone(), v.clone()))))
+    }
+
+    /// Write the held secrets that `target`'s draft still refers to into `.env`, before the
+    /// draft is written; a refusal stops the save. Some holds what `finish_held` needs to
+    /// keep or undo the write.
+    fn write_held(&mut self, target: &Target) -> Result<Option<HeldWrite>, NoticeKind> {
+        let referenced = network_secrets::referenced_names(&self.collection, target);
+        let mut planned: Vec<(String, String)> = (self.held_dotenv.iter())
+            .filter(|((t, name), _)| t == target && referenced.contains(name))
+            .map(|((_, name), value)| (name.clone(), value.clone()))
+            .collect();
+        // Sorted by name, so `.env` gains its new lines in the same order every time.
+        planned.sort();
+        if planned.is_empty() {
+            return Ok(None);
+        }
+        let refused = |message: String| NoticeKind::Failed {
+            target: Some(target.clone()),
+            message,
+            row: None,
+        };
+        let backup = (self.collection.backup_dotenv())
+            .map_err(|e| refused(format!("Could not read .env: {e}")))?;
+        // What the write left behind is kept too, so an undo can tell if anything changed since.
+        let wrote = network_secrets::write(&mut self.collection, &planned).and_then(|warnings| {
+            let written = (self.collection.backup_dotenv())
+                .map_err(|e| format!("Could not read .env: {e}"))?;
+            Ok((written, warnings))
+        });
+        match wrote {
+            Ok((written, warnings)) => Ok(Some(HeldWrite {
+                backup,
+                written,
+                warnings,
+            })),
+            Err(message) => {
+                // A write that failed partway is undone, so `.env` stays as it was.
+                let _ = self.collection.restore_dotenv(&backup);
+                self.dotenv_stored_stale = true;
+                Err(refused(message))
+            }
+        }
+    }
+
+    /// After the save `write_held` went before: on success the held secrets of `target` are
+    /// done and its warnings become a notice for command `id`; on failure `.env` and
+    /// `.gitignore` go back as they were, so nothing is left that no file refers to, unless
+    /// something else changed them since the write: then they stay, with a warning.
+    fn finish_held(&mut self, id: u64, target: &Target, written: Option<HeldWrite>, saved: bool) {
+        let Some(written) = written else {
+            return;
+        };
+        self.dotenv_stored_stale = true;
+        self.context.invalidate();
+        let warnings = if saved {
+            self.release(|t| t == target);
+            written.warnings
+        } else {
+            match (self.collection).undo_dotenv(&written.backup, &written.written) {
+                Ok(true) => Vec::new(),
+                Ok(false) => vec![
+                    ".env changed while saving, so it was kept as it is; check its values".into(),
+                ],
+                Err(e) => vec![format!("Could not undo the .env change: {e}")],
+            }
+        };
         if !warnings.is_empty() {
             let kind = NoticeKind::Warnings(warnings);
             self.notices.push(Notice { command: id, kind });
         }
-        Ok(())
     }
 
-    /// Apply an OAuth 2.0 auth edit, moving a typed secret to `.env` first; its warnings
-    /// become one notice for command `id`.
-    fn auth_edit(&mut self, id: u64, target: &Target, edit: Edit) -> Result<(), NoticeKind> {
+    /// Apply an OAuth 2.0 auth edit, holding a typed secret for `.env` until the target is
+    /// saved.
+    fn auth_edit(&mut self, target: &Target, edit: Edit) -> Result<(), NoticeKind> {
         // "Move to .env" rewrites the auth the draft holds, moving every literal it has.
         let all = matches!(edit, Edit::MoveAuthSecrets);
         let mut auth = match edit {
@@ -1471,7 +1624,8 @@ impl Actor {
         if !exists {
             return self.edit(target, Edit::Auth(auth));
         }
-        let warnings = auth_secrets::apply(&mut self.collection, target, &mut auth, all).map_err(
+        let held = self.held_names();
+        let moved = auth_secrets::apply(&self.collection, target, &mut auth, all, &held).map_err(
             |message| NoticeKind::Failed {
                 target: Some(target.clone()),
                 message,
@@ -1483,10 +1637,7 @@ impl Actor {
             return Ok(());
         }
         self.edit(target, Edit::Auth(auth))?;
-        if !warnings.is_empty() {
-            let kind = NoticeKind::Warnings(warnings);
-            self.notices.push(Notice { command: id, kind });
-        }
+        self.hold(target, moved);
         Ok(())
     }
 
@@ -1590,6 +1741,8 @@ impl Actor {
                 "Choose a name and folder to save this request",
             ));
         }
+        let written = self.write_held(target)?;
+        let c = &mut self.collection;
         let result = match target {
             Target::Request(path) => c.request_mut(path).ok_or_else(not_found)?.save(),
             Target::Folder(path) => c.folder_file_mut(path).ok_or_else(not_found)?.save(),
@@ -1599,6 +1752,7 @@ impl Actor {
         // A file changed under the draft marks the target changed on disk, after the
         // settle step, so the editor offers its banner instead of a failure notice.
         self.settled(target, result.is_ok());
+        self.finish_held(id, target, written, result.is_ok());
         if result.is_ok() {
             self.drop_orphaned_secrets(id, target, &before);
             self.acknowledge_network_save(own_network);
@@ -1660,10 +1814,7 @@ impl Actor {
         let file = self.network_ack.clone()?;
         let root = self.collection.root().to_path_buf();
         let network = self.collection.file().network();
-        let ctx = self
-            .context
-            .get(&self.collection, self.selected.as_deref(), &self.store)
-            .ok();
+        let ctx = self.draft_context(None).ok();
         let make = |salt: &str| network_snapshot(&network, ctx.as_ref(), salt);
         let mut notice = crate::network_gate::notice_for(&file, &root, &make);
         // Disk is read only when memory differs and holds unsaved edits.
@@ -1696,6 +1847,10 @@ impl Actor {
         let path = self.file_path(target)?;
         let result = self.collection.revert(&path);
         self.settled(target, result.is_ok());
+        // A discarded edit takes its unsaved secrets with it; a failed revert keeps both.
+        if result.is_ok() {
+            self.release(|t| t == target);
+        }
         result.map_err(|e| failed(target, e))
     }
 
@@ -1703,8 +1858,10 @@ impl Actor {
         self.refuse_colliding_secrets(target)?;
         let path = self.file_path(target)?;
         let before = self.saved_secrets(target);
+        let written = self.write_held(target)?;
         let result = self.collection.save_overwrite(&path);
         self.settled(target, result.is_ok());
+        self.finish_held(id, target, written, result.is_ok());
         if result.is_ok() {
             self.drop_orphaned_secrets(id, target, &before);
         }
@@ -1805,6 +1962,7 @@ impl Actor {
         for change in changes {
             if change.item == ItemKind::DotEnv {
                 self.dotenv_seq += 1;
+                self.dotenv_stored_stale = true;
             }
             let Some(what) = self.reloaded(change, names) else {
                 continue;
@@ -1897,6 +2055,42 @@ impl Actor {
         };
         path.ok_or_else(|| NoticeKind::NotFound(target.clone()))
     }
+}
+
+/// A `.env` write done ahead of a save: the files before it, and its warnings.
+struct HeldWrite {
+    backup: apinata_core::DotenvBackup,
+    written: apinata_core::DotenvBackup,
+    warnings: Vec<String>,
+}
+
+/// Where a secret held by `target` ranks in the draft context of `item` (None: collection-wide
+/// settings), higher overriding lower; None when it does not apply there. Only `item` and
+/// what it inherits from count, never what it contains, so planning a folder sends no
+/// request's unsaved value.
+fn held_rank(target: &Target, item: Option<&ItemPath>) -> Option<usize> {
+    let depth = |p: &ItemPath| p.as_str().split('/').count();
+    match (target, item) {
+        (Target::Collection, _) => Some(0),
+        (Target::Folder(p) | Target::Request(p), Some(item)) if is_within(item, p) => {
+            Some(depth(p) * 2 + usize::from(matches!(target, Target::Request(_))))
+        }
+        _ => None,
+    }
+}
+
+/// `values` with the held secret values added, longest first and without repeats, as
+/// `VarContext::secret_values` orders its own.
+fn with_held_values(mut values: Vec<String>, held: Vec<String>) -> Vec<String> {
+    values.extend(held.into_iter().filter(|v| v.chars().count() >= 4));
+    values.sort_by(|a, b| {
+        b.chars()
+            .count()
+            .cmp(&a.chars().count())
+            .then_with(|| a.cmp(b))
+    });
+    values.dedup();
+    values
 }
 
 // The snapshot of `network` as `ctx` resolves it, or as written when no context can be built.

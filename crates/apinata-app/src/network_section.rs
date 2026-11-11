@@ -22,7 +22,9 @@ use gpui_kit::{
 use crate::body_section::collection_relative;
 use crate::command::Edit;
 use crate::kv_table::set_text;
+use crate::network_secrets::env_name;
 use crate::section::SectionEdit;
+use crate::snapshot::{DotenvNames, SecretHome};
 use crate::{style, ui};
 
 /// How the collection picks its proxy, in segment order.
@@ -95,10 +97,20 @@ struct CertRow {
     // The outside answer for the certificate and key texts it was computed from, so a render
     // reads it and only an edited path pays for the filesystem check again.
     outside: RefCell<Option<([String; 2], bool)>>,
+    // Whether its `.env` passphrase is being replaced, so the passphrase input shows.
+    replacing: bool,
     _subs: Vec<Subscription>,
 }
 
 impl CertRow {
+    // Where the passphrase's `.env` value is when it shows the badge rather than its input.
+    fn stored_home(&self, names: &DotenvNames) -> Option<SecretHome> {
+        if self.replacing {
+            return None;
+        }
+        names.home(env_name(&self.cert.passphrase)?)
+    }
+
     fn outside(&self, root: &Path, canonical_root: Option<&Path>) -> bool {
         let [_, certificate, key, _] = pem_texts(&self.cert);
         let mut cache = self.outside.borrow_mut();
@@ -150,6 +162,10 @@ pub struct NetworkSection {
     bypass: Entity<InputState>,
     // The password last loaded or sent; every edit carries it, never half-typed text.
     password_committed: String,
+    // Whether the `.env` password is being replaced, so its input shows.
+    password_replacing: bool,
+    // The `.env` names that are stored or held for the collection, which decide the badges.
+    dotenv: DotenvNames,
     // The port last loaded or typed valid; a refused port shows `port_error` and every edit
     // carries this one instead.
     port_committed: String,
@@ -218,6 +234,8 @@ impl NetworkSection {
             password,
             bypass,
             password_committed: String::new(),
+            password_replacing: false,
+            dotenv: DotenvNames::default(),
             port_committed: String::new(),
             port_error: None,
             loaded_proxy: ProxyConfig::new(PROTOCOLS[0], "", ""),
@@ -530,6 +548,7 @@ impl NetworkSection {
                 inputs: None,
                 draft: false,
                 outside: RefCell::default(),
+                replacing: false,
                 _subs: Vec::new(),
             };
         }
@@ -565,6 +584,7 @@ impl NetworkSection {
             inputs: Some(CertInputs(inputs)),
             draft: false,
             outside: RefCell::default(),
+            replacing: false,
             _subs: subs,
         }
     }
@@ -632,9 +652,22 @@ impl NetworkSection {
                 certificate,
                 private_key: key,
             };
-            // Other fields carry the last committed passphrase, never half-typed text.
+            // Other fields carry the last committed passphrase, never half-typed text. A
+            // stored passphrase stays unless replaced, and a replace left empty keeps it.
             if *state == inputs.0[CertField::Passphrase as usize] {
-                row.cert.passphrase = passphrase;
+                let replacing = std::mem::take(&mut row.replacing);
+                let stored = row.stored_home(&self.dotenv).is_some();
+                let keep = if replacing {
+                    passphrase.is_empty()
+                } else {
+                    stored
+                };
+                if !keep {
+                    row.cert.passphrase = passphrase;
+                }
+                if replacing {
+                    cx.notify();
+                }
             }
         }
         let completed = row.draft && is_complete(&row.cert);
@@ -823,12 +856,62 @@ impl NetworkSection {
     }
 
     // Sends the typed password once per change, as the environment table does for secrets.
+    // A stored password stays unless replaced, and a replace left empty keeps it.
     fn commit_password(&mut self, cx: &mut Context<Self>) {
         let text = self.password.read(cx).value().to_string();
-        if text != self.password_committed {
+        let replacing = std::mem::take(&mut self.password_replacing);
+        let keep = if replacing {
+            text.is_empty()
+        } else {
+            self.password_home().is_some()
+        };
+        if replacing {
+            cx.notify();
+        }
+        if !keep && text != self.password_committed {
             self.password_committed = text;
             self.emit(cx);
         }
+    }
+
+    /// Sets the `.env` names stored or held for the collection, which decide the badges.
+    pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
+        if self.dotenv != names {
+            self.dotenv = names;
+            cx.notify();
+        }
+    }
+
+    // Where the proxy password's `.env` value is when it shows the badge rather than its input.
+    fn password_home(&self) -> Option<SecretHome> {
+        if self.password_replacing {
+            return None;
+        }
+        self.dotenv.home(env_name(&self.password_committed)?)
+    }
+
+    // Opens the proxy password empty and focused for a new value in place of the stored one.
+    fn replace_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.password_replacing = true;
+        let input = self.password.clone();
+        set_text(&input, "", window, cx);
+        input.update(cx, |i, cx| i.focus(window, cx));
+        cx.notify();
+    }
+
+    // Opens row `ix`'s passphrase empty and focused for a new value in place of the stored one.
+    fn replace_passphrase(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.certs.get_mut(ix) else {
+            return;
+        };
+        let Some(inputs) = &row.inputs else {
+            return;
+        };
+        row.replacing = true;
+        let input = inputs.0[CertField::Passphrase as usize].clone();
+        set_text(&input, "", window, cx);
+        input.update(cx, |i, cx| i.focus(window, cx));
+        cx.notify();
     }
 
     // A password typed but not yet committed goes first, since a click does not blur it.
@@ -949,7 +1032,19 @@ impl NetworkSection {
             .child(ui::form_row(
                 "proxy-password-row",
                 "Password",
-                field("proxy-password", &self.password, style::WIDE_INPUT_WIDTH),
+                if let Some(home) = self.password_home() {
+                    ui::stored_secret(
+                        "proxy-password-stored",
+                        "proxy-password-replace",
+                        home,
+                        cx.listener(|this, _, window, cx| this.replace_password(window, cx)),
+                        cx,
+                    )
+                    .into_any_element()
+                } else {
+                    field("proxy-password", &self.password, style::WIDE_INPUT_WIDTH)
+                        .into_any_element()
+                },
             ))
             .child(
                 ui::form_row(
@@ -1096,7 +1191,7 @@ impl NetworkSection {
             .map(|(ix, row)| match &row.inputs {
                 Some(inputs) => v_flex()
                     .gap(style::SPACE_1)
-                    .child(self.pem_row(ix, row.cert.enabled, inputs, window, cx))
+                    .child(self.pem_row(ix, row, inputs, window, cx))
                     .when(
                         row.outside(&self.root, self.canonical_root.as_deref()),
                         |el| el.child(muted_note(("cert-outside", ix), OUTSIDE_NOTICE, cx)),
@@ -1121,7 +1216,7 @@ impl NetworkSection {
     fn pem_row(
         &self,
         ix: usize,
-        enabled: bool,
+        row: &CertRow,
         inputs: &CertInputs,
         window: &Window,
         cx: &mut Context<Self>,
@@ -1148,7 +1243,7 @@ impl NetworkSection {
             .items_center()
             .w_full()
             .child(
-                ui::checkbox(("cert-enabled", ix), enabled)
+                ui::checkbox(("cert-enabled", ix), row.cert.enabled)
                     .tab_stop(false)
                     .on_click(cx.listener(move |this, on: &bool, _, cx| {
                         this.set_cert_enabled(ix, *on, cx)
@@ -1164,7 +1259,23 @@ impl NetworkSection {
             ))
             .child(field("cert-key", key, cx))
             .child(picker("cert-key-pick", "Choose key", CertField::Key, cx))
-            .child(field("cert-passphrase", passphrase, cx))
+            .child(if let Some(home) = row.stored_home(&self.dotenv) {
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(ui::stored_secret(
+                        ("cert-passphrase-stored", ix),
+                        ("cert-passphrase-replace", ix),
+                        home,
+                        cx.listener(move |this, _, window, cx| {
+                            this.replace_passphrase(ix, window, cx)
+                        }),
+                        cx,
+                    ))
+                    .into_any_element()
+            } else {
+                field("cert-passphrase", passphrase, cx).into_any_element()
+            })
             .child(
                 ui::icon_button(
                     ("cert-remove", ix),
@@ -1291,6 +1402,22 @@ impl Render for NetworkSection {
         });
         for input in std::iter::once(&self.password).chain(passphrases) {
             ui::mask_unless_template(input, window, cx);
+        }
+        // Inputs hidden behind the badge keep the stored value, so nothing reads as typed.
+        let mut hidden = Vec::new();
+        if self.password_home().is_some() {
+            hidden.push((self.password.clone(), self.password_committed.clone()));
+        }
+        for row in (self.certs.iter()).filter(|row| row.stored_home(&self.dotenv).is_some()) {
+            if let Some(inputs) = &row.inputs {
+                let input = inputs.0[CertField::Passphrase as usize].clone();
+                hidden.push((input, row.cert.passphrase.clone()));
+            }
+        }
+        for (input, value) in hidden {
+            if input.read(cx).value() != value.as_str() {
+                set_text(&input, &value, window, cx);
+            }
         }
         let this = cx.entity();
         let selected = CHOICES

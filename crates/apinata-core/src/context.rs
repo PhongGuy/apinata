@@ -411,6 +411,22 @@ impl VarContext {
         ctx
     }
 
+    /// A clone that reads `values` as if `<root>/.env` held them, over the file and the
+    /// process environment alike: values the caller will write to `.env` but has not yet.
+    /// They are secret like every `.env` value.
+    pub fn with_dotenv_overrides<I, K, V>(&self, values: I) -> VarContext
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let mut ctx = self.clone();
+        let values = values.into_iter().map(|(k, v)| (k.into(), v.into()));
+        (ctx.process, ctx.dotenv_keys) =
+            with_dotenv_overrides(ctx.process, ctx.dotenv_keys, values.collect());
+        ctx
+    }
+
     /// A clone whose requests that inherit their timeout use `timeout`; `None` means no limit.
     pub fn with_default_timeout(&self, timeout: Option<Duration>) -> VarContext {
         let mut ctx = self.clone();
@@ -1264,6 +1280,23 @@ fn process_namespace(
     let mut process = Vars::new();
     process.insert("env".to_owned(), Value::Object(env));
     Ok((Value::Object(process), dotenv_keys))
+}
+
+/// `process` and `keys` with `overrides` set in `process.env` and counted as `.env` keys.
+fn with_dotenv_overrides(
+    mut process: Value,
+    mut keys: Vec<String>,
+    overrides: Vec<(String, String)>,
+) -> (Value, Vec<String>) {
+    if let Some(env) = process.get_mut("env").and_then(Value::as_object_mut) {
+        for (key, value) in overrides {
+            if !keys.contains(&key) {
+                keys.push(key.clone());
+            }
+            env.insert(key, Value::String(value));
+        }
+    }
+    (process, keys)
 }
 
 /// Why `name` is not among the loaded environments: its file failed to load, or there is none.

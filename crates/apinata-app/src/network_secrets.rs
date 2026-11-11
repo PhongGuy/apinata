@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 /// The base `.env` name of the collection's proxy password.
 pub const PROXY_PASSWORD: &str = "APINATA_PROXY_PASSWORD";
 /// The refusal when git tracks `.env`.
-pub const TRACKED: &str = ".env is tracked by git, so the secret was not saved; untrack it first";
+pub const TRACKED: &str = ".env is tracked by git, so nothing was saved; untrack .env first";
 /// The warning when `.env` was added to `.gitignore`.
 pub const IGNORED: &str = "Added .env to .gitignore";
 
@@ -18,19 +18,25 @@ pub const IGNORED: &str = "Added .env to .gitignore";
 pub const UNQUOTABLE: &str =
     "the secret cannot be stored in .env: it has a line break or all three quote kinds";
 
-/// Applies a network edit to the collection draft; Ok holds warnings, Err a message. On Err
-/// the draft is unchanged, and only an I/O failure partway may leave earlier `.env` or
-/// `.gitignore` writes. Other edits are a bug here.
-pub fn apply(c: &mut Collection, edit: Edit) -> Result<Vec<String>, String> {
+/// Applies a network edit to the collection draft; Ok holds the moved secrets as (name,
+/// value) for `.env`, which the caller writes when the collection is saved. `held` names are
+/// already promised to other unsaved secrets. On Err the draft is unchanged and nothing is
+/// written. Other edits are a bug here.
+pub fn apply(
+    c: &mut Collection,
+    edit: Edit,
+    held: &BTreeSet<String>,
+) -> Result<Vec<(String, String)>, String> {
     if let Edit::HostOverrides(rows) = &edit {
         c.file_mut().set_host_overrides(rows);
         // A bad row is shown on the row itself, so the edit carries no warning.
         return Ok(Vec::new());
     }
     let current = c.file().network();
-    let taken = c
+    let mut taken = c
         .dotenv_keys()
         .map_err(|e| format!("Could not read .env: {e}"))?;
+    taken.extend(held.iter().cloned());
     let all = matches!(edit, Edit::MoveNetworkSecrets);
     let mut moves = Moves::new(literals(&current), all, taken, BTreeSet::new());
 
@@ -74,36 +80,49 @@ pub fn apply(c: &mut Collection, edit: Edit) -> Result<Vec<String>, String> {
     if moves.planned.is_empty() && moves.all {
         return Ok(Vec::new());
     }
-    let warnings = commit(c, &moves)?;
+    check(c, &moves.planned)?;
     if let Some(proxy) = &proxy {
         c.file_mut().set_proxy(proxy);
     }
     if let Some(certificates) = &certificates {
         c.file_mut().set_client_certificates(certificates);
     }
-    Ok(warnings)
+    Ok(moves.planned)
 }
 
-/// Writes the planned moves to `.env`, refusing before any write when a value cannot be
-/// quoted or git tracks `.env`; Ok holds warnings. Nothing planned writes nothing.
-pub(crate) fn commit(c: &mut Collection, moves: &Moves) -> Result<Vec<String>, String> {
-    let mut warnings = Vec::new();
-    if moves.planned.is_empty() {
-        return Ok(warnings);
+/// Refuses `planned` moves that `.env` could not take: a value that cannot be quoted, or a
+/// `.env` that git tracks. Nothing planned passes.
+pub(crate) fn check(c: &Collection, planned: &[(String, String)]) -> Result<(), String> {
+    if planned.is_empty() {
+        return Ok(());
     }
-    if !moves.planned.iter().all(|(_, v)| dotenv_quotable(v)) {
+    if !planned.iter().all(|(_, v)| dotenv_quotable(v)) {
         return Err(UNQUOTABLE.to_owned());
     }
     if git_tracks_dotenv(c.root()) {
         return Err(TRACKED.to_owned());
     }
+    Ok(())
+}
+
+/// Writes `planned` to `.env` after `check`, keeping `.env` out of git; Ok holds warnings.
+/// Nothing planned writes nothing; only an I/O failure partway may leave earlier writes.
+pub(crate) fn write(
+    c: &mut Collection,
+    planned: &[(String, String)],
+) -> Result<Vec<String>, String> {
+    let mut warnings = Vec::new();
+    if planned.is_empty() {
+        return Ok(warnings);
+    }
+    check(c, planned)?;
     let ignored = c
         .ensure_dotenv_ignored()
         .map_err(|e| format!("Could not update .gitignore: {e}"))?;
     if ignored {
         warnings.push(IGNORED.to_owned());
     }
-    for (name, value) in &moves.planned {
+    for (name, value) in planned {
         c.set_dotenv(name, value)
             .map_err(|e| format!("Could not write {name} to .env: {e}"))?;
     }
@@ -118,7 +137,7 @@ pub(crate) struct Moves {
     taken: BTreeSet<String>,
     /// Names the edited values still refer to, which a moved value must not take over.
     referenced: BTreeSet<String>,
-    planned: Vec<(String, String)>,
+    pub(crate) planned: Vec<(String, String)>,
 }
 
 impl Moves {
@@ -185,13 +204,37 @@ pub fn is_template(value: &str) -> bool {
         .is_some_and(|open| value[open + 2..].contains("}}"))
 }
 
-/// The `.env` name a value refers to when it is exactly `{{process.env.NAME}}`.
+/// The `.env` name a value refers to when it is exactly `{{process.env.NAME}}` and NAME is
+/// a portable environment variable name: a letter or `_`, then letters, digits or `_`.
 pub fn env_name(value: &str) -> Option<&str> {
     let name = value.strip_prefix("{{process.env.")?.strip_suffix("}}")?;
-    // The name rule lives in core; the app only adds the template wrapper.
-    apinata_core::variable_name_problem(name)
-        .is_none()
-        .then_some(name)
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    let portable = (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    portable.then_some(name)
+}
+
+/// The `.env` names the secrets of `target`'s draft refer to: its OAuth 2.0 client secret
+/// and password, and for the collection also the proxy password and certificate passphrases.
+pub(crate) fn referenced_names(
+    c: &Collection,
+    target: &crate::command::Target,
+) -> BTreeSet<String> {
+    let mut values = Vec::new();
+    if let Some(apinata_core::AuthSpec::OAuth2(o)) = crate::auth_secrets::current(c, target) {
+        values.extend([o.client_secret, o.password]);
+    }
+    if matches!(target, crate::command::Target::Collection) {
+        let network = c.file().network();
+        values.push(proxy_password(&network.proxy).to_owned());
+        values.extend(network.certificates.into_iter().map(|c| c.passphrase));
+    }
+    values
+        .iter()
+        .filter_map(|v| env_name(v))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// The base `.env` name for the passphrase of certificate row `row`, counted from zero.

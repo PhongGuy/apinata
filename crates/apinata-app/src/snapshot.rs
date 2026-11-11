@@ -227,8 +227,52 @@ pub struct CollectionSnapshot {
     pub context_generation: u64,
     /// Rises whenever `.env` changes on disk; it holds values no other part of the snapshot shows.
     pub dotenv_seq: u64,
+    /// The keys `.env` defines.
+    pub dotenv_stored: Arc<std::collections::BTreeSet<String>>,
+    /// The `.env` names each target's unsaved draft holds a secret for, written when it is saved.
+    pub dotenv_held: Arc<HashMap<Target, std::collections::BTreeSet<String>>>,
     /// What the collection's Network section says about settings changed outside the app.
     pub network_notice: Option<crate::network_gate::Notice>,
+}
+
+impl CollectionSnapshot {
+    /// The `.env` names `target`'s secret fields may show as stored or held.
+    pub fn dotenv_names(&self, target: &Target) -> DotenvNames {
+        DotenvNames {
+            stored: Arc::clone(&self.dotenv_stored),
+            held: self.dotenv_held.get(target).cloned().unwrap_or_default(),
+        }
+    }
+}
+
+/// The `.env` names a target's secret fields know: those `.env` defines, and those its unsaved
+/// draft holds a value for until it is saved.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DotenvNames {
+    /// Keys `.env` defines.
+    pub stored: Arc<std::collections::BTreeSet<String>>,
+    /// Names held for the target's draft.
+    pub held: std::collections::BTreeSet<String>,
+}
+
+impl DotenvNames {
+    /// Where the secret `.env` name `name` lives, or None when it is neither held nor stored.
+    pub fn home(&self, name: &str) -> Option<SecretHome> {
+        if self.held.contains(name) {
+            Some(SecretHome::Held)
+        } else {
+            self.stored.contains(name).then_some(SecretHome::Stored)
+        }
+    }
+}
+
+/// Where a secret field's `.env` value is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SecretHome {
+    /// Held by the unsaved draft; written to `.env` when it is saved.
+    Held,
+    /// In `.env`.
+    Stored,
 }
 
 /// Views from the previous build, reused for every key not touched since.
