@@ -39,6 +39,8 @@ use crate::var_tokens::VarField;
 
 /// The name and value placeholders a table starts with.
 const DEFAULT_PLACEHOLDERS: (&str, &str) = ("Key", "Value");
+/// The content-type placeholder a table starts with.
+const TYPE_HINT: &str = "Content type";
 
 /// The core entry a row was built from, type-erased; always equal, shown as `RowEntry`.
 /// [`same`](RowEntry::same) compares the entries themselves.
@@ -347,6 +349,8 @@ pub struct KvTable {
     locked: bool,
     columns: KvColumns,
     placeholders: (&'static str, &'static str),
+    /// The content-type cells' placeholder.
+    type_hint: &'static str,
     labels: (&'static str, &'static str),
     vars: Option<Arc<VariableSet>>,
     /// The bulk text editor and its change subscription, while bulk mode is on.
@@ -388,12 +392,20 @@ impl KvTable {
         let placeholders = DEFAULT_PLACEHOLDERS;
         KvTable {
             rows: Vec::new(),
-            blank: Self::new_row(Default::default(), Meta::fresh(), placeholders, window, cx),
+            blank: Self::new_row(
+                Default::default(),
+                Meta::fresh(),
+                placeholders,
+                TYPE_HINT,
+                window,
+                cx,
+            ),
             error: None,
             error_name_row: None,
             locked: false,
             columns: KvColumns::PLAIN,
             placeholders,
+            type_hint: TYPE_HINT,
             labels: ("Key", "Value"),
             vars: None,
             bulk: None,
@@ -443,6 +455,21 @@ impl KvTable {
                 .update(cx, |s, cx| s.set_placeholder(name, window, cx));
             row.value
                 .update(cx, |s, cx| s.set_placeholder(value, window, cx));
+        }
+        cx.notify();
+    }
+
+    /// Use `hint` as the placeholder of every content-type cell, the empty row's included.
+    pub fn set_content_type_placeholder(
+        &mut self,
+        hint: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.type_hint = hint;
+        for row in self.rows.iter().chain([&self.blank]) {
+            row.content_type
+                .update(cx, |s, cx| s.set_placeholder(hint, window, cx));
         }
         cx.notify();
     }
@@ -501,6 +528,22 @@ impl KvTable {
             row.meta.files = files;
             self.typed = None;
             self.changed(cx);
+        }
+    }
+
+    /// Put `content_type` in the content-type cell of row `ix`, or of the empty row at
+    /// `rows.len()`, when that cell is blank. Emits nothing; a following edit carries it.
+    pub fn fill_blank_content_type(
+        &mut self,
+        ix: usize,
+        content_type: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(row) = self.row(ix)
+            && row.content_type.read(cx).value().is_empty()
+        {
+            set_text(&row.content_type, content_type, window, cx);
         }
     }
 
@@ -632,7 +675,8 @@ impl KvTable {
                 }
                 None => {
                     let texts = [row.name, row.value, row.content_type, row.description];
-                    let new = Self::new_row(texts, meta, self.placeholders, window, cx);
+                    let hints = self.placeholders;
+                    let new = Self::new_row(texts, meta, hints, self.type_hint, window, cx);
                     self.rows.push(new);
                 }
             }
@@ -648,6 +692,11 @@ impl KvTable {
     /// The value input of row `ix`, or of the empty row at `rows.len()`.
     pub fn value_input(&self, ix: usize) -> Option<&Entity<InputState>> {
         self.row(ix).map(|row| &row.value)
+    }
+
+    /// The content-type input of row `ix`, or of the empty row at `rows.len()`.
+    pub fn content_type_input(&self, ix: usize) -> Option<&Entity<InputState>> {
+        self.row(ix).map(|row| &row.content_type)
     }
 
     fn row(&self, ix: usize) -> Option<&Row> {
@@ -758,6 +807,7 @@ impl KvTable {
         [name, value, content_type, description]: [String; 4],
         meta: Meta,
         (name_hint, value_hint): (&'static str, &'static str),
+        type_hint: &'static str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Row {
@@ -770,7 +820,7 @@ impl KvTable {
         };
         let name = input(name, name_hint);
         let value = input(value, value_hint);
-        let content_type = input(content_type, "Content type");
+        let content_type = input(content_type, type_hint);
         let description = input(description, "Description");
         let subs = [&name, &value, &content_type, &description].map(|input| {
             cx.subscribe_in(
@@ -818,6 +868,7 @@ impl KvTable {
             Default::default(),
             Meta::fresh(),
             self.placeholders,
+            self.type_hint,
             window,
             cx,
         );

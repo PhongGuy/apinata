@@ -139,7 +139,7 @@ pub(crate) fn new_boundary() -> String {
 
 /// The MIME type form-data gives a file part: mime-db's type for the lower-cased extension,
 /// else `application/octet-stream`.
-pub(crate) fn file_type(path: &Path) -> &'static str {
+pub fn file_type(path: &Path) -> &'static str {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(str::to_ascii_lowercase)

@@ -139,12 +139,96 @@ fn a_file_body_picks_one_file_and_selects_one_entry(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(
         last_body(cx, &host),
-        BodySpec::File(vec![sel("a.bin", true), FileEntry::new("b.json")])
+        BodySpec::File(vec![
+            sel("a.bin", true),
+            typed("b.json", "application/json", false)
+        ])
     );
     click(cx, win, ("kv-enabled", 1));
     assert_eq!(
         last_body(cx, &host),
-        BodySpec::File(vec![sel("a.bin", false), sel("b.json", true)])
+        BodySpec::File(vec![
+            sel("a.bin", false),
+            typed("b.json", "application/json", true)
+        ])
+    );
+}
+
+fn typed(path: &str, content_type: &str, selected: bool) -> FileEntry {
+    let mut e = sel(path, selected);
+    e.content_type = content_type.into();
+    e
+}
+
+// Picks `path` for row `ix` of a file body that starts as `files`, and returns the body sent.
+fn pick_file(cx: &mut TestAppContext, files: Vec<FileEntry>, ix: usize, path: &str) -> BodySpec {
+    let (win, host) = body(cx, BodySpec::File(files));
+    click(cx, win, ("kv-pick", ix));
+    let path = PathBuf::from(path);
+    cx.simulate_path_prompt_response(move |_| Some(vec![path]));
+    cx.run_until_parked();
+    last_body(cx, &host)
+}
+
+#[gpui_kit::test]
+fn picking_a_file_fills_a_blank_content_type_from_its_extension(cx: &mut TestAppContext) {
+    assert_eq!(
+        pick_file(cx, vec![FileEntry::new("")], 0, "/c/data.json"),
+        BodySpec::File(vec![typed("data.json", "application/json", false)])
+    );
+}
+
+#[gpui_kit::test]
+fn picking_a_file_on_the_empty_row_fills_its_content_type(cx: &mut TestAppContext) {
+    assert_eq!(
+        pick_file(cx, vec![], 0, "/c/photo.PNG"),
+        BodySpec::File(vec![typed("photo.PNG", "image/png", true)])
+    );
+}
+
+#[gpui_kit::test]
+fn picking_a_file_of_unknown_kind_fills_the_generic_binary_type(cx: &mut TestAppContext) {
+    assert_eq!(
+        pick_file(cx, vec![FileEntry::new("")], 0, "/c/blob.zzzq"),
+        BodySpec::File(vec![typed("blob.zzzq", "application/octet-stream", false)])
+    );
+}
+
+#[gpui_kit::test]
+fn picking_a_file_keeps_a_content_type_the_user_typed(cx: &mut TestAppContext) {
+    assert_eq!(
+        pick_file(
+            cx,
+            vec![typed("old.bin", "text/csv", true)],
+            0,
+            "/c/data.json"
+        ),
+        BodySpec::File(vec![typed("data.json", "text/csv", true)])
+    );
+}
+
+#[gpui_kit::test]
+fn the_file_body_content_type_cell_says_what_a_blank_sends(cx: &mut TestAppContext) {
+    let (_, host) = body(cx, BodySpec::File(vec![FileEntry::new("")]));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let table = s.read_with(cx, |s, _| s.table().clone());
+    let hint = |cx: &mut TestAppContext, ix: usize| {
+        let input = table.read_with(cx, |t, _| t.content_type_input(ix).cloned().unwrap());
+        input.read_with(cx, |i, _| i.presentation().placeholder().to_string())
+    };
+    assert_eq!(hint(cx, 0), "Blank sends an empty header");
+    assert_eq!(hint(cx, 1), "Blank sends an empty header");
+}
+
+#[gpui_kit::test]
+fn a_multipart_content_type_cell_keeps_its_plain_placeholder(cx: &mut TestAppContext) {
+    let (_, host) = body(cx, BodySpec::Multipart(vec![MultipartField::text("f", "")]));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let table = s.read_with(cx, |s, _| s.table().clone());
+    let input = table.read_with(cx, |t, _| t.content_type_input(0).cloned().unwrap());
+    assert_eq!(
+        input.read_with(cx, |i, _| i.presentation().placeholder().to_string()),
+        "Content type"
     );
 }
 
