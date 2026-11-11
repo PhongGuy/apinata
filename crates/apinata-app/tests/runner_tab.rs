@@ -667,7 +667,7 @@ fn option_inputs_hint_with_examples_not_their_labels(cx: &mut TestAppContext) {
             .unwrap();
     frame(cx, s.win);
     let hints = view(cx, &s, tab).read_with(cx, |v, cx| v.option_placeholders(cx));
-    assert_eq!(hints, ["0", "smoke, auth", "slow", "1"]);
+    assert_eq!(hints, ["0", "e.g. smoke, auth", "e.g. slow", "1"]);
 }
 
 #[gpui_kit::test]
