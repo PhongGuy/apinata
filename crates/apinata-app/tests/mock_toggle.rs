@@ -258,3 +258,12 @@ fn on_off_on_in_quick_succession_leaves_exactly_one_server(cx: &mut TestAppConte
     s.ws.update(cx, |w, cx| w.set_mock(&root, false, cx));
     wait_real(cx, |_| refused(addr));
 }
+
+// One short line: what the toggle serves, and that edits wait for a restart.
+#[test]
+fn the_tooltip_is_one_short_line() {
+    assert_eq!(
+        apinata_app::mock_server::MOCK_TIP,
+        "Serve saved examples on 127.0.0.1 (turn off and on to apply edits)"
+    );
+}

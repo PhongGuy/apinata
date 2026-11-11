@@ -14,6 +14,7 @@ use crate::stand_in::StandIn;
 const MENU_GROUPS: [&[&str]; 4] = [
     &[
         "collection.open",
+        "collection.close",
         "collection.new",
         "collection.clone",
         "collection.import",
@@ -134,7 +135,8 @@ pub fn app_menu(
 }
 
 /// Command ids of the entries that act on a collection, which need a real one open.
-pub(crate) const COLLECTION_ONLY: [&str; 6] = [
+pub(crate) const COLLECTION_ONLY: [&str; 7] = [
+    "collection.close",
     "collection.export",
     "collection.export_keep_scripts",
     "collection.export_openapi",

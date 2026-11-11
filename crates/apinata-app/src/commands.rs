@@ -307,7 +307,7 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "collection.import_curl",
-            "Import cURL",
+            "Import curl…",
             Collection,
             shell(ImportCurl),
             &[],
@@ -514,7 +514,7 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "request.set_json_variable",
-            "Set JSON value at caret as variable...",
+            "Set JSON value at caret as variable…",
             Request,
             shell(SetCaretJsonVariable),
             &[],
@@ -811,8 +811,9 @@ pub fn registry() -> Vec<Command> {
             "Zoom in",
             View,
             zoom_targets(ZoomIn),
-            // Linux drops shift on symbol keys, so ctrl+shift+= arrives as `secondary-+`.
-            &["secondary-=", "secondary-+"],
+            // Linux drops shift on symbol keys, so ctrl+shift+= arrives as `secondary-+`. The
+            // later binding wins a tie, so the plain chord comes last and key hints show it.
+            &["secondary-+", "secondary-="],
         ),
         command(
             "view.zoom_out",
@@ -1036,14 +1037,14 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "environment.export",
-            "Export environment…",
+            "Export current environment…",
             Environment,
             shell(ExportEnvironment),
             &[],
         ),
         command(
             "environment.export_all",
-            "Export environments…",
+            "Export all environments…",
             Environment,
             shell(ExportEnvironments),
             &[],
@@ -1059,7 +1060,7 @@ pub fn registry() -> Vec<Command> {
             &["environment"],
             command(
                 "environment.variables_overview",
-                "Variables",
+                "Show all variables",
                 Environment,
                 shell(OpenVariablesOverview),
                 &[],
@@ -1069,7 +1070,7 @@ pub fn registry() -> Vec<Command> {
             &["environment"],
             command(
                 "environment.runtime_variables",
-                "Runtime variables",
+                "Edit runtime variables",
                 Environment,
                 shell(OpenRuntimeVariables),
                 &[],

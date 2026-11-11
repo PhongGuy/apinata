@@ -124,6 +124,7 @@ fn the_scratch_menu_greys_out_collection_only_entries() {
         "Export collection to HTML documentation",
         "Collection settings",
         "Run collection",
+        "Close collection",
     ] {
         assert!(off.contains(&want), "{want} is disabled: {off:?}");
     }

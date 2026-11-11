@@ -3252,6 +3252,13 @@ impl Render for BodyView {
                 },
             )
             .ids(["body-view", "body-edit"])
+            .tooltips([
+                ("body-view-tooltip", "Show the response as received"),
+                (
+                    "body-edit-tooltip",
+                    "Edit a copy; the response stays as received",
+                ),
+            ])
         };
         let binary_toggle = {
             let view = view.clone();

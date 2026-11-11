@@ -691,7 +691,7 @@ fn the_palette_sets_the_caret_node_as_a_variable(cx: &mut TestAppContext) {
     place_caret(cx, &body, text.find("ann").unwrap());
     let entry = palette_items()
         .into_iter()
-        .find(|e| e.label == "Set JSON value at caret as variable...")
+        .find(|e| e.label == "Set JSON value at caret as variable…")
         .expect("in the palette");
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_action(entry.action.boxed_clone(), cx)
