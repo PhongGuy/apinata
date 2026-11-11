@@ -369,6 +369,7 @@ fn today() -> Vec<Triple> {
             "sidebar::ClearFilter",
             "SidebarFilter > Input",
         ),
+        ("down".into(), "sidebar::EnterTree", "SidebarFilter > Input"),
         ("shift-up".into(), "sidebar::ExtendUp", "Sidebar > Tree"),
         ("shift-down".into(), "sidebar::ExtendDown", "Sidebar > Tree"),
         ("delete".into(), "sidebar::DeleteSelected", "Sidebar > Tree"),
