@@ -688,6 +688,17 @@ fn global_environments_from_the_picker_closed_by_its_x_return_to_the_picker(
     );
 }
 
+// The arrow steps from the menu button to the row of `action`: arrows skip greyed rows, and
+// these collections sit in no repository, so its repository rows are greyed.
+fn enabled_menu_row(action: &dyn gpui_kit::Action) -> usize {
+    let off = apinata_app::app_menu::app_menu_disabled(false, false);
+    let items = apinata_app::app_menu::app_menu_items();
+    let ix = (items.iter())
+        .position(|(_, a)| a.partial_eq(action))
+        .expect("in the app menu");
+    items[..ix].iter().filter(|(l, _)| !off.contains(l)).count()
+}
+
 // The keyboard path: Tab to the app menu, arrow down to its Runtime variables row, Enter, then
 // Escape. The menu button held focus before the menu opened, so it gets the ring back.
 #[gpui_kit::test]
@@ -696,10 +707,7 @@ fn runtime_variables_from_the_menu_by_key_ring_the_menu_button_on_escape(cx: &mu
     keyboard_in_tab(cx, &s, "a.yml");
     key_to(cx, s.win, "app-menu");
     press_drawn(cx, s.win, "enter");
-    let row = apinata_app::app_menu::app_menu_items()
-        .iter()
-        .position(|(_, a)| a.partial_eq(&apinata_app::shell::OpenRuntimeVariables))
-        .expect("in the app menu");
+    let row = enabled_menu_row(&apinata_app::shell::OpenRuntimeVariables);
     for _ in 0..=row {
         press_drawn(cx, s.win, "down");
     }
@@ -792,10 +800,7 @@ fn runtime_variables_from_the_menu_by_key_from_the_tree_ring_the_menu_button(
     keyboard_on_tree(cx, &s);
     key_to(cx, s.win, "app-menu");
     press_drawn(cx, s.win, "enter");
-    let row = apinata_app::app_menu::app_menu_items()
-        .iter()
-        .position(|(_, a)| a.partial_eq(&apinata_app::shell::OpenRuntimeVariables))
-        .expect("in the app menu");
+    let row = enabled_menu_row(&apinata_app::shell::OpenRuntimeVariables);
     for _ in 0..=row {
         press_drawn(cx, s.win, "down");
     }
