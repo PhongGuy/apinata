@@ -123,7 +123,11 @@ fn rows_sit_in_their_sections_in_two_shared_columns(cx: &mut TestAppContext) {
             ),
             (
                 "prefs-network",
-                &["pref-verify-tls", "pref-body-cap", "prefs-restart-note"],
+                &[
+                    "pref-verify-tls",
+                    "pref-body-cap",
+                    "pref-verify-tls-restart",
+                ],
             ),
             ("prefs-updates", &["pref-auto-check", "pref-check-now"]),
         ];
@@ -460,7 +464,6 @@ fn long_notes_wrap_and_scroll_wholly_into_view(cx: &mut TestAppContext) {
     let mut one_line = None;
     for id in [
         "updates-disabled",
-        "prefs-restart-note",
         "prefs-proxy-note",
         "prefs-keyboard-note",
     ] {
@@ -596,4 +599,68 @@ fn a_long_preferences_label_wraps_in_its_column(cx: &mut TestAppContext) {
         assert_eq!(label.top(), control.top());
     })
     .unwrap();
+}
+
+/// The text the last frame painted inside element `id`, in paint order.
+fn drawn_text_in(w: &gpui_kit::Window, id: &str) -> Vec<String> {
+    let id = gpui_kit::ElementId::Name(id.to_string().into());
+    gpui_kit::base::test_support::texts(w)
+        .into_iter()
+        .filter(|t| t.path().contains(&id))
+        .map(|t| t.text().to_string())
+        .collect()
+}
+
+// The response size limit says what it does in plain words. The row label is plain text the
+// window does not report, so the search, which matches the label as drawn, reads it; the old
+// name still finds the row.
+#[gpui_kit::test]
+fn the_response_size_limit_reads_in_plain_words(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    for query in [
+        "Largest response to keep (MB, blank for no limit)",
+        "body cap",
+    ] {
+        replace_input(cx, s.win, None, "prefs-search", query);
+        frame(cx, s.win);
+        assert!(present(cx, s.win, "pref-body-cap"), "{query}");
+        assert!(!present(cx, s.win, "pref-verify-tls"), "{query}");
+    }
+}
+
+// Each network row that waits for the next start says so beside its own control; the rows
+// that apply at once do not.
+#[gpui_kit::test]
+fn network_rows_that_wait_for_a_restart_say_so_beside_the_control(cx: &mut TestAppContext) {
+    const RESTART: &str = "Takes effect after restart";
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let rows = [
+        ("pref-verify-tls", true),
+        ("pref-body-cap", true),
+        ("pref-request-timeout", false),
+        ("pref-http-version", true),
+        ("pref-proxy-mode", true),
+        ("pref-ca-file", true),
+        ("pref-keep-default-cas", true),
+        ("pref-store-cookies", false),
+        ("pref-send-cookies", false),
+    ];
+    for (row, waits) in rows {
+        prefs_reveal(cx, &s, row);
+        let drawn = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                drawn_text_in(w, row)
+            })
+            .unwrap();
+        assert_eq!(
+            drawn.iter().any(|t| t == RESTART),
+            waits,
+            "{row}: {drawn:?}"
+        );
+    }
 }
