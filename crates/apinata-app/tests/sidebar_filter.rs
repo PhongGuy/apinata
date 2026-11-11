@@ -106,3 +106,26 @@ fn escape_clears_the_filter_then_returns_focus_to_the_tree(cx: &mut TestAppConte
         "the second Escape moves focus to the tree"
     );
 }
+
+// Down in the filter moves into the tree on its first visible row, whatever was selected before.
+#[gpui_kit::test]
+fn down_in_the_filter_moves_to_the_first_visible_row(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    let tree = h.view.read_with(cx, |s, _| s.tree().clone());
+    focus_tree(cx, &h);
+    cx.simulate_keystrokes(h.win, "down");
+    cx.run_until_parked();
+    assert_ne!(tree.read_with(cx, |t, _| t.selected_index()), Some(0));
+    type_filter(cx, &h, "LIST");
+    cx.simulate_keystrokes(h.win, "down");
+    cx.run_until_parked();
+    let filter = h.view.read_with(cx, |s, _| s.filter().clone());
+    let in_filter = cx
+        .update_window(h.win, |_, w, cx| filter.focus_handle(cx).is_focused(w))
+        .unwrap();
+    assert!(!in_filter, "Down leaves the filter");
+    assert_eq!(filter.read_with(cx, |i, _| i.value().to_string()), "LIST");
+    assert_eq!(tree.read_with(cx, |t, _| t.selected_index()), Some(0));
+    frame(cx, h.win);
+    assert!(ring_on(cx, h.win, "sidebar-tree"), "the tree has focus");
+}

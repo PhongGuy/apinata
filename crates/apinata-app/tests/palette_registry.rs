@@ -51,6 +51,7 @@ const NOT_LISTED: &[&str] = &[
     "sidebar::PreviewSelected",
     "sidebar::LeaveTree",
     "sidebar::ClearFilter",
+    "sidebar::EnterTree",
     "sidebar::ClearSelection",
     "sidebar::ExtendUp",
     "sidebar::ExtendDown",

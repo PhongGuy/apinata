@@ -23,8 +23,8 @@ use crate::preferences::{
 };
 use crate::shortcuts::{Overrides, effective};
 use crate::sidebar::{
-    ClearFilter, ClearSelection, DeleteSelected, ExtendDown, ExtendUp, FILTER_CONTEXT, LeaveTree,
-    OpenSelected, PreviewSelected, RenameSelected, RunSelected,
+    ClearFilter, ClearSelection, DeleteSelected, EnterTree, ExtendDown, ExtendUp, FILTER_CONTEXT,
+    LeaveTree, OpenSelected, PreviewSelected, RenameSelected, RunSelected,
 };
 use crate::ui::{
     ActivateSegment, DIALOG_FOOTER_CONTEXT, DIALOG_SELECT_CONTEXT, NextSegment, OpenSelect,
@@ -176,6 +176,12 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
             secondary!("enter"),
             NoAction,
             Some("Sidebar > Tree > Input"),
+        ),
+        // Down in the filter walks on into the tree, as in most filter-a-list fields.
+        KeyBinding::new(
+            "down",
+            EnterTree,
+            Some(format!("{FILTER_CONTEXT} > Input").as_str()),
         ),
         // Commits from the Changes dialog's message field, where plain Ctrl+Enter would
         // otherwise insert a newline.

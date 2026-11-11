@@ -84,6 +84,8 @@ actions!(
         FocusFilter,
         /// Clears the filter, or moves focus to the tree once it is empty.
         ClearFilter,
+        /// Moves focus from the filter to the tree and selects its first row.
+        EnterTree,
         /// Starts renaming the selected folder, request or example.
         RenameSelected,
         /// Clones the selected request.
@@ -624,6 +626,15 @@ impl Sidebar {
         self.filter.update(cx, |i, cx| i.set_value("", window, cx));
         self.filter_text.clear();
         self.rebuild(window, cx);
+    }
+
+    /// Down in the filter: focuses the tree on its first shown row, so a filtered list is
+    /// walked from the top; with no row shown it does nothing.
+    pub fn enter_tree(&mut self, _: &EnterTree, window: &mut Window, cx: &mut Context<Self>) {
+        let first = self.tree.read(cx).entry(0).map(|e| e.item().id.clone());
+        if let Some(id) = first {
+            self.focus_row(&id, window, cx);
+        }
     }
 
     /// Starts renaming the selected row, if any, unless a rename is already under way.
@@ -2564,6 +2575,7 @@ impl Render for Sidebar {
             .on_action(cx.listener(Self::paste_action))
             .on_action(cx.listener(Self::delete_selected))
             .on_action(cx.listener(Self::clear_filter))
+            .on_action(cx.listener(Self::enter_tree))
             .on_action(cx.listener(Self::run_selected))
             .on_action(cx.listener(Self::open_selected))
             .on_action(cx.listener(Self::preview_selected))
