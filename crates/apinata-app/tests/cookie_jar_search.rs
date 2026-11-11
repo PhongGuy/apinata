@@ -183,7 +183,7 @@ fn a_revealed_value_stays_revealed_across_a_search_and_a_delete_above(cx: &mut T
         .unwrap();
     frame(cx, win);
     assert_eq!(shown_names(cx, &view), ["b", "example"]);
-    assert_eq!(value(cx, 0), "[redacted]");
+    assert_eq!(value(cx, 0), apinata_app::response_pane::NAME_MASK);
     assert_eq!(
         value(cx, 1),
         "1",

@@ -465,11 +465,11 @@ fn a_typed_cookie_form_then_save_inserts_it(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_refused_cookie_form_keeps_the_jar_with_its_errors(cx: &mut TestAppContext) {
     let (s, _col, exec) = jar(cx);
-    add_cookie(cx, &s, "");
+    add_cookie(cx, &s, "a;b");
     close(cx, s.win, Close::Escape);
     answer_confirm(cx, "confirm-save");
     assert_eq!(drawn(cx, s.win, JAR), (false, true), "the refusal keeps it");
-    assert!(present(cx, s.win, "jar-form-error"));
+    assert!(present(cx, s.win, "jar-form-value-error"));
     assert_eq!(names(&exec), ["k"]);
 }
 

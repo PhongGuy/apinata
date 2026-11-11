@@ -190,6 +190,7 @@ mod console_dock_tabs;
 mod convert_kind;
 mod cookie_jar;
 mod cookie_jar_form_focus;
+mod cookie_jar_form_layout;
 mod cookie_jar_search;
 mod cookie_prefs;
 mod copy_curl;

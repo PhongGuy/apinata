@@ -19,11 +19,11 @@ use gpui_kit::{
     TestSupportExt, Window, div, px,
 };
 
-use crate::body_view::MASKED;
 use crate::executor::{save_cookies, shared};
 use crate::import_report::failure_text;
 use crate::kv_grid::{ActionShow, action_slot};
-use crate::style::{SHORT_FORM_LABEL_WIDTH, SPACE_2};
+use crate::response_pane::NAME_MASK;
+use crate::style::{SHORT_FORM_LABEL_WIDTH, SPACE_2, TEXT_SMALL};
 use crate::ui::{self, LockButton as _};
 
 /// How often the dialog relists while the saved jar is still loading.
@@ -36,23 +36,41 @@ pub fn parse_expires(text: &str, now: SystemTime) -> Result<Option<SystemTime>, 
     if text.is_empty() {
         return Ok(None);
     }
-    // A local time in a DST gap has no instant and reads as unparseable; an overlap takes
-    // the earlier one.
-    let local = NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M")
-        .ok()
-        .and_then(|t| Local.from_local_datetime(&t).earliest())
-        .map(SystemTime::from);
-    let at = local
+    let at = local_minutes(text)
         .or_else(|| {
             DateTime::parse_from_rfc3339(text)
                 .ok()
                 .map(SystemTime::from)
         })
-        .ok_or_else(|| "Expires must be a local YYYY-MM-DD HH:MM or an RFC 3339 time".to_owned())?;
+        .ok_or_else(|| format!("Enter a date and time like {EXPIRES_EXAMPLE}"))?;
     if at <= now {
         return Err("Expires must be in the future".into());
     }
     Ok(Some(at))
+}
+
+// The local date and time the Expires field shows as its example.
+const EXPIRES_EXAMPLE: &str = "2027-01-01 12:00";
+
+// The instant a local `YYYY-MM-DD HH:MM` names. A time in a DST gap has none; an overlap
+// takes the earlier one.
+fn local_minutes(text: &str) -> Option<SystemTime> {
+    NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M")
+        .ok()
+        .and_then(|t| Local.from_local_datetime(&t).earliest())
+        .map(SystemTime::from)
+}
+
+// A saved expiry as the form shows it: the short local form a person types when that reads
+// back as the same instant, else local RFC 3339 with seconds, so an untouched field saves it.
+fn expires_text(at: SystemTime) -> String {
+    let local = DateTime::<Local>::from(at);
+    let short = local.format("%Y-%m-%d %H:%M").to_string();
+    if local_minutes(&short) == Some(at) {
+        short
+    } else {
+        local.to_rfc3339_opts(SecondsFormat::Secs, false)
+    }
 }
 
 /// One text field of the add/edit form.
@@ -81,8 +99,11 @@ struct CookieForm {
     secure: bool,
     http_only: bool,
     error: Option<String>,
-    // The input ids the errors are about; every refused field is marked, not only the first.
-    error_fields: Vec<&'static str>,
+    // Each refused field's input id and its message, drawn under that field; every refused
+    // field is marked, not only the first.
+    field_errors: Vec<(&'static str, String)>,
+    // Refusals no field owns, drawn above the buttons.
+    loose_errors: Vec<String>,
     // What the fields and flags held when the form opened, to tell an edit from a glance.
     opened: (Vec<String>, bool, bool),
     // Enter in any field saves, as the Save button does.
@@ -217,11 +238,7 @@ impl CookieJarView {
         let c = editing.as_ref();
         let mut input =
             |value: String| cx.new(|cx| InputState::new(window, cx).default_value(value));
-        // An existing expiry shows as local RFC 3339 with seconds, so an untouched field
-        // saves the same instant.
-        let expires = c
-            .and_then(|c| c.expires)
-            .map(|at| DateTime::<Local>::from(at).to_rfc3339_opts(SecondsFormat::Secs, false));
+        let expires = c.and_then(|c| c.expires).map(expires_text);
         let domain = input(text(c, |c| c.domain.clone(), ""));
         let path = input(text(c, |c| c.path.clone(), "/"));
         let name = input(text(c, |c| c.name.clone(), ""));
@@ -250,7 +267,8 @@ impl CookieJarView {
             secure: c.is_some_and(|c| c.secure),
             http_only: c.is_some_and(|c| c.http_only),
             error: None,
-            error_fields: Vec::new(),
+            field_errors: Vec::new(),
+            loose_errors: Vec::new(),
             _enter: enter,
             editing,
         };
@@ -284,6 +302,15 @@ impl CookieJarView {
         self.form.as_ref()?.error.as_deref()
     }
 
+    /// The dialog's title: "Add cookie" or "Edit cookie" while the form is open, else "Cookies".
+    pub fn title(&self) -> &'static str {
+        match &self.form {
+            None => "Cookies",
+            Some(f) if f.editing.is_some() => "Edit cookie",
+            Some(_) => "Add cookie",
+        }
+    }
+
     /// Validates and inserts; on success closes the form, relists, saves in the background
     /// and moves focus to the search field, so Escape still reaches the dialog.
     pub fn submit_form(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -296,11 +323,8 @@ impl CookieJarView {
         let read = |input: &Entity<InputState>| input.read(cx).value().to_string();
         let value = read(&form.value);
         // Every problem is collected so each bad field is marked at once: the form's own
-        // checks (a value, a readable expiry) and then the jar's field checks.
+        // expiry check and then the jar's field checks. An empty value is a valid cookie.
         let mut problems: Vec<(Option<&'static str>, String)> = Vec::new();
-        if value.trim().is_empty() {
-            problems.push((Some("jar-form-value"), "A value is required".to_owned()));
-        }
         let expires = match parse_expires(&read(&form.expires), SystemTime::now()) {
             Ok(expires) => expires,
             Err(e) => {
@@ -324,7 +348,7 @@ impl CookieJarView {
                 CookieError::Invalid { field, .. } => field_id(field),
                 _ => None,
             };
-            // The value rule above already said the value is missing.
+            // The expiry check above already spoke for its field.
             if !problems.iter().any(|(f, _)| f.is_some() && *f == field) {
                 problems.push((field, e.to_string()));
             }
@@ -339,13 +363,21 @@ impl CookieJarView {
             problems.push((field, e.to_string()));
         }
         if !problems.is_empty() {
-            form.error_fields = problems.iter().filter_map(|(f, _)| *f).collect();
             // Core's messages start lowercase; each line is an alert of its own.
-            let messages: Vec<_> = problems
+            let problems: Vec<_> = problems
                 .into_iter()
-                .map(|(_, m)| failure_text(&m))
+                .map(|(f, m)| (f, failure_text(&m)))
                 .collect();
+            let messages: Vec<_> = problems.iter().map(|(_, m)| m.as_str()).collect();
             form.error = Some(messages.join("\n"));
+            form.field_errors = problems
+                .iter()
+                .filter_map(|(f, m)| f.map(|f| (f, m.clone())))
+                .collect();
+            form.loose_errors = problems
+                .into_iter()
+                .filter_map(|(f, m)| f.is_none().then_some(m))
+                .collect();
             cx.notify();
             return false;
         }
@@ -474,7 +506,7 @@ impl CookieJarView {
         let flags: Vec<&str> = [
             (c.secure, "Secure"),
             (c.http_only, "HttpOnly"),
-            (c.host_only, "HostOnly"),
+            (c.host_only, "This host only"),
         ]
         .into_iter()
         .filter_map(|(on, label)| on.then_some(label))
@@ -487,7 +519,7 @@ impl CookieJarView {
         } else if revealed {
             c.value.clone().into()
         } else {
-            MASKED.into()
+            NAME_MASK.into()
         };
         let eye = (!c.value.is_empty()).then(|| {
             let (id, icon, words) = if revealed {
@@ -532,7 +564,14 @@ impl CookieJarView {
                     )
                     .child(c.path.clone())
                     .child(expiry_label(c.expires, now))
-                    .child(flags.join(" ")),
+                    .child({
+                        let flags: SharedString = flags.join(", ").into();
+                        div()
+                            .id(("jar-flags", ix))
+                            .test_support()
+                            .aria_label(flags.clone())
+                            .child(flags)
+                    }),
             )
             .child(
                 Button::new(("jar-edit", ix))
@@ -563,29 +602,55 @@ impl CookieJarView {
         // An edit keeps the cookie's identity, so its domain, path and name are locked. The
         // element sets the state's read-only flag on each render.
         let locked = form.editing.is_some();
+        let danger = cx.theme().danger;
+        // A refused field's message sits right under its input, in the control column.
         let field = |id: &'static str, label: &'static str, input: &Entity<InputState>, lock| {
+            let error = form
+                .field_errors
+                .iter()
+                .find(|(f, _)| *f == id)
+                .map(|(_, m)| SharedString::from(m.clone()));
+            let control = ui::invalid_input(
+                ui::lock_input(Input::new(input), input, lock, window, cx)
+                    .id(id)
+                    .w_full()
+                    .bg(ui::field_fill(lock, cx)),
+                div().w_full(),
+                input,
+                error.is_some(),
+                (
+                    SharedString::from(format!("{id}-danger-ring")).into(),
+                    SharedString::from(format!("{id}-invalid-icon")).into(),
+                ),
+                window,
+                cx,
+            );
             ui::form_row(
                 format!("{id}-row"),
                 label,
-                ui::invalid_input(
-                    ui::lock_input(Input::new(input), input, lock, window, cx)
-                        .id(id)
-                        .w_full()
-                        .bg(ui::field_fill(lock, cx)),
-                    div().w_full(),
-                    input,
-                    form.error_fields.contains(&id),
-                    (
-                        SharedString::from(format!("{id}-danger-ring")).into(),
-                        SharedString::from(format!("{id}-invalid-icon")).into(),
-                    ),
-                    window,
-                    cx,
-                ),
+                v_flex()
+                    .w_full()
+                    .child(control)
+                    .when_some(error, |c, error| {
+                        c.child(
+                            div()
+                                .id(SharedString::from(format!("{id}-error")))
+                                .test_support()
+                                .aria_label(error.clone())
+                                .text_size(TEXT_SMALL)
+                                .text_color(danger)
+                                .child(error),
+                        )
+                    }),
             )
             .label_width(SHORT_FORM_LABEL_WIDTH)
         };
-        let offset = Local::now().format("%:z");
+        let hint: SharedString = format!(
+            "Leave Expires blank for a session cookie, or enter a local date and time like \
+             {EXPIRES_EXAMPLE} (UTC{}).",
+            Local::now().format("%:z")
+        )
+        .into();
         v_flex()
             .id("jar-form")
             .test_support()
@@ -595,10 +660,14 @@ impl CookieJarView {
             .child(field("jar-form-name", "Name", &form.name, locked))
             .child(field("jar-form-value", "Value", &form.value, false))
             .child(field("jar-form-expires", "Expires", &form.expires, false))
-            .child(div().text_color(cx.theme().muted_foreground).child(format!(
-                "Expires: blank for a session cookie, else YYYY-MM-DD HH:MM in local \
-                         time (UTC{offset}) or RFC 3339."
-            )))
+            .child(
+                div()
+                    .id("jar-form-expires-hint")
+                    .test_support()
+                    .aria_label(hint.clone())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(hint),
+            )
             .child(
                 h_flex()
                     .gap_2()
@@ -623,13 +692,17 @@ impl CookieJarView {
                             })),
                     ),
             )
-            .when_some(form.error.clone(), |el, error| {
+            .when(!form.loose_errors.is_empty(), |el| {
                 el.child(
                     v_flex()
                         .id("jar-form-error")
                         .test_support()
-                        .text_color(cx.theme().danger)
-                        .children(error.lines().map(|line| div().child(line.to_owned()))),
+                        .text_color(danger)
+                        .children(
+                            form.loose_errors
+                                .iter()
+                                .map(|line| div().child(line.clone())),
+                        ),
                 )
             })
             .child(
@@ -665,21 +738,19 @@ impl Render for CookieJarView {
                     .child("No request executor is available."),
             );
         }
-        // The form renders first, so its inputs stay in view above a long list.
-        let mut root = match &self.form {
-            Some(form) => root.child(self.form_view(form, window, cx)),
-            None => root.child(
-                h_flex().child(
-                    Button::new("jar-add")
-                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                        .label("Add cookie")
-                        .lock(!self.editable(), cx)
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_form(None, window, cx)),
-                        ),
-                ),
+        // The open form stands alone, its Save and Cancel last, as the dialog's title says.
+        if let Some(form) = &self.form {
+            return root.child(self.form_view(form, window, cx));
+        }
+        let mut root = root.child(
+            h_flex().child(
+                Button::new("jar-add")
+                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                    .label("Add cookie")
+                    .lock(!self.editable(), cx)
+                    .on_click(cx.listener(|this, _, window, cx| this.open_form(None, window, cx))),
             ),
-        };
+        );
         root = root.child(ui::padded_input(
             Input::new(&self.search)
                 .id("jar-search")
@@ -768,15 +839,20 @@ pub fn open_cookie_jar(window: &mut Window, cx: &mut App) -> Entity<CookieJarVie
     let body = view.clone();
     let scroll = ScrollHandle::new();
     let opened = guard.clone();
-    window.open_dialog(cx, move |d, window, _| {
+    window.open_dialog(cx, move |d, window, cx| {
         // Enter never closes the jar: a form field saves its cookie, and nothing else is lost.
         // The body scrolls inside the room above the status bar, so a full jar never lifts
         // the dialog over the title bar. The capped box scrolls itself: the kit's scrollable
         // fills its box by percentage, which a box capped only by a maximum never resolves.
         let room = crate::dialog_frame::titled_body_room(window);
+        let title = body.read(cx).title();
         ui::with_close(
             guard.apply(crate::dialog_frame::place(d, window)),
-            "Cookies",
+            div()
+                .id("jar-title")
+                .test_support()
+                .aria_label(title)
+                .child(title),
         )
         .on_ok(|_, _, _| false)
         .child(
