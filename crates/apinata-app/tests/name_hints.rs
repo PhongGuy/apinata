@@ -117,6 +117,16 @@ fn same_named_collections_show_the_part_of_their_folder_that_differs() {
     assert_eq!(tags[c], "Demo");
 }
 
+#[cfg(windows)]
+#[test]
+fn collections_on_two_drives_name_their_drives() {
+    let a = Path::new(r"C:\x\api");
+    let b = Path::new(r"D:\x\api");
+    let got = collection_hints(&[(a, "Api"), (b, "Api")]);
+    assert_ne!(got[0], got[1], "{got:?}");
+    assert!(got.iter().all(Option::is_some), "{got:?}");
+}
+
 #[gpui_kit::test]
 fn the_title_bar_and_switcher_tell_two_shop_collections_apart(cx: &mut TestAppContext) {
     let tmp = tempfile::tempdir().unwrap();

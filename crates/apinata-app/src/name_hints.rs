@@ -99,7 +99,7 @@ pub fn collection_hints(collections: &[(&Path, &str)]) -> Vec<Option<String>> {
         .map(|&(root, name)| Shown {
             name: name.to_owned(),
             place: (root.components())
-                .filter(|c| matches!(c, Component::Normal(_)))
+                .filter(|c| matches!(c, Component::Normal(_) | Component::Prefix(_)))
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
                 .collect(),
             file: None,
