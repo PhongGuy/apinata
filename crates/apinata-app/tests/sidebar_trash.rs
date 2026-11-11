@@ -1147,3 +1147,49 @@ fn the_undo_button_follows_a_rebound_key(cx: &mut TestAppContext) {
     frame(cx, h.win);
     assert_eq!(undo_tooltip(cx, &h), Some("Undo (Alt+U)".to_owned()));
 }
+
+// A pointer resting on the toast keeps it up past the timeout; once it leaves, the toast gets a
+// fresh countdown rather than closing at once.
+#[gpui_kit::test]
+fn a_hovered_undo_toast_outlives_the_timeout(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    cx.update_window(h.win, |_, w, cx| w.hover("undo-delete", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(15));
+    frame(cx, h.win);
+    assert!(
+        has(cx, &h, "undo-delete"),
+        "kept while the pointer is on it"
+    );
+    cx.update_window(h.win, |_, w, cx| w.hover("sidebar-view", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(5));
+    frame(cx, h.win);
+    assert!(
+        has(cx, &h, "undo-delete"),
+        "a fresh countdown after the pointer leaves"
+    );
+    cx.executor().advance_clock(Duration::from_secs(6));
+    frame(cx, h.win);
+    cx.executor().advance_clock(Duration::from_secs(1));
+    frame(cx, h.win);
+    assert!(
+        !has(cx, &h, "undo-delete"),
+        "closes once that countdown ends"
+    );
+}
+
+#[gpui_kit::test]
+fn a_pointer_anywhere_on_the_toast_keeps_it(cx: &mut TestAppContext) {
+    let (h, _bin) = with_trash(cx);
+    select_and_delete(cx, &h, "a.yml");
+    cx.update_window(h.win, |_, w, cx| w.hover("undo-toast-hover", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(15));
+    frame(cx, h.win);
+    assert!(
+        has(cx, &h, "undo-delete"),
+        "kept while the pointer is on the toast"
+    );
+}
