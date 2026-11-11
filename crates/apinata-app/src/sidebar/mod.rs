@@ -294,8 +294,8 @@ struct Rename {
     example: Option<usize>,
     // A folder this view just created, which a cancelled naming removes again.
     fresh: bool,
-    // Why Enter refused the typed name, until the name is edited.
-    error: Option<String>,
+    // The name Enter refused and why, until the name is edited.
+    error: Option<(SharedString, String)>,
     input: Entity<InputState>,
     _subscription: Subscription,
 }
@@ -1096,7 +1096,7 @@ impl Sidebar {
 
     /// Why the typed name was refused, while the rename shows it.
     pub fn rename_error(&self) -> Option<&str> {
-        self.rename.as_ref()?.error.as_deref()
+        Some(self.rename.as_ref()?.error.as_ref()?.1.as_str())
     }
 
     // The refusal for a name a sibling of the same kind already shows, which would leave two
@@ -1143,7 +1143,7 @@ impl Sidebar {
                 if let Some(r) = &mut self.rename
                     && let Some(error) = clash
                 {
-                    r.error = Some(error);
+                    r.error = Some((r.input.read(cx).value(), error));
                     cx.notify();
                     return;
                 }
@@ -1172,9 +1172,13 @@ impl Sidebar {
                 }
                 cx.notify();
             }
+            // A driver's Enter echoes its text into the input, which changes nothing; only
+            // a real edit answers the refusal.
             InputEvent::Change => {
                 if let Some(r) = &mut self.rename
-                    && r.error.take().is_some()
+                    && r.error
+                        .take_if(|(refused, _)| *refused != r.input.read(cx).value())
+                        .is_some()
                 {
                     cx.notify();
                 }
@@ -2530,7 +2534,11 @@ impl Render for Sidebar {
                 Some(ix) => request.map(|n| model::example_id(n.collection, &r.path, ix)),
                 None => request.map(|n| n.id.clone()),
             };
-            (id, r.input.clone(), r.error.clone().map(SharedString::from))
+            (
+                id,
+                r.input.clone(),
+                r.error.clone().map(|(_, e)| SharedString::from(e)),
+            )
         });
         div()
             .id("sidebar-view")
