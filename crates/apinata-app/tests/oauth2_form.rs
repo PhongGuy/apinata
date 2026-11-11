@@ -32,6 +32,20 @@ fn auth_editor(
     AnyWindowHandle,
     Entity<TokenPanel>,
 ) {
+    auth_editor_sized(cx, auth, 2400.)
+}
+
+// `auth_editor` in a window `height` pixels tall.
+fn auth_editor_sized(
+    cx: &mut TestAppContext,
+    auth: &str,
+    height: f32,
+) -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    AnyWindowHandle,
+    Entity<TokenPanel>,
+) {
     http_ready(cx);
     let file = format!("{}  auth:\n{auth}", request("a", "http://x.test/r"));
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
@@ -39,7 +53,7 @@ fn auth_editor(
     let (win, view) = editor_for(cx, &ws, &root, "a.yml", false);
     cx.simulate_window_resize(
         win,
-        gpui_kit::size(gpui_kit::px(1200.), gpui_kit::px(2400.)),
+        gpui_kit::size(gpui_kit::px(1200.), gpui_kit::px(height)),
     );
     cx.update_window(win, |_, w, cx| {
         w.click(("section", Section::Auth as usize), cx);
@@ -81,6 +95,141 @@ fn get_token_marks_every_missing_field_at_once(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn get_token_scrolls_the_first_missing_field_into_view(cx: &mut TestAppContext) {
+    let (_col, _state, win, panel) = auth_editor_sized(cx, BLANK, 600.);
+    cx.update_window(win, |_, w, cx| {
+        let down =
+            gpui_kit::ScrollDelta::Pixels(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(-5000.)));
+        w.scroll("section-body", down, cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let outside = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let body = w.find("section-body").bounds();
+            let field = w.find("oauth2-access-token-url").bounds();
+            (field.top() < body.top() || field.bottom() > body.bottom()).then_some((field, body))
+        })
+        .unwrap()
+    };
+    assert!(outside(cx).is_some(), "the form is scrolled past the field");
+    cx.update_window(win, |_, w, cx| w.click("oauth2-get-token", cx))
+        .unwrap();
+    settle(cx, &panel);
+    for _ in 0..4 {
+        frame(cx, win);
+    }
+    assert!(present(cx, win, "oauth2-token-error"));
+    assert_eq!(
+        outside(cx),
+        None,
+        "the first missing field stays out of view"
+    );
+}
+
+#[gpui_kit::test]
+fn a_folder_get_token_scrolls_the_first_missing_field_into_view(cx: &mut TestAppContext) {
+    use apinata_app::config_editor::{ConfigEditor, ConfigSection, ConfigTarget};
+    http_ready(cx);
+    let folder = format!("info:\n  name: F\n  type: folder\n  seq: 1\nrequest:\n  auth:\n{BLANK}");
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("f/folder.yml", &folder),
+        ("f/a.yml", &request("a", "http://x.test/r")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    support::init(cx);
+    cx.update(apinata_app::keymap::init);
+    let (win, view) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| ConfigEditor::new(ws, root, ConfigTarget::Folder(ip("f")), w, cx))
+            })
+        })
+        .unwrap();
+    cx.simulate_window_resize(win, gpui_kit::size(gpui_kit::px(1200.), gpui_kit::px(600.)));
+    view.update(cx, |e, cx| e.set_section(ConfigSection::Auth, cx));
+    cx.run_until_parked();
+    let editor = view.read_with(cx, |v, cx| v.auth().read(cx).oauth2().clone());
+    let panel = editor
+        .read_with(cx, |e, _| e.token_panel().cloned())
+        .expect("a token panel");
+    settle(cx, &panel);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        let down =
+            gpui_kit::ScrollDelta::Pixels(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(-5000.)));
+        w.scroll("config-body", down, cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let outside = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let body = w.find("config-body").bounds();
+            let field = w.find("oauth2-access-token-url").bounds();
+            (field.top() < body.top() || field.bottom() > body.bottom()).then_some((field, body))
+        })
+        .unwrap()
+    };
+    assert!(outside(cx).is_some(), "the form is scrolled past the field");
+    cx.update_window(win, |_, w, cx| w.click("oauth2-get-token", cx))
+        .unwrap();
+    settle(cx, &panel);
+    for _ in 0..4 {
+        frame(cx, win);
+    }
+    assert_eq!(
+        outside(cx),
+        None,
+        "the first missing field stays out of view"
+    );
+}
+
+#[gpui_kit::test]
+fn every_missing_field_wears_the_danger_ring(cx: &mut TestAppContext) {
+    let (_col, _state, win, panel) = auth_editor(cx, BLANK);
+    panel.update(cx, |p, cx| p.get_token(cx));
+    settle(cx, &panel);
+    frame(cx, win);
+    let danger = cx.update(|cx| {
+        use gpui_kit::component::ActiveTheme as _;
+        cx.theme().danger
+    });
+    for ring in [
+        "oauth2-access-token-url-danger-ring",
+        "oauth2-client-id-danger-ring",
+    ] {
+        assert!(present(cx, win, ring), "{ring} is not drawn");
+        let look = looks(cx, win, ring);
+        assert!(
+            look.iter().any(|l| l.starts_with(&format!("{danger:?}"))),
+            "{ring} paints {look:?}"
+        );
+    }
+    assert!(!present(cx, win, "oauth2-scope-danger-ring"));
+    type_at_end(cx, win, None, "oauth2-client-id", "app");
+    cx.run_until_parked();
+    frame(cx, win);
+    assert!(!present(cx, win, "oauth2-client-id-danger-ring"));
+}
+
+#[gpui_kit::test]
+fn the_toggle_rows_are_spaced_like_the_field_rows(cx: &mut TestAppContext) {
+    let (_col, _state, win, _panel) = auth_editor(cx, BLANK);
+    let gap = |cx: &mut TestAppContext, upper: &'static str, lower: &'static str| {
+        bounds(cx, win, lower).top() - bounds(cx, win, upper).bottom()
+    };
+    let fields = gap(cx, "oauth2-access-token-url", "oauth2-refresh-token-url");
+    let toggles = gap(cx, "oauth2-auto-fetch", "oauth2-auto-refresh");
+    assert_eq!(
+        toggles, fields,
+        "toggle gap {toggles:?} field gap {fields:?}"
+    );
+}
+
+#[gpui_kit::test]
 fn the_token_panel_follows_the_fields_and_its_message_moves_none(cx: &mut TestAppContext) {
     let (_col, _state, win, panel) = auth_editor(cx, BLANK);
     let rows = [
@@ -89,7 +238,7 @@ fn the_token_panel_follows_the_fields_and_its_message_moves_none(cx: &mut TestAp
         "oauth2-client-id-row",
         "oauth2-client-auth-row",
         "oauth2-token-source-row",
-        "oauth2-auto-refresh-row",
+        "oauth2-auto-token-row",
         "oauth2-param-add",
     ];
     let before: Vec<_> = rows.iter().map(|id| bounds(cx, win, id)).collect();

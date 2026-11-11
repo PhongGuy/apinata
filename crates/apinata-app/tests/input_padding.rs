@@ -358,7 +358,9 @@ fn no_source_file_draws_an_unwrapped_input() {
             {
                 before = rest;
             }
-            before.ends_with("padded_input(") || before.ends_with("invalid_input(")
+            before.ends_with("padded_input(")
+                || before.ends_with("invalid_input(")
+                || before.ends_with("missing_input(")
         };
         let cells = code.contains("kv_cell(") || code.contains("kv_cell_resting(");
         for (at, _) in code.match_indices("Input::new(") {

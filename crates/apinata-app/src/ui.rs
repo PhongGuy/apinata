@@ -536,17 +536,40 @@ pub fn invalid_input(
         .relative()
         .child(padded_input(input, state))
         .when(invalid && focused, |frame| {
-            frame.child(
-                div()
-                    .id(ring_id)
-                    .test_support()
-                    .absolute()
-                    .inset_0()
-                    .rounded(crate::style::RADIUS)
-                    .border_2()
-                    .border_color(danger),
-            )
+            frame.child(danger_ring(ring_id, danger))
         })
+}
+
+/// Like [`invalid_input`], for a required input left blank: its danger ring shows whether
+/// or not it is focused, so every blank field stands out at once.
+pub fn missing_input(
+    input: Input,
+    frame: Div,
+    state: &Entity<InputState>,
+    missing: bool,
+    (ring_id, icon_id): (ElementId, ElementId),
+    window: &Window,
+    cx: &App,
+) -> Div {
+    let focused = state.read(cx).focus_handle(cx).is_focused(window);
+    let danger = cx.theme().danger;
+    let ring = ring_id.clone();
+    invalid_input(input, frame, state, missing, (ring_id, icon_id), window, cx)
+        .when(missing && !focused, |frame| {
+            frame.child(danger_ring(ring, danger))
+        })
+}
+
+// The 2px danger-coloured outline laid over an input's frame.
+fn danger_ring(id: ElementId, danger: Hsla) -> impl IntoElement {
+    div()
+        .id(id)
+        .test_support()
+        .absolute()
+        .inset_0()
+        .rounded(crate::style::RADIUS)
+        .border_2()
+        .border_color(danger)
 }
 
 /// The element [`padded_input`] returns.
