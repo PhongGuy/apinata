@@ -39,6 +39,12 @@ impl FocusFollow {
         .absolute()
         .size_0()
     }
+
+    /// Scrolls the focused wrapper into view on the next frames even though focus has not
+    /// moved, for a control that asks again for a field it already focused.
+    pub fn reveal(&self) {
+        self.0.armed.set(ARMED_FRAMES);
+    }
 }
 
 impl Inner {

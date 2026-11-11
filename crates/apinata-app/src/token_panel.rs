@@ -75,6 +75,8 @@ pub struct TokenPanel {
     // The raw text behind a reworded action error, shown as its tooltip.
     action_detail: Option<String>,
     action_note: Option<&'static str>,
+    // The required fields Get token found blank and that are still blank; an edit keeps them.
+    missing: Vec<&'static str>,
     check: Option<Check>,
     read_error: Option<String>,
     memory_only: Option<String>,
@@ -103,6 +105,7 @@ impl TokenPanel {
             action_error: None,
             action_detail: None,
             action_note: None,
+            missing: Vec::new(),
             check: None,
             read_error: None,
             memory_only: None,
@@ -131,18 +134,26 @@ impl TokenPanel {
         self.check = Some(check);
     }
 
+    /// Narrows the blank-field summary to `labels`, the fields still marked after an edit.
+    pub fn set_missing(&mut self, labels: Vec<&'static str>, cx: &mut Context<Self>) {
+        if self.missing != labels {
+            self.missing = labels;
+            cx.notify();
+        }
+    }
+
     /// Fetches a token, signing in through the browser for interactive grants.
     pub fn get_token(&mut self, cx: &mut Context<Self>) {
         if self.action.is_some() {
             return;
         }
         // Only an auth the panel acts on is checked; otherwise the action says why it cannot run.
-        let missing = match &self.check {
+        self.missing = match &self.check {
             Some(check) if (self.locate)(cx).is_some() => check(cx),
             _ => Vec::new(),
         };
-        if !missing.is_empty() {
-            self.action_error = Some(missing_message(&missing));
+        if !self.missing.is_empty() {
+            self.action_error = None;
             self.action_detail = None;
             self.action_note = None;
             return cx.notify();
@@ -179,10 +190,12 @@ impl TokenPanel {
             .or_else(|| self.memory_only.clone())
     }
 
-    /// The last action's error, else the last status read's error.
+    /// The last action's error, else the blank required fields, else the last status read's
+    /// error.
     pub fn error(&self) -> Option<String> {
         self.action_error
             .clone()
+            .or_else(|| (!self.missing.is_empty()).then(|| missing_message(&self.missing)))
             .or_else(|| self.read_error.clone())
     }
 
