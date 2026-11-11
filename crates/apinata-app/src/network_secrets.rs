@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 /// The base `.env` name of the collection's proxy password.
 pub const PROXY_PASSWORD: &str = "APINATA_PROXY_PASSWORD";
 /// The refusal when git tracks `.env`.
-pub const TRACKED: &str = ".env is tracked by git, so the secret was not saved; untrack it first";
+pub const TRACKED: &str = ".env is tracked by git, so nothing was saved; untrack .env first";
 /// The warning when `.env` was added to `.gitignore`.
 pub const IGNORED: &str = "Added .env to .gitignore";
 

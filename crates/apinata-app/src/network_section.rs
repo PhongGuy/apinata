@@ -24,6 +24,7 @@ use crate::command::Edit;
 use crate::kv_table::set_text;
 use crate::network_secrets::env_name;
 use crate::section::SectionEdit;
+use crate::snapshot::{DotenvNames, SecretHome};
 use crate::{style, ui};
 
 /// How the collection picks its proxy, in segment order.
@@ -99,9 +100,12 @@ struct CertRow {
 }
 
 impl CertRow {
-    // Whether the passphrase shows the stored-in-.env badge rather than its input.
-    fn shows_stored(&self) -> bool {
-        env_name(&self.cert.passphrase).is_some() && !self.replacing
+    // Where the passphrase's `.env` value is when it shows the badge rather than its input.
+    fn stored_home(&self, names: &DotenvNames) -> Option<SecretHome> {
+        if self.replacing {
+            return None;
+        }
+        names.home(env_name(&self.cert.passphrase)?)
     }
 
     fn outside(&self, root: &Path, canonical_root: Option<&Path>) -> bool {
@@ -151,6 +155,8 @@ pub struct NetworkSection {
     password_committed: String,
     // Whether the `.env` password is being replaced, so its input shows.
     password_replacing: bool,
+    // The `.env` names that are stored or held for the collection, which decide the badges.
+    dotenv: DotenvNames,
     // The port last loaded or typed valid; a refused port shows `port_error` and every edit
     // carries this one instead.
     port_committed: String,
@@ -219,6 +225,7 @@ impl NetworkSection {
             bypass,
             password_committed: String::new(),
             password_replacing: false,
+            dotenv: DotenvNames::default(),
             port_committed: String::new(),
             port_error: None,
             loaded_proxy: ProxyConfig::new(PROTOCOLS[0], "", ""),
@@ -606,7 +613,7 @@ impl NetworkSection {
             // stored passphrase stays unless replaced, and a replace left empty keeps it.
             if *state == inputs.0[CertField::Passphrase as usize] {
                 let replacing = std::mem::take(&mut row.replacing);
-                let stored = env_name(&row.cert.passphrase).is_some();
+                let stored = row.stored_home(&self.dotenv).is_some();
                 let keep = if replacing {
                     passphrase.is_empty()
                 } else {
@@ -795,7 +802,7 @@ impl NetworkSection {
         let keep = if replacing {
             text.is_empty()
         } else {
-            env_name(&self.password_committed).is_some()
+            self.password_home().is_some()
         };
         if replacing {
             cx.notify();
@@ -806,9 +813,20 @@ impl NetworkSection {
         }
     }
 
-    // Whether the proxy password shows the stored-in-.env badge rather than its input.
-    fn password_stored(&self) -> bool {
-        env_name(&self.password_committed).is_some() && !self.password_replacing
+    /// Sets the `.env` names stored or held for the collection, which decide the badges.
+    pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
+        if self.dotenv != names {
+            self.dotenv = names;
+            cx.notify();
+        }
+    }
+
+    // Where the proxy password's `.env` value is when it shows the badge rather than its input.
+    fn password_home(&self) -> Option<SecretHome> {
+        if self.password_replacing {
+            return None;
+        }
+        self.dotenv.home(env_name(&self.password_committed)?)
     }
 
     // Opens the proxy password empty and focused for a new value in place of the stored one.
@@ -940,10 +958,11 @@ impl NetworkSection {
             .child(ui::form_row(
                 "proxy-password-row",
                 "Password",
-                if self.password_stored() {
+                if let Some(home) = self.password_home() {
                     ui::stored_secret(
                         "proxy-password-stored",
                         "proxy-password-replace",
+                        home,
                         cx.listener(|this, _, window, cx| this.replace_password(window, cx)),
                         cx,
                     )
@@ -1156,13 +1175,14 @@ impl NetworkSection {
             ))
             .child(field("cert-key", key, cx))
             .child(picker("cert-key-pick", "Choose key", CertField::Key, cx))
-            .child(if row.shows_stored() {
+            .child(if let Some(home) = row.stored_home(&self.dotenv) {
                 div()
                     .flex_1()
                     .min_w_0()
                     .child(ui::stored_secret(
                         ("cert-passphrase-stored", ix),
                         ("cert-passphrase-replace", ix),
+                        home,
                         cx.listener(move |this, _, window, cx| {
                             this.replace_passphrase(ix, window, cx)
                         }),
@@ -1296,10 +1316,10 @@ impl Render for NetworkSection {
         }
         // Inputs hidden behind the badge keep the stored value, so nothing reads as typed.
         let mut hidden = Vec::new();
-        if self.password_stored() {
+        if self.password_home().is_some() {
             hidden.push((self.password.clone(), self.password_committed.clone()));
         }
-        for row in self.certs.iter().filter(|row| row.shows_stored()) {
+        for row in (self.certs.iter()).filter(|row| row.stored_home(&self.dotenv).is_some()) {
             if let Some(inputs) = &row.inputs {
                 let input = inputs.0[CertField::Passphrase as usize].clone();
                 hidden.push((input, row.cert.passphrase.clone()));

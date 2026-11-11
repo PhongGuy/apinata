@@ -578,6 +578,11 @@ impl AuthSection {
         }
     }
 
+    /// Sets the `.env` names stored or held for the target, for the OAuth 2.0 secret badges.
+    pub fn set_dotenv(&mut self, names: crate::snapshot::DotenvNames, cx: &mut Context<Self>) {
+        self.oauth2.update(cx, |e, cx| e.set_dotenv(names, cx));
+    }
+
     /// Tint and explain placeholders in the unmasked fields (username, API key name); the
     /// masked fields never show them.
     pub fn set_variables(&mut self, vars: Option<Arc<VariableSet>>, cx: &mut Context<Self>) {

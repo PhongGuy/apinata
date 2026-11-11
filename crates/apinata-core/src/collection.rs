@@ -23,7 +23,7 @@ mod paste;
 mod reload;
 pub(crate) mod snapshot;
 mod tree;
-pub use dotenv_write::dotenv_quotable;
+pub use dotenv_write::{DotenvBackup, dotenv_quotable};
 pub(crate) use ignore::Ignore;
 pub use ignore::{IgnorePolicy, OpenOptions};
 pub use paste::PasteSource;

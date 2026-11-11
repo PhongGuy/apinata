@@ -283,10 +283,14 @@ fn dotenv_overrides_beat_dotenv_and_are_secret() {
         ),
     ]);
     let c = Collection::open(dir.path()).expect("open");
-    let options = ContextOptions::new()
-        .process_env([("B", "from-process")])
-        .dotenv_overrides([("A", "held-aaaa"), ("B", "held-bbbb")]);
-    let ctx = VarContext::new(&c, options).expect("context");
+    let options = ContextOptions::new().process_env([("B", "from-process")]);
+    let base = VarContext::new(&c, options).expect("context");
+    let ctx = base.with_dotenv_overrides([("A", "held-aaaa"), ("B", "held-bbbb")]);
+    // The clone carries the values; the context it came from keeps the file's.
+    assert_eq!(
+        url_of(&c, &base, "r.yml"),
+        Ok("https://x.test/old-value/from-process".to_owned())
+    );
     assert_eq!(
         url_of(&c, &ctx, "r.yml"),
         Ok("https://x.test/held-aaaa/held-bbbb".to_owned())

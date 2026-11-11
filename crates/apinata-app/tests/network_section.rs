@@ -50,6 +50,20 @@ fn last_proxy(cx: &mut TestAppContext, host: &Host) -> Option<CollectionProxy> {
     })
 }
 
+// Tells the section that `.env` defines `stored`.
+fn stored_names(cx: &mut TestAppContext, win: AnyWindowHandle, host: &Host, stored: &[&str]) {
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let names = apinata_app::snapshot::DotenvNames {
+        stored: std::sync::Arc::new(stored.iter().map(|n| n.to_string()).collect()),
+        held: Default::default(),
+    };
+    cx.update_window(win, |_, _, cx| {
+        s.update(cx, |s, cx| s.set_dotenv(names, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+}
+
 fn edit_count(cx: &mut TestAppContext, host: &Host) -> usize {
     host.read_with(cx, |h, _| h.edits.len())
 }
@@ -563,6 +577,11 @@ fn a_dotenv_password_shows_a_badge_and_replace_takes_a_new_value(cx: &mut TestAp
         with_proxy(custom("http", "proxy.local", Some(("u", stored)))),
         false,
     );
+    assert!(
+        !present(cx, win, "proxy-password-stored"),
+        "no such .env key"
+    );
+    stored_names(cx, win, &host, &["APINATA_PROXY_PASSWORD"]);
     assert!(present(cx, win, "proxy-password-stored"));
     assert!(!present(cx, win, "proxy-password"));
     cx.update_window(win, |_, w, _| w.activate_window())
@@ -600,6 +619,7 @@ fn a_dotenv_passphrase_shows_a_badge_and_replace_takes_a_new_value(cx: &mut Test
     let mut network = CollectionNetwork::default();
     network.certificates = vec![cert];
     let (win, host) = section(cx, network, false);
+    stored_names(cx, win, &host, &["APINATA_CERT_PASSPHRASE_1"]);
     assert!(present(cx, win, ("cert-passphrase-stored", 0usize)));
     assert!(!present(cx, win, ("cert-passphrase", 0usize)));
     cx.update_window(win, |_, w, _| w.activate_window())

@@ -760,6 +760,14 @@ impl ConfigEditor {
             self.post_response
                 .update(cx, |t, cx| t.load(rows, window, cx));
         }
+        if let Some(snap) = self.workspace.read(cx).snapshot(&self.root, cx) {
+            let names = snap.dotenv_names(&self.target.target());
+            self.auth
+                .update(cx, |a, cx| a.set_dotenv(names.clone(), cx));
+            if let Some(network) = self.network.clone() {
+                network.update(cx, |n, cx| n.set_dotenv(names, cx));
+            }
+        }
         if !self.busy(Field::Auth, cx) {
             load_auth(&self.auth, &view.auth, window, cx);
         }

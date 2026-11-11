@@ -11,7 +11,7 @@ use std::process::Command as Process;
 use support::*;
 use tempfile::TempDir;
 
-const TRACKED: &str = ".env is tracked by git, so the secret was not saved; untrack it first";
+const TRACKED: &str = ".env is tracked by git, so nothing was saved; untrack .env first";
 
 // A request with a client credentials auth; `credentials` lines go under `credentials:`.
 fn oauth_request(flow: &str, credentials: &str, extra: &str) -> String {
@@ -518,4 +518,151 @@ fn a_tracked_dotenv_at_save_refuses_the_save(cx: &mut TestAppContext) {
     );
     assert_eq!(read(&dir, ".env"), "X=1\n");
     assert_eq!(read(&dir, "r.yml"), file);
+    // The refusal keeps the held secret, so a save after untracking writes it.
+    git(dir.path(), &["rm", "-q", "--cached", ".env"]);
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(
+        read(&dir, ".env"),
+        "X=1\nAPINATA_OAUTH2_CLIENT_SECRET='CL1ENTs3cret'\n"
+    );
+    assert!(read(&dir, "r.yml").contains("{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"));
+}
+
+// Edits request `rel`'s client secret to `secret`.
+fn type_secret(cx: &mut TestAppContext, model: &Entity<CollectionModel>, rel: &str, secret: &str) {
+    let mut o = oauth(snap(cx, model).content.requests[&ip(rel)].auth.clone());
+    o.client_secret = secret.into();
+    edit(cx, model, Target::Request(ip(rel)), AuthSpec::OAuth2(o));
+}
+
+#[gpui_kit::test]
+fn drafts_sharing_a_reference_keep_their_own_values(cx: &mut TestAppContext) {
+    let shared = cc_request("      clientSecret: \"{{process.env.MY_CS}}\"\n");
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &shared),
+        ("b.yml", &shared),
+        ("c.yml", &shared),
+        (".env", "MY_CS=old-secret\n"),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    type_secret(cx, &model, "a.yml", "a-secret");
+    type_secret(cx, &model, "b.yml", "b-secret");
+    // Each draft's send sees its own value; an untouched request sees the file's.
+    assert_eq!(sent_secret(cx, &model, "a.yml"), "a-secret");
+    assert_eq!(sent_secret(cx, &model, "b.yml"), "b-secret");
+    assert_eq!(sent_secret(cx, &model, "c.yml"), "old-secret");
+    save(cx, &model, Target::Request(ip("a.yml")));
+    assert_eq!(read(&dir, ".env"), "MY_CS='a-secret'\n");
+    assert_eq!(sent_secret(cx, &model, "b.yml"), "b-secret");
+    save(cx, &model, Target::Request(ip("b.yml")));
+    assert_eq!(read(&dir, ".env"), "MY_CS='b-secret'\n");
+}
+
+#[gpui_kit::test]
+fn a_conflicted_save_leaves_dotenv_as_it_was_until_overwrite(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("r.yml", &cc_request(""))]);
+    let model = open(cx, &dir);
+    type_secret(cx, &model, "r.yml", "CL1ENTs3cret");
+    let outside = cc_request("").replace("name: r", "name: outside");
+    std::fs::write(dir.path().join("r.yml"), &outside).unwrap();
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(read(&dir, "r.yml"), outside);
+    assert!(!dir.path().join(".env").exists() && !dir.path().join(".gitignore").exists());
+    send(cx, &model, Command::Overwrite(Target::Request(ip("r.yml"))));
+    cx.run_until_parked();
+    assert_eq!(
+        read(&dir, ".env"),
+        "APINATA_OAUTH2_CLIENT_SECRET='CL1ENTs3cret'\n"
+    );
+    assert!(read(&dir, "r.yml").contains("{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"));
+}
+
+#[gpui_kit::test]
+fn a_conflicted_save_then_revert_leaves_nothing_behind(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &cc_request("")),
+        (".env", "X=1\n"),
+    ]);
+    let model = open(cx, &dir);
+    type_secret(cx, &model, "r.yml", "CL1ENTs3cret");
+    let outside = cc_request("").replace("name: r", "name: outside");
+    std::fs::write(dir.path().join("r.yml"), &outside).unwrap();
+    save(cx, &model, Target::Request(ip("r.yml")));
+    send(cx, &model, Command::Revert(Target::Request(ip("r.yml"))));
+    cx.run_until_parked();
+    assert_eq!(read(&dir, ".env"), "X=1\n");
+    assert!(!dir.path().join(".gitignore").exists());
+    // The discarded secret is gone: a later save of the request writes nothing to `.env`.
+    save(cx, &model, Target::Request(ip("r.yml")));
+    assert_eq!(read(&dir, ".env"), "X=1\n");
+}
+
+#[gpui_kit::test]
+fn a_held_secret_moves_with_its_renamed_folder(cx: &mut TestAppContext) {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/u.yml", &cc_request("")),
+        (".gitignore", ".env\n"),
+    ]);
+    let model = open(cx, &dir);
+    type_secret(cx, &model, "users/u.yml", "CL1ENTs3cret");
+    let rename = apinata_app::command::TreeOp::Rename {
+        item: ip("users"),
+        name: "people".into(),
+        rename_file: true,
+    };
+    send(cx, &model, Command::Tree(rename));
+    cx.run_until_parked();
+    assert_eq!(sent_secret_of(cx, &model, "people/u.yml"), "CL1ENTs3cret");
+    save(cx, &model, Target::Request(ip("people/u.yml")));
+    assert_eq!(
+        read(&dir, ".env"),
+        "APINATA_OAUTH2_CLIENT_SECRET='CL1ENTs3cret'\n"
+    );
+}
+
+#[gpui_kit::test]
+fn saving_a_new_draft_writes_its_held_secret(cx: &mut TestAppContext) {
+    let dir = write_tree(&[("opencollection.yml", ROOT), (".gitignore", ".env\n")]);
+    let model = open(cx, &dir);
+    let create = apinata_app::command::TreeOp::CreateDraft {
+        parent: apinata_core::ItemPath::root(),
+        kind: apinata_core::RequestKind::Http,
+    };
+    send(cx, &model, Command::Tree(create));
+    cx.run_until_parked();
+    let draft = match notices(cx, &model).as_slice() {
+        [NoticeKind::Created(path)] => path.clone(),
+        other => panic!("{other:?}"),
+    };
+    edit(
+        cx,
+        &model,
+        Target::Request(draft.clone()),
+        with_secret("CL1ENTs3cret"),
+    );
+    assert!(!dir.path().join(".env").exists());
+    let save_draft = apinata_app::command::TreeOp::SaveDraft {
+        draft,
+        parent: apinata_core::ItemPath::root(),
+        name: "saved".into(),
+    };
+    send(cx, &model, Command::Tree(save_draft));
+    cx.run_until_parked();
+    assert_eq!(
+        read(&dir, ".env"),
+        "APINATA_OAUTH2_CLIENT_SECRET='CL1ENTs3cret'\n"
+    );
+    assert!(read(&dir, "saved.yml").contains("{{process.env.APINATA_OAUTH2_CLIENT_SECRET}}"));
+}
+
+// The secret value a send of `rel` would use, when its context holds exactly one.
+fn sent_secret_of(cx: &mut TestAppContext, model: &Entity<CollectionModel>, rel: &str) -> String {
+    let secrets = plan(cx, model, rel).context.secret_values();
+    assert_eq!(secrets.len(), 1, "{secrets:?}");
+    secrets[0].clone()
 }

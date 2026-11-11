@@ -3154,25 +3154,37 @@ pub fn mask_unless_template(
     }
 }
 
-/// What a secret field shows while its value lives in `.env`: a note and a Replace button
-/// in place of the input, so the reference text is never shown or edited by accident.
+/// What a secret field shows while its value is in `.env`, or held for it until the save:
+/// a note and a Replace button in place of the input, so the reference text is never shown
+/// or edited by accident. The tooltip says where the value lives.
 pub fn stored_secret(
     id: impl Into<ElementId>,
     replace_id: impl Into<ElementId>,
+    home: crate::snapshot::SecretHome,
     on_replace: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
+    use crate::snapshot::SecretHome;
+    let (text, tip) = match home {
+        SecretHome::Held => (
+            "Saved to .env when you save",
+            "When you save, the value goes into this collection's .env file, which is kept \
+             out of git.",
+        ),
+        SecretHome::Stored => (
+            "Stored in .env",
+            "The value lives in this collection's .env file, which is kept out of git.",
+        ),
+    };
     h_flex()
         .id(id)
         .test_support()
         .gap(SPACE_2)
         .items_center()
         .min_w_0()
-        .child(
-            div()
-                .text_color(cx.theme().muted_foreground)
-                .child("Stored in .env"),
-        )
+        .aria_label(text)
+        .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx))
+        .child(div().text_color(cx.theme().muted_foreground).child(text))
         .child(
             Button::new(replace_id)
                 .label("Replace")

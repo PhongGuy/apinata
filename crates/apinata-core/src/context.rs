@@ -45,7 +45,6 @@ pub struct ContextOptions {
     /// Global overrides in call order; the flag marks a sensitive one.
     global_env_vars: Vec<(String, String, bool)>,
     process_env: Option<Vec<(String, String)>>,
-    dotenv_overrides: Vec<(String, String)>,
     secrets: Option<Arc<dyn SecretStore>>,
     strict_secrets: bool,
     /// Seed and clock for `{{$name}}` values; None draws them fresh on every resolve.
@@ -144,21 +143,6 @@ impl ContextOptions {
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect(),
         );
-        self
-    }
-
-    /// Read `vars` as if `<root>/.env` held them, over what the file holds: values the
-    /// caller will write to `.env` but has not yet. They are secret like every `.env` value.
-    pub fn dotenv_overrides<I, K, V>(mut self, vars: I) -> ContextOptions
-    where
-        I: IntoIterator<Item = (K, V)>,
-        K: Into<String>,
-        V: Into<String>,
-    {
-        self.dotenv_overrides = vars
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect();
         self
     }
 
@@ -274,11 +258,6 @@ impl VarContext {
     ) -> Result<VarContext, ContextError> {
         let (process, dotenv_keys) =
             process_namespace(collection.root(), options.process_env.take())?;
-        let (process, dotenv_keys) = with_dotenv_overrides(
-            process,
-            dotenv_keys,
-            std::mem::take(&mut options.dotenv_overrides),
-        );
         let mut warnings = Vec::new();
         let mut secret_failures = Vec::new();
         let store = options.secrets.as_deref();
@@ -429,6 +408,22 @@ impl VarContext {
             .map(|(label, value)| (label.into(), value.into()))
             .collect();
         ctx.prompt_values = Some(Arc::new(values));
+        ctx
+    }
+
+    /// A clone that reads `values` as if `<root>/.env` held them, over the file and the
+    /// process environment alike: values the caller will write to `.env` but has not yet.
+    /// They are secret like every `.env` value.
+    pub fn with_dotenv_overrides<I, K, V>(&self, values: I) -> VarContext
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let mut ctx = self.clone();
+        let values = values.into_iter().map(|(k, v)| (k.into(), v.into()));
+        (ctx.process, ctx.dotenv_keys) =
+            with_dotenv_overrides(ctx.process, ctx.dotenv_keys, values.collect());
         ctx
     }
 
@@ -1220,7 +1215,6 @@ impl fmt::Debug for ContextOptions {
             )
             .field("global_env_vars", &global_names)
             .field("process_env_len", &self.process_env.as_ref().map(Vec::len))
-            .field("dotenv_overrides_len", &self.dotenv_overrides.len())
             .field("oauth2_tokens", &self.oauth2_tokens)
             .finish_non_exhaustive()
     }

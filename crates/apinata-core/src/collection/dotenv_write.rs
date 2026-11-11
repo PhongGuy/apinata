@@ -9,7 +9,34 @@ use std::fs;
 use std::io::{Error, ErrorKind, Write};
 use std::path::Path;
 
+/// `<root>/.env` and `<root>/.gitignore` as they were, for [`Collection::restore_dotenv`].
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct DotenvBackup {
+    dotenv: Option<Vec<u8>>,
+    gitignore: Option<Vec<u8>>,
+}
+
 impl Collection {
+    /// The bytes of `<root>/.env` and `<root>/.gitignore` now; a missing file is recorded as
+    /// missing. Any other read failure is an error.
+    pub fn backup_dotenv(&self) -> std::io::Result<DotenvBackup> {
+        Ok(DotenvBackup {
+            dotenv: read_bytes(&self.root().join(".env"))?,
+            gitignore: read_bytes(&self.root().join(".gitignore"))?,
+        })
+    }
+
+    /// Put `.env` and `.gitignore` back as `backup` recorded them, removing a file that did
+    /// not exist then, and remember `.env`'s hash so a reload reports no change.
+    pub fn restore_dotenv(&mut self, backup: &DotenvBackup) -> std::io::Result<()> {
+        let dotenv = self.root().join(".env");
+        restore(&dotenv, backup.dotenv.as_deref())?;
+        restore(&self.root().join(".gitignore"), backup.gitignore.as_deref())?;
+        self.dotenv_hash = backup.dotenv.as_deref().map(hash_bytes);
+        Ok(())
+    }
+
     /// The keys `<root>/.env` defines; empty when there is no file, or a pipe, socket or device
     /// stands there. Not UTF-8 is `InvalidData`.
     pub fn dotenv_keys(&self) -> std::io::Result<BTreeSet<String>> {
@@ -75,6 +102,27 @@ impl Collection {
         text.push_str(ending);
         fs::write(&path, text)?;
         Ok(true)
+    }
+}
+
+/// The file's bytes, or None when it does not exist.
+fn read_bytes(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    refuse_special(path)?;
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Write `bytes` to `path` keeping its mode, or remove it when there were none.
+fn restore(path: &Path, bytes: Option<&[u8]>) -> std::io::Result<()> {
+    match bytes {
+        Some(bytes) => write_replacing(path, bytes),
+        None => match fs::remove_file(path) {
+            Err(e) if e.kind() != ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
     }
 }
 

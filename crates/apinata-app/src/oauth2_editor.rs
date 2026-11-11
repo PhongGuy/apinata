@@ -22,6 +22,7 @@ use gpui_kit::{
 use crate::auth_section::{field, secret_field};
 use crate::kv_table::set_text;
 use crate::network_secrets::{env_name, is_template};
+use crate::snapshot::{DotenvNames, SecretHome};
 use crate::token_panel::TokenPanel;
 use crate::{style, ui};
 
@@ -238,6 +239,8 @@ pub struct OAuth2Editor {
     stamp: u64,
     // Masked fields whose `.env` value is being replaced, so they show their input.
     replacing: Vec<OAuth2Field>,
+    // The `.env` names that are stored or held for the target, which decide the badge.
+    dotenv: DotenvNames,
     _subs: Vec<Subscription>,
 }
 
@@ -361,6 +364,7 @@ impl OAuth2Editor {
             token_panel: None,
             stamp: 0,
             replacing: Vec::new(),
+            dotenv: DotenvNames::default(),
             _subs: subs,
         };
         // A query key never set starts as the conventional name.
@@ -705,9 +709,25 @@ impl OAuth2Editor {
         }
     }
 
-    // Whether masked field `f` shows the stored-in-.env badge rather than its input.
+    /// Sets the `.env` names stored or held for the target, which decide the badge.
+    pub fn set_dotenv(&mut self, names: DotenvNames, cx: &mut Context<Self>) {
+        if self.dotenv != names {
+            self.dotenv = names;
+            cx.notify();
+        }
+    }
+
+    // Where masked field `f`'s `.env` value is when it shows the badge rather than its input:
+    // a reference to a name `.env` has or the draft holds, and no replace under way.
+    fn stored_home(&self, f: OAuth2Field) -> Option<SecretHome> {
+        if self.replacing.contains(&f) {
+            return None;
+        }
+        self.dotenv.home(env_name(self.committed(f))?)
+    }
+
     fn shows_stored(&self, f: OAuth2Field) -> bool {
-        env_name(self.committed(f)).is_some() && !self.replacing.contains(&f)
+        self.stored_home(f).is_some()
     }
 
     // What masked field `f` would commit: its typing, or the committed value while it shows
@@ -920,11 +940,12 @@ impl Render for OAuth2Editor {
         let this = cx.entity();
         let input = |f: OAuth2Field, cx: &App| {
             let vars = self.vars.clone();
-            if f.masked() && self.shows_stored(f) {
+            if let Some(home) = self.stored_home(f).filter(|_| f.masked()) {
                 let this = this.clone();
                 let stored = ui::stored_secret(
                     SharedString::from(format!("{}-stored", f.id())),
                     SharedString::from(format!("{}-replace", f.id())),
+                    home,
                     move |_, window, cx| {
                         this.update(cx, |e, cx| e.replace_secret(f, window, cx));
                     },
