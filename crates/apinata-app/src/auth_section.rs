@@ -962,7 +962,7 @@ pub(crate) fn field(
     )
 }
 
-/// Like `field`, but marked invalid (the danger icon, and a ring while focused) when `invalid`.
+/// Like `field`, but marked as a blank required field (the danger icon and ring) when `invalid`.
 pub(crate) fn checked_field(
     label: &'static str,
     id: &'static str,
@@ -972,7 +972,7 @@ pub(crate) fn checked_field(
     window: &Window,
     cx: &App,
 ) -> ui::FormRow {
-    let input = ui::invalid_input(
+    let input = ui::missing_input(
         Input::new(state)
             .id(id)
             .w_full()

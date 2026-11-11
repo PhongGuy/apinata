@@ -358,3 +358,31 @@ fn closing_the_collection_forgets_its_choice(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert!(unchecked(cx, &s).is_empty());
 }
+
+fn plan_count(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        w.try_find("run-plan-count")
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_count_beside_select_all_follows_the_ticked_requests(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = tree("http://127.0.0.1:9");
+    let s = started(cx, &col);
+    open(cx, &s);
+    assert_eq!(plan_count(cx, &s).as_deref(), Some("3 requests"));
+
+    click(cx, &s, ("run-plan-check", 2usize));
+    assert_eq!(plan_count(cx, &s).as_deref(), Some("2 of 3 requests"));
+    assert_eq!(run_label(cx, &s).as_deref(), Some("Run 2 requests"));
+
+    // A partial Select all checks everything; clicked again, it clears everything.
+    click(cx, &s, "run-select-all");
+    assert_eq!(plan_count(cx, &s).as_deref(), Some("3 requests"));
+    click(cx, &s, "run-select-all");
+    assert_eq!(plan_count(cx, &s).as_deref(), Some("0 of 3 requests"));
+}

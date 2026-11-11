@@ -21,6 +21,7 @@ use gpui_kit::{
 use crate::auth_section::{checked_field, secret_field};
 use crate::kv_table::set_text;
 use crate::network_secrets::{env_name, is_template};
+use crate::scroll_follow::{FocusFollow, Followed};
 use crate::snapshot::{DotenvNames, SecretHome};
 use crate::token_panel::TokenPanel;
 use crate::{style, ui};
@@ -256,6 +257,10 @@ pub struct OAuth2Editor {
     dotenv: DotenvNames,
     // Required fields Get token found blank; each stays marked until it holds text.
     missing: Vec<OAuth2Field>,
+    // Set by a check that found blanks; the next render focuses the first, which the scroll
+    // area's follow then brings into view.
+    focus_missing: bool,
+    follow: Option<FocusFollow>,
     _subs: Vec<Subscription>,
 }
 
@@ -381,6 +386,8 @@ impl OAuth2Editor {
             replacing: Vec::new(),
             dotenv: DotenvNames::default(),
             missing: Vec::new(),
+            focus_missing: false,
+            follow: None,
             _subs: subs,
         };
         // A query key never set starts as the conventional name.
@@ -620,8 +627,14 @@ impl OAuth2Editor {
             .into_iter()
             .filter(|f| keys.contains(&f.key()))
             .collect();
+        self.focus_missing = !self.missing.is_empty();
         cx.notify();
         self.missing.iter().map(|f| f.label()).collect()
+    }
+
+    /// Reports the checked fields to `follow`, the watch of the scroll area this editor is in.
+    pub fn set_follow(&mut self, follow: FocusFollow) {
+        self.follow = Some(follow);
     }
 
     // Unmarks the fields that now hold text, or that the spec no longer shows.
@@ -980,6 +993,14 @@ impl Render for OAuth2Editor {
             }
             ui::mask_unless_template(self.input(f), window, cx);
         }
+        if std::mem::take(&mut self.focus_missing)
+            && let Some(first) = self.missing.first()
+        {
+            let input = self.input(*first).clone();
+            cx.defer_in(window, move |_, window, cx| {
+                input.update(cx, |i, cx| i.focus(window, cx));
+            });
+        }
         let o = self.base.clone();
         let flow = o.flow;
         let this = cx.entity();
@@ -1008,11 +1029,14 @@ impl Render for OAuth2Editor {
                 let invalid = self.missing.contains(&f);
                 let row =
                     checked_field(f.label(), f.id(), self.input(f), vars, invalid, window, cx);
-                match f.hint() {
+                let row = match f.hint() {
                     Some(hint) => row.hint(SharedString::from(format!("{}-hint", f.id())), hint),
                     None => row,
+                };
+                match &self.follow {
+                    Some(follow) => Followed::new(row.wrapper_id(), follow, row).into_any_element(),
+                    None => row.into_any_element(),
                 }
-                .into_any_element()
             }
         };
         let shown = |f: OAuth2Field| f.shown_for(flow);
@@ -1107,27 +1131,27 @@ impl Render for OAuth2Editor {
                 )
                 .hint("oauth2-token-source-hint", TOKEN_SOURCE_HINT),
             )
+            // One row holds both boxes, so they sit as close as the fields do rather than each
+            // centred in its own input-height row.
             .child(ui::form_row(
-                "oauth2-auto-fetch-row",
+                "oauth2-auto-token-row",
                 "",
-                self.checkbox(
-                    OAuth2Toggle::AutoFetch,
-                    "oauth2-auto-fetch",
-                    "Fetch a token automatically",
-                    o.auto_fetch,
-                    cx,
-                ),
-            ))
-            .child(ui::form_row(
-                "oauth2-auto-refresh-row",
-                "",
-                self.checkbox(
-                    OAuth2Toggle::AutoRefresh,
-                    "oauth2-auto-refresh",
-                    "Refresh the token automatically",
-                    o.auto_refresh,
-                    cx,
-                ),
+                v_flex()
+                    .gap_2()
+                    .child(self.checkbox(
+                        OAuth2Toggle::AutoFetch,
+                        "oauth2-auto-fetch",
+                        "Fetch a token automatically",
+                        o.auto_fetch,
+                        cx,
+                    ))
+                    .child(self.checkbox(
+                        OAuth2Toggle::AutoRefresh,
+                        "oauth2-auto-refresh",
+                        "Refresh the token automatically",
+                        o.auto_refresh,
+                        cx,
+                    )),
             ))
             .child(self.render_params(cx))
             .children(self.token_panel.clone())

@@ -459,3 +459,53 @@ fn the_refusal_names_the_folder_the_clash_is_in(cx: &mut TestAppContext) {
         Some("A request named One is already in Users")
     );
 }
+
+// One frame as the platform draws it: views nobody notified are reused, not rebuilt.
+fn draw(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle) {
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| w.draw(cx).clear(cx))
+        .unwrap();
+}
+
+fn drawn(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, id: &'static str) -> bool {
+    draw(cx, win);
+    cx.update_window(win, |_, w, _| w.try_find(id).is_some())
+        .unwrap()
+}
+
+// In the whole window, drawn without a forced refresh, Enter with its echoed text on a
+// sibling's name shows the reason and the ring, and a real edit takes both away again.
+#[gpui_kit::test]
+fn an_echoed_enter_on_a_siblings_name_draws_the_refusal(cx: &mut TestAppContext) {
+    let files = sidebar_files();
+    let refs: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    let col = write_tree(&refs);
+    let s = started(cx, &col);
+    let sidebar = s.shell.read_with(cx, |sh, _| sh.sidebar().clone());
+    let root = s.root.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        sidebar.update(cx, |sb, cx| {
+            sb.start_rename(&root, &ip("health.yml"), w, cx)
+        })
+    })
+    .unwrap();
+    draw(cx, s.win);
+    // Enter as a driver sends it: the input lets it propagate, so its simulated text follows.
+    cx.update_window(s.win, |_, w, cx| {
+        w.input("Status", cx);
+        w.dispatch_keystroke(gpui_kit::Keystroke::parse("enter").unwrap(), cx);
+    })
+    .unwrap();
+    assert!(sidebar.read_with(cx, |sb, _| sb.rename_error().is_some()));
+    assert!(drawn(cx, s.win, "sidebar-rename-error"), "the reason shows");
+    assert!(
+        drawn(cx, s.win, "sidebar-rename-danger-ring"),
+        "the ring shows"
+    );
+    cx.update_window(s.win, |_, w, cx| w.input("x", cx))
+        .unwrap();
+    assert!(
+        !drawn(cx, s.win, "sidebar-rename-error"),
+        "an edit clears it"
+    );
+}

@@ -1025,8 +1025,8 @@ fn the_auto_token_boxes_sit_in_the_field_column(cx: &mut TestAppContext) {
             .find("form-control")
             .bounds();
         for (row, id) in [
-            ("oauth2-auto-fetch-row", "oauth2-auto-fetch"),
-            ("oauth2-auto-refresh-row", "oauth2-auto-refresh"),
+            ("oauth2-auto-token-row", "oauth2-auto-fetch"),
+            ("oauth2-auto-token-row", "oauth2-auto-refresh"),
         ] {
             let control = w.within(row).find("form-control").bounds();
             let b = w.find(id).bounds();
