@@ -72,6 +72,10 @@ pub const FILTER_PLACEHOLDER: &str = "Filter";
 /// The tooltip on the filter field, where the `tag:` and `method:` terms are named.
 pub const FILTER_TOOLTIP: &str = "Filter by name. Use tag:name or method:get.";
 
+// A collection root's hint shrinks this many times faster than its name, so the name keeps its
+// room until the hint is gone.
+const HINT_SHRINK: f32 = 10_000.;
+
 // The group every tree row carries, so a row's run button shows while the row is hovered.
 const ROW_GROUP: &str = "sidebar-row";
 /// The notice a Duplicate of a row with unsaved edits pushes.
@@ -2852,6 +2856,7 @@ impl Render for Sidebar {
                                         h_flex()
                                             .w_full()
                                             .justify_between()
+                                            .gap(style::SPACE_1)
                                             .child(
                                                 h_flex()
                                                     .flex_1()
@@ -2865,10 +2870,13 @@ impl Render for Sidebar {
                                                             .copied()
                                                             .unwrap_or(false),
                                                     ))
-                                                    // Two same-named collections show where they differ.
+                                                    // Two same-named collections show where they
+                                                    // differ; the hint gives way before the name.
                                                     .children(n.hint.clone().map(|hint| {
                                                         marker("hint", n)
-                                                            .flex_none()
+                                                            .min_w_0()
+                                                            .flex_shrink(HINT_SHRINK)
+                                                            .truncate()
                                                             .text_xs()
                                                             .text_color(cx.theme().muted_foreground)
                                                             .child(hint)

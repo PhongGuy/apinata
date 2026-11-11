@@ -1721,13 +1721,24 @@ impl Workspace {
     /// What stands for each open collection in an item's hint: its name, or the part of its
     /// folder path that differs when another open collection shows the same name.
     pub fn collection_tags(&self, cx: &App) -> HashMap<PathBuf, String> {
-        let names: Vec<(PathBuf, SharedString)> = (self.collections.iter())
+        let names = self.shown_names(cx);
+        crate::name_hints::collection_tags(&as_shown(&names))
+    }
+
+    /// The hint of each open collection whose name another open collection shares, by root.
+    pub fn collection_hints(&self, cx: &App) -> HashMap<PathBuf, String> {
+        let names = self.shown_names(cx);
+        let hints = crate::name_hints::collection_hints(&as_shown(&names));
+        (names.into_iter().zip(hints))
+            .filter_map(|((root, _), hint)| Some((root, hint?)))
+            .collect()
+    }
+
+    // Each open collection's root and shown name, in open order.
+    fn shown_names(&self, cx: &App) -> Vec<(PathBuf, SharedString)> {
+        (self.collections.iter())
             .map(|c| (c.root.clone(), self.collection_name(&c.root, cx)))
-            .collect();
-        let shown: Vec<(&Path, &str)> = (names.iter())
-            .map(|(root, name)| (root.as_path(), name.as_ref()))
-            .collect();
-        crate::name_hints::collection_tags(&shown)
+            .collect()
     }
 
     /// The name to show for the collection at `root`: the open collection's `info.name`,
@@ -3628,4 +3639,11 @@ fn staged_paths(dir: &Path, options: &GitOptions) -> Option<std::collections::BT
         ),
         _ => None,
     }
+}
+
+// The (root, name) pairs the hint rule reads.
+fn as_shown(names: &[(PathBuf, SharedString)]) -> Vec<(&Path, &str)> {
+    (names.iter())
+        .map(|(root, name)| (root.as_path(), name.as_ref()))
+        .collect()
 }

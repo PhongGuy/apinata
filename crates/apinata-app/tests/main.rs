@@ -453,6 +453,7 @@ mod runner_stream;
 mod runner_tab;
 mod runtime_vars;
 mod runtime_vars_dialog;
+mod same_name_collections;
 mod save_ends_typing;
 mod save_example;
 mod schema_cache;
