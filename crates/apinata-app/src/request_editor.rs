@@ -1331,8 +1331,8 @@ impl RequestEditor {
         }
     }
 
-    /// Whether Body or Auth has a mode other than none, or Script holds a pre-request or
-    /// post-response script; `false` for every other section.
+    /// Whether Body or Auth has a mode other than none, Script holds a pre-request or
+    /// post-response script, or Tests holds a tests script; `false` for every other section.
     pub fn section_marked(&self, section: Section, cx: &App) -> bool {
         self.view(cx).is_some_and(|view| match section {
             Section::Body => match &view.body {
@@ -1345,8 +1345,19 @@ impl RequestEditor {
             Section::Script => {
                 !view.scripts.pre_request.is_empty() || !view.scripts.post_response.is_empty()
             }
+            Section::Tests => !view.scripts.tests.is_empty(),
             _ => false,
         })
+    }
+
+    // What a marked section's ring says when hovered.
+    fn mark_words(section: Section) -> &'static str {
+        match section {
+            Section::Body => "Has a body",
+            Section::Auth => "Has auth",
+            Section::Tests => "Has tests",
+            _ => "Has a script",
+        }
     }
 
     // The kind of the request shown; HTTP until its snapshot arrives.
@@ -3245,7 +3256,7 @@ impl RequestEditor {
     fn section_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         // A counted section shows its enabled rows beside the label (nothing for zero);
-        // Body and Auth instead show a hollow ring when they have a mode.
+        // Body, Auth, Script and Tests instead show a hollow ring when they have content.
         let kind = self.kind(cx);
         let selected = self.section as usize;
         let tabs = Section::ALL.iter().enumerate().map(|(ix, &s)| {
@@ -3262,7 +3273,7 @@ impl RequestEditor {
                         .into_any_element(),
                 ),
                 None if self.section_marked(s, cx) => Some(
-                    ui::mode_ring(("section-mode", ix))
+                    ui::mode_ring(("section-mode", ix), Self::mark_words(s))
                         .test_support()
                         .into_any_element(),
                 ),

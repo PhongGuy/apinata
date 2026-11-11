@@ -167,3 +167,28 @@ fn switching_pretty_and_raw_asks_before_dropping_edits(cx: &mut TestAppContext) 
     assert_eq!(view.read_with(cx, |v, _| v.mode()), BodyMode::Raw);
     assert_eq!(value(cx, &ed), "{\"a\":1}");
 }
+
+#[gpui_kit::test]
+fn hovering_edit_says_the_response_itself_is_not_changed(cx: &mut TestAppContext) {
+    let s = send_once(cx, json(), "");
+    let (win, view) = host(cx);
+    show(cx, win, &view, &s);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover("body-edit", cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    let tip = cx
+        .update_window(win, |_, w, _| {
+            w.try_find("body-edit-tooltip")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        tip.as_deref(),
+        Some("Edit a copy; the response stays as received")
+    );
+}
