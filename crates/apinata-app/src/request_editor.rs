@@ -2354,8 +2354,8 @@ impl Render for RequestEditor {
                         // keep their rings without moving.
                         v_flex()
                             .id("section-body")
-                            .track_focus(&self.section_body_focus)
                             .test_support()
+                            .track_focus(&self.section_body_focus)
                             .absolute()
                             .inset_0()
                             .ring_outset(RingSides::TOP | RingSides::LEFT)
