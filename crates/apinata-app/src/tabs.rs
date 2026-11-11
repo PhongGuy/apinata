@@ -102,6 +102,9 @@ pub struct Tabs {
     next: u64,
     // Where each sent draft tab's history is kept; dropped with the tab.
     history_keys: HashMap<TabId, ItemPath>,
+    // A collection made current by hand; the next explicit activation hands the current
+    // collection back to the active tab, while a close never does.
+    chosen_root: Option<PathBuf>,
 }
 
 impl Tabs {
@@ -125,6 +128,22 @@ impl Tabs {
         self.active.and_then(|id| self.get(id))
     }
 
+    /// The collection made current by hand since the last explicit activation, if any.
+    pub fn chosen_root(&self) -> Option<&Path> {
+        self.chosen_root.as_deref()
+    }
+
+    /// Makes `root` current by hand, or with `None` drops the choice.
+    pub fn choose_root(&mut self, root: Option<PathBuf>) {
+        self.chosen_root = root;
+    }
+
+    // An explicit activation, even of the tab already active, ends a hand-made choice.
+    fn set_active(&mut self, id: TabId) {
+        self.active = Some(id);
+        self.chosen_root = None;
+    }
+
     /// Open `kind` in `root` and activate it. An already open item is reused (and pinned by a
     /// permanent open); a new preview replaces the existing preview in place, unremembered;
     /// anything else goes at the end.
@@ -136,7 +155,7 @@ impl Tabs {
         {
             entry.preview &= preview;
             let id = entry.id;
-            self.active = Some(id);
+            self.set_active(id);
             return id;
         }
         let entry = TabEntry {
@@ -160,7 +179,7 @@ impl Tabs {
             }
             None => self.entries.push(entry),
         }
-        self.active = Some(id);
+        self.set_active(id);
         id
     }
 
@@ -248,7 +267,7 @@ impl Tabs {
     pub fn activate(&mut self, id: TabId) -> bool {
         let found = self.get(id).is_some();
         if found {
-            self.active = Some(id);
+            self.set_active(id);
         }
         found
     }
@@ -257,7 +276,7 @@ impl Tabs {
     pub fn activate_index(&mut self, ix: usize) -> bool {
         match self.entries.get(ix) {
             Some(entry) => {
-                self.active = Some(entry.id);
+                self.set_active(entry.id);
                 true
             }
             None => false,

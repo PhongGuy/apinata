@@ -193,6 +193,7 @@ mod cookie_jar_form_focus;
 mod cookie_jar_search;
 mod cookie_prefs;
 mod copy_curl;
+mod current_collection;
 mod default_headers_section;
 mod demo_offer;
 mod derived_credentials;

@@ -210,6 +210,8 @@ struct PendingRow {
 /// The tree of open collections, rebuilt from the workspace on every change.
 pub struct Sidebar {
     renders: usize,
+    // The selected row last seen, so only a move of the selection changes the current collection.
+    seen_selection: Option<SharedString>,
     workspace: Entity<Workspace>,
     tree: Entity<TreeState>,
     // The tree keeps its own handle private; this one wraps it to tell when it holds focus.
@@ -335,7 +337,8 @@ impl Sidebar {
                         t.set_selected_index(Some(0), cx);
                     }
                     t.focus(window, cx)
-                })
+                });
+                this.settle_selection(cx);
             }),
             cx.subscribe_in(&filter, window, Self::filter_event),
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -343,12 +346,16 @@ impl Sidebar {
                 this.rebuild(window, cx)
             }),
             cx.subscribe(&tree, Self::tree_event),
-            cx.observe(&tree, |this, _, cx| this.sync_multi_focus(cx)),
+            cx.observe(&tree, |this, _, cx| {
+                this.sync_multi_focus(cx);
+                this.follow_selection(cx);
+            }),
             cx.subscribe_in(&workspace, window, Self::workspace_event),
         ];
         subscriptions.extend(ui::redraw_on_settings(cx));
         let mut sidebar = Sidebar {
             renders: 0,
+            seen_selection: None,
             filter_cramped: Rc::default(),
             workspace,
             tree,
@@ -509,6 +516,29 @@ impl Sidebar {
         if !self.key_of(&id).is_some_and(|k| self.multi.contains(&k)) {
             self.clear_multi(cx);
         }
+    }
+
+    // Takes a selection the sidebar made itself as seen, so only a user's move of the
+    // selection changes the current collection.
+    fn settle_selection(&mut self, cx: &App) {
+        self.seen_selection = self.tree.read(cx).selected_item().map(|i| i.id.clone());
+    }
+
+    // Selecting a row in another collection makes that collection current.
+    fn follow_selection(&mut self, cx: &mut Context<Self>) {
+        let id = self.tree.read(cx).selected_item().map(|i| i.id.clone());
+        if id == self.seen_selection {
+            return;
+        }
+        self.seen_selection = id;
+        if let Some((root, _)) = self.selected(cx) {
+            self.make_current(&root, cx);
+        }
+    }
+
+    fn make_current(&self, root: &Path, cx: &mut Context<Self>) {
+        self.workspace
+            .update(cx, |w, cx| w.set_current_root(root, cx));
     }
 
     // Escape empties the set; with none, it passes on so a rename or dialog still ends.
@@ -2068,6 +2098,7 @@ impl Sidebar {
             self.followed = Some(tab);
         }
         self.apply_pending_focus(window, cx);
+        self.settle_selection(cx);
     }
 
     // The row that takes a removed row's place: its old index clamped to the rows left, or
@@ -2339,6 +2370,8 @@ impl Sidebar {
         };
         node.expanded = open;
         let (root, path) = (node.root.clone(), node.path.clone());
+        // A toggled root or folder is a pick of its collection, even when already selected.
+        self.make_current(&root, cx);
         cx.notify();
         if !self.filter_text.trim().is_empty() {
             return;
@@ -2678,11 +2711,20 @@ impl Render for Sidebar {
                                         h_flex()
                                             .w_full()
                                             .justify_between()
-                                            .child(collection_row(
-                                                n.collection,
-                                                n.name.clone().into(),
-                                                busy.get(n.collection).copied().unwrap_or(false),
-                                            ))
+                                            .child(
+                                                h_flex()
+                                                    .flex_1()
+                                                    .min_w_0()
+                                                    .gap(style::SPACE_1)
+                                                    .child(chevron_slot(n))
+                                                    .child(collection_row(
+                                                        n.collection,
+                                                        n.name.clone().into(),
+                                                        busy.get(n.collection)
+                                                            .copied()
+                                                            .unwrap_or(false),
+                                                    )),
+                                            )
                                             .child(
                                                 h_flex()
                                                     .when_some(
@@ -3382,6 +3424,12 @@ fn example_row(n: &Node) -> gpui_kit::Div {
         .child(div().truncate().child(n.name.clone()))
 }
 
+/// The expand chevron of a collection or folder row, centred in the leading slot.
+fn chevron_slot(n: &Node) -> impl IntoElement + use<> {
+    let slot = div().w(style::SPACE_4).flex_none().flex().justify_center();
+    marker("chevron", n).child(slot.child(Icon::new(chevron_icon(n.expanded)).small()))
+}
+
 /// The left part of a folder, request or opaque row. Folders lead with a chevron and their
 /// icon; a request with examples puts its `toggle` in the chevron's slot; other rows leave
 /// the slot empty, with the same gap, so folder icons and method tags start in one column.
@@ -3395,10 +3443,7 @@ fn item_row(
     let lead = if n.kind == NodeKind::Folder {
         h_flex()
             .gap(style::SPACE_1)
-            .child(
-                marker("chevron", n)
-                    .child(slot().child(Icon::new(chevron_icon(n.expanded)).small())),
-            )
+            .child(chevron_slot(n))
             .child(marker("icon", n).child(Icon::new(folder_icon(n.expanded)).small()))
     } else {
         let method = match n.method_tag() {
