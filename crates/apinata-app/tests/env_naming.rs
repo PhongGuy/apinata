@@ -352,29 +352,109 @@ fn global_new_creates_a_free_name(cx: &mut TestAppContext) {
     assert_eq!(global_selected(cx, &g).as_deref(), Some("qa"));
 }
 
-// The global reason wraps inside the list column, under the field.
-#[gpui_kit::test]
-fn global_the_reason_stays_inside_the_list(cx: &mut TestAppContext) {
-    let g = globals(cx);
-    create_global(cx, g.win, LONG);
-    cx.update_window(g.win, |_, w, cx| {
+// Opens the global Rename field on dev, replaces its text with `name` and presses Enter.
+fn rename_global(cx: &mut TestAppContext, win: AnyWindowHandle, name: &str) {
+    cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let (list, field, error) = (
-            w.find("global-env-list").bounds(),
-            w.find(GLOBAL_NAME).bounds(),
-            w.find("global-env-name-error").bounds(),
-        );
-        assert!(
-            error.left() >= list.left() - px(1.) && error.right() <= list.right() + px(1.),
-            "{error:?} inside the list {list:?}"
-        );
-        assert!(
-            field.left() >= list.left() - px(1.) && field.right() <= list.right() + px(1.),
-            "the field {field:?} is in the list {list:?}"
-        );
-        assert!(error.top() >= field.bottom() - px(1.), "under the field");
+        w.click("global-env-rename", cx)
     })
     .unwrap();
+    cx.run_until_parked();
+    cx.simulate_keystrokes(win, &secondary("a"));
+    cx.simulate_input(win, name);
+    cx.simulate_keystrokes(win, "enter");
+    cx.run_until_parked();
+}
+
+// A taken global name is refused under the Rename field, as New refuses it, and nothing moves.
+#[gpui_kit::test]
+fn global_rename_refuses_a_taken_name_under_the_field(cx: &mut TestAppContext) {
+    let g = globals(cx);
+    rename_global(cx, g.win, LONG);
+    assert_eq!(
+        drawn_global(cx, g.win),
+        (
+            Some(LONG.into()),
+            Some(format!("An environment named \"{LONG}\" already exists"))
+        )
+    );
+    assert!(
+        present(cx, g.win, "global-env-name-invalid-icon"),
+        "marked invalid"
+    );
+    assert!(
+        !present(cx, g.win, "global-env-error"),
+        "no line above the list"
+    );
+    assert_eq!(global_files(&g), ["dev.yml", &format!("{LONG}.yml")]);
+    assert_eq!(global_selected(cx, &g).as_deref(), Some("dev"));
+}
+
+// Enter as a driver sends it echoes its text into the field; that echo is no edit, so the
+// refusal it drew stays, for New and Rename alike, until a real edit.
+#[gpui_kit::test]
+fn global_an_echoed_enter_keeps_the_refusal(cx: &mut TestAppContext) {
+    for opener in ["global-env-create", "global-env-rename"] {
+        let g = globals(cx);
+        cx.update_window(g.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.click(opener, cx)
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update_window(g.win, |_, w, cx| {
+            w.press(&secondary("a"), cx);
+            w.input(LONG, cx);
+            w.dispatch_keystroke(gpui_kit::Keystroke::parse("enter").unwrap(), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            drawn_global(cx, g.win).1,
+            Some(format!("An environment named \"{LONG}\" already exists")),
+            "{opener}: the reason shows"
+        );
+        cx.update_window(g.win, |_, w, cx| w.input("x", cx))
+            .unwrap();
+        assert_eq!(
+            drawn_global(cx, g.win).1,
+            None,
+            "{opener}: an edit clears it"
+        );
+    }
+}
+
+// The global reason wraps inside the list column, under the field, for Rename and New.
+#[gpui_kit::test]
+fn global_the_reason_stays_inside_the_list(cx: &mut TestAppContext) {
+    for opener in ["rename", "new"] {
+        let g = globals(cx);
+        match opener {
+            "new" => create_global(cx, g.win, LONG),
+            _ => rename_global(cx, g.win, LONG),
+        }
+        cx.update_window(g.win, |_, w, cx| {
+            w.render_frame(cx);
+            let (list, field, error) = (
+                w.find("global-env-list").bounds(),
+                w.find(GLOBAL_NAME).bounds(),
+                w.find("global-env-name-error").bounds(),
+            );
+            assert!(
+                error.left() >= list.left() - px(1.) && error.right() <= list.right() + px(1.),
+                "{opener}: {error:?} inside the list {list:?}"
+            );
+            assert!(
+                field.left() >= list.left() - px(1.) && field.right() <= list.right() + px(1.),
+                "{opener}: the field {field:?} is in the list {list:?}"
+            );
+            assert!(
+                error.top() >= field.bottom() - px(1.),
+                "{opener}: under the field"
+            );
+        })
+        .unwrap();
+    }
 }
 
 // The global Rename label names the environment on one line, the height of New's label.

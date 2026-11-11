@@ -69,10 +69,11 @@ pub struct GlobalEnvEditor {
     followed: bool,
     // Counts openings of the name field, so an outcome closes only the field it was sent from.
     naming_gen: u64,
-    // Whether the name field holds a name the last rename refused.
-    refused: bool,
-    // Why New refused the name field's text; it shows under the field.
-    create_refused: Option<String>,
+    // The name the field's last Enter was refused on, by core or by this editor.
+    refused: Option<String>,
+    // Why this editor refused the field's text, shown under the field; core's reasons show
+    // on the dialog's error line.
+    field_reason: Option<String>,
     // Takes focus when the name input goes away, so the dialog keeps its Escape.
     focus: FocusHandle,
     // The dialog body's scroll position and the watch that keeps the focused row in it.
@@ -118,8 +119,13 @@ impl GlobalEnvEditor {
                         let text = state.read(cx).value().trim().to_string();
                         this.commit_name(&text, window, cx);
                     }
-                    // Editing the name answers the error it drew.
-                    InputEvent::Change if this.naming.is_some() => this.clear_error(cx),
+                    // Editing the name answers the error it drew; Enter's own echo is no edit.
+                    InputEvent::Change
+                        if this.naming.is_some()
+                            && this.refused.as_deref() != Some(state.read(cx).value().trim()) =>
+                    {
+                        this.clear_error(cx)
+                    }
                     _ => {}
                 },
             ),
@@ -141,8 +147,8 @@ impl GlobalEnvEditor {
             renaming: None,
             followed: false,
             naming_gen: 0,
-            refused: false,
-            create_refused: None,
+            refused: None,
+            field_reason: None,
             focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
             follow,
@@ -377,9 +383,10 @@ impl GlobalEnvEditor {
         .detach();
     }
 
-    /// Renames the selected environment to `to`, as given; the core refuses an invalid name.
-    /// The selection moves and the name field closes only once the rename lands; a refusal
-    /// keeps the source selected and the field open on the typed name, marked invalid.
+    /// Renames the selected environment to `to`, as given; a taken name is refused here and an
+    /// invalid one by core. The selection moves and the name field closes only once the rename
+    /// lands; a refusal keeps the source selected and the field open on the typed name, marked
+    /// invalid.
     pub fn rename(&mut self, to: &str, window: &mut Window, cx: &mut Context<Self>) {
         // One rename at a time: a second Enter would rename a source already gone.
         if self.renaming.is_some() {
@@ -389,9 +396,19 @@ impl GlobalEnvEditor {
             return;
         };
         let to = to.to_owned();
+        if to != from
+            && let Some(reason) = crate::env_editor::name_taken(&to, &self.names(cx))
+        {
+            match self.naming == Some(Naming::Rename) {
+                true => (self.refused, self.field_reason) = (Some(to), Some(reason)),
+                false => self.error = Some(reason),
+            }
+            cx.notify();
+            return;
+        }
         self.renaming = Some((from.clone(), to.clone()));
         self.followed = false;
-        self.refused = false;
+        self.refused = None;
         let field = self.naming_gen;
         let op = GlobalOp::Rename {
             from: from.clone(),
@@ -421,10 +438,11 @@ impl GlobalEnvEditor {
                     // Only the field that sent the rename is marked, never one reopened since.
                     Err(_) => {
                         let held = e.name_input.read(cx).value().trim() == to;
-                        e.refused = e.selected.as_ref() == Some(&from)
+                        let ours = e.selected.as_ref() == Some(&from)
                             && e.naming == Some(Naming::Rename)
                             && e.naming_gen == field
                             && held;
+                        e.refused = ours.then_some(to);
                     }
                 }
                 cx.notify();
@@ -780,7 +798,8 @@ impl GlobalEnvEditor {
         cx: &mut Context<Self>,
     ) -> async_channel::Receiver<Result<(), String>> {
         // A new command's outcome is not the rename's refusal, so the field is unmarked.
-        self.refused = false;
+        self.refused = None;
+        self.field_reason = None;
         self.error = None;
         let outcome = self.workspace.update(cx, |w, cx| w.edit_globals(op, cx));
         cx.notify();
@@ -798,8 +817,8 @@ impl GlobalEnvEditor {
 
     // Drops both error sources, the workspace's and this editor's own.
     fn clear_error(&mut self, cx: &mut Context<Self>) {
-        self.refused = false;
-        self.create_refused = None;
+        self.refused = None;
+        self.field_reason = None;
         self.error = None;
         self.workspace.update(cx, |w, cx| w.clear_global_error(cx));
         cx.notify();
@@ -909,8 +928,8 @@ impl GlobalEnvEditor {
         self.name_input.read(cx).focus_handle(cx).focus(window, cx);
         self.naming = Some(naming);
         self.naming_gen += 1;
-        self.refused = false;
-        self.create_refused = None;
+        self.refused = None;
+        self.field_reason = None;
         cx.notify();
     }
 
@@ -924,7 +943,7 @@ impl GlobalEnvEditor {
             && !text.is_empty()
             && let Some(reason) = crate::env_editor::create_refusal(text, &self.names(cx))
         {
-            self.create_refused = Some(reason);
+            (self.refused, self.field_reason) = (Some(text.to_owned()), Some(reason));
             cx.notify();
             return;
         }
@@ -1027,17 +1046,16 @@ impl GlobalEnvEditor {
             ),
         };
         let failed = self.workspace.read(cx).global_error().is_some();
-        let renamed = self.refused && failed && naming == Naming::Rename;
-        let refusal = (self.create_refused.as_deref())
-            .filter(|_| naming == Naming::Create)
-            .map(|reason| failure_text(&ui::plain_quotes(reason)));
+        let by_core = self.refused.is_some() && failed && naming == Naming::Rename;
+        let refusal =
+            (self.field_reason.as_deref()).map(|reason| failure_text(&ui::plain_quotes(reason)));
         let field = v_flex()
             .w_full()
             .gap_1()
             .on_action(cx.listener(|e, _: &Escape, window, cx| {
                 e.naming = None;
                 // The refused name's error goes with its field.
-                if e.refused || e.create_refused.is_some() {
+                if e.refused.is_some() {
                     e.clear_error(cx);
                 }
                 e.focus.focus(window, cx);
@@ -1061,7 +1079,7 @@ impl GlobalEnvEditor {
                 // The frame hugs the input, so the danger ring covers it and no more.
                 div().w_full(),
                 &self.name_input,
-                renamed || refusal.is_some(),
+                by_core || refusal.is_some(),
                 (
                     "global-env-name-danger-ring".into(),
                     "global-env-name-invalid-icon".into(),
