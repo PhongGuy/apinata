@@ -188,7 +188,7 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
         ],
         NodeKind::Example => &[E::Rename, E::Delete],
         NodeKind::Draft => &[E::SaveDraft, E::CloseDraft],
-        NodeKind::Invalid | NodeKind::UnsavedGroup => &[],
+        NodeKind::Invalid | NodeKind::UnsavedGroup | NodeKind::Empty => &[],
     }
 }
 

@@ -1,8 +1,8 @@
 use crate::support;
 
 use apinata_app::sidebar::model::{
-    Expanded, Node, NodeKind, OpenDraft, UNSAVED_LABEL, build, invalid_id, method_label, node_id,
-    to_tree_items, unsaved_id,
+    EMPTY_LABEL, Expanded, Node, NodeKind, OpenDraft, UNSAVED_LABEL, build, empty_id, invalid_id,
+    node_id, to_tree_items, unsaved_id,
 };
 use apinata_app::snapshot::{Content, DiskState, SnapshotCache};
 use apinata_core::{Collection, ItemPath};
@@ -62,24 +62,6 @@ fn find<'a>(nodes: &'a [Node], id: &str) -> &'a Node {
 
 fn s(id: &str, kind: NodeKind, expanded: bool) -> (String, NodeKind, bool) {
     (id.to_string(), kind, expanded)
-}
-
-#[test]
-fn method_labels_are_at_most_four_letters() {
-    let cases = [
-        ("GET", "GET"),
-        ("post", "POST"),
-        ("PUT", "PUT"),
-        ("PATCH", "PTCH"),
-        ("DELETE", "DEL"),
-        ("OPTIONS", "OPT"),
-        ("HEAD", "HEAD"),
-        ("QUERY", "QURY"),
-        ("PROPFIND", "PROP"),
-    ];
-    for (method, label) in cases {
-        assert_eq!(method_label(method), label, "{method}");
-    }
 }
 
 #[test]
@@ -416,4 +398,36 @@ fn draft_rows_are_neither_dragged_nor_dropped_on() {
             );
         }
     }
+}
+
+#[test]
+fn an_empty_folder_holds_one_disabled_empty_row() {
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("empty/folder.yml", &folder("Empty folder")),
+        ("full/folder.yml", &folder("Full")),
+        ("full/a.yml", &request("a", "http://x/a")),
+    ]);
+    let c = content(&dir);
+    let input = [(dir.path(), "c", Some(&c))];
+    let nodes = build(&input, &[], &expanded(dir.path(), &["", "empty"]), "");
+    assert_eq!(
+        flat(&nodes),
+        [
+            s("0:", NodeKind::Collection, true),
+            s("0:empty", NodeKind::Folder, true),
+            s(empty_id(0, &ip("empty")).as_ref(), NodeKind::Empty, false),
+            s("0:full", NodeKind::Folder, false),
+            s("0:full/a.yml", NodeKind::Request, false),
+        ]
+    );
+    let row = find(&nodes, empty_id(0, &ip("empty")).as_ref());
+    assert_eq!(row.name, EMPTY_LABEL);
+    let items = to_tree_items(&nodes);
+    assert!(items[0].children[0].children[0].is_disabled());
+    // A filter never keeps an empty folder, so it never shows the row either.
+    assert_eq!(
+        flat(&build(&input, &[], &expanded(dir.path(), &[]), "a")).len(),
+        3
+    );
 }

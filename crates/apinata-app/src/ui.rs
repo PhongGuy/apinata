@@ -60,6 +60,7 @@ pub fn short_method(method: &str) -> SharedString {
         "PATCH" => "PTCH".into(),
         "DELETE" => "DEL".into(),
         "OPTIONS" => "OPT".into(),
+        "QUERY" => "QURY".into(),
         _ => upper.chars().take(4).collect::<String>().into(),
     }
 }
@@ -3124,6 +3125,7 @@ pub struct EmptyState {
     title: SharedString,
     actions: Vec<(SharedString, Box<dyn Action>)>,
     key_context: Option<&'static str>,
+    note: Option<(usize, ElementId, SharedString)>,
 }
 
 impl EmptyState {
@@ -3131,6 +3133,17 @@ impl EmptyState {
     /// not hold focus.
     pub fn key_context(mut self, context: &'static str) -> EmptyState {
         self.key_context = Some(context);
+        self
+    }
+
+    /// A muted line `id` under action `ix` that qualifies that action alone.
+    pub fn note(
+        mut self,
+        ix: usize,
+        id: impl Into<ElementId>,
+        text: impl Into<SharedString>,
+    ) -> EmptyState {
+        self.note = Some((ix, id.into(), text.into()));
         self
     }
 }
@@ -3149,12 +3162,15 @@ pub fn empty_state(
             .map(|(label, action)| (label.to_string().into(), action.boxed_clone()))
             .collect(),
         key_context: None,
+        note: None,
     }
 }
 
 impl RenderOnce for EmptyState {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let context = self.key_context;
+        let muted = cx.theme().muted_foreground;
+        let mut note = self.note;
         let rows = self
             .actions
             .into_iter()
@@ -3184,6 +3200,24 @@ impl RenderOnce for EmptyState {
                             .ml(SPACE_2)
                             .child(kbd)
                     }))
+                    .into_any_element()
+            })
+            .enumerate()
+            .map(|(ix, row)| match note.take_if(|(at, ..)| *at == ix) {
+                Some((_, id, text)) => v_flex()
+                    .items_center()
+                    .child(row)
+                    .child(
+                        div()
+                            .id(id)
+                            .test_support()
+                            .aria_label(text.clone())
+                            .text_size(TEXT_SMALL)
+                            .text_color(muted)
+                            .child(text),
+                    )
+                    .into_any_element(),
+                None => row,
             });
         v_flex()
             .id(self.id)

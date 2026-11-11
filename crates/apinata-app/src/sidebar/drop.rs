@@ -44,10 +44,11 @@ pub fn drop_target(
     zone: DropZone,
 ) -> Option<DropTarget> {
     // Only a folder takes all three zones; a leaf row has no inside, and a collection row
-    // has nothing above or below it within the collection.
+    // has nothing above or below it within the collection. An Empty row stands for its folder.
     let to = match (kind, zone) {
         (NodeKind::Invalid | NodeKind::Draft | NodeKind::UnsavedGroup, _) => return None,
         (NodeKind::Collection, _) => DropTarget::Inside(ItemPath::root()),
+        (NodeKind::Empty, _) => DropTarget::Inside(target.clone()),
         (NodeKind::Folder, DropZone::Inside) => DropTarget::Inside(target.clone()),
         (_, DropZone::Before) => DropTarget::Before(target.clone()),
         (_, _) => DropTarget::After(target.clone()),
@@ -70,7 +71,7 @@ pub fn multi_drop(
     // A collection row stands for the root directory.
     let dir = match (kind, zone) {
         (NodeKind::Collection, DropZone::Inside) => ItemPath::root(),
-        (NodeKind::Folder, DropZone::Inside) => target.clone(),
+        (NodeKind::Folder, DropZone::Inside) | (NodeKind::Empty, _) => target.clone(),
         _ => return None,
     };
     if items.iter().any(|i| !i.is_root() && is_within(&dir, i)) {

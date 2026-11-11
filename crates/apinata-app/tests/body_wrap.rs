@@ -650,3 +650,49 @@ fn find_keeps_its_place_when_a_wide_line_swaps_between_editor_and_rows(cx: &mut 
     assert_eq!(label(cx, &view), "1 of 1");
     assert!(editor_shows(cx, &view, 20_500..20_506));
 }
+
+// Whether the rows list draws the continuation mark on row `row`.
+fn marked(cx: &mut TestAppContext, win: AnyWindowHandle, row: usize) -> bool {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(("line-continued", row)).is_some()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn unwrapped_continuation_rows_are_marked_in_the_gutter(cx: &mut TestAppContext) {
+    let (win, view) = host(cx, big_single_line(), "text/plain");
+    // Wrapped rows read as one flowing line, like the editor's soft wrap.
+    assert!(!marked(cx, win, 1));
+    cx.update_window(win, |_, w, cx| {
+        view.update(cx, |v, cx| v.set_wrap(false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!marked(cx, win, 0), "the line's first row shows its number");
+    assert!(marked(cx, win, 1), "a cut row says it continues the line");
+}
+
+#[gpui_kit::test]
+fn the_line_numbers_keep_a_gap_from_the_left_border(cx: &mut TestAppContext) {
+    let (win, view) = host(cx, big_single_line(), "text/plain");
+    cx.update_window(win, |_, w, cx| {
+        view.update(cx, |v, cx| v.set_wrap(false, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let pad = apinata_app::style::resolve(apinata_app::style::SPACE_2, w);
+        let frame = w.find("body-lines-frame").bounds();
+        let number = w.find(("line-number", 0usize)).bounds();
+        assert!(
+            number.left() - frame.left() >= pad,
+            "{:?} from {:?}",
+            number.left(),
+            frame.left()
+        );
+    })
+    .unwrap();
+}

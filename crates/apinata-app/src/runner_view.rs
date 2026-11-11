@@ -600,17 +600,21 @@ fn failure_reason(r: &RequestResult, env: Option<&str>) -> Option<String> {
     })
 }
 
-/// "1 request", "3 requests", "2 requests for each of 3 data rows", or "No requests to run".
-pub fn plan_count_text(requests: usize, rounds: Option<usize>) -> String {
+/// "3 requests", "2 of 3 requests" when only some are checked, either followed by " for each
+/// of 3 data rows" when a data file drives the run, or "No requests to run".
+pub fn plan_count_text(checked: usize, requests: usize, rounds: Option<usize>) -> String {
     let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
-    match (requests, rounds) {
-        (0, _) => "No requests to run".to_owned(),
-        (n, None) => plural(n, "request"),
-        (n, Some(r)) => format!(
-            "{} for each of {}",
-            plural(n, "request"),
-            plural(r, "data row")
-        ),
+    if requests == 0 {
+        return "No requests to run".to_owned();
+    }
+    let count = if checked == requests {
+        plural(requests, "request")
+    } else {
+        format!("{checked} of {}", plural(requests, "request"))
+    };
+    match rounds {
+        None => count,
+        Some(r) => format!("{count} for each of {}", plural(r, "data row")),
     }
 }
 
@@ -1087,8 +1091,12 @@ impl Render for RunnerView {
         // what Run would send.
         let previewing = !has_results || choosing;
         let plan = previewing.then(|| {
-            let count = plan_count_text(model.preview().len(), model.preview_rounds());
             let preview = model.preview();
+            let count = plan_count_text(
+                chosen.unwrap_or(preview.len()),
+                preview.len(),
+                model.preview_rounds(),
+            );
             let checked: Vec<bool> = (preview.iter())
                 .map(|row| model.is_checked(&row.path, cx))
                 .collect();
@@ -1506,16 +1514,22 @@ mod tests {
 
     #[test]
     fn the_plan_count_reads_naturally() {
-        assert_eq!(plan_count_text(0, None), "No requests to run");
-        assert_eq!(plan_count_text(1, None), "1 request");
-        assert_eq!(plan_count_text(3, None), "3 requests");
+        assert_eq!(plan_count_text(0, 0, None), "No requests to run");
+        assert_eq!(plan_count_text(1, 1, None), "1 request");
+        assert_eq!(plan_count_text(3, 3, None), "3 requests");
+        assert_eq!(plan_count_text(2, 3, None), "2 of 3 requests");
+        assert_eq!(plan_count_text(0, 1, None), "0 of 1 request");
         assert_eq!(
-            plan_count_text(2, Some(1)),
+            plan_count_text(2, 2, Some(1)),
             "2 requests for each of 1 data row"
         );
         assert_eq!(
-            plan_count_text(1, Some(3)),
+            plan_count_text(1, 1, Some(3)),
             "1 request for each of 3 data rows"
+        );
+        assert_eq!(
+            plan_count_text(1, 2, Some(3)),
+            "1 of 2 requests for each of 3 data rows"
         );
     }
 
