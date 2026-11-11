@@ -243,6 +243,93 @@ fn send_works_from_the_url_input_but_not_the_filter(cx: &mut TestAppContext) {
     assert_eq!(served(cx, &server), ["/ok"]);
 }
 
+// Focuses a select's trigger, then presses Send with nothing else in between, as after picking
+// a value from its list.
+fn send_from_select(
+    cx: &mut TestAppContext,
+    s: &Started,
+    focus: impl FnOnce(&mut gpui_kit::Window, &mut gpui_kit::App),
+) {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| focus(w, cx)).unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, &key("enter"));
+}
+
+fn expanded(cx: &mut TestAppContext, s: &Started, id: &'static str) -> Option<bool> {
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find(id).expanded()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn send_works_from_a_closed_select_in_the_editor(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let col = collection_for(&server.uri(), "");
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    let method = editor_of(cx, &s, tab).read_with(cx, |e, _| e.method_select().clone());
+    send_from_select(cx, &s, |w, cx| method.update(cx, |m, cx| m.focus(w, cx)));
+    wait_real(cx, |cx| !served(cx, &server).is_empty());
+    assert_eq!(served(cx, &server), ["/ok"]);
+    assert_eq!(
+        expanded(cx, &s, "method"),
+        Some(false),
+        "the list stays shut"
+    );
+}
+
+#[gpui_kit::test]
+fn send_works_from_the_title_bar_environment_picker(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let col = collection_for(&server.uri(), "");
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    let env = s
+        .shell
+        .read_with(cx, |v, cx| v.env_selector().read(cx).select().clone());
+    send_from_select(cx, &s, |w, cx| env.update(cx, |m, cx| m.focus(w, cx)));
+    wait_real(cx, |cx| !served(cx, &server).is_empty());
+    assert_eq!(served(cx, &server), ["/ok"]);
+    assert_eq!(expanded(cx, &s, "env-select"), Some(false));
+}
+
+// An open list keeps the kit's own Ctrl+Enter, which picks the highlighted option.
+#[gpui_kit::test]
+fn an_open_select_list_keeps_its_own_ctrl_enter(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, wiremock::ResponseTemplate::new(200));
+    let col = collection_for(&server.uri(), "");
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    let method = editor_of(cx, &s, tab).read_with(cx, |e, _| e.method_select().clone());
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| method.update(cx, |m, cx| m.focus(w, cx)))
+        .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, "down");
+    frame(cx, s.win);
+    assert_eq!(
+        expanded(cx, &s, "method"),
+        Some(true),
+        "down opens the list"
+    );
+    cx.simulate_keystrokes(s.win, &key("enter"));
+    cx.run_until_parked();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    cx.run_until_parked();
+    assert!(served(cx, &server).is_empty(), "an open list does not send");
+    assert_eq!(
+        expanded(cx, &s, "method"),
+        Some(false),
+        "the pick closes it"
+    );
+}
+
 // The History button, then the tree itself, are the Tab stops after the filter, ahead of
 // the rows' buttons, so the arrows and Enter reach its rows.
 #[gpui_kit::test]

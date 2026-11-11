@@ -160,6 +160,12 @@ fn today() -> Vec<Triple> {
         ),
         (
             secondary("enter"),
+            "apinata::SendRequest",
+            "RequestEditor > Select",
+        ),
+        (secondary("enter"), "apinata::SendActive", "Shell > Select"),
+        (
+            secondary("enter"),
             "apinata::CommitChanges",
             "ChangesMessage > Input",
         ),
