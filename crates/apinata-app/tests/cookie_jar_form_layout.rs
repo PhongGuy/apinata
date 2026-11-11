@@ -122,9 +122,20 @@ fn an_empty_value_saves_the_cookie(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_saved_row_says_this_host_only_and_masks_as_the_timeline_does(cx: &mut TestAppContext) {
-    let (s, _col) = jar(cx, vec![CookieInfo::new("a.test", "session", "v")]);
+    let mut flagged = CookieInfo::new("b.test", "all", "v");
+    flagged.secure = true;
+    flagged.http_only = true;
+    let (s, _col) = jar(cx, vec![CookieInfo::new("a.test", "session", "v"), flagged]);
     assert_eq!(label(cx, s.win, ("jar-value", 0usize)), NAME_MASK);
     assert_eq!(label(cx, s.win, ("jar-flags", 0usize)), "This host only");
+    // Every flag reads as plain words in one style, and the form's checkboxes match them.
+    assert_eq!(
+        label(cx, s.win, ("jar-flags", 1usize)),
+        "HTTPS only, No script access, This host only"
+    );
+    click(cx, s.win, "jar-add");
+    assert_eq!(label(cx, s.win, "jar-form-secure"), "HTTPS only");
+    assert_eq!(label(cx, s.win, "jar-form-http-only"), "No script access");
 }
 
 #[gpui_kit::test]
@@ -172,4 +183,65 @@ fn the_title_names_the_form_and_save_and_cancel_come_last(cx: &mut TestAppContex
     assert_eq!(label(cx, s.win, "jar-title"), "Cookies");
     click(cx, s.win, ("jar-edit", 0usize));
     assert_eq!(label(cx, s.win, "jar-title"), "Edit cookie");
+}
+
+// A jar long enough to scroll in a short window, scrolled well down its list.
+fn scrolled_jar(cx: &mut TestAppContext) -> (Started, tempfile::TempDir) {
+    let many = (0..40)
+        .map(|i| CookieInfo::new("a.test", format!("c{i:02}"), "v"))
+        .collect();
+    let (s, col) = jar(cx, many);
+    cx.simulate_window_resize(
+        s.win,
+        gpui_kit::size(gpui_kit::px(900.), gpui_kit::px(400.)),
+    );
+    frame(cx, s.win);
+    let top = bounds(cx, s.win, ("jar-cookie", 0usize));
+    cx.update_window(s.win, |_, w, cx| {
+        w.scroll(
+            "cookie-jar-scroll",
+            gpui_kit::ScrollDelta::Pixels(gpui_kit::point(gpui_kit::px(0.), gpui_kit::px(-600.))),
+            cx,
+        )
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert!(
+        bounds(cx, s.win, ("jar-cookie", 0usize)).top() < top.top(),
+        "the list scrolled"
+    );
+    (s, col)
+}
+
+// The first row past the top third of the scrolled list that shows whole inside it.
+fn row_in_view(cx: &mut TestAppContext, win: AnyWindowHandle) -> usize {
+    let view = bounds(cx, win, "cookie-jar-scroll");
+    (10..40)
+        .find(|&ix| {
+            let row = bounds(cx, win, ("jar-cookie", ix));
+            row.top() >= view.top() + view.size.height / 3. && row.bottom() <= view.bottom()
+        })
+        .expect("a row in view")
+}
+
+// Edits the row in view, closes the form with `close`, and checks the row has not moved.
+fn closing_the_form_keeps_the_row_in_place(cx: &mut TestAppContext, close: &'static str) {
+    let (s, _col) = scrolled_jar(cx);
+    let ix = row_in_view(cx, s.win);
+    let before = bounds(cx, s.win, ("jar-cookie", ix));
+    click(cx, s.win, ("jar-edit", ix));
+    assert!(present(cx, s.win, "jar-form"));
+    click(cx, s.win, close);
+    assert!(!present(cx, s.win, "jar-form"));
+    assert_eq!(bounds(cx, s.win, ("jar-cookie", ix)), before, "{close}");
+}
+
+#[gpui_kit::test]
+fn cancelling_an_edit_keeps_the_list_where_it_was(cx: &mut TestAppContext) {
+    closing_the_form_keeps_the_row_in_place(cx, "jar-form-cancel");
+}
+
+#[gpui_kit::test]
+fn saving_an_edit_keeps_the_list_where_it_was(cx: &mut TestAppContext) {
+    closing_the_form_keeps_the_row_in_place(cx, "jar-form-save");
 }

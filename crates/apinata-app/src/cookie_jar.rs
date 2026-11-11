@@ -15,8 +15,8 @@ use gpui_kit::component::{ActiveTheme as _, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Div, Entity, Focusable, Result, ScrollHandle, SharedString, Subscription, Task,
-    TestSupportExt, Window, div, px,
+    App, Div, Entity, Focusable, Pixels, Point, Result, ScrollHandle, SharedString, Subscription,
+    Task, TestSupportExt, Window, div, px,
 };
 
 use crate::executor::{save_cookies, shared};
@@ -48,6 +48,10 @@ pub fn parse_expires(text: &str, now: SystemTime) -> Result<Option<SystemTime>, 
     }
     Ok(Some(at))
 }
+
+// The Secure and HttpOnly flags in plain words, on the saved rows and the form's checkboxes.
+const SECURE_LABEL: &str = "HTTPS only";
+const HTTP_ONLY_LABEL: &str = "No script access";
 
 // The local date and time the Expires field shows as its example.
 const EXPIRES_EXAMPLE: &str = "2027-01-01 12:00";
@@ -169,6 +173,11 @@ pub struct CookieJarView {
     query: String,
     /// Cookies whose value is shown, keyed (domain, path, name) so it survives relisting.
     revealed: BTreeSet<(String, String, String)>,
+    /// Scrolls the dialog body, the list or the form standing in for it.
+    scroll: ScrollHandle,
+    // Where the list was scrolled when the form opened; the short form caps the shared
+    // offset, so closing the form puts it back.
+    list_offset: Point<Pixels>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -194,6 +203,8 @@ impl CookieJarView {
             search,
             query: String::new(),
             revealed: BTreeSet::new(),
+            scroll: ScrollHandle::new(),
+            list_offset: Point::default(),
             _subscriptions: subscriptions,
         };
         view.refresh(cx);
@@ -273,6 +284,9 @@ impl CookieJarView {
             editing,
         };
         form.opened = form.state(cx);
+        if self.form.is_none() {
+            self.list_offset = self.scroll.offset();
+        }
         self.form = Some(form);
         cx.notify();
     }
@@ -381,7 +395,7 @@ impl CookieJarView {
             cx.notify();
             return false;
         }
-        self.form = None;
+        self.close_form();
         self.search.read(cx).focus_handle(cx).focus(window, cx);
         self.changed(cx);
         true
@@ -389,8 +403,15 @@ impl CookieJarView {
 
     /// Closes the form without inserting anything.
     pub fn cancel_form(&mut self, cx: &mut Context<Self>) {
-        self.form = None;
+        self.close_form();
         cx.notify();
+    }
+
+    // Drops the form and returns the list to where it was scrolled when the form opened.
+    fn close_form(&mut self) {
+        if self.form.take().is_some() {
+            self.scroll.set_offset(self.list_offset);
+        }
     }
 
     /// The listed cookies, in the jar's domain, path and name order.
@@ -504,8 +525,8 @@ impl CookieJarView {
         cx: &mut Context<Self>,
     ) -> Div {
         let flags: Vec<&str> = [
-            (c.secure, "Secure"),
-            (c.http_only, "HttpOnly"),
+            (c.secure, SECURE_LABEL),
+            (c.http_only, HTTP_ONLY_LABEL),
             (c.host_only, "This host only"),
         ]
         .into_iter()
@@ -673,7 +694,7 @@ impl CookieJarView {
                     .gap_2()
                     .child(
                         ui::checkbox("jar-form-secure", form.secure)
-                            .label("Secure")
+                            .label(SECURE_LABEL)
                             .on_click(cx.listener(|this, on: &bool, _, cx| {
                                 if let Some(f) = this.form.as_mut() {
                                     f.secure = *on;
@@ -683,7 +704,7 @@ impl CookieJarView {
                     )
                     .child(
                         ui::checkbox("jar-form-http-only", form.http_only)
-                            .label("HttpOnly")
+                            .label(HTTP_ONLY_LABEL)
                             .on_click(cx.listener(|this, on: &bool, _, cx| {
                                 if let Some(f) = this.form.as_mut() {
                                     f.http_only = *on;
@@ -738,7 +759,8 @@ impl Render for CookieJarView {
                     .child("No request executor is available."),
             );
         }
-        // The open form stands alone, its Save and Cancel last, as the dialog's title says.
+        // While a cookie is added or edited, the dialog shows only the form, so Save and
+        // Cancel end the dialog instead of sitting above the list.
         if let Some(form) = &self.form {
             return root.child(self.form_view(form, window, cx));
         }
@@ -837,7 +859,7 @@ pub fn open_cookie_jar(window: &mut Window, cx: &mut App) -> Entity<CookieJarVie
     let view = cx.new(|cx| CookieJarView::new(window, cx));
     let guard = crate::dialog_guard::guarded(form_guard(&view), window, cx);
     let body = view.clone();
-    let scroll = ScrollHandle::new();
+    let scroll = view.read(cx).scroll.clone();
     let opened = guard.clone();
     window.open_dialog(cx, move |d, window, cx| {
         // Enter never closes the jar: a form field saves its cookie, and nothing else is lost.
