@@ -99,7 +99,7 @@ fn name_field(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<(String, 
 }
 
 // The refused field as one frame draws it: the typed name, focused, ringed and flagged, with
-// the error line under the pane.
+// the error just under the field.
 fn assert_refused(cx: &mut TestAppContext, win: AnyWindowHandle, typed: &str) {
     assert_eq!(
         name_field(cx, win),
@@ -111,7 +111,10 @@ fn assert_refused(cx: &mut TestAppContext, win: AnyWindowHandle, typed: &str) {
         present(cx, win, "env-name-invalid-icon"),
         "the invalid icon"
     );
-    assert!(present(cx, win, "env-error"), "the error line");
+    assert!(
+        present(cx, win, "env-name-error"),
+        "the error under the field"
+    );
 }
 
 // What each change of the editor showed: the selection and whether the name field was open.
@@ -166,6 +169,55 @@ fn a_core_refusal_keeps_the_source_and_the_field(cx: &mut TestAppContext) {
     assert_eq!(directory(&t.col), before);
 }
 
+// Rename puts its field in the selected row's place in the list, the other rows untouched.
+#[gpui_kit::test]
+fn the_rename_field_takes_the_selected_rows_place(cx: &mut TestAppContext) {
+    let t = envs(cx);
+    env_menu(cx, t.win, ENV_MENU_RENAME);
+    frame(cx, t.win);
+    assert!(
+        !present(cx, t.win, ("env-item", 0usize)),
+        "dev's row gives way"
+    );
+    cx.update_window(t.win, |_, w, cx| {
+        w.render_frame(cx);
+        let (list, field, next) = (
+            w.find("env-list").bounds(),
+            w.find(NAME).bounds(),
+            w.find(("env-item", 1usize)).bounds(),
+        );
+        assert!(
+            field.left() >= list.left() && field.right() <= list.right() + gpui_kit::px(1.),
+            "{field:?} sits inside the list {list:?}"
+        );
+        assert!(field.bottom() <= next.top(), "in dev's place, above prod");
+    })
+    .unwrap();
+}
+
+// A taken name's reason floats just under the field as a sentence, not at the pane's bottom.
+#[gpui_kit::test]
+fn a_taken_names_reason_sits_under_the_field(cx: &mut TestAppContext) {
+    let t = envs(cx);
+    rename_to(cx, t.win, "prod");
+    assert!(!present(cx, t.win, "env-error"), "no line under the pane");
+    cx.update_window(t.win, |_, w, cx| {
+        w.render_frame(cx);
+        let (field, error) = (w.find(NAME).bounds(), w.find("env-name-error"));
+        assert_eq!(
+            error.label(),
+            Some("An environment named \"prod\" already exists")
+        );
+        let error = error.bounds();
+        assert!(
+            error.top() >= field.bottom() - gpui_kit::px(1.)
+                && error.top() <= field.bottom() + gpui_kit::px(8.),
+            "{error:?} sits just under {field:?}"
+        );
+    })
+    .unwrap();
+}
+
 // Editing the refused name answers the error: the line, ring and icon go in the next frame.
 #[gpui_kit::test]
 fn typing_in_the_refused_field_clears_the_error(cx: &mut TestAppContext) {
@@ -173,7 +225,10 @@ fn typing_in_the_refused_field_clears_the_error(cx: &mut TestAppContext) {
     rename_to(cx, t.win, "prod");
     assert_refused(cx, t.win, "prod");
     cx.simulate_input(t.win, "2");
-    assert!(!present(cx, t.win, "env-error"), "typing clears the error");
+    assert!(
+        !present(cx, t.win, "env-name-error"),
+        "typing clears the error"
+    );
     assert!(!present(cx, t.win, "env-name-danger-ring"));
     assert!(!present(cx, t.win, "env-name-invalid-icon"));
     assert_eq!(name_field(cx, t.win).map(|f| f.0).as_deref(), Some("prod2"));
@@ -188,7 +243,7 @@ fn escape_on_the_refused_field_clears_the_error(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(t.win, "escape");
     cx.run_until_parked();
     assert_eq!(name_field(cx, t.win), None, "Escape closes the field");
-    assert!(!present(cx, t.win, "env-error"), "and drops its error");
+    assert!(!present(cx, t.win, "env-name-error"), "and drops its error");
     assert!(!present(cx, t.win, "env-name-invalid-icon"));
 }
 
@@ -209,7 +264,7 @@ fn a_reopened_tab_shows_no_error(cx: &mut TestAppContext) {
     let tab = open(cx);
     rename_to(cx, s.win, "prod");
     assert!(present(cx, s.win, "env-name-invalid-icon"), "refused");
-    assert!(present(cx, s.win, "env-error"));
+    assert!(present(cx, s.win, "env-name-error"));
     let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
     cx.update_window(s.win, |_, w, cx| {
         area.update(cx, |a, cx| a.close(vec![tab], w, cx))
@@ -219,7 +274,11 @@ fn a_reopened_tab_shows_no_error(cx: &mut TestAppContext) {
     assert!(!present(cx, s.win, "env-editor"), "the tab is closed");
     open(cx);
     assert!(present(cx, s.win, "env-editor"));
-    assert!(!present(cx, s.win, "env-error"), "no stale error on reopen");
+    assert!(
+        !present(cx, s.win, "env-name-error"),
+        "no stale error on reopen"
+    );
+    assert!(!present(cx, s.win, "env-error"));
 }
 
 // A rename that lands selects the new name and closes the field; until then dev stays
@@ -342,6 +401,7 @@ fn a_later_save_unmarks_the_refused_field(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert!(name_field(cx, t.win).is_some(), "the field is still open");
     assert!(!present(cx, t.win, "env-error"));
+    assert!(!present(cx, t.win, "env-name-error"));
     assert!(!present(cx, t.win, "env-name-invalid-icon"));
 }
 
