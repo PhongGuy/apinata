@@ -719,6 +719,39 @@ fn high_contrast_placeholders_and_disabled_text_stay_readable() {
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }
 
+/// The selected segment's raised fill is too close to its track to carry the choice, so its
+/// edge must: 3:1 against the track it sits on and the fill it surrounds, in every theme, and
+/// never the focus ring or brand colour. An unselected segment has no edge.
+#[gpui_kit::test]
+fn the_selected_segment_edge_reaches_three_to_one_on_its_track(cx: &mut gpui_kit::TestAppContext) {
+    use apinata_app::focus_mode::Modality;
+    use apinata_app::theme::{DARK, LIGHT};
+    use apinata_app::ui::{segment_edge, segment_fill};
+    use gpui_kit::component::ActiveTheme as _;
+    let mut fails = Vec::new();
+    for name in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
+        crate::support::use_theme(cx, name);
+        cx.update(|cx| apinata_app::focus_mode::set(Modality::Keyboard, cx));
+        cx.update(|cx| {
+            assert_eq!(segment_edge(false, cx), None, "{name}: unselected edge");
+            let Some(edge) = segment_edge(true, cx) else {
+                fails.push(format!("{name}: the selected segment has no edge"));
+                return;
+            };
+            let t = cx.theme();
+            assert_ne!(edge, t.ring, "{name}: the edge reads as focus");
+            assert_ne!(edge, t.primary, "{name}: the edge reads as brand");
+            for (what, under) in [("track", t.muted), ("fill", segment_fill(true, cx))] {
+                let r = hsla_ratio(edge, under);
+                if r < 3.0 {
+                    fails.push(format!("{name}: edge on the {what} = {r:.2}"));
+                }
+            }
+        });
+    }
+    assert!(fails.is_empty(), "{fails:#?}");
+}
+
 /// WCAG contrast of two opaque colours.
 fn hsla_ratio(a: gpui_kit::Hsla, b: gpui_kit::Hsla) -> f64 {
     let lum = |c: gpui_kit::Hsla| {
