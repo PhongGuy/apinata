@@ -3219,7 +3219,6 @@ pub fn collection_row(ix: usize, name: SharedString, busy: bool) -> impl IntoEle
         .id(("collection", ix))
         .test_support()
         .aria_label(name.clone())
-        .flex_1()
         .min_w_0()
         .gap(style::SPACE_2)
         .font_weight(FontWeight::MEDIUM)

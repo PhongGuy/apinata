@@ -311,6 +311,8 @@ struct Crumbs {
     root: PathBuf,
     item: ItemPath,
     collection: SharedString,
+    // Where the collection lives, when another open collection shares its name.
+    hint: Option<String>,
     folders: Vec<(String, ItemPath)>,
     title: String,
     tooltip: Option<String>,
@@ -2663,6 +2665,7 @@ impl RequestEditor {
         }
         Some(Crumbs {
             collection: workspace.collection_name(&root, cx),
+            hint: workspace.collection_hints(cx).remove(&root),
             tooltip: crumb_tooltip(&item, &name),
             root,
             item,
@@ -2678,6 +2681,7 @@ impl RequestEditor {
         let Crumbs {
             root: root_dir,
             collection: collection_name,
+            hint,
             folders,
             title,
             tooltip,
@@ -2723,6 +2727,17 @@ impl RequestEditor {
                 row.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
             })
             .child(collection_crumb)
+            // A muted hint after the name, as a tab shows; it gives way before the name does.
+            .children(hint.map(|hint| {
+                div()
+                    .id("breadcrumb-collection-hint")
+                    .test_support()
+                    .min_w_0()
+                    .flex_shrink(2.)
+                    .truncate()
+                    .text_color(muted)
+                    .child(hint)
+            }))
             .child(div().flex_none().text_color(muted).child(" / "))
             .children(
                 folders
