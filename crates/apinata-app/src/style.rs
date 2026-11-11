@@ -259,8 +259,6 @@ pub const PANE_INSET: Rems = SPACE_3;
 pub const DIALOG_FOOTER_GAP: Rems = SPACE_3;
 /// Width of a text input that holds a long value: an auth field or a host.
 pub const WIDE_INPUT_WIDTH: Rems = ui(320.);
-/// Width of an input that names something, such as a new environment.
-pub const NAME_INPUT_WIDTH: Rems = ui(240.);
 /// Width of an input that holds a short value, such as a color.
 pub const SHORT_INPUT_WIDTH: Rems = ui(120.);
 /// Narrowest the runner table's Name column gets; a narrower pane scrolls the table sideways.

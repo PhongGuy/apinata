@@ -595,7 +595,7 @@ impl EnvEditor {
         if from == to {
             return;
         }
-        if let Some(taken) = self.taken(to, cx) {
+        if let Some(taken) = name_taken(to, &self.names(cx)) {
             self.error = Some(taken);
             self.refused = (self.naming == Some(Naming::Rename)).then(|| to.to_owned());
             cx.notify();
@@ -761,25 +761,6 @@ impl EnvEditor {
 
     fn names(&self, cx: &App) -> Vec<String> {
         self.workspace.read(cx).environments(&self.root, cx)
-    }
-
-    // Why `name` cannot be a new or renamed environment's name: another one has it.
-    fn taken(&self, name: &str, cx: &App) -> Option<String> {
-        (self.names(cx).iter().any(|n| n == name))
-            .then(|| format!("An environment named `{name}` already exists"))
-    }
-
-    // Why New refuses `name`, as Rename would: core would make a taken name a copy and fit an
-    // invalid one to a file name, so both are refused here instead of changed unseen.
-    fn create_refusal(&self, name: &str, cx: &App) -> Option<String> {
-        let invalid = || apinata_core::EnvError::InvalidName {
-            name: name.to_owned(),
-        };
-        match apinata_core::check_environment_name(name) {
-            Err(err) => Some(err.to_string()),
-            Ok(fitted) if fitted != name => Some(invalid().to_string()),
-            Ok(_) => self.taken(name, cx),
-        }
     }
 
     // The other environments extending `name`. This mirrors core's `extended_by` over the
@@ -1650,7 +1631,7 @@ impl EnvEditor {
         // leaves a dirty environment, so a new row's typing goes too.
         let create = self.naming == Some(Naming::Create);
         // A name New refuses is refused before the check, whose Replace saves.
-        if create && let Some(reason) = self.create_refusal(text, cx) {
+        if create && let Some(reason) = create_refusal(text, &self.names(cx)) {
             self.error = Some(reason);
             self.refused = Some(text.to_owned());
             cx.notify();
@@ -2247,6 +2228,25 @@ impl Render for EnvEditor {
             )
             .child(self.follow.watch(&self.scroll)),
         )
+    }
+}
+
+/// Why a new or renamed environment cannot be called `name`: one of `names` already has it.
+pub(crate) fn name_taken(name: &str, names: &[String]) -> Option<String> {
+    (names.iter().any(|n| n == name))
+        .then(|| format!("An environment named `{name}` already exists"))
+}
+
+/// Why New refuses `name` among `names`, as Rename would: core would make a taken name a copy
+/// and fit an invalid one to a file name, so both are refused instead of changed unseen.
+pub(crate) fn create_refusal(name: &str, names: &[String]) -> Option<String> {
+    let invalid = || apinata_core::EnvError::InvalidName {
+        name: name.to_owned(),
+    };
+    match apinata_core::check_environment_name(name) {
+        Err(err) => Some(err.to_string()),
+        Ok(fitted) if fitted != name => Some(invalid().to_string()),
+        Ok(_) => name_taken(name, names),
     }
 }
 

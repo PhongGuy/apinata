@@ -8,7 +8,9 @@ use std::sync::Arc;
 use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_query};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Bounds, Div, Entity, EventEmitter, Focusable, PathPromptOptions,
@@ -479,13 +481,19 @@ impl GraphqlSection {
                 load("graphql-schema-refresh", "Refresh schema").into_any_element()
             }
         };
+        // A reworded failure keeps the raw error text as its tooltip.
+        let detail = graphql_schema_store::detail(cx, &self.schema_url);
         let error = match state {
             Some(SchemaState::Failed(message)) => Some(
                 div()
                     .id("graphql-schema-error")
                     .test_support()
+                    .aria_label(message.clone())
                     .text_size(style::TEXT_SMALL)
                     .text_color(cx.theme().danger)
+                    .when_some(detail, |d, detail| {
+                        d.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+                    })
                     .child(message),
             ),
             _ => None,

@@ -13,6 +13,8 @@ use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext, WindowO
 use support::*;
 
 const NAME: &str = "global-env-name-input";
+// A name the editor lets through and core refuses, so its outcome arrives late.
+const CORE_REFUSES: &str = "a/b";
 
 struct Blank;
 impl gpui_kit::Render for Blank {
@@ -134,7 +136,7 @@ fn name_field(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<(String, 
 }
 
 // Renaming onto a taken name keeps the source selected and the field open, focused, with the
-// typed text, marked invalid, and the error shown; nothing on disk changes.
+// typed text, marked invalid, and the reason under it; nothing on disk changes.
 #[gpui_kit::test]
 fn a_refused_rename_keeps_the_source_and_the_field(cx: &mut TestAppContext) {
     let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
@@ -152,7 +154,11 @@ fn a_refused_rename_keeps_the_source_and_the_field(cx: &mut TestAppContext) {
     );
     assert!(present(cx, g.win, "global-env-name-danger-ring"));
     assert!(present(cx, g.win, "global-env-name-invalid-icon"));
-    assert!(present(cx, g.win, "global-env-error"));
+    assert!(present(cx, g.win, "global-env-name-error"));
+    assert!(
+        !present(cx, g.win, "global-env-error"),
+        "not on the top line"
+    );
     assert_eq!(directory(&g), before, "a refused rename writes nothing");
 }
 
@@ -184,19 +190,25 @@ fn a_rename_selects_the_new_name_and_closes_the_field(cx: &mut TestAppContext) {
     );
 }
 
-// Editing the refused name takes the error away in the next frame.
+// Editing the refused name takes the error away in the next frame, whether the editor refused
+// it (a taken name, under the field) or core did (an invalid one, on the top line).
 #[gpui_kit::test]
 fn typing_in_the_name_field_clears_the_error(cx: &mut TestAppContext) {
-    let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
-    rename_to(cx, &g, "Beta");
-    assert!(present(cx, g.win, "global-env-error"));
-    cx.simulate_input(g.win, "2");
-    assert!(
-        !present(cx, g.win, "global-env-error"),
-        "typing clears the error"
-    );
-    assert!(!present(cx, g.win, "global-env-name-invalid-icon"));
-    assert_eq!(name_field(cx, g.win).map(|f| f.0).as_deref(), Some("Beta2"));
+    for (name, error) in [
+        ("Beta", "global-env-name-error"),
+        ("a/b", "global-env-error"),
+    ] {
+        let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
+        rename_to(cx, &g, name);
+        assert!(present(cx, g.win, error), "{name}");
+        cx.simulate_input(g.win, "2");
+        assert!(
+            !present(cx, g.win, error),
+            "{name}: typing clears the error"
+        );
+        assert!(!present(cx, g.win, "global-env-name-invalid-icon"));
+        assert_eq!(name_field(cx, g.win).map(|f| f.0), Some(format!("{name}2")));
+    }
 }
 
 // The error belongs to the dialog that showed it: closing clears it and a reopened editor
@@ -404,7 +416,7 @@ fn the_danger_ring_hugs_the_name_input(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn escape_on_the_refused_field_clears_the_error(cx: &mut TestAppContext) {
     let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
-    rename_to(cx, &g, "Beta");
+    rename_to(cx, &g, CORE_REFUSES);
     assert!(present(cx, g.win, "global-env-error"));
     cx.simulate_keystrokes(g.win, "escape");
     cx.run_until_parked();
@@ -419,7 +431,7 @@ fn escape_on_the_refused_field_clears_the_error(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_failed_guard_save_does_not_mark_the_name_field(cx: &mut TestAppContext) {
     let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
-    rename_to(cx, &g, "Beta");
+    rename_to(cx, &g, CORE_REFUSES);
     assert!(present(cx, g.win, "global-env-name-invalid-icon"));
     replace_input(cx, g.win, None, ("env-value", 0usize), "b");
     std::fs::remove_file(g.dir.path().join("Alpha.yml")).unwrap();
@@ -485,7 +497,7 @@ fn a_late_landing_keeps_a_field_opened_on_another_environment(cx: &mut TestAppCo
 #[gpui_kit::test]
 fn a_late_refusal_leaves_a_field_opened_on_another_environment(cx: &mut TestAppContext) {
     let g = globals(cx, &["Alpha", "Beta", "Gamma"], "Gamma", "Alpha");
-    rename_then_rename_beta(cx, &g, "Gamma");
+    rename_then_rename_beta(cx, &g, CORE_REFUSES);
     cx.run_until_parked();
     assert_eq!(selected(cx, &g).as_deref(), Some("Beta"));
     assert_eq!(name_field(cx, g.win).map(|f| f.0).as_deref(), Some("Beta"));
@@ -534,7 +546,7 @@ fn a_late_refusal_leaves_a_reopened_field_with_the_same_text(cx: &mut TestAppCon
         w.render_frame(cx);
         w.click("global-env-rename", cx);
         w.press(&secondary("a"), cx);
-        w.input("Beta", cx);
+        w.input(CORE_REFUSES, cx);
         w.press("enter", cx);
     })
     .unwrap();
@@ -544,14 +556,14 @@ fn a_late_refusal_leaves_a_reopened_field_with_the_same_text(cx: &mut TestAppCon
         w.render_frame(cx);
         w.click("global-env-rename", cx);
         w.press(&secondary("a"), cx);
-        w.input("Beta", cx);
+        w.input(CORE_REFUSES, cx);
     })
     .unwrap();
     cx.run_until_parked();
     assert_eq!(selected(cx, &g).as_deref(), Some("Alpha"));
     assert_eq!(
         name_field(cx, g.win),
-        Some(("Beta".to_owned(), true)),
+        Some((CORE_REFUSES.to_owned(), true)),
         "the reopened field stays with its text"
     );
     assert!(!present(cx, g.win, "global-env-name-invalid-icon"));

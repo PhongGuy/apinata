@@ -1907,7 +1907,9 @@ impl TabArea {
         draft_of(entry).is_none() && !dirty_targets(self.workspace.read(cx), entry, cx).is_empty()
     }
 
-    // Each tab's muted hint, by the shared rule over every open tab's label and place.
+    // Each tab's muted hint, by the shared rule over every open tab's label and place. A tab
+    // that stands for a whole collection also names its folder whenever that collection's
+    // name is shared, since its title alone cannot say which one it is.
     fn details(&self, entries: &[TabEntry], labels: &[String], cx: &App) -> Vec<Option<String>> {
         let ws = self.workspace.read(cx);
         let tags = ws.collection_tags(cx);
@@ -1918,7 +1920,17 @@ impl TabArea {
                 tab_place(e, tag, snapshot.as_ref().map(|s| &s.content))
             })
             .collect();
-        tab_details(entries, labels, &places)
+        let hints = ws.collection_hints(cx);
+        (entries.iter().zip(tab_details(entries, labels, &places)))
+            .map(|(e, detail)| {
+                let whole = match &e.kind {
+                    TabKind::Collection | TabKind::Environments => true,
+                    TabKind::Runner(path) => path.is_root(),
+                    _ => false,
+                };
+                detail.or_else(|| whole.then(|| hints.get(&e.root).cloned()).flatten())
+            })
+            .collect()
     }
 
     /// The title `entry`'s tab shows: a request's name, "<name> Settings" for a folder or the
