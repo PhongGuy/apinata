@@ -158,7 +158,7 @@ fn import_environment_in_the_menu_prompts_for_files(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn the_menu_is_four_groups_named_by_the_registry() {
+fn the_menu_is_five_groups_named_by_the_registry() {
     let groups: Vec<Vec<&str>> = app_menu_groups()
         .iter()
         .map(|g| g.iter().map(|(l, _)| *l).collect())
@@ -170,7 +170,6 @@ fn the_menu_is_four_groups_named_by_the_registry() {
                 "Open collection…",
                 "Close collection",
                 "New collection…",
-                "Clone repository…",
                 "Import collection…",
                 "Import curl…",
                 "Export collection to Postman",
@@ -179,9 +178,8 @@ fn the_menu_is_four_groups_named_by_the_registry() {
                 "Export collection to HTML documentation",
                 "Run collection",
                 "Collection settings",
-                "Switch branch…",
-                "Show changes…",
             ],
+            vec!["Clone repository…", "Switch branch…", "Show changes…"],
             vec!["New request", "Save", "Save all", "Generate code"],
             vec![
                 "Manage environments",
@@ -211,7 +209,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let rows: Vec<Option<String>> = cx
         .update_window(s.win, |_, w, _| {
-            (0..31usize)
+            (0..32usize)
                 .map(|ix| {
                     w.within("popup-menu")
                         .try_find(ix)
@@ -229,7 +227,45 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     }
     want.push(None);
     assert_eq!(rows, want);
-    assert_eq!(app_menu_index(&OpenCookies), Some(23));
+    assert_eq!(app_menu_index(&OpenCookies), Some(24));
+}
+
+// The git entries sit together in the drawn menu, set apart by a separator on each side.
+#[gpui_kit::test]
+fn the_git_entries_form_one_separated_group(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("title-bar").click("app-menu", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    let rows: Vec<String> = cx
+        .update_window(s.win, |_, w, _| {
+            (0usize..)
+                .map_while(|ix| {
+                    w.within("popup-menu")
+                        .try_find(ix)
+                        .map(|e| e.label().unwrap_or("").to_owned())
+                })
+                .collect()
+        })
+        .unwrap();
+    let at = rows
+        .iter()
+        .position(|l| l == "Clone repository…")
+        .expect("Clone repository is drawn");
+    assert_eq!(
+        rows[at - 1..at + 4],
+        [
+            "",
+            "Clone repository…",
+            "Switch branch…",
+            "Show changes…",
+            ""
+        ],
+        "{rows:?}"
+    );
 }
 
 // Hovers the app-menu slot long enough for a tooltip, then reports whether its tip is drawn.

@@ -1,8 +1,9 @@
 # Apinata
 
-Apinata is a native API client for HTTP and REST, written in Rust. It is
-local-first: your requests are plain YAML files on disk that live in git next to
-your code, with no account and no cloud sync. There is no Electron and no
+Apinata is a native API client for HTTP, REST and GraphQL, written in Rust. It
+also streams server-sent events. It is local-first: your requests are plain
+YAML files on disk that live in git next to your code, with no account and no
+cloud sync. There is no Electron and no
 webview, so it starts fast and stays light. The same core drives a desktop app,
 a command-line runner and an MCP server for AI assistants. It is free and open
 source under MIT or Apache-2.0.
@@ -17,6 +18,17 @@ source under MIT or Apache-2.0.
 
   ![A collection open in the sidebar with a request and its response](assets/screenshots/collection.png)
 
+- **HTTP, GraphQL and server-sent events.** GraphQL requests fetch the schema
+  by introspection, check queries against it and run subscriptions over
+  WebSocket. Event-stream responses show each event as it arrives. WebSocket
+  and gRPC request files appear in the sidebar but cannot be opened or sent
+  yet.
+
+- **Many kinds of auth.** Basic, Bearer, API key, Digest, AWS SigV4, NTLM,
+  OAuth 1.0, OAuth 2.0 (client credentials, password, authorization code
+  with PKCE, and implicit), WSSE and Akamai EdgeGrid. A cookie jar keeps
+  cookies between requests.
+
 - **AI through MCP.** An AI assistant can read and edit your collections and
   send requests through the built-in MCP server, `apinata mcp`. Edits are plain
   git-tracked files, and sending to a non-local host needs your approval in the
@@ -29,19 +41,27 @@ source under MIT or Apache-2.0.
 
   ![The environments editor](assets/screenshots/environments.png)
 
-- **Tests and a CLI runner.** Assertions and scripts run in the app and from
-  `apinata run`, with JSON, JUnit and HTML reports for CI.
+- **Tests, scripts and a CLI runner.** Assertions and JavaScript scripts run
+  in the app and from `apinata run`, with JSON, JUnit and HTML reports for CI.
+  Scripts run before and after each request and can hold tests, with chai,
+  crypto and JWT helpers. Data-driven runs repeat a collection once per row of
+  a CSV or JSON file.
 
   ![A test run with passed and failed assertions](assets/screenshots/tests.png)
 
-- **Import and export.** Bring in collections from other API clients,
-  OpenAPI specs, HAR captures and curl commands; export to common formats and a
-  single HTML page.
+- **Import and export.** Bring in collections from Postman (v2.0 and v2.1),
+  OpenAPI 3 and Swagger 2.0, Insomnia (v4 and v5), Hoppscotch and HAR 1.2,
+  environments from Postman and Hoppscotch, and single requests from curl.
+  Export to Postman v2.1, OpenAPI 3.1 (JSON or YAML) or one HTML page, and
+  record a run as HAR. Details are in
+  [Importing and exporting](GUIDE.md#importing-and-exporting).
 
   ![The import report after importing a collection from another tool](assets/screenshots/import.png)
 
 - **Mock server and code generation.** `apinata mock` serves your saved
-  examples, and `apinata gen` prints a request as curl, Python, Go and more.
+  examples, and `apinata gen` prints a request as code: curl, HTTPie, Python
+  requests, JavaScript fetch, Node axios, Go, PowerShell, PHP, Rust reqwest,
+  Java or C#.
 
 ## Download and install
 
@@ -186,7 +206,7 @@ command, flag and code is in the [guide](GUIDE.md#command-line).
 A collection is a directory of OpenCollection YAML: one file per request, a
 `folder.yml` per folder, `environments/*.yml`, and `opencollection.yml` at the
 root. Collections already saved in this format by other open-source API
-clients open as they are, with no import. Collections in the older `.bru`
+clients open as they are, with no import. Collections in the older text
 format [convert to YAML](GUIDE.md#legacy-bru-collections).
 
 Because the files live in git, the app and the CLI show what changed since the
@@ -251,7 +271,7 @@ The tools, resources and prompts the server offers are in
   responses;
 - [Mock server](GUIDE.md#mock-server), [Desktop app](GUIDE.md#desktop-app),
   [Importing and exporting](GUIDE.md#importing-and-exporting),
-  [Legacy .bru collections](GUIDE.md#legacy-bru-collections),
+  [Legacy collections](GUIDE.md#legacy-bru-collections),
   [MCP server](GUIDE.md#mcp-server), [Updates](GUIDE.md#updates);
 - [Release files](GUIDE.md#release-files) and
   [Building and packaging](GUIDE.md#building-and-packaging).

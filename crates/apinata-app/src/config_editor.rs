@@ -31,6 +31,7 @@ use crate::presets_section::PresetsSection;
 use crate::request_editor::{AUTH_TYPING, RedoEdit, UndoEdit, load_auth, refresh_token_panel};
 use crate::script_section::ScriptSection;
 use crate::script_settings::ScriptSettingsView;
+use crate::scroll_follow::FocusFollow;
 use crate::section::SectionEdit;
 use crate::settings_section::DocsSection;
 use crate::snapshot::ConfigView;
@@ -148,6 +149,9 @@ pub struct ConfigEditor {
     // The section strip's scroll, reveal and fades: a narrow tab scrolls the strip and lists
     // every section in a menu, as the request editor's strip does.
     section_scroll: ScrollHandle,
+    // The section body's scroll, which brings a focused followed control into view.
+    body_scroll: ScrollHandle,
+    follow: FocusFollow,
     section_reveal: ui::Reveal,
     section_fades: ui::StripFades,
     _subs: Vec<Subscription>,
@@ -207,7 +211,11 @@ impl ConfigEditor {
         };
         let panel = cx.new(|cx| TokenPanel::new(workspace.clone(), locate, cx));
         let oauth2 = auth.read(cx).oauth2().clone();
-        oauth2.update(cx, |o, cx| o.set_token_panel(Some(panel), cx));
+        let follow = FocusFollow::default();
+        oauth2.update(cx, |o, cx| {
+            o.set_token_panel(Some(panel), cx);
+            o.set_follow(follow.clone());
+        });
         // Bruno's collection auth has nothing to inherit from, so it is not offered there.
         if target == ConfigTarget::Collection {
             let modes: Vec<AuthMode> = AuthMode::ALL
@@ -367,6 +375,8 @@ impl ConfigEditor {
             checkpoint: None,
             focus: cx.focus_handle(),
             section_scroll: ScrollHandle::new(),
+            body_scroll: ScrollHandle::new(),
+            follow,
             section_reveal: ui::Reveal::default(),
             section_fades: ui::StripFades::default(),
             _subs: subs,
@@ -1125,7 +1135,9 @@ impl Render for ConfigEditor {
                     .min_h_0()
                     .w_full()
                     .overflow_y_scroll()
-                    .child(self.section_body(cx)),
+                    .track_scroll(&self.body_scroll)
+                    .child(self.section_body(cx))
+                    .child(self.follow.watch(&self.body_scroll)),
             )
     }
 }

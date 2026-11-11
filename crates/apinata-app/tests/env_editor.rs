@@ -398,7 +398,7 @@ fn new_and_rename_label_their_name_input(cx: &mut TestAppContext) {
     env_menu(cx, win, ENV_MENU_RENAME);
     assert_eq!(
         ed.read_with(cx, |e, _| e.naming_label()).as_deref(),
-        Some("Rename \"dev\" to")
+        Some("Rename \"dev\"")
     );
     assert_eq!(input.read_with(cx, |i, _| i.value().to_string()), "dev");
     env_menu(cx, win, ENV_MENU_RENAME);
@@ -541,7 +541,7 @@ fn rename_closes_when_the_last_environment_is_deleted_outside(cx: &mut TestAppCo
     env_menu(cx, win, ENV_MENU_RENAME);
     assert_eq!(
         ed.read_with(cx, |e, _| e.naming_label()).as_deref(),
-        Some("Rename \"dev\" to")
+        Some("Rename \"dev\"")
     );
     delete_outside(cx, &ws, &root, &col, "dev");
     wait_for(cx, "dev gone", |cx| selected(cx, &ed).is_none());
@@ -1053,7 +1053,7 @@ fn the_header_is_the_name_then_the_menu_and_save(cx: &mut TestAppContext) {
     use gpui_kit::component::ActiveTheme as _;
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
-    let (win, _ed) = env_editor(cx, &ws, &root);
+    let (win, ed) = env_editor(cx, &ws, &root);
     let primary: gpui_kit::Hsla = cx.update(|cx| cx.theme().tokens.button_primary.into());
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
@@ -1069,17 +1069,35 @@ fn the_header_is_the_name_then_the_menu_and_save(cx: &mut TestAppContext) {
         for gone in ["env-rename", "env-export", "env-delete"] {
             assert!(w.try_find(gone).is_none(), "{gone} moved into the menu");
         }
+    })
+    .unwrap();
+    assert!(
+        !save_filled(cx, win, primary),
+        "nothing to save: Save is plain"
+    );
+    ed.update(cx, |e, cx| e.set_color("#ff0000", cx));
+    frame(cx, win);
+    assert!(
+        save_filled(cx, win, primary),
+        "an edit to save: Save is primary"
+    );
+}
+
+// Whether a quad of `primary` is painted under Save's centre in the next frame.
+fn save_filled(cx: &mut TestAppContext, win: AnyWindowHandle, primary: gpui_kit::Hsla) -> bool {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let save = w.find("env-save").bounds();
         let scale = w.scale_factor();
         let (cx_, cy) = (f32::from(save.center().x), f32::from(save.center().y));
-        let filled = w.painted_quads().into_iter().any(|q| {
+        w.painted_quads().into_iter().any(|q| {
             let (x, y) = (q.bounds.origin.x.0 / scale, q.bounds.origin.y.0 / scale);
             let r = x + q.bounds.size.width.0 / scale;
             let b = y + q.bounds.size.height.0 / scale;
             q.background.as_solid() == Some(primary) && x <= cx_ && r >= cx_ && y <= cy && b >= cy
-        });
-        assert!(filled, "Save is the primary button");
+        })
     })
-    .unwrap();
+    .unwrap()
 }
 
 #[gpui_kit::test]

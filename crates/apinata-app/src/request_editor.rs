@@ -408,7 +408,10 @@ impl RequestEditor {
         };
         let panel = cx.new(|cx| TokenPanel::new(workspace.clone(), locate, cx));
         let oauth2 = auth.read(cx).oauth2().clone();
-        oauth2.update(cx, |o, cx| o.set_token_panel(Some(panel), cx));
+        oauth2.update(cx, |o, cx| {
+            o.set_token_panel(Some(panel), cx);
+            o.set_follow(follow.clone());
+        });
         let assertions = cx.new(|cx| {
             let mut section = AssertionsSection::new(window, cx);
             section.set_follow(follow.clone());
