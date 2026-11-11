@@ -2,14 +2,14 @@
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Entity, Window, point, px};
+use gpui_kit::{App, Entity, Window};
 
 /// Marks that the blur reset is installed, so a second start does not add another.
 struct Installed;
 
 impl gpui_kit::Global for Installed {}
 
-/// Makes every input created from now on scroll back to its start when it loses focus. The
+/// Makes every input created from now on put its caret at the start when it loses focus. The
 /// kit keeps the scroll that followed the caret, so a long value would show only its tail.
 pub fn install(cx: &mut App) {
     if cx.has_global::<Installed>() {
@@ -27,8 +27,9 @@ pub fn install(cx: &mut App) {
     .detach();
 }
 
-// The kit only scrolls to the caret when the selection moves, so the start stays in view until
-// the user returns. A blur from switching windows keeps the view the user left.
+// The kit scrolls to the caret only when the selection changes, so moving the caret to the
+// start brings the start into view and Tab back shows it. A selection is kept for copying, and
+// a blur from switching windows keeps the view the user left.
 fn on_event(
     input: &mut InputState,
     _: &Entity<InputState>,
@@ -36,8 +37,10 @@ fn on_event(
     window: &mut Window,
     cx: &mut Context<InputState>,
 ) {
-    if matches!(event, InputEvent::Blur) && window.is_window_active() {
-        let y = input.scroll_offset().y;
-        input.set_scroll_offset(point(px(0.), y), cx);
+    if matches!(event, InputEvent::Blur)
+        && window.is_window_active()
+        && input.selected_range().is_empty()
+    {
+        input.set_selected_range(0..0, cx);
     }
 }

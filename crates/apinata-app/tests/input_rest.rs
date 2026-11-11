@@ -1,13 +1,14 @@
-//! A value longer than its input shows its start once the input loses focus, and the caret
-//! is followed again as soon as the user returns to it.
+//! A value longer than its input shows its start once the input loses focus: the caret moves
+//! to the start, so returning by keyboard shows it and a click or key moves it as usual.
 
 use crate::support;
 
 use apinata_app::env_table::{EnvRow, EnvVarTable};
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    Styled as _, TestAppContext, Window, WindowOptions, div, px, size,
+    AnyWindowHandle, AppContext as _, Context, Entity, Focusable as _, IntoElement,
+    ParentElement as _, Render, Styled as _, TestAppContext, VisualTestContext, Window,
+    WindowOptions, div, px, size,
 };
 use support::*;
 
@@ -101,4 +102,41 @@ fn typing_after_returning_follows_the_caret_again(cx: &mut TestAppContext) {
     frame(cx, win);
     frame(cx, win);
     assert!(scroll_x(cx, &input) < 0., "the caret at the end is in view");
+}
+
+#[gpui_kit::test]
+fn returning_without_typing_shows_the_caret_at_the_start(cx: &mut TestAppContext) {
+    let (win, table) = opened(cx);
+    let input = value_input(cx, &table);
+    type_at_end(cx, win, None, ("env-value", 0usize), LONG);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.blur(cx)).unwrap();
+    frame(cx, win);
+    // Focus comes back as Tab brings it, without a click placing the caret.
+    let handle = input.read_with(cx, |s, cx| s.focus_handle(cx));
+    cx.update_window(win, |_, w, cx| handle.focus(w, cx))
+        .unwrap();
+    frame(cx, win);
+    frame(cx, win);
+    assert_eq!(
+        input.read_with(cx, |s, _| s.cursor()),
+        0,
+        "the caret is at the start"
+    );
+    assert_eq!(scroll_x(cx, &input), 0., "and the start is in view");
+}
+
+#[gpui_kit::test]
+fn switching_windows_leaves_the_field_as_it_was(cx: &mut TestAppContext) {
+    let (win, table) = opened(cx);
+    let input = value_input(cx, &table);
+    type_at_end(cx, win, None, ("env-value", 0usize), LONG);
+    frame(cx, win);
+    frame(cx, win);
+    let before = scroll_x(cx, &input);
+    VisualTestContext::from_window(win, cx).deactivate_window();
+    frame(cx, win);
+    cx.run_until_parked();
+    assert_eq!(scroll_x(cx, &input), before, "the end stays in view");
+    assert_eq!(input.read_with(cx, |s, _| s.cursor()), LONG.len());
 }
