@@ -1,4 +1,4 @@
-//! The Import cURL dialog: a pasted curl command becomes a new draft at the collection root.
+//! The Import curl dialog: a pasted curl command becomes a new draft at the collection root.
 
 use std::path::PathBuf;
 
@@ -66,7 +66,7 @@ impl Render for ImportCurlForm {
     }
 }
 
-/// Opens the "Import cURL" dialog over `window` for the collection at `root`. Import parses
+/// Opens the "Import curl" dialog over `window` for the collection at `root`. Import parses
 /// the command into a new draft and closes; an error shows inline and keeps the dialog open.
 pub fn open(workspace: &Entity<Workspace>, root: PathBuf, window: &mut Window, cx: &mut App) {
     let editor = cx.new(|cx| EditorState::new(window, cx).language("text"));
@@ -102,7 +102,7 @@ pub fn open(workspace: &Entity<Workspace>, root: PathBuf, window: &mut Window, c
                 }),
         );
         dialog
-            .title("Import cURL")
+            .title("Import curl")
             .close_button(false)
             .on_ok(|_, _, _| false)
             .child(

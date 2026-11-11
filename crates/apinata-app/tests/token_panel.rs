@@ -252,7 +252,7 @@ fn a_provider_error_shows_as_the_notice(cx: &mut TestAppContext) {
     settle_panel(cx, &panel);
     assert_eq!(
         panel.read_with(cx, |p, _| p.notice()).as_deref(),
-        Some("the token endpoint answered 401: invalid_client")
+        Some("The token endpoint answered 401: invalid_client")
     );
     assert_eq!(status(cx, &panel), "No token");
 }
@@ -496,7 +496,7 @@ fn a_successful_send_or_fetch_clears_the_last_error(cx: &mut TestAppContext) {
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, view) = editor_for(cx, &ws, &root, "a.yml", false);
     let panel = request_panel(cx, &view);
-    let failed = Some("the token endpoint answered 401: invalid_client");
+    let failed = Some("The token endpoint answered 401: invalid_client");
     let memory = Some("tokens are kept in memory only");
 
     panel.update(cx, |p, cx| p.get_token(cx));

@@ -1114,7 +1114,7 @@ impl Render for GlobalEnvEditor {
             .child(followed(
                 "global-env-export-follow",
                 Button::new("global-env-export")
-                    .label("Export environments…")
+                    .label("Export all environments…")
                     .on_click(cx.listener(|e, _, window, cx| e.export_all(window, cx))),
             ))
             .child(followed(

@@ -1937,7 +1937,7 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
                 .on_click(move |_, window, cx| export.update(cx, |e, cx| e.export(window, cx))),
         )
         .item(
-            PopupMenuItem::new("Export environments…").on_click(move |_, window, cx| {
+            PopupMenuItem::new("Export all environments…").on_click(move |_, window, cx| {
                 export_all.update(cx, |e, cx| e.export_all(window, cx))
             }),
         )

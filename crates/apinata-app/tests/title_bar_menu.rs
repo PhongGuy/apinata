@@ -168,10 +168,11 @@ fn the_menu_is_four_groups_named_by_the_registry() {
         [
             vec![
                 "Open collection…",
+                "Close collection",
                 "New collection…",
                 "Clone repository…",
                 "Import collection…",
-                "Import cURL",
+                "Import curl…",
                 "Export collection to Postman",
                 "Export collection to Postman (keep scripts as written)",
                 "Export collection to OpenAPI",
@@ -187,7 +188,7 @@ fn the_menu_is_four_groups_named_by_the_registry() {
                 "Manage globals…",
                 "Import environment…",
                 "Cookies",
-                "Runtime variables",
+                "Edit runtime variables",
                 "History",
             ],
             vec!["Preferences", "Check for updates", "Command palette"],
@@ -210,7 +211,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let rows: Vec<Option<String>> = cx
         .update_window(s.win, |_, w, _| {
-            (0..30usize)
+            (0..31usize)
                 .map(|ix| {
                     w.within("popup-menu")
                         .try_find(ix)
@@ -228,7 +229,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     }
     want.push(None);
     assert_eq!(rows, want);
-    assert_eq!(app_menu_index(&OpenCookies), Some(22));
+    assert_eq!(app_menu_index(&OpenCookies), Some(23));
 }
 
 // Hovers the app-menu slot long enough for a tooltip, then reports whether its tip is drawn.

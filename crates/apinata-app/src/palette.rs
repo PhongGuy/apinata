@@ -267,8 +267,7 @@ impl Availability {
 }
 
 /// Commands beyond the app menu's COLLECTION_ONLY that also do nothing without a collection.
-const ALSO_COLLECTION_SCOPED: [&str; 7] = [
-    "collection.close",
+const ALSO_COLLECTION_SCOPED: [&str; 6] = [
     "collection.collapse_all",
     "collection.expand_all",
     "collection.new_folder",
@@ -741,26 +740,32 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
                 window.highest_precedence_binding_for_action_in_context(action.as_ref(), ctx)
             })
             .and_then(|b| b.keystrokes().first().map(|k| k.as_keystroke().clone()));
-        h_flex().flex_1().justify_between().child(label).child(
-            h_flex()
-                .gap(style::SPACE_1)
-                .children(area.map(|area| {
-                    div()
-                        .id(("palette-scope", ix))
-                        .aria_label(area)
-                        .test_support()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(area)
-                }))
-                .children(key.map(|k| {
-                    div()
-                        .id(("palette-kbd", ix))
-                        .aria_label(crate::shortcuts::unparse(&k))
-                        .test_support()
-                        .child(Kbd::new(k))
-                })),
-        )
+        // The kit's scrollbar overlays the row's right end, so the key hint keeps clear of it.
+        h_flex()
+            .flex_1()
+            .justify_between()
+            .pr(style::SCROLLBAR_GUTTER)
+            .child(label)
+            .child(
+                h_flex()
+                    .gap(style::SPACE_1)
+                    .children(area.map(|area| {
+                        div()
+                            .id(("palette-scope", ix))
+                            .aria_label(area)
+                            .test_support()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(area)
+                    }))
+                    .children(key.map(|k| {
+                        div()
+                            .id(("palette-kbd", ix))
+                            .aria_label(crate::shortcuts::unparse(&k))
+                            .test_support()
+                            .child(Kbd::new(k))
+                    })),
+            )
     })
 }
 
@@ -773,6 +778,7 @@ fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
         h_flex()
             .flex_1()
             .justify_between()
+            .pr(style::SCROLLBAR_GUTTER)
             .child(label.clone())
             .child(
                 div()
