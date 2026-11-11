@@ -532,17 +532,21 @@ impl KvTable {
     }
 
     /// Put `content_type` in the content-type cell of row `ix`, or of the empty row at
-    /// `rows.len()`, when that cell is blank. Emits nothing; a following edit carries it.
-    pub fn fill_blank_content_type(
+    /// `rows.len()`, when that cell is blank or holds `stale`. Emits nothing; a following
+    /// edit carries it.
+    pub fn fill_content_type(
         &mut self,
         ix: usize,
         content_type: &str,
+        stale: Option<&str>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(row) = self.row(ix)
-            && row.content_type.read(cx).value().is_empty()
-        {
+        let Some(row) = self.row(ix) else {
+            return;
+        };
+        let now = row.content_type.read(cx).value().to_string();
+        if now.is_empty() || Some(now.as_str()) == stale {
             set_text(&row.content_type, content_type, window, cx);
         }
     }

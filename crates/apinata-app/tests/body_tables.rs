@@ -208,7 +208,33 @@ fn picking_a_file_keeps_a_content_type_the_user_typed(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_file_body_content_type_cell_says_what_a_blank_sends(cx: &mut TestAppContext) {
+fn re_picking_replaces_a_type_filled_from_the_old_file(cx: &mut TestAppContext) {
+    assert_eq!(
+        pick_file(
+            cx,
+            vec![typed("a.json", "application/json", true)],
+            0,
+            "/c/photo.png"
+        ),
+        BodySpec::File(vec![typed("photo.png", "image/png", true)])
+    );
+}
+
+#[gpui_kit::test]
+fn re_picking_keeps_a_typed_type_that_differs_from_the_old_files(cx: &mut TestAppContext) {
+    assert_eq!(
+        pick_file(
+            cx,
+            vec![typed("a.json", "text/plain", true)],
+            0,
+            "/c/photo.png"
+        ),
+        BodySpec::File(vec![typed("photo.png", "text/plain", true)])
+    );
+}
+
+#[gpui_kit::test]
+fn the_file_body_content_type_cell_says_a_pick_fills_it(cx: &mut TestAppContext) {
     let (_, host) = body(cx, BodySpec::File(vec![FileEntry::new("")]));
     let s = host.read_with(cx, |h, _| h.view.clone());
     let table = s.read_with(cx, |s, _| s.table().clone());
@@ -216,8 +242,8 @@ fn the_file_body_content_type_cell_says_what_a_blank_sends(cx: &mut TestAppConte
         let input = table.read_with(cx, |t, _| t.content_type_input(ix).cloned().unwrap());
         input.read_with(cx, |i, _| i.presentation().placeholder().to_string())
     };
-    assert_eq!(hint(cx, 0), "Blank sends an empty header");
-    assert_eq!(hint(cx, 1), "Blank sends an empty header");
+    assert_eq!(hint(cx, 0), "Filled in when you pick a file");
+    assert_eq!(hint(cx, 1), "Filled in when you pick a file");
 }
 
 #[gpui_kit::test]
