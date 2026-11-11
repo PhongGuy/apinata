@@ -53,9 +53,17 @@ fn single_row_menus_offer_copy_cut_and_paste_where_they_apply() {
 
 #[test]
 fn bulk_menu_copies_and_cuts_before_delete() {
+    let three = apinata_app::sidebar::multi::Tally {
+        requests: 3,
+        ..Default::default()
+    };
     assert_eq!(
-        bulk_entries(3, None),
-        [BulkEntry::Copy(3), BulkEntry::Cut(3), BulkEntry::Delete(3)]
+        bulk_entries(three, None),
+        [
+            BulkEntry::Copy(3),
+            BulkEntry::Cut(3),
+            BulkEntry::Delete(three)
+        ]
     );
     assert_eq!(BulkEntry::Copy(3).label(), "Copy 3 items");
     assert_eq!(BulkEntry::Cut(1).label(), "Cut 1 item");
