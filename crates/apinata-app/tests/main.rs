@@ -225,6 +225,7 @@ mod editor_exit_keys;
 mod editor_focus_ring;
 mod editor_parity;
 mod editor_wrap;
+mod empty_details;
 mod empty_editors;
 mod empty_states;
 mod env_color;

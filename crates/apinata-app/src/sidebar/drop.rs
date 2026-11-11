@@ -46,7 +46,9 @@ pub fn drop_target(
     // Only a folder takes all three zones; a leaf row has no inside, and a collection row
     // has nothing above or below it within the collection.
     let to = match (kind, zone) {
-        (NodeKind::Invalid | NodeKind::Draft | NodeKind::UnsavedGroup, _) => return None,
+        (NodeKind::Invalid | NodeKind::Draft | NodeKind::UnsavedGroup | NodeKind::Empty, _) => {
+            return None;
+        }
         (NodeKind::Collection, _) => DropTarget::Inside(ItemPath::root()),
         (NodeKind::Folder, DropZone::Inside) => DropTarget::Inside(target.clone()),
         (_, DropZone::Before) => DropTarget::Before(target.clone()),

@@ -35,6 +35,8 @@ pub enum NodeKind {
     UnsavedGroup,
     /// An open draft tab that has never been saved.
     Draft,
+    /// The muted row an empty folder shows when opened.
+    Empty,
 }
 
 /// An open draft tab, as the sidebar lists it under its collection's Unsaved group.
@@ -54,6 +56,14 @@ pub const UNSAVED_LABEL: &str = "Unsaved";
 /// The tree id of a collection's Unsaved group, `"{collection}:#unsaved"`.
 pub fn unsaved_id(collection: usize) -> SharedString {
     format!("{collection}:#unsaved").into()
+}
+
+/// The label of the row an empty folder shows.
+pub const EMPTY_LABEL: &str = "Empty";
+
+/// The tree id of the Empty row in the folder at `path`, `"{collection}:{path}:#empty"`.
+pub fn empty_id(collection: usize, path: &ItemPath) -> SharedString {
+    format!("{collection}:{}:#empty", path.as_str()).into()
 }
 
 /// One sidebar row and the rows nested under it.
@@ -83,7 +93,7 @@ impl Node {
     /// The method tag a request row shows: the row's short label, coloured by the full method.
     pub fn method_tag(&self) -> Option<crate::ui::MethodTag> {
         let m = self.method.as_deref()?;
-        Some(crate::ui::method_tag(m).with_label(method_label(m)))
+        Some(crate::ui::method_tag(m))
     }
 }
 
@@ -100,19 +110,6 @@ pub fn example_id(collection: usize, path: &ItemPath, index: usize) -> SharedStr
 /// The tree id of a collection's `k`-th invalid row; item paths never contain `:`.
 pub fn invalid_id(collection: usize, k: usize) -> SharedString {
     format!("{collection}::{k}").into()
-}
-
-/// A request method shortened to at most four letters for the row's label.
-pub fn method_label(method: &str) -> String {
-    let upper = method.to_uppercase();
-    let label = match upper.as_str() {
-        "PATCH" => "PTCH",
-        "DELETE" => "DEL",
-        "OPTIONS" => "OPT",
-        "QUERY" => "QURY",
-        other => return other.chars().take(4).collect(),
-    };
-    label.to_owned()
 }
 
 /// One root node per (root, display name, content); `None` content is a collection still opening.
@@ -213,14 +210,14 @@ fn hint_siblings(nodes: &mut [Node], found: &HashMap<ItemPath, String>) {
     }
 }
 
-/// Mirror the nodes as gpui tree items; invalid rows are disabled.
+/// Mirror the nodes as gpui tree items; invalid and Empty rows are disabled.
 pub fn to_tree_items(nodes: &[Node]) -> Vec<TreeItem> {
     nodes
         .iter()
         .map(|n| {
             TreeItem::new(n.id.clone(), SharedString::from(n.name.clone()))
                 .expanded(n.expanded)
-                .disabled(n.kind == NodeKind::Invalid)
+                .disabled(matches!(n.kind, NodeKind::Invalid | NodeKind::Empty))
                 .children(to_tree_items(&n.children))
         })
         .collect()
@@ -320,7 +317,11 @@ impl Ctx<'_> {
                     if let Some(f) = self.content.and_then(|c| c.folders.get(&row.path)) {
                         tags.extend(f.tags.iter().cloned());
                     }
-                    self.nest(rows, depth + 1, &tags)
+                    let inside = self.nest(rows, depth + 1, &tags);
+                    match (inside.is_empty(), self.filter) {
+                        (true, None) => vec![self.empty_row(&row.path)],
+                        _ => inside,
+                    }
                 }
                 RowKind::Request => self.examples(row),
                 _ => Vec::new(),
@@ -363,6 +364,25 @@ impl Ctx<'_> {
                 hint: None,
             })
             .collect()
+    }
+
+    // The disabled row that says the folder at `path` holds nothing; a filter never keeps one.
+    fn empty_row(&self, path: &ItemPath) -> Node {
+        Node {
+            id: empty_id(self.ix, path),
+            collection: self.ix,
+            root: self.root.to_path_buf(),
+            path: path.clone(),
+            kind: NodeKind::Empty,
+            name: EMPTY_LABEL.to_owned(),
+            method: None,
+            dirty: false,
+            disk: DiskState::Present,
+            expanded: false,
+            children: Vec::new(),
+            example: None,
+            hint: None,
+        }
     }
 
     fn node(&self, row: &Row, children: Vec<Node>) -> Node {

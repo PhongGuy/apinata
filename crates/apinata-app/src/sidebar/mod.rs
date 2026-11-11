@@ -431,8 +431,11 @@ impl Sidebar {
     pub fn selected(&self, cx: &App) -> Option<(PathBuf, ItemPath)> {
         let item = self.tree.read(cx).selected_item()?;
         let node = self.rows.get(&item.id)?;
-        (!matches!(node.kind, NodeKind::Invalid | NodeKind::UnsavedGroup))
-            .then(|| (node.root.clone(), node.path.clone()))
+        (!matches!(
+            node.kind,
+            NodeKind::Invalid | NodeKind::UnsavedGroup | NodeKind::Empty
+        ))
+        .then(|| (node.root.clone(), node.path.clone()))
     }
 
     /// The multi-selection's members, in set order.
@@ -1995,7 +1998,7 @@ impl Sidebar {
         self.rows.values().find(|n| {
             !matches!(
                 n.kind,
-                NodeKind::Invalid | NodeKind::Example | NodeKind::UnsavedGroup
+                NodeKind::Invalid | NodeKind::Example | NodeKind::UnsavedGroup | NodeKind::Empty
             ) && n.root == root
                 && n.path == *path
         })
@@ -2182,6 +2185,17 @@ impl Sidebar {
         let tree = self.tree.read(cx);
         let len = (0..).take_while(|&ix| tree.entry(ix).is_some()).count();
         let at = old.min(len.checked_sub(1)?);
+        // An Empty row stands where the folder's last row was: the row after it, or the
+        // folder itself at the end, takes the place instead.
+        let empty = |ix: usize| {
+            let id = &tree.entry(ix)?.item().id;
+            Some(self.rows.get(id)?.kind == NodeKind::Empty)
+        };
+        let at = match empty(at) {
+            Some(true) if at + 1 < len => at + 1,
+            Some(true) => at - 1,
+            _ => at,
+        };
         let parent = |ix: usize| {
             let node = self.rows.get(&tree.entry(ix)?.item().id)?;
             Some((node.root.clone(), node.path.parent()))
@@ -2269,7 +2283,11 @@ impl Sidebar {
     // The selected row by tree id, so an example row is itself and not its request.
     fn selected_node(&self, cx: &App) -> Option<&Node> {
         let node = self.rows.get(&self.tree.read(cx).selected_item()?.id)?;
-        (!matches!(node.kind, NodeKind::Invalid | NodeKind::UnsavedGroup)).then_some(node)
+        (!matches!(
+            node.kind,
+            NodeKind::Invalid | NodeKind::UnsavedGroup | NodeKind::Empty
+        ))
+        .then_some(node)
     }
 
     // The selected row when it is not being renamed; a rename's input sits inside the tree,
@@ -2497,6 +2515,8 @@ impl Render for Sidebar {
         let filter_hint = Kbd::binding_for_action(&FocusFilter, Some(KEY_CONTEXT), window)
             .filter(|_| !was_cramped);
         let no_match = !self.filter_text.trim().is_empty() && self.nodes.is_empty();
+        // With no rows at all the header has nothing to act on.
+        let idle = self.nodes.is_empty() && !no_match;
         // Member row ids, built once per frame; empty unless the set is active.
         let members: std::rc::Rc<std::collections::HashSet<SharedString>> =
             std::rc::Rc::new(if self.multi.is_active() {
@@ -2617,6 +2637,7 @@ impl Render for Sidebar {
                                     )
                                     .child(ui::padded_input(
                                         Input::new(&self.filter)
+                                            .disabled(idle)
                                             .prefix(
                                                 div()
                                                     .id("sidebar-filter-icon")
@@ -2639,6 +2660,7 @@ impl Render for Sidebar {
                                 // Mouse shortcuts: the palette commands are the keyboard path, and
                                 // History stays the one Tab stop between the filter and the tree.
                                 Button::new("sidebar-collapse-all")
+                                    .lock(idle, cx)
                                     .tab_stop(false)
                                     .ghost()
                                     .compact()
@@ -2655,6 +2677,7 @@ impl Render for Sidebar {
                             )
                             .child(
                                 Button::new("sidebar-expand-all")
+                                    .lock(idle, cx)
                                     .tab_stop(false)
                                     .ghost()
                                     .compact()
@@ -2671,6 +2694,7 @@ impl Render for Sidebar {
                             )
                             .child(
                                 Button::new("sidebar-history")
+                                    .lock(idle, cx)
                                     .ghost()
                                     .compact()
                                     .icon(IconName::RotateCcwClock)
@@ -2975,9 +2999,10 @@ impl Render for Sidebar {
                                             view.update(cx, |_, cx| cx.emit(event)).ok();
                                         })
                                 }
-                                // The group only heads its drafts: the row swallows the tree's
-                                // mouse-down so a click neither collapses nor selects it.
-                                NodeKind::UnsavedGroup => item
+                                // The group only heads its drafts and an Empty row only says
+                                // so: the row swallows the tree's mouse-down so a click neither
+                                // collapses nor selects it.
+                                NodeKind::UnsavedGroup | NodeKind::Empty => item
                                     .child(
                                         div()
                                             .text_color(cx.theme().muted_foreground)
@@ -3071,6 +3096,9 @@ impl Render for Sidebar {
                                     let over = hovered.as_ref() == Some(&id);
                                     let slot = run_slot(run, selected).hovered(over);
                                     let slot = if bare { slot.overlay() } else { slot };
+                                    // An empty folder has nothing to run.
+                                    let empty =
+                                        rows.contains_key(&model::empty_id(n.collection, &n.path));
                                     let hover_view = view.clone();
                                     let hover_id = id.clone();
                                     item.on_hover(move |&entered, _, cx| {
@@ -3096,7 +3124,7 @@ impl Render for Sidebar {
                                                 .flex_1()
                                                 .min_w_0(),
                                             )
-                                            .child(slot),
+                                            .when(!empty, |d| d.child(slot)),
                                     )
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()
@@ -3272,7 +3300,11 @@ fn drag_and_drop(
 ) -> ListItem {
     if matches!(
         n.kind,
-        NodeKind::Invalid | NodeKind::Example | NodeKind::UnsavedGroup | NodeKind::Draft
+        NodeKind::Invalid
+            | NodeKind::Example
+            | NodeKind::UnsavedGroup
+            | NodeKind::Draft
+            | NodeKind::Empty
     ) {
         return item;
     }

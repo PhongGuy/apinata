@@ -53,9 +53,9 @@ use crate::global_env_editor::open_global_env_editor;
 use crate::global_env_selector::GlobalEnvSelector;
 use crate::history_palette::{OpenHistory, OpenHistoryEntry};
 use crate::keymap::{
-    OpenCollectionSettings, OpenEnvironmentSelector, OpenEnvironments, ResetZoom, RunCollection,
-    RunFolder, SHELL_CONTEXT, SaveActive, ToggleConsole, ToggleOrientation, ToggleSidebar,
-    ToggleTheme, UndoActive, ZoomIn, ZoomOut,
+    NewRequest, OpenCollectionSettings, OpenEnvironmentSelector, OpenEnvironments, ResetZoom,
+    RunCollection, RunFolder, SHELL_CONTEXT, SaveActive, ToggleConsole, ToggleOrientation,
+    ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
 use crate::mock_server::{MOCK_TIP, MockState};
 use crate::palette::{OpenCommandPalette, OpenRequest};
@@ -81,8 +81,6 @@ use crate::zoom::{ZoomStep, ZoomTarget};
 actions!(
     apinata,
     [
-        /// Opens an untitled draft request in the scratch pad when no collection is open.
-        NewScratchRequest,
         /// Prompts for a collection directory and opens it.
         OpenCollection,
         /// Prompts for a collection file and a directory, imports the file there and opens it.
@@ -1595,7 +1593,7 @@ impl Shell {
         // The demo is offered until a recent collection still exists on disk.
         let offer_demo = !self.closed_recents(cx).iter().any(|p| p.is_dir());
         let mut actions: Vec<(&str, &dyn Action)> = vec![
-            ("New request", &NewScratchRequest),
+            ("New request", &NewRequest),
             ("Open collection…", &OpenCollection),
             ("New collection…", &NewCollection),
             ("Import collection…", &ImportCollection),
@@ -1621,22 +1619,18 @@ impl Shell {
                     .size(style::APP_ICON_SIZE)
                     .child(img(APP_ICON.clone()).size_full()),
             )
-            .child(div().flex_none().child(ui::empty_state(
-                "no-collection-actions",
-                "No collection open",
-                &actions,
-            )))
-            .when(offer_demo, |el| {
-                el.child(
-                    div()
-                        .id("demo-hint")
-                        .test_support()
-                        .aria_label("Sample requests; sending needs internet")
-                        .text_size(style::TEXT_SMALL)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Sample requests; sending needs internet"),
-                )
-            })
+            .child(div().flex_none().child(
+                ui::empty_state("no-collection-actions", "No collection open", &actions).when(
+                    offer_demo,
+                    |e| {
+                        e.note(
+                            actions.len() - 1,
+                            "demo-hint",
+                            "Sample requests; sending needs internet",
+                        )
+                    },
+                ),
+            ))
             .children(self.recent_list(window, cx))
     }
 
@@ -2790,9 +2784,6 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &NewCollection, window, cx| this.prompt_new(window, cx)),
             )
-            .on_action(cx.listener(|this, _: &NewScratchRequest, _, cx| {
-                this.workspace.update(cx, |w, cx| w.new_scratch_request(cx));
-            }))
             .on_action(cx.listener(Self::toggle_sidebar))
             .on_action(cx.listener(Self::toggle_console))
             .on_action(cx.listener(Self::toggle_orientation))
