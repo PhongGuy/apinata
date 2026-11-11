@@ -95,6 +95,44 @@ fn the_redo_row_shows_the_shift_chord(cx: &mut TestAppContext) {
     .unwrap();
 }
 
+// The hint reads the plain chord, not the shifted one Linux delivers for the same key.
+#[gpui_kit::test]
+fn the_zoom_in_row_shows_the_plain_equals_chord(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_palette(cx, &s);
+    type_query(cx, &s, "zoom in");
+    let ix = ix_of(&apinata_app::keymap::ZoomIn);
+    cx.update_window(s.win, |_, w, _| {
+        let hint = w.within("command-palette").find(("palette-kbd", ix));
+        assert_eq!(hint.label(), Some(secondary("=").as_str()));
+    })
+    .unwrap();
+}
+
+// The kit's 16 px scrollbar overlays the list's right edge, past the row's own 4 px inset, so
+// a key hint needs at least that much room at the row's right end.
+#[gpui_kit::test]
+fn palette_key_hints_stay_clear_of_the_scrollbar(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_palette(cx, &s);
+    type_query(cx, &s, "toggle sidebar");
+    let items = palette_items();
+    let ix = ix_of(&ToggleSidebar);
+    cx.update_window(s.win, |_, w, _| {
+        let palette = w.within("command-palette");
+        let row = palette.find(index_path(&items, ix)).bounds();
+        let hint = palette.find(("palette-kbd", ix)).bounds();
+        let room = row.right() - hint.right();
+        assert!(
+            room >= gpui_kit::px(16.),
+            "hint ends {room:?} from the row edge"
+        );
+    })
+    .unwrap();
+}
+
 use apinata_app::app::AppState;
 use apinata_app::settings::Orientation;
 use gpui_kit::Focusable as _;

@@ -1096,7 +1096,7 @@ fn the_menu_holds_rename_export_and_a_separated_delete(cx: &mut TestAppContext) 
         assert_eq!(menu.find(ENV_MENU_EXPORT).label(), Some("Export"));
         assert_eq!(
             menu.find(ENV_MENU_EXPORT_ALL).label(),
-            Some("Export environments…")
+            Some("Export all environments…")
         );
         assert_eq!(menu.find("env-menu-delete").label(), Some("Delete"));
     })

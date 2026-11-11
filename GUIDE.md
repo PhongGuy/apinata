@@ -698,7 +698,7 @@ unchanged instead; in the app, the collection's "Export collection to Postman
 apinata export ./my-api --format postman --keep-scripts --out my-api.postman_collection.json
 ```
 
-In the app, "Export environments…" in the environment editor's "…" menu or the
+In the app, "Export all environments…" in the environment editor's "…" menu or the
 command palette writes the same files to a folder you pick, and the global
 environments dialog has the same button for the global set. Saved files are
 exported, secret values stay empty, and a file of the same name is replaced.
