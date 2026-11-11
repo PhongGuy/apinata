@@ -1377,16 +1377,23 @@ impl KvTable {
         let tag = self.rows.iter().rev().find_map(|r| r.meta.tag.clone());
         let state = self.enabled_state();
         let locked = self.locked;
+        // The box is offered only when it can flip something: a file body's checkboxes pick
+        // the one file sent, and fixed rows have no toggle. Its slot stays so columns line up.
+        let offered = columns != KvColumns::FILE_BODY && self.rows.iter().any(|r| !r.meta.fixed);
+        let check_box = if offered {
+            ui::checkbox("kv-head-enabled", state == Tri::On)
+                .mixed(state == Tri::Mixed)
+                .accessible_name("Enable all rows")
+                .disabled(locked)
+                .on_click(cx.listener(|t, _, _, cx| t.toggle_all(cx)))
+                .into_any_element()
+        } else {
+            div().into_any_element()
+        };
         kv_head("kv-head", columns.describe(self.labels))
             .shared_band()
             .grip_column()
-            .check_box(
-                ui::checkbox("kv-head-enabled", state == Tri::On)
-                    .mixed(state == Tri::Mixed)
-                    .accessible_name("Enable all rows")
-                    .disabled(locked)
-                    .on_click(cx.listener(|t, _, _, cx| t.toggle_all(cx))),
-            )
+            .check_box(check_box)
             .when(columns.files, |h| {
                 h.extra(
                     div().flex_none().invisible().child(
