@@ -36,7 +36,7 @@ fn the_header_buttons_create_in_their_collection(cx: &mut TestAppContext) {
     cx.update_window(h.win, |_, w, cx| w.click(("new-folder", 0usize), cx))
         .unwrap();
     cx.run_until_parked();
-    assert!(h.root.join("New Folder").is_dir());
+    assert!(h.root.join("New folder").is_dir());
     assert!(shown(cx, h.win, row("health.yml")));
 }
 

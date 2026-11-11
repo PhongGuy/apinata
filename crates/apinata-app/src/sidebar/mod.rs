@@ -290,6 +290,8 @@ struct Rename {
     old: String,
     // The example being renamed, else the request or folder at `path` itself.
     example: Option<usize>,
+    // A folder this view just created, which a cancelled naming removes again.
+    fresh: bool,
     input: Entity<InputState>,
     _subscription: Subscription,
 }
@@ -934,6 +936,7 @@ impl Sidebar {
             path: node.path.clone(),
             old,
             example: node.example,
+            fresh: false,
             _subscription: cx.subscribe_in(&input, window, Self::rename_event),
             input,
         });
@@ -1091,11 +1094,35 @@ impl Sidebar {
                 }
                 self.end_rename(window, cx);
             }
-            InputEvent::Blur if self.rename.is_some() => {
-                self.rename = None;
+            // Switching to another window keeps the field focused, so the rename goes on.
+            InputEvent::Blur if window.is_window_active() => {
+                let Some(r) = self.rename.take() else {
+                    return;
+                };
+                if *r.input.read(cx).value() == *r.old {
+                    self.discard_fresh(r, cx);
+                }
                 cx.notify();
             }
             _ => {}
+        }
+    }
+
+    // Escape cancels the rename, and with it the naming of a folder this view just created.
+    fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(r) = self.rename.take() {
+            self.discard_fresh(r, cx);
+        }
+        self.end_rename(window, cx);
+    }
+
+    // Removes a just-created folder whose naming was dropped. Core keeps it if anything is
+    // inside, and a failure shows as any failed tree op does.
+    fn discard_fresh(&mut self, r: Rename, cx: &mut Context<Self>) {
+        if r.fresh {
+            let op = TreeOp::DeleteEmptyFolder { item: r.path };
+            self.workspace
+                .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
         }
     }
 
@@ -2080,8 +2107,15 @@ impl Sidebar {
             return;
         };
         self.select(&id, cx);
+        // Only a new folder renames on arrival, so its rename is a fresh one.
         if f.rename {
             self.start_rename(&f.root, &f.path, window, cx);
+            if let Some(r) = &mut self.rename
+                && r.root == f.root
+                && r.path == f.path
+            {
+                r.fresh = true;
+            }
         }
     }
 
@@ -2434,7 +2468,7 @@ impl Render for Sidebar {
             .capture_action(cx.listener(|this, _: &SelectDown, _, cx| this.clear_multi(cx)))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
                 if this.rename.is_some() {
-                    this.end_rename(window, cx);
+                    this.cancel_rename(window, cx);
                 }
             }))
             .child(

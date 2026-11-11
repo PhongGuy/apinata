@@ -1,7 +1,7 @@
 use crate::support;
 
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, TestAppContext};
+use gpui_kit::{AppContext, TestAppContext, VisualTestContext};
 use support::*;
 
 fn rename(cx: &mut TestAppContext, h: &SidebarHarness, path: &str) {
@@ -126,4 +126,143 @@ fn a_new_folders_rename_row_is_scrolled_into_view(cx: &mut TestAppContext) {
         }
     })
     .unwrap();
+}
+
+const FRESH: &str = apinata_app::sidebar::menu::NEW_FOLDER_NAME;
+
+fn new_folder(cx: &mut TestAppContext, h: &SidebarHarness) {
+    cx.update_window(h.win, |_, w, cx| {
+        h.view.update(cx, |s, cx| {
+            s.new_folder(&apinata_app::sidebar::NewFolder, w, cx)
+        })
+    })
+    .unwrap();
+    cx.run_until_parked();
+    frame(cx, h.win);
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.renaming()),
+        Some((h.root.clone(), ip(FRESH)))
+    );
+}
+
+fn gone(cx: &mut TestAppContext, h: &SidebarHarness, name: &str) -> bool {
+    frame(cx, h.win);
+    !h.root.join(name).exists() && !shown(cx, h.win, row(name))
+}
+
+#[gpui_kit::test]
+fn the_default_folder_name_is_in_sentence_case(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    new_folder(cx, &h);
+    assert!(h.root.join("New folder").is_dir());
+}
+
+#[gpui_kit::test]
+fn escape_on_a_new_folder_removes_it_even_after_typing(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    new_folder(cx, &h);
+    type_and(cx, &h, "", "escape");
+    assert!(
+        gone(cx, &h, FRESH),
+        "an untouched Escape removes the folder"
+    );
+    new_folder(cx, &h);
+    type_and(cx, &h, "Accounts", "escape");
+    assert!(
+        gone(cx, &h, FRESH),
+        "a typed name then Escape still cancels"
+    );
+    assert!(!h.root.join("Accounts").exists());
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+}
+
+#[gpui_kit::test]
+fn clicking_away_from_an_unchanged_new_folder_removes_it(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    // Focus events carry empty paths while the window is inactive, so no blur would fire.
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    new_folder(cx, &h);
+    cx.update_window(h.win, |_, w, cx| w.click(row("health.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(gone(cx, &h, FRESH));
+    assert!(h.root.join("health.yml").exists());
+}
+
+#[gpui_kit::test]
+fn enter_keeps_a_new_folder_under_its_default_name(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    new_folder(cx, &h);
+    type_and(cx, &h, "", "enter");
+    assert!(h.root.join(FRESH).is_dir());
+    assert!(shown(cx, h.win, row(FRESH)));
+}
+
+#[gpui_kit::test]
+fn escape_never_removes_a_folder_that_existed_before(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    rename(cx, &h, "users");
+    type_and(cx, &h, "", "escape");
+    rename(cx, &h, "users");
+    cx.update_window(h.win, |_, w, cx| w.click(row("health.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join("users/list.yml").exists());
+    assert!(shown(cx, h.win, row("users")));
+}
+
+// Something written into the new folder before Escape keeps it, with every file in it.
+#[gpui_kit::test]
+fn a_new_folder_that_gained_contents_is_kept(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    new_folder(cx, &h);
+    std::fs::write(h.root.join(FRESH).join("notes.txt"), "keep me").unwrap();
+    type_and(cx, &h, "", "escape");
+    assert_eq!(
+        std::fs::read_to_string(h.root.join(FRESH).join("notes.txt")).unwrap(),
+        "keep me"
+    );
+    assert!(h.root.join(FRESH).join("folder.yml").exists());
+}
+
+// Typing then clicking away ends the rename without its name, as any rename's blur does.
+#[gpui_kit::test]
+fn typing_a_name_then_clicking_away_keeps_the_new_folder(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    new_folder(cx, &h);
+    cx.update_window(h.win, |_, w, cx| w.input("Accounts", cx))
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.click(row("health.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join(FRESH).is_dir());
+    assert!(!h.root.join("Accounts").exists());
+}
+
+// Switching to another window is not leaving the name field: the rename stays open.
+#[gpui_kit::test]
+fn switching_windows_keeps_a_new_folder_and_its_rename(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    new_folder(cx, &h);
+    VisualTestContext::from_window(h.win, cx).deactivate_window();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert!(h.root.join(FRESH).is_dir());
+    assert_eq!(
+        h.view.read_with(cx, |s, _| s.renaming()),
+        Some((h.root.clone(), ip(FRESH)))
+    );
 }

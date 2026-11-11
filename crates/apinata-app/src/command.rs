@@ -160,6 +160,11 @@ pub enum TreeOp {
     Delete {
         item: ItemPath,
     },
+    /// Delete the folder `item` only while nothing but its `folder.yml` is in it; answers
+    /// `Deleted`, or `Failed` with the folder kept.
+    DeleteEmptyFolder {
+        item: ItemPath,
+    },
     /// Delete `item` into the platform trash; answers `Trashed` with a ticket that `Restore`
     /// takes until `ForgetTrash` drops it.
     Trash {

@@ -706,6 +706,7 @@ impl Actor {
                     rename_file,
                 },
                 TreeOp::Delete { item } => TreeOp::Delete { item: p(item) },
+                TreeOp::DeleteEmptyFolder { item } => TreeOp::DeleteEmptyFolder { item: p(item) },
                 TreeOp::Trash { item } => TreeOp::Trash { item: p(item) },
                 other @ (TreeOp::Restore { .. } | TreeOp::ForgetTrash { .. }) => other,
                 TreeOp::Paste { target, source } => TreeOp::Paste {
@@ -928,6 +929,21 @@ impl Actor {
                 let target = self.item_target(&item);
                 let result = self.delete(&item);
                 self.deleted_or_renumber_failed(id, &target, result)?;
+                self.forget(
+                    |t| matches!(t, Target::Request(p) | Target::Folder(p) if is_within(p, &item)),
+                );
+                Ok(Some(NoticeKind::Deleted(item)))
+            }
+            TreeOp::DeleteEmptyFolder { item } => {
+                let root = self.collection.root().to_path_buf();
+                let result = self
+                    .collection
+                    .delete_empty_folder(&item)
+                    .map_err(|e| match e {
+                        TreeError::DeletedRenumber { .. } => DeleteFailure::Tree(e),
+                        e => DeleteFailure::Text(relative_to_root(&e.to_string(), &root)),
+                    });
+                self.deleted_or_renumber_failed(id, &Target::Folder(item.clone()), result)?;
                 self.forget(
                     |t| matches!(t, Target::Request(p) | Target::Folder(p) if is_within(p, &item)),
                 );
