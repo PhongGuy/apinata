@@ -851,15 +851,15 @@ impl TabArea {
     // above the shell's keys. When the tab area is what remains of the lost focus, it moves
     // to the new active tab, or to the sidebar tree once no tab is open. A loss with no
     // owner at all is claimed too: a dialog may hand focus back to a tab that its answer
-    // closes before a frame is drawn, and then the loss is seen along the dialog's path.
+    // closes before a frame is drawn, and then the loss is seen along the dialog's path. A
+    // control gone from inside the active tab's view hands focus to its nearest drawn holder.
     fn focus_lost(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let target = window.focus_lost_restore_target(cx);
         if target.is_none() || target.as_ref() == Some(&self.focus) {
             self.focus_fallback(window, cx);
             crate::focus_redraw::after_draw_move(window, cx);
         } else if let Some(target) = target.filter(|t| self.holds_inside_view(t, window, cx)) {
-            // A control gone from inside a tab's view, such as an editor a segment hid, hands
-            // focus to its nearest drawn holder there, so the next key stays in that section.
+            // Such as an editor a segment hid, so the next key stays in that section.
             target.focus(window, cx);
             crate::focus_redraw::after_draw_move(window, cx);
         }

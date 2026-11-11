@@ -56,11 +56,38 @@ fn a_key_after_clicking_docs_preview_stays_out_of_the_url(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 fn a_key_after_clicking_a_script_phase_tab_stays_out_of_the_url(cx: &mut TestAppContext) {
+    use apinata_core::ScriptPhase::PreRequest;
+    use gpui_kit::Focusable as _;
     let (_col, s) = one_request(cx);
     show_section(cx, &s, Section::Script);
+    // The pre-request editor holds focus when the switch hides it.
+    platform_click(cx, s.win, "script-pre-request-code");
+    drawn(cx, &s);
+    let area = s.shell.read_with(cx, |v, _| v.tab_area().clone());
+    let pre = area.read_with(cx, |a, cx| {
+        let id = s.ws.read(cx).tabs().active().expect("a tab").id;
+        let script = a
+            .editor(id)
+            .expect("a request editor")
+            .read(cx)
+            .script()
+            .clone();
+        let code = script.read(cx).code(PreRequest).cloned();
+        code.expect("a pre-request editor")
+            .read(cx)
+            .focus_handle(cx)
+    });
+    let held = cx
+        .update_window(s.win, |_, w, _| pre.is_focused(w))
+        .unwrap();
+    assert!(held, "the pre-request editor holds focus");
     platform_click(cx, s.win, ("script-tab", 1usize));
     drawn(cx, &s);
     assert!(!ring_on(cx, s.win, "url"), "the URL input took focus");
+    assert!(
+        ring_on(cx, s.win, "section-body"),
+        "focus stays in the section"
+    );
     platform_press(cx, s.win, "x");
     next_frame(cx, s.win);
     assert_eq!(drawn_text(cx, s.win, "url"), URL);
