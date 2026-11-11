@@ -486,6 +486,33 @@ pub fn invalid_icon(id: ElementId, danger: Hsla) -> impl IntoElement {
     )
 }
 
+/// A refused name's reason, floating just under its field: placed after the field in an
+/// empty box, it anchors at the field's bottom edge and shifts no row below it.
+pub fn field_refusal(
+    id: &'static str,
+    message: SharedString,
+    cx: &App,
+) -> impl IntoElement + use<> {
+    gpui_kit::deferred(
+        gpui_kit::anchored().snap_to_window().child(
+            div()
+                .id(id)
+                .test_support()
+                .aria_label(message.clone())
+                .max_w(crate::style::VAR_TIP_MAX_WIDTH)
+                .px(crate::style::SPACE_2)
+                .py(crate::style::SPACE_1)
+                .rounded(crate::style::POPOVER_RADIUS)
+                .border_1()
+                .border_color(cx.theme().danger)
+                .bg(cx.theme().popover)
+                .text_color(cx.theme().danger)
+                .text_size(crate::style::TEXT_SMALL)
+                .child(message),
+        ),
+    )
+}
+
 /// An `input` in `frame`, marked while it is invalid: a danger-coloured CircleAlert icon at
 /// the input's trailing edge, focused or not, so the shape alone tells it from a valid input
 /// in greyscale and the High Contrast themes. While it is also focused, a 2px danger ring

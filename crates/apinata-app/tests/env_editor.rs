@@ -408,6 +408,42 @@ fn new_and_rename_label_their_name_input(cx: &mut TestAppContext) {
     );
 }
 
+// New's field is a new entry at the end of the list, so it cannot read as a rename of the
+// open environment, whose heading stays as it was.
+#[gpui_kit::test]
+fn the_new_environment_field_is_a_new_row_in_the_list(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    cx.update_window(win, |_, w, cx| w.click("env-create", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let (list, field, label, last, new, title) = (
+            w.find("env-list").bounds(),
+            w.find("env-name-input").bounds(),
+            w.find("env-name-label").bounds(),
+            w.find(("env-item", 1usize)).bounds(),
+            w.find("env-create").bounds(),
+            w.find("env-title").bounds(),
+        );
+        for b in [field, label] {
+            assert!(
+                b.left() >= list.left() && b.right() <= list.right() + px(1.),
+                "{b:?} sits inside the list {list:?}"
+            );
+        }
+        assert!(label.top() >= last.bottom(), "after the last environment");
+        assert!(field.bottom() <= new.top(), "before New");
+        assert!(
+            field.left() < title.left(),
+            "not in the open environment's pane"
+        );
+    })
+    .unwrap();
+}
+
 #[gpui_kit::test]
 fn the_editor_opens_on_the_active_environment(cx: &mut TestAppContext) {
     let col = tree();

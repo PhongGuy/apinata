@@ -34,7 +34,7 @@ use gpui_kit::{
     App, AppContext, ClickEvent, Context, DragMoveEvent, Edges, ElementId, Entity, EventEmitter,
     FocusHandle, Hsla, InteractiveElement, IntoElement, Modifiers, MouseButton, ParentElement,
     Pixels, Render, RenderOnce, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, TestSupportExt, WeakEntity, Window, actions, anchored, canvas, deferred, div, px,
+    Subscription, TestSupportExt, WeakEntity, Window, actions, canvas, div, px,
 };
 
 use crate::command::{Command, NoticeKind, TreeOp};
@@ -2773,7 +2773,11 @@ impl Render for Sidebar {
                                         .when_some(error.clone(), |d, message| {
                                             // An empty box after the field puts the anchor
                                             // at the field's bottom edge.
-                                            d.child(div().child(rename_refusal(message, cx)))
+                                            d.child(div().child(ui::field_refusal(
+                                                "sidebar-rename-error",
+                                                message,
+                                                cx,
+                                            )))
                                         }),
                                 );
                             }
@@ -3234,29 +3238,6 @@ impl Render for Sidebar {
                     ),
             )
     }
-}
-
-// A refused rename's reason, floating just under its field: rows keep one height, so it
-// cannot take a line of its own, and floating it shifts no row.
-fn rename_refusal(message: SharedString, cx: &App) -> impl IntoElement {
-    deferred(
-        anchored().snap_to_window().child(
-            div()
-                .id("sidebar-rename-error")
-                .test_support()
-                .aria_label(message.clone())
-                .max_w(style::VAR_TIP_MAX_WIDTH)
-                .px(style::SPACE_2)
-                .py(style::SPACE_1)
-                .rounded(style::POPOVER_RADIUS)
-                .border_1()
-                .border_color(cx.theme().danger)
-                .bg(cx.theme().popover)
-                .text_color(cx.theme().danger)
-                .text_size(style::TEXT_SMALL)
-                .child(message),
-        ),
-    )
 }
 
 /// The note under a scratch-only sidebar.
