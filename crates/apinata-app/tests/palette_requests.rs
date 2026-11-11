@@ -19,22 +19,48 @@ fn zoo() -> tempfile::TempDir {
 }
 
 #[gpui_kit::test]
-fn entries_name_each_request_with_its_collection_and_folder(cx: &mut TestAppContext) {
+fn entries_with_unique_names_carry_no_hint(cx: &mut TestAppContext) {
     let col = zoo();
     let (_state, ws, root) = open_dir(cx, &col);
     let entries = ws.read_with(cx, request_entries);
     assert!(entries.iter().all(|e| e.root == root));
-    let mut got: Vec<(String, String, String)> = entries
+    let mut got: Vec<(String, Option<String>, String)> = entries
         .into_iter()
         .map(|e| (e.label, e.detail, e.path.as_str().to_owned()))
         .collect();
     got.sort();
     let want = [
-        ("Fetch lion", "c", "lion.yml"),
-        ("Fetch zebra", "c / users", "users/zebra.yml"),
+        ("Fetch lion", None, "lion.yml"),
+        ("Fetch zebra", None, "users/zebra.yml"),
     ]
-    .map(|(a, b, c)| (a.to_owned(), b.to_owned(), c.to_owned()));
+    .map(|(a, b, c): (&str, Option<&str>, &str)| {
+        (a.to_owned(), b.map(str::to_owned), c.to_owned())
+    });
     assert_eq!(got, want, "the websocket file is not offered");
+}
+
+#[gpui_kit::test]
+fn entries_sharing_a_name_carry_the_folder_that_differs(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/get.yml", &request("Get user", "http://x/1")),
+        ("get.yml", &request("Get user", "http://x/2")),
+    ]);
+    let (_state, ws, _root) = open_dir(cx, &col);
+    let mut got: Vec<(String, Option<String>)> = ws
+        .read_with(cx, request_entries)
+        .into_iter()
+        .map(|e| (e.path.as_str().to_owned(), e.detail))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("get.yml".to_owned(), Some("c".to_owned())),
+            ("users/get.yml".to_owned(), Some("Users".to_owned())),
+        ]
+    );
 }
 
 #[gpui_kit::test]

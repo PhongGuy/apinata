@@ -10,6 +10,7 @@ use gpui_kit::SharedString;
 use gpui_kit::component::tree::TreeItem;
 
 use super::terms::FilterTerms;
+use crate::name_hints::{Shown, hints};
 use crate::snapshot::{Content, DiskState, Row, RowKind};
 
 /// The expanded folders of each collection, by root; the root path stands for the collection row.
@@ -73,8 +74,9 @@ pub struct Node {
     pub children: Vec<Node>,
     /// The example's index in its request's `examples`, on example nodes only.
     pub example: Option<usize>,
-    /// A request's file name, set only when another request of its collection shares its name.
-    pub file: Option<String>,
+    /// The muted text that tells this row apart from another showing its name: a request's
+    /// file name beside a same-named sibling, a collection's differing folder path.
+    pub hint: Option<String>,
 }
 
 impl Node {
@@ -124,10 +126,13 @@ pub fn build(
 ) -> Vec<Node> {
     let filter = FilterTerms::parse(filter);
     let empty = HashSet::new();
+    let shown: Vec<(&Path, &str)> = collections.iter().map(|&(r, n, _)| (r, n)).collect();
+    let mut collection_hints = crate::name_hints::collection_hints(&shown).into_iter();
     collections
         .iter()
         .enumerate()
         .filter_map(|(ix, &(root, name, content))| {
+            let hint = collection_hints.next().flatten();
             let ctx = Ctx {
                 ix,
                 root,
@@ -145,8 +150,8 @@ pub fn build(
             let (dirty, disk) = content.map_or((false, DiskState::Present), |c| {
                 (c.collection.dirty, c.collection.disk)
             });
-            if let Some(dup) = content.map(duplicate_names).filter(|d| !d.is_empty()) {
-                name_duplicates(&mut children, &dup);
+            if let Some(content) = content {
+                hint_siblings(&mut children, &sibling_hints(content));
             }
             // A filter leaves out a collection with no matching row; ids keep its open index.
             if ctx.filter.is_some() && children.is_empty() {
@@ -166,32 +171,45 @@ pub fn build(
                 disk,
                 children,
                 example: None,
-                file: None,
+                hint,
             })
         })
         .collect()
 }
 
-/// The request names that more than one request of the collection uses. Counted over every
-/// row, not the filtered tree, so a row's label stays the same whatever the filter shows.
-fn duplicate_names(content: &Content) -> HashSet<String> {
-    let mut seen: HashMap<&str, usize> = HashMap::new();
+/// The hints of the requests a sibling shares a name with, by path. The tree shows every other
+/// row's place, so only siblings need one; counted over every row, not the filtered tree, so a
+/// row's label stays the same whatever the filter shows.
+fn sibling_hints(content: &Content) -> HashMap<ItemPath, String> {
+    let mut by_parent: HashMap<Option<ItemPath>, Vec<&Row>> = HashMap::new();
     for row in content.rows.iter().filter(|r| r.kind == RowKind::Request) {
-        *seen.entry(row.name.as_str()).or_default() += 1;
+        by_parent.entry(row.path.parent()).or_default().push(row);
     }
-    (seen.into_iter())
-        .filter(|&(_, k)| k > 1)
-        .map(|(name, _)| name.to_owned())
-        .collect()
+    let mut out = HashMap::new();
+    for rows in by_parent.values() {
+        let shown: Vec<Shown> = (rows.iter())
+            .map(|r| Shown {
+                name: r.name.clone(),
+                place: Vec::new(),
+                file: Some(r.path.file_name().to_owned()),
+            })
+            .collect();
+        for (row, hint) in rows.iter().zip(hints(&shown)) {
+            if let Some(hint) = hint {
+                out.insert(row.path.clone(), hint);
+            }
+        }
+    }
+    out
 }
 
-/// Gives each request whose name is in `dup` its file name, so the rows can be told apart.
-fn name_duplicates(nodes: &mut [Node], dup: &HashSet<String>) {
+/// Gives each request row its sibling hint, if it has one.
+fn hint_siblings(nodes: &mut [Node], found: &HashMap<ItemPath, String>) {
     for n in nodes {
-        if n.kind == NodeKind::Request && dup.contains(&n.name) {
-            n.file = n.path.as_str().rsplit('/').next().map(str::to_owned);
+        if n.kind == NodeKind::Request {
+            n.hint = found.get(&n.path).cloned();
         }
-        name_duplicates(&mut n.children, dup);
+        hint_siblings(&mut n.children, found);
     }
 }
 
@@ -241,7 +259,7 @@ impl Ctx<'_> {
                 expanded: false,
                 children: Vec::new(),
                 example: None,
-                file: None,
+                hint: None,
             })
             .collect();
         (!children.is_empty()).then(|| Node {
@@ -257,7 +275,7 @@ impl Ctx<'_> {
             expanded: true,
             children,
             example: None,
-            file: None,
+            hint: None,
         })
     }
 
@@ -342,7 +360,7 @@ impl Ctx<'_> {
                 expanded: false,
                 children: Vec::new(),
                 example: Some(ix),
-                file: None,
+                hint: None,
             })
             .collect()
     }
@@ -374,7 +392,7 @@ impl Ctx<'_> {
             },
             children,
             example: None,
-            file: None,
+            hint: None,
         }
     }
 }
@@ -405,7 +423,7 @@ fn invalid_rows(ctx: &Ctx, content: &Content) -> Vec<Node> {
             expanded: false,
             children: Vec::new(),
             example: None,
-            file: None,
+            hint: None,
         })
         .collect()
 }

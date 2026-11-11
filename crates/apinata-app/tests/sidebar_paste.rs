@@ -579,7 +579,7 @@ fn the_sidebar_blocks_paste_on_rows_inside_the_copied_folder(cx: &mut TestAppCon
         expanded: false,
         children: Vec::new(),
         example: None,
-        file: None,
+        hint: None,
     };
     let sb = sidebar(cx, &s);
     plain(cx, &s, "f");

@@ -2723,7 +2723,15 @@ impl Render for Sidebar {
                                                         busy.get(n.collection)
                                                             .copied()
                                                             .unwrap_or(false),
-                                                    )),
+                                                    ))
+                                                    // Two same-named collections show where they differ.
+                                                    .children(n.hint.clone().map(|hint| {
+                                                        marker("hint", n)
+                                                            .flex_none()
+                                                            .text_xs()
+                                                            .text_color(cx.theme().muted_foreground)
+                                                            .child(hint)
+                                                    })),
                                             )
                                             .child(
                                                 h_flex()
@@ -3467,13 +3475,13 @@ fn item_row(
                 .min_w_0()
                 .child(div().truncate().child(n.name.clone())),
         )
-        // The file name tells apart two requests that share a name.
-        .children(n.file.clone().map(|file| {
+        // The file name tells apart two sibling requests that share a name.
+        .children(n.hint.clone().map(|hint| {
             marker("file", n)
                 .flex_none()
                 .text_xs()
                 .text_color(muted)
-                .child(file)
+                .child(hint)
         }))
 }
 

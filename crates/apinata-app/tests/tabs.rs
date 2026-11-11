@@ -149,8 +149,14 @@ fn entry(id: u64, kind: TabKind) -> TabEntry {
     }
 }
 
+fn places(rows: &[&[&str]]) -> Vec<Vec<String>> {
+    rows.iter()
+        .map(|r| r.iter().map(|s| s.to_string()).collect())
+        .collect()
+}
+
 #[test]
-fn shared_names_show_their_folder_and_unique_names_nothing() {
+fn shared_names_show_the_shortest_differing_place_and_unique_names_nothing() {
     let entries = [
         entry(1, req("request_1.yml")),
         entry(2, req("folder_1/request_1.yml")),
@@ -167,34 +173,49 @@ fn shared_names_show_their_folder_and_unique_names_nothing() {
     ]
     .map(String::from)
     .to_vec();
+    let places = places(&[&["c"], &["c", "folder_1"], &["c"], &["c", "a", "b"], &["c"]]);
     assert_eq!(
-        tab_details(&entries, &labels),
+        tab_details(&entries, &labels, &places),
         vec![
-            Some("/".to_string()),
+            Some("c".to_string()),
             Some("folder_1".to_string()),
             None,
-            Some("a/b".to_string()),
+            Some("b".to_string()),
             None,
-        ]
+        ],
+        "the top-level request names its collection"
     );
 }
 
 #[test]
-fn only_request_tabs_get_a_detail() {
+fn a_request_sharing_a_label_with_a_settings_tab_shows_its_file() {
     let entries = [
         entry(1, req("Environments.yml")),
         entry(2, TabKind::Environments),
     ];
     let labels = vec!["Environments".to_string(), "Environments".to_string()];
     assert_eq!(
-        tab_details(&entries, &labels),
-        vec![Some("/".to_string()), None]
+        tab_details(&entries, &labels, &places(&[&["c"], &["c"]])),
+        vec![Some("Environments.yml".to_string()), None]
+    );
+}
+
+#[test]
+fn the_environments_tabs_of_two_collections_name_their_collections() {
+    let entries = [
+        entry(1, TabKind::Environments),
+        entry(2, TabKind::Environments),
+    ];
+    let labels = vec!["Environments".to_string(), "Environments".to_string()];
+    assert_eq!(
+        tab_details(&entries, &labels, &places(&[&["Demo"], &["Shop"]])),
+        vec![Some("Demo".to_string()), Some("Shop".to_string())]
     );
 }
 
 #[test]
 fn no_tabs_no_details() {
-    assert!(tab_details(&[], &[]).is_empty());
+    assert!(tab_details(&[], &[], &[]).is_empty());
 }
 
 fn three() -> (Tabs, TabId, TabId, TabId) {

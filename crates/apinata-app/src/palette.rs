@@ -24,6 +24,7 @@ use crate::body_node::{
 };
 use crate::commands::registry;
 use crate::keymap::{DiscardChanges, RedoActive, SaveActive, UndoActive};
+use crate::name_hints::{Shown, hints, item_place};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar, UndoDelete,
@@ -56,8 +57,9 @@ pub struct RequestEntry {
     pub path: ItemPath,
     /// The row's text, the request's name; also what the filter matches.
     pub label: String,
-    /// The collection name and the folders holding the request, joined by " / ".
-    pub detail: String,
+    /// The muted hint that tells the request apart from another of the same name, by the
+    /// shared rule; `None` for a name no other listed request shows.
+    pub detail: Option<String>,
 }
 
 /// Opens a request as a kept tab; the Shell handles it.
@@ -73,31 +75,34 @@ pub struct OpenRequest {
 /// Every request row of every open collection, collections in open order and rows in
 /// snapshot order; folders and request types the app does not model are left out.
 pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
+    let tags = ws.collection_tags(cx);
     let mut entries = Vec::new();
+    let mut shown = Vec::new();
     for collection in ws.collections() {
         let root = collection.root();
         let Some(snapshot) = ws.snapshot(root, cx) else {
             continue;
         };
-        let name = ws.collection_name(root, cx);
+        let tag = tags.get(root).map_or("", String::as_str);
         for row in snapshot.content.rows.iter() {
             if row.kind != RowKind::Request {
                 continue;
             }
-            // The detail names the folders by their directory segments, below the collection.
-            let path = row.path.as_str();
-            let folders = path.rsplit_once('/').map(|(dirs, _)| dirs);
-            let detail = std::iter::once(name.as_ref())
-                .chain(folders.into_iter().flat_map(|d| d.split('/')))
-                .collect::<Vec<_>>()
-                .join(" / ");
+            shown.push(Shown {
+                name: row.name.clone(),
+                place: item_place(tag, Some(&snapshot.content), &row.path),
+                file: Some(row.path.file_name().to_owned()),
+            });
             entries.push(RequestEntry {
                 root: root.to_path_buf(),
                 path: row.path.clone(),
                 label: row.name.clone(),
-                detail,
+                detail: None,
             });
         }
+    }
+    for (entry, detail) in entries.iter_mut().zip(hints(&shown)) {
+        entry.detail = detail;
     }
     entries
 }
@@ -740,8 +745,8 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
     })
 }
 
-// A request row shows its name, with its collection and folders muted on the right where a
-// command row shows its key.
+// A request row shows its name, with any hint muted on the right where a command row shows
+// its key.
 fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
     let (label, detail) = (entry.label.clone(), entry.detail.clone());
     CommandItem::new().label(label.clone()).child(move |_, cx| {
@@ -750,11 +755,11 @@ fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
             .flex_1()
             .justify_between()
             .child(label.clone())
-            .child(
+            .children(detail.clone().map(|detail| {
                 div()
                     .id(("palette-request-detail", r))
                     .text_color(cx.theme().muted_foreground)
-                    .child(detail.clone()),
-            )
+                    .child(detail)
+            }))
     })
 }
