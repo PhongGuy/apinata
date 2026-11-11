@@ -232,9 +232,9 @@ fn a_new_folder_that_gained_contents_is_kept(cx: &mut TestAppContext) {
     assert!(h.root.join(FRESH).join("folder.yml").exists());
 }
 
-// Typing then clicking away ends the rename without its name, as any rename's blur does.
+// Clicking away keeps a typed name, the same as Enter.
 #[gpui_kit::test]
-fn typing_a_name_then_clicking_away_keeps_the_new_folder(cx: &mut TestAppContext) {
+fn typing_a_name_then_clicking_away_names_the_new_folder(cx: &mut TestAppContext) {
     let h = open_sidebar(cx);
     cx.update_window(h.win, |_, w, _| w.activate_window())
         .unwrap();
@@ -246,8 +246,44 @@ fn typing_a_name_then_clicking_away_keeps_the_new_folder(cx: &mut TestAppContext
     frame(cx, h.win);
     cx.run_until_parked();
     assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
-    assert!(h.root.join(FRESH).is_dir());
-    assert!(!h.root.join("Accounts").exists());
+    assert!(h.root.join("Accounts").is_dir());
+    assert!(gone(cx, &h, FRESH));
+}
+
+#[gpui_kit::test]
+fn clicking_away_from_a_request_rename_keeps_the_typed_name(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    rename(cx, &h, "health.yml");
+    cx.update_window(h.win, |_, w, cx| w.input("Liveness", cx))
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.click(row("status.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join("Liveness.yml").exists());
+    assert!(!h.root.join("health.yml").exists());
+}
+
+// A cleared name on blur sends nothing, as Enter does, and an existing item is left as it was.
+#[gpui_kit::test]
+fn clicking_away_from_a_blank_name_sends_nothing(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    rename(cx, &h, "health.yml");
+    cx.update_window(h.win, |_, w, cx| w.input("   ", cx))
+        .unwrap();
+    cx.update_window(h.win, |_, w, cx| w.click(row("status.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    cx.run_until_parked();
+    assert_eq!(h.view.read_with(cx, |s, _| s.renaming()), None);
+    assert!(h.root.join("health.yml").exists());
+    let s = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
+    assert_eq!(s.acked, 0, "no command reached the actor");
 }
 
 // Switching to another window is not leaving the name field: the rename stays open.

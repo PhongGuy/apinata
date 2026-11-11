@@ -1091,8 +1091,9 @@ impl Sidebar {
             .map(|r| (r.root.clone(), r.path.clone()))
     }
 
-    // Enter commits a real change; Enter and blur both end the rename. Escape ends it through
-    // the sidebar's own action handler, since the input lets an idle Escape propagate.
+    // Enter and clicking away both commit a real change and end the rename; only Enter hands
+    // focus back to the tree. Escape ends it through the sidebar's own action handler, since
+    // the input lets an idle Escape propagate.
     fn rename_event(
         &mut self,
         _: &Entity<InputState>,
@@ -1102,40 +1103,49 @@ impl Sidebar {
     ) {
         match event {
             InputEvent::PressEnter { .. } => {
-                let Some(r) = self.rename.take() else {
-                    return;
-                };
-                let name = r.input.read(cx).value().trim().to_string();
-                if !name.is_empty() && name != r.old {
-                    let op = match r.example {
-                        Some(index) => TreeOp::RenameExample {
-                            item: r.path,
-                            index,
-                            name,
-                        },
-                        None => TreeOp::Rename {
-                            item: r.path,
-                            name,
-                            rename_file: true,
-                        },
-                    };
-                    self.workspace
-                        .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
+                if let Some(r) = self.rename.take() {
+                    self.commit_rename(r, false, cx);
                 }
                 self.end_rename(window, cx);
             }
             // Switching to another window keeps the field focused, so the rename goes on.
             InputEvent::Blur if window.is_window_active() => {
-                let Some(r) = self.rename.take() else {
-                    return;
-                };
-                if *r.input.read(cx).value() == *r.old {
-                    self.discard_fresh(r, cx);
+                if let Some(r) = self.rename.take() {
+                    self.commit_rename(r, true, cx);
                 }
                 cx.notify();
             }
             _ => {}
         }
+    }
+
+    // Sends the typed name unless it is blank or unchanged; a name core refuses shows its
+    // error as any failed tree op does. On blur, a just-created folder left unnamed goes again.
+    fn commit_rename(&mut self, r: Rename, blur: bool, cx: &mut Context<Self>) {
+        let name = r.input.read(cx).value().trim().to_string();
+        if name == r.old {
+            if blur {
+                self.discard_fresh(r, cx);
+            }
+            return;
+        }
+        if name.is_empty() {
+            return;
+        }
+        let op = match r.example {
+            Some(index) => TreeOp::RenameExample {
+                item: r.path,
+                index,
+                name,
+            },
+            None => TreeOp::Rename {
+                item: r.path,
+                name,
+                rename_file: true,
+            },
+        };
+        self.workspace
+            .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
     }
 
     // Escape cancels the rename, and with it the naming of a folder this view just created.
