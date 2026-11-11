@@ -1,8 +1,8 @@
 //! A runner tab: bail, delay, tag filter, data file and start controls over a folder's or a
-//! collection's run, a preview of the plan until a run has rows, then one row per planned
-//! request as a table row (method, name, status, time, result) with a failed row's reason,
-//! grouped under a header per data row, and a summary counted from the rows. A finished row
-//! opens its request's tab showing that row's result.
+//! collection's run, a checklist of the plan until a run has rows (and again on demand), then
+//! one row per planned request as a table row (method, name, status, time, result) with a
+//! failed row's reason, grouped under a header per data row, and a summary counted from the
+//! rows. A finished row opens its request's tab showing that row's result.
 
 use crate::ui::LockButton as _;
 use std::path::PathBuf;
@@ -69,6 +69,8 @@ pub struct RunnerView {
     options: Option<OptionInputs>,
     table_scroll: ScrollHandle,
     options_scroll: ScrollHandle,
+    // Whether a past run's results step aside for the request checklist; a new run ends it.
+    choosing: bool,
     // The tab's Tab stop: the first thing focus lands on, ahead of the controls.
     focus: FocusHandle,
     _observer: Subscription,
@@ -120,6 +122,7 @@ impl RunnerView {
             options: None,
             table_scroll: ScrollHandle::new(),
             options_scroll: ScrollHandle::new(),
+            choosing: false,
             focus: cx.focus_handle().tab_stop(true),
             _observer: observer,
         }
@@ -193,8 +196,8 @@ impl RunnerView {
                         .unwrap_or_default(),
                     "1",
                 ),
-                (model.tags().to_owned(), "smoke, auth"),
-                (model.exclude_tags().to_owned(), "slow"),
+                (model.tags().to_owned(), "e.g. smoke, auth"),
+                (model.exclude_tags().to_owned(), "e.g. slow"),
                 (model.retries().to_string(), "2"),
                 (model.retry_delay_ms().to_string(), "500"),
             ];
@@ -366,9 +369,12 @@ impl RunnerView {
         .detach();
     }
 
-    // Drops a selection that a new run cleared away.
+    // Drops a selection that a new run cleared away, and shows a new run's results.
     fn sync(&mut self, cx: &mut Context<Self>) {
         let rows = self.model.read(cx).rows().len();
+        if self.model.read(cx).is_running() {
+            self.choosing = false;
+        }
         if self.selected.is_some_and(|ix| ix >= rows) {
             self.selected = None;
         }
@@ -728,14 +734,35 @@ fn hinted_label(
         })
 }
 
-// A label and its input as one unit, so a wrapping options row never splits them.
-fn labelled(label: impl IntoElement, input: impl IntoElement) -> Div {
+// One group of options; a narrow pane wraps it a whole option at a time.
+fn option_row() -> Div {
+    h_flex()
+        .w_full()
+        .flex_wrap()
+        .gap_x_4()
+        .gap_y_2()
+        .items_center()
+}
+
+// An option as a fixed-width label column and a control column at least as wide as a form
+// input, so options in the same column line up from row to row. A checkbox has no label.
+fn option_slot(label: Option<impl IntoElement>, control: impl IntoElement) -> Div {
     h_flex()
         .flex_none()
         .gap_2()
         .items_center()
-        .child(label)
-        .child(input)
+        .child(
+            div()
+                .flex_none()
+                .w(style::RUN_OPTION_LABEL_WIDTH)
+                .children(label),
+        )
+        .child(
+            h_flex()
+                .flex_none()
+                .min_w(style::FORM_INPUT_WIDTH)
+                .child(control),
+        )
 }
 
 // A cell when the row has a value, else an empty one that keeps the columns aligned.
@@ -820,101 +847,37 @@ impl Render for RunnerView {
         let running = model.is_running();
         let (m1, m2, m3) = (self.model.clone(), self.model.clone(), self.model.clone());
         let m5 = self.model.clone();
-        // Options wrap and keep their content height; a pane too short for them and the list's
+        // Options sit in columns of a fixed label and control width, a row per group: what
+        // runs, how often, and what counts as a failure. A narrow pane wraps whole
+        // options, so the columns still line up. A pane too short for them and the list's
         // floor caps them, and they scroll under a visible bar.
-        let options =
+        let bail = ui::checkbox("run-bail", model.bail())
+            .label("Stop after the first failure")
+            .on_click(move |on: &bool, _, cx| m1.update(cx, |m, cx| m.set_bail(*on, cx)));
+        let data =
             h_flex()
-                .id("run-options")
-                .test_support()
-                .w_full()
-                .flex_initial()
-                .min_h_0()
-                .pr(style::SCROLLBAR_GUTTER)
-                .overflow_y_scroll()
-                .track_scroll(&self.options_scroll)
-                .flex_wrap()
+                .min_w_0()
                 .gap_2()
                 .items_center()
                 .child(
-                    ui::checkbox("run-bail", model.bail())
-                        .label("Stop after the first failure")
-                        .on_click(move |on: &bool, _, cx| {
-                            m1.update(cx, |m, cx| m.set_bail(*on, cx))
-                        }),
-                )
-                .child(labelled(
-                    option_label("run-delay-label", "Delay (ms)", cx),
-                    field(&delay, "run-delay", style::SHORT_INPUT_WIDTH),
-                ))
-                .child(labelled(
-                    option_label("run-tags-label", "Tags", cx),
-                    field(&tags, "run-tags", style::FORM_INPUT_WIDTH),
-                ))
-                .child(labelled(
-                    option_label("run-exclude-tags-label", "Exclude tags", cx),
-                    field(&exclude_tags, "run-exclude-tags", style::FORM_INPUT_WIDTH),
-                ))
-                .child(labelled(
-                    option_label("run-iterations-label", "Iterations", cx),
-                    field(&iterations, "run-iterations", style::SHORT_INPUT_WIDTH),
-                ))
-                .child(labelled(
-                    hinted_label("run-retries-label", "Retries", RETRIES_HINT, cx),
-                    field(&retries, "run-retries", style::SHORT_INPUT_WIDTH),
-                ))
-                .child(labelled(
-                    hinted_label(
-                        "run-retry-delay-label",
-                        "Retry delay (ms)",
-                        RETRY_DELAY_HINT,
-                        cx,
-                    ),
-                    field(&retry_delay, "run-retry-delay", style::SHORT_INPUT_WIDTH),
-                ))
-                .child(labelled(
-                    option_label("run-fail-on-status-label", "Fail on status", cx),
-                    Select::new(&fail_select)
-                        .id("run-fail-on-status")
-                        .w(style::FORM_INPUT_WIDTH),
-                ))
-                .child(
-                    h_flex()
-                        .min_w_0()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            ui::checkbox("run-retry-unsafe", model.retry_unsafe())
-                                .label("Also retry POST and PATCH")
-                                .tooltip(RETRY_UNSAFE_TOOLTIP)
-                                .on_click(move |on: &bool, _, cx| {
-                                    m5.update(cx, |m, cx| m.set_retry_unsafe(*on, cx))
-                                }),
-                        )
-                        .child(
-                            div()
-                                .id("run-retry-unsafe-note")
-                                .test_support()
-                                .flex_1()
-                                .min_w_0()
-                                .whitespace_normal()
-                                .aria_label(RETRY_UNSAFE_NOTE)
-                                .text_color(cx.theme().muted_foreground)
-                                .child(RETRY_UNSAFE_NOTE),
-                        ),
-                )
-                .child(
                     Button::new("run-data-file")
-                        .label("Data file…")
+                        .label("Choose file…")
                         .on_click(cx.listener(|this, _, window, cx| this.pick_data(window, cx))),
                 )
                 .children(data_name.map(|name| {
+                    // A long file name is cut short so Clear stays inside the pane.
                     h_flex()
+                        .min_w_0()
                         .gap_1()
+                        .items_center()
                         .child(
                             div()
                                 .id("run-data-name")
                                 .test_support()
                                 .aria_label(name.clone())
+                                .min_w_0()
+                                .max_w(style::FORM_INPUT_WIDTH)
+                                .truncate()
                                 .text_size(style::TEXT_CONTROL)
                                 .child(name),
                         )
@@ -922,6 +885,108 @@ impl Render for RunnerView {
                             move |_, _, cx| m4.update(cx, |m, cx| m.set_data_file(None, cx)),
                         ))
                 }));
+        let retry_unsafe = v_flex()
+            .flex_1()
+            .min_w_0()
+            .gap_1()
+            .child(
+                ui::checkbox("run-retry-unsafe", model.retry_unsafe())
+                    .label("Also retry POST and PATCH")
+                    .tooltip(RETRY_UNSAFE_TOOLTIP)
+                    .on_click(move |on: &bool, _, cx| {
+                        m5.update(cx, |m, cx| m.set_retry_unsafe(*on, cx))
+                    }),
+            )
+            .child(
+                div()
+                    .id("run-retry-unsafe-note")
+                    .test_support()
+                    .min_w_0()
+                    .whitespace_normal()
+                    .aria_label(RETRY_UNSAFE_NOTE)
+                    .text_size(style::TEXT_SMALL)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(RETRY_UNSAFE_NOTE),
+            );
+        let options = v_flex()
+            .id("run-options")
+            .test_support()
+            .w_full()
+            .flex_initial()
+            .min_h_0()
+            .pr(style::SCROLLBAR_GUTTER)
+            .overflow_y_scroll()
+            .track_scroll(&self.options_scroll)
+            .gap_2()
+            .child(
+                option_row()
+                    .child(option_slot(
+                        Some(option_label("run-tags-label", "Tags", cx)),
+                        field(&tags, "run-tags", style::FORM_INPUT_WIDTH),
+                    ))
+                    .child(option_slot(
+                        Some(option_label("run-exclude-tags-label", "Exclude tags", cx)),
+                        field(&exclude_tags, "run-exclude-tags", style::FORM_INPUT_WIDTH),
+                    ))
+                    .child(option_slot(None::<Div>, bail)),
+            )
+            .child(
+                option_row()
+                    .child(option_slot(
+                        Some(option_label("run-iterations-label", "Iterations", cx)),
+                        field(&iterations, "run-iterations", style::SHORT_INPUT_WIDTH),
+                    ))
+                    .child(option_slot(
+                        Some(option_label("run-delay-label", "Delay (ms)", cx)),
+                        field(&delay, "run-delay", style::SHORT_INPUT_WIDTH),
+                    ))
+                    // Last in its row: a chosen file's name widens it.
+                    .child(option_slot(
+                        Some(option_label("run-data-label", "Data file", cx)),
+                        data,
+                    )),
+            )
+            .child(
+                option_row()
+                    .child(option_slot(
+                        Some(option_label(
+                            "run-fail-on-status-label",
+                            "Fail on status",
+                            cx,
+                        )),
+                        Select::new(&fail_select)
+                            .id("run-fail-on-status")
+                            .w(style::FORM_INPUT_WIDTH),
+                    ))
+                    .child(option_slot(
+                        Some(hinted_label(
+                            "run-retries-label",
+                            "Retries",
+                            RETRIES_HINT,
+                            cx,
+                        )),
+                        field(&retries, "run-retries", style::SHORT_INPUT_WIDTH),
+                    ))
+                    .child(option_slot(
+                        Some(hinted_label(
+                            "run-retry-delay-label",
+                            "Retry delay (ms)",
+                            RETRY_DELAY_HINT,
+                            cx,
+                        )),
+                        field(&retry_delay, "run-retry-delay", style::SHORT_INPUT_WIDTH),
+                    )),
+            )
+            // The unsafe-retry choice and its warning take the rest of the width under the
+            // control column, so the warning wraps there instead of pushing past the pane.
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .items_start()
+                    .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
+                    .child(retry_unsafe),
+            );
         // The export buttons appear once a run exists and work once it has finished.
         let finished = matches!(model.state(), RunState::Finished(_));
         let exports = (running || finished).then(|| {
@@ -947,6 +1012,25 @@ impl Render for RunnerView {
         // Run open so its load errors can still be reported.
         let chosen = (model.preview_loaded() && !model.preview().is_empty())
             .then(|| model.checked_count(cx));
+        // Once a run has results, one button swaps them for the checklist and back; the
+        // results are kept until the next run replaces them.
+        let has_results = !model.rows().is_empty()
+            || matches!(model.state(), RunState::Running | RunState::Finished(_));
+        let choosing = self.choosing && has_results && !running;
+        let toggle = (has_results && !running).then(|| {
+            let text = if choosing {
+                "Show results"
+            } else {
+                "Change selection"
+            };
+            // One id for both labels, so focus stays on the button after a press.
+            Button::new("run-selection-toggle")
+                .label(text)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.choosing = !this.choosing;
+                    cx.notify();
+                }))
+        });
         // The action row never scrolls, so Run stays in view however short the pane.
         let actions = h_flex()
             .id("run-actions")
@@ -955,6 +1039,8 @@ impl Render for RunnerView {
             .flex_none()
             .justify_end()
             .gap_2()
+            .children(toggle)
+            .child(div().flex_1())
             .children(exports)
             .when(running, |d| {
                 d.child(
@@ -997,9 +1083,9 @@ impl Render for RunnerView {
         let waiting = model.is_waiting().then(|| {
             option_label("run-waiting", "Waiting for your answer", cx).text_size(style::TEXT_SMALL)
         });
-        // Until a run produces rows, the tab lists what Run would send.
-        let previewing = model.rows().is_empty()
-            && !matches!(model.state(), RunState::Running | RunState::Finished(_));
+        // Until a run produces rows, or while the user changes the selection, the tab lists
+        // what Run would send.
+        let previewing = !has_results || choosing;
         let plan = previewing.then(|| {
             let count = plan_count_text(model.preview().len(), model.preview_rounds());
             let preview = model.preview();
@@ -1128,7 +1214,7 @@ impl Render for RunnerView {
         let muted = cx.theme().muted_foreground;
         let col = style::SHORT_FORM_LABEL_WIDTH;
         // The header pads like a list item so its columns sit over the rows'.
-        let header = (!model.rows().is_empty()).then(|| {
+        let header = (!model.rows().is_empty() && !previewing).then(|| {
             h_flex()
                 .id("run-table-header")
                 .test_support()
@@ -1284,7 +1370,7 @@ impl Render for RunnerView {
                 d.child(shrink_scroll("run-notes").child(v_flex().gap_2().children(errors)))
             })
             .children(plan)
-            .when(!rows.is_empty(), |d| {
+            .when(!rows.is_empty() && !previewing, |d| {
                 // Below its least width the table scrolls sideways in its own area, so the
                 // Name column never collapses.
                 // A sideways scrollbar under the box says columns are hidden, wherever the visible ones end.

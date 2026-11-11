@@ -239,3 +239,196 @@ fn few_rows_leave_the_options_at_their_content_height(cx: &mut TestAppContext) {
         );
     }
 }
+
+// Each option label and the control it names, in reading order.
+const OPTION_PAIRS: [(&str, &str); 7] = [
+    ("run-tags-label", "run-tags"),
+    ("run-exclude-tags-label", "run-exclude-tags"),
+    ("run-iterations-label", "run-iterations"),
+    ("run-delay-label", "run-delay"),
+    ("run-fail-on-status-label", "run-fail-on-status"),
+    ("run-retries-label", "run-retries"),
+    ("run-retry-delay-label", "run-retry-delay"),
+];
+
+// Every label shares a line with its control at one fixed offset, and the labels fall into
+// a few shared columns, so the options read as a grid rather than a wrapped flow.
+fn assert_options_in_columns(cx: &mut TestAppContext, s: &Started, width: f32) {
+    let mut offsets = Vec::new();
+    let mut columns: Vec<Pixels> = Vec::new();
+    for (label, control) in OPTION_PAIRS {
+        let (l, c) = (find(cx, s, label), find(cx, s, control));
+        let middle = l.top() + l.size.height / 2.;
+        assert!(
+            middle >= c.top() && middle <= c.bottom(),
+            "{width}px: {label} {l:?} not on the line of {control} {c:?}"
+        );
+        offsets.push(c.left() - l.left());
+        if !columns.iter().any(|x| (*x - l.left()).abs() <= SLACK) {
+            columns.push(l.left());
+        }
+    }
+    assert!(
+        offsets.iter().all(|o| (*o - offsets[0]).abs() <= SLACK),
+        "{width}px: controls sit at different distances from their labels: {offsets:?}"
+    );
+    assert!(
+        columns.len() <= 3,
+        "{width}px: labels start at {} different places: {columns:?}",
+        columns.len()
+    );
+    // The checkboxes line up with the controls' column, not with the labels.
+    for id in ["run-bail", "run-retry-unsafe"] {
+        let b = find(cx, s, id);
+        assert!(
+            columns
+                .iter()
+                .any(|x| (*x + offsets[0] - b.left()).abs() <= SLACK),
+            "{width}px: {id} {b:?} off the control columns"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn the_options_line_up_in_columns_at_1280x800(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 3);
+    let s = started(cx, &col);
+    open_sized(cx, &s, 1280., 800.);
+    assert_options_in_columns(cx, &s, 1280.);
+    // At the default size each group keeps to one line.
+    for group in [
+        &["run-tags-label", "run-exclude-tags-label", "run-bail"][..],
+        &["run-iterations-label", "run-delay-label", "run-data-label"],
+        &[
+            "run-fail-on-status-label",
+            "run-retries-label",
+            "run-retry-delay-label",
+        ],
+    ] {
+        let first = find(cx, &s, group[0]);
+        for &id in &group[1..] {
+            let b = find(cx, &s, id);
+            assert!(
+                b.top() < first.bottom() && b.bottom() > first.top(),
+                "{id} {b:?} not on the line of {} {first:?}",
+                group[0]
+            );
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn the_options_line_up_in_columns_at_800x800(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 3);
+    let s = started(cx, &col);
+    open_sized(cx, &s, 800., 800.);
+    assert_options_in_columns(cx, &s, 800.);
+}
+
+fn click(cx: &mut TestAppContext, s: &Started, id: impl Into<gpui_kit::ElementId>) {
+    let id = id.into();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click(id, cx)).unwrap();
+    cx.run_until_parked();
+    frame(cx, s.win);
+}
+
+// One button swaps results and checklist, keeping its id so focus stays on it.
+const TOGGLE: &str = "run-selection-toggle";
+
+fn toggle_label(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        w.try_find(TOGGLE)
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn change_selection_brings_the_checklist_back_after_a_run(cx: &mut TestAppContext) {
+    let (s, model) = ran(cx, 3, 1280., 800.);
+    assert!(
+        present(cx, s.win, "run-table-header"),
+        "results after the run"
+    );
+    assert!(
+        !present(cx, s.win, "run-plan"),
+        "the plan gives way to results"
+    );
+    assert_eq!(toggle_label(cx, &s).as_deref(), Some("Change selection"));
+    click(cx, &s, TOGGLE);
+    assert_eq!(toggle_label(cx, &s).as_deref(), Some("Show results"));
+    assert!(
+        present(cx, s.win, ("run-plan-row", 2usize)),
+        "the checklist is back"
+    );
+    assert!(
+        !present(cx, s.win, "run-table-header"),
+        "the table steps aside"
+    );
+    assert!(present(cx, s.win, "run-summary"), "the last summary stays");
+    // The results are kept and come back without running again.
+    click(cx, &s, TOGGLE);
+    assert!(
+        present(cx, s.win, "run-table-header"),
+        "results shown again"
+    );
+    assert_eq!(model.read_with(cx, |m, _| m.rows().len()), 3);
+    // A changed selection runs only what is checked, and the results replace the checklist.
+    click(cx, &s, TOGGLE);
+    click(cx, &s, ("run-plan-check", 0usize));
+    click(cx, &s, "run-start");
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| {
+            matches!(m.state(), RunState::Finished(_)) && m.rows().len() == 2
+        })
+    });
+    frame(cx, s.win);
+    assert!(
+        !present(cx, s.win, "run-plan"),
+        "a new run shows its results"
+    );
+    assert!(present(cx, s.win, "run-table-header"));
+}
+
+#[gpui_kit::test]
+fn the_selection_toggle_is_hidden_while_a_run_is_going(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(
+        cx,
+        ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(30)),
+    );
+    let col = many(&server.uri(), 2);
+    let s = started(cx, &col);
+    let model = open_sized(cx, &s, 1280., 800.);
+    click(cx, &s, "run-start");
+    wait_real(cx, |cx| {
+        model.read_with(cx, |m, _| matches!(m.state(), RunState::Running))
+    });
+    frame(cx, s.win);
+    assert!(!present(cx, s.win, TOGGLE), "a toggle during the run");
+    click(cx, &s, "run-cancel");
+    wait_real(cx, |cx| model.read_with(cx, |m, _| !m.is_running()));
+    frame(cx, s.win);
+    assert!(present(cx, s.win, TOGGLE), "no toggle once the run stopped");
+}
+
+#[gpui_kit::test]
+fn a_long_data_file_name_stays_inside_the_options_at_800px(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 2);
+    let s = started(cx, &col);
+    let model = open_sized(cx, &s, 800., 800.);
+    let long = format!("{}.csv", "rows-from-the-nightly-export-".repeat(8));
+    model.update(cx, |m, cx| m.set_data_file(Some(col.path().join(long)), cx));
+    frame(cx, s.win);
+    frame(cx, s.win);
+    let options = find(cx, &s, "run-options");
+    for id in ["run-data-name", "run-data-clear"] {
+        let b = find(cx, &s, id);
+        assert!(
+            b.right() <= options.right() + SLACK,
+            "{id} {b:?} past the options {options:?}"
+        );
+    }
+}
