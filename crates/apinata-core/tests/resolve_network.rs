@@ -283,3 +283,17 @@ fn context_certificates_come_after_the_collections() {
     assert_eq!(written("https://api.example.com/"), "coll.pem");
     assert_eq!(written("https://other.test/"), "o.pem");
 }
+
+#[test]
+fn an_empty_custom_proxy_host_fails_naming_the_setting_and_the_file() {
+    let err = proxy_of(
+        &custom_proxy("http", "", "3128", None, ""),
+        ContextOptions::new(),
+    )
+    .expect_err("invalid");
+    let text = err.to_string();
+    assert!(
+        text.contains("Network settings") && text.contains("opencollection.yml"),
+        "{text}"
+    );
+}
