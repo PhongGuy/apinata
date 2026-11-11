@@ -3341,8 +3341,13 @@ async fn place_bundles(
     let job = cx.background_spawn(async move { write_bundles(&bundles, &parent, &*store) });
     let (roots, report, error) = job.await;
     let _ = this.update_in(cx, |this, window, cx| {
-        // Open what landed before any error, so the user sees it behind the alert.
-        for root in roots {
+        // Open what landed before any error, so the user sees it behind the alert. Each opens
+        // in the first environment its import produced, so its first send has the variables.
+        for (root, environment) in roots {
+            if let Some(name) = environment {
+                this.workspace
+                    .update(cx, |w, _| w.select_on_open(&root, name));
+            }
             this.open(root, window, cx);
         }
         if let Some(report) = report {
@@ -3372,6 +3377,9 @@ pub fn parse_bundles_from(file: &Path, input: &[u8]) -> Result<Vec<ImportBundle>
     parse_collections(None, input, &options).map_err(|e| crate::ui::plain_quotes(&e.to_string()))
 }
 
+// Each written root with the first environment its import produced.
+type Written = Vec<(PathBuf, Option<String>)>;
+
 // Writes `bundles` in order into `parent`, stopping at the first failure. Answers the roots
 // written, their merged report (none if nothing landed), and the failure naming what was not
 // written.
@@ -3379,13 +3387,14 @@ fn write_bundles(
     bundles: &[ImportBundle],
     parent: &Path,
     store: &dyn apinata_core::SecretStore,
-) -> (Vec<PathBuf>, Option<ImportReport>, Option<String>) {
+) -> (Written, Option<ImportReport>, Option<String>) {
     let mut roots = Vec::new();
     let mut merged = ImportReport::default();
     for (i, bundle) in bundles.iter().enumerate() {
         match write_collection(parent, &bundle.collection, &bundle.environments, store) {
             Ok((collection, report)) => {
-                roots.push(collection.root().to_path_buf());
+                let first = report.environments.first().cloned();
+                roots.push((collection.root().to_path_buf(), first));
                 merged.notes.extend(report.notes);
                 merged.items.extend(report.items);
                 merged.environments.extend(report.environments);

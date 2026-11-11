@@ -434,3 +434,53 @@ fn the_report_has_one_close_at_the_right(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+/// An OpenAPI spec named `Pets` with one root server per listed `(name, url)`.
+fn pets(servers: &[(&str, &str)]) -> String {
+    let servers: Vec<String> = servers
+        .iter()
+        .map(|(name, url)| {
+            let name = if name.is_empty() {
+                String::new()
+            } else {
+                format!(r#","description":"{name}""#)
+            };
+            format!(r#"{{"url":"{url}"{name}}}"#)
+        })
+        .collect();
+    format!(
+        r#"{{"openapi":"3.0.0","info":{{"title":"Pets","version":"1"}},"servers":[{}],"paths":{{"/pets":{{"get":{{"summary":"List","responses":{{"200":{{"description":"ok"}}}}}}}}}}}}"#,
+        servers.join(",")
+    )
+}
+
+/// Imports `text` through the Import dialog into a fresh folder; answers the collection's
+/// selected environment.
+fn import_selection(text: &str, cx: &mut TestAppContext) -> Option<String> {
+    let (files, win, view) = shell(cx);
+    let into = tempfile::tempdir().unwrap();
+    click_import(cx, win);
+    answer(cx, input(files.path(), text), into.path().to_path_buf());
+    let root = into.path().join("Pets");
+    assert_eq!(opened(cx, &view), std::slice::from_ref(&root));
+    view.read_with(cx, |v, cx| {
+        v.workspace().read(cx).selected_environment(&root, cx)
+    })
+}
+
+#[gpui_kit::test]
+fn an_import_with_one_environment_selects_it(cx: &mut TestAppContext) {
+    let selected = import_selection(&pets(&[("", "https://pets.test")]), cx);
+    assert_eq!(selected.as_deref(), Some("Environment 1"));
+}
+
+#[gpui_kit::test]
+fn an_import_with_several_environments_selects_the_first_one_imported(cx: &mut TestAppContext) {
+    let text = pets(&[("Staging", "https://s.test"), ("Live", "https://l.test")]);
+    assert_eq!(import_selection(&text, cx).as_deref(), Some("Staging"));
+}
+
+#[gpui_kit::test]
+fn an_import_without_environments_selects_none(cx: &mut TestAppContext) {
+    assert_eq!(import_selection(&pets(&[]), cx), None);
+}
