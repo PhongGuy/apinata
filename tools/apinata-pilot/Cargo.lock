@@ -338,6 +338,7 @@ dependencies = [
  "sha1 0.11.0",
  "sha2 0.11.1",
  "similar",
+ "socket2",
  "tar",
  "tempfile",
  "thiserror 2.0.21",
@@ -351,6 +352,7 @@ dependencies = [
  "url",
  "uuid",
  "windows-native-keyring-store",
+ "windows-sys 0.61.2",
  "yaml_serde",
  "zbus-secret-service-keyring-store",
 ]
@@ -3317,7 +3319,7 @@ dependencies = [
 [[package]]
 name = "gpui-pilot-host"
 version = "0.2.0"
-source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.2.0#60554f9756cb6045b92f5a5cd293aeb69d6617a5"
+source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.3.0#d5fe18dab277842150863f93c01f03a303ad29a6"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3332,7 +3334,7 @@ dependencies = [
 [[package]]
 name = "gpui-pilot-protocol"
 version = "0.2.0"
-source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.2.0#60554f9756cb6045b92f5a5cd293aeb69d6617a5"
+source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.3.0#d5fe18dab277842150863f93c01f03a303ad29a6"
 dependencies = [
  "serde",
  "serde_json",
