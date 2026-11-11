@@ -3,8 +3,10 @@
 use crate::git_support::{Sandbox, path_with};
 use crate::support::*;
 
+use apinata_app::app_menu::app_menu_index;
 use apinata_app::branch_dialog;
-use apinata_app::shell::SwitchBranch;
+use apinata_app::changes_dialog;
+use apinata_app::shell::{ShowChanges, SwitchBranch};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Focusable as _, TestAppContext};
@@ -389,7 +391,10 @@ fn searching_git_in_the_palette_lists_the_git_commands(cx: &mut TestAppContext) 
     let (_dir, s) = app(cx, &sb, |_| {});
     let mut rows = palette_rows(cx, &s, "git");
     rows.sort();
-    assert_eq!(rows, ["Clone repository…", "Switch branch…"]);
+    assert_eq!(
+        rows,
+        ["Clone repository…", "Show changes…", "Switch branch…"]
+    );
 }
 
 #[gpui_kit::test]
@@ -401,6 +406,83 @@ fn outside_a_repository_the_palette_leaves_out_switch_branch(cx: &mut TestAppCon
     cx.simulate_keystrokes(p.win, "escape");
     frame(cx, p.win);
     assert!(palette_rows(cx, &p, "switch branch").is_empty());
+    cx.simulate_keystrokes(p.win, "escape");
+    frame(cx, p.win);
+    assert!(palette_rows(cx, &p, "show changes").is_empty());
+}
+
+#[gpui_kit::test]
+fn searching_commit_in_the_palette_finds_show_changes(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_dir, s) = app(cx, &sb, |_| {});
+    assert_eq!(palette_rows(cx, &s, "commit"), ["Show changes…"]);
+}
+
+#[gpui_kit::test]
+fn the_show_changes_command_opens_the_changes_dialog(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_dir, s) = app(cx, &sb, |_| {});
+    let shell = s.shell.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        shell.read(cx).focus_handle(cx).focus(w, cx);
+        w.dispatch_action(Box::new(ShowChanges), cx);
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert!(cx.update(|cx| changes_dialog::current(cx)).is_some());
+}
+
+#[gpui_kit::test]
+fn the_show_changes_command_explains_when_there_is_no_repository(cx: &mut TestAppContext) {
+    let plain = collection();
+    let p = started(cx, &plain);
+    let shell = p.shell.clone();
+    cx.update_window(p.win, |_, w, cx| {
+        shell.read(cx).focus_handle(cx).focus(w, cx);
+        w.dispatch_action(Box::new(ShowChanges), cx);
+    })
+    .unwrap();
+    frame(cx, p.win);
+    assert!(!dialog_open(cx, &p));
+    assert_eq!(toasts(cx, &p), 1);
+}
+
+// A greyed row does nothing, where the enabled command would explain itself with a notice.
+#[gpui_kit::test]
+fn outside_a_repository_the_app_menu_greys_out_the_repository_entries(cx: &mut TestAppContext) {
+    let plain = collection();
+    let p = started(cx, &plain);
+    for action in [&SwitchBranch as &dyn gpui_kit::Action, &ShowChanges] {
+        cx.update_window(p.win, |_, w, cx| {
+            w.within("title-bar").click("app-menu", cx)
+        })
+        .unwrap();
+        frame(cx, p.win);
+        let ix = app_menu_index(action).expect("in the app menu");
+        cx.update_window(p.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
+            .unwrap();
+        cx.run_until_parked();
+        frame(cx, p.win);
+        assert_eq!(toasts(cx, &p), 0, "{} does nothing", action.name());
+        cx.simulate_keystrokes(p.win, "escape");
+        frame(cx, p.win);
+    }
+}
+
+#[gpui_kit::test]
+fn in_a_repository_the_app_menu_switches_branch(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let (_dir, s) = app(cx, &sb, |_| {});
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("title-bar").click("app-menu", cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    let ix = app_menu_index(&SwitchBranch).expect("in the app menu");
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
+        .unwrap();
+    frame(cx, s.win);
+    assert!(cx.update(|cx| branch_dialog::current(cx)).is_some());
 }
 
 #[gpui_kit::test]

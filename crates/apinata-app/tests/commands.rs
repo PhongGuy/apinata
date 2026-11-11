@@ -37,6 +37,7 @@ const IDS: &[&str] = &[
     "collection.clone",
     "collection.open_demo",
     "collection.switch_branch",
+    "collection.show_changes",
     "collection.settings",
     "collection.run",
     "collection.run_folder",
@@ -503,7 +504,7 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.focus_previous_control");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
-    assert_eq!(menu.len(), 23);
+    assert_eq!(menu.len(), 26);
     for (label, action) in menu {
         let c = cmds.iter().find(|c| c.label == label).expect(label);
         assert!(action.partial_eq(c.targets[0].action.as_ref()), "{label}");
@@ -567,16 +568,18 @@ fn the_four_dialog_commands_end_in_an_ellipsis() {
 }
 
 #[test]
-fn the_branch_and_clone_commands_are_palette_only() {
+fn the_git_commands_are_in_the_app_menu() {
     let cmds = registry();
     let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
-    assert_eq!(label("collection.clone"), "Clone repository…");
-    assert_eq!(label("collection.switch_branch"), "Switch branch…");
-    assert!(
-        app_menu_items()
-            .iter()
-            .all(|(l, _)| !l.contains("branch") && !l.contains("Clone"))
-    );
+    let menu: Vec<&str> = app_menu_items().iter().map(|(l, _)| *l).collect();
+    for (id, want) in [
+        ("collection.clone", "Clone repository…"),
+        ("collection.switch_branch", "Switch branch…"),
+        ("collection.show_changes", "Show changes…"),
+    ] {
+        assert_eq!(label(id), want);
+        assert!(menu.contains(&want), "{want} is in the app menu");
+    }
 }
 
 #[test]

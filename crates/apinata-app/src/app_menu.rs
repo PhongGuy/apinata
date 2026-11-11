@@ -15,6 +15,7 @@ const MENU_GROUPS: [&[&str]; 4] = [
     &[
         "collection.open",
         "collection.new",
+        "collection.clone",
         "collection.import",
         "collection.import_curl",
         "collection.export",
@@ -23,6 +24,8 @@ const MENU_GROUPS: [&[&str]; 4] = [
         "collection.export_html",
         "collection.run",
         "collection.settings",
+        "collection.switch_branch",
+        "collection.show_changes",
     ],
     &[
         "collection.new_request",
@@ -102,11 +105,12 @@ pub fn app_menu(
     stand_in: Rc<StandIn>,
     open: Rc<Cell<bool>>,
     scratch_only: bool,
+    in_repo: bool,
     cx: &App,
 ) -> impl IntoElement {
     // The open popup holds focus, so entries dispatch from the shell's handle to reach
     // the same handlers as the shell's key bindings.
-    let disabled = app_menu_disabled(scratch_only);
+    let disabled = app_menu_disabled(scratch_only, in_repo);
     crate::ui::solid_ring(Button::new("app-menu").ghost().compact(), cx)
         .icon(IconName::Menu)
         .accessibility_label("Application menu")
@@ -139,15 +143,18 @@ pub(crate) const COLLECTION_ONLY: [&str; 6] = [
     "collection.settings",
 ];
 
-/// The labels of the entries to grey out: those that act on a collection, while only the
-/// scratch pad is open.
-pub fn app_menu_disabled(scratch_only: bool) -> Vec<&'static str> {
-    if !scratch_only {
-        return Vec::new();
-    }
+/// Command ids of the entries that act on the current collection's git repository.
+const REPOSITORY_ONLY: [&str; 2] = ["collection.switch_branch", "collection.show_changes"];
+
+/// The labels of the entries to grey out: those that act on a collection while only the
+/// scratch pad is open, and those that act on a repository while the collection is in none.
+pub fn app_menu_disabled(scratch_only: bool, in_repo: bool) -> Vec<&'static str> {
     registry()
         .into_iter()
-        .filter(|c| COLLECTION_ONLY.contains(&c.id))
+        .filter(|c| {
+            (scratch_only && COLLECTION_ONLY.contains(&c.id))
+                || (!in_repo && REPOSITORY_ONLY.contains(&c.id))
+        })
         .map(|c| c.label)
         .collect()
 }

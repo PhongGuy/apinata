@@ -33,7 +33,7 @@ use crate::shell::{
     ExportCollectionOpenApi, ExportCollectionPostmanKeepScripts, ExportEnvironment,
     ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, NewCollection,
     OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments, OpenRuntimeVariables,
-    OpenVariablesOverview, SwitchBranch,
+    OpenVariablesOverview, ShowChanges, SwitchBranch,
 };
 use crate::sidebar::{
     CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, FocusFilter,
@@ -371,6 +371,16 @@ pub fn registry() -> Vec<Command> {
                 "Switch branch…",
                 Collection,
                 shell(SwitchBranch),
+                &[],
+            ),
+        ),
+        found_by(
+            &["git", "commit", "stage"],
+            command(
+                "collection.show_changes",
+                "Show changes…",
+                Collection,
+                shell(ShowChanges),
                 &[],
             ),
         ),

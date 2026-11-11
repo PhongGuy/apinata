@@ -24,7 +24,7 @@ use crate::body_node::{
 };
 use crate::commands::registry;
 use crate::keymap::{DiscardChanges, RedoActive, SaveActive, UndoActive};
-use crate::shell::SwitchBranch;
+use crate::shell::{ShowChanges, SwitchBranch};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar, UndoDelete,
@@ -227,7 +227,7 @@ pub struct Availability {
     pub not_last: bool,
     /// "Undo delete": a delete into the trash is still undoable.
     pub undo_delete: bool,
-    /// "Switch branch": the current collection sits in a git repository.
+    /// "Switch branch" and "Show changes": the current collection sits in a git repository.
     pub git_repo: bool,
 }
 
@@ -353,6 +353,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.not_last, ActivateLastTab.name()),
         (available.undo_delete, UndoDelete.name()),
         (available.git_repo, SwitchBranch.name()),
+        (available.git_repo, ShowChanges.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
