@@ -2,6 +2,7 @@ use crate::support;
 
 use apinata_app::sidebar::menu::{BulkEntry, bulk_entries, menu_entries};
 use apinata_app::sidebar::model::NodeKind;
+use apinata_app::sidebar::multi::Tally;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext};
 use support::*;
@@ -26,21 +27,87 @@ fn right_click(cx: &mut TestAppContext, h: &SidebarHarness, path: &str) {
 
 #[test]
 fn bulk_labels_count_and_pluralise() {
-    assert_eq!(BulkEntry::Delete(3).label(), "Delete 3 items");
-    assert_eq!(BulkEntry::Delete(1).label(), "Delete 1 item");
+    let items = |n| Tally {
+        requests: n,
+        ..Tally::default()
+    };
+    assert_eq!(BulkEntry::Delete(items(3)).label(), "Delete 3 items");
+    assert_eq!(BulkEntry::Delete(items(1)).label(), "Delete 1 item");
     assert_eq!(BulkEntry::Run(2).label(), "Run 2 requests");
     assert_eq!(BulkEntry::Run(1).label(), "Run 1 request");
     assert_eq!(
-        bulk_entries(3, None),
-        [BulkEntry::Copy(3), BulkEntry::Cut(3), BulkEntry::Delete(3)]
+        bulk_entries(items(3), None),
+        [
+            BulkEntry::Copy(3),
+            BulkEntry::Cut(3),
+            BulkEntry::Delete(items(3))
+        ]
     );
     assert_eq!(
-        bulk_entries(3, Some(5)),
+        bulk_entries(items(3), Some(5)),
         [
             BulkEntry::Run(5),
             BulkEntry::Copy(3),
             BulkEntry::Cut(3),
-            BulkEntry::Delete(3)
+            BulkEntry::Delete(items(3))
+        ]
+    );
+}
+
+// A folder counts as one folder, never as what is inside it, and the label names it.
+#[test]
+fn the_delete_label_names_folders_apart_from_requests() {
+    let t = |folders, requests, others| Tally {
+        folders,
+        requests,
+        others,
+    };
+    let label = |t| BulkEntry::Delete(t).label();
+    assert_eq!(label(t(2, 4, 0)), "Delete 2 folders and 4 requests");
+    assert_eq!(label(t(1, 1, 0)), "Delete 1 folder and 1 request");
+    assert_eq!(label(t(1, 0, 0)), "Delete 1 folder");
+    assert_eq!(label(t(3, 0, 0)), "Delete 3 folders");
+    assert_eq!(label(t(1, 1, 1)), "Delete 1 folder and 2 items");
+    assert_eq!(label(t(0, 2, 1)), "Delete 3 items");
+    assert_eq!(t(2, 4, 1).total(), 7);
+    assert_eq!(
+        bulk_entries(t(1, 2, 0), None),
+        [
+            BulkEntry::Copy(3),
+            BulkEntry::Cut(3),
+            BulkEntry::Delete(t(1, 2, 0))
+        ]
+    );
+}
+
+// A shift range from e's request to f's first one crosses the f row: Run counts every request
+// it will run, f's unselected one too, and Delete names the folder instead of counting it.
+#[gpui_kit::test]
+fn a_range_over_a_folder_row_labels_run_and_delete_honestly(cx: &mut TestAppContext) {
+    let h = open_sidebar_with(cx, range_files());
+    for f in ["e", "f"] {
+        cx.update_window(h.win, |_, w, cx| w.click(row(f), cx))
+            .unwrap(); // expands the folder
+    }
+    cx.update_window(h.win, |_, w, cx| w.click(row("e/y.yml"), cx))
+        .unwrap();
+    shift_click(cx, h.win, row("f/x.yml"));
+    assert_eq!(keys(cx, &h), ["e/y.yml", "f", "f/x.yml"]);
+    right_click(cx, &h, "e/y.yml");
+    let labels = cx
+        .update_window(h.win, |_, w, _| {
+            (0..4)
+                .filter_map(|ix| w.within("popup-menu").find(ix).label().map(str::to_owned))
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert_eq!(
+        labels,
+        [
+            "Run 3 requests",
+            "Copy 2 items",
+            "Cut 2 items",
+            "Delete 1 folder and 1 request"
         ]
     );
 }

@@ -470,9 +470,14 @@ fn the_permanent_prompts_say_so_and_the_trash_prompts_do_not() {
     assert!(says(single_delete_ask("a", false, true)));
     assert!(says(single_delete_ask("f", true, true)));
     assert!(!says(single_delete_ask("a", false, false)));
-    assert!(says(permanent_delete_ask(3, true, true)));
-    assert!(says(permanent_delete_ask(2, false, false)));
-    assert!(!says(bulk_delete_ask(2, true, true)));
+    let t = |folders, requests| apinata_app::sidebar::multi::Tally {
+        folders,
+        requests,
+        others: 0,
+    };
+    assert!(says(permanent_delete_ask(t(1, 2), 1, true)));
+    assert!(says(permanent_delete_ask(t(0, 2), 0, false)));
+    assert!(!says(bulk_delete_ask(t(1, 1), 1, true)));
 }
 
 #[gpui_kit::test]
@@ -696,7 +701,13 @@ fn ctrl_z_right_after_a_bulk_menu_delete_restores_the_set(cx: &mut TestAppContex
         .unwrap();
     secondary_click(cx, h.win, row("c.yml"));
     open_tabs_with_focus_in_url(cx, &h, &["a.yml"]);
-    let entries = bulk_entries(2, Some(2));
+    let entries = bulk_entries(
+        apinata_app::sidebar::multi::Tally {
+            requests: 2,
+            ..Default::default()
+        },
+        Some(2),
+    );
     let ix = (entries
         .iter()
         .position(|e| matches!(e, BulkEntry::Delete(_))))
@@ -739,7 +750,13 @@ fn ctrl_z_right_after_a_prompted_bulk_delete_restores_the_set(cx: &mut TestAppCo
         .unwrap();
     secondary_click(cx, h.win, row("a.yml"));
     focus_url(cx, &h);
-    let entries = bulk_entries(2, Some(2));
+    let entries = bulk_entries(
+        apinata_app::sidebar::multi::Tally {
+            requests: 2,
+            ..Default::default()
+        },
+        Some(2),
+    );
     let ix = (entries
         .iter()
         .position(|e| matches!(e, BulkEntry::Delete(_))))
@@ -939,7 +956,13 @@ fn prompted_bulk_delete_with_a_tab_behind(cx: &mut TestAppContext, answer: Answe
         .unwrap();
     secondary_click(cx, h.win, row("a.yml"));
     focus_url(cx, &h);
-    let entries = bulk_entries(2, Some(2));
+    let entries = bulk_entries(
+        apinata_app::sidebar::multi::Tally {
+            requests: 2,
+            ..Default::default()
+        },
+        Some(2),
+    );
     let ix = (entries
         .iter()
         .position(|e| matches!(e, BulkEntry::Delete(_))))

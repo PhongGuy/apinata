@@ -54,7 +54,7 @@ use batch::{Batch, Verb, bulk_delete_ask, permanent_delete_ask, single_delete_as
 use drop::{DragPreview, DraggedRow, DropZone, drop_target, drop_zone, multi_drop};
 use menu::{BulkEntry, MenuEntry, NEW_FOLDER_NAME, bulk_entries, clone_name, menu_entries};
 use model::{Expanded, Node, NodeKind, OpenDraft};
-use multi::{Multi, SelKey, row_keys, selectable, visible_keys};
+use multi::{Multi, SelKey, Tally, row_keys, selectable, visible_keys};
 use paste::{ClipMode, paste_target};
 
 /// The key context the sidebar's bindings live in.
@@ -1771,18 +1771,17 @@ impl Sidebar {
         }))
     }
 
-    // How many top-level items a bulk verb would act on.
-    fn bulk_count(&self, cx: &App) -> usize {
+    // The top-level items a bulk verb would act on, by kind.
+    fn bulk_tally(&self, cx: &App) -> Tally {
         let Some(root) = self.multi.keys().first().map(|k| k.root.clone()) else {
-            return 0;
+            return Tally::default();
         };
         self.workspace
             .read(cx)
             .snapshot(&root, cx)
-            .map_or(0, |snap| {
-                self.multi
-                    .normalised(&row_keys(&root, &snap.content.rows))
-                    .len()
+            .map_or(Tally::default(), |snap| {
+                let rows = &snap.content.rows;
+                multi::tally(rows, &self.multi.normalised(&row_keys(&root, rows)))
             })
     }
 
@@ -1800,21 +1799,25 @@ impl Sidebar {
         if keys.is_empty() {
             return;
         }
+        let rows = &snapshot.content.rows;
         let dirty = self.dirty_within(&root, keys.iter().map(|k| &k.path));
-        let folder = snapshot.content.rows.iter().any(|r| {
-            r.kind == crate::snapshot::RowKind::Folder && keys.iter().any(|k| k.path == r.path)
-        });
+        let items = multi::tally(rows, &keys);
+        let unpicked = self.multi.unpicked(rows);
+        let hidden = (unpicked.iter())
+            .filter(|r| r.kind == crate::snapshot::RowKind::Request)
+            .count();
         let paths: Vec<ItemPath> = keys.into_iter().map(|k| k.path).collect();
         let trash = self.workspace.read(cx).trash_available();
-        // The trash makes a prompt needless unless unsaved edits would go with the items.
-        if trash && !dirty {
+        // The trash makes a prompt needless unless unsaved edits, or rows nobody selected inside
+        // a selected folder, would go with the items.
+        if trash && !dirty && unpicked.is_empty() {
             self.send_deletes(&root, paths, true, window, cx);
             return;
         }
         let ask = if trash {
-            bulk_delete_ask(paths.len(), folder, dirty)
+            bulk_delete_ask(items, hidden, dirty)
         } else {
-            permanent_delete_ask(paths.len(), folder, dirty)
+            permanent_delete_ask(items, hidden, dirty)
         };
         let answer = crate::confirm::ask(ask, window, cx);
         cx.spawn_in(window, async move |this, cx| {
@@ -3050,9 +3053,10 @@ impl Render for Sidebar {
                                 // ends the set (deferred, the tree is busy building this menu).
                                 if multi_on {
                                     if menu_members.contains(&entry.item().id) {
-                                        let count = menu_view
-                                            .upgrade()
-                                            .map_or(0, |v| v.read(cx).bulk_count(cx));
+                                        let count =
+                                            menu_view.upgrade().map_or(Tally::default(), |v| {
+                                                v.read(cx).bulk_tally(cx)
+                                            });
                                         let run = menu_view.upgrade().and_then(|v| {
                                             let plan = v.read(cx).run_plan(cx)?;
                                             (!plan.1.is_empty()).then_some(plan.2)

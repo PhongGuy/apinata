@@ -82,6 +82,56 @@ pub fn run_count(rows: &[Row], items: &[SelKey]) -> usize {
         .count()
 }
 
+/// What a bulk delete removes, counted as the rows themselves: a folder counts once, however
+/// much it holds.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Tally {
+    /// Folder rows.
+    pub folders: usize,
+    /// Request rows.
+    pub requests: usize,
+    /// Rows of files Apinata does not model.
+    pub others: usize,
+}
+
+impl Tally {
+    /// Every counted row.
+    pub fn total(self) -> usize {
+        self.folders + self.requests + self.others
+    }
+
+    /// "3 items" without folders; with them the folders are named apart, as in "2 folders and
+    /// 4 requests", and the rest are requests only when no other file is among them.
+    pub fn describe(self) -> String {
+        let count = |n: usize, noun: &str| format!("{n} {noun}{}", if n == 1 { "" } else { "s" });
+        let rest = self.requests + self.others;
+        match (self.folders, rest) {
+            (0, n) => count(n, "item"),
+            (f, 0) => count(f, "folder"),
+            (f, n) if self.others == 0 => {
+                format!("{} and {}", count(f, "folder"), count(n, "request"))
+            }
+            (f, n) => format!("{} and {}", count(f, "folder"), count(n, "item")),
+        }
+    }
+}
+
+/// The tally of `items` by the kind of their row in `rows`.
+pub fn tally(rows: &[Row], items: &[SelKey]) -> Tally {
+    let mut t = Tally::default();
+    for r in rows
+        .iter()
+        .filter(|r| items.iter().any(|k| k.path == r.path))
+    {
+        match r.kind {
+            RowKind::Folder => t.folders += 1,
+            RowKind::Request => t.requests += 1,
+            RowKind::Opaque => t.others += 1,
+        }
+    }
+    t
+}
+
 /// The selected set and its range anchor. Every key shares one collection root.
 #[derive(Debug, Default, Clone)]
 pub struct Multi {
@@ -222,6 +272,16 @@ impl Multi {
                     .any(|o| o.root == k.root && o.path != k.path && is_within(&k.path, &o.path))
             })
             .cloned()
+            .collect()
+    }
+
+    /// The rows of the set's collection inside a selected folder that are not selected
+    /// themselves, in `rows` order; deleting the folder takes them along.
+    pub fn unpicked<'r>(&self, rows: &'r [Row]) -> Vec<&'r Row> {
+        let picked = |p: &ItemPath| self.keys.iter().any(|k| k.path == *p);
+        rows.iter()
+            .filter(|r| !picked(&r.path))
+            .filter(|r| self.keys.iter().any(|k| is_within(&r.path, &k.path)))
             .collect()
     }
 

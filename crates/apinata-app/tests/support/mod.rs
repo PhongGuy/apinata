@@ -1689,6 +1689,20 @@ pub fn multi_files() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// Two folders, e with one request and f with two, so a shift range from e's request to f's
+/// first one crosses the f row and leaves f's second request unselected.
+pub fn range_files() -> Vec<(&'static str, String)> {
+    vec![
+        ("opencollection.yml", ROOT.to_string()),
+        ("e/folder.yml", folder("E")),
+        ("e/y.yml", request("Y", "http://x/y")),
+        ("f/folder.yml", folder("F")),
+        ("f/x.yml", request("X", "http://x/x")),
+        ("f/z.yml", request("Z", "http://x/z")),
+        ("a.yml", request("A", "http://x/a")),
+    ]
+}
+
 /// Whether element `id` paints a solid quad of `color` at its own origin.
 pub fn filled(
     cx: &mut gpui_kit::TestAppContext,
