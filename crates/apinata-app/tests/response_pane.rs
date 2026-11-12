@@ -660,3 +660,39 @@ fn the_timeline_masks_credential_header_values(cx: &mut TestAppContext) {
     }
     assert!(shown.iter().any(|t| t.starts_with("NTLM ")), "{shown:?}");
 }
+
+#[gpui_kit::test]
+fn hovering_a_cut_header_name_shows_it_in_full(cx: &mut TestAppContext) {
+    let name = format!("x-{}", "very-long-header-name-".repeat(6));
+    let s = send_once(
+        cx,
+        ResponseTemplate::new(200).insert_header(name.as_str(), "1"),
+        "",
+    );
+    let (win, view) = pane(cx, &s);
+    view.update(cx, |p, cx| p.set_tab(ResponseTab::Headers, cx));
+    let shown = s.result.response.as_ref().unwrap().headers().len();
+    let ix = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (0..shown).find(|ix| w.find(("header-name", *ix)).label() == Some(name.as_str()))
+        })
+        .unwrap()
+        .expect("the long header");
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("header-name", ix), cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    let tip = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("kv-cut-tooltip")
+                .map(|t| t.label().unwrap_or_default().to_owned())
+        })
+        .unwrap();
+    assert_eq!(tip, Some(name));
+}

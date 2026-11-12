@@ -3976,9 +3976,9 @@ fn copy_with_toast(text: String, toast: &'static str, window: &mut Window, cx: &
     window.push_notification(ui::info_toast(toast), cx);
 }
 
-/// A read-only name/value table: a fixed, truncated name column and a wrapping value
-/// column. `ids` names the rows, the name cells and the value cells; the headings take
-/// `"{cell id}-head"`.
+/// A read-only name/value table: a fixed, truncated name column that shows a cut name in a
+/// tooltip, and a wrapping value column. `ids` names the rows, the name cells and the value
+/// cells; the headings take `"{cell id}-head"`.
 pub(crate) fn header_table(ids: [&'static str; 3], pairs: &[(String, String)]) -> KvView {
     let columns = vec![
         KvColumn::fixed(
@@ -3986,7 +3986,8 @@ pub(crate) fn header_table(ids: [&'static str; 3], pairs: &[(String, String)]) -
             ids[1],
             "Name",
             style::HEADER_NAME_WIDTH,
-        ),
+        )
+        .tip_when_cut(),
         KvColumn::flex(
             SharedString::from(format!("{}-head", ids[2])),
             ids[2],
@@ -4863,9 +4864,9 @@ impl ResponsePane {
                 let list = uniform_list(
                     "compare-rows",
                     rows.len(),
-                    move |range: std::ops::Range<usize>, _: &mut Window, cx: &mut App| {
+                    move |range: std::ops::Range<usize>, window: &mut Window, cx: &mut App| {
                         range
-                            .map(|ix| compare_row(ix, &rows[ix], &palette, &actions, cx))
+                            .map(|ix| compare_row(ix, &rows[ix], &palette, &actions, window, cx))
                             .collect::<Vec<_>>()
                     },
                 )

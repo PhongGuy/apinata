@@ -320,3 +320,83 @@ fn a_recent_switcher_entry_shows_the_collection_name(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(label.as_deref(), Some("Pretty Name"));
 }
+
+#[gpui_kit::test]
+fn switcher_paths_start_under_their_names(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (a, b) = (collection(), two_requests());
+    let state = tempfile::tempdir().unwrap();
+    let start = Session {
+        recent: vec![b.path().to_path_buf()],
+        ..Session::default()
+    };
+    let session = session_at(cx, &state, start);
+    let ws = workspace(cx, &session);
+    ws.update(cx, |w, cx| w.open(a.path().to_path_buf(), cx));
+    let (win, _view) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| Shell::new(ws, w, cx))
+            })
+        })
+        .unwrap();
+    frame(cx, win);
+    open_switcher(cx, win);
+    cx.update_window(win, |_, w, _| {
+        for (name, path) in [
+            ("switch-open-name", "switcher-open-path"),
+            ("recent-name", "recent-path"),
+        ] {
+            let name_left = w.find((name, 0usize)).bounds().left();
+            let path_left = w.find((path, 0usize)).bounds().left();
+            assert_eq!(path_left, name_left, "{path} starts under {name}");
+        }
+    })
+    .unwrap();
+}
+
+// A collection of `n` requests, enough of them to overflow the sidebar.
+fn long_collection(n: usize) -> tempfile::TempDir {
+    let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
+    for i in 0..n {
+        files.push((
+            format!("r{i:02}.yml"),
+            request(&format!("r{i:02}"), "http://x/0"),
+        ));
+    }
+    let refs: Vec<(&str, &str)> = (files.iter())
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    write_tree(&refs)
+}
+
+#[gpui_kit::test]
+fn choosing_an_open_collection_scrolls_its_root_to_the_top(cx: &mut TestAppContext) {
+    let col = long_collection(80);
+    let s = started(cx, &col);
+    let b = long_collection(40);
+    s.ws.update(cx, |w, cx| w.open(b.path().to_path_buf(), cx));
+    cx.run_until_parked();
+    let ix =
+        s.ws.read_with(cx, |w, _| {
+            (w.collections().iter()).position(|c| c.root() == b.path())
+        })
+        .expect("opened");
+    let root_row = apinata_app::sidebar::model::node_id(ix, &ItemPath::root());
+    frame(cx, s.win);
+    assert!(!shown(cx, s.win, root_row.clone()), "starts below the fold");
+    open_switcher(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click(("switch-open", ix), cx))
+        .unwrap();
+    frame(cx, s.win);
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        let list = w.find("sidebar-tree").bounds().top();
+        let row = w.find(root_row.clone()).bounds().top();
+        assert!(
+            (row - list).abs() <= gpui_kit::px(1.),
+            "root row at {row:?}, list top at {list:?}"
+        );
+    })
+    .unwrap();
+}

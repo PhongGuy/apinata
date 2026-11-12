@@ -3,6 +3,8 @@
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt;
+use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{
@@ -17,9 +19,9 @@ use gpui_kit::component::{Size, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     AnyElement, App, AppContext, ClickEvent, Context, Div, DragMoveEvent, Entity, EventEmitter,
-    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, TestSupportExt, Window, div,
-    transparent_black,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, TestSupportExt, Window, canvas,
+    div, transparent_black,
 };
 
 use crate::header_complete::Hint;
@@ -27,6 +29,7 @@ use crate::kv_bulk::{bulk_rows, bulk_text, editable};
 use crate::kv_grid::{
     self, ActionShow, KvColumn, Reloaded, action_slot, check_slot, kv_head, kv_row,
 };
+use crate::path_display;
 use crate::row_move::{
     self, DraggedRow, MoveRowDown, MoveRowUp, drop_line, drop_side, grip_slot, real_move_target,
     real_step_target,
@@ -381,6 +384,8 @@ pub struct KvTable {
     /// The control that held focus when the pending checkbox or Remove focus was left; the
     /// pending focus is the user's only while it still does.
     pending_origin: Option<FocusHandle>,
+    /// The text width and size a files cell last had, which every files cell shares.
+    files_room: Rc<Cell<Option<(Pixels, Pixels)>>>,
 }
 
 impl EventEmitter<KvEvent> for KvTable {}
@@ -419,6 +424,7 @@ impl KvTable {
             check_focus: Cell::new(None),
             remove_focus: Cell::new(None),
             pending_origin: None,
+            files_room: Rc::default(),
             typed: None,
             drop: None,
         }
@@ -1067,6 +1073,23 @@ impl KvTable {
         }
     }
 
+    /// A files cell's text as shown and in full. Short of room, the paths share it evenly and
+    /// each gives up its leading folders first, so the file names stay readable.
+    fn files_text(&self, files: &[String], window: &Window) -> (String, String) {
+        let full = files.join(", ");
+        let Some((room, size)) = self.files_room.get() else {
+            return (full.clone(), full);
+        };
+        let measure = path_display::measurer(window, size);
+        let n = files.len().max(1) as f32;
+        let each = (f32::from(room) - measure(", ") * (n - 1.)) / n;
+        let shown = (files.iter())
+            .map(|f| path_display::display(Path::new(f), None, each, &measure))
+            .collect::<Vec<_>>()
+            .join(", ");
+        (shown, full)
+    }
+
     /// Draw row `ix`. A slot the row does not use is laid out hidden under a `kv-slot-*` id so
     /// every column lines up: the empty row's checkbox, tag and delete, a fixed row's checkbox
     /// and delete, and a text row's Clear when the table has file rows.
@@ -1175,6 +1198,24 @@ impl KvTable {
             .drop
             .filter(|&(at, _)| at == ix && !blank)
             .map(|(_, s)| s);
+        // A changed files room redraws the table once the frame is done, so paths refit.
+        let files_measure = {
+            let (cell, me) = (Rc::clone(&self.files_room), cx.entity().downgrade());
+            canvas(
+                move |bounds, window, cx| {
+                    let size = window.text_style().font_size.to_pixels(window.rem_size());
+                    let now = Some((bounds.size.width, size));
+                    if cell.replace(now) != now {
+                        window.defer(cx, move |_, cx| {
+                            me.update(cx, |_, cx| cx.notify()).ok();
+                        });
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full()
+        };
         kv_row(("kv-row", ix))
             .track_focus(&row.within)
             .h(ROW_HEIGHT)
@@ -1252,21 +1293,39 @@ impl KvTable {
             .map(|r| match &files {
                 // Padded and bordered like a small input: the names start where typed text
                 // does, and an outer box shares out the row width as a cell's wrapper does.
-                Some(files) => r.child(sized(
-                    &cols,
-                    "kv-value",
-                    div().child(
-                        div()
-                            .id(("kv-files", ix))
-                            .test_support()
-                            .w_full()
-                            .px(Size::Small.input_px())
-                            .border_1()
-                            .border_color(transparent_black())
-                            .truncate()
-                            .child(files.join(", ")),
-                    ),
-                )),
+                Some(files) => {
+                    let (shown, full) = self.files_text(files, win);
+                    let cut = shown != full;
+                    r.child(sized(
+                        &cols,
+                        "kv-value",
+                        div().child(
+                            div()
+                                .id(("kv-files", ix))
+                                .test_support()
+                                .aria_label(full)
+                                .aria_value(shown.clone())
+                                .w_full()
+                                .px(Size::Small.input_px())
+                                .border_1()
+                                .border_color(transparent_black())
+                                .when(cut, |d| {
+                                    d.tooltip(ui::text_tooltip(
+                                        "kv-files-tooltip",
+                                        files.join("\n"),
+                                    ))
+                                })
+                                .child(
+                                    div()
+                                        .relative()
+                                        .w_full()
+                                        .truncate()
+                                        .child(files_measure)
+                                        .child(shown),
+                                ),
+                        ),
+                    ))
+                }
                 None => r.child(cell(
                     &row.value,
                     ("kv-value", ix),

@@ -395,3 +395,32 @@ fn the_eye_stays_clear_of_the_scrollbar(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+#[gpui_kit::test]
+fn a_long_changed_header_ends_inside_its_row_and_tips_in_full(cx: &mut TestAppContext) {
+    let (old, new) = ("a".repeat(300), "b".repeat(300));
+    let fx = live_pair(cx, &[("x-long", &old)], &[("x-long", &new)]);
+    let ix = header_row(cx, fx.win, "x-long").expect("an x-long row");
+    let full = format!("x-long: {old} -> {new}");
+    cx.update_window(fx.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("compare-row", ix), cx)
+    })
+    .unwrap();
+    cx.executor().advance_clock(Duration::from_millis(800));
+    frame(cx, fx.win);
+    let tip = cx
+        .update_window(fx.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("kv-cut-tooltip")
+                .map(|t| t.label().unwrap_or_default().to_owned())
+        })
+        .unwrap();
+    assert_eq!(tip, Some(full));
+    cx.update_window(fx.win, |_, w, _| {
+        let row = w.find(("compare-row", ix)).bounds();
+        let text = w.find(("compare-text", ix)).bounds();
+        assert!(text.right() <= row.right(), "{text:?} inside {row:?}");
+    })
+    .unwrap();
+}
