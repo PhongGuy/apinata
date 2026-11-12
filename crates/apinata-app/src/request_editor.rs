@@ -31,8 +31,8 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Bounds, ClickEvent, ClipboardItem, ElementId, Empty, Entity,
     FocusHandle, Focusable, Global, Pixels, Point, Rems, Role, ScrollHandle, SharedString,
-    StyleRefinement, Subscription, Task, TestSupportExt, Window, actions, canvas, div, px,
-    relative, rems,
+    StyleRefinement, Subscription, Task, TestSupportExt, Window, actions, canvas, div, relative,
+    rems,
 };
 
 use crate::app::AppState;
@@ -2258,16 +2258,12 @@ impl Render for RequestEditor {
         self.follow_snippet_caret(window, cx);
         // The section body scrolls under a fixed header; the column scrolls too, only once a
         // pane at its minimum is shorter than the header plus the body's minimum.
-        // The URL keeps 16 rem; a pane narrower than that (even stacked) bounds it instead.
-        let url_min = {
-            let floor = style::resolve(style::URL_FIELD_MIN, window);
-            match cx.try_global::<TabAreaRoom>() {
-                Some(r) => {
-                    floor.min((r.0 - style::resolve(style::URL_ROW_SLACK, window)).max(px(0.)))
-                }
-                None => floor,
-            }
-        };
+        // The method line asks for the URL's 16 rem beside the method boxes, so the buttons
+        // wrap first; a pane narrower than that shrinks only the URL.
+        let method_line = style::resolve(style::METHOD_SELECT, window)
+            + style::resolve(style::CUSTOM_METHOD, window)
+            + style::resolve(style::SPACE_2, window) * 2.
+            + style::resolve(style::URL_FIELD_MIN, window);
         let breadcrumb = self.chrome_element(
             ChromePart::Breadcrumb,
             StyleRefinement::default().w_full().min_w_0().flex_none(),
@@ -2292,7 +2288,9 @@ impl Render for RequestEditor {
         );
         let url = self.chrome_element(
             ChromePart::Url,
-            StyleRefinement::default().flex_1().min_w(url_min),
+            StyleRefinement::default()
+                .flex_1()
+                .min_w(style::METHOD_SELECT),
             window,
             cx,
         );
@@ -2331,22 +2329,30 @@ impl Render for RequestEditor {
                     .map(|b| div().flex_none().child(b)),
             )
             .child(
-                // Only the URL gives way on a narrow editor, and once it would drop below a
-                // usable width, the buttons wrap to their own line; nothing else shrinks.
+                // The method, custom method and URL stay on one line while the URL can be
+                // as wide as the method; the buttons wrap to their own line first.
                 // The right inset leaves room for the last button's keyboard ring, which the
                 // pane would otherwise clip; the ring does not shrink with zoom, so the inset has a floor.
                 h_flex()
                     .flex_none()
                     .flex_wrap()
-                    .justify_end()
                     .gap(style::SPACE_2)
                     .w_full()
                     .pr(style::SPACE_1
                         .to_pixels(window.rem_size())
                         .max(style::FOCUS_RING_ROOM))
-                    .child(method)
-                    .child(custom_method)
-                    .child(url)
+                    .child(
+                        h_flex()
+                            .flex_grow(1.)
+                            .flex_shrink(1.)
+                            .flex_basis(method_line)
+                            .min_w_0()
+                            .flex_wrap()
+                            .gap(style::SPACE_2)
+                            .child(method)
+                            .child(custom_method)
+                            .child(url),
+                    )
                     // Save, Send and Generate code wrap together, so the group never splits.
                     .child(buttons),
             )

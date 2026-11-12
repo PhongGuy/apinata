@@ -370,17 +370,31 @@ fn a_key_a_code_editor_takes_names_the_place(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
-    record(cx, &s, "view.toggle_sidebar");
+    record(cx, &s, "view.find_next_in_response");
     press(cx, &s, "ctrl-tab");
     let shown = Kbd::format(&Keystroke::parse("ctrl-tab").unwrap());
     assert_eq!(
-        message(cx, &s, "view.toggle_sidebar"),
+        message(cx, &s, "view.find_next_in_response"),
         Some(format!(
-            "{shown} is already used by Focus next control in code editors"
+            "{shown} is already used by Next tab, Focus next control in code editors"
         ))
     );
-    click(cx, &s, "key-view.toggle_sidebar-cancel");
-    // The other way round the window-wide command it hides is named by its label alone.
+    click(cx, &s, "key-view.find_next_in_response-cancel");
+    // The other way round the wider pane command it hides is named by its label alone.
+    let find_next = if cfg!(target_os = "macos") {
+        "cmd-g"
+    } else {
+        "f3"
+    };
+    record(cx, &s, "view.focus_next_control");
+    press(cx, &s, find_next);
+    let shown = Kbd::format(&Keystroke::parse(find_next).unwrap());
+    assert_eq!(
+        message(cx, &s, "view.focus_next_control"),
+        Some(format!("{shown} is already used by Find next in response"))
+    );
+    click(cx, &s, "key-view.focus_next_control-cancel");
+    // A window-wide command the editor would hide is named by its label alone too.
     record(cx, &s, "view.focus_next_control");
     press(cx, &s, &key("w"));
     assert_eq!(
@@ -422,5 +436,19 @@ fn a_command_takes_back_its_own_bare_default_keys_only(cx: &mut TestAppContext) 
     assert_eq!(
         message(cx, &s, "request.rename_in_sidebar").as_deref(),
         Some("Hold Ctrl, Alt or another modifier with this key")
+    );
+}
+
+#[gpui_kit::test]
+fn ctrl_tab_for_a_window_command_names_next_tab(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    record(cx, &s, "view.toggle_sidebar");
+    press(cx, &s, "ctrl-tab");
+    let shown = Kbd::format(&Keystroke::parse("ctrl-tab").unwrap());
+    assert_eq!(
+        message(cx, &s, "view.toggle_sidebar"),
+        Some(format!("{shown} is already used by Next tab"))
     );
 }

@@ -27,6 +27,7 @@ pub(crate) fn segments(req: &RequestFile, ctx: &VarContext, phase: ScriptPhase) 
             if let Some(code) = code.filter(|c| is_kind && !c.trim().is_empty()) {
                 out.push(Segment {
                     level: level.clone(),
+                    phase,
                     code: code.to_owned(),
                 });
             }

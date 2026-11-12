@@ -413,6 +413,7 @@ mod redo_keys;
 mod redraw_scope;
 mod reference_workspace;
 mod request_bar_buttons;
+mod request_bar_wrap;
 mod request_edit_keys;
 mod request_edit_undo;
 mod request_editor;

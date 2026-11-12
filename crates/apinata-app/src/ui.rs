@@ -3225,9 +3225,17 @@ pub fn warning_count_badge(n: usize) -> Option<AnyElement> {
 
 /// A warning-coloured badge carrying `text` instead of a number, for a pass beside skips.
 pub fn warning_text_badge(text: String) -> AnyElement {
+    text_badge(text, Tag::warning())
+}
+
+/// A danger-coloured badge carrying `text` instead of a number, for a count of failures.
+pub fn danger_text_badge(text: String) -> AnyElement {
+    text_badge(text, Tag::danger())
+}
+
+fn text_badge(text: String, tag: Tag) -> AnyElement {
     let tnum = FontFeatures(Arc::new(vec![("tnum".into(), 1)]));
-    Tag::warning()
-        .small()
+    tag.small()
         .rounded_full()
         .font_features(tnum)
         .whitespace_nowrap()

@@ -308,7 +308,9 @@ pub const KV_VIEW_LINE_HEIGHT: Rems = ui(20.);
 /// Vertical padding of a read-only key-value cell, centring its first line in `ROW_HEIGHT`.
 pub const KV_VIEW_PAD_Y: Rems = Rems((ROW_HEIGHT.0 - KV_VIEW_LINE_HEIGHT.0) / 2.);
 /// Width of an assertion row's operator select.
-pub const OPERATOR_SELECT_WIDTH: Rems = ui(140.);
+pub const OPERATOR_SELECT_WIDTH: Rems = ui(180.);
+/// Width of the operator list, room for the plain words and the raw operator beside them.
+pub const OPERATOR_MENU_WIDTH: Rems = ui(260.);
 /// Width of an oauth2 parameter row's stage select.
 pub const PARAM_STAGE_WIDTH: Rems = ui(140.);
 /// Width of an oauth2 parameter row's placement select.

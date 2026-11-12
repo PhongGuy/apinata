@@ -280,20 +280,23 @@ fn syntax_folder(
             match t.kind {
                 // A collection or folder script is one file's defect: report it once, not
                 // once per request that inherits it.
-                crate::ScriptTextKind::Script { level, .. } if level != "request" => {
+                crate::ScriptTextKind::Script { phase, level } if level != "request" => {
                     if !seen.contains(&level) || segments.iter().any(|s| s.level == level) {
                         segments.push(Segment {
                             level,
+                            phase,
                             code: t.text,
                         });
                     }
                 }
-                crate::ScriptTextKind::Script { level, .. } => segments.push(Segment {
+                crate::ScriptTextKind::Script { phase, level } => segments.push(Segment {
                     level,
+                    phase,
                     code: t.text,
                 }),
                 _ => segments.push(Segment {
                     level: EXPRESSION.to_owned(),
+                    phase: crate::ScriptPhase::PreRequest,
                     code: format!("return ({});", t.text),
                 }),
             }

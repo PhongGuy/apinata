@@ -53,10 +53,11 @@ pub const COOKIE_SAVE_TICK: Duration = Duration::from_secs(5);
 
 /// The main window's options, built on the kit title bar's: titled "Apinata", restored to
 /// the saved bounds when they are large enough and still on one of `displays`, else placed
-/// by the platform.
+/// by the platform. It cannot shrink below the smallest size a saved window restores at.
 pub fn window_options(session: &Session, displays: &[Bounds<Pixels>]) -> WindowOptions {
     WindowOptions {
         window_bounds: session.window.as_ref().and_then(|w| w.to_window(displays)),
+        window_min_size: Some(crate::session::min_window_size()),
         titlebar: Some(TitlebarOptions {
             title: Some("Apinata".into()),
             ..TitleBar::title_bar_options()

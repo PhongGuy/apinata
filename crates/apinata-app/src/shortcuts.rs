@@ -265,6 +265,18 @@ pub fn scope_label(scope: Scope) -> Option<&'static str> {
     places().iter().find(|p| p.context == ctx).map(|p| p.label)
 }
 
+// Whether `a` and `b` both holding `chord` is a clash: their scopes overlap, or a pane takes
+// from the window a chord that is not one of the pane command's shipped defaults, since only
+// those override the window on purpose.
+fn clash(a: &Command, b: &Command, chord: &Chord) -> bool {
+    let takes = |pane: &Command, window: &Command| {
+        matches!(pane.scope, Scope::Pane(_))
+            && window.scope == Scope::Shell
+            && !defaults(pane).contains(chord)
+    };
+    scopes_overlap(a.scope, b.scope) || takes(a, b) || takes(b, a)
+}
+
 /// The other commands, in registry order, that answer to `chord` where command `id` does.
 pub fn conflicts_with(
     cmds: &[Command],
@@ -276,20 +288,20 @@ pub fn conflicts_with(
         return Vec::new();
     };
     cmds.iter()
-        .filter(|c| c.id != id && scopes_overlap(this.scope, c.scope))
+        .filter(|c| c.id != id && clash(this, c, chord))
         .filter(|c| effective(c, overrides).contains(chord))
         .map(|c| c.id)
         .collect()
 }
 
-/// Every command that shares one of its chords with another command in an overlapping scope.
+/// Every command that shares one of its chords with another command where the two clash.
 pub fn conflicted(cmds: &[Command], overrides: &Overrides) -> BTreeSet<&'static str> {
     let keys: Vec<Vec<Chord>> = cmds.iter().map(|c| effective(c, overrides)).collect();
     let mut out = BTreeSet::new();
     for (i, a) in cmds.iter().enumerate() {
         for (j, b) in cmds.iter().enumerate().skip(i + 1) {
-            let shared = keys[i].iter().any(|k| keys[j].contains(k));
-            if shared && scopes_overlap(a.scope, b.scope) {
+            let clashes = (keys[i].iter()).any(|k| keys[j].contains(k) && clash(a, b, k));
+            if clashes {
                 out.insert(a.id);
                 out.insert(b.id);
             }
@@ -365,8 +377,10 @@ fn holders_of_defaults(
 ) -> Vec<&'static str> {
     let wanted = defaults(this);
     cmds.iter()
-        .filter(|c| c.id != this.id && scopes_overlap(this.scope, c.scope))
-        .filter(|c| effective(c, overrides).iter().any(|k| wanted.contains(k)))
+        .filter(|c| c.id != this.id)
+        .filter(|c| {
+            (effective(c, overrides).iter()).any(|k| wanted.contains(k) && clash(this, c, k))
+        })
         .map(|c| c.id)
         .collect()
 }
