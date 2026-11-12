@@ -569,33 +569,18 @@ expression: "rendered(&postman_with(&c, &keep))"
 }
 --- notes
 Posts / List posts / assertions: assertions have no place in the exported file
-Posts / List posts / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Posts / List posts / tags: tags have no place in Postman and were left out: smoke
 Posts / Get post / post-response variables: post-response variables have no place in the exported file
 Posts / Get post / assertions: assertions have no place in the exported file
-Posts / Get post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Posts / Get post / tags: tags have no place in Postman and were left out: smoke
 Posts / Create post / assertions: assertions have no place in the exported file
-Posts / Create post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
-Posts / Replace post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
-Posts / Edit post title / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Posts / Delete post / assertions: assertions have no place in the exported file
-Posts / Delete post / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Users / List users / assertions: assertions have no place in the exported file
-Users / List users / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Users / List users / tags: tags have no place in Postman and were left out: smoke
 Users / Get user / assertions: assertions have no place in the exported file
-Users / Get user / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Users / Get user / tags: tags have no place in Postman and were left out: smoke, data
 Media / Get XML / assertions: assertions have no place in the exported file
-Media / Get XML / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Media / Get PNG / assertions: assertions have no place in the exported file
-Media / Get PNG / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Auth / Digest example / assertions: assertions have no place in the exported file
-Auth / Digest example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
-Auth / SigV4 example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Auth / OAuth 1.0 example / assertions: assertions have no place in the exported file
-Auth / OAuth 1.0 example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 Auth / NTLM example / assertions: assertions have no place in the exported file
-Auth / NTLM example / timeout: the request has no timeout; when imported, the request will inherit the default timeout
-GraphQL / Get user / timeout: the request has no timeout; when imported, the request will inherit the default timeout

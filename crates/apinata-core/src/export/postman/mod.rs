@@ -225,7 +225,7 @@ fn request_item(
 }
 
 /// Write the settings that differ from what the importer assumes, and note the ones Postman
-/// has no slot for (timeout, tags).
+/// has no slot for (a set timeout, tags).
 fn settings_behavior(
     behavior: &mut Map<String, Value>,
     notes: &mut Vec<ExportNote>,
@@ -254,13 +254,11 @@ fn settings_behavior(
     if s.forward_authorization_header {
         behavior.insert("followAuthorizationHeader".into(), true.into());
     }
-    let kept = " when imported, the request will inherit the default timeout";
-    let timeout = match s.timeout {
-        Timeout::Inherit => None,
-        Timeout::Unlimited => Some(format!("the request has no timeout;{kept}")),
-        Timeout::Millis(ms) => Some(format!("the {ms} ms timeout cannot be exported;{kept}")),
-    };
-    if let Some(detail) = timeout {
+    // Postman's own default is no timeout, so only a set limit is lost.
+    if let Timeout::Millis(ms) = s.timeout {
+        let detail = format!(
+            "the {ms} ms timeout cannot be exported; when imported, the request will inherit the default timeout"
+        );
         note_if(notes, path, "timeout", true, &detail);
     }
     let tags = req.tags();
