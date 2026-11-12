@@ -220,6 +220,11 @@ impl SettingsSection {
         crate::ui::end_input_run(&self.timeout, window, cx);
     }
 
+    /// The Max redirects field.
+    pub fn max_redirects_input(&self) -> &Entity<InputState> {
+        &self.max_redirects
+    }
+
     /// The tag chip input.
     pub fn tags(&self) -> &Entity<TagField> {
         &self.tags
@@ -363,13 +368,23 @@ impl Render for SettingsSection {
             .child(followed(ui::form_row(
                 "set-row-max-redirects",
                 "Max redirects",
-                ui::padded_input(
-                    Input::new(&self.max_redirects)
-                        .id("set-max-redirects")
-                        .w(FORM_INPUT_WIDTH)
-                        .bg(ui::field_fill(false, cx)),
-                    &self.max_redirects,
-                ),
+                // Unfollowed redirects make the limit moot, so the field is disabled but keeps its number.
+                div()
+                    .id("set-max-redirects-wrap")
+                    .when(!s.follow_redirects, |d| {
+                        d.tooltip(ui::text_tooltip(
+                            "set-max-redirects-tooltip",
+                            MAX_REDIRECTS_OFF_TIP,
+                        ))
+                    })
+                    .child(ui::padded_input(
+                        Input::new(&self.max_redirects)
+                            .id("set-max-redirects")
+                            .w(FORM_INPUT_WIDTH)
+                            .disabled(!s.follow_redirects)
+                            .bg(ui::field_fill(!s.follow_redirects, cx)),
+                        &self.max_redirects,
+                    )),
             )))
             .child(followed(
                 ui::form_row("set-row-timeout", "Timeout", timeout)
@@ -388,6 +403,9 @@ impl Render for SettingsSection {
             })
     }
 }
+
+/// Why Max redirects is disabled while redirects are not followed.
+pub const MAX_REDIRECTS_OFF_TIP: &str = "Max redirects only applies while Follow redirects is on.";
 
 /// Whether the Docs section shows its markdown rendered or in the editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
