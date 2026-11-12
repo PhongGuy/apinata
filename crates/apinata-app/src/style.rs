@@ -344,9 +344,9 @@ pub const CHANGES_STATUS_WIDTH: Rems = ui(72.);
 pub const CHANGES_NOTICE_MAX_HEIGHT: Rems = ui(120.);
 /// The smallest height of the Compare dialog's diff list.
 pub const COMPARE_DIFF_MIN_HEIGHT: Rems = ui(120.);
-/// The smallest height of a code editor (body, docs).
+/// The smallest height of a code editor; above it the request section's editors fill the pane.
 pub const EDITOR_MIN_HEIGHT: Rems = ui(200.);
-/// The height of a code editor (body, docs).
+/// The height of the bulk key-value editor, and the cap on an example's request text.
 pub const EDITOR_HEIGHT: Rems = ui(300.);
 /// The tallest the decoded JWT block in the auth section grows before its content scrolls.
 pub const JWT_BLOCK_MAX_HEIGHT: Rems = ui(240.);

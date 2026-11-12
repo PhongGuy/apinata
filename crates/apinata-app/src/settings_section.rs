@@ -536,11 +536,11 @@ impl Render for DocsSection {
                 div().id("docs-preview").child(content)
             }
         };
-        v_flex().w_full().gap(SPACE_2).child(toggle).child(
+        v_flex().w_full().flex_1().gap(SPACE_2).child(toggle).child(
             body.test_support()
                 .w_full()
-                .min_h(style::EDITOR_MIN_HEIGHT)
-                .h(style::EDITOR_HEIGHT),
+                .flex_1()
+                .min_h(style::EDITOR_MIN_HEIGHT),
         )
     }
 }

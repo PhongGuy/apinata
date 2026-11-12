@@ -3547,7 +3547,17 @@ impl RequestEditor {
             Section::Docs => ("docs", self.docs.clone().into()),
             Section::Settings => ("settings", self.settings.clone().into()),
         };
-        let body = div().id(id).test_support().w_full().child(view);
+        // Code-editing sections grow into the pane so their editors can fill it.
+        let fills = matches!(
+            self.section,
+            Section::Body | Section::Script | Section::Tests | Section::Docs
+        );
+        let body = div()
+            .id(id)
+            .test_support()
+            .w_full()
+            .when(fills, |d| d.flex().flex_col().flex_1())
+            .child(view);
         if self.section != Section::Vars {
             return body.into_any_element();
         }
