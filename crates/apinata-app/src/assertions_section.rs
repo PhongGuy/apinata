@@ -5,12 +5,13 @@ use gpui_kit::InteractiveElement as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::select::{Select, SelectEvent, SelectState};
-use gpui_kit::component::v_flex;
+use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     App, AppContext, Context, DragMoveEvent, Entity, EventEmitter, FocusHandle, Focusable as _,
-    IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window, div,
+    IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, TestSupportExt as _, Window, div,
 };
 use std::cell::Cell;
 
@@ -25,7 +26,7 @@ use crate::row_move::{
 };
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::section::SectionEdit;
-use crate::style::{OPERATOR_SELECT_WIDTH, ROW_HEIGHT};
+use crate::style::{OPERATOR_MENU_WIDTH, OPERATOR_SELECT_WIDTH, ROW_HEIGHT};
 use crate::tabs::Side;
 use crate::ui;
 
@@ -60,6 +61,105 @@ pub const OPERATORS: [&str; 28] = [
     "isBoolean",
     "isArray",
 ];
+
+/// The plain words the picker shows for each of `OPERATORS`, in the same order.
+pub const OPERATOR_LABELS: [&str; 28] = [
+    "equals",
+    "not equals",
+    "greater than",
+    "greater than or equal",
+    "less than",
+    "less than or equal",
+    "in",
+    "not in",
+    "contains",
+    "does not contain",
+    "length is",
+    "matches",
+    "does not match",
+    "starts with",
+    "ends with",
+    "between",
+    "is empty",
+    "is not empty",
+    "is null",
+    "is undefined",
+    "is defined",
+    "is truthy",
+    "is falsy",
+    "is JSON",
+    "is a number",
+    "is a string",
+    "is a boolean",
+    "is an array",
+];
+
+/// The plain words for `operator`; an operator outside `OPERATORS` reads as itself.
+pub fn operator_label(operator: &str) -> &str {
+    OPERATORS
+        .iter()
+        .position(|op| *op == operator)
+        .map_or(operator, |ix| OPERATOR_LABELS[ix])
+}
+
+/// One picker row: shows the plain words with the raw operator muted beside them, and is
+/// found by either. Its value is the raw operator, which is what the file stores.
+#[derive(Debug, Clone)]
+pub struct OperatorItem {
+    id: SharedString,
+    op: SharedString,
+    label: SharedString,
+}
+
+impl OperatorItem {
+    fn new(op: &str) -> Self {
+        OperatorItem {
+            id: format!("as-op-option-{op}").into(),
+            op: op.to_owned().into(),
+            label: operator_label(op).to_owned().into(),
+        }
+    }
+}
+
+impl SelectItem for OperatorItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &SharedString {
+        &self.op
+    }
+
+    fn matches(&self, query: &str) -> bool {
+        let query = query.to_lowercase();
+        [&self.label, &self.op]
+            .iter()
+            .any(|text| text.to_lowercase().contains(&query))
+    }
+
+    fn render(&self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        h_flex()
+            .id(self.id.clone())
+            .test_support()
+            .aria_label(self.label.clone())
+            .aria_description(self.op.clone())
+            .w_full()
+            .gap_2()
+            .justify_between()
+            .child(self.label.clone())
+            .when(self.op != self.label, |row| {
+                row.child(
+                    div()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(self.op.clone()),
+                )
+            })
+    }
+}
+
+type OperatorSelect = SelectState<SearchableVec<OperatorItem>>;
 
 /// Whether `operator` takes no value: the last twelve of `OPERATORS`, as Bruno's
 /// `isUnaryOperator` lists them.
@@ -139,7 +239,7 @@ enum Control {
 struct Row {
     expression: Entity<InputState>,
     value: Entity<InputState>,
-    operator: Entity<ui::IdSelect>,
+    operator: Entity<OperatorSelect>,
     op: String,
     enabled: bool,
     source: Option<usize>,
@@ -384,9 +484,11 @@ impl AssertionsSection {
                     .default_value(text.to_owned())
             })
         };
-        let expression = input(&row.expression, "Expression", cx);
+        let expression = input(&row.expression, "res.status", cx);
         let value = input(&row.value, "Value", cx);
-        let operator = cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
+        let operator = cx.new(|cx| {
+            SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true)
+        });
         show_operator(&operator, &row.operator, window, cx);
         let [expression_sub, value_sub] = [&expression, &value].map(|input| {
             cx.subscribe_in(
@@ -409,7 +511,7 @@ impl AssertionsSection {
             cx.subscribe_in(
                 &operator,
                 window,
-                |this, select, event: &SelectEvent<Vec<ui::IdItem>>, window, cx| {
+                |this, select, event: &SelectEvent<SearchableVec<OperatorItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(op)) = event {
                         let ix = this
                             .rows
@@ -616,15 +718,19 @@ fn fresh() -> AssertionRow {
 }
 
 // Offers Bruno's operators plus `operator` itself when it is outside them, then selects it.
-fn show_operator(select: &Entity<ui::IdSelect>, operator: &str, window: &mut Window, cx: &mut App) {
-    let row = |op: &str| ui::IdItem::new("as-op", op, op.to_owned());
-    let mut items: Vec<ui::IdItem> = OPERATORS.iter().map(|op| row(op)).collect();
+fn show_operator(
+    select: &Entity<OperatorSelect>,
+    operator: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let mut items: Vec<OperatorItem> = OPERATORS.iter().map(|op| OperatorItem::new(op)).collect();
     if !OPERATORS.contains(&operator) {
-        items.push(row(operator));
+        items.push(OperatorItem::new(operator));
     }
     let selected: SharedString = operator.to_owned().into();
     select.update(cx, |s, cx| {
-        s.set_items(items, window, cx);
+        s.set_items(SearchableVec::new(items), window, cx);
         s.set_selected_value(&selected, window, cx);
     });
 }
@@ -740,7 +846,17 @@ impl AssertionsSection {
                     ),
             ))
             .child(expr_col.size(cell(&row.expression, "as-expr", "as-expr-edge", cx)))
-            .child(op_col.size(div().child(Select::new(&row.operator).id(("as-op", ix)).small())))
+            .child(
+                op_col.size(
+                    div().child(
+                        Select::new(&row.operator)
+                            .id(("as-op", ix))
+                            .menu_width(OPERATOR_MENU_WIDTH)
+                            .search_placeholder("Search operators")
+                            .small(),
+                    ),
+                ),
+            )
             .map(|r| {
                 if is_unary(&row.op) {
                     r.child(value_col.size(div()))
