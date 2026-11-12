@@ -1810,7 +1810,12 @@ pub fn overflow_watch(scroll: &ScrollHandle, assumed: bool) -> impl IntoElement 
 /// an item outside the viewport is scrolled to and one more frame asked for. A wheel scroll
 /// changes none of these, so the user's own scroll is left alone.
 #[derive(Clone, Default)]
-pub struct Reveal(Rc<Cell<Option<RevealKey>>>);
+pub struct Reveal {
+    seen: Rc<Cell<Option<RevealKey>>>,
+    // The offset of the frame before while a check waits for the strip to hold still.
+    settling: Rc<Cell<Option<Pixels>>>,
+    snap_left: bool,
+}
 
 // The layout a check last saw: the item, the viewport width, and the item's unscrolled
 // place in it.
@@ -1824,26 +1829,41 @@ struct RevealKey {
 }
 
 impl Reveal {
+    /// A reveal that also, once the strip holds still after a check, scrolls a tab cut by the
+    /// strip's left edge whole or wholly out of view, so no sliver of it shows there.
+    pub fn whole_at_left() -> Reveal {
+        Reveal {
+            snap_left: true,
+            ..Reveal::default()
+        }
+    }
+
     /// Checks the item again on the next frame, as for a newly chosen one.
     pub fn request(&self) {
-        self.0.set(None);
+        self.seen.set(None);
     }
 
     /// Whether a check is owed: requested, or not yet run on a laid-out item.
     pub fn pending(&self) -> bool {
-        self.0.get().is_none()
+        self.seen.get().is_none()
     }
 
     /// The marker that keeps item `ix` of the strip `scroll` tracks in view; draw it after
     /// the strip so the strip is measured first.
     pub fn watch(&self, scroll: &ScrollHandle, ix: usize) -> impl IntoElement + use<> {
-        let (seen, scroll) = (Rc::clone(&self.0), scroll.clone());
+        let (seen, settling, scroll) = (
+            Rc::clone(&self.seen),
+            Rc::clone(&self.settling),
+            scroll.clone(),
+        );
+        let snap_left = self.snap_left;
         canvas(
             move |_, window, _| {
                 let viewport = scroll.bounds();
                 let Some(item) = scroll.bounds_for_item(ix) else {
                     return;
                 };
+                let fade = resolve(STRIP_FADE_WIDTH, window);
                 let key = RevealKey {
                     item: ix,
                     viewport: viewport.size.width,
@@ -1852,7 +1872,25 @@ impl Reveal {
                     width: item.size.width,
                 };
                 if seen.replace(Some(key)) == Some(key) {
+                    // The kit's own click reveal glides over several frames; once the strip
+                    // holds still, no tab is left as a sliver at its left edge.
+                    let Some(last) = settling.get() else { return };
+                    let now = scroll.offset().x;
+                    if (now - last).abs() >= px(1.) {
+                        settling.set(Some(now));
+                        window.request_animation_frame();
+                        return;
+                    }
+                    settling.set(None);
+                    if let Some(want) = left_edge_snap(&scroll, ix, fade) {
+                        scroll.set_offset(gpui_kit::point(want, scroll.offset().y));
+                        window.request_animation_frame();
+                    }
                     return;
+                }
+                if snap_left {
+                    settling.set(Some(scroll.offset().x));
+                    window.request_animation_frame();
                 }
                 // Scroll the least that shows the item: stay put when it lies whole, align the
                 // edge it is cut at clear of that edge's fade otherwise, and an item wider
@@ -1860,7 +1898,6 @@ impl Reveal {
                 // now shown, unless the item cannot fit between them: it then keeps the raw
                 // viewport test, so the two edges never trade places. A pixel of slack absorbs
                 // layout rounding.
-                let fade = resolve(STRIP_FADE_WIDTH, window);
                 let x = scroll.offset().x;
                 let (left, right) = (item.left() + x, item.right() + x);
                 let (vl, vr) = (viewport.left(), viewport.right());
@@ -1905,6 +1942,37 @@ impl Reveal {
         };
         Some(self.watch(scroll, ix))
     }
+}
+
+// The offset that leaves no tab cut by the strip's left edge while item `chosen` stays clear
+// of the fades: the cut tab scrolled wholly out of view, else scrolled
+// back whole. None when no tab is cut there or neither move keeps the chosen item whole.
+fn left_edge_snap(scroll: &ScrollHandle, chosen: usize, fade: Pixels) -> Option<Pixels> {
+    let (view, x, max) = (scroll.bounds(), scroll.offset().x, scroll.max_offset().x);
+    let item = scroll.bounds_for_item(chosen)?;
+    let cut = (0..)
+        .map_while(|ix| scroll.bounds_for_item(ix).map(|b| (ix, b)))
+        .find(|(_, b)| b.left() + x < view.left() - px(1.) && b.right() + x > view.left() + px(1.));
+    let (cut_ix, cut) = cut?;
+    if cut_ix == chosen {
+        return None;
+    }
+    let keeps_chosen = |at: Pixels| {
+        let (left, right) = (item.left() + at, item.right() + at);
+        let room_left = if at < -px(1.) { fade } else { px(0.) };
+        let room_right = if at > -max + px(1.) { fade } else { px(0.) };
+        left >= view.left() + room_left - px(1.) && right <= view.right() - room_right + px(1.)
+    };
+    let hide = view.left() - cut.right();
+    let show = view.left() - cut.left();
+    [hide, show]
+        .into_iter()
+        .map(|at| at.clamp(-max, px(0.)))
+        .find(|at| {
+            let (left, right) = (cut.left() + *at, cut.right() + *at);
+            let whole_or_gone = right <= view.left() + px(1.) || left >= view.left() - px(1.);
+            whole_or_gone && keeps_chosen(*at)
+        })
 }
 
 /// The strip's own gap, the space between the last two of its `items` from the last layout;
