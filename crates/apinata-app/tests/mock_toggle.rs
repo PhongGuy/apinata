@@ -381,21 +381,47 @@ fn a_remembered_port_in_use_falls_back_to_a_free_one(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_status_names_the_port_and_counts_the_examples(cx: &mut TestAppContext) {
+fn the_status_counts_the_examples_and_the_port_shows_once(cx: &mut TestAppContext) {
     let col = mocked();
     let s = start(cx, &col);
     assert!(!present(cx, s.win, "mock-status"));
     click(cx, s.win, "mock-toggle");
     let addr = running(cx, &s.ws, &s.root);
-    let want = format!("Mock on port {}: 1 example", addr.port());
-    assert_eq!(label(cx, s.win, "mock-status"), Some(want));
+    let port = addr.port().to_string();
+    let address = label(cx, s.win, "mock-address").unwrap();
+    let status = label(cx, s.win, "mock-status").unwrap();
+    assert!(address.contains(&port), "{address}");
+    assert!(!status.contains(&port), "{status}");
+    assert_eq!(status, "1 example");
 }
 
 #[test]
 fn the_status_stays_short_with_and_without_examples() {
     use apinata_app::mock_server::status;
-    assert_eq!(status(0, 4567), "Mock on port 4567: no saved examples");
-    assert_eq!(status(3, 4567), "Mock on port 4567: 3 examples");
+    assert_eq!(status(0), "No saved examples");
+    assert_eq!(status(3), "3 examples");
+}
+
+fn toggle_bounds(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+) -> gpui_kit::Bounds<gpui_kit::Pixels> {
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| w.find("mock-toggle").bounds())
+        .unwrap()
+}
+
+// The address and status appear on the toggle's far side, so a second click on the same spot
+// still lands on it.
+#[gpui_kit::test]
+fn turning_the_mock_on_keeps_the_toggle_under_the_pointer(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let before = toggle_bounds(cx, s.win);
+    click(cx, s.win, "mock-toggle");
+    running(cx, &s.ws, &s.root);
+    assert!(present(cx, s.win, "mock-status"));
+    assert_eq!(toggle_bounds(cx, s.win), before);
 }
 
 #[gpui_kit::test]
