@@ -1,19 +1,21 @@
 //! The Keyboard section of Preferences: one row per registry command with its keys, a
 //! recorder that takes a new key with a conflict prompt, an unbind per command with keys, a
-//! reset per edited command and a reset for all of them.
+//! reset per edited command and a reset for all of them. The rows form one keyboard list.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::tag::Tag;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, ClickEvent, Entity, Hsla, Keystroke, Modifiers, SharedString, Subscription,
-    TestSupportExt, Window, div,
+    AnyElement, App, Bounds, ClickEvent, Entity, FocusHandle, Hsla, KeyDownEvent, Keystroke,
+    Modifiers, Pixels, Role, ScrollHandle, SharedString, Subscription, TestSupportExt, Window, div,
+    point, px,
 };
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::AppState;
@@ -26,7 +28,7 @@ use crate::shortcuts::{
     Chord, Overrides, Resolution, assign, conflicted, conflicts_with, diagnose, effective,
     input_chord, reset, reset_all, reset_conflict, reset_resolving, scope_label, shown_place,
 };
-use crate::style::{SPACE_1, TEXT_SMALL};
+use crate::style::{FOCUS_RING_ROOM, SPACE_1, SPACE_2, TEXT_SMALL};
 use crate::ui;
 
 const NOTE: &str = "Shortcuts are saved in keymap.json. Edits made to that file while the app runs are replaced by the next change here.";
@@ -53,6 +55,13 @@ pub struct KeyboardPrefs {
     prompt: Option<Prompt>,
     // Held only while recording, so every keystroke goes to the recorder and nowhere else.
     intercept: Option<Subscription>,
+    // The command rows are one Tab stop; the arrow keys move `cursor` among the rows the
+    // search leaves, which the last render recorded in `shown` with their painted bounds.
+    list: FocusHandle,
+    cursor: Option<&'static str>,
+    shown: Rc<RefCell<Vec<&'static str>>>,
+    bounds: Rc<RefCell<Vec<Bounds<Pixels>>>>,
+    scroll: Option<ScrollHandle>,
 }
 
 impl KeyboardPrefs {
@@ -69,7 +78,84 @@ impl KeyboardPrefs {
             message: None,
             prompt: None,
             intercept: None,
+            list: cx.focus_handle().tab_stop(true),
+            cursor: None,
+            shown: Rc::default(),
+            bounds: Rc::default(),
+            scroll: None,
         }
+    }
+
+    /// Scrolls `scroll`, the rows' viewport, to keep the row the arrow keys reach in sight.
+    pub fn scrolled_by(mut self, scroll: ScrollHandle) -> Self {
+        self.scroll = Some(scroll);
+        self
+    }
+
+    // The highlighted row: the one the keys last reached while the search still shows it,
+    // otherwise the first shown.
+    fn current(&self) -> Option<&'static str> {
+        let shown = self.shown.borrow();
+        self.cursor
+            .filter(|id| shown.contains(id))
+            .or_else(|| shown.first().copied())
+    }
+
+    // Up, Down, Home and End move the highlight; Delete and Backspace unbind its command.
+    fn step(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if event.keystroke.modifiers.modified() || !self.list.is_focused(window) {
+            return;
+        }
+        let shown = self.shown.borrow().clone();
+        let Some(at) = self
+            .current()
+            .and_then(|id| shown.iter().position(|s| *s == id))
+        else {
+            return;
+        };
+        let to = match event.keystroke.key.as_str() {
+            "up" => at.saturating_sub(1),
+            "down" => (at + 1).min(shown.len() - 1),
+            "home" => 0,
+            "end" => shown.len() - 1,
+            "delete" | "backspace" => {
+                cx.stop_propagation();
+                let id = shown[at];
+                let cmds = registry();
+                let bound = cmds
+                    .iter()
+                    .find(|c| c.id == id)
+                    .is_some_and(|c| !effective(c, &self.overrides(cx)).is_empty());
+                if bound {
+                    self.unbind(id, cx);
+                }
+                return;
+            }
+            _ => return,
+        };
+        cx.stop_propagation();
+        self.cursor = Some(shown[to]);
+        self.reveal(to);
+        cx.notify();
+    }
+
+    // Scrolls the least distance that brings shown row `ix`, as last painted, into the viewport.
+    fn reveal(&self, ix: usize) {
+        let (Some(scroll), Some(row)) = (&self.scroll, self.bounds.borrow().get(ix).copied())
+        else {
+            return;
+        };
+        let view = scroll.bounds();
+        let offset = scroll.offset();
+        let by = if row.top() < view.top() {
+            view.top() - row.top()
+        } else if row.bottom() > view.bottom() {
+            (view.bottom() - row.bottom()).max(view.top() - row.top())
+        } else {
+            return;
+        };
+        let y = (offset.y + by).clamp(-scroll.max_offset().y, px(0.));
+        scroll.set_offset(point(offset.x, y));
     }
 
     fn overrides(&self, cx: &App) -> Overrides {
@@ -83,6 +169,7 @@ impl KeyboardPrefs {
     // Preferences drops the entity and with it the subscription.
     fn record(&mut self, id: &'static str, cx: &mut Context<Self>) {
         self.row = Some(id);
+        self.cursor = Some(id);
         self.message = None;
         self.prompt = None;
         let this = cx.entity().downgrade();
@@ -213,15 +300,17 @@ impl KeyboardPrefs {
     }
 
     /// The section as of the keymap now, appended after History. Does not notify.
-    pub fn section(&mut self, cx: &mut Context<Self>) -> PrefsSection {
+    pub fn section(&mut self, window: &Window, cx: &mut Context<Self>) -> PrefsSection {
         let overrides = self.overrides(cx);
         let cmds = registry();
         let diag = diagnose(&cmds, &overrides);
         let clash = conflicted(&cmds, &overrides);
         let muted = cx.theme().muted_foreground;
         let mut section = PrefsSection::new("prefs-keyboard", "Keyboard");
+        let mut spoken = Vec::new();
         for cmd in &cmds {
             let chords = effective(cmd, &overrides);
+            spoken.push((cmd.id, row_name(cmd, &chords)));
             let flags = RowFlags {
                 bound: !chords.is_empty(),
                 edited: overrides.contains_key(cmd.id),
@@ -237,17 +326,116 @@ impl KeyboardPrefs {
             let control = self.with_prompt(cmd.id, control, muted, cx);
             section = section.row_with_terms(format!("key-{}", cmd.id), cmd.label, terms, control);
         }
+        let list = self.list_wrap(spoken, window, cx);
         let reset_all_button = Button::new("keys-reset-all")
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .label("Reset all")
             .on_click(|_, window, cx| ask_reset_all(window, cx));
         section
+            .list(list)
             .row("pref-keys-reset-all", "All shortcuts", reset_all_button)
             .note(ui::form_note("prefs-keyboard-note", NOTE))
     }
 }
 
 impl KeyboardPrefs {
+    // Wraps the command rows the search keeps in one focusable list box. Each row becomes an
+    // option named for screen readers; the highlighted one is filled and edged like the
+    // tree's selection while the list holds focus, and the list then draws the theme's ring.
+    fn list_wrap(
+        &self,
+        spoken: Vec<(&'static str, String)>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl FnOnce(Vec<(SharedString, AnyElement)>) -> AnyElement + 'static {
+        let focused = self.list.is_focused(window);
+        let gutter = crate::style::list_gutter(window);
+        let theme = cx.theme();
+        let (active, radius) = (theme.list_active, theme.radius);
+        let edge = crate::sidebar::selection_edge_color(true, cx);
+        // The ring paints outside its box, so it sits inset by its own width to stay inside
+        // the scrolled column, which clips at the list's edges.
+        let ring = focused.then(|| {
+            div()
+                .id("prefs-keyboard-list-ring")
+                .absolute()
+                .top(FOCUS_RING_ROOM)
+                .left(FOCUS_RING_ROOM)
+                .right(FOCUS_RING_ROOM)
+                .bottom(FOCUS_RING_ROOM)
+                .focus_ring_style(window, cx)
+        });
+        let (cursor, shown, bounds) =
+            (self.cursor, Rc::clone(&self.shown), Rc::clone(&self.bounds));
+        let list = self.list.clone();
+        let on_key = cx.listener(Self::step);
+        let on_enter = cx.listener(|this, _: &Confirm, window, cx| {
+            match this.current().filter(|_| this.list.is_focused(window)) {
+                Some(id) => {
+                    cx.stop_propagation();
+                    this.record(id, cx);
+                }
+                None => cx.propagate(),
+            }
+        });
+        move |rows| {
+            let ids: Vec<&'static str> = rows
+                .iter()
+                .filter_map(|(row, _)| spoken.iter().find(|(id, _)| row == &format!("key-{id}")))
+                .map(|(id, _)| *id)
+                .collect();
+            let on = cursor
+                .filter(|id| ids.contains(id))
+                .or_else(|| ids.first().copied());
+            *shown.borrow_mut() = ids.clone();
+            let options = ids.into_iter().zip(rows).map(|(id, (_, el))| {
+                let lit = focused && on == Some(id);
+                let name = spoken
+                    .iter()
+                    .find(|(c, _)| *c == id)
+                    .map(|(_, n)| n.clone());
+                div()
+                    .id(SharedString::from(format!("key-{id}-option")))
+                    .test_support()
+                    .role(Role::ListBoxOption)
+                    .aria_label(name.unwrap_or_default())
+                    .aria_selected(on == Some(id))
+                    .relative()
+                    .px(SPACE_1)
+                    .rounded(radius)
+                    .when(lit, |row| {
+                        row.bg(active).child(
+                            div()
+                                .id(SharedString::from(format!("key-{id}-focus-edge")))
+                                .test_support()
+                                .absolute()
+                                .inset_0()
+                                .rounded(radius)
+                                .border_l_2()
+                                .border_color(edge),
+                        )
+                    })
+                    .child(el)
+            });
+            v_flex()
+                .on_children_prepainted(move |painted, _, _| *bounds.borrow_mut() = painted)
+                .id("prefs-keyboard-list")
+                .test_support()
+                .track_focus(&list)
+                .role(Role::ListBox)
+                .aria_label("Shortcuts")
+                .on_key_down(on_key)
+                .on_action(on_enter)
+                .relative()
+                .mx(-gutter)
+                .p(FOCUS_RING_ROOM)
+                .gap(SPACE_2)
+                .children(options)
+                .children(ring)
+                .into_any_element()
+        }
+    }
+
     // The keys cell: a click starts recording, and while it records it reads "Press a key"
     // and a mouse-down anywhere else cancels.
     fn keys_cell(
@@ -372,6 +560,19 @@ fn answer(
         )
 }
 
+// What a screen reader hears on a focused row: the command, its keys and what the keys do.
+fn row_name(cmd: &Command, chords: &[Chord]) -> String {
+    if chords.is_empty() {
+        return format!("{}, unbound. Press Enter to record a shortcut.", cmd.label);
+    }
+    let keys: Vec<_> = chords.iter().map(|c| Kbd::format(c.keystroke())).collect();
+    format!(
+        "{}, {}. Press Enter to record a new shortcut or Delete to remove it.",
+        cmd.label,
+        keys.join(", ")
+    )
+}
+
 // What the search also matches: the group, and each chord as file text and as shown.
 fn row_terms(cmd: &Command, chords: &[crate::shortcuts::Chord]) -> Vec<String> {
     let mut terms = vec![cmd.group.label().to_string()];
@@ -439,8 +640,8 @@ fn row_control(
                     .child(Tag::danger().small().child("Invalid")),
             )
         })
-        // Like the keys it clears, Unbind is a pointer action: one per command would bury the
-        // dialog's other controls deep in the Tab order.
+        // Unbind stays out of the Tab order, as Delete on the focused list row does the same;
+        // one stop per command would bury the dialog's other controls.
         .when(bound, |el| {
             let icon = (IconName::Close, "Unbind");
             el.child(row_button(id, "unbind", icon, false, on_unbind))

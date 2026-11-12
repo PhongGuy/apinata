@@ -266,7 +266,8 @@ impl PreferencesView {
             let shown = current.ca_file.as_ref().map(|p| p.display().to_string());
             InputState::new(window, cx).default_value(shown.unwrap_or_default())
         });
-        let keyboard = cx.new(KeyboardPrefs::new);
+        let scroll = ScrollHandle::new();
+        let keyboard = cx.new(|cx| KeyboardPrefs::new(cx).scrolled_by(scroll.clone()));
         let updates = cx.try_global::<AppState>().map(|s| s.updates.clone());
         let secrets = cx.try_global::<AppState>().map(|s| Arc::clone(&s.secrets));
         let mut subs = vec![
@@ -376,7 +377,7 @@ impl PreferencesView {
             error: None,
             errors: Vec::new(),
             status: None,
-            scroll: ScrollHandle::new(),
+            scroll,
             shown_sections: Vec::new(),
             jumped: None,
             focus: cx.focus_handle(),
@@ -1413,7 +1414,7 @@ impl PreferencesView {
                 },
             )),
         );
-        let keyboard = self.keyboard.update(cx, |k, cx| k.section(cx));
+        let keyboard = self.keyboard.update(cx, |k, cx| k.section(window, cx));
         vec![
             general, appearance, network, scripts, updates, history, keyboard,
         ]
@@ -1602,6 +1603,9 @@ impl Render for PreferencesView {
             });
         });
         let background = cx.theme().background;
+        // The scroll column reaches left of the rows by the keyboard list's gutter and pads it
+        // back, so that list's ring and highlight draw beside the rows without being clipped.
+        let gutter = crate::style::list_gutter(window);
         with_keys(v_flex().id("preferences").test_support(), &cx.entity())
             .track_focus(&self.focus)
             .flex_1()
@@ -1625,7 +1629,12 @@ impl Render for PreferencesView {
                             .child(
                                 column
                                     .id("preferences-scroll")
-                                    .size_full()
+                                    .absolute()
+                                    .top_0()
+                                    .bottom_0()
+                                    .left(-gutter)
+                                    .right_0()
+                                    .pl(gutter)
                                     .pr(SCROLLBAR_GUTTER)
                                     .overflow_y_scroll()
                                     .track_scroll(&self.scroll),

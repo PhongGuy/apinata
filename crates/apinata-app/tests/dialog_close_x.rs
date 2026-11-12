@@ -269,8 +269,8 @@ fn the_close_button_is_the_last_tab_stop(cx: &mut TestAppContext) {
             break;
         }
     }
-    // Measured with the kit's own x before it was replaced.
-    assert_eq!(tabs, Some(40));
+    // Measured with the kit's own x before it was replaced, plus the shortcut list's one stop.
+    assert_eq!(tabs, Some(41));
     press_key(cx, s.win, "tab");
     assert!(holds_focus(cx, s.win, "prefs-search"));
     assert_app_x(cx, s.win);
