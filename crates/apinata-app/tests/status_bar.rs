@@ -65,3 +65,23 @@ fn the_status_bar_buttons_fit_inside_it(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// The layout button names the layout a click switches to.
+#[gpui_kit::test]
+fn the_layout_button_names_the_layout_it_switches_to(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let label = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.within("status-bar")
+                .find("toggle-layout")
+                .label()
+                .map(str::to_owned)
+        })
+        .unwrap()
+    };
+    assert_eq!(label(cx).as_deref(), Some("Switch to side by side layout"));
+    click(cx, &s, "toggle-layout");
+    assert_eq!(label(cx).as_deref(), Some("Switch to stacked layout"));
+}

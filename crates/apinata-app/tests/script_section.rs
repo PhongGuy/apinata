@@ -166,3 +166,51 @@ fn each_section_opens_at_its_own_scroll_offset(cx: &mut TestAppContext) {
     frame(cx, win);
     assert_eq!(offset(cx, "tests-section"), at_rest);
 }
+
+// Script and Tests lay out like Body: Wrap shares the row of snippet buttons, and no label
+// row sits between that row and the editor.
+#[gpui_kit::test]
+fn script_and_tests_put_wrap_beside_the_snippets(cx: &mut TestAppContext) {
+    use apinata_app::style::{SPACE_2, at_zoom};
+    use apinata_core::{SnippetPhase, script_snippets};
+    let col = scripted();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    for (section, scope, code, slot) in [
+        (
+            Section::Script,
+            "script-section",
+            "script-pre-request-code",
+            SnippetPhase::PreRequest,
+        ),
+        (
+            Section::Tests,
+            "tests-section",
+            "script-tests-code",
+            SnippetPhase::Tests,
+        ),
+    ] {
+        open_section(cx, win, section);
+        let first = script_snippets()
+            .iter()
+            .find(|s| s.phases.contains(&slot))
+            .unwrap();
+        let id = gpui_kit::SharedString::from(format!("snippet-{}", first.id));
+        let (snippet, wrap, editor) = cx
+            .update_window(win, |_, w, cx| {
+                w.render_frame(cx);
+                let s = w.within(scope);
+                (
+                    s.find(id.clone()).bounds(),
+                    s.find("script-wrap-toggle").bounds(),
+                    s.find(code).bounds(),
+                )
+            })
+            .unwrap();
+        assert_eq!(snippet.center().y, wrap.center().y, "{scope}: Wrap row");
+        assert!(
+            editor.top() - snippet.bottom() <= at_zoom(SPACE_2, 1.0),
+            "{scope}: a row sits between the snippets {snippet:?} and the editor {editor:?}"
+        );
+    }
+}

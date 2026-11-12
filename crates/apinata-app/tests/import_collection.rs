@@ -428,7 +428,7 @@ fn an_unparsable_import_shows_plain_quotes() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("c.json");
     fs::write(&file, r#"{"id":"x","name":"c","order":[],"requests":[]}"#).unwrap();
-    let Err(message) = apinata_app::shell::parse_bundles(&file) else {
+    let Err(message) = apinata_app::shell::parse_bundles(&file, false) else {
         panic!("an unsupported schema parses");
     };
     assert!(

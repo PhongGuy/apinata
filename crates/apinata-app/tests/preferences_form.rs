@@ -668,3 +668,23 @@ fn network_rows_that_wait_for_a_restart_say_so_beside_the_control(cx: &mut TestA
         );
     }
 }
+
+// The layout choices say how the request and response sit, not an axis.
+#[gpui_kit::test]
+fn the_layout_choices_read_stacked_and_side_by_side(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let labels: Vec<Option<String>> = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            (0..2usize)
+                .map(|ix| w.within("orientation").find(ix).label().map(str::to_owned))
+                .collect()
+        })
+        .unwrap();
+    assert_eq!(
+        labels,
+        [Some("Stacked".to_owned()), Some("Side by side".to_owned())]
+    );
+}

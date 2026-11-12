@@ -21,6 +21,7 @@ use gpui_kit::{
 
 use crate::banner::{self, Banner, Choice};
 use crate::dialog_guard::{self, Guard, GuardRef, SaveOutcome};
+use crate::env_color::{dot_or_space, env_fill};
 use crate::env_editor;
 use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, env_rows, env_vars_from, secret_records,
@@ -1008,7 +1009,21 @@ impl GlobalEnvEditor {
         let names = self.names(cx);
         // With nothing listed the empty pane's button is the one way to add, so New hides.
         let listed = !names.is_empty();
-        for (ix, name) in names.into_iter().enumerate() {
+        // Coloured environments carry a dot, as in the collection editor's list; the others
+        // keep a dot's space so the names line up.
+        let fills: Vec<_> = {
+            let globals = self.workspace.read(cx).globals();
+            (names.iter())
+                .map(|n| {
+                    let color = globals
+                        .and_then(|g| g.environment(n))
+                        .and_then(|e| e.color());
+                    env_fill(color.as_deref())
+                })
+                .collect()
+        };
+        let dotted = fills.iter().any(Option::is_some);
+        for (ix, (name, fill)) in names.into_iter().zip(fills).enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
             // Rename edits the name in its row's place, as the collection editor's does.
             if chosen
@@ -1029,6 +1044,9 @@ impl GlobalEnvEditor {
                 .cursor_pointer()
                 .gap_1()
                 .when(chosen, |row| row.bg(active))
+                .when(dotted, |row| {
+                    row.child(dot_or_space("global-env-item-dot", fill))
+                })
                 .child(div().flex_1().min_w_0().truncate().child(name.clone()))
                 .when(in_use, |row| {
                     row.child(
@@ -1345,7 +1363,7 @@ fn global_menu(menu: PopupMenu, editor: Entity<GlobalEnvEditor>) -> PopupMenu {
         rename.update(cx, |e, cx| e.start_naming(Naming::Rename, window, cx))
     }))
     .item(
-        PopupMenuItem::new("Export all environments…")
+        PopupMenuItem::new("Export all to Postman…")
             .on_click(move |_, window, cx| export_all.update(cx, |e, cx| e.export_all(window, cx))),
     )
     .separator()

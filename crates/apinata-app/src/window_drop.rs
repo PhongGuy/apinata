@@ -56,7 +56,7 @@ pub fn classify(path: &Path) -> Dropped {
             Err(e) => refuse(&crate::ui::plain_quotes(&e.to_string())),
         };
     }
-    match crate::shell::parse_bundles_from(path, &input) {
+    match crate::shell::parse_bundles_from(path, &input, false) {
         Ok(bundles) => Dropped::Collections(bundles),
         Err(message) => refuse(&message),
     }

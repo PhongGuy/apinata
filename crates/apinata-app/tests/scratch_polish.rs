@@ -118,8 +118,8 @@ fn pasting_curl_into_a_draft_clears_the_previous_response(cx: &mut TestAppContex
 fn the_scratch_menu_greys_out_collection_only_entries() {
     let off = app_menu_disabled(true, false, true);
     for want in [
-        "Export collection to Postman (translate scripts)",
-        "Export collection to Postman (copy scripts unchanged)",
+        "Export collection to Postman, converting scripts",
+        "Export collection to Postman, keeping scripts as written",
         "Export collection to OpenAPI",
         "Export collection to HTML documentation",
         "Collection settings",

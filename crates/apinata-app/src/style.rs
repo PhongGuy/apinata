@@ -95,6 +95,8 @@ pub const SET_COOKIE_TABLE_MIN_WIDTH: Rems = ui(832.);
 pub const SEND_SLOT_WIDTH: Rems = ui(96.);
 /// Widest a History dropdown row grows before its target truncates.
 pub const HISTORY_ROW_WIDTH: Rems = ui(480.);
+/// The History palette's status and age column: room for "404 · 11 months ago".
+pub const HISTORY_DETAIL_WIDTH: Rems = ui(144.);
 /// The History palette's tag column: room for the widest origin tag.
 pub const HISTORY_TAG_WIDTH: Rems = ui(56.);
 
@@ -109,6 +111,8 @@ pub const FORM_STACK_WIDTH: Rems = ui(520.);
 pub const FORM_LABEL_LINE_HEIGHT: f32 = 18. / 13.;
 /// A short form label column, for a dialog whose labels are single words.
 pub const SHORT_FORM_LABEL_WIDTH: Rems = ui(80.);
+/// The Import dialog's label column, wide enough for "Link or file" on one line.
+pub const IMPORT_FORM_LABEL_WIDTH: Rems = ui(100.);
 /// Width shared by a form's text inputs and selects.
 pub const FORM_INPUT_WIDTH: Rems = ui(160.);
 /// Body width of a dialog that sets no width of its own: the kit's 448 px default less its

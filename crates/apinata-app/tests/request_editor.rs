@@ -303,6 +303,32 @@ fn the_method_picker_colours_each_verb_like_the_sidebar(cx: &mut TestAppContext)
     });
 }
 
+// The closed picker shows the chosen verb in the same colour as its row, so POST does not
+// turn white once picked; a plain select's title keeps the kit's own text.
+#[gpui_kit::test]
+fn the_closed_method_picker_keeps_the_verb_colour(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::method_rows;
+    use apinata_app::ui::id_items;
+    use gpui_kit::component::select::SelectItem as _;
+    for row in method_rows("GET") {
+        assert!(row.display_title().is_some(), "{}", row.title());
+    }
+    for row in id_items("auth-mode", ["None", "Bearer"]) {
+        assert!(row.display_title().is_none(), "{}", row.title());
+    }
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://x.test/ok")),
+    ]);
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    assert!(
+        present(cx, s.win, "method-title"),
+        "the closed picker draws the tinted title"
+    );
+}
+
 fn type_custom(
     cx: &mut TestAppContext,
     ed: &gpui_kit::Entity<apinata_app::request_editor::RequestEditor>,

@@ -64,6 +64,7 @@ use crate::section::SectionEdit;
 use crate::send_model::{Restored, SendModel, SendState};
 use crate::settings::Orientation;
 use crate::settings_section::{DocsSection, SettingsSection};
+use crate::sidebar::model::UNSAVED_LABEL;
 use crate::snapshot::{CollectionSnapshot, ConfigView, EnvView, RequestView, ScriptCode};
 use crate::style;
 use crate::tab_area::GenerateCode;
@@ -319,6 +320,8 @@ struct Crumbs {
     // Where the collection lives, when another open collection shares its name.
     hint: Option<String>,
     folders: Vec<(String, ItemPath)>,
+    // A draft is in no folder until saved, so its line names no folder.
+    unsaved: bool,
     title: String,
     tooltip: Option<String>,
 }
@@ -382,13 +385,14 @@ impl RequestEditor {
         let vars = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
             t.set_follow(follow.clone());
+            kv_table::name_vars(&mut t, window, cx);
             t
         });
         let post_response = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
             t.set_follow(follow.clone());
             t.set_placeholders("Name", kv_table::POST_RESPONSE_PLACEHOLDER, window, cx);
-            t.set_headings("Name", "Expression", cx);
+            t.set_headings(kv_table::VAR_HEADINGS.0, kv_table::VAR_HEADINGS.1, cx);
             t
         });
         let collection_root = target_of(&workspace, tab, cx)
@@ -2672,6 +2676,10 @@ impl RequestEditor {
             .map(|v| v.name.clone())
             .unwrap_or_default();
         let (mut folders, title) = crumbs(&item, &name);
+        let unsaved = item.is_draft();
+        if unsaved {
+            folders.clear();
+        }
         // A folder shows its display name, as the sidebar and its settings tab do.
         if let Some(snapshot) = workspace.snapshot(&root, cx) {
             for (segment, path) in &mut folders {
@@ -2692,6 +2700,7 @@ impl RequestEditor {
             root,
             item,
             folders,
+            unsaved,
             title,
         })
     }
@@ -2705,6 +2714,7 @@ impl RequestEditor {
             collection: collection_name,
             hint,
             folders,
+            unsaved,
             title,
             tooltip,
             ..
@@ -2761,6 +2771,21 @@ impl RequestEditor {
                     .child(hint)
             }))
             .child(div().flex_none().text_color(muted).child(" / "))
+            // Plain text, not a link: there is no folder to open, and the sidebar groups the
+            // draft under the same word.
+            .when(unsaved, |row| {
+                row.child(
+                    div()
+                        .id("breadcrumb-unsaved")
+                        .test_support()
+                        .aria_label(UNSAVED_LABEL)
+                        .flex_none()
+                        .px(style::SPACE_1)
+                        .text_color(muted)
+                        .child(UNSAVED_LABEL),
+                )
+                .child(div().flex_none().text_color(muted).child(" / "))
+            })
             .children(
                 folders
                     .into_iter()

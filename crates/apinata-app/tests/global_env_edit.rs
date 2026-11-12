@@ -1665,7 +1665,7 @@ fn the_header_is_the_name_then_the_menu_and_save_on_one_line(cx: &mut TestAppCon
         assert_eq!(menu.find(GLOBAL_ENV_MENU_RENAME).label(), Some("Rename"));
         assert_eq!(
             menu.find(GLOBAL_ENV_MENU_EXPORT_ALL).label(),
-            Some("Export all environments…")
+            Some("Export all to Postman…")
         );
         assert_eq!(menu.find("global-env-menu-delete").label(), Some("Delete"));
     })
@@ -1722,4 +1722,20 @@ fn the_empty_dialog_has_a_single_new_button(cx: &mut TestAppContext) {
     frame(cx, win);
     assert!(present(cx, win, "global-env-empty-create"));
     assert!(!present(cx, win, "global-env-create"), "no second New");
+}
+
+// A coloured global environment shows its dot in the list, as the collection editor's does.
+#[gpui_kit::test]
+fn a_coloured_global_shows_its_dot_in_the_list(cx: &mut TestAppContext) {
+    support::init(cx);
+    let red = "name: g\ncolor: \"#CE4F3B\"\n";
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", red), ("h.yml", "name: h\n")]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let row = w.within(("global-env-item", 0usize));
+        assert!(row.try_find("global-env-item-dot").is_some(), "g has a dot");
+    })
+    .unwrap();
 }

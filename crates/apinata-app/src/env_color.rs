@@ -1,7 +1,8 @@
 //! An environment's colour as drawn outside its editor, and the contrast rule for text on it.
 
 use gpui_kit::{
-    Hsla, InteractiveElement as _, IntoElement, Styled as _, TestSupportExt as _, div, hsla,
+    AnyElement, ElementId, Hsla, InteractiveElement as _, IntoElement, Styled as _,
+    TestSupportExt as _, div, hsla,
 };
 
 use crate::style;
@@ -30,7 +31,7 @@ pub fn text_on(fill: Hsla, text: Hsla) -> Hsla {
 }
 
 /// A small round dot of `fill` registered under `id`; decorative, so it carries no label.
-pub fn dot(id: &'static str, fill: Hsla) -> impl IntoElement {
+pub fn dot(id: impl Into<ElementId>, fill: Hsla) -> impl IntoElement {
     div()
         .id(id)
         .test_support()
@@ -38,4 +39,12 @@ pub fn dot(id: &'static str, fill: Hsla) -> impl IntoElement {
         .size(style::DOT)
         .rounded_full()
         .bg(fill)
+}
+
+/// A dot of `fill`, or bare space of a dot's size without one, so names beside it line up.
+pub fn dot_or_space(id: impl Into<ElementId>, fill: Option<Hsla>) -> AnyElement {
+    match fill {
+        Some(fill) => dot(id, fill).into_any_element(),
+        None => div().flex_none().size(style::DOT).into_any_element(),
+    }
 }
