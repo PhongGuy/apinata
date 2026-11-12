@@ -247,6 +247,11 @@ impl KvColumns {
             .collect()
     }
 
+    /// The pick button's text: a file body sends one file, a multipart field takes several.
+    fn pick_label(self) -> &'static str {
+        if self.name { "Files" } else { "File" }
+    }
+
     /// The headings of the shown columns, in the same order as `describe`.
     pub fn headings(self, labels: (&'static str, &'static str)) -> Vec<&'static str> {
         self.shown(labels).into_iter().map(|(_, _, h)| h).collect()
@@ -1266,6 +1271,7 @@ impl KvTable {
                             row.meta.enabled,
                         )
                         .disabled(locked || fixed)
+                        .radio(!columns.name)
                         .tab_stop(!slotted)
                         .take_focus(
                             self.check_focus.get() == Some(ix) && {
@@ -1364,7 +1370,7 @@ impl KvTable {
             .when(columns.files, |r| {
                 r.child(
                     Button::new(("kv-pick", ix))
-                        .label("Files")
+                        .label(columns.pick_label())
                         .lock(locked, cx)
                         .tab_stop(false)
                         .on_click(cx.listener(move |t, _, _, cx| t.pick(ix, cx))),
@@ -1457,7 +1463,7 @@ impl KvTable {
                 h.extra(
                     div().flex_none().invisible().child(
                         Button::new("kv-head-slot-pick")
-                            .label("Files")
+                            .label(columns.pick_label())
                             .tab_stop(false),
                     ),
                 )

@@ -364,3 +364,43 @@ fn a_cut_file_path_keeps_its_file_name_and_tips_the_full_path(cx: &mut TestAppCo
         .unwrap();
     assert_eq!(tip, Some(path));
 }
+
+// The mark on row `ix` is round and the picker's text, as drawn.
+fn mark_and_picker(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    ix: usize,
+) -> (bool, Option<String>) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        (
+            w.within(("kv-enabled", ix))
+                .try_find("checkbox-radio")
+                .is_some(),
+            w.find(("kv-pick", ix)).label().map(str::to_owned),
+        )
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_file_body_row_draws_a_round_mark_and_picks_one_file(cx: &mut TestAppContext) {
+    let (win, _view) = host(
+        cx,
+        KvColumns::FILE_BODY,
+        file_rows(&[entry("a.bin", true), entry("b.bin", false)]),
+    );
+    for ix in [0, 1] {
+        assert_eq!(
+            mark_and_picker(cx, win, ix),
+            (true, Some(s("File"))),
+            "row {ix}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn a_multipart_row_keeps_a_square_box_and_picks_files(cx: &mut TestAppContext) {
+    let (win, _view) = host(cx, KvColumns::MULTIPART, vec![row("f", "")]);
+    assert_eq!(mark_and_picker(cx, win, 0), (false, Some(s("Files"))));
+}

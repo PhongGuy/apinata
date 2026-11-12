@@ -502,6 +502,52 @@ fn the_paste_entry_is_disabled_inside_the_copied_folder(cx: &mut TestAppContext)
     }
 }
 
+// With nothing cut or copied, every row's Paste entry greys out, the collection row's too.
+#[gpui_kit::test]
+fn paste_greys_out_while_nothing_is_cut_or_copied(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::model::{Node, NodeKind};
+    use apinata_core::ItemPath;
+    let col = nested();
+    let s = started(cx, &col);
+    let node = |path: ItemPath, kind| Node {
+        id: format!("{path:?}").into(),
+        collection: 0,
+        root: s.root.clone(),
+        path,
+        kind,
+        name: "n".to_owned(),
+        method: None,
+        dirty: false,
+        disk: Default::default(),
+        expanded: false,
+        children: Vec::new(),
+        example: None,
+        hint: None,
+        unsupported: None,
+    };
+    let sb = sidebar(cx, &s);
+    let rows = [
+        (ItemPath::root(), NodeKind::Collection),
+        (ip("f"), NodeKind::Folder),
+    ];
+    for (path, kind) in rows.clone() {
+        let n = node(path.clone(), kind);
+        assert!(
+            sb.read_with(cx, |sb, _| sb.paste_blocked(&n)),
+            "{path:?} empty"
+        );
+    }
+    plain(cx, &s, "fb");
+    copy(cx, &s);
+    for (path, kind) in rows {
+        let n = node(path.clone(), kind);
+        assert!(
+            !sb.read_with(cx, |sb, _| sb.paste_blocked(&n)),
+            "{path:?} copied"
+        );
+    }
+}
+
 // The chord and a paste sent past the menu still end in a toast that says why.
 #[gpui_kit::test]
 fn pasting_a_folder_into_itself_is_refused_with_a_toast(cx: &mut TestAppContext) {

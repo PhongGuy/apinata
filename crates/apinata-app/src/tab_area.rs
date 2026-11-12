@@ -2499,12 +2499,13 @@ impl TabArea {
 }
 
 impl TabArea {
-    // `#tab-overflow`: a dropdown naming every tab in order, the active one checked, so a
-    // tab scrolled out of the strip is one click away.
+    // `#tab-overflow`: a dropdown naming every tab in order, the active one checked and the
+    // unsaved ones dotted as on the strip, so a tab scrolled out of view is one click away.
     fn overflow_menu(
         &self,
         labels: Vec<String>,
         details: Vec<Option<String>>,
+        dirty: Vec<bool>,
         selected: usize,
     ) -> impl IntoElement + use<> {
         let workspace = self.workspace.clone();
@@ -2519,11 +2520,12 @@ impl TabArea {
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
                     menu = menu.scrollable(true);
                     crate::ui::start_on(&menu, selected, window, cx);
-                    for (ix, (label, detail)) in labels.iter().zip(&details).enumerate() {
+                    let rows = labels.iter().zip(&details).zip(&dirty).enumerate();
+                    for (ix, ((label, detail), &dirty)) in rows {
                         let workspace = workspace.clone();
                         let reveal = reveal.clone();
                         menu = menu.item(
-                            menu_tab_item(ix, label, detail.as_deref())
+                            menu_tab_item(ix, label, detail.as_deref(), dirty)
                                 .checked(ix == selected)
                                 .on_click(move |_, _, cx| {
                                     // A pick of the already active tab must still scroll it back
@@ -2541,26 +2543,38 @@ impl TabArea {
     }
 }
 
-// An All tabs entry: the tab's label, then its muted hint as the tab shows it.
-fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>) -> PopupMenuItem {
-    let Some(detail) = detail else {
+// An All tabs entry: the tab's label, then its muted hint as the tab shows it, then the
+// unsaved dot when the tab has unsaved edits.
+fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>, dirty: bool) -> PopupMenuItem {
+    if detail.is_none() && !dirty {
         return PopupMenuItem::new(label.to_owned());
-    };
-    let (label, detail) = (SharedString::from(label.to_owned()), detail.to_owned());
+    }
+    let label = SharedString::from(label.to_owned());
+    let detail = detail.map(str::to_owned);
     PopupMenuItem::element(move |_, cx| {
+        let name = match &detail {
+            Some(detail) => format!("{label} {detail}"),
+            None => label.to_string(),
+        };
         h_flex()
             .id(("tab-menu-item", ix))
             .test_support()
             .gap(style::SPACE_2)
-            .aria_label(format!("{label} {detail}"))
+            .items_center()
+            .aria_label(name)
             .child(label.clone())
-            .child(
-                div()
-                    .id(("tab-menu-detail", ix))
-                    .test_support()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(detail.clone()),
-            )
+            .when_some(detail.clone(), |d, detail| {
+                d.child(
+                    div()
+                        .id(("tab-menu-detail", ix))
+                        .test_support()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(detail),
+                )
+            })
+            .when(dirty, |d| {
+                d.child(ui::dirty_dot(("tab-menu-dirty", ix)).test_support())
+            })
     })
 }
 
@@ -2670,13 +2684,14 @@ impl TabArea {
         let selected = entries.iter().position(|e| e.id == active).unwrap_or(0);
         let labels: Vec<String> = entries.iter().map(|e| self.tab_label(e, cx)).collect();
         let details = self.details(&entries, &labels, cx);
+        let dirty: Vec<bool> = entries.iter().map(|e| self.is_dirty(e, cx)).collect();
         let tabs: Vec<Tab> = entries
             .iter()
             .zip(details.iter().cloned())
             .enumerate()
             .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, cx))
             .collect();
-        let overflow = self.overflow_menu(labels, details, selected);
+        let overflow = self.overflow_menu(labels, details, dirty, selected);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
         // gap precedes it, so the filler pulls back by that gap and trails the tab by its width.
         let pad = style::resolve(style::ui(12.), window);

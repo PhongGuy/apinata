@@ -2269,6 +2269,8 @@ pub struct Checkbox {
     lock: bool,
     /// Takes keyboard focus when drawn, for a box standing where focus just was.
     take_focus: bool,
+    /// Drawn round with a dot instead of a tick: one choice among its neighbours.
+    radio: bool,
 }
 
 /// A controlled checkbox with the kit control's behaviour (click, Enter and Space toggle; a
@@ -2287,6 +2289,7 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool) -> Checkbox {
         mixed: false,
         lock: false,
         take_focus: false,
+        radio: false,
     }
 }
 
@@ -2499,6 +2502,13 @@ impl Checkbox {
         self.tab_stop = tab_stop;
         self
     }
+
+    /// Draw a round mark with a dot when checked, for a box that picks one of several rows;
+    /// clicks and keys behave as for any checkbox.
+    pub fn radio(mut self, radio: bool) -> Self {
+        self.radio = radio;
+        self
+    }
 }
 
 /// The colours a checkbox paints; see [`checkbox_look`].
@@ -2622,7 +2632,25 @@ impl RenderOnce for Checkbox {
                 .border_color(look.border)
                 .bg(look.fill)
                 .opacity(look.opacity)
-                .when_some(look.tick, |d, tick| {
+                // A round mark centres a dot where a box would draw its tick; the empty marker
+                // names the shape for tests and assistive checks.
+                .when(self.radio, |d| {
+                    d.rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("checkbox-radio")
+                                .test_support()
+                                .absolute()
+                                .size_0(),
+                        )
+                        .when_some(look.tick, |d, tick| {
+                            d.child(div().size(CHECKBOX_SIZE * 0.5).rounded_full().bg(tick))
+                        })
+                })
+                .when_some(look.tick.filter(|_| !self.radio), |d, tick| {
                     d.child(
                         svg()
                             .absolute()

@@ -72,10 +72,13 @@ impl Clipboard {
 }
 
 impl Sidebar {
-    /// Whether a paste on `node` is refused because the clipboard holds a folder that contains
-    /// the target.
+    /// Whether a paste on `node` has nothing to do or is refused: the clipboard is empty, or
+    /// it holds a folder that contains the target.
     pub fn paste_blocked(&self, node: &Node) -> bool {
-        let (Some(clip), Some((root, folder))) = (&self.clipboard, paste_target(node)) else {
+        let Some(clip) = &self.clipboard else {
+            return true;
+        };
+        let Some((root, folder)) = paste_target(node) else {
             return false;
         };
         clip.blocks_paste_into(&root, &folder)
