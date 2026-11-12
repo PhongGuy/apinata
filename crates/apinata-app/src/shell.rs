@@ -1770,7 +1770,7 @@ impl Shell {
         let names: std::collections::HashMap<_, _> = (recent.iter())
             .map(|r| (r.clone(), self.recent_name(r)))
             .collect();
-        // Every row the popover lists shares one hint set, and the trigger shows its row's hint.
+        // Every row the popover lists shares one hint set.
         let listed: Vec<(&Path, &str)> = (open.iter())
             .map(|(name, root)| (root.as_path(), name.as_ref()))
             .chain(recent.iter().map(|r| (r.as_path(), names[r].as_ref())))
@@ -1779,9 +1779,10 @@ impl Shell {
         let recent_hints = hints.split_off(open.len());
         let open_hints = hints;
         let current_root = self.workspace.read(cx).current_root();
-        let current_hint = (open.iter().zip(&open_hints))
-            .find(|((_, root), _)| current_root.as_ref() == Some(root))
-            .and_then(|(_, hint)| hint.clone());
+        // The trigger follows the open collections alone, as tabs and the sidebar do, so a
+        // closed twin in the recents no longer marks the current name.
+        let current_hint = (current_root.as_ref())
+            .and_then(|root| self.workspace.read(cx).collection_hints(cx).remove(root));
         let muted = cx.theme().muted_foreground;
         let trigger = ui::solid_ring(Button::new("collection-switcher").ghost().small(), cx)
             .min_w_0()
