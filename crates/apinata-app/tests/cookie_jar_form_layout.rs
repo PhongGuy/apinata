@@ -289,3 +289,47 @@ fn row_columns_line_up_whatever_their_text(cx: &mut TestAppContext) {
         );
     }
 }
+
+#[gpui_kit::test]
+fn search_and_add_stay_above_the_scrolled_list(cx: &mut TestAppContext) {
+    let (s, _col) = scrolled_jar(cx);
+    let title = bounds(cx, s.win, "jar-title");
+    let list = bounds(cx, s.win, "cookie-jar-scroll");
+    for id in ["jar-add", "jar-search"] {
+        let fixed = bounds(cx, s.win, id);
+        assert!(
+            fixed.top() >= title.bottom(),
+            "{id}: {fixed:?} under {title:?}"
+        );
+        assert!(
+            fixed.bottom() <= list.top(),
+            "{id}: {fixed:?} above {list:?}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn path_and_expiry_sit_at_the_top_of_wrapped_flags(cx: &mut TestAppContext) {
+    let mut flagged = CookieInfo::new("a.test", "sid", "v");
+    flagged.secure = true;
+    flagged.http_only = true;
+    let (s, _col) = jar(cx, vec![flagged]);
+    cx.simulate_window_resize(
+        s.win,
+        gpui_kit::size(gpui_kit::px(560.), gpui_kit::px(600.)),
+    );
+    frame(cx, s.win);
+    let flags = bounds(cx, s.win, ("jar-flags", 0usize));
+    let path = bounds(cx, s.win, ("jar-path", 0usize));
+    assert!(
+        flags.size.height > path.size.height * 1.5,
+        "the flags wrap: {flags:?} beside {path:?}"
+    );
+    for id in ["jar-path", "jar-expiry"] {
+        let column = bounds(cx, s.win, (id, 0usize));
+        assert!(
+            (column.top() - flags.top()).abs() < gpui_kit::px(1.),
+            "{id}: {column:?} beside {flags:?}"
+        );
+    }
+}

@@ -1348,7 +1348,7 @@ pub fn open_global_env_editor(
             let editor = body.read(cx);
             (editor.scroll.clone(), editor.follow.clone())
         };
-        // The body scrolls inside the room above the status bar, as the cookie jar's does; the
+        // The body scrolls inside the room above the status bar; the
         // sideways bar shares that room, so the body gives up its height to it.
         let room = crate::dialog_frame::titled_body_room(window);
         let width = dialog_width(window);
