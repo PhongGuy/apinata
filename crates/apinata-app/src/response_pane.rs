@@ -4007,10 +4007,11 @@ fn copy_with_toast(text: String, toast: &'static str, window: &mut Window, cx: &
 /// cells; the headings take `"{cell id}-head"`.
 pub(crate) fn header_table(ids: [&'static str; 3], pairs: &[(String, String)]) -> KvView {
     let columns = vec![
-        KvColumn::fixed(
+        KvColumn::share(
             SharedString::from(format!("{}-head", ids[1])),
             ids[1],
             "Name",
+            style::HEADER_NAME_SHARE,
             style::HEADER_NAME_WIDTH,
         )
         .tip_when_cut(),
