@@ -3636,7 +3636,7 @@ fn chevron_slot(n: &Node) -> impl IntoElement + use<> {
 
 /// Says a request of `kind` cannot be sent yet. One note per kind, so repeated opens do not
 /// stack copies of it.
-fn show_unsupported(kind: Unsupported, window: &mut Window, cx: &mut App) {
+pub(crate) fn show_unsupported(kind: Unsupported, window: &mut Window, cx: &mut App) {
     let notice = kind.notice();
     let note = ui::info_toast(notice)
         .id1::<Unsupported>(kind.tag())

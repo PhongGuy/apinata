@@ -30,7 +30,7 @@ use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar, UndoDelete,
 };
-use crate::snapshot::RowKind;
+use crate::snapshot::{RowKind, Unsupported};
 use crate::style;
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, BeautifyBody, BeautifyQuery, CloseAllTabs,
@@ -65,6 +65,8 @@ pub struct RequestEntry {
     pub hint: Option<String>,
     /// The folders holding the request, outermost first, by their directory names.
     pub folders: Vec<String>,
+    /// The kind of a request the app lists but cannot send yet; `None` for one it can.
+    pub unsupported: Option<Unsupported>,
 }
 
 impl RequestEntry {
@@ -89,7 +91,8 @@ pub struct OpenRequest {
 }
 
 /// Every request row of every open collection, collections in open order and rows in
-/// snapshot order; folders and request types the app does not model are left out.
+/// snapshot order, WebSocket and gRPC rows among them; folders and other opaque files are
+/// left out.
 pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
     let hints = ws.collection_hints(cx);
     let mut entries = Vec::new();
@@ -100,7 +103,12 @@ pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
         };
         let name = ws.collection_name(root, cx);
         for row in snapshot.content.rows.iter() {
-            if row.kind != RowKind::Request {
+            let listed = match row.kind {
+                RowKind::Request => true,
+                RowKind::Opaque => row.unsupported.is_some(),
+                RowKind::Folder => false,
+            };
+            if !listed {
                 continue;
             }
             let path = row.path.as_str();
@@ -115,6 +123,7 @@ pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
                     .flat_map(|d| d.split('/'))
                     .map(str::to_owned)
                     .collect(),
+                unsupported: row.unsupported,
             });
         }
     }
@@ -584,6 +593,13 @@ fn confirm(
         let Some(r) = requests.get(path.row) else {
             return;
         };
+        // A request the app cannot send yet gets the sidebar's note in place of a tab.
+        if let Some(kind) = r.unsupported {
+            window.close_dialog(cx);
+            target.focus(window, cx);
+            crate::sidebar::show_unsupported(kind, window, cx);
+            return;
+        }
         Box::new(OpenRequest {
             root: r.root.clone(),
             path: r.path.clone(),
@@ -789,9 +805,11 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
 
 // A request row shows its name, with its collection and folders muted on the right where a
 // command row shows its key. A collection whose name another open one shares is followed by
-// its folder hint, as its tab and breadcrumb show it.
+// its folder hint, as its tab and breadcrumb show it. A request the app cannot send yet leads
+// with the kind tag its sidebar row shows.
 fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
     let label = entry.label.clone();
+    let unsupported = entry.unsupported;
     let collection = entry.collection.clone();
     let hint = entry.hint.clone();
     let folders: String = entry.folders.iter().map(|f| format!(" / {f}")).collect();
@@ -802,7 +820,19 @@ fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
             .flex_1()
             .justify_between()
             .pr(style::SCROLLBAR_GUTTER)
-            .child(label.clone())
+            .child(
+                h_flex()
+                    .gap(style::SPACE_1)
+                    .children(unsupported.map(|kind| {
+                        div()
+                            .id(("palette-request-kind", r))
+                            .test_support()
+                            .flex_none()
+                            .aria_label(kind.tag())
+                            .child(crate::ui::method_tag("").with_label(kind.tag()))
+                    }))
+                    .child(label.clone()),
+            )
             .child(
                 h_flex()
                     .id(("palette-request-detail", r))
