@@ -285,6 +285,8 @@ pub struct CollectionSnapshot {
     pub context_generation: u64,
     /// Rises whenever `.env` changes on disk; it holds values no other part of the snapshot shows.
     pub dotenv_seq: u64,
+    /// Rises with every save or overwrite, even one a later edit in the same batch hides.
+    pub save_seq: u64,
     /// The keys `.env` defines.
     pub dotenv_stored: Arc<std::collections::BTreeSet<String>>,
     /// The `.env` names each target's unsaved draft holds a secret for, written when it is saved.

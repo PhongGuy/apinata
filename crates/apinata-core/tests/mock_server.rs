@@ -281,3 +281,21 @@ async fn a_param_that_makes_a_header_invalid_keeps_the_recorded_header() {
     assert_eq!(r.headers()["x-id"], "id-{{id}}");
     h.stop().await;
 }
+
+#[tokio::test]
+async fn a_reload_serves_newly_saved_examples_on_the_same_address() {
+    let (d, c, ctx) = open(&[("u.yml", &req("u", 1, "GET", "/users", ""))]);
+    let mut h = start(&c, &ctx, options()).await.unwrap();
+    let addr = h.addr();
+    let url = format!("http://{addr}/users");
+    assert_eq!(client().get(&url).send().await.unwrap().status(), 404);
+    std::fs::write(d.path().join("u.yml"), req("u", 1, "GET", "/users", USERS)).unwrap();
+    let c = Collection::open(d.path()).unwrap();
+    h.reload(&c, &ctx);
+    assert_eq!(h.addr(), addr);
+    assert_eq!(h.routes().len(), 1);
+    assert_eq!(h.routes()[0].examples, 2);
+    let r = client().get(&url).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    h.stop().await;
+}

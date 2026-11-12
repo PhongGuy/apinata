@@ -3,14 +3,22 @@
 
 use crate::support;
 
-use apinata_app::mock_server::MockState;
+use apinata_app::command::MockSource;
+use apinata_app::command::{Command, Target, TreeOp};
+use apinata_app::mock_server::{MockServers, MockState};
 use apinata_app::session::{CollectionSession, Session};
+use apinata_app::snapshot::{CollectionSnapshot, SnapshotCache};
 use apinata_app::workspace::Workspace;
+use apinata_core::mock::{self, MockOptions};
+use apinata_core::{Collection, ContextOptions, VarContext};
+use apinata_core::{ExampleBody, ExampleBodyKind, ExampleResponse};
+use gpui_kit::Task;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Focusable as _, TestAppContext};
 use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use support::*;
 
@@ -259,11 +267,383 @@ fn on_off_on_in_quick_succession_leaves_exactly_one_server(cx: &mut TestAppConte
     wait_real(cx, |_| refused(addr));
 }
 
-// One short line: what the toggle serves, and that edits wait for a restart.
+// One short line: what the toggle serves and to whom, with no restart to remember.
 #[test]
 fn the_tooltip_is_one_short_line() {
     assert_eq!(
         apinata_app::mock_server::MOCK_TIP,
-        "Serve saved examples on 127.0.0.1 (turn off and on to apply edits)"
+        "Answer calls on 127.0.0.1 with this collection's saved examples"
     );
+}
+
+fn add_example(cx: &mut TestAppContext, ws: &gpui_kit::Entity<Workspace>, root: &Path) {
+    let mut response = ExampleResponse::new(200);
+    response.body = Some(ExampleBody::new(ExampleBodyKind::Text, "saved"));
+    let command = Command::Tree(TreeOp::AddExample {
+        item: ip("plain.yml"),
+        name: "ok".into(),
+        description: String::new(),
+        response,
+    });
+    ws.update(cx, |w, cx| w.send(root, command, cx));
+}
+
+fn with_plain() -> tempfile::TempDir {
+    let users = format!("{}{USERS}", request("users", "http://api.test/users"));
+    write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users.yml", &users),
+        ("plain.yml", &request("plain", "http://api.test/plain")),
+    ])
+}
+
+#[gpui_kit::test]
+fn a_newly_saved_example_is_served_by_the_running_mock_on_the_same_address(
+    cx: &mut TestAppContext,
+) {
+    let col = with_plain();
+    let s = start(cx, &col);
+    click(cx, s.win, "mock-toggle");
+    let addr = running(cx, &s.ws, &s.root);
+    assert!(get(addr, "/plain").starts_with("HTTP/1.1 404"));
+    add_example(cx, &s.ws, &s.root);
+    wait_real(cx, |_| get(addr, "/plain").starts_with("HTTP/1.1 200"));
+    assert!(get(addr, "/plain").ends_with("saved"));
+    assert_eq!(state(cx, &s.ws, &s.root), MockState::On(addr));
+    wait_real(cx, |cx| {
+        s.ws.read_with(cx, |w, _| w.mock_examples(&s.root)) == Some(2)
+    });
+}
+
+#[gpui_kit::test]
+fn turning_the_mock_off_and_on_keeps_its_port(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    click(cx, s.win, "mock-toggle");
+    let first = running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    click(cx, s.win, "mock-toggle");
+    frame(cx, s.win);
+    click(cx, s.win, "mock-toggle");
+    let second = running(cx, &s.ws, &s.root);
+    assert_eq!(second, first);
+    assert!(!present(cx, s.win, "toast-error"));
+    let session = s.ws.read_with(cx, |w, _| w.session().clone());
+    let saved = session_value(cx, &session);
+    assert_eq!(saved.collections[&s.root].mock_port, Some(first.port()));
+}
+
+// Opens `col` with a session that remembers the mock on `port`, as after an app restart.
+fn reopened(
+    cx: &mut TestAppContext,
+    col: &tempfile::TempDir,
+    port: u16,
+) -> (gpui_kit::Entity<Workspace>, tempfile::TempDir) {
+    cx.executor().allow_parking();
+    cx.update(apinata_app::tokio_bridge::init);
+    let root = col.path().to_path_buf();
+    let state_dir = tempfile::tempdir().unwrap();
+    let mut saved = Session::default();
+    saved.collections.insert(
+        root.clone(),
+        CollectionSession {
+            mock: true,
+            mock_port: Some(port),
+            ..Default::default()
+        },
+    );
+    let session = session_at(cx, &state_dir, saved);
+    let ws = workspace(cx, &session);
+    ws.update(cx, |w, cx| w.open(root, cx));
+    (ws, state_dir)
+}
+
+#[gpui_kit::test]
+fn a_reopened_collection_binds_its_remembered_port(cx: &mut TestAppContext) {
+    let col = mocked();
+    let port = free_port();
+    let (ws, _state) = reopened(cx, &col, port);
+    let addr = running(cx, &ws, col.path());
+    assert_eq!(addr.port(), port);
+}
+
+#[gpui_kit::test]
+fn a_remembered_port_in_use_falls_back_to_a_free_one(cx: &mut TestAppContext) {
+    let col = mocked();
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let (ws, _state) = reopened(cx, &col, port);
+    let addr = running(cx, &ws, col.path());
+    assert_ne!(addr.port(), port);
+    let session = ws.read_with(cx, |w, _| w.session().clone());
+    let saved = session_value(cx, &session);
+    assert_eq!(saved.collections[col.path()].mock_port, Some(addr.port()));
+}
+
+#[gpui_kit::test]
+fn the_status_names_the_port_and_counts_the_examples(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    assert!(!present(cx, s.win, "mock-status"));
+    click(cx, s.win, "mock-toggle");
+    let addr = running(cx, &s.ws, &s.root);
+    let want = format!("Mock on port {}: 1 example", addr.port());
+    assert_eq!(label(cx, s.win, "mock-status"), Some(want));
+}
+
+#[test]
+fn the_status_stays_short_with_and_without_examples() {
+    use apinata_app::mock_server::status;
+    assert_eq!(status(0, 4567), "Mock on port 4567: no saved examples");
+    assert_eq!(status(3, 4567), "Mock on port 4567: 3 examples");
+}
+
+#[gpui_kit::test]
+fn hovering_the_running_toggle_names_the_port_how_to_add_examples_and_how_to_stop(
+    cx: &mut TestAppContext,
+) {
+    let col = mocked();
+    let s = start(cx, &col);
+    // Started without a click, which would leave the pointer pressed on the toggle.
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.hover("mock-toggle", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(2));
+    let want = format!(
+        "Answering on port {} with saved examples. Save a response as an example to add one. Click to stop the mock server.",
+        addr.port()
+    );
+    assert_eq!(label(cx, s.win, "mock-tooltip"), Some(want));
+}
+
+fn palette(cx: &mut TestAppContext, s: &Started, text: &str) {
+    let shell = s.shell.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        shell.read(cx).focus_handle(cx).focus(w, cx)
+    })
+    .unwrap();
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(text, cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, "enter");
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn the_palette_starts_and_stops_the_mock(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    palette(cx, &s, "toggle mock server");
+    let addr = running(cx, &s.ws, &s.root);
+    assert!(get(addr, "/users").starts_with("HTTP/1.1 200"));
+    palette(cx, &s, "toggle mock server");
+    assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
+    wait_real(cx, |_| refused(addr));
+}
+
+// `plain.yml` with one example named `ok` whose text body is `body`.
+fn save_plain(col: &tempfile::TempDir, body: &str) {
+    let example = format!(
+        "examples:\n  - name: ok\n    response:\n      status: 200\n      body:\n        type: text\n        data: {body}\n"
+    );
+    let text = format!("{}{example}", request("plain", "http://api.test/plain"));
+    std::fs::write(col.path().join("plain.yml"), text).unwrap();
+}
+
+// A snapshot of the files as saved now, with every view new, as after a reload.
+fn snapshot_of(root: &Path) -> Arc<CollectionSnapshot> {
+    let c = Collection::open(root).unwrap();
+    Arc::new(CollectionSnapshot {
+        seq: 1,
+        acked: 0,
+        content: SnapshotCache::new().build(&c),
+        selected_environment: None,
+        stale: Default::default(),
+        notices: Default::default(),
+        context_generation: 0,
+        dotenv_seq: 0,
+        save_seq: 0,
+        dotenv_stored: Default::default(),
+        dotenv_held: Default::default(),
+        network_notice: None,
+    })
+}
+
+fn source_of(root: &Path) -> MockSource {
+    let collection = Collection::open(root).unwrap();
+    let context = VarContext::new(&collection, ContextOptions::new()).unwrap();
+    MockSource {
+        collection,
+        context,
+    }
+}
+
+// Servers with `root`'s mock running on a free port, built straight from the saved files.
+fn serving(cx: &mut TestAppContext, root: &Path) -> (MockServers, SocketAddr) {
+    cx.executor().allow_parking();
+    cx.update(apinata_app::tokio_bridge::init);
+    let tokio = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let source = source_of(root);
+    let options = MockOptions::new().port(0);
+    let handle = tokio
+        .block_on(mock::start(&source.collection, &source.context, options))
+        .unwrap();
+    let addr = handle.addr();
+    let mut servers = MockServers::default();
+    let id = servers.begin(root.to_path_buf(), Some(snapshot_of(root)), |_| {
+        Task::ready(())
+    });
+    assert!(servers.finish(root, id, handle));
+    (servers, addr)
+}
+
+#[gpui_kit::test]
+fn a_save_during_a_rebuild_asks_for_exactly_one_more(cx: &mut TestAppContext) {
+    let col = with_plain();
+    let root = col.path();
+    let (mut servers, addr) = serving(cx, root);
+    save_plain(&col, "one");
+    assert!(servers.observe(root, snapshot_of(root)));
+    servers.reloading(root, Task::ready(()));
+    let one = source_of(root);
+    save_plain(&col, "two");
+    assert!(
+        !servers.observe(root, snapshot_of(root)),
+        "one rebuild at a time"
+    );
+    assert!(
+        servers.reloaded(root, Some(&one)),
+        "the later save asks for one more"
+    );
+    servers.reloading(root, Task::ready(()));
+    assert!(
+        !servers.reloaded(root, Some(&source_of(root))),
+        "and only one"
+    );
+    assert!(get(addr, "/plain").ends_with("two"));
+}
+
+#[gpui_kit::test]
+fn a_rebuild_whose_source_failed_runs_again_on_the_next_snapshot(cx: &mut TestAppContext) {
+    let col = with_plain();
+    let root = col.path();
+    let (mut servers, _addr) = serving(cx, root);
+    save_plain(&col, "one");
+    let saved = snapshot_of(root);
+    assert!(servers.observe(root, Arc::clone(&saved)));
+    servers.reloading(root, Task::ready(()));
+    assert!(!servers.reloaded(root, None));
+    assert!(
+        servers.observe(root, saved),
+        "the failed rebuild is retried"
+    );
+}
+
+#[gpui_kit::test]
+fn a_draft_edit_keeps_the_saved_routes_and_runs_no_rebuild(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    cx.run_until_parked();
+    let before = s.ws.read_with(cx, |w, _| w.mock_rebuilds());
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("users.yml", "http://api.test/other"), cx)
+    });
+    wait_real(cx, |cx| {
+        ws_snap(cx, &s.ws, &s.root).content.requests[&ip("users.yml")].dirty
+    });
+    cx.run_until_parked();
+    assert_eq!(s.ws.read_with(cx, |w, _| w.mock_rebuilds()), before);
+    assert!(get(addr, "/users").ends_with("{\"id\": 7}"));
+    assert!(get(addr, "/other").starts_with("HTTP/1.1 404"));
+}
+
+// The mock of `col` running with the real file watcher, so edits on disk reach it.
+fn watched_mock(cx: &mut TestAppContext, col: &tempfile::TempDir) -> (Watched, SocketAddr) {
+    cx.update(apinata_app::tokio_bridge::init);
+    let w = watched(cx, col);
+    let root = w.root.clone();
+    w.ws.update(cx, |ws, cx| ws.set_mock(&root, true, cx));
+    let addr = running(cx, &w.ws, &w.root);
+    (w, addr)
+}
+
+#[gpui_kit::test]
+fn an_example_body_saved_under_the_same_name_is_served(cx: &mut TestAppContext) {
+    let col = with_plain();
+    save_plain(&col, "one");
+    let (_w, addr) = watched_mock(cx, &col);
+    assert!(get(addr, "/plain").ends_with("one"));
+    save_plain(&col, "two");
+    wait_real(cx, |_| get(addr, "/plain").ends_with("two"));
+}
+
+#[gpui_kit::test]
+fn an_example_body_saved_under_an_open_draft_is_served(cx: &mut TestAppContext) {
+    let col = with_plain();
+    save_plain(&col, "one");
+    let (w, addr) = watched_mock(cx, &col);
+    let root = w.root.clone();
+    w.ws.update(cx, |ws, cx| {
+        ws.send(
+            &root,
+            edit_url("plain.yml", "http://api.test/plain?draft=1"),
+            cx,
+        )
+    });
+    wait_real(cx, |cx| {
+        ws_snap(cx, &w.ws, &w.root).content.requests[&ip("plain.yml")].dirty
+    });
+    save_plain(&col, "two");
+    wait_real(cx, |_| get(addr, "/plain").ends_with("two"));
+}
+
+#[gpui_kit::test]
+fn on_off_on_off_on_still_waits_for_the_old_listener_and_keeps_the_port(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let first = running(cx, &s.ws, &s.root);
+    // The second start is abandoned while it waits; the third must still wait for the first.
+    s.ws.update(cx, |w, cx| {
+        w.set_mock(&root, false, cx);
+        w.set_mock(&root, true, cx);
+        w.set_mock(&root, false, cx);
+        w.set_mock(&root, true, cx);
+    });
+    assert_eq!(running(cx, &s.ws, &s.root), first);
+}
+
+#[gpui_kit::test]
+fn a_save_followed_by_more_typing_in_one_batch_is_served(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    let dirty_at = |cx: &mut TestAppContext, url: &str| {
+        let snap = ws_snap(cx, &s.ws, &s.root);
+        let view = &snap.content.requests[&ip("users.yml")];
+        view.dirty && view.url == url
+    };
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("users.yml", "http://api.test/people"), cx)
+    });
+    wait_real(cx, |cx| dirty_at(cx, "http://api.test/people"));
+    // Sent together, the save and the next keystroke reach the actor as one batch, so the
+    // request is dirty both before and after the save.
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, Command::Save(Target::Request(ip("users.yml"))), cx);
+        w.send(&root, edit_url("users.yml", "http://api.test/later"), cx);
+    });
+    wait_real(cx, |cx| dirty_at(cx, "http://api.test/later"));
+    wait_real(cx, |_| get(addr, "/people").starts_with("HTTP/1.1 200"));
 }

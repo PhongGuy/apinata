@@ -33,7 +33,7 @@ use crate::shell::{
     ExportCollectionOpenApi, ExportCollectionPostmanKeepScripts, ExportEnvironment,
     ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, NewCollection,
     OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments, OpenRuntimeVariables,
-    OpenVariablesOverview, ShowChanges, SwitchBranch,
+    OpenVariablesOverview, ShowChanges, SwitchBranch, ToggleMockServer,
 };
 use crate::sidebar::{
     CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, FocusFilter,
@@ -383,6 +383,17 @@ pub fn registry() -> Vec<Command> {
                 "Show changes…",
                 Collection,
                 shell(ShowChanges),
+                &[],
+            ),
+        ),
+        // The registry's labels are fixed, so one label covers starting and stopping.
+        found_by(
+            &["examples", "serve"],
+            command(
+                "collection.toggle_mock",
+                "Toggle mock server",
+                Collection,
+                shell(ToggleMockServer),
                 &[],
             ),
         ),

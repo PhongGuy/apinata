@@ -187,6 +187,8 @@ struct Actor {
     reloads: HashMap<Target, u64>,
     /// How many times `.env` changed on disk, published for views that depend on its values.
     dotenv_seq: u64,
+    /// How many saves have written a draft to its file, published for the mock server.
+    save_seq: u64,
     /// Secrets moved out of unsaved drafts, by the target whose draft holds the reference and
     /// the `.env` name. Written to `.env` when that target is saved, dropped when discarded.
     held_dotenv: HashMap<(Target, String), String>,
@@ -251,6 +253,7 @@ impl Actor {
             env_reloads: HashMap::new(),
             reloads: HashMap::new(),
             dotenv_seq: 0,
+            save_seq: 0,
             held_dotenv: HashMap::new(),
             dotenv_stored: Arc::default(),
             dotenv_stored_stale: true,
@@ -1462,6 +1465,7 @@ impl Actor {
             selected_environment: self.selected.clone(),
             context_generation: self.context.generation(),
             dotenv_seq: self.dotenv_seq,
+            save_seq: self.save_seq,
             dotenv_stored: self.dotenv_stored(),
             dotenv_held: Arc::new(self.held_by_target()),
             network_notice: self.network_notice(),
@@ -1935,6 +1939,10 @@ impl Actor {
 
     /// After a save, revert or overwrite: the draft and the disk agree again on success.
     fn settled(&mut self, target: &Target, ok: bool) {
+        // A revert writes nothing, but counting it costs at most one needless mock rebuild.
+        if ok {
+            self.save_seq += 1;
+        }
         if ok {
             self.changed.remove(target);
         }

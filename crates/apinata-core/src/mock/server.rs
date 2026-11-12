@@ -19,9 +19,9 @@ use super::{HitHook, MockHit};
 /// Largest request body read before answering 413.
 const MAX_BODY: usize = 1024 * 1024;
 
-/// Everything a connection needs, shared immutably across tasks.
+/// Everything a connection needs, shared across tasks; only the route table is ever replaced.
 pub(super) struct Shared {
-    pub table: RouteTable,
+    pub table: std::sync::RwLock<Arc<RouteTable>>,
     pub log: Arc<HitLog>,
     pub delay: Duration,
     pub hook: Option<HitHook>,
@@ -106,9 +106,11 @@ async fn handle(shared: &Shared, req: Request<Incoming>) -> Response<Full<Bytes>
         return json_response(413, body, true);
     }
 
-    let (route, others) = match shared.table.find(&method, &path) {
+    // A reload swaps the table; this request answers from the one current on arrival.
+    let table = Arc::clone(&shared.table.read().unwrap_or_else(|e| e.into_inner()));
+    let (route, others) = match table.find(&method, &path) {
         Some(route) => (Some(route), Vec::new()),
-        None => (None, shared.table.find_other_methods(&method, &path)),
+        None => (None, table.find_other_methods(&method, &path)),
     };
     let picked = match route {
         Some(route) => pick(route, &query, &overrides),
