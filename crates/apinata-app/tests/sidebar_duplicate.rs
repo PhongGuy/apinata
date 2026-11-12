@@ -228,3 +228,71 @@ fn a_folder_duplicated_twice_shows_two_names_after_a_reload(cx: &mut TestAppCont
         (Some("Users copy".into()), Some("Users copy 1".into()))
     );
 }
+
+/// The active tab's request path and whether it is the preview, with the sidebar selection.
+fn editor_and_selection(
+    cx: &mut TestAppContext,
+    s: &Started,
+) -> (Option<(String, bool)>, Option<String>) {
+    let tab = s.ws.read_with(cx, |w, _| {
+        w.tabs()
+            .active()
+            .and_then(|e| Some((e.item()?.as_str().to_owned(), e.preview)))
+    });
+    let sidebar = s.shell.read_with(cx, |v, _| v.sidebar().clone());
+    let selected = sidebar.read_with(cx, |v, cx| v.selected(cx));
+    (tab, selected.map(|(_, p)| p.as_str().to_owned()))
+}
+
+#[gpui_kit::test]
+fn duplicating_a_request_opens_the_copy_as_a_preview(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("A", "http://x/a")),
+        ("b.yml", &request("B", "http://x/b")),
+    ]);
+    let s = started(cx, &col);
+    duplicate(cx, s.win, "a.yml", NodeKind::Request);
+    assert_eq!(
+        editor_and_selection(cx, &s),
+        (
+            Some(("A copy.yml".to_owned(), true)),
+            Some("A copy.yml".to_owned())
+        )
+    );
+}
+
+#[gpui_kit::test]
+fn duplicating_the_open_request_moves_the_editor_to_the_copy(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("A", "http://x/a")),
+        ("b.yml", &request("B", "http://x/b")),
+    ]);
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "b.yml");
+    frame(cx, s.win);
+    duplicate(cx, s.win, "b.yml", NodeKind::Request);
+    assert_eq!(
+        editor_and_selection(cx, &s),
+        (
+            Some(("B copy.yml".to_owned(), true)),
+            Some("B copy.yml".to_owned())
+        )
+    );
+}
+
+#[gpui_kit::test]
+fn duplicating_a_folder_selects_the_copy_and_opens_nothing(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/list.yml", &request("List", "http://x/users")),
+    ]);
+    let s = started(cx, &col);
+    duplicate(cx, s.win, "users", NodeKind::Folder);
+    assert_eq!(
+        editor_and_selection(cx, &s),
+        (None, Some("Users copy".to_owned()))
+    );
+}

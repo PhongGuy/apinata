@@ -2245,13 +2245,22 @@ impl Sidebar {
         let Some(f) = &self.pending_focus else {
             return;
         };
-        let Some(id) = self.find(&f.root, &f.path).map(|n| n.id.clone()) else {
+        let Some((id, kind)) = self.find(&f.root, &f.path).map(|n| (n.id.clone(), n.kind)) else {
             return;
         };
         let Some(f) = self.pending_focus.take() else {
             return;
         };
         self.select(&id, cx);
+        // A new request row opens the way a single click does, so the editor shows the row the
+        // selection marks.
+        if kind == NodeKind::Request {
+            cx.emit(SidebarEvent::OpenItem {
+                root: f.root.clone(),
+                path: f.path.clone(),
+                permanent: false,
+            });
+        }
         // Only a new folder renames on arrival, so its rename is a fresh one.
         if f.rename {
             self.start_rename(&f.root, &f.path, window, cx);
