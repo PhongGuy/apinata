@@ -19,22 +19,32 @@ fn open_prefs(cx: &mut TestAppContext, s: &Started) {
     frame(cx, s.win);
 }
 
-// One pointer click: on `id`, or on segment `ix` inside the segmented control `id`.
+// One pointer click: on `id`, or on segment `ix` inside the segmented control `id`. The
+// `Shown` forms first wheel Preferences until the target sits inside its rows.
 enum Click {
     On(ElementId),
     Segment(&'static str, usize),
+    OnShown(&'static str),
+    SegmentShown(&'static str, usize),
 }
 
-fn click(cx: &mut TestAppContext, win: AnyWindowHandle, at: &Click) {
-    cx.update_window(win, |_, w, cx| {
+fn click(cx: &mut TestAppContext, s: &Started, at: &Click) {
+    match at {
+        Click::OnShown(id) | Click::SegmentShown(id, _) => prefs_reveal(cx, s, id),
+        Click::On(_) | Click::Segment(..) => {}
+    }
+    cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         match at {
             Click::On(id) => w.click(id.clone(), cx),
-            Click::Segment(track, ix) => w.within(*track).click(*ix, cx),
+            Click::OnShown(id) => w.click(*id, cx),
+            Click::Segment(track, ix) | Click::SegmentShown(track, ix) => {
+                w.within(*track).click(*ix, cx)
+            }
         }
     })
     .unwrap();
-    frame(cx, win);
+    frame(cx, s.win);
 }
 
 // Opens Preferences, clicks through `clicks`, and checks that one Escape closes it, both as a
@@ -45,7 +55,7 @@ fn escape_closes_prefs_after(cx: &mut TestAppContext, clicks: &[Click]) {
         let s = started(cx, &col);
         open_prefs(cx, &s);
         for at in clicks {
-            click(cx, s.win, at);
+            click(cx, &s, at);
         }
         assert!(dialog_open(cx, s.win), "the clicks leave Preferences open");
         if key_down_only {
@@ -81,9 +91,9 @@ fn escape_closes_preferences_after_the_network_and_script_segments(cx: &mut Test
         &[
             network(),
             Click::Segment("global-proxy-mode", 2),
-            Click::On("global-proxy-host".into()),
-            Click::Segment("global-proxy-protocol", 1),
-            Click::Segment("global-proxy-mode", 0),
+            Click::OnShown("global-proxy-host"),
+            Click::SegmentShown("global-proxy-protocol", 1),
+            Click::SegmentShown("global-proxy-mode", 0),
         ],
     );
     let scripts = Click::On(("prefs-nav-entry", 3usize).into());
@@ -108,7 +118,7 @@ fn escape_after_a_segment_click_still_clears_a_search_first(cx: &mut TestAppCont
     open_prefs(cx, &s);
     replace_input(cx, s.win, None, "prefs-search", "theme");
     frame(cx, s.win);
-    click(cx, s.win, &Click::Segment("theme", 2));
+    click(cx, &s, &Click::Segment("theme", 2));
     press_key(cx, s.win, "escape");
     assert!(dialog_open(cx, s.win), "the first Escape only clears");
     press_key(cx, s.win, "escape");
@@ -122,8 +132,8 @@ fn escape_closes_the_search_dialog_after_a_toggle_click(cx: &mut TestAppContext)
     cx.simulate_keystrokes(s.win, &key("shift-f"));
     frame(cx, s.win);
     assert!(dialog_open(cx, s.win));
-    click(cx, s.win, &Click::On("search-case".into()));
-    click(cx, s.win, &Click::On("search-replace-toggle-button".into()));
+    click(cx, &s, &Click::On("search-case".into()));
+    click(cx, &s, &Click::On("search-replace-toggle-button".into()));
     press_key(cx, s.win, "escape");
     assert!(!dialog_open(cx, s.win));
 }
@@ -136,8 +146,8 @@ fn escape_down_closes_the_search_dialog_after_a_toggle_click(cx: &mut TestAppCon
     cx.simulate_keystrokes(s.win, &key("shift-f"));
     frame(cx, s.win);
     assert!(dialog_open(cx, s.win));
-    click(cx, s.win, &Click::On("search-case".into()));
-    click(cx, s.win, &Click::On("search-replace-toggle-button".into()));
+    click(cx, &s, &Click::On("search-case".into()));
+    click(cx, &s, &Click::On("search-replace-toggle-button".into()));
     cx.simulate_keystrokes(s.win, "escape");
     frame(cx, s.win);
     assert!(!dialog_open(cx, s.win));
@@ -153,8 +163,8 @@ fn escape_reaches_the_cookie_jar_after_a_form_checkbox_click(cx: &mut TestAppCon
     })
     .unwrap();
     frame(cx, s.win);
-    click(cx, s.win, &Click::On("jar-add".into()));
-    click(cx, s.win, &Click::On("jar-form-secure".into()));
+    click(cx, &s, &Click::On("jar-add".into()));
+    click(cx, &s, &Click::On("jar-form-secure".into()));
     press_key(cx, s.win, "escape");
     assert!(confirm_open(cx), "one Escape reaches the jar and asks");
     answer_confirm(cx, "confirm-discard");

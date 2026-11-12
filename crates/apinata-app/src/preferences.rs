@@ -751,19 +751,27 @@ impl PreferencesView {
                 }
             },
         );
-        let section = section.row(
-            "pref-proxy-mode",
-            "Proxy",
-            after_restart("pref-proxy-mode", mode, cx),
-        );
+        // The help on what System reads sits with the control it explains, in every mode.
+        let section = section
+            .row(
+                "pref-proxy-mode",
+                "Proxy",
+                after_restart("pref-proxy-mode", mode, cx),
+            )
+            .row_note(ui::form_note("prefs-proxy-note", PROXY_NOTE));
+        // One note after the last proxy row covers the fields above it, which wait for a
+        // restart like the mode does.
+        let restart = ui::form_note("prefs-proxy-restart", PROXY_RESTART);
         match current.mode {
             ProxyMode::Manual => {}
             ProxyMode::Pac => {
-                return section.row(
-                    "pref-proxy-pac",
-                    "PAC file (URL or path)",
-                    self.pac_row(window, cx),
-                );
+                return section
+                    .row(
+                        "pref-proxy-pac",
+                        "PAC file (URL or path)",
+                        self.pac_row(window, cx),
+                    )
+                    .row_note(restart);
             }
             ProxyMode::Off | ProxyMode::System => return section,
         }
@@ -830,13 +838,17 @@ impl PreferencesView {
                 "Bypass (comma separated hosts)",
                 self.field(Field::Bypass, window, cx),
             )
+            .row_note(restart)
     }
 }
 
-/// The note under the Network section on what System mode reads.
+/// The note under the Proxy control on what System mode reads.
 pub const PROXY_NOTE: &str = "System uses the proxy environment variables (and the system \
      settings on macOS and Windows); a PAC file set in the system settings is not used. Choose \
      PAC to use one.";
+
+/// The note after the proxy fields: like the mode, they apply at the next start.
+pub const PROXY_RESTART: &str = "The proxy settings above take effect after restart";
 
 /// The note under the PAC file input on what PAC mode leaves out.
 pub const PAC_HINT: &str = "The bypass list and proxy login do not apply to PAC. Requests that \
@@ -1311,8 +1323,7 @@ impl PreferencesView {
             .note(ui::form_note(
                 "prefs-cookies-note",
                 "Cookie settings apply at once.",
-            ))
-            .note(ui::form_note("prefs-proxy-note", PROXY_NOTE));
+            ));
         let scripts = PrefsSection::new("prefs-scripts", "Scripts")
             .row("pref-run-scripts", "Run scripts", run_scripts)
             .row_with_terms(
