@@ -54,22 +54,22 @@ fn dialog(
 #[test]
 fn expiry_labels() {
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-    assert_eq!(expiry_label(None, now), "Session");
+    assert_eq!(expiry_label(None, now), "No expiry");
     assert_eq!(
         expiry_label(Some(now - Duration::from_secs(1)), now),
         "Expired"
     );
     assert_eq!(
         expiry_label(Some(now + Duration::from_secs(300)), now),
-        "in 5 min"
+        "5 min left"
     );
     assert_eq!(
         expiry_label(Some(now + Duration::from_secs(3 * 3600)), now),
-        "in 3 h"
+        "3 h left"
     );
     assert_eq!(
         expiry_label(Some(now + Duration::from_secs(2 * 86400 + 60)), now),
-        "in 2 d"
+        "2 d left"
     );
 }
 
@@ -96,6 +96,7 @@ fn a_domain_delete_and_clear_empty_the_jar(cx: &mut TestAppContext) {
     let exec = exec.unwrap();
     cx.update_window(win, |_, w, cx| w.click(("jar-domain-delete", 0usize), cx))
         .unwrap();
+    answer_confirm(cx, "confirm-delete");
     frame(cx, win);
     assert!(exec.cookies().list().is_empty() && present(cx, win, "jar-empty"));
     assert!(!present(cx, win, "jar-clear"), "nothing to clear");
@@ -104,6 +105,7 @@ fn a_domain_delete_and_clear_empty_the_jar(cx: &mut TestAppContext) {
     frame(cx, win);
     cx.update_window(win, |_, w, cx| w.click("jar-clear", cx))
         .unwrap();
+    answer_confirm(cx, "confirm-delete");
     frame(cx, win);
     assert!(exec.cookies().list().is_empty());
 }
@@ -1050,6 +1052,7 @@ fn the_empty_jar_is_spaced_from_the_search_and_the_footer(cx: &mut TestAppContex
     let (win, _exec, _view) = dialog(cx, true);
     cx.update_window(win, |_, w, cx| w.click(("jar-domain-delete", 0usize), cx))
         .unwrap();
+    answer_confirm(cx, "confirm-delete");
     frame(cx, win);
     let (search, empty, footer) = cx
         .update_window(win, |_, w, cx| {
@@ -1070,4 +1073,24 @@ fn the_empty_jar_is_spaced_from_the_search_and_the_footer(cx: &mut TestAppContex
         footer.top() - empty.bottom() >= room,
         "{empty:?} {footer:?}"
     );
+}
+
+// Each value on a row's second line says what it is: the path and the expiry are labelled.
+#[gpui_kit::test]
+fn a_rows_path_and_expiry_carry_labels(cx: &mut TestAppContext) {
+    let (win, exec, view) = dialog(cx, true);
+    let exec = exec.unwrap();
+    let mut c = CookieInfo::new("labels.test", "plain", "1");
+    c.path = "/api".into();
+    exec.cookies().insert(c).unwrap();
+    view.update(cx, |v, cx| v.refresh(cx));
+    frame(cx, win);
+    let ix = view
+        .read_with(cx, |v, _| {
+            v.cookies().iter().position(|c| c.name == "plain")
+        })
+        .expect("listed");
+    assert_eq!(jar_label(cx, win, ("jar-path", ix)), "Path /api");
+    assert_eq!(jar_label(cx, win, ("jar-expiry", ix)), "No expiry");
+    assert_eq!(jar_label(cx, win, ("jar-flags", ix)), "This host only");
 }
