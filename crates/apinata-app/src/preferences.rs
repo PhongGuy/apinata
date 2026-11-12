@@ -257,7 +257,7 @@ impl PreferencesView {
                 let text = current.proxy.pac_source.clone();
                 cx.new(|cx| {
                     InputState::new(window, cx)
-                        .placeholder("https://example.com/proxy.pac or /path/to/proxy.pac")
+                        .placeholder(PAC_PLACEHOLDER)
                         .default_value(text)
                 })
             },
@@ -752,21 +752,23 @@ impl PreferencesView {
                 }
             },
         );
-        // The help on what System reads sits with the control it explains, in every mode.
-        let section = section
-            .row(
-                "pref-proxy-mode",
-                "Proxy",
-                after_restart("pref-proxy-mode", mode, cx),
-            )
-            .row_note(ui::form_note("prefs-proxy-note", PROXY_NOTE));
-        // One note after the last proxy row covers the fields above it, which wait for a
-        // restart like the mode does.
+        // Each mode says once that it waits for a restart: under the control when the mode
+        // has no fields, otherwise after its last field. The System help shows only in System.
         let restart = ui::form_note("prefs-proxy-restart", PROXY_RESTART);
         match current.mode {
-            ProxyMode::Manual => {}
+            ProxyMode::Off => {
+                let control = after_restart("pref-proxy-mode", mode, cx);
+                return section.row("pref-proxy-mode", "Proxy", control);
+            }
+            ProxyMode::System => {
+                let control = after_restart("pref-proxy-mode", mode, cx);
+                return section
+                    .row("pref-proxy-mode", "Proxy", control)
+                    .row_note(ui::form_note("prefs-proxy-note", PROXY_NOTE));
+            }
             ProxyMode::Pac => {
                 return section
+                    .row("pref-proxy-mode", "Proxy", mode)
                     .row(
                         "pref-proxy-pac",
                         "PAC file (URL or path)",
@@ -774,8 +776,9 @@ impl PreferencesView {
                     )
                     .row_note(restart);
             }
-            ProxyMode::Off | ProxyMode::System => return section,
+            ProxyMode::Manual => {}
         }
+        let section = section.row("pref-proxy-mode", "Proxy", mode);
         let protocol = ui::segmented(
             "global-proxy-protocol",
             PROXY_PROTOCOLS,
@@ -850,6 +853,9 @@ pub const PROXY_NOTE: &str = "System uses the proxy environment variables (and t
 
 /// The note after the proxy fields: like the mode, they apply at the next start.
 pub const PROXY_RESTART: &str = "The proxy settings above take effect after restart";
+
+/// The PAC file input's example while it is empty.
+pub const PAC_PLACEHOLDER: &str = "URL or file path";
 
 /// The note under the PAC file input on what PAC mode leaves out.
 pub const PAC_HINT: &str = "The bypass list and proxy login do not apply to PAC. Requests that \
@@ -1582,9 +1588,7 @@ impl Render for PreferencesView {
             None if short => div().into_any_element(),
             None => status.child("\u{a0}").into_any_element(),
         };
-        // The fade never covers more than a quarter of the last frame's viewport.
-        let fade_height =
-            resolve(SCROLL_FADE_HEIGHT, window).min(self.scroll.bounds().size.height / 4.);
+        let fade_height = scroll_fade_height(self.scroll.bounds().size.height, window);
         // The handle reports the last frame's extent and position, so a search or a jump is
         // seen one frame late, as is a resize or zoom: recheck after this frame and redraw only
         // if an answer changed. The check holds the view weakly so a closed dialog is not kept
@@ -1635,7 +1639,9 @@ impl Render for PreferencesView {
                                     .left(-gutter)
                                     .right_0()
                                     .pl(gutter)
-                                    .pr(SCROLLBAR_GUTTER)
+                                    // The list's gutter on the right too, so its ring
+                                    // stops short of the scrollbar's track.
+                                    .pr(SCROLLBAR_GUTTER + gutter)
                                     .overflow_y_scroll()
                                     .track_scroll(&self.scroll),
                             )
@@ -1667,6 +1673,12 @@ impl Render for PreferencesView {
             )
             .child(status)
     }
+}
+
+/// How tall the fade over the bottom of the Preferences rows is in a `viewport` that tall:
+/// never more than a quarter of it.
+pub fn scroll_fade_height(viewport: Pixels, window: &Window) -> Pixels {
+    resolve(SCROLL_FADE_HEIGHT, window).min(viewport / 4.)
 }
 
 /// Puts the Preferences key context and its key actions on `el`, dispatching to `view`. Both

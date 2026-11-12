@@ -33,7 +33,7 @@ use crate::ui;
 
 const NOTE: &str = "Shortcuts are saved in keymap.json. Edits made to that file while the app runs are replaced by the next change here.";
 const INVALID: &str = "Invalid entry in keymap.json; using the default";
-const PRESS: &str = "Press a key";
+const PRESS: &str = "Press a shortcut, or Escape to cancel";
 const NEEDS_MODIFIER: &str = "Hold Ctrl, Alt or another modifier with this key";
 const INPUT_KEY: &str = "Text fields use this key; it will not work while one has focus";
 
@@ -135,22 +135,32 @@ impl KeyboardPrefs {
         };
         cx.stop_propagation();
         self.cursor = Some(shown[to]);
-        self.reveal(to);
+        self.reveal(to, window);
         cx.notify();
     }
 
-    // Scrolls the least distance that brings shown row `ix`, as last painted, into the viewport.
-    fn reveal(&self, ix: usize) {
+    // Scrolls the least distance that brings shown row `ix`, as last painted, into the viewport
+    // above the bottom fade. The first row brings its section's heading along and the last the
+    // ring's room under it, so Home and End show the list's edges.
+    fn reveal(&self, ix: usize, window: &Window) {
         let (Some(scroll), Some(row)) = (&self.scroll, self.bounds.borrow().get(ix).copied())
         else {
             return;
         };
         let view = scroll.bounds();
         let offset = scroll.offset();
-        let by = if row.top() < view.top() {
-            view.top() - row.top()
-        } else if row.bottom() > view.bottom() {
-            (view.bottom() - row.bottom()).max(view.top() - row.top())
+        let bottom =
+            view.bottom() - crate::preferences::scroll_fade_height(view.size.height, window);
+        let top = match ix {
+            0 => section_top(scroll, row.top()).unwrap_or(row.top() - FOCUS_RING_ROOM),
+            _ => row.top(),
+        };
+        let last = ix + 1 == self.shown.borrow().len();
+        let end = row.bottom() + if last { FOCUS_RING_ROOM } else { px(0.) };
+        let by = if top < view.top() {
+            view.top() - top
+        } else if end > bottom {
+            (bottom - end).max(view.top() - top)
         } else {
             return;
         };
@@ -311,9 +321,12 @@ impl KeyboardPrefs {
         for cmd in &cmds {
             let chords = effective(cmd, &overrides);
             spoken.push((cmd.id, row_name(cmd, &chords)));
+            // Reset shows while the keys differ from the defaults, or while an unreadable entry
+            // waits to be cleared; an entry naming the defaults again has nothing to reset.
+            let edited = chords != effective(cmd, &Overrides::default());
             let flags = RowFlags {
                 bound: !chords.is_empty(),
-                edited: overrides.contains_key(cmd.id),
+                edited: edited || diag.is_invalid(cmd.id),
                 invalid: diag.is_invalid(cmd.id),
                 conflict: clash.contains(cmd.id),
             };
@@ -532,6 +545,16 @@ impl KeyboardPrefs {
                 )
             })
     }
+}
+
+// The painted top of the Preferences section holding painted `y`. The column's children keep
+// their unscrolled layout, so both sides shift by the scroll offset.
+fn section_top(scroll: &ScrollHandle, y: Pixels) -> Option<Pixels> {
+    let dy = scroll.offset().y;
+    (0..scroll.children_count())
+        .filter_map(|ix| scroll.bounds_for_item(ix))
+        .find(|b| b.top() <= y - dy && y - dy < b.bottom())
+        .map(|b| b.top() + dy)
 }
 
 // One prompt answer: the wrapper carries the id, the Button takes the click.

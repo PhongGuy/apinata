@@ -461,6 +461,10 @@ fn long_notes_wrap_and_scroll_wholly_into_view(cx: &mut TestAppContext) {
     let s = started(cx, &col);
     gpui_kit::VisualTestContext::from_window(s.win, cx)
         .simulate_resize(gpui_kit::size(px(520.), px(700.)));
+    // The proxy help shows only in System mode.
+    set(cx, |p| {
+        p.proxy.mode = apinata_app::settings::ProxyMode::System
+    });
     let mut one_line = None;
     for id in [
         "updates-disabled",

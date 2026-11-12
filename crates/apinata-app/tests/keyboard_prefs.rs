@@ -285,7 +285,7 @@ fn enter_on_the_focused_row_records_a_shortcut(cx: &mut TestAppContext) {
     press_key(cx, s.win, "enter");
     assert_eq!(
         key_label(cx, &s, "view.toggle_sidebar").as_deref(),
-        Some("Press a key")
+        Some("Press a shortcut, or Escape to cancel")
     );
     cx.simulate_keystrokes(s.win, &key("\\"));
     frame(cx, s.win);
@@ -383,9 +383,11 @@ fn the_focused_list_draws_a_ring(cx: &mut TestAppContext) {
     assert!(ring_drawn(cx, s.win, LIST));
 }
 
-// Moving the highlight past the visible rows scrolls the dialog so the row stays in sight.
+// Moving the highlight past the visible rows scrolls the dialog so the row stays in sight,
+// with the row and the ring under it clear of the bottom fade.
 #[gpui_kit::test]
 fn end_scrolls_the_last_row_into_view(cx: &mut TestAppContext) {
+    use apinata_app::style::FOCUS_RING_ROOM;
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
@@ -393,17 +395,109 @@ fn end_scrolls_the_last_row_into_view(cx: &mut TestAppContext) {
     tab_to(cx, s.win, LIST);
     press_key(cx, s.win, "end");
     frame(cx, s.win);
-    let (row, view) = cx
+    let (row, view, fade) = cx
         .update_window(s.win, |_, w, cx| {
             w.render_frame(cx);
             let row = w.find(format!("key-{last}-option")).bounds();
-            (row, w.find("preferences-rows").bounds())
+            let fade = w
+                .try_find("prefs-scroll-fade")
+                .map_or(gpui_kit::px(0.), |f| f.bounds().size.height);
+            (row, w.find("preferences-rows").bounds(), fade)
         })
         .unwrap();
     assert!(
-        row.top() >= view.top() && row.bottom() <= view.bottom(),
-        "{row:?} inside {view:?}"
+        row.top() >= view.top() && row.bottom() + FOCUS_RING_ROOM <= view.bottom() - fade,
+        "{row:?} inside {view:?} above a {fade:?} fade"
     );
+}
+
+// Home after End brings back the top of the section: its heading and the ring's top edge.
+#[gpui_kit::test]
+fn home_shows_the_keyboard_heading_and_the_ring_top(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "end");
+    frame(cx, s.win);
+    press_key(cx, s.win, "home");
+    frame(cx, s.win);
+    let (heading, list, view) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            (
+                w.find("prefs-keyboard-heading").bounds(),
+                w.find(LIST).bounds(),
+                w.find("preferences-rows").bounds(),
+            )
+        })
+        .unwrap();
+    assert!(
+        heading.top() >= view.top() && list.top() >= view.top(),
+        "heading {heading:?} and list {list:?} inside {view:?}"
+    );
+}
+
+// The focused list's ring stops short of the scrollbar's track at the right edge.
+#[gpui_kit::test]
+fn the_list_ring_clears_the_scrollbar(cx: &mut TestAppContext) {
+    use apinata_app::style::SCROLLBAR_GUTTER;
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle sidebar");
+    tab_to(cx, s.win, LIST);
+    cx.update(|cx| apinata_app::focus_mode::set(apinata_app::focus_mode::Modality::Keyboard, cx));
+    frame(cx, s.win);
+    assert!(ring_drawn(cx, s.win, LIST));
+    // The right edge of the ring as painted: the ring-coloured quad around the list.
+    let (ring, view) = cx
+        .update_window(s.win, |_, w, cx| {
+            use gpui_kit::component::ActiveTheme as _;
+            let colour = cx.theme().ring.to_rgb();
+            let scale = w.scale_factor();
+            let list = w.find(LIST).bounds();
+            let right = w
+                .painted_quads()
+                .into_iter()
+                .filter(|q| {
+                    let c = q.border_color.to_rgb();
+                    q.border_widths.left.0 > 0.
+                        && q.border_color.a > 0.
+                        && (c.r - colour.r).abs() < 0.01
+                        && (c.g - colour.g).abs() < 0.01
+                        && (c.b - colour.b).abs() < 0.01
+                })
+                .map(|q| (q.bounds.origin.x.0 + q.bounds.size.width.0) / scale)
+                .filter(|r| (r - list.right().as_f32()).abs() < 8.)
+                .fold(f32::MIN, f32::max);
+            (gpui_kit::px(right), w.find("preferences-rows").bounds())
+        })
+        .unwrap();
+    assert!(
+        ring <= view.right() - SCROLLBAR_GUTTER,
+        "the ring's right edge {ring:?} reaches the scrollbar of {view:?}"
+    );
+}
+
+// A row whose keys are its defaults again offers no Reset, even when keymap.json still
+// names it: here a command unbound by default, given a key and then unbound with Delete.
+#[gpui_kit::test]
+fn a_row_back_at_its_default_offers_no_reset(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle theme");
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "enter");
+    press_key(cx, s.win, "f5");
+    assert!(shown(cx, &s, "key-view.toggle_theme-reset"));
+    press_key(cx, s.win, "delete");
+    assert_eq!(
+        key_label(cx, &s, "view.toggle_theme").as_deref(),
+        Some("Unbound")
+    );
+    assert!(!shown(cx, &s, "key-view.toggle_theme-reset"));
 }
 
 // The list's content lines up with every other section: its highlight and ring take the
@@ -450,7 +544,7 @@ fn delete_and_enter_while_recording_go_to_the_recorder(cx: &mut TestAppContext) 
         assert!(keymap_overrides(cx).is_empty(), "{k} unbinds nothing");
         assert_eq!(
             key_label(cx, &s, "view.toggle_sidebar").as_deref(),
-            Some("Press a key"),
+            Some("Press a shortcut, or Escape to cancel"),
             "{k} leaves the recorder waiting"
         );
         assert_eq!(message(cx).as_deref(), refused, "the recorder answers {k}");
