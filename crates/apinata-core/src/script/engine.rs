@@ -11,6 +11,7 @@ use rquickjs::{
     Promise, Runtime, Value,
 };
 
+use super::ScriptPhase;
 use crate::CancelHandle;
 
 const PRELUDE: &str = include_str!("prelude.js");
@@ -28,9 +29,11 @@ pub(crate) struct Limits {
     pub(crate) outer: Option<Instant>,
 }
 
-/// One script body and the level that names it in errors (`collection`, `folder a/b`, `request`).
+/// One script body, the level that names it in errors (`collection`, `folder a/b`, `request`)
+/// and the phase that runs it.
 pub(crate) struct Segment {
     pub(crate) level: String,
+    pub(crate) phase: ScriptPhase,
     pub(crate) code: String,
 }
 
@@ -449,8 +452,19 @@ pub(crate) fn wrap(segments: &[Segment]) -> (String, Vec<u32>) {
     (source, starts)
 }
 
-/// `<level> script, line <n>: <text>`, the line relative to its segment; without a line the
-/// segment that was running names the level.
+impl Segment {
+    /// How errors name it: `<level> tests` for a tests script, else `<level> script`.
+    fn name(&self) -> String {
+        let noun = match self.phase {
+            ScriptPhase::Tests => "tests",
+            _ => "script",
+        };
+        format!("{} {noun}", self.level)
+    }
+}
+
+/// `<level> script, line <n>: <text>` (`<level> tests` for a tests script), the line relative
+/// to its segment; without a line the segment that was running names the level.
 pub(crate) fn attribute(
     segments: &[Segment],
     starts: &[u32],
@@ -461,13 +475,10 @@ pub(crate) fn attribute(
     match locate(starts, line) {
         Some((index, line)) => {
             let quote = quoted_line(&segments[index].code, line, text);
-            format!(
-                "{} script, line {line}: {text}{quote}",
-                segments[index].level
-            )
+            format!("{}, line {line}: {text}{quote}", segments[index].name())
         }
         None => match segments.get(running) {
-            Some(segment) => format!("{} script: {text}", segment.level),
+            Some(segment) => format!("{}: {text}", segment.name()),
             None => text.to_owned(),
         },
     }
@@ -649,6 +660,7 @@ mod tests {
     fn seg(level: &str, code: &str) -> Segment {
         Segment {
             level: level.to_owned(),
+            phase: ScriptPhase::PreRequest,
             code: code.to_owned(),
         }
     }
@@ -740,6 +752,45 @@ mod tests {
         let run = run_phase(segments, Vec::new(), limits(2_000, 16), CancelHandle::new()).await;
         assert_eq!(texts(&run), ["log:a"]);
         let message = "folder users script, line 2: Error: boom".to_owned();
+        assert_eq!(run.failure, Some(Failure::Thrown { message }));
+    }
+
+    // A tests script's error names the tests, so the reader looks in the Tests tab.
+    #[tokio::test]
+    async fn a_throw_in_tests_names_the_tests_not_the_script() {
+        let tests = |level: &str, code: &str| Segment {
+            phase: ScriptPhase::Tests,
+            ..seg(level, code)
+        };
+        for (level, want) in [
+            ("request", "request tests, line 2: Error: boom"),
+            ("folder users", "folder users tests, line 2: Error: boom"),
+            ("collection", "collection tests, line 2: Error: boom"),
+        ] {
+            let segments = vec![tests(level, "1\nthrow new Error('boom')")];
+            let run = run_phase(segments, Vec::new(), limits(2_000, 16), CancelHandle::new()).await;
+            let message = want.to_owned();
+            assert_eq!(run.failure, Some(Failure::Thrown { message }), "{level}");
+        }
+        let run = run_phase(
+            vec![tests("request", "throw null")],
+            Vec::new(),
+            limits(2_000, 16),
+            CancelHandle::new(),
+        )
+        .await;
+        let message = "request tests: null".to_owned();
+        assert_eq!(run.failure, Some(Failure::Thrown { message }));
+    }
+
+    #[tokio::test]
+    async fn a_post_response_throw_still_names_the_script() {
+        let segments = vec![Segment {
+            phase: ScriptPhase::PostResponse,
+            ..seg("request", "throw new Error('x')")
+        }];
+        let run = run_phase(segments, Vec::new(), limits(2_000, 16), CancelHandle::new()).await;
+        let message = "request script, line 1: Error: x".to_owned();
         assert_eq!(run.failure, Some(Failure::Thrown { message }));
     }
 

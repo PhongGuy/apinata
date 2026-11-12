@@ -67,6 +67,7 @@ mod tests {
     fn seg(level: &str, code: &str) -> Segment {
         Segment {
             level: level.to_owned(),
+            phase: crate::ScriptPhase::PreRequest,
             code: code.to_owned(),
         }
     }
@@ -94,6 +95,17 @@ mod tests {
         let errs = errors(&[seg("request", "let ok = 1;\nlet a = ;")]);
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert!(errs[0].starts_with("request script, line 2:"), "{errs:?}");
+    }
+
+    #[test]
+    fn a_tests_syntax_error_names_the_tests() {
+        let tests = Segment {
+            phase: crate::ScriptPhase::Tests,
+            ..seg("folder a", "let ok = 1;\nlet a = ;")
+        };
+        let errs = errors(&[tests]);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].starts_with("folder a tests, line 2:"), "{errs:?}");
     }
 
     #[test]

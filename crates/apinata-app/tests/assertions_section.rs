@@ -740,3 +740,76 @@ fn a_reload_hidden_before_its_draw_leaves_focus_where_it_was_moved(cx: &mut Test
 fn a_second_reload_while_hidden_leaves_focus_where_it_was_moved(cx: &mut TestAppContext) {
     hidden_load_keeps_focus_elsewhere(cx, true);
 }
+
+// Opens row 0's operator picker and types `query` into its search.
+fn search_operators(cx: &mut TestAppContext, query: &str) -> AnyWindowHandle {
+    let (win, _host, _s) = section(cx, vec![new("res.status", "eq", Some("200"), true)]);
+    click(cx, win, ("as-op", 0usize));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.input(query, cx))
+        .unwrap();
+    frame(cx, win);
+    win
+}
+
+#[gpui_kit::test]
+fn operators_read_as_plain_words_with_the_raw_operator_beside(cx: &mut TestAppContext) {
+    let (win, host, _s) = section(cx, vec![new("res.status", "eq", Some("200"), true)]);
+    let shown = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find(("as-op", 0usize)).value().map(str::to_owned)
+        })
+        .unwrap()
+    };
+    assert_eq!(shown(cx).as_deref(), Some("equals"));
+    click(cx, win, ("as-op", 0usize));
+    let option = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let o = w.find("as-op-option-gte");
+            (
+                o.label().map(str::to_owned),
+                o.description().map(str::to_owned),
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        option,
+        (Some("greater than or equal".into()), Some("gte".into()))
+    );
+    click(cx, win, "as-op-option-gte");
+    assert_eq!(
+        last(cx, &host),
+        vec![new("res.status", "gte", Some("200"), true)],
+        "the file keeps the raw operator"
+    );
+    assert_eq!(shown(cx).as_deref(), Some("greater than or equal"));
+}
+
+#[gpui_kit::test]
+fn the_operator_search_matches_plain_words(cx: &mut TestAppContext) {
+    let win = search_operators(cx, "greater");
+    assert!(present(cx, win, "as-op-option-gt"));
+    assert!(present(cx, win, "as-op-option-gte"));
+    assert!(!present(cx, win, "as-op-option-eq"));
+    assert!(!present(cx, win, "as-op-option-lt"));
+}
+
+#[gpui_kit::test]
+fn the_operator_search_matches_the_raw_operator(cx: &mut TestAppContext) {
+    let win = search_operators(cx, "notCon");
+    assert!(present(cx, win, "as-op-option-notContains"));
+    assert!(!present(cx, win, "as-op-option-contains"));
+    assert!(!present(cx, win, "as-op-option-eq"));
+}
+
+#[gpui_kit::test]
+fn the_expression_shows_an_example(cx: &mut TestAppContext) {
+    let (_win, _host, s) = section(cx, vec![new("res.status", "eq", Some("200"), true)]);
+    for ix in [0usize, 1] {
+        let input = s.read_with(cx, |s, _| s.expression_input(ix).cloned().unwrap());
+        let hint = input.read_with(cx, |i, _| i.presentation().placeholder().to_string());
+        assert_eq!(hint, "res.status", "row {ix}");
+    }
+}

@@ -64,6 +64,21 @@ async fn an_approved_run_reports_tests_and_console_per_request() {
     assert_eq!(result["results"][1]["console"][0]["phase"], "tests");
 }
 
+// An error in a tests script names the tests, as the app and the command line do.
+#[tokio::test]
+async fn a_tests_script_error_names_the_tests() {
+    const BAD: &str = "test('ok', () => {})\nthrow new Error('boom')";
+    let s = mock(1).await;
+    let a = req("a", 1, &format!("{}/a", s.uri()), "tests", BAD);
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("a.yml", &a)]).await;
+    server.approve_scripts(&[BAD]);
+    let result = server.ok("run_folder", json!({"path": ""})).await;
+    assert_eq!(
+        result["results"][0]["tests"][1]["message"],
+        "request tests, line 2: Error: boom"
+    );
+}
+
 #[tokio::test]
 async fn skip_scripts_runs_without_them() {
     let s = mock(2).await;
