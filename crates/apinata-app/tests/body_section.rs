@@ -185,9 +185,8 @@ fn the_body_editor_fills_its_slot(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn sparql_is_listed_after_text_as_plain_code(cx: &mut TestAppContext) {
-    let at = |m| BodyMode::ALL.iter().position(|x| *x == m);
-    assert_eq!(at(BodyMode::Sparql), at(BodyMode::Text).map(|i| i + 1));
+fn sparql_is_listed_last_as_plain_code(cx: &mut TestAppContext) {
+    assert_eq!(BodyMode::ALL.last(), Some(&BodyMode::Sparql));
     assert_eq!(BodyMode::Sparql.label(), "SPARQL");
     let (win, host) = body(cx, BodySpec::Sparql("ASK {}".into()));
     let s = view(cx, &host);

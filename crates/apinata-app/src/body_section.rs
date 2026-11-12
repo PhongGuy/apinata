@@ -36,7 +36,7 @@ use crate::var_tokens::{VarField, tokens};
 /// JSON bodies larger than this are neither parsed nor marked, so typing in a huge body stays cheap.
 pub const JSON_CHECK_MAX_BYTES: usize = 2 * 1024 * 1024;
 
-/// A body mode the editor models, in Bruno's picker order.
+/// A body mode the editor models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(missing_docs)]
 pub enum BodyMode {
@@ -51,16 +51,16 @@ pub enum BodyMode {
 }
 
 impl BodyMode {
-    /// Every mode, in picker order.
+    /// Every mode, in picker order: the common ones first, the rare ones last.
     pub const ALL: [BodyMode; 8] = [
         BodyMode::None,
         BodyMode::Json,
-        BodyMode::Xml,
-        BodyMode::Text,
-        BodyMode::Sparql,
         BodyMode::Form,
         BodyMode::Multipart,
+        BodyMode::Text,
+        BodyMode::Xml,
         BodyMode::File,
+        BodyMode::Sparql,
     ];
 
     /// The picker's label.
