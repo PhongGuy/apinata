@@ -3437,6 +3437,7 @@ pub(crate) fn redraw_on_settings<V: 'static>(
 pub struct IdItem {
     id: SharedString,
     label: SharedString,
+    tint: Option<StatusClass>,
 }
 
 /// A kit select over [`IdItem`] rows.
@@ -3448,7 +3449,19 @@ impl IdItem {
         IdItem {
             id: format!("{select}-option-{key}").into(),
             label: label.into(),
+            tint: None,
         }
+    }
+
+    /// Draws the row's label in `class`'s colour.
+    pub fn tinted(mut self, class: StatusClass) -> Self {
+        self.tint = Some(class);
+        self
+    }
+
+    /// The label's colour, when the row is tinted.
+    pub fn color(&self, cx: &App) -> Option<Hsla> {
+        self.tint.map(|class| class.color(cx))
     }
 }
 
@@ -3478,10 +3491,11 @@ impl gpui_kit::component::select::SelectItem for IdItem {
         &self.label
     }
 
-    fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(&self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .id(self.id.clone())
             .test_support()
+            .when_some(self.color(cx), |d, color| d.text_color(color))
             .child(self.label.clone())
     }
 }

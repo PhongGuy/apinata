@@ -286,6 +286,23 @@ fn the_method_select_offers_nine_verbs_and_appends_the_files_own() {
     assert_eq!(names("PROPFIND"), with);
 }
 
+// Each verb in the method picker carries the colour the sidebar gives it.
+#[gpui_kit::test]
+fn the_method_picker_colours_each_verb_like_the_sidebar(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::method_rows;
+    use apinata_app::ui::method_class;
+    use gpui_kit::component::select::SelectItem as _;
+    init(cx);
+    cx.update(|cx| {
+        let rows = method_rows("PROPFIND");
+        assert_eq!(rows.len(), 10);
+        for row in rows {
+            let verb = row.title();
+            assert_eq!(row.color(cx), Some(method_class(&verb).color(cx)), "{verb}");
+        }
+    });
+}
+
 fn type_custom(
     cx: &mut TestAppContext,
     ed: &gpui_kit::Entity<apinata_app::request_editor::RequestEditor>,
