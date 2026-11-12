@@ -885,8 +885,8 @@ impl RunnerModel {
         }
     }
 
-    // The dirty requests at or under any target item, drafts included; a folder prefix ends
-    // at a `/` so `users` never claims `users2/`.
+    // The dirty saved requests at or under any target item; a draft has no file, so no run
+    // could include it. A folder prefix ends at a `/` so `users` never claims `users2/`.
     fn unsaved_names(&self, cx: &App) -> Vec<String> {
         let Some(snapshot) = self.workspace.read(cx).snapshot(&self.root, cx) else {
             return Vec::new();
@@ -901,7 +901,7 @@ impl RunnerModel {
             })
         };
         let mut dirty: Vec<_> = (snapshot.content.requests.iter())
-            .filter(|(p, r)| r.dirty && covers(p))
+            .filter(|(p, r)| r.dirty && !p.is_draft() && covers(p))
             .collect();
         dirty.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
         dirty.into_iter().map(|(_, r)| r.name.clone()).collect()
