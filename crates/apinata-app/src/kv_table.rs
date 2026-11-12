@@ -1045,11 +1045,20 @@ impl KvTable {
         if self.locked {
             return;
         }
-        if let Some(row) = self.rows.get_mut(ix) {
-            row.meta.enabled = enabled;
-            self.typed = None;
-            self.changed(cx);
+        // Unnamed rows pick the one file sent: picking a row clears the rest at once, and the
+        // picked row cannot be cleared on its own.
+        let single = !self.columns.name;
+        if ix >= self.rows.len() || (single && !enabled) {
+            return;
         }
+        if single {
+            for row in &mut self.rows {
+                row.meta.enabled = false;
+            }
+        }
+        self.rows[ix].meta.enabled = enabled;
+        self.typed = None;
+        self.changed(cx);
     }
 
     /// The heading checkbox's state, over the rows that have a toggle (never the empty row).
@@ -1272,6 +1281,7 @@ impl KvTable {
                         )
                         .disabled(locked || fixed)
                         .radio(!columns.name)
+                        .when(!columns.name, |c| c.accessible_name("Send this file"))
                         .tab_stop(!slotted)
                         .take_focus(
                             self.check_focus.get() == Some(ix) && {
@@ -1900,13 +1910,15 @@ pub fn multipart_from(base: &[MultipartField], rows: &[KvRow]) -> Vec<MultipartF
         .collect()
 }
 
-/// File-body rows: the checkbox is the selection and a blank path lists no file.
+/// File-body rows: the checkbox is the selection and a blank path lists no file. Only the
+/// first selected entry shows as picked, since one file is sent.
 pub fn file_rows(files: &[FileEntry]) -> Vec<KvRow> {
+    let picked = files.iter().position(|f| f.selected);
     files
         .iter()
         .enumerate()
         .map(|(ix, f)| KvRow {
-            enabled: f.selected,
+            enabled: picked == Some(ix),
             source: Some(ix),
             entry: Some(RowEntry::with_eq(f.clone(), FileEntry::same_source)),
             files: Some(if f.path.is_empty() {
