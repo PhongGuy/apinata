@@ -36,7 +36,7 @@ use crate::var_tokens::{VarField, tokens};
 /// JSON bodies larger than this are neither parsed nor marked, so typing in a huge body stays cheap.
 pub const JSON_CHECK_MAX_BYTES: usize = 2 * 1024 * 1024;
 
-/// A body mode the editor models, in Bruno's picker order.
+/// A body mode the editor models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(missing_docs)]
 pub enum BodyMode {
@@ -51,16 +51,16 @@ pub enum BodyMode {
 }
 
 impl BodyMode {
-    /// Every mode, in picker order.
+    /// Every mode, in picker order: the common ones first, the rare ones last.
     pub const ALL: [BodyMode; 8] = [
         BodyMode::None,
         BodyMode::Json,
-        BodyMode::Xml,
-        BodyMode::Text,
-        BodyMode::Sparql,
         BodyMode::Form,
         BodyMode::Multipart,
+        BodyMode::Text,
+        BodyMode::Xml,
         BodyMode::File,
+        BodyMode::Sparql,
     ];
 
     /// The picker's label.
@@ -537,6 +537,8 @@ impl BodySection {
                         }
                         t.set_files(ix, Some(files), window, cx)
                     });
+                    // The first file swaps an empty file body's first step for the table.
+                    cx.notify();
                 }
             });
         })
@@ -616,6 +618,32 @@ impl BodySection {
             loads: 0,
         });
     }
+
+    /// A file body with no entries: what it sends and one button to choose the file, where
+    /// the rows will go once there is one.
+    fn render_file_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        const NOTE: &str = "Sends the contents of one file as the request body.";
+        v_flex()
+            .id("body-file-empty")
+            .test_support()
+            .w_full()
+            .items_center()
+            .gap(style::SPACE_3)
+            .p(style::SPACE_5)
+            .child(
+                div()
+                    .id("body-file-note")
+                    .test_support()
+                    .aria_label(NOTE)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(NOTE),
+            )
+            .child(
+                Button::new("body-file-choose")
+                    .label("Choose file\u{2026}")
+                    .on_click(cx.listener(|this, _, window, cx| this.pick(0, window, cx))),
+            )
+    }
 }
 
 impl Render for BodySection {
@@ -639,6 +667,9 @@ impl Render for BodySection {
                 .test_support()
                 .child("This request has no body.")
                 .into_any_element(),
+            (Some(BodyMode::File), _) if self.table.read(cx).rows(cx).is_empty() => {
+                self.render_file_empty(cx).into_any_element()
+            }
             (Some(mode), _) if mode.is_table() => div()
                 .id("body-table")
                 .test_support()

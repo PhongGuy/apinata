@@ -428,11 +428,27 @@ fn picked(marks: &[(Option<gpui_kit::Role>, Option<bool>, Option<String>)]) -> V
 }
 
 #[gpui_kit::test]
-fn a_file_body_mark_is_a_radio_named_for_what_it_does(cx: &mut TestAppContext) {
-    let (win, _view) = host(cx, KvColumns::FILE_BODY, file_rows(&[entry("a.bin", true)]));
-    let (role, _, name) = marks(cx, win, 1).remove(0);
-    assert_eq!(role, Some(gpui_kit::Role::RadioButton));
-    assert_eq!(name.as_deref(), Some("Send this file"));
+fn a_file_body_mark_is_a_radio_named_for_its_file(cx: &mut TestAppContext) {
+    let (win, _view) = host(
+        cx,
+        KvColumns::FILE_BODY,
+        file_rows(&[
+            entry("data/a.bin", true),
+            entry("", false),
+            entry("b.json", false),
+        ]),
+    );
+    let marks = marks(cx, win, 3);
+    assert_eq!(marks[0].0, Some(gpui_kit::Role::RadioButton));
+    let names: Vec<_> = marks.into_iter().map(|m| m.2).collect();
+    assert_eq!(
+        names,
+        [
+            Some(s("Send a.bin")),
+            Some(s("Send file 2, none chosen")),
+            Some(s("Send b.json")),
+        ]
+    );
 }
 
 #[gpui_kit::test]

@@ -181,9 +181,76 @@ fn picking_a_file_fills_a_blank_content_type_from_its_extension(cx: &mut TestApp
 #[gpui_kit::test]
 fn picking_a_file_on_the_empty_row_fills_its_content_type(cx: &mut TestAppContext) {
     assert_eq!(
-        pick_file(cx, vec![], 0, "/c/photo.PNG"),
+        pick_file(cx, vec![sel("a.bin", true)], 1, "/c/photo.PNG"),
+        BodySpec::File(vec![
+            sel("a.bin", true),
+            typed("photo.PNG", "image/png", false)
+        ])
+    );
+}
+
+fn file_empty_state(cx: &mut TestAppContext, win: AnyWindowHandle) -> (Option<String>, bool) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let note = w
+            .try_find("body-file-note")
+            .map(|e| e.label().map(str::to_owned));
+        let choose = w
+            .try_find("body-file-choose")
+            .map(|e| e.label().map(str::to_owned));
+        assert_eq!(choose.clone().flatten().is_some(), note.is_some());
+        if let Some(label) = choose {
+            assert_eq!(label.as_deref(), Some("Choose file\u{2026}"));
+        }
+        (note.flatten(), w.try_find("body-table").is_some())
+    })
+    .unwrap()
+}
+
+// A file body with no files offers one first step in place of an empty table, and says what
+// it sends; the first pick brings the table back with that file in it.
+#[gpui_kit::test]
+fn an_empty_file_body_offers_choose_file_and_says_what_it_sends(cx: &mut TestAppContext) {
+    let (win, host) = body(cx, BodySpec::File(vec![]));
+    assert_eq!(
+        file_empty_state(cx, win),
+        (
+            Some("Sends the contents of one file as the request body.".to_owned()),
+            false
+        )
+    );
+    cx.update_window(win, |_, w, cx| w.click("body-file-choose", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.simulate_path_prompt_response(|o| {
+        assert!(!o.multiple && o.files && !o.directories);
+        Some(vec![PathBuf::from("/c/photo.PNG")])
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        last_body(cx, &host),
         BodySpec::File(vec![typed("photo.PNG", "image/png", true)])
     );
+    assert_eq!(file_empty_state(cx, win), (None, true));
+}
+
+#[gpui_kit::test]
+fn a_cancelled_first_pick_keeps_the_empty_file_body(cx: &mut TestAppContext) {
+    let (win, host) = body(cx, BodySpec::File(vec![]));
+    cx.update_window(win, |_, w, cx| w.click("body-file-choose", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.simulate_path_prompt_response(|_| None);
+    cx.run_until_parked();
+    assert!(host.read_with(cx, |h, _| h.edits.is_empty()));
+    assert!(file_empty_state(cx, win).0.is_some());
+}
+
+// A file body that lists entries keeps its table, even when an entry has no file yet.
+#[gpui_kit::test]
+fn a_file_body_with_entries_shows_its_table(cx: &mut TestAppContext) {
+    let (win, _) = body(cx, BodySpec::File(vec![FileEntry::new("")]));
+    assert_eq!(file_empty_state(cx, win), (None, true));
 }
 
 #[gpui_kit::test]

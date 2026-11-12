@@ -137,6 +137,40 @@ fn body_mode_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
     assert_eq!(s.read_with(cx, |s, _| s.mode()), Some(BodyMode::Json));
 }
 
+// Common body types come first and rare ones last, while each keeps the key it saves as.
+#[gpui_kit::test]
+fn body_mode_rows_list_common_types_first(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, |w, cx| BodySection::new(PathBuf::from("/c"), w, cx));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&BodySpec::None, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("body-mode", cx))
+        .unwrap();
+    frame(cx, win);
+    let keys = [
+        "none",
+        "json",
+        "form-urlencoded",
+        "multipart-form",
+        "text",
+        "xml",
+        "file",
+        "sparql",
+    ];
+    let tops: Vec<_> = cx
+        .update_window(win, |_, w, _| {
+            keys.map(|k| w.find(format!("body-mode-option-{k}")).bounds().top())
+        })
+        .unwrap()
+        .to_vec();
+    assert!(tops.is_sorted_by(|a, b| a < b), "{tops:?}");
+    let saved: Vec<_> = BodyMode::ALL.iter().map(|m| m.key()).collect();
+    assert_eq!(saved, keys);
+}
+
 #[gpui_kit::test]
 fn codegen_target_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
     let col = write_tree(&[

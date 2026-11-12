@@ -1281,7 +1281,9 @@ impl KvTable {
                         )
                         .disabled(locked || fixed)
                         .radio(!columns.name)
-                        .when(!columns.name, |c| c.accessible_name("Send this file"))
+                        .when(!columns.name, |c| {
+                            c.accessible_name(send_name(ix, files.as_deref().unwrap_or_default()))
+                        })
                         .tab_stop(!slotted)
                         .take_focus(
                             self.check_focus.get() == Some(ix) && {
@@ -1922,6 +1924,18 @@ pub fn multipart_from(base: &[MultipartField], rows: &[KvRow]) -> Vec<MultipartF
             f
         })
         .collect()
+}
+
+/// A file-body radio's spoken name: the file it sends, or its row number when it has none,
+/// so a screen reader can tell the rows apart.
+fn send_name(ix: usize, files: &[String]) -> String {
+    match files.first().filter(|f| !f.is_empty()) {
+        Some(f) => {
+            let name = Path::new(f).file_name().map(|n| n.to_string_lossy());
+            format!("Send {}", name.unwrap_or(f.into()))
+        }
+        None => format!("Send file {}, none chosen", ix + 1),
+    }
 }
 
 /// File-body rows: the checkbox is the selection and a blank path lists no file. Only the
