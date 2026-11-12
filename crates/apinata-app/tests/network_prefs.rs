@@ -397,3 +397,84 @@ fn the_pac_hint_wraps_as_a_few_lines_under_the_source(cx: &mut TestAppContext) {
         "hint {hint:?} input {input:?}"
     );
 }
+
+fn drawn(
+    cx: &mut TestAppContext,
+    s: &Started,
+    id: &'static str,
+) -> gpui_kit::Bounds<gpui_kit::Pixels> {
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find(id).bounds()
+    })
+    .unwrap()
+}
+
+// The help on what System reads sits right under the Proxy control in every mode, above the
+// rows that follow it, rather than after the cookie settings.
+#[gpui_kit::test]
+fn the_proxy_help_sits_under_the_proxy_control(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    for (mode, next) in [
+        (1, "pref-ca-file"),
+        (2, "pref-proxy-protocol"),
+        (3, "pref-proxy-pac"),
+    ] {
+        choose(cx, &s, "global-proxy-mode", mode);
+        reveal(cx, &s, "prefs-proxy-note");
+        let control = drawn(cx, &s, "pref-proxy-mode");
+        let note = drawn(cx, &s, "prefs-proxy-note");
+        let next = drawn(cx, &s, next);
+        assert!(
+            note.top() >= control.bottom() - gpui_kit::px(1.)
+                && note.top() <= control.bottom() + gpui_kit::px(16.),
+            "mode {mode}: the help {note:?} right under the control {control:?}"
+        );
+        assert!(
+            note.bottom() <= next.top() + gpui_kit::px(1.),
+            "mode {mode}: the help {note:?} above the next row {next:?}"
+        );
+        assert!(
+            note.bottom() <= drawn(cx, &s, "pref-store-cookies").top(),
+            "mode {mode}: the help comes before the cookie settings"
+        );
+    }
+}
+
+// The manual proxy fields and the PAC source say, after the last of them, that they wait for
+// a restart, as the Proxy control does.
+#[gpui_kit::test]
+fn the_proxy_fields_say_they_take_effect_after_restart(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    assert!(
+        !present(cx, s.win, "prefs-proxy-restart"),
+        "Off has no fields"
+    );
+    for (mode, last) in [(2, "pref-proxy-bypass"), (3, "pref-proxy-pac")] {
+        choose(cx, &s, "global-proxy-mode", mode);
+        reveal(cx, &s, "prefs-proxy-restart");
+        let note = drawn(cx, &s, "prefs-proxy-restart");
+        let last = drawn(cx, &s, last);
+        assert!(
+            note.top() >= last.bottom() - gpui_kit::px(1.)
+                && note.bottom() <= drawn(cx, &s, "pref-ca-file").top() + gpui_kit::px(1.),
+            "mode {mode}: the note {note:?} after the last proxy row {last:?}"
+        );
+        let text = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                w.find("prefs-proxy-restart").label().map(str::to_owned)
+            })
+            .unwrap();
+        assert_eq!(
+            text.as_deref(),
+            Some("The proxy settings above take effect after restart"),
+            "mode {mode}"
+        );
+    }
+}
