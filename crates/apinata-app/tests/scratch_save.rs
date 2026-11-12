@@ -107,14 +107,14 @@ fn the_dialog_for_a_scratch_draft_lists_open_collections_and_the_open_entry(
 }
 
 #[gpui_kit::test]
-fn the_dialog_with_no_collection_open_still_offers_the_open_entry_and_will_not_save(
+fn the_dialog_with_no_collection_open_still_offers_to_open_one_and_will_not_save(
     cx: &mut TestAppContext,
 ) {
     use gpui_kit::test::TestWindowExt as _;
     let s = started_blank(cx, blank_data_dir());
     let (from, draft) = scratch_draft(cx, &s);
     open_dialog(cx, &s);
-    assert!(present(cx, s.win, "save-draft-collection"));
+    assert!(present(cx, s.win, "save-draft-open-collection"));
     cx.update_window(s.win, |_, w, cx| {
         w.input("Echo", cx);
         w.press("enter", cx);
@@ -231,4 +231,91 @@ fn the_open_entry_stays_first_beside_open_collections_and_a_pick_still_saves(
         .read_with(cx, |f, cx| f.answer(cx))
         .expect("the open collection is picked");
     assert_eq!(answer.target.as_deref(), Some(col.path()));
+}
+
+// Answers the dialog's folder prompts with `dir`, as the user picking it would.
+fn answer_prompts_with(cx: &mut TestAppContext, dir: &std::path::Path) {
+    use apinata_app::save_draft::FolderPickSeam;
+    let chosen = dir.to_path_buf();
+    cx.update(|cx| {
+        cx.set_global(FolderPickSeam(std::rc::Rc::new(move || {
+            Some(chosen.clone())
+        })))
+    });
+}
+
+fn click(cx: &mut TestAppContext, s: &Started, id: &'static str) {
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(s.win, |_, w, cx| w.click(id, cx)).unwrap();
+    cx.run_until_parked();
+}
+
+fn is_open(cx: &mut TestAppContext, s: &Started, dir: &std::path::Path) -> bool {
+    s.ws.read_with(cx, |w, _| {
+        w.user_collections().iter().any(|c| c.root() == dir)
+    })
+}
+
+#[gpui_kit::test]
+fn save_with_no_collection_open_offers_open_and_new_in_place_of_the_picker(
+    cx: &mut TestAppContext,
+) {
+    use gpui_kit::test::TestWindowExt as _;
+    let s = started_blank(cx, blank_data_dir());
+    scratch_draft(cx, &s);
+    open_dialog(cx, &s);
+    assert!(present(cx, s.win, "save-draft-open-collection"));
+    assert!(present(cx, s.win, "save-draft-new-collection"));
+    assert!(
+        !present(cx, s.win, "save-draft-collection"),
+        "no empty picker"
+    );
+    cx.update_window(s.win, |_, w, _| {
+        assert_eq!(w.find("save-draft-folder").disabled(), Some(true));
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_open_button_opens_a_collection_and_the_draft_saves_into_it(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let s = started_blank(cx, blank_data_dir());
+    let (from, draft) = scratch_draft(cx, &s);
+    let col = collection();
+    let target = col.path().to_path_buf();
+    answer_prompts_with(cx, &target);
+    open_dialog(cx, &s);
+    click(cx, &s, "save-draft-open-collection");
+    wait_real(cx, |cx| is_open(cx, &s, &target));
+    let kept = s.ws.read_with(cx, |w, cx| w.request(&from, &draft, cx));
+    assert!(kept.is_some(), "the draft survives opening a collection");
+    assert!(present(cx, s.win, "save-draft-dialog"), "the dialog stays");
+    assert!(
+        present(cx, s.win, "save-draft-collection"),
+        "the picker returns"
+    );
+    cx.update_window(s.win, |_, w, cx| {
+        assert_ne!(w.find("save-draft-folder").disabled(), Some(true));
+        w.input("Echo", cx);
+        w.press("enter", cx);
+    })
+    .unwrap();
+    wait_real(cx, |_| target.join("Echo.yml").exists());
+}
+
+#[gpui_kit::test]
+fn the_new_button_creates_a_collection_and_picks_it(cx: &mut TestAppContext) {
+    let s = started_blank(cx, blank_data_dir());
+    scratch_draft(cx, &s);
+    let parent = tempfile::tempdir().unwrap();
+    let dir = parent.path().join("made");
+    answer_prompts_with(cx, &dir);
+    open_dialog(cx, &s);
+    click(cx, &s, "save-draft-new-collection");
+    wait_real(cx, |cx| is_open(cx, &s, &dir));
+    assert!(dir.join("opencollection.yml").is_file());
+    assert!(
+        present(cx, s.win, "save-draft-collection"),
+        "the new one is picked"
+    );
 }

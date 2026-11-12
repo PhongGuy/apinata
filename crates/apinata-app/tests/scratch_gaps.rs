@@ -75,15 +75,9 @@ fn save_dialog_with_open_entry_chosen(cx: &mut TestAppContext, s: &Started) {
     })
     .unwrap();
     frame(cx, s.win);
-    // The open-or-new entry is the select's last one.
+    // With nothing open, the dialog offers its open button in place of the picker.
     cx.update_window(s.win, |_, w, cx| {
-        w.click("save-draft-collection", cx);
-    })
-    .unwrap();
-    frame(cx, s.win);
-    cx.update_window(s.win, |_, w, cx| {
-        w.press("down", cx);
-        w.press("enter", cx);
+        w.click("save-draft-open-collection", cx);
     })
     .unwrap();
     cx.run_until_parked();

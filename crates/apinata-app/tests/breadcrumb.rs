@@ -317,3 +317,15 @@ fn the_unsaved_group_lines_up_with_the_folders(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// The scratch pad holds only drafts, so its name already says unsaved; the line does not
+// repeat it.
+#[gpui_kit::test]
+fn a_scratch_drafts_breadcrumb_names_the_scratch_pad_and_the_request_only(cx: &mut TestAppContext) {
+    let s = started_blank(cx, blank_data_dir());
+    s.ws.update(cx, |w, cx| w.new_scratch_request(cx));
+    cx.run_until_parked();
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "breadcrumb-file"));
+    assert!(!present(cx, s.win, "breadcrumb-unsaved"));
+}
