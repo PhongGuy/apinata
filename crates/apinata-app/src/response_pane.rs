@@ -2673,7 +2673,7 @@ impl ResponsePane {
         Button::new("response-more")
             .ghost()
             .compact()
-            .icon(ui::glyph("response-more", AssetIcon::ChevronDown))
+            .icon(ui::glyph("response-more", AssetIcon::Ellipsis))
             .tooltip("More actions")
             .accessibility_label("More actions")
             .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, cx| {

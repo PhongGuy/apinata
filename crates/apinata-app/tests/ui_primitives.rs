@@ -854,3 +854,21 @@ fn recording_an_unchanged_glyph_does_not_allocate() {
     assert_eq!(*path, IconName::RotateCcwClock.path());
     clear_recorded_glyphs();
 }
+
+// A short dropdown leaves the kit's scrolling off, so it draws no scrollbar; one that may
+// outgrow the kit's height cap (half the window, at most 450 px at a 16 px rem) scrolls.
+#[test]
+fn only_a_long_dropdown_scrolls() {
+    let rem = gpui_kit::px(16.);
+    assert!(!menu_may_overflow(2, gpui_kit::px(800.), rem));
+    assert!(!menu_may_overflow(8, gpui_kit::px(800.), rem));
+    assert!(menu_may_overflow(40, gpui_kit::px(800.), rem));
+    assert!(
+        menu_may_overflow(8, gpui_kit::px(300.), rem),
+        "a short window"
+    );
+    assert!(
+        menu_may_overflow(8, gpui_kit::px(800.), gpui_kit::px(40.)),
+        "a large zoom"
+    );
+}

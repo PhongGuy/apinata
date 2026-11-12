@@ -285,6 +285,35 @@ pub const UNSAVED_TAG: &str = "Unsaved";
 /// The tag of a send made by the collection runner.
 pub const RUN_TAG: &str = "Run";
 
+/// What the Run tag means, shown on hover.
+pub const RUN_TIP: &str = "Sent by the collection runner";
+
+/// What the Unsaved tag means, shown on hover.
+pub const UNSAVED_TIP: &str = "Sent from a request that was never saved";
+
+// The hover text of a row's tag.
+fn tag_tip(tag: &str) -> &'static str {
+    if tag == RUN_TAG { RUN_TIP } else { UNSAVED_TIP }
+}
+
+// `text` without its leading "{method} ", with `ranges` moved to match; a range inside the
+// cut part is dropped. Text that does not start with the method is kept whole.
+fn after_method(text: &str, method: &str, ranges: &[Range<usize>]) -> (String, Vec<Range<usize>>) {
+    let cut = method.len() + 1;
+    let starts = !method.is_empty()
+        && text.starts_with(method)
+        && text.as_bytes().get(method.len()) == Some(&b' ');
+    if !starts {
+        return (text.to_owned(), ranges.to_vec());
+    }
+    let moved = ranges
+        .iter()
+        .filter(|r| r.end > cut)
+        .map(|r| r.start.max(cut) - cut..r.end - cut)
+        .collect();
+    (text[cut..].to_owned(), moved)
+}
+
 // The label of a draft send that kept no target.
 const UNTITLED: &str = "Untitled request";
 
@@ -453,98 +482,119 @@ fn confirm(e: &HistoryEntry, target: &FocusHandle, window: &mut Window, cx: &mut
     window.defer(cx, move |window, cx| window.dispatch_action(action, cx));
 }
 
-// A row shows the request's name, the send's target muted and truncated (whole on hover),
-// the send's status and age muted, then its tag muted in a column of its own. The search's
-// hits are highlighted in each.
+// A row shows the sidebar's method tag, the request's name, the send's URL muted and
+// truncated (whole on hover), the status and age in a fixed column, then its tag, explained
+// on hover, in a column of its own. The search's hits are highlighted in each.
 fn history_row(r: usize, entry: &HistoryEntry, found: &HistoryMatch) -> CommandItem {
-    let (label, detail, target, tag) = (
-        entry.label.clone(),
-        entry.detail.clone(),
-        entry.target.clone(),
-        entry.tag,
-    );
-    let found = found.clone();
-    CommandItem::new().label(label.clone()).child(move |_, cx| {
-        crate::palette::count_row_build();
-        let muted = cx.theme().muted_foreground;
-        let (_, colour) = crate::body_find::match_colours(cx);
-        let marked = |text: &str, ranges: &[Range<usize>]| {
-            let style = HighlightStyle {
-                background_color: Some(colour),
-                ..Default::default()
+    let (detail, tag, method) = (entry.detail.clone(), entry.tag, entry.method.clone());
+    let mut found = found.clone();
+    // The tag column shows the method, so the text that names the send drops it: a draft's
+    // name, or a saved request's target.
+    let (target, target_found) = after_method(&entry.target, &method, &found.target);
+    found.target = target_found;
+    let (label, name_found) = match entry.tag {
+        Some(UNSAVED_TAG) => after_method(&entry.label, &method, &found.name),
+        _ => (entry.label.clone(), found.name.clone()),
+    };
+    found.name = name_found;
+    CommandItem::new()
+        .label(entry.label.clone())
+        .child(move |_, cx| {
+            crate::palette::count_row_build();
+            let muted = cx.theme().muted_foreground;
+            let (_, colour) = crate::body_find::match_colours(cx);
+            let marked = |text: &str, ranges: &[Range<usize>]| {
+                let style = HighlightStyle {
+                    background_color: Some(colour),
+                    ..Default::default()
+                };
+                StyledText::new(text.to_owned())
+                    .with_highlights(ranges.iter().map(|r| (r.clone(), style)))
             };
-            StyledText::new(text.to_owned())
-                .with_highlights(ranges.iter().map(|r| (r.clone(), style)))
-        };
-        let target = (!target.is_empty()).then(|| {
-            let tip = target.clone();
-            div()
-                .id(("history-target", r))
-                .test_support()
-                .aria_label(target.clone())
+            let target = (!target.is_empty()).then(|| {
+                let tip = target.clone();
+                div()
+                    .id(("history-target", r))
+                    .test_support()
+                    .aria_label(target.clone())
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(muted)
+                    .child(marked(&target, &found.target))
+                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            });
+            // A highlighted name or detail changes its id, so tests can tell a hit from a
+            // plain row.
+            let name_id = if found.name.is_empty() {
+                "history-name"
+            } else {
+                "history-name-match"
+            };
+            let detail_id = if found.detail.is_empty() {
+                "history-detail"
+            } else {
+                "history-detail-match"
+            };
+            let method_tag = crate::ui::method_tag(&method);
+            h_flex()
                 .flex_1()
                 .min_w_0()
-                .truncate()
-                .text_color(muted)
-                .child(marked(&target, &found.target))
-                .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
-        });
-        // A highlighted name or detail changes its id, so tests can tell a hit from a
-        // plain row.
-        let name_id = if found.name.is_empty() {
-            "history-name"
-        } else {
-            "history-name-match"
-        };
-        let detail_id = if found.detail.is_empty() {
-            "history-detail"
-        } else {
-            "history-detail-match"
-        };
-        h_flex()
-            .flex_1()
-            .min_w_0()
-            .gap(style::SPACE_2)
-            .justify_between()
-            // The name truncates within half the row, so a long one never pushes the
-            // target or the detail out of sight.
-            .child(
-                div()
-                    .id((name_id, r))
-                    .test_support()
-                    .aria_label(label.clone())
-                    .min_w_0()
-                    .max_w(relative(0.5))
-                    .truncate()
-                    .child(marked(&label, &found.name)),
-            )
-            // A row with no target fills its place, so the detail stays right.
-            .when(target.is_none(), |row| row.child(div().flex_1()))
-            .children(target)
-            .child(
-                div()
-                    .id((detail_id, r))
-                    .test_support()
-                    .flex_none()
-                    .text_color(muted)
-                    .child(marked(&detail, &found.detail)),
-            )
-            // Every row keeps the fixed tag slot last, so tags line up whatever the detail.
-            .child(
-                div()
-                    .id(("history-tag-slot", r))
-                    .test_support()
-                    .flex_none()
-                    .w(style::HISTORY_TAG_WIDTH)
-                    .children(tag.map(|tag| {
-                        div()
-                            .id(("history-tag", r))
-                            .test_support()
-                            .aria_label(tag)
-                            .flex_none()
-                            .text_color(muted)
-                            .child(tag)
-                    })),
-            )
-    })
+                .gap(style::SPACE_2)
+                .justify_between()
+                .child(
+                    div()
+                        .id(("history-method", r))
+                        .test_support()
+                        .flex_none()
+                        .aria_label(method_tag.label().clone())
+                        .child(method_tag),
+                )
+                // The name truncates within two fifths of the row, so a long one never pushes
+                // the target or the fixed columns out of sight.
+                .child(
+                    div()
+                        .id((name_id, r))
+                        .test_support()
+                        .aria_label(label.clone())
+                        .min_w_0()
+                        .max_w(relative(0.4))
+                        .truncate()
+                        .child(marked(&label, &found.name)),
+                )
+                // A row with no target fills its place, so the detail stays right.
+                .when(target.is_none(), |row| row.child(div().flex_1()))
+                .children(target)
+                .child(
+                    div()
+                        .id((detail_id, r))
+                        .test_support()
+                        .flex_none()
+                        .w(style::HISTORY_DETAIL_WIDTH)
+                        .truncate()
+                        .text_color(muted)
+                        .child(marked(&detail, &found.detail)),
+                )
+                // Every row keeps the fixed tag slot last, so tags line up whatever the detail.
+                .child(
+                    div()
+                        .id(("history-tag-slot", r))
+                        .test_support()
+                        .flex_none()
+                        .w(style::HISTORY_TAG_WIDTH)
+                        .children(tag.map(|tag| {
+                            div()
+                                .id(("history-tag", r))
+                                .test_support()
+                                .aria_label(tag)
+                                .flex_none()
+                                .text_color(muted)
+                                .child(tag)
+                                .tooltip(crate::ui::text_tooltip(
+                                    "history-tag-tooltip",
+                                    tag_tip(tag),
+                                ))
+                        })),
+                )
+        })
 }
