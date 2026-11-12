@@ -3,7 +3,7 @@
 
 use crate::support;
 
-use apinata_app::palette::request_entries;
+use apinata_app::palette::{GoToRequest, index_path, palette_items, request_entries};
 use apinata_app::snapshot::Unsupported;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::test::TestWindowExt as _;
@@ -169,4 +169,53 @@ fn typing_a_request_name_and_enter_opens_it(cx: &mut TestAppContext) {
     let preview =
         s.ws.read_with(cx, |w, _| w.tabs().active().map(|e| e.preview));
     assert_eq!(preview, Some(false), "a palette open keeps the tab");
+}
+
+// Opens the go-to-request palette with its own key.
+fn go_to(cx: &mut TestAppContext, win: AnyWindowHandle) {
+    cx.simulate_keystrokes(win, &key("p"));
+    frame(cx, win);
+}
+
+#[gpui_kit::test]
+fn the_go_to_request_key_lists_only_requests(cx: &mut TestAppContext) {
+    let col = zoo();
+    let s = started(cx, &col);
+    go_to(cx, s.win);
+    assert!(present(cx, s.win, "command-palette"));
+    let first = index_path(&palette_items(), 0);
+    cx.update_window(s.win, |_, w, _| {
+        let palette = w.within("command-palette");
+        assert!(palette.try_find(first).is_none(), "no command rows");
+        assert!(
+            palette.try_find(("palette-request-name", 0usize)).is_some(),
+            "a request row"
+        );
+    })
+    .unwrap();
+    cx.update_window(s.win, |_, w, cx| w.input("zebra", cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, "enter");
+    frame(cx, s.win);
+    cx.run_until_parked();
+    assert_eq!(tab_names(cx, &s.ws), ["users/zebra.yml"]);
+}
+
+// The full palette keeps its own key and offers Go to request with its key beside it.
+#[gpui_kit::test]
+fn the_command_palette_offers_go_to_request(cx: &mut TestAppContext) {
+    let col = zoo();
+    let s = started(cx, &col);
+    search(cx, s.win, "go to request");
+    let ix = (palette_items().iter())
+        .position(|e| e.action.partial_eq(&GoToRequest))
+        .expect("listed");
+    cx.update_window(s.win, |_, w, _| {
+        let palette = w.within("command-palette");
+        assert!(palette.try_find(index_path(&palette_items(), ix)).is_some());
+        let hint = palette.find(("palette-kbd", ix));
+        assert_eq!(hint.label(), Some(secondary("p").as_str()));
+    })
+    .unwrap();
 }

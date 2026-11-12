@@ -149,11 +149,15 @@ fn every_default_is_canonical_and_the_defaults_never_conflict() {
     let none = Overrides::new();
     assert_eq!(
         keys(&cmds, &none, "tabs.previous"),
-        [file("secondary-{"), file("ctrl-pageup")]
+        [
+            file("secondary-{"),
+            file("ctrl-pageup"),
+            file("ctrl-shift-tab")
+        ]
     );
     assert_eq!(
         keys(&cmds, &none, "tabs.next"),
-        [file("secondary-}"), file("ctrl-pagedown")]
+        [file("secondary-}"), file("ctrl-pagedown"), file("ctrl-tab")]
     );
     assert!(conflicted(&cmds, &none).is_empty());
 }
@@ -249,7 +253,10 @@ fn replace_takes_the_chord_and_swap_trades_keys() {
         chord("ctrl-pagedown"),
         Resolution::Replace,
     );
-    assert_eq!(keys(&cmds, &o, "tabs.next"), [file("secondary-}")]);
+    assert_eq!(
+        keys(&cmds, &o, "tabs.next"),
+        [file("secondary-}"), file("ctrl-tab")]
+    );
     assert_eq!(keys(&cmds, &o, "tabs.close"), [file("ctrl-pagedown")]);
 }
 
@@ -393,7 +400,7 @@ fn swap_on_reset_trades_only_the_chords_given_up() {
     assert_eq!(reset_conflict(&o, "tabs.next"), Some(vec!["tabs.previous"]));
     reset_resolving(&cmds, &mut o, "tabs.next", Resolution::Swap);
     assert!(conflicted(&cmds, &o).is_empty(), "{o:?}");
-    assert_eq!(keys(&cmds, &o, "tabs.next").len(), 2);
+    assert_eq!(keys(&cmds, &o, "tabs.next").len(), 3);
 }
 
 #[test]
@@ -476,19 +483,13 @@ fn a_scope_nested_inside_another_overlaps_it() {
 fn the_registry_reports_chords_shadowed_inside_code_editors() {
     let cmds = registry();
     let none = Overrides::new();
+    // A code editor's exit keys deliberately take Ctrl+Tab from the window's Next tab inside
+    // it, so only another window-wide command is named.
     assert_eq!(
         conflicts_with(&cmds, &none, "view.toggle_sidebar", &chord("ctrl-tab")),
-        ["view.focus_next_control"]
+        ["tabs.next"]
     );
-    assert_eq!(
-        conflicts_with(
-            &cmds,
-            &none,
-            "view.focus_next_control",
-            &chord("secondary-w")
-        ),
-        ["tabs.close"]
-    );
+    assert!(conflicts_with(&cmds, &none, "tabs.next", &chord("ctrl-tab")).is_empty());
     let find_next = if cfg!(target_os = "macos") {
         "cmd-g"
     } else {

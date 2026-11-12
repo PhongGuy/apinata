@@ -370,21 +370,41 @@ fn a_key_a_code_editor_takes_names_the_place(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
+    record(cx, &s, "view.find_next_in_response");
+    press(cx, &s, "ctrl-tab");
+    let shown = Kbd::format(&Keystroke::parse("ctrl-tab").unwrap());
+    assert_eq!(
+        message(cx, &s, "view.find_next_in_response"),
+        Some(format!(
+            "{shown} is already used by Focus next control in code editors"
+        ))
+    );
+    click(cx, &s, "key-view.find_next_in_response-cancel");
+    // The other way round the wider pane command it hides is named by its label alone.
+    let find_next = if cfg!(target_os = "macos") {
+        "cmd-g"
+    } else {
+        "f3"
+    };
+    record(cx, &s, "view.focus_next_control");
+    press(cx, &s, find_next);
+    let shown = Kbd::format(&Keystroke::parse(find_next).unwrap());
+    assert_eq!(
+        message(cx, &s, "view.focus_next_control"),
+        Some(format!("{shown} is already used by Find next in response"))
+    );
+}
+
+#[gpui_kit::test]
+fn ctrl_tab_for_a_window_command_names_next_tab(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
     record(cx, &s, "view.toggle_sidebar");
     press(cx, &s, "ctrl-tab");
     let shown = Kbd::format(&Keystroke::parse("ctrl-tab").unwrap());
     assert_eq!(
         message(cx, &s, "view.toggle_sidebar"),
-        Some(format!(
-            "{shown} is already used by Focus next control in code editors"
-        ))
-    );
-    click(cx, &s, "key-view.toggle_sidebar-cancel");
-    // The other way round the window-wide command it hides is named by its label alone.
-    record(cx, &s, "view.focus_next_control");
-    press(cx, &s, &key("w"));
-    assert_eq!(
-        message(cx, &s, "view.focus_next_control"),
-        Some(format!("{} is already used by Close tab", shown_chord("w")))
+        Some(format!("{shown} is already used by Next tab"))
     );
 }

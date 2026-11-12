@@ -21,7 +21,7 @@ use crate::keymap::{
     PreviousSection, RedoActive, ResetZoom, RunCollection, RunFolder, SHELL_CONTEXT, SaveActive,
     ToggleConsole, ToggleOrientation, ToggleSidebar, ToggleTheme, UndoActive, ZoomIn, ZoomOut,
 };
-use crate::palette::{OpenCommandPalette, PaletteGroup};
+use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::request_editor::{
     KEY_CONTEXT as REQUEST_EDITOR, RedoEdit, SaveRequest, SendRequest, UndoEdit,
@@ -745,14 +745,15 @@ pub fn registry() -> Vec<Command> {
             Tabs,
             shell(ActivateNextTab),
             // Linux reports ctrl+shift+] as the shifted symbol, so `shift-]` would never fire.
-            &["secondary-}", "ctrl-pagedown"],
+            // Ctrl+Tab comes last, so the palette and tooltip show the key browsers use.
+            &["secondary-}", "ctrl-pagedown", "ctrl-tab"],
         ),
         command(
             "tabs.previous",
             "Previous tab",
             Tabs,
             shell(ActivatePrevTab),
-            &["secondary-{", "ctrl-pageup"],
+            &["secondary-{", "ctrl-pageup", "ctrl-shift-tab"],
         ),
         command(
             "tabs.last",
@@ -957,21 +958,30 @@ pub fn registry() -> Vec<Command> {
             &["secondary-alt-r"],
         ),
         // Tab indents inside a code editor, so these leave it; the palette has no editor to
-        // leave. A literal Ctrl on every platform, as text views on macOS also use it.
-        hidden(command(
-            "view.focus_next_control",
-            "Focus next control",
-            View,
-            vec![at(FocusNextControl, CODE_EDITOR)],
-            &["ctrl-tab"],
-        )),
-        hidden(command(
-            "view.focus_previous_control",
-            "Focus previous control",
-            View,
-            vec![at(FocusPreviousControl, CODE_EDITOR)],
-            &["ctrl-shift-tab"],
-        )),
+        // leave. A literal Ctrl on every platform, as text views on macOS also use it. They
+        // deliberately take Ctrl+Tab from the window's tab switching inside an editor.
+        {
+            let mut c = command(
+                "view.focus_next_control",
+                "Focus next control",
+                View,
+                vec![at(FocusNextControl, CODE_EDITOR)],
+                &["ctrl-tab"],
+            );
+            c.scope = Scope::Pane(CODE_EDITOR);
+            hidden(c)
+        },
+        {
+            let mut c = command(
+                "view.focus_previous_control",
+                "Focus previous control",
+                View,
+                vec![at(FocusPreviousControl, CODE_EDITOR)],
+                &["ctrl-shift-tab"],
+            );
+            c.scope = Scope::Pane(CODE_EDITOR);
+            hidden(c)
+        },
         found_by(
             &["settings"],
             command(
@@ -1014,6 +1024,13 @@ pub fn registry() -> Vec<Command> {
             shell(OpenCommandPalette),
             &["secondary-shift-p"],
         )),
+        command(
+            "view.go_to_request",
+            "Go to request",
+            View,
+            shell(GoToRequest),
+            &["secondary-p"],
+        ),
         command(
             "environment.open",
             "Manage environments",

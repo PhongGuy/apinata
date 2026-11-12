@@ -45,7 +45,9 @@ actions!(
     apinata,
     [
         /// Opens the command palette.
-        OpenCommandPalette
+        OpenCommandPalette,
+        /// Opens the palette on the open collections' requests alone.
+        GoToRequest
     ]
 );
 
@@ -459,6 +461,49 @@ pub fn open_with(
     window: &mut Window,
     cx: &mut App,
 ) {
+    let views = Views {
+        sidebar,
+        workspace,
+        tab_area,
+        in_repo,
+    };
+    show(fallback, requests, Some(views), window, cx);
+}
+
+/// Opens the palette over `window` on `requests` alone, without the registry's commands.
+pub fn open_requests(
+    fallback: FocusHandle,
+    requests: Vec<RequestEntry>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    show(fallback, requests, None, window, cx);
+}
+
+// The views a command palette reads for which commands apply.
+#[derive(Default)]
+struct Views {
+    sidebar: Option<Entity<Sidebar>>,
+    workspace: Option<Entity<Workspace>>,
+    tab_area: Option<Entity<TabArea>>,
+    in_repo: bool,
+}
+
+// The palette dialog; with no `views` it lists the requests alone.
+fn show(
+    fallback: FocusHandle,
+    requests: Vec<RequestEntry>,
+    views: Option<Views>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let commands = views.is_some();
+    let Views {
+        sidebar,
+        workspace,
+        tab_area,
+        in_repo,
+    } = views.unwrap_or_default();
     let target = window.focused(cx).unwrap_or(fallback);
     // The dialog builder runs every frame, so the requests are shared, not rebuilt.
     let requests: Rc<[RequestEntry]> = requests.into();
@@ -492,7 +537,7 @@ pub fn open_with(
         let (rem, cap) = (window.rem_size(), list_cap(window));
         let key = (dialog_state.read(cx).query(cx), available, rem, cap);
         let command = rows_key.render(&dialog_state, key, || {
-            palette(&dialog_state, &requests, available, rem, cap, cx).on_confirm({
+            palette(&dialog_state, &requests, commands, available, rem, cap, cx).on_confirm({
                 let (target, requests) = (target.clone(), Rc::clone(&requests));
                 let (sidebar, workspace) = (sidebar.clone(), workspace.clone());
                 let tab_area = tab_area.clone();
@@ -504,7 +549,8 @@ pub fn open_with(
                         in_repo,
                         cx,
                     );
-                    confirm(path, &requests, available, &target, window, cx)
+                    let items = listed(commands, available);
+                    confirm(path, &requests, &items, &target, window, cx)
                 }
             })
         });
@@ -583,12 +629,11 @@ pub(crate) fn escape_closes(
 fn confirm(
     path: IndexPath,
     requests: &[RequestEntry],
-    available: Availability,
+    items: &[PaletteEntry],
     target: &FocusHandle,
     window: &mut Window,
     cx: &mut App,
 ) {
-    let items = palette_items_for(available);
     let action: Box<dyn Action> = if path.section == requests_section() {
         let Some(r) = requests.get(path.row) else {
             return;
@@ -605,7 +650,7 @@ fn confirm(
             path: r.path.clone(),
         })
     } else {
-        let Some(ix) = entry_index(&items, path) else {
+        let Some(ix) = entry_index(items, path) else {
             return;
         };
         items[ix].action.boxed_clone()
@@ -615,24 +660,38 @@ fn confirm(
     window.defer(cx, move |window, cx| window.dispatch_action(action, cx));
 }
 
+// The registry entries a palette lists: those `available` allows, or none for requests alone.
+fn listed(commands: bool, available: Availability) -> Vec<PaletteEntry> {
+    if commands {
+        palette_items_for(available)
+    } else {
+        Vec::new()
+    }
+}
+
 // One kit group per palette group, then one for the requests; items carry no kit action,
-// so confirming runs nothing of the kit's own.
+// so confirming runs nothing of the kit's own. Empty groups keep the requests' section index.
 fn palette(
     state: &gpui_kit::Entity<CommandState>,
     requests: &[RequestEntry],
+    commands: bool,
     available: Availability,
     rem: Pixels,
     cap: f32,
     cx: &App,
 ) -> Command {
-    let items = palette_items_for(available);
+    let items = listed(commands, available);
     // Row ids keep their place in the full list, so a hidden entry shifts none of them.
     let all = palette_items();
     let query = state.read(cx).query(cx);
     let mut command = Command::new(state)
         .bordered(false)
         .max_h(list_height(&items, requests, &query, rem, cap))
-        .placeholder("Type a command");
+        .placeholder(if commands {
+            "Type a command"
+        } else {
+            "Type a request name"
+        });
     for group in PaletteGroup::ALL {
         let rows = items.iter().filter(|e| e.group == group).map(|e| {
             let id = all
