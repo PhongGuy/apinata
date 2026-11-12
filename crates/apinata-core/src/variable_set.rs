@@ -167,13 +167,14 @@ impl VariableSet {
     /// Every definition of every plain name, per name highest layer first: the effective row
     /// is exactly what [`Self::get`] (and so a send) resolves, and each lower layer that
     /// defines the name too follows as a shadowed row. Secrets carry no value in any row.
+    /// The selected environment's internal `__name__` is left out.
     pub fn overview(&self) -> Vec<ScopedVariable> {
         let captured = self.ctx.runtime_vars().snapshot();
         let mut out = Vec::new();
         for name in self
             .names()
             .into_iter()
-            .filter(|n| !n.contains('.') && !n.starts_with('$'))
+            .filter(|n| !n.contains('.') && !n.starts_with('$') && n != "__name__")
         {
             let Some(effective) = self.get(&name) else {
                 continue;

@@ -1,7 +1,7 @@
 //! The Variables overview dialog: the variables the active request sees, grouped by the
-//! scope that defines them. A row a higher scope overrides is dimmed, struck through and
-//! labelled "shadowed"; a secret shows a mask, never its value, and a runtime value the
-//! editable dialog masks is masked here too, with an eye to reveal it.
+//! scope that defines them. A row a higher scope overrides is dimmed, struck through, cut to
+//! one line and labelled with the scope that wins; a secret shows a mask, never its value, and
+//! a runtime value the editable dialog masks is masked here too, with an eye to reveal it.
 
 use crate::env_table::SECRET_HIDDEN;
 use crate::runtime_vars::Masking;
@@ -16,7 +16,7 @@ use gpui_kit::component::{ActiveTheme, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, Hsla, Rems, ScrollHandle, TestSupportExt, Window, div, px, rems};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 // The name column every row shares, so the value columns start at one x.
 const NAME_WIDTH: Rems = rems(8.);
@@ -78,6 +78,8 @@ pub struct VariablesOverview {
     masking: Option<Masking>,
     // Rows (by scope and name, so a changed list keeps them) whose masked value is shown.
     revealed: BTreeSet<(String, String)>,
+    // The scope whose definition wins, per name, so an overridden row can name it.
+    winners: BTreeMap<String, VarScope>,
 }
 
 impl Render for VariablesOverview {
@@ -164,7 +166,7 @@ impl VariablesOverview {
                 ix += 1;
             }
         }
-        // Rows stop short of the overlay scrollbar so it never covers the "shadowed" label.
+        // Rows stop short of the overlay scrollbar so it never covers the "overridden by" label.
         root.pr(style::SCROLLBAR_GUTTER).children(children)
     }
 }
@@ -214,7 +216,8 @@ impl VariablesOverview {
         }
     }
 
-    // One row: name, value (masked when sensitive) and a "shadowed" label when a higher scope wins.
+    // One row: name, value (masked when sensitive) and, when a higher scope wins, a label naming
+    // it; an overridden value keeps to one line with the whole text in a tooltip.
     fn row_element(
         &self,
         ix: usize,
@@ -259,8 +262,13 @@ impl VariablesOverview {
                     .test_support()
                     .flex_1()
                     .min_w_0()
-                    .whitespace_normal()
-                    .when(shadowed, |d| d.line_through())
+                    .when(!shadowed, |d| d.whitespace_normal())
+                    .when(shadowed, |d| {
+                        d.line_through().truncate().tooltip(ui::text_tooltip(
+                            "var-overview-value-tooltip",
+                            value.clone(),
+                        ))
+                    })
                     .aria_label(value.clone())
                     .child(value),
             )
@@ -279,6 +287,10 @@ impl VariablesOverview {
                 )
             })
             .when(shadowed, |d| {
+                let note = match self.winners.get(row.name()) {
+                    Some(scope) => format!("overridden by {}", heading(*scope).to_lowercase()),
+                    None => "overridden".to_owned(),
+                };
                 d.child(
                     div()
                         .id(("var-overview-shadowed", ix))
@@ -286,7 +298,8 @@ impl VariablesOverview {
                         .flex_none()
                         .text_size(style::TEXT_SMALL)
                         .text_color(muted)
-                        .child("shadowed"),
+                        .aria_label(note.clone())
+                        .child(note),
                 )
             })
     }
@@ -319,6 +332,12 @@ fn show(
         failed,
         masking,
         revealed: BTreeSet::new(),
+        winners: rows
+            .iter()
+            .flatten()
+            .filter(|r| !r.is_shadowed())
+            .map(|r| (r.name().to_owned(), r.scope()))
+            .collect(),
     });
     let body = view.clone();
     let scroll = ScrollHandle::new();
