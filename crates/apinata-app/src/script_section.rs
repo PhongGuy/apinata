@@ -500,11 +500,14 @@ impl Render for ScriptSection {
             .id(self.id)
             .test_support()
             .w_full()
+            .flex_1()
             .gap(SPACE_3)
             .children(switch)
+            // Only one editor shows at a time, and it takes the room the controls leave.
             .children(shown.map(|e| {
                 v_flex()
                     .w_full()
+                    .flex_1()
                     .gap(SPACE_1)
                     // The padding leaves room for the kit's ring, which sits outside each
                     // button and would be clipped at the pane edge on the first one.
@@ -546,8 +549,8 @@ impl Render for ScriptSection {
                             .id(e.id.clone())
                             .test_support()
                             .w_full()
+                            .flex_1()
                             .min_h(style::EDITOR_MIN_HEIGHT)
-                            .h(style::EDITOR_HEIGHT)
                             .child(ui::ringed_editor(Editor::new(&e.code).h_full(), &e.code))
                             // Accepting a completion lets Enter bubble on, and an unhandled
                             // Enter is then typed as a newline; stop it at the accepted word.

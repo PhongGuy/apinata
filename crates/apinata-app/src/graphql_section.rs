@@ -537,15 +537,15 @@ impl GraphqlSection {
         cx.emit(SectionEdit::new(Edit::Body(body)));
     }
 
-    // One editor at the Body section's code height, wrapped for placeholder hovers.
+    // One editor taking an even share of the pane's height, wrapped for placeholder hovers.
     fn editor(&self, id: &'static str, label: &'static str, state: &Entity<EditorState>) -> Div {
-        v_flex().gap_1().child(label).child(
+        v_flex().flex_1().gap_1().child(label).child(
             div()
                 .id(id)
                 .test_support()
                 .w_full()
+                .flex_1()
                 .min_h(style::EDITOR_MIN_HEIGHT)
-                .h(style::EDITOR_HEIGHT)
                 .child(
                     VarField::editor(
                         SharedString::from(format!("{id}-vars")),
@@ -591,16 +591,24 @@ impl Render for GraphqlSection {
             SidePanel::Docs => Some(self.docs.clone().into()),
             SidePanel::Builder => Some(self.builder.clone().into()),
         };
-        let side = panel.map(|panel| div().flex_none().w(DOCS_WIDTH).h_full().child(panel));
+        // The panel matches the editors' height without its content setting the row's minimum,
+        // so a short pane scrolls at the editors' minimum.
+        let side = panel.map(|panel| {
+            div()
+                .flex_none()
+                .w(DOCS_WIDTH)
+                .relative()
+                .child(div().absolute().inset_0().child(panel))
+        });
         v_flex()
-            .size_full()
+            .w_full()
+            .flex_1()
             .gap_2()
             .child(self.schema_row(cx))
             .child(
                 h_flex()
                     .flex_1()
-                    .min_h_0()
-                    .items_start()
+                    .items_stretch()
                     .gap_2()
                     .child(editors)
                     .children(side),

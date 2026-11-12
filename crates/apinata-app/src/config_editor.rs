@@ -1009,7 +1009,14 @@ impl ConfigEditor {
                 None => ("config-docs", self.docs.clone().into()),
             },
         };
-        let body = div().id(id).test_support().w_full().child(view);
+        // Code-editing sections grow into the pane so their editors can fill it.
+        let fills = matches!(id, "config-script" | "config-tests" | "config-docs");
+        let body = div()
+            .id(id)
+            .test_support()
+            .w_full()
+            .when(fills, |d| d.flex().flex_col().flex_1())
+            .child(view);
         if self.section == ConfigSection::Tags {
             return v_flex()
                 .gap(style::SPACE_2)
@@ -1128,7 +1135,7 @@ impl Render for ConfigEditor {
             // A tall section scrolls under the fixed title and section bar instead of running
             // past the tab's bottom edge, where the tab area clips it.
             .child(
-                div()
+                v_flex()
                     .id("config-body")
                     .test_support()
                     .flex_1()

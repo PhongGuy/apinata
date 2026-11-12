@@ -223,6 +223,7 @@ mod drafts_save;
 mod drafts_shared_key;
 mod edit_history;
 mod editor_exit_keys;
+mod editor_fill;
 mod editor_focus_ring;
 mod editor_parity;
 mod editor_wrap;

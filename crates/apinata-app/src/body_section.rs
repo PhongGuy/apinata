@@ -649,8 +649,8 @@ impl Render for BodySection {
                 .id("body-code")
                 .test_support()
                 .w_full()
+                .flex_1()
                 .min_h(style::EDITOR_MIN_HEIGHT)
-                .h(style::EDITOR_HEIGHT)
                 .child(
                     VarField::editor(
                         "body-code-vars",
@@ -705,8 +705,10 @@ impl Render for BodySection {
                 .text_color(cx.theme().danger)
                 .child(message)
         });
+        // The section grows into the pane and the code editor takes what the mode row leaves.
         v_flex()
-            .size_full()
+            .w_full()
+            .flex_1()
             .gap_2()
             .child(
                 h_flex()
