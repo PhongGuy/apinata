@@ -39,6 +39,7 @@ aws-lc-rs.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 cookie_store.workspace = true
+cookie.workspace = true
 publicsuffix.workspace = true
 time.workspace = true
 encoding_rs.workspace = true

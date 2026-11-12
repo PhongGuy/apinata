@@ -381,6 +381,7 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "chrono",
+ "cookie",
  "cookie_store",
  "cpu-time",
  "dirs 7.0.0",
