@@ -258,3 +258,40 @@ fn a_deep_path_stays_inside_a_narrow_pane_and_keeps_the_file_whole(cx: &mut Test
     })
     .unwrap();
 }
+
+// A draft lives nowhere on disk yet: its line says so instead of naming the folder Save
+// will offer, matching the sidebar's group for it.
+#[gpui_kit::test]
+fn a_drafts_breadcrumb_says_it_is_unsaved(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/list.yml", &request("List", "http://x/")),
+    ]);
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, cx| w.click(row("users"), cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, &key("n"));
+    frame(cx, s.win);
+    let draft =
+        s.ws.read_with(cx, |w, _| w.tabs().active().and_then(|t| t.item().cloned()));
+    assert!(draft.as_ref().is_some_and(|d| d.is_draft()), "{draft:?}");
+    cx.update_window(s.win, |_, w, _| {
+        assert!(
+            w.try_find(("breadcrumb-folder", 0usize)).is_none(),
+            "no folder crumb"
+        );
+        let unsaved = w.find("breadcrumb-unsaved");
+        assert_eq!(
+            unsaved.label(),
+            Some(apinata_app::sidebar::model::UNSAVED_LABEL)
+        );
+        let file = w.find("breadcrumb-file").bounds();
+        assert!(
+            unsaved.bounds().right() <= file.left(),
+            "it comes before the name"
+        );
+    })
+    .unwrap();
+}
