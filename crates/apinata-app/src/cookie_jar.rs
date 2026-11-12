@@ -23,7 +23,10 @@ use crate::executor::{save_cookies, shared};
 use crate::import_report::failure_text;
 use crate::kv_grid::{ActionShow, action_slot};
 use crate::response_pane::NAME_MASK;
-use crate::style::{SHORT_FORM_LABEL_WIDTH, SPACE_2, TEXT_SMALL};
+use crate::style::{
+    JAR_EXPIRY_WIDTH, JAR_NAME_WIDTH, JAR_PATH_WIDTH, SCROLLBAR_GUTTER, SHORT_FORM_LABEL_WIDTH,
+    SPACE_2, TEXT_SMALL,
+};
 use crate::ui::{self, LockButton as _};
 
 /// How often the dialog relists while the saved jar is still loading.
@@ -362,9 +365,15 @@ impl CookieJarView {
                 CookieError::Invalid { field, .. } => field_id(field),
                 _ => None,
             };
-            // The expiry check above already spoke for its field.
+            // The expiry check above already spoke for its field. A blank field asks for
+            // what is missing rather than quoting the rule it broke.
+            let message = match field {
+                Some("jar-form-domain") if c.domain.is_empty() => "Enter a domain".to_owned(),
+                Some("jar-form-name") if c.name.is_empty() => "Enter a name".to_owned(),
+                _ => e.to_string(),
+            };
             if !problems.iter().any(|(f, _)| f.is_some() && *f == field) {
-                problems.push((field, e.to_string()));
+                problems.push((field, message));
             }
         }
         if problems.is_empty()
@@ -559,40 +568,71 @@ impl CookieJarView {
                 }));
             action_slot(button, ActionShow::Always)
         });
+        // Fixed widths for the name, path and expiry keep each row's value and flags at the
+        // same x as every other row's, whatever the text; long text is cut short.
+        let muted = cx.theme().muted_foreground;
         h_flex()
             .gap_2()
             .child(
-                h_flex()
+                v_flex()
                     .id(("jar-cookie", ix))
                     .test_support()
                     .flex_1()
                     .min_w_0()
-                    .gap_2()
-                    .child(c.name.clone())
                     .child(
                         h_flex()
-                            .min_w_0()
+                            .gap_2()
                             .child(
                                 div()
-                                    .id(("jar-value", ix))
-                                    .test_support()
-                                    .aria_label(shown.clone())
-                                    .min_w_0()
+                                    .w(JAR_NAME_WIDTH)
+                                    .flex_none()
                                     .truncate()
-                                    .child(shown),
+                                    .child(c.name.clone()),
                             )
-                            .children(eye),
+                            .child(
+                                h_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .id(("jar-value", ix))
+                                            .test_support()
+                                            .aria_label(shown.clone())
+                                            .min_w_0()
+                                            .truncate()
+                                            .child(shown),
+                                    )
+                                    .children(eye),
+                            ),
                     )
-                    .child(c.path.clone())
-                    .child(expiry_label(c.expires, now))
-                    .child({
-                        let flags: SharedString = flags.join(", ").into();
-                        div()
-                            .id(("jar-flags", ix))
-                            .test_support()
-                            .aria_label(flags.clone())
-                            .child(flags)
-                    }),
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .text_color(muted)
+                            .child(
+                                div()
+                                    .w(JAR_PATH_WIDTH)
+                                    .flex_none()
+                                    .truncate()
+                                    .child(c.path.clone()),
+                            )
+                            .child(
+                                div()
+                                    .w(JAR_EXPIRY_WIDTH)
+                                    .flex_none()
+                                    .child(expiry_label(c.expires, now)),
+                            )
+                            .child({
+                                let flags: SharedString = flags.join(", ").into();
+                                div()
+                                    .id(("jar-flags", ix))
+                                    .test_support()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .aria_label(flags.clone())
+                                    .child(flags)
+                            }),
+                    ),
             )
             .child(
                 Button::new(("jar-edit", ix))
@@ -885,6 +925,7 @@ pub fn open_cookie_jar(window: &mut Window, cx: &mut App) -> Entity<CookieJarVie
                         .id("cookie-jar-scroll")
                         .test_support()
                         .max_h(room.max(px(0.)))
+                        .pr(SCROLLBAR_GUTTER)
                         .overflow_y_scroll()
                         .track_scroll(&scroll)
                         .child(body.clone()),
