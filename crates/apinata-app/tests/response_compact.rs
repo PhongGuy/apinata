@@ -177,7 +177,7 @@ fn the_overflow_menu_goes_back_to_the_latest_send(cx: &mut TestAppContext) {
     frame(cx, win);
     let labels: Vec<String> = cx
         .update_window(win, |_, w, _| {
-            (0..5)
+            (0..6)
                 .filter_map(|ix| w.within("popup-menu").find(ix).label().map(str::to_owned))
                 .collect()
         })
@@ -188,11 +188,12 @@ fn the_overflow_menu_goes_back_to_the_latest_send(cx: &mut TestAppContext) {
             "Save response as example",
             "Copy body",
             "Save body",
+            "Add schema test",
             "Export as HAR",
             "Back to latest"
         ]
     );
-    cx.update_window(win, |_, w, cx| w.within("popup-menu").click(4usize, cx))
+    cx.update_window(win, |_, w, cx| w.within("popup-menu").click(5usize, cx))
         .unwrap();
     cx.run_until_parked();
     assert_eq!(model.read_with(cx, |m, _| m.viewing()), None);

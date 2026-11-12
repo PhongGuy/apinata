@@ -95,6 +95,34 @@ fn side_by_side_the_strip_is_a_narrow_column(cx: &mut TestAppContext) {
     .unwrap();
 }
 
+// The Send key chip in the side-by-side column is as wide as its text, not the whole column.
+#[gpui_kit::test]
+fn side_by_side_the_send_key_chip_fits_its_text(cx: &mut TestAppContext) {
+    use apinata_app::app::AppState;
+    use apinata_app::settings::Orientation;
+    let col = two_requests();
+    let s = started(cx, &col);
+    cx.update(apinata_app::keymap::init);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    cx.update(|cx| {
+        let p = cx.global::<AppState>().settings.clone();
+        p.update(cx, |p, cx| {
+            p.update(cx, |st| st.response_orientation = Orientation::Horizontal)
+        });
+    });
+    cx.run_until_parked();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        let response = w.find("response").bounds();
+        let kbd = w.find("response-strip-kbd").bounds();
+        assert!(
+            kbd.size.width < response.size.width * 0.75,
+            "{kbd:?} in {response:?}"
+        );
+    })
+    .unwrap();
+}
+
 #[gpui_kit::test]
 fn a_result_opens_the_split_evenly(cx: &mut TestAppContext) {
     let col = two_requests();

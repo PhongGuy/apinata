@@ -329,6 +329,39 @@ fn a_fact_going_away_while_compact_unfolds_the_pane(cx: &mut TestAppContext) {
     );
 }
 
+// A compact pane keeps the body bar one row: the schema test joins Copy and Save in More
+// actions, and picking it there adds the test as the button does.
+#[gpui_kit::test]
+fn a_compact_pane_offers_the_schema_test_in_more_actions(cx: &mut TestAppContext) {
+    use apinata_app::body_view::SchemaTest;
+    let (s, _server) = redirected(cx, 1280.);
+    resize(cx, &s, 880.);
+    assert!(present(cx, s.win, "response-more"), "880 px is compact");
+    assert!(!present(cx, s.win, "body-schema-test"));
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    let ed = editor_of(cx, &s, tab);
+    let body = ed.read_with(cx, |e, cx| e.response().read(cx).body().clone());
+    let got: std::rc::Rc<std::cell::Cell<usize>> = Default::default();
+    let sink = got.clone();
+    let sub =
+        cx.update(|cx| cx.subscribe(&body, move |_, _: &SchemaTest, _| sink.set(sink.get() + 1)));
+    std::mem::forget(sub);
+    cx.update_window(s.win, |_, w, cx| w.click("response-more", cx))
+        .unwrap();
+    frame(cx, s.win);
+    let item = cx
+        .update_window(s.win, |_, w, _| {
+            (0..8usize)
+                .find(|&ix| w.within("popup-menu").find(ix).label() == Some("Add schema test"))
+        })
+        .unwrap()
+        .expect("Add schema test is listed");
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(item, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(got.get(), 1);
+}
+
 // A locked Export as HAR names itself before the reason, as its icon carries no text.
 #[gpui_kit::test]
 fn a_locked_export_har_tooltip_names_the_action(cx: &mut TestAppContext) {
@@ -383,11 +416,7 @@ fn no_two_shown_icon_controls_share_a_glyph(cx: &mut TestAppContext) {
         "response-history",
         "response-save-example",
     ];
-    const COMPACT: &[&str] = &[
-        "body-schema-test-button",
-        "response-history",
-        "response-more",
-    ];
+    const COMPACT: &[&str] = &["response-history", "response-more"];
     let (s, _server) = redirected(cx, 1280.);
     let mut shapes = vec![("live", WIDE, recorded(cx, s.win))];
     resize(cx, &s, 880.);

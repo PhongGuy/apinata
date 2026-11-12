@@ -125,8 +125,13 @@ fn the_narrow_menu_and_the_palette_export_too(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| w.click("response-more", cx))
         .unwrap();
     frame(cx, s.win);
-    // After Save as example, Copy body and Save body.
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(3usize, cx))
+    let har = cx
+        .update_window(s.win, |_, w, _| {
+            (0..8usize).find(|&ix| w.within("popup-menu").find(ix).label() == Some("Export as HAR"))
+        })
+        .unwrap()
+        .expect("Export as HAR is listed");
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(har, cx))
         .unwrap();
     let out = tempfile::tempdir().unwrap();
     check(&answer(cx, &out.path().join("menu.har")), &server);
