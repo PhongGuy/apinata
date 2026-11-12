@@ -11,7 +11,7 @@ use gpui_kit::component::tree::TreeItem;
 
 use super::terms::FilterTerms;
 use crate::name_hints::{Shown, hints};
-use crate::snapshot::{Content, DiskState, Row, RowKind};
+use crate::snapshot::{Content, DiskState, Row, RowKind, Unsupported};
 
 /// The expanded folders of each collection, by root; the root path stands for the collection row.
 pub type Expanded = HashMap<PathBuf, HashSet<ItemPath>>;
@@ -87,11 +87,16 @@ pub struct Node {
     /// The muted text that tells this row apart from another showing its name: a request's
     /// file name beside a same-named sibling, a collection's differing folder path.
     pub hint: Option<String>,
+    /// On an opaque row, the request kind the app cannot send yet.
+    pub unsupported: Option<Unsupported>,
 }
 
 impl Node {
     /// The method tag a request row shows: the row's short label, coloured by the full method.
     pub fn method_tag(&self) -> Option<crate::ui::MethodTag> {
+        if let Some(kind) = self.unsupported {
+            return Some(crate::ui::method_tag("").with_label(kind.tag()));
+        }
         let m = self.method.as_deref()?;
         Some(crate::ui::method_tag(m))
     }
@@ -169,6 +174,7 @@ pub fn build(
                 children,
                 example: None,
                 hint,
+                unsupported: None,
             })
         })
         .collect()
@@ -257,6 +263,7 @@ impl Ctx<'_> {
                 children: Vec::new(),
                 example: None,
                 hint: None,
+                unsupported: None,
             })
             .collect();
         (!children.is_empty()).then(|| Node {
@@ -273,6 +280,7 @@ impl Ctx<'_> {
             children,
             example: None,
             hint: None,
+            unsupported: None,
         })
     }
 
@@ -362,6 +370,7 @@ impl Ctx<'_> {
                 children: Vec::new(),
                 example: Some(ix),
                 hint: None,
+                unsupported: None,
             })
             .collect()
     }
@@ -382,6 +391,7 @@ impl Ctx<'_> {
             children: Vec::new(),
             example: None,
             hint: None,
+            unsupported: None,
         }
     }
 
@@ -413,6 +423,7 @@ impl Ctx<'_> {
             children,
             example: None,
             hint: None,
+            unsupported: row.unsupported,
         }
     }
 }
@@ -444,6 +455,7 @@ fn invalid_rows(ctx: &Ctx, content: &Content) -> Vec<Node> {
             children: Vec::new(),
             example: None,
             hint: None,
+            unsupported: None,
         })
         .collect()
 }

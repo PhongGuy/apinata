@@ -50,6 +50,44 @@ pub enum RowKind {
     Opaque,
 }
 
+/// A request type whose files the app lists and keeps but cannot send yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unsupported {
+    /// A `websocket` request.
+    WebSocket,
+    /// A `grpc` request.
+    Grpc,
+}
+
+impl Unsupported {
+    /// The kind a file's `info.type` names; other types, GraphQL among them, are `None`.
+    pub fn from_type(kind: &str) -> Option<Self> {
+        match kind {
+            "websocket" => Some(Unsupported::WebSocket),
+            "grpc" => Some(Unsupported::Grpc),
+            _ => None,
+        }
+    }
+
+    /// The short tag its row shows in the method column.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Unsupported::WebSocket => "WS",
+            Unsupported::Grpc => "gRPC",
+        }
+    }
+
+    /// What its row's tooltip and the note on opening it say.
+    pub fn notice(self) -> &'static str {
+        match self {
+            Unsupported::WebSocket => {
+                "WebSocket requests cannot be sent yet. The file is kept as it is."
+            }
+            Unsupported::Grpc => "gRPC requests cannot be sent yet. The file is kept as it is.",
+        }
+    }
+}
+
 /// One sidebar row.
 #[derive(Debug, Clone)]
 pub struct Row {
@@ -65,6 +103,8 @@ pub struct Row {
     pub dirty: bool,
     /// What the disk holds for the item.
     pub disk: DiskState,
+    /// The kind of an opaque row the app cannot send yet.
+    pub unsupported: Option<Unsupported>,
 }
 
 /// A request's editable state.
@@ -473,6 +513,7 @@ impl Walk<'_> {
                         depth,
                         dirty: view.dirty,
                         disk: mark(self.changed, &target, sub.disk_state().into()),
+                        unsupported: None,
                     });
                     self.folders.insert(path, view);
                     self.folder(sub, depth + 1);
@@ -486,6 +527,7 @@ impl Walk<'_> {
                         depth,
                         dirty: view.dirty,
                         disk: view.disk,
+                        unsupported: None,
                     });
                     self.requests.insert(path, view);
                 }
@@ -500,6 +542,7 @@ impl Walk<'_> {
                     name: item.name().to_owned(),
                     depth,
                     dirty: item.is_dirty(),
+                    unsupported: Unsupported::from_type(item.kind()),
                 }),
                 _ => {}
             }

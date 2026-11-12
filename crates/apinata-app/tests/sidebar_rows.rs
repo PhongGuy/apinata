@@ -11,7 +11,10 @@ use support::*;
 fn method_labels_and_the_dirty_dot_follow_the_snapshot(cx: &mut TestAppContext) {
     let h = open_sidebar(cx);
     assert!(shown(cx, h.win, marker_id("method", &row("health.yml"))));
-    assert!(!shown(cx, h.win, marker_id("method", &row("ws.yml"))));
+    assert!(
+        shown(cx, h.win, marker_id("method", &row("ws.yml"))),
+        "a WebSocket row shows its kind tag"
+    );
     let dot = marker_id("dirty", &row("health.yml"));
     assert!(!shown(cx, h.win, dot.clone()));
     h.ws.update(cx, |w, cx| {
