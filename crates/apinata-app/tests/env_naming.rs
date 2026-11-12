@@ -539,3 +539,87 @@ fn save_filled(cx: &mut TestAppContext, win: AnyWindowHandle, primary: gpui_kit:
     })
     .unwrap()
 }
+
+// Clicks `id` on a freshly drawn frame and lets the editor settle.
+fn click(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(id, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+// Rename opens on the current name selected, so typing replaces it rather than appending.
+#[gpui_kit::test]
+fn rename_selects_the_name(cx: &mut TestAppContext) {
+    let Opened { win, .. } = opened(cx);
+    env_menu(cx, win, ENV_MENU_RENAME);
+    cx.simulate_input(win, "qa");
+    assert_eq!(drawn(cx, win).0.as_deref(), Some("qa"));
+}
+
+// New's field has Create and Cancel buttons: Create makes the typed name, Cancel makes nothing.
+#[gpui_kit::test]
+fn new_has_create_and_cancel_buttons(cx: &mut TestAppContext) {
+    let Opened { col, win, ed, .. } = opened(cx);
+    click(cx, win, "env-create");
+    cx.simulate_input(win, "gone");
+    click(cx, win, "env-name-cancel");
+    assert_eq!(drawn(cx, win), (None, None), "Cancel closes the field");
+    assert_eq!(env_files(&col), ["dev.yml", &format!("{LONG}.yml")]);
+    click(cx, win, "env-create");
+    cx.simulate_input(win, "qa");
+    click(cx, win, "env-name-confirm");
+    assert_eq!(drawn(cx, win), (None, None), "Create closes the field");
+    assert!(env_files(&col).contains(&"qa.yml".to_owned()));
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.selected().map(str::to_owned))
+            .as_deref(),
+        Some("qa")
+    );
+}
+
+// Rename's confirm button renames as Enter does.
+#[gpui_kit::test]
+fn rename_has_a_confirm_button(cx: &mut TestAppContext) {
+    let Opened { col, win, .. } = opened(cx);
+    env_menu(cx, win, ENV_MENU_RENAME);
+    cx.simulate_input(win, "qa");
+    click(cx, win, "env-name-confirm");
+    assert_eq!(env_files(&col), [format!("{LONG}.yml"), "qa.yml".into()]);
+}
+
+// The global Rename field opens with the current name selected.
+#[gpui_kit::test]
+fn global_rename_selects_the_name(cx: &mut TestAppContext) {
+    let g = globals(cx);
+    click(cx, g.win, "global-env-rename");
+    cx.simulate_input(g.win, "qa");
+    assert_eq!(drawn_global(cx, g.win).0.as_deref(), Some("qa"));
+}
+
+// The global New field has Create and Cancel buttons as the collection editor's does.
+#[gpui_kit::test]
+fn global_new_has_create_and_cancel_buttons(cx: &mut TestAppContext) {
+    let g = globals(cx);
+    click(cx, g.win, "global-env-create");
+    cx.simulate_input(g.win, "gone");
+    click(cx, g.win, "global-env-name-cancel");
+    assert_eq!(
+        drawn_global(cx, g.win),
+        (None, None),
+        "Cancel closes the field"
+    );
+    assert_eq!(global_files(&g), ["dev.yml", &format!("{LONG}.yml")]);
+    click(cx, g.win, "global-env-create");
+    cx.simulate_input(g.win, "qa");
+    click(cx, g.win, "global-env-name-confirm");
+    assert_eq!(
+        drawn_global(cx, g.win),
+        (None, None),
+        "Create closes the field"
+    );
+    assert!(global_files(&g).contains(&"qa.yml".to_owned()));
+    assert_eq!(global_selected(cx, &g).as_deref(), Some("qa"));
+}

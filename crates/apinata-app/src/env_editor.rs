@@ -16,13 +16,13 @@ use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, ThemeStyled as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    Anchor, AnyElement, App, Div, ElementId, Entity, FocusHandle, Focusable, FontWeight, Hsla,
-    Result, ScrollHandle, SharedString, Subscription, Task, TestSupportExt, Window, actions, div,
-    px,
+    Anchor, AnyElement, App, ClickEvent, Div, ElementId, Entity, FocusHandle, Focusable,
+    FontWeight, Hsla, Result, ScrollHandle, SharedString, Subscription, Task, TestSupportExt,
+    Window, actions, div, px,
 };
 
 use crate::banner::{self, Banner, Choice};
@@ -1616,9 +1616,14 @@ impl EnvEditor {
                 Naming::Create => String::new(),
                 Naming::Rename => self.selected.clone().unwrap_or_default(),
             };
-            self.name_input
-                .update(cx, |s, cx| s.set_value(text, window, cx));
-            self.name_input.read(cx).focus_handle(cx).focus(window, cx);
+            // Rename opens on the current name selected, so typing replaces it.
+            self.name_input.update(cx, |s, cx| {
+                s.set_value(text, window, cx);
+                s.focus(window, cx);
+                if naming == Naming::Rename {
+                    s.select_all(window, cx);
+                }
+            });
             self.naming = Some(naming);
         }
         cx.notify();
@@ -2276,6 +2281,33 @@ pub(crate) fn create_refusal(name: &str, names: &[String]) -> Option<String> {
     }
 }
 
+/// The name field's Cancel and confirm buttons, confirm reading Create for New and Rename
+/// otherwise; they wrap under each other when the list is too narrow for both.
+pub(crate) fn naming_buttons(
+    (cancel_id, confirm_id): (&'static str, &'static str),
+    creating: bool,
+    on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    on_confirm: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    h_flex()
+        .flex_wrap()
+        .justify_end()
+        .gap_1()
+        .child(
+            Button::new(cancel_id)
+                .label("Cancel")
+                .small()
+                .on_click(on_cancel),
+        )
+        .child(
+            Button::new(confirm_id)
+                .label(if creating { "Create" } else { "Rename" })
+                .small()
+                .primary()
+                .on_click(on_confirm),
+        )
+}
+
 fn writes_draft(command: &Command) -> bool {
     matches!(command, Command::Save(_) | Command::Overwrite(_))
 }
@@ -2323,7 +2355,16 @@ impl EnvEditor {
                     message.into(),
                     cx,
                 ))
-            });
+            })
+            .child(naming_buttons(
+                ("env-name-cancel", "env-name-confirm"),
+                self.naming == Some(Naming::Create),
+                cx.listener(|e, _, window, cx| e.cancel_naming(window, cx)),
+                cx.listener(|e, _, window, cx| {
+                    let text = e.name_input.read(cx).value().trim().to_string();
+                    e.commit_name(&text, window, cx);
+                }),
+            ));
         Some(field.into_any_element())
     }
 
