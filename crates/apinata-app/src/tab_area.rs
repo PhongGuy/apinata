@@ -1958,7 +1958,7 @@ impl TabArea {
     }
 
     /// The title `entry`'s tab shows: a request's name, "<name> Settings" for a folder or the
-    /// collection, "Environments", "Run <name>" for a runner, or an example's name.
+    /// collection, "<name> Environments", "Run <name>" for a runner, or an example's name.
     pub fn tab_label(&self, entry: &TabEntry, cx: &App) -> String {
         let snapshot = self.workspace.read(cx).snapshot(&entry.root, cx);
         let content = snapshot.as_ref().map(|s| &s.content);
@@ -1978,7 +1978,11 @@ impl TabArea {
                 let name = content.and_then(|c| c.collection.name.as_deref());
                 format!("{} Settings", label_or_dir(name, &entry.root))
             }
-            TabKind::Environments => "Environments".into(),
+            // The tab stays on the collection it opened for, so it names it like Settings does.
+            TabKind::Environments => {
+                let name = content.and_then(|c| c.collection.name.as_deref());
+                format!("{} Environments", label_or_dir(name, &entry.root))
+            }
             TabKind::Runner(path) if path.is_root() => {
                 let name = content.and_then(|c| c.collection.name.as_deref());
                 format!("Run {}", label_or_dir(name, &entry.root))
