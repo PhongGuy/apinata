@@ -533,14 +533,16 @@ impl CookieJarView {
         now: SystemTime,
         cx: &mut Context<Self>,
     ) -> Div {
-        let flags: Vec<&str> = [
+        let mut flags: Vec<String> = [
             (c.secure, SECURE_LABEL),
             (c.http_only, HTTP_ONLY_LABEL),
             (c.host_only, "This host only"),
         ]
         .into_iter()
-        .filter_map(|(on, label)| on.then_some(label))
+        .filter_map(|(on, label)| on.then(|| label.to_owned()))
         .collect();
+        // A cookie that set no SameSite shows nothing, rather than guessing a browser default.
+        flags.extend(c.same_site.map(|s| format!("Same site: {}", s.as_str())));
         // The value stays masked until its eye is clicked; the edit form shows the real one.
         let key = (c.domain.clone(), c.path.clone(), c.name.clone());
         let revealed = self.revealed.contains(&key);
