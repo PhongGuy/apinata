@@ -386,3 +386,18 @@ fn the_count_beside_select_all_follows_the_ticked_requests(cx: &mut TestAppConte
     click(cx, &s, "run-select-all");
     assert_eq!(plan_count(cx, &s).as_deref(), Some("0 of 3 requests"));
 }
+
+// An unticked request's name is dimmed, so the rows that will run stand out.
+#[gpui_kit::test]
+fn an_unticked_request_dims_its_name(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = tree("http://127.0.0.1:9");
+    let s = started(cx, &col);
+    let _ = open(cx, &s);
+    assert!(present(cx, s.win, ("run-plan-name", 0usize)));
+    assert!(!present(cx, s.win, ("run-plan-name-off", 0usize)));
+    click(cx, &s, ("run-plan-check", 0usize));
+    assert!(present(cx, s.win, ("run-plan-name-off", 0usize)));
+    assert!(!present(cx, s.win, ("run-plan-name", 0usize)));
+    assert!(present(cx, s.win, ("run-plan-name", 1usize)));
+}

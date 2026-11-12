@@ -283,7 +283,7 @@ fn merge(ranges: &mut Vec<Range<usize>>) {
 pub const UNSAVED_TAG: &str = "Unsaved";
 
 /// The tag of a send made by the collection runner.
-pub const RUN_TAG: &str = "Run";
+pub const RUN_TAG: &str = "Runner";
 
 /// What the Run tag means, shown on hover.
 pub const RUN_TIP: &str = "Sent by the collection runner";
