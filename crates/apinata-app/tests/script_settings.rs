@@ -48,6 +48,10 @@ fn the_note_says_when_ask_asks(cx: &mut TestAppContext) {
         })
         .unwrap()
         .unwrap_or_default();
-    assert!(note.starts_with("Ask:"), "{note}");
-    assert!(note.contains("before a send"), "{note}");
+    assert_eq!(
+        note,
+        "Ask: before a send runs scripts you did not write in the app, you choose whether to \
+         run them. Run scripts: always run them, unless Run scripts is set to Never in \
+         Preferences. Never: never run them."
+    );
 }

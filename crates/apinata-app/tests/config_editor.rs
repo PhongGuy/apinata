@@ -713,3 +713,63 @@ fn the_post_response_placeholder_reads_as_an_example(cx: &mut TestAppContext) {
     let (_, value) = ed.read_with(cx, |e, cx| e.post_response_table().read(cx).placeholders());
     assert!(value.starts_with("e.g. "), "{value}");
 }
+
+#[gpui_kit::test]
+fn an_inheriting_folder_names_the_nearest_folder_with_auth(cx: &mut TestAppContext) {
+    let root = format!("{ROOT}request:\n  auth:\n    type: bearer\n    token: t\n");
+    let users = format!(
+        "{}request:\n  auth:\n    type: basic\n    username: u\n    password: p\n",
+        folder("Users")
+    );
+    let admin = format!("{}request:\n  auth: inherit\n", folder("Admin"));
+    let col = write_tree(&[
+        ("opencollection.yml", &root),
+        ("users/folder.yml", &users),
+        ("users/admin/folder.yml", &admin),
+        ("users/admin/a.yml", &request("a", "http://x")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users/admin")));
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Auth, cx));
+    frame(cx, win);
+    assert_eq!(
+        folder_inherit_text(cx, win).as_deref(),
+        Some("Inherits Basic Auth from folder \"Users\".")
+    );
+}
+
+#[gpui_kit::test]
+fn autosave_shows_no_save_on_the_settings_page(cx: &mut TestAppContext) {
+    let col = tree();
+    let s = started_with(cx, &col, |p| {
+        let mut settings = test_settings();
+        settings.autosave = true;
+        apinata_app::persist::save_json(&p.settings, &settings).unwrap();
+    });
+    let tab =
+        s.ws.update(cx, |w, cx| {
+            w.open_settings(&s.root, apinata_app::tabs::TabKind::Collection, cx)
+        })
+        .unwrap();
+    frame(cx, s.win);
+    let ed = s
+        .shell
+        .read_with(cx, |v, cx| {
+            v.tab_area().read(cx).config_editor(tab).cloned()
+        })
+        .unwrap();
+    cx.update_window(s.win, |_, w, cx| {
+        ed.update(cx, |e, cx| {
+            e.edit_rows(ConfigSection::Headers, vec![row("X-Trace", "1")], w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    let dirty = s.ws.read_with(cx, |w, cx| {
+        w.snapshot(&s.root, cx)
+            .is_some_and(|s| s.content.collection.dirty)
+    });
+    assert!(dirty, "the edit is still unsaved");
+    assert!(!present(cx, s.win, "config-save"));
+    assert!(!present(cx, s.win, "config-save-button"));
+}

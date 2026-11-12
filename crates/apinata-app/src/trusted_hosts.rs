@@ -18,7 +18,7 @@ use crate::approval_prompt::untrusted_text;
 use crate::{style, ui};
 
 /// What the lists govern, so trusting nothing never looks like a broken send.
-pub const HOSTS_NOTE: &str = "These lists only apply to requests an AI assistant sends through the MCP server: a trusted host goes through, a denied one is refused, and any other remote host asks you first. Requests you send from the app are never held back.";
+pub const HOSTS_NOTE: &str = "These lists only apply to requests an AI assistant sends through the MCP server: a trusted host goes through, a denied one is refused, and any other remote host is refused until you approve it in the app. Requests you send from the app are not checked against these lists.";
 
 /// Shows one collection's lists from the trust file; typing a host and pressing Enter or Add
 /// trusts it, and each listed host has a remove button.

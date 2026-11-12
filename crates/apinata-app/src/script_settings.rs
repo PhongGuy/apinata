@@ -21,7 +21,7 @@ const CHOICES: [(&str, Option<ScriptDecision>); 3] = [
 ];
 
 /// When each option runs this collection's scripts, Ask's question first.
-pub const DECISION_NOTE: &str = "Ask: before a send runs scripts you did not write in the app, you choose whether to run them. Run scripts: always run them. Never: never run them.";
+pub const DECISION_NOTE: &str = "Ask: before a send runs scripts you did not write in the app, you choose whether to run them. Run scripts: always run them, unless Run scripts is set to Never in Preferences. Never: never run them.";
 
 /// The option labels in order, for tests that pin the wording.
 pub fn choice_labels() -> [&'static str; 3] {

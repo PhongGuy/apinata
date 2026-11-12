@@ -318,8 +318,13 @@ fn the_lists_say_they_apply_only_to_the_mcp_server(cx: &mut TestAppContext) {
         })
         .unwrap()
         .unwrap_or_default();
-    assert!(note.contains("MCP server"), "{note}");
-    assert!(note.contains("from the app"), "{note}");
+    assert_eq!(
+        note,
+        "These lists only apply to requests an AI assistant sends through the MCP server: a \
+         trusted host goes through, a denied one is refused, and any other remote host is \
+         refused until you approve it in the app. Requests you send from the app are not \
+         checked against these lists."
+    );
 }
 
 #[gpui_kit::test]
