@@ -186,6 +186,8 @@ pub struct ConfigView {
     pub name: Option<String>,
     pub headers: Vec<KeyValue>,
     pub auth: AuthSpec,
+    /// What a folder's Inherit auth inherits and from where; empty for the collection.
+    pub inherited_auth: String,
     pub vars: Vec<Variable>,
     pub post_response_vars: Vec<PostResponseVar>,
     pub docs: String,
@@ -333,10 +335,11 @@ impl SnapshotCache {
     }
 
     /// Rebuild `target`'s view at the next build. A folder or the collection also drops the
-    /// request views, whose inherited auth text names its auth and display name.
+    /// request and folder views, whose inherited auth text names its auth and display name.
     pub fn touch(&mut self, target: &Target) {
         if matches!(target, Target::Folder(_) | Target::Collection) {
             self.requests.clear();
+            self.folders.clear();
         }
         self.touched.insert(target.clone());
     }
@@ -500,7 +503,7 @@ impl Walk<'_> {
                     let view = match self.cache.folders.get(&path) {
                         Some(v) if self.cache.fresh(&target) => Arc::clone(v),
                         _ => Arc::new(overlay(
-                            folder_view(sub),
+                            folder_view(sub, &path, self.collection),
                             self.changed,
                             self.reloads,
                             &target,
@@ -615,12 +618,14 @@ fn request_view(path: &ItemPath, r: &RequestFile, collection: &Collection) -> Re
 }
 
 /// A folder without `folder.yml` shows its directory name and empty settings.
-fn folder_view(f: &Folder) -> ConfigView {
+fn folder_view(f: &Folder, path: &ItemPath, collection: &Collection) -> ConfigView {
+    let inherited_auth = inherit_text(&collection.inherited_auth(path), collection);
     match f.file() {
         Some(file) => ConfigView {
             name: file.name().map(str::to_owned),
             headers: file.headers(),
             auth: file.auth(),
+            inherited_auth,
             vars: file.vars(),
             post_response_vars: file.post_response_vars(),
             docs: file.docs(),
@@ -637,6 +642,7 @@ fn folder_view(f: &Folder) -> ConfigView {
             name: Some(f.name().to_owned()),
             headers: Vec::new(),
             auth: AuthSpec::None,
+            inherited_auth,
             vars: Vec::new(),
             post_response_vars: Vec::new(),
             docs: String::new(),
@@ -662,6 +668,7 @@ fn collection_view(c: &Collection) -> ConfigView {
         name: file.name().map(str::to_owned),
         headers: file.headers(),
         auth: file.auth(),
+        inherited_auth: String::new(),
         vars: file.vars(),
         post_response_vars: file.post_response_vars(),
         docs: file.docs(),

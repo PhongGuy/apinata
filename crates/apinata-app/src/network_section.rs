@@ -10,13 +10,13 @@ use apinata_core::{
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Entity, EventEmitter, FocusHandle, Focusable, Hsla, PathPromptOptions, Pixels, Rems,
-    SharedString, Subscription, TestSupportExt, Window, div, px,
+    App, ElementId, Entity, EventEmitter, FocusHandle, Focusable, Hsla, PathPromptOptions, Pixels,
+    Rems, SharedString, Subscription, TestSupportExt, Window, div, px,
 };
 
 use crate::body_section::collection_relative;
@@ -978,12 +978,10 @@ impl NetworkSection {
         let protocols = ui::segmented("proxy-protocol", PROTOCOLS, protocol, move |ix, _, cx| {
             this.update(cx, |s, cx| s.set_protocol(*ix, cx))
         });
+        // The compact cell input the certificate and host grids use, so the tab has one style.
         let field = |id: &'static str, state: &Entity<InputState>, width: Rems| {
             ui::padded_input(
-                Input::new(state)
-                    .id(id)
-                    .w(width)
-                    .bg(ui::field_fill(false, cx)),
+                ui::table_input(state, false, window, cx).id(id).w(width),
                 state,
             )
         };
@@ -1006,10 +1004,9 @@ impl NetworkSection {
                 "proxy-port-row",
                 "Port",
                 ui::invalid_input(
-                    Input::new(&self.port)
+                    ui::table_input(&self.port, false, window, cx)
                         .id("proxy-port")
-                        .w(style::SHORT_INPUT_WIDTH)
-                        .bg(ui::field_fill(false, cx)),
+                        .w(style::SHORT_INPUT_WIDTH),
                     div().w(style::SHORT_INPUT_WIDTH),
                     &self.port,
                     self.port_error.is_some(),
@@ -1163,9 +1160,10 @@ impl NetworkSection {
         v_flex()
             .gap(style::SPACE_2)
             .child(ui::form_heading("hosts-heading", "Host overrides"))
-            .child(ui::form_note(
+            .child(muted_note(
                 "hosts-note",
                 "Send a host name to an address instead of its DNS answer. A port in the address counts only for a URL that names none.",
+                cx,
             ))
             .children(rows)
             .child(
@@ -1203,6 +1201,7 @@ impl NetworkSection {
         v_flex()
             .gap(style::SPACE_2)
             .child(ui::form_heading("cert-heading", "Client certificates"))
+            .child(muted_note("cert-note", CERT_NOTE, cx))
             .children(rows)
             .child(
                 h_flex().child(
@@ -1311,9 +1310,12 @@ fn pkcs12_row(ix: usize, cert: &ClientCertificate, cx: &App) -> impl IntoElement
 // The 1px frame around each host input, which sits between the row gap and the input.
 const HOST_FRAME_BORDER: Pixels = px(1.);
 
-// A small muted line under a certificate row, labelled with its text for assistive tools.
+/// What a client certificate row does and what each of its fields takes.
+pub const CERT_NOTE: &str = "Sends a certificate to HTTPS addresses that start with the domain, where * matches anything, as in *.example.com. Each row takes the domain, the certificate file, the key file and the key's passphrase, if it has one.";
+
+// A small muted line in a grid's left edge, labelled with its text for assistive tools.
 fn muted_note(
-    id: (&'static str, usize),
+    id: impl Into<ElementId>,
     text: impl Into<SharedString>,
     cx: &App,
 ) -> impl IntoElement {

@@ -88,7 +88,7 @@ fn a_file_s_post_response_vars_fill_the_table(cx: &mut TestAppContext) {
     );
     assert_eq!(
         ed.read_with(cx, |e, cx| e.post_response_table().read(cx).placeholders()),
-        ("Name", "res.body.token")
+        ("Name", "e.g. res.body.token")
     );
     assert!(present(cx, win, "post-response-vars"));
 }
