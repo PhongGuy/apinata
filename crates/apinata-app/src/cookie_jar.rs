@@ -176,7 +176,7 @@ pub struct CookieJarView {
     query: String,
     /// Cookies whose value is shown, keyed (domain, path, name) so it survives relisting.
     revealed: BTreeSet<(String, String, String)>,
-    /// Scrolls the dialog body, the list or the form standing in for it.
+    /// Scrolls the list under the fixed Add and search, or the form standing in for it.
     scroll: ScrollHandle,
     // Where the list was scrolled when the form opened; the short form caps the shared
     // offset, so closing the form puts it back.
@@ -605,12 +605,16 @@ impl CookieJarView {
                                     .children(eye),
                             ),
                     )
+                    // Wrapped flags grow downwards; path and expiry stay on their first line.
                     .child(
                         h_flex()
                             .gap_2()
+                            .items_start()
                             .text_color(muted)
                             .child(
                                 div()
+                                    .id(("jar-path", ix))
+                                    .test_support()
                                     .w(JAR_PATH_WIDTH)
                                     .flex_none()
                                     .truncate()
@@ -618,6 +622,8 @@ impl CookieJarView {
                             )
                             .child(
                                 div()
+                                    .id(("jar-expiry", ix))
+                                    .test_support()
                                     .w(JAR_EXPIRY_WIDTH)
                                     .flex_none()
                                     .child(expiry_label(c.expires, now)),
@@ -799,33 +805,43 @@ impl Render for CookieJarView {
                     .child("No request executor is available."),
             );
         }
+        // The body fits the room above the status bar, so a full jar never lifts the dialog
+        // over the title bar; Add and the search stay put while the list scrolls under them.
+        let root = root.max_h(crate::dialog_frame::titled_body_room(window).max(px(0.)));
         // While a cookie is added or edited, the dialog shows only the form, so Save and
         // Cancel end the dialog instead of sitting above the list.
         if let Some(form) = &self.form {
-            return root.child(self.form_view(form, window, cx));
+            let form = self.form_view(form, window, cx);
+            return root.child(self.scrolled(form));
         }
-        let mut root = root.child(
-            h_flex().child(
-                Button::new("jar-add")
-                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                    .label("Add cookie")
-                    .lock(!self.editable(), cx)
-                    .on_click(cx.listener(|this, _, window, cx| this.open_form(None, window, cx))),
-            ),
-        );
-        root = root.child(ui::padded_input(
-            Input::new(&self.search)
-                .id("jar-search")
-                .w_full()
-                .bg(ui::field_fill(false, cx)),
-            &self.search,
-        ));
+        let root = root
+            .child(
+                h_flex().child(
+                    Button::new("jar-add")
+                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                        .label("Add cookie")
+                        .lock(!self.editable(), cx)
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_form(None, window, cx)),
+                        ),
+                ),
+            )
+            .child(
+                div().pr(SCROLLBAR_GUTTER).child(ui::padded_input(
+                    Input::new(&self.search)
+                        .id("jar-search")
+                        .w_full()
+                        .bg(ui::field_fill(false, cx)),
+                    &self.search,
+                )),
+            );
+        let mut list = v_flex().gap_2();
         let shown = self.shown();
         if self.cookies.is_empty() {
-            root = root.child(div().id("jar-empty").test_support().child("No cookies."));
+            list = list.child(div().id("jar-empty").test_support().child("No cookies."));
         } else {
             if shown.is_empty() {
-                root = root.child(
+                list = list.child(
                     div()
                         .id("jar-no-match")
                         .test_support()
@@ -842,7 +858,7 @@ impl Render for CookieJarView {
                 let c = &self.cookies[ix];
                 if previous != Some(c.domain.as_str()) {
                     let domain = c.domain.clone();
-                    root = root.child(
+                    list = list.child(
                         h_flex()
                             .gap_2()
                             .child(
@@ -865,7 +881,7 @@ impl Render for CookieJarView {
                     domains += 1;
                 }
                 previous = Some(c.domain.as_str());
-                root = root.child(self.cookie_row(ix, c, now, cx));
+                list = list.child(self.cookie_row(ix, c, now, cx));
             }
             // Under a search the button only reaches what the list shows, so hidden
             // domains survive; with nothing shown there is nothing to offer.
@@ -875,7 +891,7 @@ impl Render for CookieJarView {
                 } else {
                     "Clear shown"
                 };
-                root = root.child(
+                list = list.child(
                     Button::new("jar-clear")
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .label(label)
@@ -884,13 +900,35 @@ impl Render for CookieJarView {
                 );
             }
         }
-        root.child(
+        let list = list.child(
             div()
                 .id("jar-footer")
                 .test_support()
                 .text_color(cx.theme().muted_foreground)
                 .child(self.footer()),
-        )
+        );
+        root.child(self.scrolled(list))
+    }
+}
+
+impl CookieJarView {
+    // The list or form in a box that takes what room the body has left and scrolls itself,
+    // its bar in a gutter clear of the row buttons.
+    fn scrolled(&self, content: impl IntoElement) -> Div {
+        v_flex()
+            .relative()
+            .min_h_0()
+            .child(
+                div()
+                    .id("cookie-jar-scroll")
+                    .test_support()
+                    .min_h_0()
+                    .pr(SCROLLBAR_GUTTER)
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
+                    .child(content),
+            )
+            .vertical_scrollbar(&self.scroll)
     }
 }
 
@@ -899,14 +937,9 @@ pub fn open_cookie_jar(window: &mut Window, cx: &mut App) -> Entity<CookieJarVie
     let view = cx.new(|cx| CookieJarView::new(window, cx));
     let guard = crate::dialog_guard::guarded(form_guard(&view), window, cx);
     let body = view.clone();
-    let scroll = view.read(cx).scroll.clone();
     let opened = guard.clone();
     window.open_dialog(cx, move |d, window, cx| {
         // Enter never closes the jar: a form field saves its cookie, and nothing else is lost.
-        // The body scrolls inside the room above the status bar, so a full jar never lifts
-        // the dialog over the title bar. The capped box scrolls itself: the kit's scrollable
-        // fills its box by percentage, which a box capped only by a maximum never resolves.
-        let room = crate::dialog_frame::titled_body_room(window);
         let title = body.read(cx).title();
         ui::with_close(
             guard.apply(crate::dialog_frame::place(d, window)),
@@ -917,21 +950,7 @@ pub fn open_cookie_jar(window: &mut Window, cx: &mut App) -> Entity<CookieJarVie
                 .child(title),
         )
         .on_ok(|_, _, _| false)
-        .child(
-            div()
-                .relative()
-                .child(
-                    div()
-                        .id("cookie-jar-scroll")
-                        .test_support()
-                        .max_h(room.max(px(0.)))
-                        .pr(SCROLLBAR_GUTTER)
-                        .overflow_y_scroll()
-                        .track_scroll(&scroll)
-                        .child(body.clone()),
-                )
-                .vertical_scrollbar(&scroll),
-        )
+        .child(body.clone())
     });
     opened.opened(window, cx);
     view

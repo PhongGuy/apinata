@@ -761,7 +761,7 @@ pub fn open_runtime_vars(
     let body = view.clone();
     let scroll = ScrollHandle::new();
     window.open_dialog(cx, move |d, window, _| {
-        // Same frame as the cookie jar: the capped box scrolls itself above the status bar.
+        // The capped box scrolls itself above the status bar.
         let room = crate::dialog_frame::titled_body_room(window);
         let view = body.clone();
         ui::with_close(crate::dialog_frame::place(d, window), "Runtime variables")
