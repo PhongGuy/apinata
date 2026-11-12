@@ -105,6 +105,8 @@ pub enum Phase {
     },
     /// The update is being applied.
     Applying,
+    /// A new collection is being written into the Create in folder.
+    Writing,
     /// The update is applied.
     Done(Summary),
 }
@@ -242,7 +244,7 @@ pub fn open(
             // Closing waits while an update is being written.
             .on_cancel(move |_, _, cx| {
                 view.update(cx, |v, _| {
-                    let applying = v.phase == Phase::Applying;
+                    let applying = matches!(v.phase, Phase::Applying | Phase::Writing);
                     if !applying {
                         v.task = None;
                     }
@@ -440,7 +442,7 @@ impl ImportLinkDialog {
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         let fixed = matches!(
             self.phase,
-            Phase::Fetching | Phase::Applying | Phase::Done(_)
+            Phase::Fetching | Phase::Applying | Phase::Writing | Phase::Done(_)
         );
         if self.mode == mode || fixed {
             return;
@@ -461,7 +463,11 @@ impl ImportLinkDialog {
         // The fetched spec and its preview belong to the collection chosen before them.
         if matches!(
             self.phase,
-            Phase::Fetching | Phase::Preview { .. } | Phase::Applying | Phase::Done(_)
+            Phase::Fetching
+                | Phase::Preview { .. }
+                | Phase::Applying
+                | Phase::Writing
+                | Phase::Done(_)
         ) {
             return;
         }
@@ -488,7 +494,7 @@ impl ImportLinkDialog {
     pub fn select_scope(&mut self, scope: Option<ItemPath>, cx: &mut Context<Self>) {
         let fixed = matches!(
             self.phase,
-            Phase::Fetching | Phase::Applying | Phase::Done(_)
+            Phase::Fetching | Phase::Applying | Phase::Writing | Phase::Done(_)
         );
         let previewing = matches!(self.phase, Phase::Preview { .. });
         if fixed || self.replanning || !self.scopes().contains(&scope) {
@@ -760,6 +766,13 @@ impl ImportLinkDialog {
         self.link.read(cx).presentation().placeholder().to_string()
     }
 
+    /// Test-only: shows the dialog as it is while a new collection is written.
+    #[doc(hidden)]
+    pub fn writing_for_test(&mut self, cx: &mut Context<Self>) {
+        self.phase = Phase::Writing;
+        cx.notify();
+    }
+
     /// Test-only: forgets the Create in folder, as when there is no home folder.
     #[doc(hidden)]
     pub fn forget_parent_for_test(&mut self, cx: &mut Context<Self>) {
@@ -805,7 +818,10 @@ impl ImportLinkDialog {
     /// Fetches the link, parses the body and hands the collections to the shell, which asks
     /// where they go. A failure stays in the dialog; a second call while fetching does nothing.
     pub fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.phase, Phase::Fetching | Phase::Applying) {
+        if matches!(
+            self.phase,
+            Phase::Fetching | Phase::Applying | Phase::Writing
+        ) {
             return;
         }
         if self.mode == Mode::Update
@@ -926,7 +942,9 @@ impl ImportLinkDialog {
         };
         let store = Arc::clone(shell.read(cx).workspace().read(cx).store());
         let make = self.default_parent.as_ref() == Some(&parent);
-        self.phase = Phase::Fetching;
+        // The write is local and quick, so Cancel and Escape wait for it rather than leave
+        // files the user never sees.
+        self.phase = Phase::Writing;
         cx.notify();
         let target = parent.clone();
         let job = cx.background_spawn(async move {
@@ -971,7 +989,7 @@ impl ImportLinkDialog {
 
     // Drops any fetch and closes.
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.phase == Phase::Applying {
+        if matches!(self.phase, Phase::Applying | Phase::Writing) {
             return;
         }
         self.task = None;
@@ -980,7 +998,10 @@ impl ImportLinkDialog {
 
     // Asks for a file and imports or previews it as the link would be, in either mode.
     fn browse_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.phase, Phase::Fetching | Phase::Applying) {
+        if matches!(
+            self.phase,
+            Phase::Fetching | Phase::Applying | Phase::Writing
+        ) {
             return;
         }
         let prompt = match self.mode {
@@ -1259,7 +1280,10 @@ impl Render for ImportLinkDialog {
         {
             self.focus.focus(window, cx);
         }
-        let busy = matches!(self.phase, Phase::Fetching | Phase::Applying);
+        let busy = matches!(
+            self.phase,
+            Phase::Fetching | Phase::Applying | Phase::Writing
+        );
         let error = self.error().map(|message| {
             div()
                 .id("import-link-error")
@@ -1504,11 +1528,16 @@ impl Render for ImportLinkDialog {
                 Some(
                     Button::new("import-link-cancel")
                         .label("Cancel")
+                        .lock(self.phase == Phase::Writing, cx)
                         .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
                 ),
                 [],
                 Button::new("import-link-import")
-                    .label(if busy { "Fetching…" } else { "Import" })
+                    .label(match self.phase {
+                        Phase::Fetching => "Fetching…",
+                        Phase::Writing => "Importing…",
+                        _ => "Import",
+                    })
                     .primary()
                     .lock_filled(busy || primary_blocked.is_some(), cx)
                     .when_some(primary_blocked, |b, why| b.tooltip(why))

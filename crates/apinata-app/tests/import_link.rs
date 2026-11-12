@@ -731,3 +731,24 @@ fn a_failed_write_keeps_the_dialog_and_its_link(cx: &mut TestAppContext) {
     );
     assert!(opened(cx, &view).is_empty());
 }
+
+#[gpui_kit::test]
+fn a_running_write_holds_cancel_and_escape_and_reads_importing(cx: &mut TestAppContext) {
+    let (_files, win, _view) = shell(cx);
+    let dlg = open_with(cx, win, "");
+    dlg.update(cx, |d, cx| d.writing_for_test(cx));
+    frame(cx, win);
+    let label = cx
+        .update_window(win, |_, w, _| {
+            w.find("import-link-import").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(label.as_deref(), Some("Importing…"));
+    click(cx, win, "import-link-cancel");
+    assert!(dialog(cx, win), "Cancel waits for the write");
+    cx.update_window(win, |_, w, cx| w.press("escape", cx))
+        .unwrap();
+    frame(cx, win);
+    assert!(dialog(cx, win), "Escape waits for the write");
+    assert_eq!(phase(cx, &dlg), Phase::Writing);
+}
