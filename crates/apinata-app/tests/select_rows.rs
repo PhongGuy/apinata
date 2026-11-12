@@ -98,6 +98,26 @@ fn the_auth_mode_list_shows_every_type_without_scrolling(cx: &mut TestAppContext
     .unwrap();
 }
 
+// With the last type picked, the opened list still starts at No Auth.
+#[gpui_kit::test]
+fn the_auth_mode_list_opened_on_the_last_type_still_shows_no_auth(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, AuthSection::new);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.set_mode(AuthMode::OAuth2, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("auth-mode", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        assert!(w.find("auth-mode-option-none").visible());
+        assert!(w.find("auth-mode-option-oauth2").visible());
+    })
+    .unwrap();
+}
+
 #[gpui_kit::test]
 fn body_mode_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
     let (win, host) = host_section(cx, |w, cx| BodySection::new(PathBuf::from("/c"), w, cx));

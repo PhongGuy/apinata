@@ -209,23 +209,23 @@ impl AuthScope {
 
 // The AWS Sig v4 inputs in `AuthField` order: label, element id, and whether it is masked.
 const AWS_FIELDS: [(&str, &str, bool); 6] = [
-    ("Access Key ID", "auth-aws-access-key-id", false),
-    ("Secret Access Key", "auth-aws-secret-access-key", true),
-    ("Session Token", "auth-aws-session-token", true),
+    ("Access key ID", "auth-aws-access-key-id", false),
+    ("Secret access key", "auth-aws-secret-access-key", true),
+    ("Session token", "auth-aws-session-token", true),
     ("Service", "auth-aws-service", false),
     ("Region", "auth-aws-region", false),
-    ("Profile Name", "auth-aws-profile-name", false),
+    ("Profile name", "auth-aws-profile-name", false),
 ];
 
 // The EdgeGrid inputs in `AuthField` order: label, element id, and whether it is masked.
 const EDGEGRID_FIELDS: [(&str, &str, bool); 7] = [
-    ("Access Token", "auth-eg-access-token", true),
-    ("Client Token", "auth-eg-client-token", true),
-    ("Client Secret", "auth-eg-client-secret", true),
+    ("Access token", "auth-eg-access-token", true),
+    ("Client token", "auth-eg-client-token", true),
+    ("Client secret", "auth-eg-client-secret", true),
     ("Base URL", "auth-eg-base-url", false),
     ("Nonce", "auth-eg-nonce", false),
     ("Timestamp", "auth-eg-timestamp", false),
-    ("Headers to Sign", "auth-eg-headers-to-sign", false),
+    ("Headers to sign", "auth-eg-headers-to-sign", false),
 ];
 
 // The mode select's rows, each found by its mode's key.
@@ -317,6 +317,7 @@ pub struct AuthSection {
     vars: Option<Arc<VariableSet>>,
     // The Bearer token decoded when it last changed; render never decodes.
     jwt: Option<JwtView>,
+    masks: ui::SecretMasks,
     _subs: Vec<Subscription>,
 }
 
@@ -342,6 +343,23 @@ impl AuthSection {
         let aws = AWS_FIELDS.map(|(_, _, masked)| input(masked));
         let edgegrid = EDGEGRID_FIELDS.map(|(_, _, masked)| input(masked));
         let max_body_size = input(false);
+        // Fields whose format is not obvious show a short example while empty.
+        let hints = [
+            (&key, "X-API-Key"),
+            (&domain, "CORP"),
+            (&aws[0], "AKIAIOSFODNN7EXAMPLE"),
+            (&aws[3], "execute-api"),
+            (&aws[4], "us-east-1"),
+            (&aws[5], "default"),
+            (&edgegrid[3], "https://akab-xxxx.luna.akamaiapis.net"),
+            (&edgegrid[4], "Generated when sent"),
+            (&edgegrid[5], "Generated when sent"),
+            (&edgegrid[6], "X-Header-One, X-Header-Two"),
+            (&max_body_size, "131072"),
+        ];
+        for (state, hint) in hints {
+            state.update(cx, |s, cx| s.set_placeholder(hint, window, cx));
+        }
         let oauth1 = cx.new(|cx| OAuth1Editor::new(window, cx));
         let oauth2 = cx.new(|cx| OAuth2Editor::new(window, cx));
         let mut subs = vec![
@@ -453,6 +471,7 @@ impl AuthSection {
             loads: 0,
             vars: None,
             jwt: None,
+            masks: ui::SecretMasks::default(),
             _subs: subs,
         }
     }
@@ -958,7 +977,7 @@ pub(crate) fn field(
     ui::form_row(
         SharedString::from(format!("{id}-row")),
         label,
-        var_input(id, state, vars, cx),
+        var_input(id, state, vars, false, cx),
     )
 }
 
@@ -1006,22 +1025,24 @@ pub(crate) fn secret_field(
     ui::form_row(
         SharedString::from(format!("{id}-row")),
         label,
-        var_input(id, state, vars, cx).tint_only(),
+        var_input(id, state, vars, true, cx).tint_only(),
     )
 }
 
-// The wide input `id` wrapped in its `VarField`.
+// The wide input `id` wrapped in its `VarField`; a secret one has the eye that reveals it.
 fn var_input(
     id: &'static str,
     state: &Entity<InputState>,
     vars: Option<Arc<VariableSet>>,
+    secret: bool,
     cx: &App,
 ) -> VarField {
     let input = ui::padded_input(
         Input::new(state)
             .id(id)
             .w_full()
-            .bg(ui::field_fill(false, cx)),
+            .bg(ui::field_fill(false, cx))
+            .when(secret, Input::mask_toggle),
         state,
     );
     VarField::new(SharedString::from(format!("{id}-vars")), state, input, vars)
@@ -1063,7 +1084,8 @@ const SECRET_FIELDS: [AuthField; 8] = [
 impl Render for AuthSection {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         for f in SECRET_FIELDS {
-            ui::mask_unless_template(self.input(f), window, cx);
+            let input = self.input(f).clone();
+            self.masks.apply(&input, window, cx);
         }
         let vars = self.vars.clone();
         let content = match (self.mode, &self.unsupported) {
@@ -1131,8 +1153,8 @@ impl Render for AuthSection {
                 // password, so the form says up front how to avoid it.
                 .child(ui::form_note(
                     "auth-ntlm-proxy-note",
-                    "Through an HTTP proxy, use https: plain http needs the proxy to keep one \
-                     connection for the whole sign-in.",
+                    "When you go through a proxy, use an https address. Over plain http, sign-in \
+                     can fail as if the password were wrong.",
                 ))
                 .into_any_element(),
             (Some(AuthMode::Bearer), _) => v_flex()
@@ -1146,7 +1168,7 @@ impl Render for AuthSection {
                 .child(secret_field("Value", "auth-value", &self.value, vars, cx))
                 .child(ui::form_row(
                     "auth-placement-row",
-                    "Add To",
+                    "Add to",
                     div()
                         .w(style::MODE_SELECT_WIDTH)
                         .max_w_full()
@@ -1165,7 +1187,7 @@ impl Render for AuthSection {
                     cx,
                 ))
                 .child(field(
-                    "Max Body Size",
+                    "Max body size",
                     "auth-eg-max-body-size",
                     &self.max_body_size,
                     None,
@@ -1174,7 +1196,7 @@ impl Render for AuthSection {
                 .when(self.max_refused, |v| {
                     v.child(ui::form_note(
                         "auth-eg-max-body-size-error",
-                        "Max Body Size must be a number; the last valid value is kept.",
+                        "Max body size must be a number; the last valid value is kept.",
                     ))
                 })
                 .into_any_element(),
