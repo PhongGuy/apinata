@@ -3,8 +3,8 @@
 
 use crate::support;
 
-use apinata_app::sidebar::menu::{MenuEntry, menu_entries};
-use apinata_app::sidebar::model::{NodeKind, node_id};
+use apinata_app::sidebar::menu::MenuEntry;
+use apinata_app::sidebar::model::node_id;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Focusable as _, TestAppContext, VisualTestContext};
 use support::*;
@@ -84,18 +84,17 @@ fn closing_a_collection_leaves_focus_in_the_tree(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| url.focus(w, cx))
         .unwrap();
     settle(cx, &s);
-    let ix = menu_entries(NodeKind::Collection)
-        .iter()
-        .position(|e| *e == MenuEntry::Close)
-        .expect("Close is offered");
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         w.right_click(node_id(1, &ip("")), cx)
     })
     .unwrap();
     settle(cx, &s);
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(s.win, |_, w, cx| {
+        let ix = menu_index(w, MenuEntry::Close.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     settle(cx, &s);
     assert_eq!(s.ws.read_with(cx, |w, _| w.collections().len()), 1);
     assert!(!filter_focused(cx, &s), "not the Filter");

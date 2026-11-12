@@ -470,8 +470,7 @@ fn dirs(dir: &Path) -> Vec<String> {
 // The kit's menu does not expose the disabled flag, so a click on the Paste entry is the check.
 #[gpui_kit::test]
 fn the_paste_entry_is_disabled_inside_the_copied_folder(cx: &mut TestAppContext) {
-    use apinata_app::sidebar::menu::{MenuEntry, menu_entries};
-    use apinata_app::sidebar::model::NodeKind;
+    use apinata_app::sidebar::menu::MenuEntry;
     for cut_it in [false, true] {
         let col = nested();
         let s = started(cx, &col);
@@ -483,15 +482,14 @@ fn the_paste_entry_is_disabled_inside_the_copied_folder(cx: &mut TestAppContext)
         }
         let before = toasts(cx, &s);
         for target in ["f", "f/sub"] {
-            let ix = menu_entries(NodeKind::Folder)
-                .iter()
-                .position(|e| *e == MenuEntry::PasteItem)
-                .unwrap();
             cx.update_window(s.win, |_, w, cx| w.right_click(row(target), cx))
                 .unwrap();
             frame(cx, s.win);
-            cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-                .unwrap();
+            cx.update_window(s.win, |_, w, cx| {
+                let ix = menu_index(w, MenuEntry::PasteItem.label());
+                w.within("popup-menu").click(ix, cx)
+            })
+            .unwrap();
             cx.run_until_parked();
             frame(cx, s.win);
         }

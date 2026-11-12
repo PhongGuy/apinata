@@ -535,8 +535,6 @@ fn the_collection_menu_says_what_each_postman_export_does_with_scripts(cx: &mut 
     use gpui_kit::test::TestWindowExt as _;
     let col = two_requests();
     let s = started(cx, &col);
-    let entries = menu_entries(NodeKind::Collection);
-    let at = |e| entries.iter().position(|x| *x == e).unwrap();
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         w.right_click(row(""), cx)
@@ -550,7 +548,8 @@ fn the_collection_menu_says_what_each_postman_export_does_with_scripts(cx: &mut 
                 MenuEntry::ExportPostmanKeepScripts,
             ]
             .map(|e| {
-                let found = w.within("popup-menu").find(at(e));
+                let ix = menu_index(w, e.label());
+                let found = w.within("popup-menu").find(ix);
                 found.label().unwrap_or_default().to_owned()
             })
         })

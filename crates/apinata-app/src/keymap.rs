@@ -23,8 +23,8 @@ use crate::preferences::{
 };
 use crate::shortcuts::{Overrides, effective};
 use crate::sidebar::{
-    ClearFilter, ClearSelection, DeleteSelected, EnterTree, ExtendDown, ExtendUp, FILTER_CONTEXT,
-    LeaveTree, OpenSelected, PreviewSelected, RenameSelected, RunSelected,
+    ClearFilter, ClearSelection, EnterTree, ExtendDown, ExtendUp, FILTER_CONTEXT, LeaveTree,
+    OpenSelected, PreviewSelected, RunSelected,
 };
 use crate::ui::{
     ActivateSegment, DIALOG_FOOTER_CONTEXT, DIALOG_SELECT_CONTEXT, NextSegment, OpenSelect,
@@ -148,7 +148,7 @@ macro_rules! secondary {
 }
 
 /// Bindings no command owns: the Preferences search keys, the segmented-control and tree
-/// keys (F2 renames the selected row), and the filter guard.
+/// keys, and the filter guard.
 pub fn fixed_bindings() -> Vec<KeyBinding> {
     // Segments bind Enter deeper than the dialog's `enter -> Confirm`, so it chooses
     // instead of closing; Space binds on key-down so a key-down-only press counts.
@@ -216,7 +216,6 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("up", PrevSegment, seg),
         KeyBinding::new("enter", OpenSelected, tree),
         KeyBinding::new("space", PreviewSelected, tree),
-        KeyBinding::new("f2", RenameSelected, tree),
         // F12 follows a name in the GraphQL query editor to its Docs page.
         KeyBinding::new(
             "f12",
@@ -227,8 +226,6 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("escape", ClearSelection, tree),
         KeyBinding::new("shift-up", ExtendUp, tree),
         KeyBinding::new("shift-down", ExtendDown, tree),
-        KeyBinding::new("delete", DeleteSelected, tree),
-        KeyBinding::new("backspace", DeleteSelected, tree),
         // The tree's Tab stop forwards focus, so the window's own shift+tab would land back
         // on it; from the tree, shift+tab goes to the stop above. Its own action keeps it
         // out of FocusFilter's key hints.

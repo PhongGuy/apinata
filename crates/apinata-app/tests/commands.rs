@@ -66,6 +66,7 @@ const IDS: &[&str] = &[
     "request.move_row_up",
     "request.move_row_down",
     "request.rename",
+    "request.rename_in_sidebar",
     "request.duplicate",
     "request.copy",
     "request.cut",
@@ -73,6 +74,7 @@ const IDS: &[&str] = &[
     "request.show_in_file_manager",
     "request.open_in_terminal",
     "request.delete",
+    "request.delete_in_sidebar",
     "request.run_selected",
     "tabs.close",
     "tabs.close_all",
@@ -507,6 +509,8 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.find_whole_word_in_response");
     expected.insert("view.focus_next_control");
     expected.insert("view.focus_previous_control");
+    expected.insert("request.rename_in_sidebar");
+    expected.insert("request.delete_in_sidebar");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
     assert_eq!(menu.len(), 27);

@@ -73,8 +73,7 @@ fn the_menu_of_a_changed_tab_opens_its_changes(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| w.right_click(("tab", 0usize), cx))
         .unwrap();
     frame(cx, s.win);
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(7usize, cx))
-        .unwrap();
+    click_menu(cx, s.win, "Show changes");
     frame(cx, s.win);
     let selected = cx.update(|cx| {
         current(cx).and_then(|v| {
@@ -95,17 +94,14 @@ fn the_menu_of_an_unchanged_tab_has_no_show_changes(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let (last, extra) = cx
         .update_window(s.win, |_, w, _| {
-            let menu = w.within("popup-menu");
             (
-                menu.try_find(6usize).is_some(),
-                // Index 7 is the Pin item here, which comes last; Show changes is absent.
-                menu.try_find(7usize)
-                    .and_then(|n| n.label().map(str::to_owned)),
+                try_menu_index(w, "Show changes").is_none(),
+                menu_labels(w).into_iter().flatten().last(),
             )
         })
         .unwrap();
-    assert!(last, "the menu is open");
-    assert_eq!(extra.as_deref(), Some("Pin tab"));
+    assert!(last, "Show changes is absent");
+    assert_eq!(extra.as_deref(), Some("Pin tab"), "the menu is open");
 }
 
 // The letter comes before the dirty dot whether the tab is active or not, since an inactive

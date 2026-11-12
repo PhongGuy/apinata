@@ -623,21 +623,21 @@ fn open_tabs_with_focus_in_url(cx: &mut TestAppContext, h: &SidebarHarness, rels
     focus_url(cx, h);
 }
 
-// Right-clicks `rel` and clicks its menu's entry `ix`.
-fn menu_click(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, ix: usize) {
+// Right-clicks `rel` and clicks its menu's entry `label`.
+fn menu_click(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, label: &str) {
     cx.update_window(h.win, |_, w, cx| w.right_click(row(rel), cx))
         .unwrap();
     frame(cx, h.win);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
-    cx.run_until_parked();
+    click_menu(cx, h.win, label);
     frame(cx, h.win);
 }
 
 pub(crate) fn menu_delete(cx: &mut TestAppContext, h: &SidebarHarness, rel: &str, kind: NodeKind) {
-    let entries = menu_entries(kind);
-    let ix = (entries.iter().position(|e| *e == MenuEntry::Delete)).expect("Delete is offered");
-    menu_click(cx, h, rel, ix);
+    assert!(
+        menu_entries(kind).contains(&MenuEntry::Delete),
+        "Delete is offered"
+    );
+    menu_click(cx, h, rel, MenuEntry::Delete.label());
 }
 
 pub(crate) fn assert_restored(
@@ -708,11 +708,11 @@ fn ctrl_z_right_after_a_bulk_menu_delete_restores_the_set(cx: &mut TestAppContex
         },
         Some(2),
     );
-    let ix = (entries
-        .iter()
-        .position(|e| matches!(e, BulkEntry::Delete(_))))
-    .expect("Delete is offered");
-    menu_click(cx, &h, "a.yml", ix);
+    let delete = (entries.iter())
+        .find(|e| matches!(e, BulkEntry::Delete(_)))
+        .expect("Delete is offered")
+        .label();
+    menu_click(cx, &h, "a.yml", &delete);
     assert!(!h.root.join("a.yml").exists() && !h.root.join("c.yml").exists());
     ctrl_z(cx, &h);
     assert_restored(cx, &h, "a.yml", &bin);
@@ -757,11 +757,11 @@ fn ctrl_z_right_after_a_prompted_bulk_delete_restores_the_set(cx: &mut TestAppCo
         },
         Some(2),
     );
-    let ix = (entries
-        .iter()
-        .position(|e| matches!(e, BulkEntry::Delete(_))))
-    .expect("Delete is offered");
-    menu_click(cx, &h, "a.yml", ix);
+    let delete = (entries.iter())
+        .find(|e| matches!(e, BulkEntry::Delete(_)))
+        .expect("Delete is offered")
+        .label();
+    menu_click(cx, &h, "a.yml", &delete);
     assert!(confirm_open(cx), "unsaved edits ask first");
     answer_confirm(cx, "confirm-delete");
     frame(cx, h.win);
@@ -963,11 +963,11 @@ fn prompted_bulk_delete_with_a_tab_behind(cx: &mut TestAppContext, answer: Answe
         },
         Some(2),
     );
-    let ix = (entries
-        .iter()
-        .position(|e| matches!(e, BulkEntry::Delete(_))))
-    .expect("Delete is offered");
-    menu_click(cx, &h, "a.yml", ix);
+    let delete = (entries.iter())
+        .find(|e| matches!(e, BulkEntry::Delete(_)))
+        .expect("Delete is offered")
+        .label();
+    menu_click(cx, &h, "a.yml", &delete);
     assert!(confirm_open(cx), "unsaved edits ask first");
     answer_delete(cx, answer);
     frame(cx, h.win);

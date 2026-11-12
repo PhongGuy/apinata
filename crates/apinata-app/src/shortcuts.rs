@@ -116,6 +116,12 @@ impl Chord {
     }
 }
 
+/// Whether `chord` is one of `cmd`'s own default chords; the recorder takes such a chord even
+/// bare, so a rebound command can be given its default back.
+pub fn is_default(cmd: &Command, chord: &Chord) -> bool {
+    defaults(cmd).contains(chord)
+}
+
 fn is_function_key(key: &str) -> bool {
     key.strip_prefix('f')
         .and_then(|n| n.parse::<u8>().ok())
