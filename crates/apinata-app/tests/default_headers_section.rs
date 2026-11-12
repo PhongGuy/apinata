@@ -188,3 +188,18 @@ fn the_request_editor_shows_the_group_under_the_headers_table(cx: &mut TestAppCo
         a.omitted_headers
     );
 }
+
+// Names and values draw in the mono font at the small size, like the header table above.
+#[gpui_kit::test]
+fn default_header_cells_use_the_mono_font(cx: &mut TestAppContext) {
+    use apinata_app::default_headers_section::header_cell;
+    use gpui_kit::Styled as _;
+    use gpui_kit::component::ActiveTheme as _;
+    support::init(cx);
+    cx.update(|cx| {
+        let mut cell = header_cell(gpui_kit::div(), cx);
+        let text = &cell.style().text;
+        assert_eq!(text.font_family, Some(cx.theme().mono_font_family.clone()));
+        assert_eq!(text.font_size, Some(apinata_app::style::TEXT_SMALL.into()));
+    });
+}

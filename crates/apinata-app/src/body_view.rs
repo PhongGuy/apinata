@@ -2061,7 +2061,7 @@ impl BodyView {
             .flat_map(|r| r.headers())
             .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
             .map_or(String::new(), |(_, value)| value.clone());
-        let name = save_name(url.as_deref(), &content_type);
+        let name = save_name(url.as_deref(), &result.name, &content_type);
         let reply = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |_, cx| {
             let Ok(Ok(Some(path))) = reply.await else {
@@ -3974,9 +3974,9 @@ fn download_name(url: &str) -> String {
     }
 }
 
-// The Save body prompt's default name: the URL's last segment if it has an extension,
-// else `response` plus an extension from the Content-Type, else `response.bin`.
-fn save_name(url: Option<&str>, content_type: &str) -> String {
+// The Save body prompt's default name: the URL's last segment if it has an extension, else
+// the request's name (or `response`) plus an extension from the Content-Type, else `.bin`.
+fn save_name(url: Option<&str>, request: &str, content_type: &str) -> String {
     let from_url = url
         .map(download_name)
         .filter(|n| n != "response.bin" && n.rfind('.').is_some_and(|i| i > 0 && i + 1 < n.len()));
@@ -4000,7 +4000,36 @@ fn save_name(url: Option<&str>, content_type: &str) -> String {
     } else {
         open_external::extension(&media)
     };
-    format!("response.{ext}")
+    format!("{}.{ext}", file_stem(request))
+}
+
+// A request name as a file stem of at most 100 chars: characters no file system takes become
+// `-`, edge dots and spaces go, and a name left blank or naming a Windows device is `response`.
+fn file_stem(request: &str) -> String {
+    let edges = |c: char| c == '.' || c.is_whitespace();
+    let cleaned: String = (request.chars())
+        .filter(|c| !c.is_control())
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+            c => c,
+        })
+        .collect();
+    let cut: String = cleaned.trim_matches(edges).chars().take(100).collect();
+    let stem = cut.trim_matches(edges);
+    // Windows refuses a device name before the first dot, whatever the extension.
+    let base = stem.split('.').next().unwrap_or_default().trim_end();
+    let device = ["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|d| base.eq_ignore_ascii_case(d))
+        || (base.len() == 4
+            && (base.get(..3))
+                .is_some_and(|p| ["COM", "LPT"].iter().any(|d| p.eq_ignore_ascii_case(d)))
+            && matches!(base.as_bytes()[3], b'1'..=b'9'));
+    if device || !safe_file_name(stem) {
+        "response".to_string()
+    } else {
+        stem.to_string()
+    }
 }
 
 // A name that cannot escape the chosen directory or carry control characters.
@@ -4091,39 +4120,48 @@ mod save_name_tests {
 
     #[test]
     fn json_body_gets_json() {
-        assert_eq!(save_name(Some(URL), "application/json"), "response.json");
         assert_eq!(
-            save_name(Some(URL), "Application/JSON; charset=utf-8"),
+            save_name(Some(URL), "", "application/json"),
             "response.json"
         );
         assert_eq!(
-            save_name(Some(URL), "application/vnd.api+json"),
+            save_name(Some(URL), "", "Application/JSON; charset=utf-8"),
+            "response.json"
+        );
+        assert_eq!(
+            save_name(Some(URL), "", "application/vnd.api+json"),
             "response.json"
         );
     }
 
     #[test]
     fn xml_html_and_text_bodies() {
-        assert_eq!(save_name(Some(URL), "application/xml"), "response.xml");
-        assert_eq!(save_name(Some(URL), "text/xml"), "response.xml");
-        assert_eq!(save_name(Some(URL), "application/atom+xml"), "response.xml");
+        assert_eq!(save_name(Some(URL), "", "application/xml"), "response.xml");
+        assert_eq!(save_name(Some(URL), "", "text/xml"), "response.xml");
         assert_eq!(
-            save_name(Some(URL), "text/html; charset=x"),
+            save_name(Some(URL), "", "application/atom+xml"),
+            "response.xml"
+        );
+        assert_eq!(
+            save_name(Some(URL), "", "text/html; charset=x"),
             "response.html"
         );
-        assert_eq!(save_name(Some(URL), "text/plain"), "response.txt");
+        assert_eq!(save_name(Some(URL), "", "text/plain"), "response.txt");
     }
 
     #[test]
     fn known_binary_type_keeps_its_extension() {
-        assert_eq!(save_name(Some(URL), "image/png"), "response.png");
+        assert_eq!(save_name(Some(URL), "", "image/png"), "response.png");
     }
 
     #[test]
     fn unknown_or_missing_type_is_bin() {
-        assert_eq!(save_name(Some(URL), "application/x-weird"), "response.bin");
-        assert_eq!(save_name(Some(URL), ""), "response.bin");
-        assert_eq!(save_name(None, "application/json"), "response.json");
+        assert_eq!(
+            save_name(Some(URL), "", "application/x-weird"),
+            "response.bin"
+        );
+        assert_eq!(save_name(Some(URL), "", ""), "response.bin");
+        assert_eq!(save_name(None, "", "application/json"), "response.json");
     }
 
     #[test]
@@ -4131,6 +4169,7 @@ mod save_name_tests {
         assert_eq!(
             save_name(
                 Some("https://h.example/files/report.pdf?x=1"),
+                "",
                 "application/json"
             ),
             "report.pdf"
@@ -4140,27 +4179,91 @@ mod save_name_tests {
     #[test]
     fn dotfile_and_trailing_dot_segments_have_no_extension() {
         assert_eq!(
-            save_name(Some("https://h.example/.env"), "text/plain"),
+            save_name(Some("https://h.example/.env"), "", "text/plain"),
             "response.txt"
         );
         assert_eq!(
-            save_name(Some("https://h.example/file."), "application/json"),
+            save_name(Some("https://h.example/file."), "", "application/json"),
             "response.json"
         );
         assert_eq!(
-            save_name(Some("https://h.example/dir/"), "application/x-weird"),
+            save_name(Some("https://h.example/dir/"), "", "application/x-weird"),
             "response.bin"
         );
     }
 
     #[test]
+    fn the_request_name_is_the_stem() {
+        assert_eq!(
+            save_name(Some(URL), "Get items", "application/json"),
+            "Get items.json"
+        );
+        assert_eq!(save_name(None, "Ping", ""), "Ping.bin");
+        assert_eq!(
+            save_name(
+                Some("https://h.example/files/report.pdf"),
+                "Get report",
+                "application/pdf"
+            ),
+            "report.pdf"
+        );
+    }
+
+    #[test]
+    fn a_request_name_that_is_no_file_name_is_cleaned_or_dropped() {
+        assert_eq!(
+            save_name(Some(URL), "  a/b: c?  ", "text/plain"),
+            "a-b- c-.txt"
+        );
+        assert_eq!(save_name(Some(URL), "..", "text/plain"), "response.txt");
+        assert_eq!(save_name(Some(URL), " \t ", "text/plain"), "response.txt");
+    }
+
+    #[test]
+    fn windows_device_names_and_edge_dots_never_become_the_stem() {
+        for name in [
+            "CON",
+            "con",
+            "Nul",
+            "PRN",
+            "aux",
+            "COM1",
+            "lpt9",
+            "con.backup",
+        ] {
+            assert_eq!(
+                save_name(Some(URL), name, "text/plain"),
+                "response.txt",
+                "{name}"
+            );
+        }
+        assert_eq!(save_name(Some(URL), "COM10", "text/plain"), "COM10.txt");
+        assert_eq!(save_name(Some(URL), "abé", "text/plain"), "abé.txt");
+        assert_eq!(
+            save_name(Some(URL), " ..hidden. . ", "text/plain"),
+            "hidden.txt"
+        );
+    }
+
+    #[test]
+    fn a_long_request_name_is_cut_on_a_char_boundary() {
+        let name = "é".repeat(300);
+        let saved = save_name(Some(URL), &name, "application/json");
+        assert_eq!(saved, format!("{}.json", "é".repeat(100)));
+    }
+
+    #[test]
     fn url_segment_without_extension_uses_the_type() {
         assert_eq!(
-            save_name(Some("https://h.example/files/report"), "application/json"),
+            save_name(
+                Some("https://h.example/files/report"),
+                "",
+                "application/json"
+            ),
             "response.json"
         );
         assert_eq!(
-            save_name(Some("https://h.example/"), "text/plain"),
+            save_name(Some("https://h.example/"), "", "text/plain"),
             "response.txt"
         );
     }

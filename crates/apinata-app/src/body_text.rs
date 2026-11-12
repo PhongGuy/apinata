@@ -480,6 +480,247 @@ pub fn prepare_body(
     }
 }
 
+/// Re-indents HTML by two spaces per element: one tag per line, an element holding only
+/// text kept on its tag's line, and runs of whitespace in text collapsed. Void elements do
+/// not indent, and `script`, `style`, `pre` and `textarea` keep their content. Stray or
+/// unclosed tags never fail; they only shift the indentation.
+pub fn reindent_html(text: &str) -> String {
+    let tokens = html_tokens(text);
+    let mut lines: Vec<String> = Vec::new();
+    // The elements open at this point, innermost last, and how many of each name, so a
+    // stray end tag is skipped without walking the whole stack.
+    let mut open: Vec<&str> = Vec::new();
+    let mut open_count: std::collections::HashMap<&str, usize> = Default::default();
+    let indent = |depth: usize| "  ".repeat(depth.min(HTML_MAX_DEPTH));
+    let closes = |at: usize, name: &str| match tokens.get(at) {
+        Some(HtmlToken::Close(tag, n)) if n == name => Some(*tag),
+        _ => None,
+    };
+    let mut i = 0;
+    while i < tokens.len() {
+        let pad = indent(open.len());
+        match &tokens[i] {
+            HtmlToken::Text(t) => {
+                let words = collapse(t);
+                if !words.is_empty() {
+                    lines.push(pad + &words);
+                }
+            }
+            HtmlToken::Other(t) | HtmlToken::Raw(t) => lines.push(pad + t.trim()),
+            HtmlToken::Close(tag, name) => {
+                // An end tag also closes what was left open inside it; a stray one closes nothing.
+                if open_count.get(name.as_str()).is_some_and(|n| *n > 0)
+                    && let Some(at) = open.iter().rposition(|n| *n == name.as_str())
+                {
+                    for gone in open.drain(at..) {
+                        open_count.entry(gone).and_modify(|n| *n -= 1);
+                    }
+                }
+                lines.push(indent(open.len()) + tag);
+            }
+            HtmlToken::Open(tag, _, true) => lines.push(pad + tag),
+            HtmlToken::Open(tag, name, false) if HTML_RAW.contains(&name.as_str()) => {
+                let content = match tokens.get(i + 1) {
+                    Some(HtmlToken::Raw(c)) => {
+                        i += 1;
+                        *c
+                    }
+                    _ => "",
+                };
+                let end = closes(i + 1, name).inspect(|_| i += 1).unwrap_or("");
+                // Whitespace inside pre and textarea is shown, so their content stays as is;
+                // script and style lose only their blank edges and shared indentation.
+                if content.trim().is_empty() {
+                    lines.push(format!("{pad}{tag}{end}"));
+                } else if matches!(name.as_str(), "pre" | "textarea") {
+                    lines.push(format!("{pad}{tag}{content}{end}"));
+                } else {
+                    lines.push(pad.clone() + tag);
+                    lines.extend(dedent(content, &format!("{pad}  ")));
+                    if !end.is_empty() {
+                        lines.push(pad + end);
+                    }
+                }
+            }
+            HtmlToken::Open(tag, name, false) => {
+                if let Some(end) = closes(i + 1, name) {
+                    lines.push(format!("{pad}{tag}{end}"));
+                    i += 1;
+                } else if let (Some(HtmlToken::Text(t)), Some(end)) =
+                    (tokens.get(i + 1), closes(i + 2, name))
+                {
+                    lines.push(format!("{pad}{tag}{}{end}", collapse(t)));
+                    i += 2;
+                } else {
+                    lines.push(pad + tag);
+                    open.push(name.as_str());
+                    *open_count.entry(name.as_str()).or_default() += 1;
+                }
+            }
+        }
+        i += 1;
+    }
+    if lines.is_empty() {
+        return text.to_owned();
+    }
+    lines.join("\n")
+}
+
+// Deeper elements line up with the last indented level, so the output stays linear in size.
+const HTML_MAX_DEPTH: usize = 32;
+// Elements without content, which never take an end tag.
+const HTML_VOID: [&str; 14] = [
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+// Elements whose content is not markup, or whose whitespace is shown.
+const HTML_RAW: [&str; 4] = ["script", "style", "pre", "textarea"];
+
+// One piece of an HTML text; tags carry their text as written and their lower-cased name.
+enum HtmlToken<'a> {
+    Text(&'a str),
+    // A comment, DOCTYPE or processing instruction.
+    Other(&'a str),
+    // The content of a script, style, pre or textarea element.
+    Raw(&'a str),
+    // A start tag and whether it is void or self-closed.
+    Open(&'a str, String, bool),
+    Close(&'a str, String),
+}
+
+// Splits HTML into tags, comments and text; a `<` that starts no complete tag stays text.
+fn html_tokens(text: &str) -> Vec<HtmlToken<'_>> {
+    let mut out = Vec::new();
+    let mut pos = 0;
+    // Where the text not yet emitted starts.
+    let mut text_from = 0;
+    while let Some(off) = text[pos..].find('<') {
+        let at = pos + off;
+        let rest = &text[at..];
+        let tag_like =
+            rest[1..].starts_with(|c: char| c.is_ascii_alphabetic() || "/!?".contains(c));
+        let len = if rest.starts_with("<!--") {
+            rest.find("-->").map(|e| e + 3)
+        } else if tag_like {
+            tag_len(rest)
+        } else {
+            None
+        };
+        // A tag or comment that runs off the end makes the rest text; scanning on from the
+        // next `<` would rescan that same tail for each one.
+        let len = match len {
+            Some(len) => len,
+            None if rest.starts_with("<!--") || tag_like => break,
+            None => {
+                pos = at + 1;
+                continue;
+            }
+        };
+        if text_from < at {
+            out.push(HtmlToken::Text(&text[text_from..at]));
+        }
+        let token = html_tag(&rest[..len]);
+        pos = at + len;
+        let raw = match &token {
+            HtmlToken::Open(_, name, false) if HTML_RAW.contains(&name.as_str()) => {
+                Some(name.clone())
+            }
+            _ => None,
+        };
+        out.push(token);
+        // A raw element's content runs to its own end tag, whatever it holds.
+        if let Some(name) = raw {
+            let end = (text[pos..].match_indices("</"))
+                .map(|(e, _)| pos + e)
+                .find(|&e| {
+                    let after = &text.as_bytes()[e + 2..];
+                    after
+                        .get(..name.len())
+                        .is_some_and(|n| n.eq_ignore_ascii_case(name.as_bytes()))
+                        && !after
+                            .get(name.len())
+                            .is_some_and(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(b))
+                })
+                .unwrap_or(text.len());
+            out.push(HtmlToken::Raw(&text[pos..end]));
+            pos = end;
+        }
+        text_from = pos;
+    }
+    if text_from < text.len() {
+        out.push(HtmlToken::Text(&text[text_from..]));
+    }
+    out
+}
+
+// The length of the tag at the start of `s` through its `>`, skipping quoted attribute values.
+fn tag_len(s: &str) -> Option<usize> {
+    let mut quote = None;
+    let mut prev = b'<';
+    for (i, b) in s.bytes().enumerate().skip(1) {
+        match quote {
+            Some(q) if b == q => quote = None,
+            Some(_) => {}
+            None if matches!(b, b'"' | b'\'') && prev == b'=' => quote = Some(b),
+            None if b == b'>' => return Some(i + 1),
+            None => {}
+        }
+        if !b.is_ascii_whitespace() {
+            prev = b;
+        }
+    }
+    None
+}
+
+fn html_tag(tag: &str) -> HtmlToken<'_> {
+    if tag.starts_with("<!") || tag.starts_with("<?") {
+        return HtmlToken::Other(tag);
+    }
+    let (close, body) = match tag.strip_prefix("</") {
+        Some(body) => (true, body),
+        None => (false, &tag[1..]),
+    };
+    let name = (body.split(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>'))
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if close {
+        HtmlToken::Close(tag, name)
+    } else {
+        let void = tag.ends_with("/>") || HTML_VOID.contains(&name.as_str());
+        HtmlToken::Open(tag, name, void)
+    }
+}
+
+fn collapse(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+// The lines of `content` without blank edges or their shared indentation, each led by `pad`.
+fn dedent(content: &str, pad: &str) -> Vec<String> {
+    let lines: Vec<&str> = content.lines().map(str::trim_end).collect();
+    let first = lines
+        .iter()
+        .position(|l| !l.is_empty())
+        .unwrap_or(lines.len());
+    let last = lines
+        .iter()
+        .rposition(|l| !l.is_empty())
+        .map_or(first, |l| l + 1);
+    let lines = &lines[first..last];
+    let indent = |l: &str| l.len() - l.trim_start_matches([' ', '\t']).len();
+    let cut = (lines.iter().filter(|l| !l.is_empty()))
+        .map(|l| indent(l))
+        .min()
+        .unwrap_or(0);
+    (lines.iter())
+        .map(|l| match l.get(cut..) {
+            Some(rest) if !l.is_empty() => format!("{pad}{rest}"),
+            _ => String::new(),
+        })
+        .collect()
+}
+
 /// The text [`prepare`] shows for a text kind, pretty or raw, with its highlighter
 /// language; `None` for an empty, binary or image body.
 pub fn display_text(kind: BodyKind, text: &str, pretty: bool) -> Option<(String, &'static str)> {
@@ -489,7 +730,7 @@ pub fn display_text(kind: BodyKind, text: &str, pretty: bool) -> Option<(String,
             reindent_json(text).unwrap_or_else(|| text.to_owned()),
             "json",
         ),
-        (BodyKind::Html, true) => (text.to_owned(), "html"),
+        (BodyKind::Html, true) => (reindent_html(text), "html"),
         // No XML grammar is bundled; the HTML one colours its tags and attributes.
         (BodyKind::Xml, true) => (
             reindent_xml(text).unwrap_or_else(|| text.to_owned()),
