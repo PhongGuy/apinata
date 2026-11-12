@@ -45,7 +45,7 @@ use crate::history_palette::OpenHistory;
 use crate::keymap::{NewGraphqlRequest, NewRequest, SHELL_CONTEXT};
 use crate::menu_focus;
 use crate::shell::collection_row;
-use crate::snapshot::{CollectionSnapshot, Content, DiskState, RowKind};
+use crate::snapshot::{CollectionSnapshot, Content, DiskState, RowKind, Unsupported};
 use crate::stale::rebase;
 use crate::tabs::TabId;
 use crate::workspace::{Workspace, WorkspaceEvent};
@@ -2340,6 +2340,10 @@ impl Sidebar {
                 };
                 cx.emit(event);
             }
+            NodeKind::Opaque => match n.unsupported {
+                Some(kind) => show_unsupported(kind, window, cx),
+                None => cx.propagate(),
+            },
             NodeKind::Folder | NodeKind::Collection if !self.filter_text.trim().is_empty() => {
                 let (root, path) = (n.root.clone(), n.path.clone());
                 self.reveal_folder(root, path, window, cx);
@@ -2409,7 +2413,12 @@ impl Sidebar {
     }
 
     // Space does what a single click does on a request; anywhere else it passes on.
-    fn preview_selected(&mut self, _: &PreviewSelected, _: &mut Window, cx: &mut Context<Self>) {
+    fn preview_selected(
+        &mut self,
+        _: &PreviewSelected,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.multi.is_active() {
             return;
         }
@@ -2422,6 +2431,11 @@ impl Sidebar {
                 };
                 cx.emit(event);
             }
+            Some(Node {
+                kind: NodeKind::Opaque,
+                unsupported: Some(kind),
+                ..
+            }) => show_unsupported(*kind, window, cx),
             _ => cx.propagate(),
         }
     }
@@ -3085,14 +3099,27 @@ impl Render for Sidebar {
                                 }
                                 NodeKind::Opaque => {
                                     let view = view.clone();
-                                    item.child(with_suffix(
+                                    let unsupported = n.unsupported;
+                                    let content = with_suffix(
                                         item_row(n, None, &paints, muted)
                                             .text_color(cx.theme().muted_foreground),
                                         n,
                                         &git,
                                         false,
                                         cx,
-                                    ))
+                                    );
+                                    // A kind the app cannot send yet says so on hover, not only
+                                    // when opened.
+                                    item.child(match unsupported {
+                                        Some(kind) => content
+                                            .id(marker_id("unsupported", &n.id))
+                                            .tooltip(ui::text_tooltip(
+                                                marker_id("unsupported-tip", &n.id),
+                                                kind.notice(),
+                                            ))
+                                            .into_any_element(),
+                                        None => content.into_any_element(),
+                                    })
                                     .on_mouse_down(MouseButton::Left, |e, _, cx| {
                                         if click_kind(&e.modifiers).is_some() {
                                             cx.stop_propagation()
@@ -3105,7 +3132,12 @@ impl Render for Sidebar {
                                                     Some(secondary) => {
                                                         s.modified_click(&id, secondary, window, cx)
                                                     }
-                                                    None => s.plain_click(cx),
+                                                    None => {
+                                                        s.plain_click(cx);
+                                                        if let Some(kind) = unsupported {
+                                                            show_unsupported(kind, window, cx);
+                                                        }
+                                                    }
                                                 }
                                             })
                                             .ok();
@@ -3602,6 +3634,22 @@ fn chevron_slot(n: &Node) -> impl IntoElement + use<> {
     marker("chevron", n).child(slot.child(Icon::new(chevron_icon(n.expanded)).small()))
 }
 
+/// Says a request of `kind` cannot be sent yet. One note per kind, so repeated opens do not
+/// stack copies of it.
+fn show_unsupported(kind: Unsupported, window: &mut Window, cx: &mut App) {
+    let notice = kind.notice();
+    let note = ui::info_toast(notice)
+        .id1::<Unsupported>(kind.tag())
+        .content(move |_, _, _| {
+            div()
+                .id("unsupported-note")
+                .test_support()
+                .aria_label(notice)
+                .into_any_element()
+        });
+    window.push_notification(note, cx);
+}
+
 /// The left part of a folder, request or opaque row. Folders lead with a chevron and their
 /// icon; a request with examples puts its `toggle` in the chevron's slot; other rows leave
 /// the slot empty, with the same gap, so folder icons and method tags start in one column.
@@ -3618,11 +3666,19 @@ fn item_row(
             .child(chevron_slot(n))
             .child(marker("icon", n).child(Icon::new(folder_icon(n.expanded)).small()))
     } else {
-        let method = match n.method_tag() {
-            Some(tag) => marker("method", n)
+        let method = match (n.method_tag(), n.unsupported) {
+            // The kind tag of a request the app cannot send yet is named for assistive tools.
+            (Some(tag), Some(kind)) => div()
+                .id(marker_id("method", &n.id))
+                .test_support()
+                .flex_none()
+                .aria_label(kind.tag())
                 .child(tag.record(paints, n.id.clone()))
                 .into_any_element(),
-            None => div().w(style::METHOD_COLUMN).flex_none().into_any_element(),
+            (Some(tag), None) => marker("method", n)
+                .child(tag.record(paints, n.id.clone()))
+                .into_any_element(),
+            (None, _) => div().w(style::METHOD_COLUMN).flex_none().into_any_element(),
         };
         h_flex()
             .gap(style::SPACE_1)
