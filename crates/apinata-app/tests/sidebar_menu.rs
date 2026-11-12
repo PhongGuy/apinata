@@ -467,3 +467,26 @@ fn a_draft_row_offers_save_and_close() {
     );
     assert!(menu_entries(NodeKind::UnsavedGroup).is_empty());
 }
+
+// The row a menu acts on is marked while the menu is open, without moving the selection.
+#[gpui_kit::test]
+fn a_right_clicked_row_is_marked_while_its_menu_is_open(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::marker_id;
+    let h = open_sidebar(cx);
+    select(cx, &h, "health.yml");
+    let target = marker_id("menu-target", &row("status.yml"));
+    assert!(!shown(cx, h.win, target.clone()), "no menu yet");
+    cx.update_window(h.win, |_, w, cx| w.right_click(row("status.yml"), cx))
+        .unwrap();
+    frame(cx, h.win);
+    assert!(shown(cx, h.win, target.clone()), "the menu's row is marked");
+    let selected = h.view.read_with(cx, |s, cx| s.selected(cx));
+    assert_eq!(selected.map(|(_, p)| p), Some(ip("health.yml")));
+    cx.simulate_keystrokes(h.win, "escape");
+    cx.run_until_parked();
+    frame(cx, h.win);
+    assert!(
+        !shown(cx, h.win, target),
+        "closing the menu clears the mark"
+    );
+}
