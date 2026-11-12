@@ -1015,7 +1015,7 @@ impl GlobalEnvEditor {
             let globals = self.workspace.read(cx).globals();
             (names.iter())
                 .map(|n| {
-                    let color = globals
+                    let color = (globals.as_deref())
                         .and_then(|g| g.environment(n))
                         .and_then(|e| e.color());
                     env_fill(color.as_deref())
