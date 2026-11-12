@@ -1,5 +1,5 @@
 //! The Variables overview: a title bar button opens a read-only list of the active request's
-//! variables grouped by scope, with shadowed rows marked and secrets masked.
+//! variables grouped by scope, with overridden rows marked and secrets masked.
 
 use crate::support;
 
@@ -131,7 +131,10 @@ fn shadowed_rows_leave_the_scrollbar_its_gutter_in_a_narrow_window(cx: &mut Test
         w.render_frame(cx);
         let content = w.find("variables-overview").bounds();
         let limit = content.right() - SCROLLBAR_GUTTER + px(0.5);
-        let label = w.find(("var-overview-shadowed", 2usize)).bounds();
+        let ix = (0usize..8)
+            .find(|i| w.try_find(("var-overview-shadowed", *i)).is_some())
+            .expect("an overridden row");
+        let label = w.find(("var-overview-shadowed", ix)).bounds();
         assert!(
             label.right() <= limit,
             "label {label:?} runs under the scrollbar of {content:?}"
@@ -301,4 +304,104 @@ fn enter_on_the_focused_x_closes_the_overview(cx: &mut TestAppContext) {
     enter_on(cx, s.win, "close");
     frame(cx, s.win);
     assert!(!overview_open(cx, &s), "Enter on the x closes");
+}
+
+// Braces read as variables; an eye would read as showing or hiding secrets.
+#[test]
+fn the_variables_button_shows_braces() {
+    assert_eq!(
+        apinata_app::shell::VARIABLES_ICON,
+        gpui_kit::assets::IconName::Braces
+    );
+}
+
+const LONG: &str = "a long collection value that would wrap onto several lines in a narrow dialog";
+
+// The overview of `a/r.yml` with `dev` selected, the collection's `shared` holding `LONG`,
+// in a window narrow enough that `LONG` cannot fit on one line.
+fn narrow_overview_with_long_value(cx: &mut TestAppContext) -> (tempfile::TempDir, Started) {
+    use gpui_kit::{VisualTestContext, px, size};
+    let root = ROOT_VARS.replace("value: collection\n", &format!("value: {LONG}\n"));
+    let col = write_tree(&[
+        ("opencollection.yml", &root),
+        ("environments/dev.yml", DEV),
+        ("a/folder.yml", FOLDER),
+        ("a/r.yml", &request("r", "http://127.0.0.1:9/{{host}}")),
+    ]);
+    let s = started(cx, &col);
+    let select = Command::SelectEnvironment(Some("dev".into()));
+    s.ws.update(cx, |w, cx| w.send(&s.root, select, cx));
+    s.ws.update(cx, |w, cx| w.open_item(&s.root, ip("a/r.yml"), false, cx));
+    cx.run_until_parked();
+    cx.update_window(s.win, |_, w, cx| w.click("variables-button", cx))
+        .unwrap();
+    frame(cx, s.win);
+    VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(440.), px(500.)));
+    frame(cx, s.win);
+    (col, s)
+}
+
+fn label_of(
+    cx: &mut TestAppContext,
+    s: &Started,
+    id: impl Into<gpui_kit::ElementId>,
+) -> Option<String> {
+    let id = id.into();
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_overview_leaves_out_the_environment_name_variable(cx: &mut TestAppContext) {
+    let (_col, s) = narrow_overview_with_long_value(cx);
+    let names: Vec<_> = (0usize..8)
+        .filter_map(|i| label_of(cx, &s, ("var-overview-name", i)))
+        .collect();
+    assert!(names.iter().any(|n| n == "shared"), "{names:?}");
+    assert!(!names.iter().any(|n| n == "__name__"), "{names:?}");
+}
+
+#[gpui_kit::test]
+fn an_overridden_row_names_the_scope_that_wins(cx: &mut TestAppContext) {
+    let (_col, s) = narrow_overview_with_long_value(cx);
+    // Folder `shared` wins; the environment's and the collection's copies are overridden.
+    let labels: Vec<_> = (0usize..8)
+        .filter_map(|i| label_of(cx, &s, ("var-overview-shadowed", i)))
+        .collect();
+    assert_eq!(
+        labels,
+        vec![
+            "overridden by folder".to_owned(),
+            "overridden by folder".to_owned()
+        ]
+    );
+}
+
+#[gpui_kit::test]
+fn a_long_overridden_value_stays_on_one_line_with_the_full_text_on_hover(cx: &mut TestAppContext) {
+    let (_col, s) = narrow_overview_with_long_value(cx);
+    let ix = (0usize..8)
+        .find(|i| label_of(cx, &s, ("var-overview-value", *i)).as_deref() == Some(LONG))
+        .expect("the long value has a row");
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let value = w.find(("var-overview-value", ix)).bounds();
+        let name = w.find(("var-overview-name", ix)).bounds();
+        assert!(
+            value.size.height <= name.size.height,
+            "the value wraps: {value:?} vs {name:?}"
+        );
+        w.hover(("var-overview-value", ix), cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, s.win);
+    assert_eq!(
+        label_of(cx, &s, "var-overview-value-tooltip").as_deref(),
+        Some(LONG)
+    );
 }

@@ -144,6 +144,9 @@ pub const GLOBAL_ENV_ICON: IconName = IconName::Globe;
 /// Tooltip and accessibility label of the global environments button; one const, so they agree.
 pub const GLOBAL_ENVIRONMENTS_TIP: &str = "Global environments";
 
+/// The icon of the title bar's variables button.
+pub const VARIABLES_ICON: IconName = IconName::Braces;
+
 /// Tooltip of the title bar's variables button.
 pub const VARIABLES_TIP: &str = "Variables";
 
@@ -2613,7 +2616,7 @@ impl Shell {
                                 no_window_move(div().flex_none().child(ui::solid_ring(
                                     icon_button(
                                         "variables-button",
-                                        IconName::Eye,
+                                        VARIABLES_ICON,
                                         VARIABLES_TIP,
                                         Some(&OpenVariablesOverview),
                                     ),

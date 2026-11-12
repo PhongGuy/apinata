@@ -33,12 +33,13 @@ gpui_kit::assets::icon_assets!(
         Regex,
         WholeWord,
         FileDiff,
-        CornerDownRight
+        CornerDownRight,
+        Braces
     ]
 );
 
 /// The icons `AppAssets` adds to the kit's default set, in `ExtraIcons` order.
-pub const EXTRA: [IconName; 25] = [
+pub const EXTRA: [IconName; 26] = [
     IconName::FilePlus,
     IconName::FolderPlus,
     IconName::GitBranch,
@@ -64,6 +65,7 @@ pub const EXTRA: [IconName; 25] = [
     IconName::WholeWord,
     IconName::FileDiff,
     IconName::CornerDownRight,
+    IconName::Braces,
 ];
 
 /// The app's asset source: the extra icons first, then the kit's default `Assets`.

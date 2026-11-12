@@ -254,9 +254,19 @@ fn overview_masks_secrets_in_every_row() {
     }
 }
 
+// The selected environment's name is an internal variable: still listed for completion and
+// still sent, but the overview leaves it out.
+#[test]
+fn overview_hides_the_environment_name_variable() {
+    let (_dir, c, ctx, _) = fixture();
+    let r = set_for(&c, &ctx, "a/r.yml");
+    assert!(r.names().contains(&"__name__".to_owned()));
+    assert_eq!(rows(&r, "__name__"), vec![]);
+}
+
 #[test]
 fn overview_effective_values_equal_what_a_send_interpolates() {
-    let names = ["host", "shared", "base", "n", "own", "__name__"];
+    let names = ["host", "shared", "base", "n", "own"];
     let headers: String = names
         .iter()
         .map(|n| format!("    - name: h-{n}\n      value: \"{{{{{n}}}}}\"\n"))
