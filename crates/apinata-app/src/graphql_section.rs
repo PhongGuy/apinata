@@ -505,7 +505,7 @@ impl GraphqlSection {
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_side(panel, cx)))
         };
         let builder = toggle("graphql-builder-toggle", "Builder", SidePanel::Builder);
-        let docs = toggle("graphql-docs-toggle", "Docs", SidePanel::Docs);
+        let docs = toggle("graphql-docs-toggle", "Schema", SidePanel::Docs);
         let file = Button::new("graphql-schema-file")
             .label("Load schema from file")
             .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx)));
