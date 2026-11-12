@@ -14,7 +14,7 @@ use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, Focusable, Pixels, Result, ScrollHandle, Subscription,
+    AnyElement, App, Entity, FocusHandle, Pixels, Result, ScrollHandle, Subscription,
     TestSupportExt, Window, div, px,
 };
 
@@ -946,9 +946,14 @@ impl GlobalEnvEditor {
             Naming::Create => String::new(),
             Naming::Rename => self.selected.clone().unwrap_or_default(),
         };
-        self.name_input
-            .update(cx, |s, cx| s.set_value(text, window, cx));
-        self.name_input.read(cx).focus_handle(cx).focus(window, cx);
+        // Rename opens on the current name selected, so typing replaces it.
+        self.name_input.update(cx, |s, cx| {
+            s.set_value(text, window, cx);
+            s.focus(window, cx);
+            if naming == Naming::Rename {
+                s.select_all(window, cx);
+            }
+        });
         self.naming = Some(naming);
         self.naming_gen += 1;
         self.refused = None;
@@ -1075,15 +1080,7 @@ impl GlobalEnvEditor {
         let field = v_flex()
             .w_full()
             .gap_1()
-            .on_action(cx.listener(|e, _: &Escape, window, cx| {
-                e.naming = None;
-                // The refused name's error goes with its field.
-                if e.refused.is_some() {
-                    e.clear_error(cx);
-                }
-                e.focus.focus(window, cx);
-                cx.notify();
-            }))
+            .on_action(cx.listener(|e, _: &Escape, window, cx| e.cancel_naming(window, cx)))
             .child(
                 div()
                     .id("global-env-name-label")
@@ -1116,8 +1113,28 @@ impl GlobalEnvEditor {
                     message.into(),
                     cx,
                 ))
-            });
+            })
+            .child(crate::env_editor::naming_buttons(
+                ("global-env-name-cancel", "global-env-name-confirm"),
+                naming == Naming::Create,
+                cx.listener(|e, _, window, cx| e.cancel_naming(window, cx)),
+                cx.listener(|e, _, window, cx| {
+                    let text = e.name_input.read(cx).value().trim().to_string();
+                    e.commit_name(&text, window, cx);
+                }),
+            ));
         Some(field.into_any_element())
+    }
+
+    // Closes the name field without sending anything, its refusal with it, and hands focus
+    // back to the editor since the focused input leaves the tree.
+    fn cancel_naming(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.naming = None;
+        if self.refused.is_some() {
+            self.clear_error(cx);
+        }
+        self.focus.focus(window, cx);
+        cx.notify();
     }
 }
 
