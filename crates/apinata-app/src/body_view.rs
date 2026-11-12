@@ -586,12 +586,12 @@ impl BodyView {
         }
     }
 
-    /// Whether the bar leaves Copy and Save to the pane's overflow menu.
+    /// Whether the bar leaves Copy, Save and Schema test to the pane's overflow menu.
     pub fn compact(&self) -> bool {
         self.compact
     }
 
-    /// Drops Copy and Save from the bar while `on`, redrawing only on a change.
+    /// Drops Copy, Save and Schema test from the bar while `on`, redrawing only on a change.
     pub fn set_compact(&mut self, on: bool, cx: &mut Context<Self>) {
         if self.compact != on {
             self.compact = on;
@@ -732,7 +732,7 @@ impl BodyView {
 
     /// Emits [`SchemaTest`] with the response text as shown, redacted until the eye reveals it
     /// (a JSON key can be a secret and lands in the script), ignoring any filter or edit.
-    fn request_schema_test(&mut self, cx: &mut Context<Self>) {
+    pub fn request_schema_test(&mut self, cx: &mut Context<Self>) {
         if self.schema_test_lock().is_some() {
             return;
         }
@@ -762,6 +762,11 @@ impl BodyView {
     /// Whether Save would write: a non-empty body that was not cut.
     pub fn can_save(&self) -> bool {
         self.has_body() && self.save_lock().is_none()
+    }
+
+    /// Whether the schema test is offered at all: the response has a body.
+    pub fn schema_test_offered(&self) -> bool {
+        self.has_body()
     }
 
     fn has_body(&self) -> bool {
@@ -3402,19 +3407,12 @@ impl Render for BodyView {
                     ),
             );
         }
-        // Unlike Copy and Save it stays in a compact pane, as an icon.
-        if self.has_body() {
+        if !self.compact && self.has_body() {
             let lock = self.schema_test_lock();
-            let tip = self.schema_test_tooltip();
-            let button = if self.compact {
-                let icon = ui::glyph("body-schema-test-button", IconName::Check);
-                ui::icon_button("body-schema-test-button", icon, tip, None)
-            } else {
-                Button::new("body-schema-test-button")
-                    .ghost()
-                    .label("Schema test")
-                    .tooltip(tip)
-            };
+            let button = Button::new("body-schema-test-button")
+                .ghost()
+                .label("Schema test")
+                .tooltip(self.schema_test_tooltip());
             bar = bar.child(
                 div()
                     .id("body-schema-test")
