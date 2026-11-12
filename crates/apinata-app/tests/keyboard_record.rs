@@ -388,3 +388,31 @@ fn a_key_a_code_editor_takes_names_the_place(cx: &mut TestAppContext) {
         Some(format!("{} is already used by Close tab", shown_chord("w")))
     );
 }
+
+// A command whose own defaults are bare keys, such as the sidebar's Delete, can be given a bare
+// key back; one with function-key defaults still needs a modifier on any other key.
+#[gpui_kit::test]
+fn a_command_with_bare_default_keys_takes_a_bare_key(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    edit_keys(cx, |o| {
+        o.insert("request.delete_in_sidebar".into(), vec!["alt-d".into()]);
+    });
+    open_prefs(cx, &s);
+    record(cx, &s, "request.delete_in_sidebar");
+    press(cx, &s, "delete");
+    assert_ne!(
+        message(cx, &s, "request.delete_in_sidebar").as_deref(),
+        Some("Hold Ctrl, Alt or another modifier with this key")
+    );
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("request.delete_in_sidebar", &["delete"])])
+    );
+    record(cx, &s, "request.rename_in_sidebar");
+    press(cx, &s, "b");
+    assert_eq!(
+        message(cx, &s, "request.rename_in_sidebar").as_deref(),
+        Some("Hold Ctrl, Alt or another modifier with this key")
+    );
+}

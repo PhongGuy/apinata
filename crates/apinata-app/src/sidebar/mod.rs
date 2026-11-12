@@ -3290,7 +3290,7 @@ impl Render for Sidebar {
                                         for choice in bulk_entries(count, run) {
                                             let view = menu_view.clone();
                                             let line = ui::MenuLine::new(choice.label())
-                                                .action(Some(choice.action()))
+                                                .action(choice.action())
                                                 .danger(choice.is_destructive())
                                                 .group_break(prev.is_some_and(|p: BulkEntry| {
                                                     p.group() != choice.group()
@@ -3352,8 +3352,12 @@ impl Render for Sidebar {
                                             .unwrap_or(false))
                                         || (menu_scratch.as_deref() == Some(node.root.as_path())
                                             && menu::scratch_blocked(choice));
-                                    let line = ui::MenuLine::new(choice.label())
-                                        .action(choice.action())
+                                    let line = ui::MenuLine::new(choice.label());
+                                    let line = match choice.action() {
+                                        Some(action) => line.action(action),
+                                        None => line,
+                                    };
+                                    let line = line
                                         .disabled(blocked)
                                         .danger(choice.is_destructive())
                                         .group_break(prev.is_some_and(|p: MenuEntry| {

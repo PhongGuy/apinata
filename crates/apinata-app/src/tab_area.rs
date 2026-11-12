@@ -2357,7 +2357,7 @@ impl TabArea {
                         _ => false,
                     };
                     menu = ui::MenuLine::new(choice.label())
-                        .action(Some(choice.action()))
+                        .action(choice.action())
                         .disabled(off)
                         .group_break(choice == MenuChoice::Reveal)
                         .add_to(
@@ -2372,7 +2372,7 @@ impl TabArea {
                 // Discard changes is always listed, greyed out when there is nothing to revert.
                 let view = menu_view.clone();
                 menu = ui::MenuLine::new("Discard changes")
-                    .action(Some(Box::new(DiscardChanges)))
+                    .action(Box::new(DiscardChanges))
                     .disabled(!discardable)
                     .group_break(true)
                     .add_to(
@@ -2396,7 +2396,7 @@ impl TabArea {
                     Box::new(PinTab)
                 };
                 ui::MenuLine::new(if pinned { "Unpin tab" } else { "Pin tab" })
-                    .action(Some(pin))
+                    .action(pin)
                     .group_break(true)
                     .add_to(
                         menu,

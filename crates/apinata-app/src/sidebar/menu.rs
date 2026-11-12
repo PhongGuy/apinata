@@ -9,8 +9,8 @@ use gpui_kit::Action;
 use super::model::NodeKind;
 use super::multi::Tally;
 use super::{
-    CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, NewFolder,
-    OpenInTerminal, PasteSelected, RenameSelected, RunSelected, ShowInFileManager, SortByName,
+    CloneSelected, CopySelected, CutSelected, DeleteSelected, NewFolder, OpenInTerminal,
+    PasteSelected, RenameSelected, RunSelected, ShowInFileManager, SortByName,
 };
 use crate::commands::label;
 
@@ -138,8 +138,8 @@ impl MenuEntry {
     }
 
     /// The command whose bound key the entry shows: only one that acts on the selected row as
-    /// the entry acts on its row. Entries whose command acts on the active tab or the current
-    /// collection instead show no key.
+    /// the entry acts on its row. Entries whose command acts on the active tab, the current
+    /// collection or every collection instead show no key.
     pub fn action(self) -> Option<Box<dyn Action>> {
         use MenuEntry as E;
         let action: Box<dyn Action> = match self {
@@ -156,8 +156,6 @@ impl MenuEntry {
             E::Delete => Box::new(DeleteSelected),
             E::ShowInFileManager => Box::new(ShowInFileManager),
             E::OpenInTerminal => Box::new(OpenInTerminal),
-            E::CollapseAll => Box::new(CollapseAll),
-            E::ExpandAll => Box::new(ExpandAll),
             _ => return None,
         };
         Some(action)

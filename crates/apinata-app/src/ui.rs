@@ -2495,8 +2495,8 @@ impl MenuLine {
     }
 
     /// The action whose bound key the entry shows; the click still runs the entry's own handler.
-    pub fn action(mut self, action: Option<Box<dyn Action>>) -> Self {
-        self.action = action;
+    pub fn action(mut self, action: Box<dyn Action>) -> Self {
+        self.action = Some(action);
         self
     }
 

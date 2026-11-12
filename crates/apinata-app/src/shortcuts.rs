@@ -116,6 +116,12 @@ impl Chord {
     }
 }
 
+/// Whether the recorder takes a bare key for `cmd`: only when one of its own default chords
+/// is a bare key, so such a command can be given its default back.
+pub fn takes_bare_keys(cmd: &Command) -> bool {
+    defaults(cmd).iter().any(Chord::needs_modifier)
+}
+
 fn is_function_key(key: &str) -> bool {
     key.strip_prefix('f')
         .and_then(|n| n.parse::<u8>().ok())
