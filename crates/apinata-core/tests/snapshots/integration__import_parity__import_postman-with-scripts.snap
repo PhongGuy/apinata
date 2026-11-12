@@ -2,5 +2,5 @@
 source: crates/apinata-core/tests/import_parity.rs
 expression: snapshot
 ---
-Converted Login / event[0] [Login.yml]: pre-request script carried; 1 pm call translated to the app's script API; it asks before it first runs
-Converted Login / event[1] [Login.yml]: post-response script carried; 2 pm calls translated to the app's script API; it asks before it first runs
+Converted Login / event[0] [Login.yml]: pre-request script: 1 Postman call translated; it asks before it first runs
+Converted Login / event[1] [Login.yml]: post-response script: 2 Postman calls translated; it asks before it first runs

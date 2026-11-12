@@ -60,8 +60,8 @@ fn dialog(cx: &mut TestAppContext, win: AnyWindowHandle) -> bool {
         .unwrap()
 }
 
-/// Chooses Import collection in the collection switcher with `name` holding `text`, and answers
-/// both prompts with `into`.
+/// Chooses Import collection in the collection switcher with `name` holding `text`, creating in
+/// `into`, and answers the file prompt.
 fn import(
     cx: &mut TestAppContext,
     win: AnyWindowHandle,
@@ -76,10 +76,8 @@ fn import(
     cx.update_window(win, |_, w, cx| w.click("import-link-browse", cx))
         .unwrap();
     cx.run_until_parked();
+    crate::import_collection::create_in(cx, into);
     cx.simulate_path_prompt_response(move |_| Some(vec![file]));
-    cx.run_until_parked();
-    let into = into.to_path_buf();
-    cx.simulate_path_prompt_response(move |_| Some(vec![into]));
     cx.run_until_parked();
 }
 
