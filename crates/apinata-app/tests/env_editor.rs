@@ -1137,7 +1137,7 @@ fn a_dirty_environment_offers_rename_disabled_with_its_reason(cx: &mut TestAppCo
     let (win, ed) = env_editor(cx, &ws, &root);
     type_at_end(cx, win, None, ("env-value", 0usize), "y");
     cx.run_until_parked();
-    assert_eq!(RENAME_LOCKED_REASON, "Save or revert first");
+    assert_eq!(RENAME_LOCKED_REASON, "Save or discard changes first");
     env_menu(cx, win, ENV_MENU_RENAME);
     let reason = cx
         .update_window(win, |_, w, cx| {
@@ -2338,4 +2338,44 @@ fn an_outside_edit_reaches_the_open_environment_editor_promptly(cx: &mut TestApp
         table.read_with(cx, |t, cx| t.rows(cx)[0].value == "outside")
     });
     assert!(written.elapsed() < std::time::Duration::from_secs(3));
+}
+
+fn discard_disabled(cx: &mut TestAppContext, win: AnyWindowHandle) -> bool {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("env-discard").disabled() == Some(true)
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn discard_changes_by_save_restores_the_saved_environment(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    let label = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("env-discard").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(label.as_deref(), Some("Discard changes"));
+    assert!(discard_disabled(cx, win), "nothing to discard");
+    type_at_end(cx, win, None, ("env-value", 0usize), "y");
+    cx.run_until_parked();
+    assert!(env_view(cx, &ws, &root, "dev").dirty);
+    assert!(!discard_disabled(cx, win));
+    cx.update_window(win, |_, w, cx| w.click("env-discard", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "discarding asks first");
+    answer_confirm(cx, "confirm-discard");
+    let view = env_view(cx, &ws, &root, "dev");
+    assert!(!view.dirty);
+    assert!(matches!(&view.variables[0].value, VarValue::Text(v) if v == "x"));
+    assert!(discard_disabled(cx, win));
+    assert_eq!(
+        std::fs::read_to_string(col.path().join("environments/dev.yml")).unwrap(),
+        DEV
+    );
 }

@@ -1537,3 +1537,48 @@ fn settle_frames(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle) {
     next_frame(cx, win);
     next_frame(cx, win);
 }
+
+#[gpui_kit::test]
+fn discard_changes_restores_the_saved_global_environment(cx: &mut TestAppContext) {
+    support::init(cx);
+    let body = "name: g\nvariables:\n  - name: host\n    value: a\n";
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", body)]);
+    let (win, editor) = open_editor(cx, &ws, "g");
+    let disabled = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("global-env-discard").disabled() == Some(true)
+        })
+        .unwrap()
+    };
+    assert!(disabled(cx), "nothing to discard");
+    let mut rows = editor.read_with(cx, |e, cx| e.table().read(cx).rows(cx));
+    rows[0].value = "b".into();
+    cx.update_window(win, |_, w, cx| {
+        let table = editor.read(cx).table().clone();
+        table.update(cx, |t, cx| t.load(rows, w, cx));
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(editor.read_with(cx, |e, cx| e.has_edits(cx)));
+    assert!(!disabled(cx));
+    cx.update_window(win, |_, w, cx| {
+        assert_eq!(
+            w.find("global-env-discard").label(),
+            Some("Discard changes")
+        );
+        w.click("global-env-discard", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(confirm_open(cx), "discarding asks first");
+    answer_confirm(cx, "confirm-discard");
+    assert!(!editor.read_with(cx, |e, cx| e.has_edits(cx)));
+    let rows = editor.read_with(cx, |e, cx| e.table().read(cx).rows(cx));
+    assert_eq!(rows[0].value, "a");
+    assert!(disabled(cx));
+    assert_eq!(
+        std::fs::read_to_string(g.path().join("g.yml")).unwrap(),
+        body
+    );
+}
