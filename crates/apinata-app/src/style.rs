@@ -350,6 +350,10 @@ pub const CHANGES_NOTICE_MAX_HEIGHT: Rems = ui(120.);
 pub const COMPARE_DIFF_MIN_HEIGHT: Rems = ui(120.);
 /// The smallest height of a code editor; above it the request section's editors fill the pane.
 pub const EDITOR_MIN_HEIGHT: Rems = ui(200.);
+/// The smallest height of a script or tests editor. Its phase switch, snippet row and Wrap row
+/// stand taller than the body's mode row, so a lower floor keeps the section fitting wherever
+/// the body does.
+pub const SCRIPT_EDITOR_MIN_HEIGHT: Rems = ui(120.);
 /// The height of the bulk key-value editor, and the cap on an example's request text.
 pub const EDITOR_HEIGHT: Rems = ui(300.);
 /// The tallest the decoded JWT block in the auth section grows before its content scrolls.

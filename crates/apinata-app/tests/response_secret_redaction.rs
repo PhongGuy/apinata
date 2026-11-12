@@ -215,7 +215,10 @@ fn the_tests_tab_redacts_a_secret_an_assertion_shows_as_actual(cx: &mut TestAppC
     view.update(cx, |p, cx| p.set_tab(ResponseTab::Tests, cx));
     cx.run_until_parked();
     let line = label(cx, win, ("assertion", 0usize));
-    assert_eq!(line, "res.body.echo neq {{token}}: actual \"[redacted]\"");
+    assert_eq!(
+        line,
+        "res.body.echo not equals {{token}}: actual \"[redacted]\""
+    );
 }
 
 #[gpui_kit::test]
@@ -239,5 +242,8 @@ fn the_runner_row_redacts_a_secret_an_assertion_shows_as_actual(cx: &mut TestApp
         model.read_with(cx, |m, _| matches!(m.state(), RunState::Finished(_)))
     });
     let why = label(cx, s.win, ("run-reason", 0usize));
-    assert_eq!(why, "res.body.echo neq {{token}}: actual \"[redacted]\"");
+    assert_eq!(
+        why,
+        "res.body.echo not equals {{token}}: actual \"[redacted]\""
+    );
 }

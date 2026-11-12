@@ -61,7 +61,7 @@ async fn a_request_whose_only_check_was_skipped_is_unverified_and_still_exits_0(
     let text = String::from_utf8(out.get_output().stdout.clone()).expect("utf-8");
     assert!(
         text.contains(
-            "Requests: 2 (2 passed (1 unverified, 1 no tests), 0 failed, 0 errored, 0 not sent)"
+            "Requests: 2 (1 passed (1 unverified), 0 failed, 1 without tests, 0 errored, 0 not sent)"
         ),
         "{text}"
     );

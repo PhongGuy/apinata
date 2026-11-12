@@ -6,7 +6,7 @@ use crate::support;
 use apinata_app::app::AppState;
 use apinata_app::request_editor::Section;
 use apinata_app::settings::{Orientation, Settings};
-use apinata_app::style::{EDITOR_HEIGHT, EDITOR_MIN_HEIGHT, resolve};
+use apinata_app::style::{EDITOR_HEIGHT, EDITOR_MIN_HEIGHT, SCRIPT_EDITOR_MIN_HEIGHT, resolve};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Bounds, Pixels, TestAppContext, px, size};
 use support::*;
@@ -136,10 +136,14 @@ fn code_editors_keep_their_minimum_in_a_short_pane(cx: &mut TestAppContext) {
     let mut failed = Vec::new();
     for (yaml, section, wrapper, _, editors) in cases() {
         let (s, _col) = opened(cx, yaml, section);
-        room(cx, &s, 1600., 420., Orientation::Horizontal);
+        room(cx, &s, 1600., 360., Orientation::Horizontal);
         let pane = bounds(cx, &s, "section-body");
         let content = bounds(cx, &s, wrapper);
-        let least = px_of(cx, &s, EDITOR_MIN_HEIGHT);
+        let floor = match section {
+            Section::Script | Section::Tests => SCRIPT_EDITOR_MIN_HEIGHT,
+            _ => EDITOR_MIN_HEIGHT,
+        };
+        let least = px_of(cx, &s, floor);
         let mut miss = Vec::new();
         for id in editors {
             let e = bounds(cx, &s, id);
@@ -187,5 +191,31 @@ fn graphql_editors_fill_beside_an_open_schema_panel(cx: &mut TestAppContext) {
                 "{h}: {content:?} in {pane:?}"
             );
         }
+    }
+}
+
+// The window heights, in the stacked layout, where a section's content fits its pane.
+fn fitting_heights(cx: &mut TestAppContext, section: Section, wrapper: &'static str) -> Vec<u32> {
+    let (s, _col) = opened(cx, JSON, section);
+    (440..=800)
+        .step_by(10)
+        .filter(|&h| {
+            room(cx, &s, 1200., h as f32, Orientation::Vertical);
+            bounds(cx, &s, wrapper).bottom() <= bounds(cx, &s, "section-body").bottom() + px(0.5)
+        })
+        .collect()
+}
+
+#[gpui_kit::test]
+fn script_and_tests_fit_wherever_the_body_editor_fits(cx: &mut TestAppContext) {
+    let body = fitting_heights(cx, Section::Body, "body");
+    assert!(!body.is_empty(), "the body fits at no height");
+    for (section, wrapper) in [(Section::Script, "script"), (Section::Tests, "tests")] {
+        let fits = fitting_heights(cx, section, wrapper);
+        let missing: Vec<_> = body.iter().filter(|h| !fits.contains(h)).collect();
+        assert!(
+            missing.is_empty(),
+            "{section:?} scrolls at window heights {missing:?} where the body fits"
+        );
     }
 }

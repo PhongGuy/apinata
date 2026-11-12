@@ -114,11 +114,11 @@ fn assertions_show_pass_fail_and_skip(cx: &mut TestAppContext) {
     assert_eq!(
         lines,
         [
-            ("pass", "res.status eq 201".to_string()),
-            ("fail", "res.status eq 500: actual 201".to_string()),
+            ("pass", "res.status equals 201".to_string()),
+            ("fail", "res.status equals 500: actual 201".to_string()),
             (
                 "skipped",
-                "res.url isDefined: left side \"res.url\" needs a JavaScript runtime".to_string()
+                "res.url is defined: left side \"res.url\" needs a JavaScript runtime".to_string()
             ),
         ]
     );
@@ -568,7 +568,7 @@ fn assertion_values_keep_their_backticks(cx: &mut TestAppContext) {
     );
     let s = send_once(cx, ResponseTemplate::new(200), extra);
     let (_, text) = assertion_line(&s.result.assertions[0]);
-    assert!(text.starts_with("res.status eq `${x}`"), "{text}");
+    assert!(text.starts_with("res.status equals `${x}`"), "{text}");
 }
 
 #[gpui_kit::test]
