@@ -114,6 +114,31 @@ async fn a_script_error_entry_is_marked_and_exits_1() {
     assert_eq!(report["summary"]["failed_tests"], 0);
 }
 
+// An error in a tests script names the tests, in the report and in the printed run alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tests_script_error_names_the_tests() {
+    let s = server().await;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "r.yml",
+            &scripted(
+                &format!("{}/ok", s.uri()),
+                &script("tests", "test('ok', () => {});\nthrow new Error('x')"),
+            ),
+        ),
+    ]);
+    let (code, report) = run_json(dir.path(), &[]);
+    assert_eq!(code, 1);
+    assert_eq!(
+        report["results"][0]["tests"][1]["message"],
+        "request tests, line 2: Error: x"
+    );
+    let out = apinata().arg("run").arg(dir.path()).output().expect("runs");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("request tests, line 2: Error: x"), "{text}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_pre_request_error_exits_2_and_the_timeout_flag_sets_the_limit() {
     let s = server().await;
