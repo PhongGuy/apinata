@@ -269,3 +269,28 @@ fn the_empty_row_sits_at_the_indent_of_the_folders_children(cx: &mut TestAppCont
     })
     .unwrap();
 }
+
+// The locked environment select dims as Manage environments beside it does; a high-contrast
+// theme keeps full strength, where the muted text alone says it is locked.
+#[gpui_kit::test]
+fn with_nothing_open_the_environment_select_looks_locked(cx: &mut TestAppContext) {
+    use apinata_app::style::DISABLED_OPACITY;
+    use apinata_app::theme::{DARK, HC_DARK, LIGHT};
+    let s = started_blank(cx, blank_data_dir());
+    let select = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    for (name, want) in [
+        (LIGHT, DISABLED_OPACITY),
+        (DARK, DISABLED_OPACITY),
+        (HC_DARK, 1.),
+    ] {
+        use_theme(cx, name);
+        frame(cx, s.win);
+        let shown = select.read_with(cx, |e, cx| e.select_opacity(cx));
+        assert_eq!(shown, want, "{name}");
+    }
+    let col = collection();
+    let open = started(cx, &col);
+    let select = open.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    use_theme(cx, LIGHT);
+    assert_eq!(select.read_with(cx, |e, cx| e.select_opacity(cx)), 1.);
+}

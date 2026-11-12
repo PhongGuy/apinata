@@ -250,6 +250,7 @@ mod find_cancel;
 mod find_options;
 mod focus_commands;
 mod focus_modality;
+mod focus_not_filter;
 mod focus_redraw;
 mod focus_survives;
 mod fonts;

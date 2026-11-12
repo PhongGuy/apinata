@@ -877,6 +877,7 @@ fn auth_fields_show_example_placeholders(cx: &mut TestAppContext) {
         input.read_with(cx, |i, _| i.presentation().placeholder().to_string())
     };
     let expected = [
+        (AuthField::Username, "jdoe"),
         (AuthField::Key, "X-API-Key"),
         (AuthField::Domain, "CORP"),
         (AuthField::AccessKeyId, "AKIAIOSFODNN7EXAMPLE"),

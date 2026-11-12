@@ -31,10 +31,11 @@ use gpui_kit::component::tree::{TreeEvent, TreeState, tree};
 use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    App, AppContext, ClickEvent, Context, DragMoveEvent, Edges, ElementId, Entity, EventEmitter,
-    FocusHandle, Hsla, InteractiveElement, IntoElement, Modifiers, MouseButton, ParentElement,
-    Pixels, Render, RenderOnce, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, TestSupportExt, WeakEntity, Window, actions, canvas, div, px,
+    AnyElement, App, AppContext, ClickEvent, Context, DragMoveEvent, Edges, ElementId, Entity,
+    EventEmitter, FocusHandle, Hsla, InteractiveElement, IntoElement, Modifiers, MouseButton,
+    ParentElement, Pixels, Render, RenderOnce, ScrollStrategy, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, TestSupportExt, WeakEntity, Window, actions,
+    canvas, div, px,
 };
 
 use crate::command::{Command, NoticeKind, TreeOp};
@@ -249,7 +250,7 @@ pub struct Sidebar {
     // The active request tab the selection last followed; see `rebuild`.
     followed: Option<TabId>,
     pending_focus: Option<PendingFocus>,
-    // The folder row under the pointer. Layout cannot follow a CSS-like group hover, so a
+    // The folder or root row under the pointer. Layout cannot follow a CSS-like group hover, so a
     // floating run slot learns of it from here and makes room for itself; see `RunSlot`.
     hovered: Option<SharedString>,
     // The rows chosen with modifier clicks; the kit tree's own selection stays the focus row.
@@ -314,7 +315,7 @@ struct PendingFocus {
 }
 
 impl Sidebar {
-    /// Record that the pointer entered or left the folder row `id`, redrawing on a change.
+    /// Record that the pointer entered or left the folder or root row `id`, redrawing on a change.
     fn set_hovered(&mut self, id: &SharedString, entered: bool, cx: &mut Context<Self>) {
         let next = if entered {
             Some(id.clone())
@@ -2868,8 +2869,61 @@ impl Render for Sidebar {
                                                 .ok();
                                             })
                                     };
-                                    item.child(
+                                    // Like a folder's run button, the actions show on hover or on the
+                                    // selected row of a focused tree, and float at rest so the name
+                                    // runs to the edge; beside a roll-up dot they keep their room.
+                                    let rolled = rollup.contains(&n.id) && !n.expanded;
+                                    let actions = h_flex()
+                                        .items_center()
+                                        .child(
+                                            create(
+                                                "new-request",
+                                                IconName::FilePlus,
+                                                label("collection.new_request"),
+                                                MenuEntry::NewRequest,
+                                            )
+                                            .tooltip_with_action(
+                                                label("collection.new_request"),
+                                                &NewRequest,
+                                                Some(SHELL_CONTEXT),
+                                            ),
+                                        )
+                                        .child(create(
+                                            "new-folder",
+                                            IconName::FolderPlus,
+                                            label("collection.new_folder"),
+                                            MenuEntry::NewFolder,
+                                        ))
+                                        .child(
+                                            run_button(
+                                                cx,
+                                                ("run-collection", n.collection),
+                                                "collection.run",
+                                                MenuEntry::RunCollection,
+                                                n,
+                                                &view,
+                                            )
+                                            .lock(
+                                                scratch_dir.as_deref() == Some(n.root.as_path()),
+                                                cx,
+                                            ),
+                                        );
+                                    let over = hovered.as_ref() == Some(&id);
+                                    let slot =
+                                        run_slot(actions, selected && tree_focused).hovered(over);
+                                    let actions = if rolled { slot } else { slot.overlay() };
+                                    let hover_view = view.clone();
+                                    let hover_id = id.clone();
+                                    item.on_hover(move |&entered, _, cx| {
+                                        hover_view
+                                            .update(cx, |s, cx| {
+                                                s.set_hovered(&hover_id, entered, cx)
+                                            })
+                                            .ok();
+                                    })
+                                    .child(
                                         h_flex()
+                                            .relative()
                                             .w_full()
                                             .justify_between()
                                             .gap(style::SPACE_1)
@@ -2905,50 +2959,12 @@ impl Render for Sidebar {
                                                         |d, f| d.track_focus(f),
                                                     )
                                                     .items_center()
-                                                    .children(
-                                                        (rollup.contains(&n.id) && !n.expanded)
-                                                            .then(|| {
-                                                                ui::rollup_dot(
-                                                                    marker_id("rollup", &n.id)
-                                                                        .into(),
-                                                                )
-                                                            }),
-                                                    )
-                                                    .child(
-                                                        create(
-                                                            "new-request",
-                                                            IconName::FilePlus,
-                                                            label("collection.new_request"),
-                                                            MenuEntry::NewRequest,
+                                                    .children(rolled.then(|| {
+                                                        ui::rollup_dot(
+                                                            marker_id("rollup", &n.id).into(),
                                                         )
-                                                        .tooltip_with_action(
-                                                            label("collection.new_request"),
-                                                            &NewRequest,
-                                                            Some(SHELL_CONTEXT),
-                                                        ),
-                                                    )
-                                                    .child(create(
-                                                        "new-folder",
-                                                        IconName::FolderPlus,
-                                                        label("collection.new_folder"),
-                                                        MenuEntry::NewFolder,
-                                                    ))
-                                                    .child(run_slot(
-                                                        run_button(
-                                                            cx,
-                                                            ("run-collection", n.collection),
-                                                            "collection.run",
-                                                            MenuEntry::RunCollection,
-                                                            n,
-                                                            &view,
-                                                        )
-                                                        .lock(
-                                                            scratch_dir.as_deref()
-                                                                == Some(n.root.as_path()),
-                                                            cx,
-                                                        ),
-                                                        selected,
-                                                    )),
+                                                    }))
+                                                    .child(actions),
                                             ),
                                     )
                                     .on_mouse_down(
@@ -3549,11 +3565,11 @@ fn run_button(
         })
 }
 
-/// Holds a row's run `button`, drawn while the row is `selected`, hovered, or the button holds
-/// focus. The opacity sits on the slot, so a click on the transparent button still lands.
-fn run_slot(button: Button, selected: bool) -> RunSlot {
+/// Holds a row's actions, drawn while the row is `selected`, hovered, or an action holds
+/// focus. The opacity sits on the slot, so a click on a transparent button still lands.
+fn run_slot(actions: impl IntoElement, selected: bool) -> RunSlot {
     RunSlot {
-        button,
+        button: actions.into_any_element(),
         selected,
         hovered: false,
         overlay: false,
@@ -3562,7 +3578,7 @@ fn run_slot(button: Button, selected: bool) -> RunSlot {
 
 #[derive(IntoElement)]
 struct RunSlot {
-    button: Button,
+    button: AnyElement,
     selected: bool,
     hovered: bool,
     overlay: bool,

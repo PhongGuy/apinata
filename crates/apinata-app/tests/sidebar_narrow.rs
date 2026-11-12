@@ -58,6 +58,10 @@ fn a_long_collection_name_leaves_its_buttons_in_the_sidebar(cx: &mut TestAppCont
     ]);
     let s = started(cx, &col);
     frame(cx, s.win);
+    // The actions take their room only while shown, as on hover.
+    cx.update_window(s.win, |_, w, cx| w.hover(row(""), cx))
+        .unwrap();
+    frame(cx, s.win);
     cx.update_window(s.win, |_, w, _| {
         let sidebar = w.find("sidebar").bounds();
         let name = w.find(("collection", 0usize)).bounds();
