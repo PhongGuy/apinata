@@ -68,6 +68,26 @@ fn tab_keys_work_from_the_window(cx: &mut TestAppContext) {
     assert!(tab_names(cx, &s.ws).is_empty());
 }
 
+// Ctrl+Tab and Ctrl+Shift+Tab step through the tabs as in a browser, wrapping at the ends,
+// from the window and from inside the URL input.
+#[gpui_kit::test]
+fn ctrl_tab_cycles_tabs(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    open_tab(cx, &s.ws, &s.root, "b.yml");
+    raw(cx, &s, "ctrl-tab");
+    assert_eq!(active(cx, &s), Some(TabKind::Request(ip("a.yml"))));
+    raw(cx, &s, "ctrl-shift-tab");
+    assert_eq!(active(cx, &s), Some(TabKind::Request(ip("b.yml"))));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click("url", cx))
+        .unwrap();
+    cx.simulate_keystrokes(s.win, "ctrl-tab");
+    cx.run_until_parked();
+    assert_eq!(active(cx, &s), Some(TabKind::Request(ip("a.yml"))));
+}
+
 #[gpui_kit::test]
 fn tab_keys_work_from_inside_the_url_input(cx: &mut TestAppContext) {
     let col = two_requests();

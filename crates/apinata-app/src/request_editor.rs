@@ -168,11 +168,12 @@ pub fn method_items(current: &str) -> Vec<SharedString> {
     items
 }
 
-// The method select's rows, each found by its method as typed.
-fn method_rows(current: &str) -> Vec<IdItem> {
+/// The method select's rows, each found by its method as typed and coloured as the sidebar
+/// colours it.
+pub fn method_rows(current: &str) -> Vec<IdItem> {
     method_items(current)
         .into_iter()
-        .map(|m| IdItem::new("method", &m, m.clone()))
+        .map(|m| IdItem::new("method", &m, m.clone()).tinted(ui::method_class(&m)))
         .collect()
 }
 

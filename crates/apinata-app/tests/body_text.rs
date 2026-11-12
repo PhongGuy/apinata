@@ -679,3 +679,90 @@ fn minify_xml_keeps_declaration_entities_comments_and_sibling_cdata() {
     assert!(got.contains("<![CDATA[ x ]]><![CDATA[ y ]]>"));
     assert_eq!(beautify_xml(&got), beautify_xml(src));
 }
+
+#[test]
+fn pretty_html_is_reindented_and_raw_is_untouched() {
+    let html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>T</title></head>\
+                <body><div class=\"a\"><p>Hello   <b>there</b></p><br><img src=\"x\"/><span></span></div>\
+                <!-- note --></body></html>";
+    let pretty = "<!DOCTYPE html>\n<html>\n  <head>\n    <meta charset=\"utf-8\">\n    \
+                  <title>T</title>\n  </head>\n  <body>\n    <div class=\"a\">\n      <p>\n        \
+                  Hello\n        <b>there</b>\n      </p>\n      <br>\n      <img src=\"x\"/>\n      \
+                  <span></span>\n    </div>\n    <!-- note -->\n  </body>\n</html>";
+    assert_eq!(
+        display_text(BodyKind::Html, html, true),
+        Some((pretty.to_owned(), "html"))
+    );
+    assert_eq!(
+        display_text(BodyKind::Html, html, false),
+        Some((html.to_owned(), "text"))
+    );
+}
+
+#[test]
+fn pretty_html_keeps_script_and_pre_content() {
+    let html = "<body><pre>  a\n   b</pre><script>\n    if (a < b) {\n      go();\n    }\n</script></body>";
+    let pretty = "<body>\n  <pre>  a\n   b</pre>\n  <script>\n    if (a < b) {\n      go();\n    }\n  </script>\n</body>";
+    assert_eq!(reindent_html(html), pretty);
+}
+
+#[test]
+fn pretty_html_tolerates_stray_and_unclosed_tags() {
+    assert_eq!(reindent_html("<p>"), "<p>");
+    assert_eq!(
+        reindent_html("<div><p>a</div>x"),
+        "<div>\n  <p>\n    a\n</div>\nx"
+    );
+    assert_eq!(reindent_html("</i>a < b"), "</i>\na < b");
+    assert_eq!(reindent_html("  plain  "), "plain");
+}
+
+// Unterminated tags and comments end the scan, so a hostile body stays linear.
+#[test]
+fn pretty_html_stays_linear_on_unterminated_tags_and_comments() {
+    let tags = "<a".repeat(200_000);
+    assert_eq!(reindent_html(&tags), tags);
+    let comments = "<!--".repeat(200_000);
+    assert_eq!(reindent_html(&comments), comments);
+    let quotes = "<a x=\"".repeat(100_000);
+    assert_eq!(reindent_html(&quotes).len(), quotes.len());
+    let stray = format!("{}{}", "<div>".repeat(50_000), "</p>".repeat(50_000));
+    assert_eq!(reindent_html(&stray).lines().count(), 100_000);
+}
+
+#[test]
+fn pretty_html_indents_at_most_32_levels() {
+    let deep = "<div>".repeat(50_000);
+    let out = reindent_html(&deep);
+    let widest = out.lines().map(|l| l.len() - l.trim_start().len()).max();
+    assert_eq!(widest, Some(64));
+    assert!(out.len() <= 50_000 * 70, "{}", out.len());
+}
+
+#[test]
+fn pretty_html_handles_quotes_comments_case_and_non_ascii() {
+    assert_eq!(
+        reindent_html("<div><a title=\"x>y\">t</a></div>"),
+        "<div>\n  <a title=\"x>y\">t</a>\n</div>"
+    );
+    assert_eq!(
+        reindent_html("<div><!-- <p>no</p> --></div>"),
+        "<div>\n  <!-- <p>no</p> -->\n</div>"
+    );
+    assert_eq!(
+        reindent_html("<DIV><P>a</P><SCRIPT>x < y</SCRIPT></DIV>"),
+        "<DIV>\n  <P>a</P>\n  <SCRIPT>\n    x < y\n  </SCRIPT>\n</DIV>"
+    );
+    assert_eq!(
+        reindent_html("<p>héllo  wörld 日本</p><p>ü</p>"),
+        "<p>héllo wörld 日本</p>\n<p>ü</p>"
+    );
+}
+
+#[test]
+fn a_raw_element_ends_only_at_its_own_name() {
+    assert_eq!(
+        reindent_html("<script>a</scripts>b</script>"),
+        "<script>\n  a</scripts>b\n</script>"
+    );
+}

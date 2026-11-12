@@ -273,6 +273,43 @@ fn in_a_request_tab_from_the_docs_edit_segment_reaches_the_editor(cx: &mut TestA
     assert_eq!(focused(cx, s.win), Some(ed), "Tab reaches the docs editor");
 }
 
+// Inside a code editor Ctrl+Tab leaves the editor and does not switch tabs, though the window
+// binds it to Next tab.
+#[gpui_kit::test]
+fn ctrl_tab_in_a_code_editor_keeps_the_tab(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::Section;
+    let body = format!("{}docs: notes\n", request("a", "http://127.0.0.1:9/a"));
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &body),
+        ("b.yml", &request("b", "http://127.0.0.1:9/b")),
+    ]);
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "b.yml");
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        w.click(("section", Section::Docs as usize), cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.within("docs-mode").click(1usize, cx))
+        .unwrap();
+    frame(cx, s.win);
+    let docs = editor_of(cx, &s, tab).read_with(cx, |e, _| e.docs().clone());
+    let state = docs.read_with(cx, |d, _| d.code().clone());
+    let ed = handle_of(cx, &state);
+    let active =
+        |cx: &mut TestAppContext| s.ws.read_with(cx, |w, _| w.tabs().active().map(|e| e.id));
+    let before = active(cx);
+    for key in ["ctrl-tab", "ctrl-shift-tab"] {
+        focus(cx, s.win, &ed);
+        press(cx, s.win, key);
+        assert_ne!(focused(cx, s.win), Some(ed.clone()), "{key} leaves");
+        assert_eq!(active(cx), before, "{key} keeps the tab");
+    }
+}
+
 // Collection settings host the same docs section; Tab from the control before it lands in it.
 #[gpui_kit::test]
 fn tab_reaches_the_collection_docs_editor(cx: &mut TestAppContext) {
