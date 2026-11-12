@@ -62,13 +62,16 @@ pub enum Report {
     Disabled,
 }
 
+/// Says that this build has no update source, wherever a check cannot happen.
+pub const NOT_CONFIGURED: &str = "Update checks are not configured for this build";
+
 /// The sentence a manual check's `report` shows the user, in a toast or in Preferences.
 pub fn report_text(report: &Report) -> String {
     match report {
         Report::UpToDate => format!("Apinata {} is up to date.", env!("CARGO_PKG_VERSION")),
         Report::Available(version) => format!("Apinata {version} is available."),
         Report::Failed(message) => format!("Update check failed: {message}"),
-        Report::Disabled => "Update checks are not configured for this build".to_string(),
+        Report::Disabled => NOT_CONFIGURED.to_string(),
     }
 }
 

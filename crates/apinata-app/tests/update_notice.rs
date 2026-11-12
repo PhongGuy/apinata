@@ -157,7 +157,7 @@ fn preferences_toggle_the_setting_and_check_now(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn check_now_is_disabled_when_checks_are_not_configured(cx: &mut TestAppContext) {
+fn check_now_is_absent_when_checks_are_not_configured(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     updates(cx).update(cx, |u, cx| u.set_checker(None, cx));
@@ -166,14 +166,7 @@ fn check_now_is_disabled_when_checks_are_not_configured(cx: &mut TestAppContext)
         .unwrap();
     frame(cx, s.win);
     assert!(present(cx, s.win, "updates-disabled"));
-    let report = updates(cx).read_with(cx, |u, _| u.last_report().cloned());
-    let before = notification_count(cx, &s);
-    click(cx, &s, "check-updates-now");
-    assert_eq!(notification_count(cx, &s), before);
-    assert_eq!(
-        updates(cx).read_with(cx, |u, _| u.last_report().cloned()),
-        report
-    );
+    assert!(!present(cx, s.win, "check-updates-now"), "nothing to press");
 }
 
 #[gpui_kit::test]

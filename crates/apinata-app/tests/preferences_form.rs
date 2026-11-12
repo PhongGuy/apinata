@@ -123,13 +123,9 @@ fn rows_sit_in_their_sections_in_two_shared_columns(cx: &mut TestAppContext) {
             ),
             (
                 "prefs-network",
-                &[
-                    "pref-verify-tls",
-                    "pref-body-cap",
-                    "pref-verify-tls-restart",
-                ],
+                &["pref-verify-tls", "pref-body-cap", "prefs-network-restart"],
             ),
-            ("prefs-updates", &["pref-auto-check", "pref-check-now"]),
+            ("prefs-updates", &["pref-updates-unavailable"]),
         ];
         for (section, rows) in groups {
             for row in rows {
@@ -156,8 +152,7 @@ fn rows_sit_in_their_sections_in_two_shared_columns(cx: &mut TestAppContext) {
             "pref-response-font",
             "pref-verify-tls",
             "pref-body-cap",
-            "pref-auto-check",
-            "pref-check-now",
+            "pref-updates-unavailable",
         ];
         let cols: Vec<_> = rows
             .iter()
@@ -212,83 +207,24 @@ fn the_title_outranks_the_headings_and_choices_sit_on_a_track(cx: &mut TestAppCo
     .unwrap();
 }
 
+// A build with no update source has nothing to tick or press, so the Updates section is the
+// one line saying so; a stored "on" is kept for a build that can honour it.
 #[gpui_kit::test]
-fn check_automatically_is_disabled_while_updates_are_unconfigured(cx: &mut TestAppContext) {
-    let col = two_requests();
-    let s = started(cx, &col);
-    let before = settings(cx).check_for_updates;
-    open_prefs(cx, &s);
-    assert!(
-        present(cx, s.win, "updates-disabled"),
-        "the test build has no update source"
-    );
-    // The Updates section sits below the fold of the Network rows.
-    prefs_click(cx, &s, "check-updates");
-    cx.run_until_parked();
-    assert_eq!(settings(cx).check_for_updates, before);
-}
-
-// A stored "on" must not draw a tick on a build that cannot check; the setting stays as saved.
-#[gpui_kit::test]
-fn check_automatically_draws_unticked_while_updates_are_unconfigured(cx: &mut TestAppContext) {
+fn an_unconfigured_build_shows_updates_as_one_line(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     set(cx, |p| p.check_for_updates = true);
     open_prefs(cx, &s);
-    prefs_reveal(cx, &s, "check-updates");
-    let state = |cx: &mut TestAppContext| {
-        cx.update_window(s.win, |_, w, cx| {
-            w.render_frame(cx);
-            let b = w.find("check-updates");
-            (b.checked(), b.disabled())
-        })
-        .unwrap()
-    };
-    assert_eq!(state(cx), (Some(false), Some(true)));
-    // The disabled box swallows the click, so it neither ticks nor writes.
-    prefs_click(cx, &s, "check-updates");
-    cx.run_until_parked();
-    assert_eq!(state(cx), (Some(false), Some(true)));
-    assert!(settings(cx).check_for_updates, "the stored setting is kept");
-}
-
-// With the stored value off, an enabled click would write true, so this click is observable.
-#[gpui_kit::test]
-fn a_click_on_the_unconfigured_check_automatically_box_changes_nothing(cx: &mut TestAppContext) {
-    let col = two_requests();
-    let s = started(cx, &col);
-    set(cx, |p| p.check_for_updates = false);
-    open_prefs(cx, &s);
-    prefs_click(cx, &s, "check-updates");
-    cx.run_until_parked();
-    let drawn = cx
-        .update_window(s.win, |_, w, cx| {
-            w.render_frame(cx);
-            w.find("check-updates").checked()
-        })
-        .unwrap();
-    assert_eq!(drawn, Some(false));
-    assert!(!settings(cx).check_for_updates, "the disabled click wrote");
-}
-
-// The note explaining the disabled checkbox belongs right under it, not under "Manual check".
-#[gpui_kit::test]
-fn the_unconfigured_updates_note_sits_directly_under_its_checkbox(cx: &mut TestAppContext) {
-    let col = two_requests();
-    let s = started(cx, &col);
-    open_prefs(cx, &s);
-    prefs_reveal(cx, &s, "pref-check-now");
+    prefs_reveal(cx, &s, "updates-disabled");
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
-        let auto = w.find("pref-auto-check").bounds();
-        let note = w.find("updates-disabled").bounds();
-        let manual = w.find("pref-check-now").bounds();
-        assert!(
-            note.top() >= auto.bottom() && note.bottom() <= manual.top(),
-            "note {note:?} must lie between {auto:?} and {manual:?}"
-        );
+        let section = w.within("prefs-updates");
+        assert!(section.try_find("updates-disabled").is_some());
+        assert!(section.try_find("check-updates").is_none(), "no checkbox");
+        assert!(section.try_find("check-updates-now").is_none(), "no button");
     })
     .unwrap();
+    assert!(settings(cx).check_for_updates, "the stored setting is kept");
 }
 
 // Clicks Preferences input `id`, replaces its text and leaves with `then` (a key, or none).
@@ -634,26 +570,23 @@ fn the_response_size_limit_reads_in_plain_words(cx: &mut TestAppContext) {
     }
 }
 
-// Each network row that waits for the next start says so beside its own control; the rows
-// that apply at once do not.
+// The restart is named once for the Network section, so no row repeats it beside its control.
 #[gpui_kit::test]
-fn network_rows_that_wait_for_a_restart_say_so_beside_the_control(cx: &mut TestAppContext) {
-    const RESTART: &str = "Takes effect after restart";
+fn no_network_row_repeats_the_restart_note(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
-    let rows = [
-        ("pref-verify-tls", true),
-        ("pref-body-cap", true),
-        ("pref-request-timeout", false),
-        ("pref-http-version", true),
-        ("pref-proxy-mode", true),
-        ("pref-ca-file", true),
-        ("pref-keep-default-cas", true),
-        ("pref-store-cookies", false),
-        ("pref-send-cookies", false),
-    ];
-    for (row, waits) in rows {
+    for row in [
+        "pref-verify-tls",
+        "pref-body-cap",
+        "pref-request-timeout",
+        "pref-http-version",
+        "pref-proxy-mode",
+        "pref-ca-file",
+        "pref-keep-default-cas",
+        "pref-store-cookies",
+        "pref-send-cookies",
+    ] {
         prefs_reveal(cx, &s, row);
         let drawn = cx
             .update_window(s.win, |_, w, cx| {
@@ -661,9 +594,8 @@ fn network_rows_that_wait_for_a_restart_say_so_beside_the_control(cx: &mut TestA
                 drawn_text_in(w, row)
             })
             .unwrap();
-        assert_eq!(
-            drawn.iter().any(|t| t == RESTART),
-            waits,
+        assert!(
+            !drawn.iter().any(|t| t.contains("after restart")),
             "{row}: {drawn:?}"
         );
     }

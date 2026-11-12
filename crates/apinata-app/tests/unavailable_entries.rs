@@ -65,3 +65,47 @@ fn the_app_menu_greys_out_check_for_updates_without_an_update_source() {
     assert!(app_menu_disabled(false, true, false).contains(&check));
     assert!(!app_menu_disabled(false, true, true).contains(&check));
 }
+
+// A greyed app-menu entry says on hover why it cannot be used. The test collection is in no
+// git repository and the test build has no update source.
+#[gpui_kit::test]
+fn greyed_app_menu_entries_say_why_on_hover(cx: &mut TestAppContext) {
+    use apinata_app::app_menu::APP_MENU_REASON_TIP;
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    let col = two_requests();
+    let s = started(cx, &col);
+    let repo = "Open a collection in a git repository";
+    for (id, reason) in [
+        ("collection.switch_branch", repo),
+        ("collection.show_changes", repo),
+        (
+            "view.check_for_updates",
+            "Update checks are not configured for this build",
+        ),
+    ] {
+        cx.update_window(s.win, |_, w, cx| {
+            w.within("title-bar").click("app-menu", cx)
+        })
+        .unwrap();
+        frame(cx, s.win);
+        cx.update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.within("popup-menu").hover(label(id), cx)
+        })
+        .unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(800));
+        frame(cx, s.win);
+        let tip = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                w.try_find(APP_MENU_REASON_TIP)
+                    .and_then(|e| e.label().map(str::to_owned))
+            })
+            .unwrap();
+        assert_eq!(tip.as_deref(), Some(reason), "{id}");
+        cx.simulate_keystrokes(s.win, "escape");
+        cx.run_until_parked();
+    }
+}

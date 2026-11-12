@@ -42,7 +42,7 @@ use crate::style::{
 };
 use crate::theme;
 use crate::theme::SelectedStyle;
-use crate::ui::{self, ChooseButton as _, LockButton as _};
+use crate::ui::{self, ChooseButton as _};
 use crate::updates::{Updates, UpdatesEvent, report_text};
 use crate::zoom::{self, ZoomStep, ZoomTarget};
 
@@ -86,9 +86,9 @@ const HTTP_VERSIONS: [(HttpVersionPref, &str); 3] = [
     (HttpVersionPref::Auto, "Auto"),
     (HttpVersionPref::Http2PriorKnowledge, "HTTP/2"),
 ];
-const HTTP_VERSION_HINT: &str = "HTTP/1.1 is the default. Auto uses HTTP/2 when an HTTPS server \
-    offers it. HTTP/2 sends HTTP/2 without asking first, also over plain http, and fails if the \
-    server does not speak it.";
+const HTTP_VERSION_HINT: &str = "Keep HTTP/1.1 unless a server needs HTTP/2. Auto switches to \
+    HTTP/2 when a secure (https) server supports it. HTTP/2 uses it for every request, even \
+    without https, and fails on servers that do not support it.";
 const PROXY_PROTOCOLS: [&str; 4] = ["http", "https", "socks4", "socks5"];
 const ORIENTATIONS: [(Orientation, &str); 2] = [
     (Orientation::Vertical, "Stacked"),
@@ -752,29 +752,22 @@ impl PreferencesView {
                 }
             },
         );
-        // Each mode says once that it waits for a restart: under the control when the mode
-        // has no fields, otherwise after its last field. The System help shows only in System.
-        let restart = ui::form_note("prefs-proxy-restart", PROXY_RESTART);
+        // The System help shows only in System; the restart note is the section's.
         match current.mode {
             ProxyMode::Off => {
-                let control = after_restart("pref-proxy-mode", mode, cx);
-                return section.row("pref-proxy-mode", "Proxy", control);
+                return section.row("pref-proxy-mode", "Proxy", mode);
             }
             ProxyMode::System => {
-                let control = after_restart("pref-proxy-mode", mode, cx);
                 return section
-                    .row("pref-proxy-mode", "Proxy", control)
+                    .row("pref-proxy-mode", "Proxy", mode)
                     .row_note(ui::form_note("prefs-proxy-note", PROXY_NOTE));
             }
             ProxyMode::Pac => {
-                return section
-                    .row("pref-proxy-mode", "Proxy", mode)
-                    .row(
-                        "pref-proxy-pac",
-                        "PAC file (URL or path)",
-                        self.pac_row(window, cx),
-                    )
-                    .row_note(restart);
+                return section.row("pref-proxy-mode", "Proxy", mode).row(
+                    "pref-proxy-pac",
+                    "PAC file (URL or path)",
+                    self.pac_row(window, cx),
+                );
             }
             ProxyMode::Manual => {}
         }
@@ -842,7 +835,6 @@ impl PreferencesView {
                 "Bypass (comma separated hosts)",
                 self.field(Field::Bypass, window, cx),
             )
-            .row_note(restart)
     }
 }
 
@@ -850,9 +842,6 @@ impl PreferencesView {
 pub const PROXY_NOTE: &str = "System uses the proxy environment variables (and the system \
      settings on macOS and Windows); a PAC file set in the system settings is not used. Choose \
      PAC to use one.";
-
-/// The note after the proxy fields: like the mode, they apply at the next start.
-pub const PROXY_RESTART: &str = "The proxy settings above take effect after restart";
 
 /// The PAC file input's example while it is empty.
 pub const PAC_PLACEHOLDER: &str = "URL or file path";
@@ -996,21 +985,9 @@ fn with_reset(
     )
 }
 
-const RESTART: &str = "Takes effect after restart";
-
-// A control whose setting the executor reads only at start, with that said right under it in
-// the control's column, so the wait is seen where the change is made.
-fn after_restart(row: &str, control: impl IntoElement, cx: &App) -> impl IntoElement {
-    v_flex().items_start().gap(SPACE_1).child(control).child(
-        div()
-            .id(SharedString::from(format!("{row}-restart")))
-            .test_support()
-            .text_size(TEXT_SMALL)
-            .text_color(cx.theme().muted_foreground)
-            .child(RESTART)
-            .test_text(RESTART),
-    )
-}
+/// The Network section's one note naming the settings read only at start.
+pub const NETWORK_RESTART: &str = "TLS verification, the response size limit, the HTTP version, \
+     the proxy and the certificate settings take effect after restart.";
 
 impl Focusable for PreferencesView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -1233,22 +1210,18 @@ impl PreferencesView {
             .row(
                 "pref-verify-tls",
                 "Verify TLS certificates",
-                after_restart(
-                    "pref-verify-tls",
-                    ui::checkbox("verify-tls", !current.insecure).on_click(cx.listener(
-                        |this, on: &bool, _, cx| {
-                            let insecure = !*on;
-                            this.edit(|s| s.insecure = insecure, cx)
-                        },
-                    )),
-                    cx,
-                ),
+                ui::checkbox("verify-tls", !current.insecure).on_click(cx.listener(
+                    |this, on: &bool, _, cx| {
+                        let insecure = !*on;
+                        this.edit(|s| s.insecure = insecure, cx)
+                    },
+                )),
             )
             .row_with_terms(
                 "pref-body-cap",
                 "Largest response to keep (MB, blank for no limit)",
                 ["body cap", "size limit"],
-                after_restart("pref-body-cap", self.field(Field::BodyCap, window, cx), cx),
+                self.field(Field::BodyCap, window, cx),
             )
             .row_with_terms(
                 "pref-request-timeout",
@@ -1256,49 +1229,37 @@ impl PreferencesView {
                 ["request", "timeout", "limit"],
                 self.field(Field::RequestTimeout, window, cx),
             )
-            .row(
-                "pref-http-version",
-                "HTTP version",
-                after_restart("pref-http-version", http_version, cx),
-            );
+            .row("pref-http-version", "HTTP version", http_version);
         let network = self
             .proxy_rows(network, &current.proxy, window, cx)
             .row(
                 "pref-ca-file",
                 "CA certificate file (blank for none)",
-                after_restart(
-                    "pref-ca-file",
-                    self.with_error(
-                        Field::CaFile,
-                        h_flex()
-                            .gap(SPACE_1)
-                            .child(self.framed(Field::CaFile, window, cx))
-                            .child(
-                                Button::new("ca-file-choose")
-                                    .label("Choose")
-                                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.choose_ca_file(window, cx)
-                                    })),
-                            ),
-                        cx,
-                    ),
+                self.with_error(
+                    Field::CaFile,
+                    h_flex()
+                        .gap(SPACE_1)
+                        .child(self.framed(Field::CaFile, window, cx))
+                        .child(
+                            Button::new("ca-file-choose")
+                                .label("Choose")
+                                .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.choose_ca_file(window, cx)
+                                })),
+                        ),
                     cx,
                 ),
             )
             .row(
                 "pref-keep-default-cas",
                 "Also trust the default certificate authorities",
-                after_restart(
-                    "pref-keep-default-cas",
-                    ui::checkbox("keep-default-cas", current.keep_default_cas).on_click(
-                        cx.listener(|this, on: &bool, _, cx| {
-                            let on = *on;
-                            this.edit(|s| s.keep_default_cas = on, cx)
-                        }),
-                    ),
-                    cx,
-                ),
+                ui::checkbox("keep-default-cas", current.keep_default_cas).on_click(cx.listener(
+                    |this, on: &bool, _, cx| {
+                        let on = *on;
+                        this.edit(|s| s.keep_default_cas = on, cx)
+                    },
+                )),
             )
             // Unlike the settings above, the cookie switches reach the live executor at once.
             .row(
@@ -1327,6 +1288,7 @@ impl PreferencesView {
                     },
                 )),
             )
+            .note(ui::form_note("prefs-network-restart", NETWORK_RESTART))
             .note(ui::form_note(
                 "prefs-cookies-note",
                 "Cookie settings apply at once.",
@@ -1343,42 +1305,49 @@ impl PreferencesView {
                 "prefs-scripts-note",
                 "Script settings apply at once.",
             ));
-        // Disabled controls swallow the click, so an unconfigured build never checks and
-        // the stored preference survives until a build can honour it. It is drawn unticked
-        // meanwhile, so the box never claims a check that cannot happen.
-        let mut updates = PrefsSection::new("prefs-updates", "Updates").row(
-            "pref-auto-check",
-            "Check automatically",
-            ui::checkbox(
-                "check-updates",
-                updates_enabled && current.check_for_updates,
+        // A build with no update source has nothing to tick or press, so the section is the one
+        // line saying so; the stored preference waits for a build that can honour it.
+        let updates = PrefsSection::new("prefs-updates", "Updates");
+        let updates = if updates_enabled {
+            updates
+                .row(
+                    "pref-auto-check",
+                    "Check automatically",
+                    ui::checkbox("check-updates", current.check_for_updates).on_click(cx.listener(
+                        |this, on: &bool, _, cx| {
+                            let on = *on;
+                            this.edit(|s| s.check_for_updates = on, cx)
+                        },
+                    )),
+                )
+                .row(
+                    "pref-check-now",
+                    "Manual check",
+                    Button::new("check-updates-now")
+                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                        .label("Check now")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(updates) = &this.updates {
+                                updates.update(cx, |u, cx| u.check_now(cx));
+                            }
+                        })),
+                )
+        } else {
+            updates.row_with_terms(
+                "pref-updates-unavailable",
+                "Check for updates",
+                ["check automatically", "check now"],
+                div()
+                    .w_full()
+                    .whitespace_normal()
+                    .id("updates-disabled")
+                    .test_support()
+                    .aria_label(crate::updates::NOT_CONFIGURED)
+                    .text_size(TEXT_SMALL)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(crate::updates::NOT_CONFIGURED),
             )
-            .disabled(!updates_enabled)
-            .on_click(cx.listener(|this, on: &bool, _, cx| {
-                let on = *on;
-                this.edit(|s| s.check_for_updates = on, cx)
-            })),
-        );
-        // The note explains the disabled checkbox, so it sits right under that row.
-        if !updates_enabled {
-            updates = updates.row_note(ui::form_note(
-                "updates-disabled",
-                "Update checks are not configured for this build",
-            ));
-        }
-        updates = updates.row(
-            "pref-check-now",
-            "Manual check",
-            Button::new("check-updates-now")
-                .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                .label("Check now")
-                .lock(!updates_enabled, cx)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    if let Some(updates) = &this.updates {
-                        updates.update(cx, |u, cx| u.check_now(cx));
-                    }
-                })),
-        );
+        };
         // Pressing Clear is the ask, so there is no confirm dialog.
         let history = PrefsSection::new("prefs-history", "History")
             .row(
