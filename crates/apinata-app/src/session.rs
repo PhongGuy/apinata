@@ -2,7 +2,7 @@
 
 use crate::tabs::TabKind;
 use apinata_core::{ItemPath, StatusRule};
-use gpui_kit::{Bounds, Pixels, WindowBounds, point, px, size};
+use gpui_kit::{Bounds, Pixels, Size, WindowBounds, point, px, size};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,11 @@ pub const RECENT_LIMIT: usize = 10;
 pub const MIN_WIDTH: f32 = 320.0;
 /// The shortest saved window that is restored.
 pub const MIN_HEIGHT: f32 = 240.0;
+
+/// The smallest the main window can be made, the same as the smallest one restored.
+pub fn min_window_size() -> Size<Pixels> {
+    size(px(MIN_WIDTH), px(MIN_HEIGHT))
+}
 
 /// What the app restores on the next start.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
