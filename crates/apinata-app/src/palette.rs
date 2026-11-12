@@ -136,9 +136,39 @@ pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
     entries
 }
 
-// The kit section of the Requests group: it follows every registry group.
+// The kit sections of the Requests group: it leads when the query names requests better than
+// any command, else it follows every registry group. Both slots always exist, so a section
+// keeps its meaning when the order flips; the unused one is empty and hidden.
+const LEADING_REQUESTS: usize = 0;
 fn requests_section() -> usize {
-    PaletteGroup::ALL.len()
+    PaletteGroup::ALL.len() + 1
+}
+
+// How well `query` (lowercase) matches `label`: 0 when the label starts with it, 1 when a later
+// word does, 2 when it only sits inside a word; `None` when the label does not contain it.
+fn match_rank(label: &str, query: &str) -> Option<u8> {
+    let label = label.to_lowercase();
+    (label.match_indices(query))
+        .map(|(at, _)| match label[..at].chars().next_back() {
+            None => 0,
+            Some(c) if !c.is_alphanumeric() => 1,
+            Some(_) => 2,
+        })
+        .min()
+}
+
+// Whether the Requests group leads for `query`: some request matches at least as well as every
+// matching command, and no command starts with the query, so command-only queries keep order.
+fn requests_lead(items: &[PaletteEntry], requests: &[RequestEntry], query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    let best_request = (requests.iter())
+        .filter_map(|r| match_rank(&r.label, &query))
+        .min();
+    let best_command = (items.iter())
+        .flat_map(|e| std::iter::once(e.label).chain(e.keywords.iter().copied()))
+        .filter_map(|text| match_rank(text, &query))
+        .min();
+    matches!((best_request, best_command), (Some(r), Some(c)) if c > 0 && r <= c)
 }
 
 // The list's height cap, the kit list's row sizes and its padding at the 13 px UI base; the
@@ -428,8 +458,9 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         .collect()
 }
 
-/// The kit index path of entry `ix`. The section is the group's place in `PaletteGroup::ALL`,
-/// since the kit numbers a group with every command hidden too. Panics when `ix` is out of range.
+/// The kit index path of entry `ix`. The section is the group's place in `PaletteGroup::ALL`
+/// after the leading Requests slot, since the kit numbers a group with every command hidden
+/// too. Panics when `ix` is out of range.
 pub fn index_path(items: &[PaletteEntry], ix: usize) -> IndexPath {
     let group = items[ix].group;
     // `PaletteGroup::ALL` lists every group.
@@ -443,7 +474,7 @@ pub fn index_path(items: &[PaletteEntry], ix: usize) -> IndexPath {
         .rev()
         .take_while(|e| e.group == group)
         .count();
-    IndexPath::new(row).section(section)
+    IndexPath::new(row).section(section + 1)
 }
 
 /// The entry at a kit index path, or `None` when the path names no entry.
@@ -666,7 +697,8 @@ fn confirm(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let action: Box<dyn Action> = if path.section == requests_section() {
+    let request = path.section == LEADING_REQUESTS || path.section == requests_section();
+    let action: Box<dyn Action> = if request {
         let Some(r) = requests.get(path.row) else {
             return;
         };
@@ -701,8 +733,9 @@ fn listed(commands: bool, available: Availability) -> Vec<PaletteEntry> {
     }
 }
 
-// One kit group per palette group, then one for the requests; items carry no kit action,
-// so confirming runs nothing of the kit's own. Empty groups keep the requests' section index.
+// One kit group per palette group between the two Requests slots, the requests in the first
+// when they lead for the query and else the last; items carry no kit action, so confirming
+// runs nothing of the kit's own. Empty groups keep every section index.
 fn palette(
     state: &gpui_kit::Entity<CommandState>,
     requests: &[RequestEntry],
@@ -716,14 +749,22 @@ fn palette(
     // Row ids keep their place in the full list, so a hidden entry shifts none of them.
     let all = palette_items();
     let query = state.read(cx).query(cx);
+    let lead = requests_lead(&items, requests, &query);
     let mut command = Command::new(state)
         .bordered(false)
-        .max_h(list_height(&items, requests, &query, rem, cap))
+        .max_h(list_height(&items, requests, &query, lead, rem, cap))
         .placeholder(if commands {
             "Type a command"
         } else {
             "Type a request name"
         });
+    let request_rows = |shown: bool| {
+        let rows = (requests.iter().enumerate())
+            .filter(|_| shown)
+            .map(|(r, e)| request_row(r, e));
+        CommandGroup::new().label("Requests").items(rows)
+    };
+    command = command.group(request_rows(lead));
     for group in PaletteGroup::ALL {
         let rows = items.iter().filter(|e| e.group == group).map(|e| {
             let id = all
@@ -733,11 +774,7 @@ fn palette(
         });
         command = command.group(CommandGroup::new().label(group.label()).items(rows));
     }
-    if !requests.is_empty() {
-        let rows = requests.iter().enumerate().map(|(r, e)| request_row(r, e));
-        command = command.group(CommandGroup::new().label("Requests").items(rows));
-    }
-    command
+    command.group(request_rows(!lead))
 }
 
 /// What a palette's rows were last built from. The kit re-measures every custom row each
@@ -811,20 +848,26 @@ fn list_height(
     items: &[PaletteEntry],
     requests: &[RequestEntry],
     query: &str,
+    lead: bool,
     rem: Pixels,
     cap: f32,
 ) -> Pixels {
     let query = query.trim().to_lowercase();
     let hits = |label: &str| label.to_lowercase().contains(&query);
     let entry_hits = |e: &PaletteEntry| hits(e.label) || e.keywords.iter().any(|k| hits(k));
-    let counts = PaletteGroup::ALL
-        .into_iter()
-        .map(|group| {
+    let request_count = requests.iter().filter(|e| hits(&e.label)).count();
+    let (first, last) = if lead {
+        (request_count, 0)
+    } else {
+        (0, request_count)
+    };
+    let counts = std::iter::once(first)
+        .chain(PaletteGroup::ALL.into_iter().map(|group| {
             (items.iter())
                 .filter(|e| e.group == group && entry_hits(e))
                 .count()
-        })
-        .chain([requests.iter().filter(|e| hits(&e.label)).count()]);
+        }))
+        .chain([last]);
     let rows = counts.flat_map(|matches| {
         let heading = (matches > 0).then_some(HEADING_ROW);
         heading
