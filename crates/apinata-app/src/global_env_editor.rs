@@ -42,6 +42,9 @@ pub const GLOBAL_ENV_MENU_EXPORT_ALL: usize = 1;
 /// The "…" menu's Delete entry, after the separator at 2.
 pub const GLOBAL_ENV_MENU_DELETE: usize = 3;
 
+/// The empty pane's line on what a global environment is for.
+pub const GLOBAL_ENV_ABOUT: &str = "Global variables apply to every collection.";
+
 // Which name the name input is collecting.
 #[derive(Clone, Copy, PartialEq)]
 enum Naming {
@@ -460,6 +463,32 @@ impl GlobalEnvEditor {
             .ok();
         })
         .detach();
+    }
+
+    /// Sets the selected environment's colour, `None` clearing it, and saves it at once.
+    pub fn set_color(&mut self, color: Option<&str>, cx: &mut Context<Self>) {
+        if let Some(name) = self.selected.clone() {
+            let color = color.map(str::to_owned);
+            self.send(GlobalOp::SetColor { name, color }, cx);
+        }
+    }
+
+    // A swatch takes no focus on click, so focus moves to the editor when it has none, and
+    // the dialog keeps its keys after a pick.
+    fn pick(&mut self, color: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.focus.contains_focused(window, cx) {
+            window.focus(&self.focus, cx);
+        }
+        self.set_color(color, cx);
+    }
+
+    // The selected environment's colour as the snapshot has it.
+    fn color(&self, cx: &App) -> Option<String> {
+        let globals = self.workspace.read(cx).globals();
+        globals
+            .as_deref()?
+            .environment(self.selected.as_deref()?)?
+            .color()
     }
 
     /// Deletes the selected environment.
@@ -1042,12 +1071,20 @@ impl GlobalEnvEditor {
                 .px(style::SPACE_2)
                 .rounded(style::RADIUS)
                 .cursor_pointer()
-                .gap_1()
+                .gap(style::SPACE_1)
                 .when(chosen, |row| row.bg(active))
                 .when(dotted, |row| {
                     row.child(dot_or_space("global-env-item-dot", fill))
                 })
-                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+                .child(
+                    div()
+                        .id(("global-env-item-name", ix))
+                        .test_support()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .child(name.clone()),
+                )
                 .when(in_use, |row| {
                     row.child(
                         div()
@@ -1275,6 +1312,11 @@ impl Render for GlobalEnvEditor {
                 },
             )),
         ));
+        let editor = cx.entity().downgrade();
+        let pick = move |c: Option<&'static str>, window: &mut Window, cx: &mut App| {
+            editor.update(cx, |e, cx| e.pick(c, window, cx)).ok();
+        };
+        let swatches = env_editor::swatch_row(self.color(cx).as_deref(), &self.follow, pick, cx);
         let body = if selected {
             v_flex()
                 .flex_1()
@@ -1282,6 +1324,7 @@ impl Render for GlobalEnvEditor {
                 .gap_2()
                 .children(disk_banner)
                 .child(header)
+                .child(ui::form_row("global-env-color-row", "Color", swatches))
                 // A row of its own, so the checkbox hugs its label instead of the pane's width.
                 .child(
                     h_flex()
@@ -1294,26 +1337,43 @@ impl Render for GlobalEnvEditor {
                 .into_any_element()
         } else {
             // The message and its action hug their content as one group, centred in the pane
-            // as the collection editor's empty state is.
+            // as the collection editor's empty state is. While the first name is typed in the
+            // list, only the line on what a global environment is for stays.
+            let naming = self.naming.is_some();
+            let muted = cx.theme().muted_foreground;
             let empty = v_flex()
                 .id("global-env-empty")
                 .test_support()
+                .max_w_full()
                 .items_center()
                 .gap_2()
+                .when(!naming, |d| {
+                    d.child(
+                        div()
+                            .id("global-env-empty-label")
+                            .test_support()
+                            .text_color(muted)
+                            .child("No global environments yet."),
+                    )
+                })
                 .child(
                     div()
-                        .id("global-env-empty-label")
+                        .id("global-env-about")
                         .test_support()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("No global environments yet."),
+                        .max_w_full()
+                        .text_center()
+                        .text_color(muted)
+                        .child(GLOBAL_ENV_ABOUT),
                 )
-                .child(
-                    Button::new("global-env-empty-create")
-                        .label("New global environment")
-                        .on_click(cx.listener(|e, _, window, cx| {
-                            e.start_naming(Naming::Create, window, cx)
-                        })),
-                );
+                .when(!naming, |d| {
+                    d.child(
+                        Button::new("global-env-empty-create")
+                            .label("New global environment")
+                            .on_click(cx.listener(|e, _, window, cx| {
+                                e.start_naming(Naming::Create, window, cx)
+                            })),
+                    )
+                });
             v_flex()
                 .id("global-env-empty-pane")
                 .test_support()

@@ -1798,39 +1798,13 @@ impl EnvEditor {
         self.set_color(color.unwrap_or_default(), cx);
     }
 
-    // None, the presets, and the file's own colour when it matches no preset; the chosen one
-    // carries a ring. The custom swatch only shows the file's text and sends nothing.
     fn swatches(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let color = self.view(cx).and_then(|v| v.color.clone());
-        let chosen = |c: Option<&str>| match (color.as_deref(), c) {
-            (None, None) => true,
-            (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
-            _ => false,
+        let this = cx.entity().downgrade();
+        let pick = move |c: Option<&'static str>, window: &mut Window, cx: &mut App| {
+            this.update(cx, |e, cx| e.pick(c, window, cx)).ok();
         };
-        let custom = color
-            .clone()
-            .filter(|c| !ENV_SWATCHES.iter().any(|p| p.eq_ignore_ascii_case(c)));
-        let none = swatch("env-swatch-none", "No color", None, chosen(None), cx)
-            .on_click(cx.listener(|e, _, window, cx| e.pick(None, window, cx)));
-        let presets = ENV_SWATCHES.iter().zip(ENV_SWATCH_NAMES).enumerate();
-        let presets = presets.map(|(ix, (hex, name))| {
-            swatch(("env-swatch", ix), name, Some(hex), chosen(Some(hex)), cx)
-                .on_click(cx.listener(move |e, _, window, cx| e.pick(Some(hex), window, cx)))
-        });
-        let presets: Vec<_> = presets.collect();
-        let custom = custom.map(|text| swatch("env-swatch-custom", &text, Some(&text), true, cx));
-        // Each swatch reports to the follow, so Tab onto one scrolls it into view.
-        let follow = &self.follow;
-        let presets = (presets.into_iter().enumerate())
-            .map(|(ix, b)| Followed::new(("env-swatch-follow", ix), follow, b));
-        h_flex()
-            .id("env-swatches")
-            .test_support()
-            .flex_wrap()
-            .gap_1()
-            .child(Followed::new("env-swatch-none-follow", follow, none))
-            .children(presets)
-            .children(custom.map(|b| Followed::new("env-swatch-custom-follow", follow, b)))
+        swatch_row(color.as_deref(), &self.follow, pick, cx)
     }
 
     // The pane's header: the name as a title that truncates, then the "…" menu, then Discard
@@ -1860,6 +1834,45 @@ impl EnvEditor {
                     .on_click(cx.listener(|e, _, window, cx| e.save_asking(window, cx))),
             ))
     }
+}
+
+/// The Color row's swatches: None, the presets, and `color` itself when it matches no preset;
+/// the chosen one carries a ring. A click sends its preset, or `None`, to `pick`; the custom
+/// swatch only shows the file's text and sends nothing.
+pub(crate) fn swatch_row(
+    color: Option<&str>,
+    follow: &FocusFollow,
+    pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + Clone + 'static,
+    cx: &App,
+) -> AnyElement {
+    let chosen = |c: Option<&str>| match (color, c) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
+    };
+    let custom = color.filter(|c| !ENV_SWATCHES.iter().any(|p| p.eq_ignore_ascii_case(c)));
+    let none = swatch("env-swatch-none", "No color", None, chosen(None), cx).on_click({
+        let pick = pick.clone();
+        move |_, window, cx| pick(None, window, cx)
+    });
+    let presets = ENV_SWATCHES.iter().zip(ENV_SWATCH_NAMES).enumerate();
+    let presets = presets.map(|(ix, (hex, name))| {
+        let pick = pick.clone();
+        let button = swatch(("env-swatch", ix), name, Some(hex), chosen(Some(hex)), cx)
+            .on_click(move |_, window, cx| pick(Some(hex), window, cx));
+        // Each swatch reports to the follow, so Tab onto one scrolls it into view.
+        Followed::new(("env-swatch-follow", ix), follow, button)
+    });
+    let custom = custom.map(|text| swatch("env-swatch-custom", text, Some(text), true, cx));
+    h_flex()
+        .id("env-swatches")
+        .test_support()
+        .flex_wrap()
+        .gap_1()
+        .child(Followed::new("env-swatch-none-follow", follow, none))
+        .children(presets)
+        .children(custom.map(|b| Followed::new("env-swatch-custom-follow", follow, b)))
+        .into_any_element()
 }
 
 // One ghost swatch button labelled `label`: a dot of `fill` (muted when the text is no hex
