@@ -2366,8 +2366,8 @@ impl Sidebar {
         }
     }
 
-    /// Selects a collection's root row and scrolls it into view, clearing a filter that hides
-    /// it first. Focus does not move.
+    /// Selects a collection's root row and scrolls it to the top of the list, or as near as
+    /// the list allows, clearing a filter that hides it first. Focus does not move.
     pub fn reveal_root(&mut self, root: &Path, window: &mut Window, cx: &mut Context<Self>) {
         let top = ItemPath::root();
         if self.find(root, &top).is_none() && !self.filter_text.trim().is_empty() {
@@ -2379,9 +2379,10 @@ impl Sidebar {
             return;
         };
         self.select(&id, cx);
+        // The root goes to the top, not just into view, so the collection's requests show below it.
         self.tree.update(cx, |t, _| {
             if let Some(ix) = t.index_of(&id) {
-                t.scroll_to_item(ix, ScrollStrategy::Nearest);
+                t.scroll_to_item(ix, ScrollStrategy::Top);
             }
         });
     }
