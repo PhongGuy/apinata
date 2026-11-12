@@ -140,7 +140,7 @@ fn each_section_opens_at_its_own_scroll_offset(cx: &mut TestAppContext) {
     let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
     // Short enough that both the Script and the Tests section overflow the body.
     gpui_kit::VisualTestContext::from_window(win, cx)
-        .simulate_resize(gpui_kit::size(gpui_kit::px(1000.), gpui_kit::px(420.)));
+        .simulate_resize(gpui_kit::size(gpui_kit::px(1000.), gpui_kit::px(340.)));
     frame(cx, win);
     // The top edge of `id` relative to the section body's, negative once scrolled past.
     let offset = |cx: &mut TestAppContext, id: &'static str| {
