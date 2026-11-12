@@ -56,7 +56,7 @@ fn an_invalid_edit_shows_line_and_column_and_a_fix_clears_it(cx: &mut TestAppCon
     edit(cx, win, &s, "{\n\"b\": }");
     assert_eq!(
         marker(cx, &s).as_deref(),
-        Some("Line 2, column 6: expected value")
+        Some("Line 2, column 6: A value is missing here")
     );
     assert!(shown(cx, win));
     edit(cx, win, &s, "{\n\"b\": 1}");
@@ -69,7 +69,7 @@ fn a_loaded_invalid_body_shows_the_marker(cx: &mut TestAppContext) {
     let (win, s) = body(cx, BodySpec::Json("[1,".into()));
     assert_eq!(
         marker(cx, &s).as_deref(),
-        Some("Line 1, column 4: EOF while parsing a value")
+        Some("Line 1, column 4: The JSON ends where a value should be")
     );
     assert!(shown(cx, win));
 }
