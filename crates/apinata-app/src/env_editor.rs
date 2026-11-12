@@ -29,6 +29,7 @@ use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, EnvOp, Field, Notice, NoticeKind, Target};
 use crate::edit_history::EditHistory;
 use crate::edit_track::{self, LoadStamps, same_value};
+use crate::env_color::{dot_or_space, env_fill};
 use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, SecretRecord, env_rows, env_vars_from,
     secret_records, secrets_collide,
@@ -129,6 +130,9 @@ enum Sent {
 pub const ENV_SWATCHES: [&str; 6] = [
     "#CE4F3B", "#2E8A54", "#346AB2", "#C77A0F", "#B83D7F", "#8D44B2",
 ];
+
+/// The presets' names, in `ENV_SWATCHES` order: each swatch's tooltip and accessibility label.
+pub const ENV_SWATCH_NAMES: [&str; 6] = ["Red", "Green", "Blue", "Orange", "Pink", "Purple"];
 
 // Which name the name input is collecting.
 #[derive(Clone, Copy, PartialEq)]
@@ -1806,10 +1810,11 @@ impl EnvEditor {
         let custom = color
             .clone()
             .filter(|c| !ENV_SWATCHES.iter().any(|p| p.eq_ignore_ascii_case(c)));
-        let none = swatch("env-swatch-none", "None", None, chosen(None), cx)
+        let none = swatch("env-swatch-none", "No color", None, chosen(None), cx)
             .on_click(cx.listener(|e, _, window, cx| e.pick(None, window, cx)));
-        let presets = ENV_SWATCHES.iter().enumerate().map(|(ix, hex)| {
-            swatch(("env-swatch", ix), hex, Some(hex), chosen(Some(hex)), cx)
+        let presets = ENV_SWATCHES.iter().zip(ENV_SWATCH_NAMES).enumerate();
+        let presets = presets.map(|(ix, (hex, name))| {
+            swatch(("env-swatch", ix), name, Some(hex), chosen(Some(hex)), cx)
                 .on_click(cx.listener(move |e, _, window, cx| e.pick(Some(hex), window, cx)))
         });
         let presets: Vec<_> = presets.collect();
@@ -1835,54 +1840,23 @@ impl EnvEditor {
         let dirty = self.view(cx).is_some_and(|v| v.dirty);
         let this = cx.entity();
         let followed = |id: &'static str, button: Button| Followed::new(id, &self.follow, button);
-        let more = Button::new("env-more")
-            .ghost()
-            .compact()
-            .icon(IconName::Ellipsis)
-            .tooltip(MORE_ACTIONS)
-            .accessibility_label(MORE_ACTIONS)
-            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                env_menu(menu, this.clone(), locked)
-            });
-        h_flex()
-            .w_full()
-            .gap_2()
-            .child(
-                div()
-                    .id("env-title")
-                    .test_support()
-                    .aria_label(name.clone())
-                    // A zero basis keeps the name out of the pane's minimum width, so a long
-                    // one truncates instead of squeezing the list or pushing Save out.
-                    .flex_1()
-                    .w_0()
-                    .truncate()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(name),
-            )
+        let more = more_button("env-more", move |menu| env_menu(menu, this.clone(), locked));
+        pane_header("env-title", name)
             .child(Followed::new("env-more-follow", &self.follow, more))
             .child(followed(
                 "env-duplicate-follow",
-                Button::new("env-duplicate")
-                    .label("Duplicate")
-                    .lock(locked, cx)
-                    .when(locked, |b| b.tooltip(RENAME_LOCKED_REASON))
-                    .on_click(cx.listener(|e, _, window, cx| {
-                        e.after_held(window, cx, |e, _, cx| e.duplicate(cx))
-                    })),
+                duplicate_button("env-duplicate", locked, cx).on_click(cx.listener(
+                    |e, _, window, cx| e.after_held(window, cx, |e, _, cx| e.duplicate(cx)),
+                )),
             ))
             .child(followed(
                 "env-discard-follow",
-                Button::new("env-discard")
-                    .label("Discard changes")
-                    .lock(!locked, cx)
+                discard_button("env-discard", locked, cx)
                     .on_click(cx.listener(|e, _, window, cx| e.discard_asking(window, cx))),
             ))
             .child(followed(
                 "env-save-follow",
-                Button::new("env-save")
-                    .when(dirty, |b| b.primary())
-                    .label("Save")
+                save_button("env-save", dirty)
                     .on_click(cx.listener(|e, _, window, cx| e.save_asking(window, cx))),
             ))
     }
@@ -1931,6 +1905,68 @@ fn swatch(
         .child(div().relative().p(style::SPACE_0).child(dot).children(ring))
 }
 
+/// An environment pane's header row: `name` as a semibold title (id `title_id`) that takes the
+/// room left and truncates, so the controls the caller adds stay on one line at the right.
+pub(crate) fn pane_header(title_id: &'static str, name: String) -> Div {
+    h_flex().w_full().gap_2().child(
+        div()
+            .id(title_id)
+            .test_support()
+            .aria_label(name.clone())
+            // A zero basis keeps the name out of the pane's minimum width, so a long one
+            // truncates instead of squeezing the list or pushing Save out.
+            .flex_1()
+            .w_0()
+            .truncate()
+            .font_weight(FontWeight::SEMIBOLD)
+            .child(name),
+    )
+}
+
+/// The header's "…" button, opening `menu` under its right edge.
+pub(crate) fn more_button(
+    id: &'static str,
+    menu: impl Fn(PopupMenu) -> PopupMenu + 'static,
+) -> impl IntoElement {
+    Button::new(id)
+        .ghost()
+        .compact()
+        .icon(IconName::Ellipsis)
+        .tooltip(MORE_ACTIONS)
+        .accessibility_label(MORE_ACTIONS)
+        .dropdown_menu_with_anchor(Anchor::TopRight, move |m, _, _| menu(m))
+}
+
+/// The header's Duplicate, off while `locked` by unsaved edits, with the reason as its tip.
+pub(crate) fn duplicate_button(id: &'static str, locked: bool, cx: &App) -> Button {
+    Button::new(id)
+        .label("Duplicate")
+        .lock(locked, cx)
+        .when(locked, |b| b.tooltip(RENAME_LOCKED_REASON))
+}
+
+/// The header's Discard changes, live only while there are `edits` to drop.
+pub(crate) fn discard_button(id: &'static str, edits: bool, cx: &App) -> Button {
+    Button::new(id).label("Discard changes").lock(!edits, cx)
+}
+
+/// The header's Save, the primary action only while it has `edits` to store.
+pub(crate) fn save_button(id: &'static str, edits: bool) -> Button {
+    Button::new(id).when(edits, |b| b.primary()).label("Save")
+}
+
+/// The "…" menu's Delete entry in the danger colour, its content under `id`.
+pub(crate) fn delete_entry(id: &'static str) -> PopupMenuItem {
+    PopupMenuItem::element(move |_, cx| {
+        div()
+            .id(id)
+            .test_support()
+            .aria_label("Delete")
+            .text_color(cx.theme().danger)
+            .child("Delete")
+    })
+}
+
 /// The content of the "…" menu's Rename entry while the environment is locked.
 pub fn locked_rename_label(cx: &App) -> impl IntoElement + gpui_kit::Styled + use<> {
     ui::menu_label_cue(div(), cx)
@@ -1954,22 +1990,15 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
     };
     let export = editor.clone();
     let export_all = editor.clone();
-    let delete = PopupMenuItem::element(|_, cx| {
-        div()
-            .id("env-menu-delete")
-            .test_support()
-            .aria_label("Delete")
-            .text_color(cx.theme().danger)
-            .child("Delete")
-    })
-    .on_click(move |_, window, cx| editor.update(cx, |e, cx| e.delete(window, cx)));
+    let delete = delete_entry("env-menu-delete")
+        .on_click(move |_, window, cx| editor.update(cx, |e, cx| e.delete(window, cx)));
     menu.item(rename)
         .item(
-            PopupMenuItem::new("Export")
+            PopupMenuItem::new("Export to Postman…")
                 .on_click(move |_, window, cx| export.update(cx, |e, cx| e.export(window, cx))),
         )
         .item(
-            PopupMenuItem::new("Export all environments…").on_click(move |_, window, cx| {
+            PopupMenuItem::new("Export all to Postman…").on_click(move |_, window, cx| {
                 export_all.update(cx, |e, cx| e.export_all(window, cx))
             }),
         )
@@ -2014,8 +2043,16 @@ impl Render for EnvEditor {
         let mark_color = self.mark_color(window, cx);
         let mut naming = self.naming_field(window, cx);
         let renaming = self.naming == Some(Naming::Rename);
+        // Each name is led by its colour's dot; once any has one, the rest keep its space.
+        let fills: Vec<_> = {
+            let workspace = self.workspace.read(cx);
+            (names.iter())
+                .map(|n| env_fill(workspace.environment_color(&self.root, n, cx).as_deref()))
+                .collect()
+        };
+        let dotted = fills.iter().any(Option::is_some);
         let mut items = Vec::with_capacity(names.len() + 1);
-        for (ix, name) in names.iter().enumerate() {
+        for (ix, (name, fill)) in names.iter().zip(fills).enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
             // Rename edits the name in its row's place, as the sidebar's rename does.
             if chosen
@@ -2059,12 +2096,20 @@ impl Render for EnvEditor {
                 .when(focused, |row| row.focus_ring_style(window, cx))
                 .child(mark)
                 .child(
-                    div()
+                    h_flex()
                         .flex_1()
                         .min_w_0()
                         .pl(style::SPACE_2)
-                        .truncate()
-                        .child(name.clone()),
+                        .gap(style::SPACE_1)
+                        .when(dotted, |row| row.child(dot_or_space("env-item-dot", fill)))
+                        .child(
+                            div()
+                                .id(("env-item-name", ix))
+                                .test_support()
+                                .min_w_0()
+                                .truncate()
+                                .child(name.clone()),
+                        ),
                 )
                 .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)));
             items.push(

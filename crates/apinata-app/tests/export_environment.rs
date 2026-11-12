@@ -238,8 +238,14 @@ fn the_global_environments_dialog_exports_every_global(cx: &mut TestAppContext) 
     })
     .unwrap();
     frame(cx, s.win);
-    cx.update_window(s.win, |_, w, cx| w.click("global-env-export", cx))
-        .unwrap();
+    cx.update_window(s.win, |_, w, cx| {
+        global_menu_in(
+            w,
+            cx,
+            apinata_app::global_env_editor::GLOBAL_ENV_MENU_EXPORT_ALL,
+        )
+    })
+    .unwrap();
     cx.run_until_parked();
     let files = exported_to_folder(cx, &s);
     let g = apinata_core::GlobalEnvironments::open(globals.path()).unwrap();

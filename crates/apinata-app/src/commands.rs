@@ -316,14 +316,14 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "collection.export",
-            "Export collection to Postman (translate scripts)",
+            "Export collection to Postman, converting scripts",
             Collection,
             shell(ExportCollection),
             &[],
         ),
         command(
             "collection.export_keep_scripts",
-            "Export collection to Postman (copy scripts unchanged)",
+            "Export collection to Postman, keeping scripts as written",
             Collection,
             shell(ExportCollectionPostmanKeepScripts),
             &[],
@@ -823,7 +823,7 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "view.toggle_layout",
-            "Toggle layout",
+            "Toggle layout: stacked or side by side",
             View,
             shell(ToggleOrientation),
             &["secondary-j"],
@@ -1095,14 +1095,14 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "environment.export",
-            "Export current environment…",
+            "Export current environment to Postman…",
             Environment,
             shell(ExportEnvironment),
             &[],
         ),
         command(
             "environment.export_all",
-            "Export all environments…",
+            "Export all environments to Postman…",
             Environment,
             shell(ExportEnvironments),
             &[],
@@ -1128,7 +1128,7 @@ pub fn registry() -> Vec<Command> {
             &["environment"],
             command(
                 "environment.runtime_variables",
-                "Edit runtime variables",
+                "Edit variables set by requests",
                 Environment,
                 shell(OpenRuntimeVariables),
                 &[],

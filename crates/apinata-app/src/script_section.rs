@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use apinata_core::{ScriptPhase, Snippet, SnippetPhase, script_code, script_snippets};
 use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::tab::Tab;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
@@ -21,7 +21,7 @@ use crate::command::Edit;
 use crate::script_complete::ScriptCompletions;
 use crate::section::SectionEdit;
 use crate::snapshot::ScriptCode;
-use crate::style::{self, SPACE_1, SPACE_3, TEXT_SMALL};
+use crate::style::{self, SPACE_1, SPACE_2, SPACE_3};
 use crate::ui::{self, RingRoom as _, RingSides};
 
 /// One phase's editor and the id its wrapper carries.
@@ -89,7 +89,7 @@ fn snippet_button(
     this: Entity<ScriptSection>,
 ) -> Button {
     Button::new(SharedString::from(format!("snippet-{}", snippet.id)))
-        .ghost()
+        .outline()
         .small()
         .label(snippet.label)
         .tooltip(snippet_tooltip(snippet))
@@ -180,8 +180,9 @@ fn hint(phase: ScriptPhase) -> &'static str {
 
 impl ScriptSection {
     /// One JavaScript editor per phase, completing `bru`, `req` and `res` members, two phases
-    /// under a "Pre-request" / "Post-response" switch, one under its label; root id `script-section`
-    /// (phases [PreRequest, PostResponse]) or `tests-section` (phases [Tests]); editor ids
+    /// under a "Pre-request" / "Post-response" switch, one alone, since the section tab names
+    /// it; root id `script-section` (phases [PreRequest, PostResponse]) or `tests-section`
+    /// (phases [Tests]); editor ids
     /// `script-pre-request-code`, `script-post-response-code`, `script-tests-code`.
     pub fn new(phases: &[ScriptPhase], window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut editors = Vec::new();
@@ -484,7 +485,6 @@ impl ScriptSection {
 
 impl Render for ScriptSection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let muted = cx.theme().muted_foreground;
         let this = cx.entity();
         let switched = self.editors.len() > 1;
         let switch = switched.then(|| self.switch(cx));
@@ -509,29 +509,25 @@ impl Render for ScriptSection {
                     .w_full()
                     .flex_1()
                     .gap(SPACE_1)
+                    // Like Body's mode row: the snippet buttons, then Wrap at the row's end.
                     // The padding leaves room for the kit's ring, which sits outside each
                     // button and would be clipped at the pane edge on the first one.
                     .child(
                         h_flex()
                             .w_full()
-                            .flex_wrap()
-                            .gap(SPACE_1)
-                            .ring_room(RingSides::ALL)
-                            .children(
-                                snippets_for(e.phase)
-                                    .map(|s| snippet_button(s, e.phase, this.clone())),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .w_full()
                             .items_center()
-                            .justify_between()
+                            .gap(SPACE_2)
+                            .ring_room(RingSides::ALL)
                             .child(
-                                div()
-                                    .text_size(TEXT_SMALL)
-                                    .text_color(muted)
-                                    .when(!switched, |d| d.child(label(e.phase))),
+                                h_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex_wrap()
+                                    .gap(SPACE_1)
+                                    .children(
+                                        snippets_for(e.phase)
+                                            .map(|s| snippet_button(s, e.phase, this.clone())),
+                                    ),
                             )
                             .child({
                                 let (this, phase) = (this.clone(), e.phase);

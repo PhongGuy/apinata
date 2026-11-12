@@ -252,7 +252,7 @@ fn the_vars_badge_counts_enabled_post_response_vars(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_post_response_columns_read_name_and_expression(cx: &mut TestAppContext) {
+fn every_vars_table_reads_name_and_value(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
@@ -267,15 +267,27 @@ fn the_post_response_columns_read_name_and_expression(cx: &mut TestAppContext) {
             t.read(cx).headings()
         })
     };
-    assert_eq!(heads(cx, true), ["Name", "Expression"]);
-    assert_eq!(heads(cx, false), ["Key", "Value"]);
+    assert_eq!(heads(cx, true), ["Name", "Value"]);
+    assert_eq!(heads(cx, false), ["Name", "Value"]);
+    let names = ed.read_with(cx, |e, cx| {
+        e.table(Section::Vars).unwrap().read(cx).placeholders().0
+    });
+    assert_eq!(names, "Name");
 
     let col = config_tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, ed) = config_editor(cx, &ws, &root, ConfigTarget::Collection);
     assert_eq!(
         ed.read_with(cx, |e, cx| e.post_response_table().read(cx).headings()),
-        ["Name", "Expression"]
+        ["Name", "Value"]
+    );
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e
+            .table(ConfigSection::Vars)
+            .unwrap()
+            .read(cx)
+            .headings()),
+        ["Name", "Value"]
     );
 }
 

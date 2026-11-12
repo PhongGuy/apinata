@@ -221,9 +221,9 @@ fn every_global_control_can_be_reached_at_the_narrowest_width(cx: &mut TestAppCo
     let dialog = bounds(cx, win, GLOBAL_SCROLL);
     assert!(dialog.right() <= px(NARROW), "{dialog:?}");
     let ids: [ElementId; 10] = [
-        "global-env-rename".into(),
+        "global-env-title".into(),
+        "global-env-more".into(),
         "global-env-duplicate".into(),
-        "global-env-delete".into(),
         "global-env-save".into(),
         "global-env-create".into(),
         ("env-name", 0usize).into(),
@@ -340,9 +340,9 @@ fn every_global_control_can_be_reached_at_200_percent_at_the_narrowest_width(
     assert!(dialog.right() <= px(NARROW), "{dialog:?}");
     let ids: [ElementId; 8] = [
         ACTIVE.into(),
-        "global-env-rename".into(),
+        "global-env-title".into(),
+        "global-env-more".into(),
         "global-env-duplicate".into(),
-        "global-env-delete".into(),
         "global-env-save".into(),
         ("env-name", 0usize).into(),
         ("env-value", 0usize).into(),
@@ -684,11 +684,10 @@ fn tab_keeps_each_collection_control_whole_at_the_narrowest_width(cx: &mut TestA
 fn global_tab_stops() -> Vec<ElementId> {
     vec![
         "global-env-create".into(),
-        ACTIVE.into(),
-        "global-env-rename".into(),
+        "global-env-more".into(),
         "global-env-duplicate".into(),
-        "global-env-delete".into(),
         "global-env-save".into(),
+        ACTIVE.into(),
         ("env-orphan-remove", 0usize).into(),
     ]
 }

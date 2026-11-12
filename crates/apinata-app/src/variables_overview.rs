@@ -98,7 +98,7 @@ impl Render for VariablesOverview {
                     .ring_room(RingSides::LEFT | RingSides::RIGHT | RingSides::BOTTOM)
                     .child(
                         Button::new("var-overview-edit-runtime")
-                            .label("Edit runtime variables")
+                            .label("Edit variables set by requests")
                             .on_click(|_, window, cx| {
                                 window.close_dialog(cx);
                                 window.defer(cx, |window, cx| {

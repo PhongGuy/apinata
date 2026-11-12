@@ -356,7 +356,7 @@ fn global_new_creates_a_free_name(cx: &mut TestAppContext) {
 fn rename_global(cx: &mut TestAppContext, win: AnyWindowHandle, name: &str) {
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx)
+        global_rename_in(w, cx)
     })
     .unwrap();
     cx.run_until_parked();
@@ -394,11 +394,14 @@ fn global_rename_refuses_a_taken_name_under_the_field(cx: &mut TestAppContext) {
 // refusal it drew stays, for New and Rename alike, until a real edit.
 #[gpui_kit::test]
 fn global_an_echoed_enter_keeps_the_refusal(cx: &mut TestAppContext) {
-    for opener in ["global-env-create", "global-env-rename"] {
+    for opener in ["global-env-create", "Rename"] {
         let g = globals(cx);
-        cx.update_window(g.win, |_, w, cx| {
-            w.render_frame(cx);
-            w.click(opener, cx)
+        cx.update_window(g.win, |_, w, cx| match opener {
+            "Rename" => global_rename_in(w, cx),
+            _ => {
+                w.render_frame(cx);
+                w.click(opener, cx)
+            }
         })
         .unwrap();
         cx.run_until_parked();
@@ -481,7 +484,7 @@ fn global_the_rename_label_reads_on_one_line(cx: &mut TestAppContext) {
     .unwrap();
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx)
+        global_rename_in(w, cx)
     })
     .unwrap();
     cx.run_until_parked();
@@ -594,7 +597,9 @@ fn rename_has_a_confirm_button(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn global_rename_selects_the_name(cx: &mut TestAppContext) {
     let g = globals(cx);
-    click(cx, g.win, "global-env-rename");
+    cx.update_window(g.win, |_, w, cx| global_rename_in(w, cx))
+        .unwrap();
+    cx.run_until_parked();
     cx.simulate_input(g.win, "qa");
     assert_eq!(drawn_global(cx, g.win).0.as_deref(), Some("qa"));
 }

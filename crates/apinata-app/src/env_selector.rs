@@ -52,6 +52,8 @@ pub struct EnvItem(
     pub SharedString,
     /// The environment's colour, drawn as a dot beside the name.
     pub Option<Hsla>,
+    /// Whether some row has a dot, so a row without one keeps its space and names line up.
+    pub bool,
 );
 
 // The kit draws select rows without `.test_support()`, so the row content registers itself
@@ -74,11 +76,19 @@ impl SelectItem for EnvItem {
     }
 
     fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let row = div().id(option_id(&self.0)).test_support();
-        match self.1 {
-            Some(fill) => row.child(dotted("env-row-dot", fill, self.0.clone())),
-            None => row.child(self.0.clone()),
-        }
+        // Once any row has a dot, the others keep its space, so every name starts in line.
+        let dot = (self.1.is_some() || self.2)
+            .then(|| crate::env_color::dot_or_space("env-row-dot", self.1));
+        div().id(option_id(&self.0)).test_support().child(
+            h_flex().min_w_0().gap(SPACE_1).children(dot).child(
+                div()
+                    .id("env-row-name")
+                    .test_support()
+                    .min_w_0()
+                    .truncate()
+                    .child(self.0.clone()),
+            ),
+        )
     }
 }
 
@@ -304,9 +314,10 @@ impl EnvSelector {
         };
         if root != self.root || items != self.listed || dots != self.dots {
             self.root = root.clone();
+            let any = dots.iter().any(Option::is_some);
             let rows = (items.iter().cloned())
                 .zip(dots.iter().copied())
-                .map(|(name, dot)| EnvItem(name, dot))
+                .map(|(name, dot)| EnvItem(name, dot, any))
                 .collect();
             self.listed = items;
             self.dots = dots;

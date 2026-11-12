@@ -203,3 +203,27 @@ fn default_header_cells_use_the_mono_font(cx: &mut TestAppContext) {
         assert_eq!(text.font_size, Some(apinata_app::style::TEXT_SMALL.into()));
     });
 }
+
+// A default header's name and value start where the headers table's Name and Value columns do.
+#[gpui_kit::test]
+fn default_headers_line_up_with_the_table_columns(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::Section;
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("a", "http://x")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Headers as usize), cx);
+        w.render_frame(cx);
+        let h = w.within("headers");
+        let left = |id: &'static str| h.find(id).bounds().left();
+        assert_eq!(
+            left("default-header-user-agent-value"),
+            left("kv-head-value")
+        );
+        assert_eq!(left("default-header-user-agent-name"), left("kv-head-name"));
+    })
+    .unwrap();
+}

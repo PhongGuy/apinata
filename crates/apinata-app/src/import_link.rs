@@ -27,7 +27,7 @@ use gpui_kit::{
 use crate::command::Command;
 use crate::shell::{Shell, parse_bundles_from};
 use crate::style::{
-    RADIUS, ROW_HEIGHT, SHORT_FORM_LABEL_WIDTH, SPACE_1, SPACE_2, TEXT_SMALL, resolve,
+    IMPORT_FORM_LABEL_WIDTH, RADIUS, ROW_HEIGHT, SPACE_1, SPACE_2, TEXT_SMALL, resolve,
 };
 use crate::{tokio_bridge, ui};
 
@@ -870,7 +870,7 @@ impl ImportLinkDialog {
         self.task = Some(cx.spawn_in(window, async move |this, cx| {
             if let Some(file) = file {
                 let parsed = cx
-                    .background_spawn(async move { crate::shell::parse_bundles(&file) })
+                    .background_spawn(async move { crate::shell::parse_bundles(&file, true) })
                     .await;
                 let _ = this.update_in(cx, |this, window, cx| this.fetched(parsed, window, cx));
                 return;
@@ -880,7 +880,7 @@ impl ImportLinkDialog {
             let parsed = match fetched {
                 Ok(Ok(bytes)) => {
                     cx.background_spawn(async move {
-                        parse_bundles_from(Path::new(&format!("{name}.json")), &bytes)
+                        parse_bundles_from(Path::new(&format!("{name}.json")), &bytes, true)
                     })
                     .await
                 }
@@ -1332,8 +1332,8 @@ impl Render for ImportLinkDialog {
                     .lock(busy, cx)
                     .on_click(cx.listener(|this, _, window, cx| this.browse_source(window, cx))),
             );
-        let field =
-            ui::form_row("import-link-row", "Link", control).label_width(SHORT_FORM_LABEL_WIDTH);
+        let field = ui::form_row("import-link-row", "Link or file", control)
+            .label_width(IMPORT_FORM_LABEL_WIDTH);
         let formats = (self.mode == Mode::New).then(|| {
             div()
                 .id("import-link-formats")
@@ -1362,11 +1362,15 @@ impl Render for ImportLinkDialog {
                     div()
                         .id("import-link-parent")
                         .test_support()
-                        .aria_label(full)
+                        .aria_label(full.clone())
                         .flex_1()
                         .min_w_0()
                         .overflow_hidden()
                         .truncate()
+                        // The path is cut with an ellipsis to fit, so hovering shows it whole.
+                        .when(self.parent.is_some(), |d| {
+                            d.tooltip(ui::text_tooltip("import-link-parent-tooltip", full))
+                        })
                         .child(shown),
                 )
                 .child(
@@ -1380,7 +1384,7 @@ impl Render for ImportLinkDialog {
                         ),
                 );
             ui::form_row("import-link-parent-row", "Create in", control)
-                .label_width(SHORT_FORM_LABEL_WIDTH)
+                .label_width(IMPORT_FORM_LABEL_WIDTH)
         });
         let view = cx.entity().downgrade();
         let modes = ui::segmented(

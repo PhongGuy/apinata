@@ -174,11 +174,15 @@ impl ConfigEditor {
             t.set_header_hints(true);
             t
         });
-        let vars = cx.new(|cx| KvTable::new(window, cx));
+        let vars = cx.new(|cx| {
+            let mut t = KvTable::new(window, cx);
+            kv_table::name_vars(&mut t, window, cx);
+            t
+        });
         let post_response = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
             t.set_placeholders("Name", kv_table::POST_RESPONSE_PLACEHOLDER, window, cx);
-            t.set_headings("Name", "Expression", cx);
+            t.set_headings(kv_table::VAR_HEADINGS.0, kv_table::VAR_HEADINGS.1, cx);
             t
         });
         let scope = match target {

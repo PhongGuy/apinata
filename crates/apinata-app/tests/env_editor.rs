@@ -2,8 +2,8 @@ use crate::support;
 
 use apinata_app::command::Command;
 use apinata_app::env_editor::{
-    ENV_MENU_DELETE, ENV_MENU_EXPORT, ENV_MENU_EXPORT_ALL, ENV_MENU_RENAME, ENV_SWATCHES,
-    MORE_ACTIONS, RENAME_LOCKED_REASON,
+    ENV_MENU_DELETE, ENV_MENU_EXPORT, ENV_MENU_EXPORT_ALL, ENV_MENU_RENAME, ENV_SWATCH_NAMES,
+    ENV_SWATCHES, MORE_ACTIONS, RENAME_LOCKED_REASON,
 };
 use apinata_app::env_table::EnvTableEvent;
 use apinata_app::style::{ROW_HEIGHT, at_zoom};
@@ -1111,10 +1111,13 @@ fn the_menu_holds_rename_export_and_a_separated_delete(cx: &mut TestAppContext) 
     cx.update_window(win, |_, w, _| {
         let menu = w.within("popup-menu");
         assert_eq!(menu.find(ENV_MENU_RENAME).label(), Some("Rename"));
-        assert_eq!(menu.find(ENV_MENU_EXPORT).label(), Some("Export"));
+        assert_eq!(
+            menu.find(ENV_MENU_EXPORT).label(),
+            Some("Export to Postman…")
+        );
         assert_eq!(
             menu.find(ENV_MENU_EXPORT_ALL).label(),
-            Some("Export all environments…")
+            Some("Export all to Postman…")
         );
         assert_eq!(menu.find("env-menu-delete").label(), Some("Delete"));
     })
@@ -1184,9 +1187,9 @@ fn the_swatches_are_none_then_the_six_presets(cx: &mut TestAppContext) {
     let (win, _ed) = env_editor(cx, &ws, &root);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        assert_eq!(w.find("env-swatch-none").label(), Some("None"));
-        for (ix, hex) in ENV_SWATCHES.iter().enumerate() {
-            assert_eq!(w.find(("env-swatch", ix)).label(), Some(*hex));
+        assert_eq!(w.find("env-swatch-none").label(), Some("No color"));
+        for (ix, name) in ENV_SWATCH_NAMES.iter().enumerate() {
+            assert_eq!(w.find(("env-swatch", ix)).label(), Some(*name));
         }
         assert!(w.try_find(("env-swatch", 6usize)).is_none());
         assert!(w.try_find("env-swatch-custom").is_none());
@@ -1194,6 +1197,38 @@ fn the_swatches_are_none_then_the_six_presets(cx: &mut TestAppContext) {
     })
     .unwrap();
     assert!(ringed(cx, win, "env-swatch-none"), "dev has no colour");
+}
+
+#[test]
+fn the_presets_are_named_in_plain_words() {
+    assert_eq!(
+        ENV_SWATCH_NAMES,
+        ["Red", "Green", "Blue", "Orange", "Pink", "Purple"]
+    );
+}
+
+#[gpui_kit::test]
+fn the_list_shows_each_colour_and_keeps_the_names_in_line(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", COLORED),
+        ("environments/prod.yml", "name: prod\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let mut dotted = |ix: usize| {
+            w.within(("env-item", ix))
+                .try_find("env-item-dot")
+                .is_some()
+        };
+        assert!(dotted(0), "dev is coloured");
+        assert!(!dotted(1), "prod has no colour");
+        let left = |ix: usize| w.find(("env-item-name", ix)).bounds().left();
+        assert_eq!(left(0), left(1));
+    })
+    .unwrap();
 }
 
 #[gpui_kit::test]

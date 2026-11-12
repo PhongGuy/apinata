@@ -2936,9 +2936,8 @@ impl BodyView {
         let mono = theme.mono_font_family.clone();
         let mono_size = Self::font_size(cx);
         let muted = theme.muted_foreground;
-        // Hex rows are data, not code: ligatures would fuse `<=>` in the ASCII column.
-        let hex = !numbered && matches!(self.shown(), Shown::Binary(_));
-        let hex_features = hex_font_features();
+        // Rows show the text as received: ligatures would fuse `-->` or `<=>` into one glyph.
+        let features = code_font_features();
         // The editor's match colours, so both modes highlight alike.
         let (current_bg, other_bg) = match_colours(cx);
         let marker = theme.list_active;
@@ -3020,7 +3019,7 @@ impl BodyView {
                             .when(this.current_row == Some(ix), |row| row.bg(marker))
                             .whitespace_nowrap()
                             .font_family(mono.clone())
-                            .when(hex, |row| row.font_features(hex_features.clone()))
+                            .font_features(features.clone())
                             .text_size(mono_size)
                             .children(numbered.then(|| {
                                 // A continuation row has no number. Wrapped, it reads as one
@@ -3251,8 +3250,9 @@ fn entry_items(
 // The button's height, for centring it on a line.
 const VALUE_BUTTON_HEIGHT: Rems = style::ui(24.);
 
-/// The font features of the Hex view's rows: contextual alternates and standard ligatures off.
-pub fn hex_font_features() -> FontFeatures {
+/// The font features of code and body text: contextual alternates and standard ligatures off,
+/// so `-->` or `<=>` shows the characters typed rather than an arrow.
+pub fn code_font_features() -> FontFeatures {
     FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]))
 }
 

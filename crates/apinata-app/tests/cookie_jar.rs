@@ -1042,3 +1042,32 @@ fn a_cookies_same_site_shows_in_its_flags_and_an_edit_keeps_it(cx: &mut TestAppC
         ("2", Some(SameSite::Strict))
     );
 }
+
+// An empty jar spaces its note apart from the search above and the footer below.
+#[gpui_kit::test]
+fn the_empty_jar_is_spaced_from_the_search_and_the_footer(cx: &mut TestAppContext) {
+    use apinata_app::style::{SPACE_4, at_zoom};
+    let (win, _exec, _view) = dialog(cx, true);
+    cx.update_window(win, |_, w, cx| w.click(("jar-domain-delete", 0usize), cx))
+        .unwrap();
+    frame(cx, win);
+    let (search, empty, footer) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (
+                w.find("jar-search").bounds(),
+                w.find("jar-empty").bounds(),
+                w.find("jar-footer").bounds(),
+            )
+        })
+        .unwrap();
+    let room = at_zoom(SPACE_4, 1.0);
+    assert!(
+        empty.top() - search.bottom() >= room,
+        "{search:?} {empty:?}"
+    );
+    assert!(
+        footer.top() - empty.bottom() >= room,
+        "{empty:?} {footer:?}"
+    );
+}

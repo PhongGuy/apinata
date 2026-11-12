@@ -294,7 +294,7 @@ pub fn export_environments(
         files: false,
         directories: true,
         multiple: false,
-        prompt: Some("Export environments to".into()),
+        prompt: Some("Export Postman environments to".into()),
     });
     window
         .spawn(cx, async move |cx| {
