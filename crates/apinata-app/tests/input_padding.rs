@@ -386,7 +386,13 @@ fn the_custom_method_field_takes_edge_presses(cx: &mut TestAppContext) {
     let req = request("p", "http://x/p").replace("method: GET", "method: PURGE");
     let col = write_tree(&[("opencollection.yml", ROOT), ("p.yml", &req)]);
     let s = started(cx, &col);
-    open_tab(cx, &s.ws, &s.root, "p.yml");
+    let tab = open_tab(cx, &s.ws, &s.root, "p.yml");
+    frame(cx, s.win);
+    let editor = editor_of(cx, &s, tab);
+    cx.update_window(s.win, |_, w, cx| {
+        editor.update(cx, |e, cx| e.open_custom_method(w, cx))
+    })
+    .unwrap();
     frame(cx, s.win);
     // The narrow box scrolls its seeded text, so only the drag is position independent.
     assert_drag_selects_in(cx, s.win, "custom-method".into());

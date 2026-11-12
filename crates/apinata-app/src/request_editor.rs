@@ -17,7 +17,7 @@ use apinata_core::{
 use gpui_kit::assets::IconName;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tab::Tab;
@@ -93,8 +93,11 @@ actions!(
 /// The key context of the request editor, where Save and Send bind.
 pub const KEY_CONTEXT: &str = "RequestEditor";
 
-/// The custom method input's placeholder, short to fit; its tooltip says "Custom method".
-pub const CUSTOM_METHOD_PLACEHOLDER: &str = "Other";
+/// The custom method field's placeholder, short to fit; its tooltip says "Custom method".
+pub const CUSTOM_METHOD_PLACEHOLDER: &str = "Method";
+
+/// The method picker's last row, which swaps the picker for the custom method field.
+pub const CUSTOM_METHOD_ROW: &str = "Custom…";
 
 /// The URL bar's hint while empty; a pasted curl command becomes the request.
 pub const URL_PLACEHOLDER: &str = "Enter URL or paste a curl command";
@@ -178,6 +181,13 @@ pub fn method_rows(current: &str) -> Vec<IdItem> {
         .collect()
 }
 
+// The picker's rows: every verb, then the row that opens the custom method field.
+fn picker_rows(current: &str) -> Vec<IdItem> {
+    let mut rows = method_rows(current);
+    rows.push(IdItem::new("method", "custom", CUSTOM_METHOD_ROW));
+    rows
+}
+
 /// What the last import paste into the URL bar produced, while its banner shows.
 #[derive(Debug, Clone)]
 pub enum Pasted {
@@ -197,6 +207,8 @@ pub struct RequestEditor {
     method: Entity<IdSelect>,
     // Takes any other verb; the select shows it once committed, so this stays empty.
     custom_method: Entity<InputState>,
+    // Whether the custom method field stands in place of the picker.
+    custom_open: bool,
     // Why the last commit was refused; cleared by a valid commit or any method change.
     custom_error: Option<SharedString>,
     // The draft text the refusal was raised for.
@@ -293,11 +305,10 @@ pub struct RequestEditor {
 // changes refresh the whole window, so they need no place here; the slot adds the layout.
 #[derive(Clone, PartialEq)]
 enum PartInputs {
-    // Whether a refused verb marks the input; the icon appears or clears without the part
-    // notifying, so the flag keys the redraw (the input view itself notifies on edits).
-    CustomMethod(bool),
-    // The method shown: the select's setters do not notify, so a reload's method must.
-    Method(Option<SharedString>),
+    // The method shown (the select's setters do not notify, so a reload's method must),
+    // whether the custom field stands in for the picker, and whether a refused verb marks
+    // it (the icon appears or clears without the part notifying).
+    Method(Option<SharedString>, bool, bool),
     Breadcrumb(Option<Crumbs>),
     // Whether the URL is locked, and the variable set (identity and revision) it tints from.
     Url(bool, Option<(Same<VariableSet>, u64)>),
@@ -358,7 +369,7 @@ impl RequestEditor {
         });
 
         let current = view.as_ref().map(|v| v.method.clone()).unwrap_or_default();
-        let methods = method_rows(&current);
+        let methods = picker_rows(&current);
         let selected = methods
             .iter()
             .position(|m| m.value() == current.as_str())
@@ -506,9 +517,15 @@ impl RequestEditor {
                                 cx.notify();
                             }
                         }
-                        InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                        // Enter hands the keyboard back to the picker; a blur leaves focus
+                        // where the user moved it.
+                        InputEvent::PressEnter { .. } => {
                             this.commit_custom_method(window, cx);
+                            if !this.custom_open {
+                                this.method_focus(cx).focus(window, cx);
+                            }
                         }
+                        InputEvent::Blur => this.commit_custom_method(window, cx),
                         _ => {}
                     }
                 },
@@ -518,6 +535,10 @@ impl RequestEditor {
                 window,
                 |this, _, event: &SelectEvent<Vec<IdItem>>, window, cx| {
                     if let SelectEvent::Confirm(Some(method)) = event {
+                        if method.as_ref() == CUSTOM_METHOD_ROW {
+                            this.open_custom_method(window, cx);
+                            return;
+                        }
                         // A user pick supersedes any draft; undo refreshes leave it alone.
                         this.custom_method
                             .update(cx, |s, cx| s.set_value(String::new(), window, cx));
@@ -694,6 +715,7 @@ impl RequestEditor {
             url,
             method,
             custom_method,
+            custom_open: false,
             custom_error: None,
             custom_error_for: None,
             params,
@@ -1054,7 +1076,38 @@ impl RequestEditor {
         self.send_edit(Edit::Method(method.to_string()), None, cx);
     }
 
-    /// The custom method input's focus handle, the tab stop between the select and the URL.
+    /// Swaps the picker for the custom method field and focuses it; the picker keeps showing
+    /// the request's method for when the field closes.
+    pub fn open_custom_method(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(view) = self.view(cx) {
+            self.show_method(&view.method, window, cx);
+        }
+        self.custom_open = true;
+        self.custom_method_focus(cx).focus(window, cx);
+        cx.notify();
+    }
+
+    /// Closes the custom method field without changing the method (Escape).
+    pub fn cancel_custom_method(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.custom_method
+            .update(cx, |s, cx| s.set_value(String::new(), window, cx));
+        self.custom_error = None;
+        self.custom_open = false;
+        self.method_focus(cx).focus(window, cx);
+        cx.notify();
+    }
+
+    // Rebuilds the picker's rows around `method` and selects it; the select's setters do not
+    // notify, so the method part's inputs key the redraw.
+    fn show_method(&mut self, method: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let value = SharedString::from(method.to_string());
+        self.method.update(cx, |s, cx| {
+            s.set_items(picker_rows(method), window, cx);
+            s.set_selected_value(&value, window, cx);
+        });
+    }
+
+    /// The custom method field's focus handle; the field is laid out only while open.
     pub fn custom_method_focus(&self, cx: &App) -> FocusHandle {
         self.custom_method.read(cx).focus_handle(cx)
     }
@@ -1070,11 +1123,13 @@ impl RequestEditor {
     }
 
     /// Commits the custom method input (Enter and blur): a valid verb becomes the request's
-    /// method and the input empties; an invalid one shows an error and changes nothing.
+    /// method and the field closes, as an empty one does; an invalid one shows an error,
+    /// changes nothing and keeps the field open to fix.
     pub fn commit_custom_method(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.custom_method.read(cx).value().to_string();
         if text.is_empty() {
             self.custom_error = None;
+            self.custom_open = false;
             cx.notify();
             return;
         }
@@ -1082,6 +1137,7 @@ impl RequestEditor {
             Ok(method) => {
                 self.custom_method
                     .update(cx, |s, cx| s.set_value(String::new(), window, cx));
+                self.custom_open = false;
                 self.set_method(&method, window, cx);
             }
             Err(e) => {
@@ -1769,12 +1825,8 @@ impl RequestEditor {
         }
         if !self.busy(Field::Method, cx) && self.method(cx).as_deref() != Some(view.method.as_str())
         {
-            let method = SharedString::from(view.method.clone());
             self.custom_error = None;
-            self.method.update(cx, |s, cx| {
-                s.set_items(method_rows(&view.method), window, cx);
-                s.set_selected_value(&method, window, cx);
-            });
+            self.show_method(&view.method, window, cx);
         }
         if !self.busy(Field::Headers, cx) {
             self.header_base = view.headers.clone();
@@ -2278,11 +2330,10 @@ impl Render for RequestEditor {
         self.follow_snippet_caret(window, cx);
         // The section body scrolls under a fixed header; the column scrolls too, only once a
         // pane at its minimum is shorter than the header plus the body's minimum.
-        // The method line asks for the URL's 16 rem beside the method boxes, so the buttons
+        // The method line asks for the URL's 16 rem beside the method slot, so the buttons
         // wrap first; a pane narrower than that shrinks only the URL.
-        let method_line = style::resolve(style::METHOD_SELECT, window)
-            + style::resolve(style::CUSTOM_METHOD, window)
-            + style::resolve(style::SPACE_2, window) * 2.
+        let method_line = Self::method_slot(window)
+            + style::resolve(style::SPACE_2, window)
             + style::resolve(style::URL_FIELD_MIN, window);
         let breadcrumb = self.chrome_element(
             ChromePart::Breadcrumb,
@@ -2290,19 +2341,15 @@ impl Render for RequestEditor {
             window,
             cx,
         );
+        // The custom method field opens in the picker's place, a little wider for long verbs.
+        let method_width = if self.custom_open {
+            style::CUSTOM_METHOD
+        } else {
+            style::METHOD_SELECT
+        };
         let method = self.chrome_element(
             ChromePart::Method,
-            StyleRefinement::default()
-                .w(style::METHOD_SELECT)
-                .flex_none(),
-            window,
-            cx,
-        );
-        let custom_method = self.chrome_element(
-            ChromePart::CustomMethod,
-            StyleRefinement::default()
-                .w(style::CUSTOM_METHOD)
-                .flex_none(),
+            StyleRefinement::default().w(method_width).flex_none(),
             window,
             cx,
         );
@@ -2349,7 +2396,7 @@ impl Render for RequestEditor {
                     .map(|b| div().flex_none().child(b)),
             )
             .child(
-                // The method, custom method and URL stay on one line while the URL can be
+                // The method and URL stay on one line while the URL can be
                 // as wide as the method; the buttons wrap to their own line first.
                 // The right inset leaves room for the last button's keyboard ring, which the
                 // pane would otherwise clip; the ring does not shrink with zoom, so the inset has a floor.
@@ -2370,7 +2417,6 @@ impl Render for RequestEditor {
                             .flex_wrap()
                             .gap(style::SPACE_2)
                             .child(method)
-                            .child(custom_method)
                             .child(url),
                     )
                     // Save, Send and Generate code wrap together, so the group never splits.
@@ -2583,8 +2629,11 @@ impl RequestEditor {
 
     fn chrome_inputs(&self, part: ChromePart, cx: &App) -> PartInputs {
         match part {
-            ChromePart::CustomMethod => PartInputs::CustomMethod(self.custom_error.is_some()),
-            ChromePart::Method => PartInputs::Method(self.method(cx)),
+            ChromePart::Method => PartInputs::Method(
+                self.method(cx),
+                self.custom_open,
+                self.custom_error.is_some(),
+            ),
             ChromePart::Breadcrumb => PartInputs::Breadcrumb(self.crumbs_shown(cx)),
             ChromePart::Url => PartInputs::Url(
                 self.locked(Side::Url, cx),
@@ -2614,7 +2663,7 @@ impl RequestEditor {
                 Some(crumbs) => self.breadcrumb(crumbs, cx),
                 None => Empty.into_any_element(),
             },
-            ChromePart::Method => div()
+            ChromePart::Method if !self.custom_open => div()
                 .w_full()
                 .child(
                     Select::new(&self.method)
@@ -2622,26 +2671,31 @@ impl RequestEditor {
                         .font_family(cx.theme().mono_font_family.clone()),
                 )
                 .into_any_element(),
-            ChromePart::CustomMethod => div()
-                .id("custom-method-box")
-                .w_full()
-                .tooltip(|window, cx| Tooltip::new("Custom method").build(window, cx))
-                .child(ui::invalid_input(
-                    Input::new(&self.custom_method)
-                        .id("custom-method")
-                        .bg(ui::field_fill(false, cx))
-                        .font_family(cx.theme().mono_font_family.clone()),
-                    div().w_full(),
-                    &self.custom_method,
-                    self.custom_error.is_some(),
-                    (
-                        "custom-method-danger-ring".into(),
-                        "custom-method-invalid-icon".into(),
-                    ),
-                    window,
-                    cx,
-                ))
-                .into_any_element(),
+            ChromePart::Method => {
+                div()
+                    .id("custom-method-box")
+                    .w_full()
+                    .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                        this.cancel_custom_method(window, cx)
+                    }))
+                    .tooltip(|window, cx| Tooltip::new("Custom method").build(window, cx))
+                    .child(ui::invalid_input(
+                        Input::new(&self.custom_method)
+                            .id("custom-method")
+                            .bg(ui::field_fill(false, cx))
+                            .font_family(cx.theme().mono_font_family.clone()),
+                        div().w_full(),
+                        &self.custom_method,
+                        self.custom_error.is_some(),
+                        (
+                            "custom-method-danger-ring".into(),
+                            "custom-method-invalid-icon".into(),
+                        ),
+                        window,
+                        cx,
+                    ))
+                    .into_any_element()
+            }
             ChromePart::Url => self.url_field(window, cx),
             ChromePart::Buttons => h_flex()
                 .flex_none()
@@ -2943,15 +2997,20 @@ impl RequestEditor {
     }
 
     /// The request pane width that holds the URL row on one line: the URL floor, the method
-    /// select, the custom method input (always laid out) and its gap, the button group with
-    /// Save shown, and the other gaps.
+    /// slot at its wider custom-field width and its gap, the button group with Save shown,
+    /// and the other gaps.
     fn url_row_need(window: &Window) -> Pixels {
         style::resolve(style::URL_FIELD_MIN, window)
-            + style::resolve(style::METHOD_SELECT, window)
-            + style::resolve(style::CUSTOM_METHOD, window)
+            + Self::method_slot(window)
             + style::resolve(style::SPACE_2, window)
             + style::resolve(style::REQUEST_BUTTONS_WIDTH, window)
             + style::resolve(style::URL_ROW_SLACK, window)
+    }
+
+    // The method slot's widest state, so opening the custom field never re-wraps the row.
+    fn method_slot(window: &Window) -> Pixels {
+        style::resolve(style::METHOD_SELECT, window)
+            .max(style::resolve(style::CUSTOM_METHOD, window))
     }
 
     fn orientation_in(cx: &App) -> Orientation {

@@ -245,8 +245,7 @@ fn sbs(cx: &mut TestAppContext, s: &Started, w: f32, h: f32, zoom: f32) {
 fn url_need(zoom: f32) -> gpui_kit::Pixels {
     use apinata_app::style::*;
     at_zoom(URL_FIELD_MIN, zoom)
-        + at_zoom(METHOD_SELECT, zoom)
-        + at_zoom(CUSTOM_METHOD, zoom)
+        + at_zoom(METHOD_SELECT, zoom).max(at_zoom(CUSTOM_METHOD, zoom))
         + at_zoom(SPACE_2, zoom)
         + at_zoom(REQUEST_BUTTONS_WIDTH, zoom)
         + at_zoom(URL_ROW_SLACK, zoom)
