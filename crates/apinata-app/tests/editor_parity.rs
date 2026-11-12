@@ -143,9 +143,14 @@ fn typed(
 
 /// Answer the next file prompt with paths under the tab's collection root.
 fn pick(cx: &mut TestAppContext, c: &Case, ix: usize, rels: &[&str]) {
+    pick_with(cx, c, ("kv-pick", ix), rels);
+}
+
+// Picks `rels` through the button `id`, such as an empty file body's first-file button.
+fn pick_with(cx: &mut TestAppContext, c: &Case, id: impl Into<gpui_kit::ElementId>, rels: &[&str]) {
     let root =
         c.ws.read_with(cx, |w, _| w.tabs().active().unwrap().root.clone());
-    click(cx, c, "body", ("kv-pick", ix));
+    click(cx, c, "body", id);
     let paths: Vec<PathBuf> = rels.iter().map(|r| root.join(r)).collect();
     cx.simulate_path_prompt_response(move |_| Some(paths));
     cx.run_until_parked();
@@ -246,7 +251,7 @@ fn body_file(cx: &mut TestAppContext) {
     body_mode(cx, &c, BodyMode::File);
     // A pick fills a blank content type, which the reference editor does not; the cells are
     // retyped and cleared so the saved entries still match the reference's.
-    pick(cx, &c, 0, &["data/a.bin"]);
+    pick_with(cx, &c, "body-file-choose", &["data/a.bin"]);
     replace_input(
         cx,
         c.win,
