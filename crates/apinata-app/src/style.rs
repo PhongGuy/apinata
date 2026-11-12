@@ -63,6 +63,12 @@ pub const HEADER_NAME_WIDTH: Rems = ui(220.);
 /// Width of the wide fixed columns (Name, Domain) in the cookie table; the value column
 /// takes the rest.
 pub const COOKIE_COL_WIDTH: Rems = ui(120.);
+/// The cookie jar row's name column, on its first line, so every value starts at one x.
+pub const JAR_NAME_WIDTH: Rems = ui(120.);
+/// The cookie jar row's path column, first on its second line.
+pub const JAR_PATH_WIDTH: Rems = ui(80.);
+/// The cookie jar row's expiry column, after the path, so every row's flags start at one x.
+pub const JAR_EXPIRY_WIDTH: Rems = ui(64.);
 /// Width of the cookie table's fixed columns, in order: Name, Domain, Path, Expires,
 /// HttpOnly, Secure. Narrow ones keep the table inside a common pane width.
 pub const COOKIE_FIXED_WIDTHS: [Rems; 6] =

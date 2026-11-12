@@ -216,7 +216,7 @@ fn scrolled_jar(cx: &mut TestAppContext) -> (Started, tempfile::TempDir) {
 // The first row past the top third of the scrolled list that shows whole inside it.
 fn row_in_view(cx: &mut TestAppContext, win: AnyWindowHandle) -> usize {
     let view = bounds(cx, win, "cookie-jar-scroll");
-    (10..40)
+    (0..40)
         .find(|&ix| {
             let row = bounds(cx, win, ("jar-cookie", ix));
             row.top() >= view.top() + view.size.height / 3. && row.bottom() <= view.bottom()
@@ -244,4 +244,48 @@ fn cancelling_an_edit_keeps_the_list_where_it_was(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn saving_an_edit_keeps_the_list_where_it_was(cx: &mut TestAppContext) {
     closing_the_form_keeps_the_row_in_place(cx, "jar-form-save");
+}
+
+#[gpui_kit::test]
+fn empty_domain_and_name_say_what_to_enter(cx: &mut TestAppContext) {
+    let (s, _col) = jar(cx, Vec::new());
+    click(cx, s.win, "jar-add");
+    click(cx, s.win, "jar-form-save");
+    assert_eq!(
+        error_under(cx, s.win, "jar-form-domain", "jar-form-path"),
+        "Enter a domain"
+    );
+    assert_eq!(
+        error_under(cx, s.win, "jar-form-name", "jar-form-value"),
+        "Enter a name"
+    );
+}
+
+#[gpui_kit::test]
+fn delete_stays_clear_of_the_scrollbar(cx: &mut TestAppContext) {
+    let (s, _col) = scrolled_jar(cx);
+    let ix = row_in_view(cx, s.win);
+    let list = bounds(cx, s.win, "cookie-jar-scroll");
+    let delete = bounds(cx, s.win, ("jar-delete", ix));
+    assert!(
+        delete.right() <= list.right() - apinata_app::style::SCROLLBAR_GUTTER,
+        "{delete:?} under the scrollbar of {list:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn row_columns_line_up_whatever_their_text(cx: &mut TestAppContext) {
+    let mut long = CookieInfo::new("a.test", "a_much_longer_name", "");
+    long.path = "/deep/path".into();
+    long.expires = Some(std::time::SystemTime::now() + std::time::Duration::from_secs(86_400));
+    let (s, _col) = jar(cx, vec![CookieInfo::new("a.test", "s", "v"), long]);
+    for id in ["jar-value", "jar-flags"] {
+        let lefts: Vec<_> = (0..2usize)
+            .map(|ix| bounds(cx, s.win, (id, ix)).left())
+            .collect();
+        assert!(
+            (lefts[0] - lefts[1]).abs() < gpui_kit::px(1.),
+            "{id}: {lefts:?}"
+        );
+    }
 }

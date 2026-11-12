@@ -526,21 +526,16 @@ expression: rendered(&postman(&c))
 }
 --- notes
 response-time / delayed headers / assertions: assertions have no place in the exported file
-response-time / delayed headers / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 response-time / delayed headers / tests script: script translated; 3 calls rewritten for Postman
 response-time / delayed body / assertions: assertions have no place in the exported file
-response-time / delayed body / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 response-time / delayed body / tests script: script translated; 3 calls rewritten for Postman
 variable-datatypes / variables: variables set here have no place in the exported file
 variable-datatypes / typed vars / variables: variables set here have no place in the exported file
-variable-datatypes / typed vars / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 variable-datatypes / typed vars / pre-request script: script translated; 11 calls rewritten for Postman
 variable-datatypes / typed vars / tests script: script translated; 141 calls rewritten for Postman
 variable-datatypes / form-urlencoded / variables: variables set here have no place in the exported file
-variable-datatypes / form-urlencoded / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 variable-datatypes / form-urlencoded / tests script: script translated; 6 calls rewritten for Postman
 variable-datatypes / multipart / variables: variables set here have no place in the exported file
-variable-datatypes / multipart / timeout: the request has no timeout; when imported, the request will inherit the default timeout
 variable-datatypes / multipart / tests script: script translated; 6 calls rewritten for Postman
 collection / variables / coll_num: the number variable is written as text
 collection / variables / coll_bool: the boolean variable is written as text

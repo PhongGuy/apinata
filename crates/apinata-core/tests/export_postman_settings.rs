@@ -97,21 +97,20 @@ fn body_pruning_and_settings_share_one_behavior() {
 }
 
 #[test]
-fn a_timeout_is_noted_and_unlimited_reads_differently() {
+fn a_set_timeout_is_noted() {
     let (_d, c) = with("settings:\n  timeout: 5000\n");
     let n = notes(&c);
     assert_eq!(n.len(), 1, "{n:?}");
     assert_eq!(n[0].0, "a / timeout");
     assert!(n[0].1.contains("5000"), "{}", n[0].1);
     assert!(n[0].1.contains("inherit the default timeout"), "{}", n[0].1);
+}
 
+// Postman's own default is no timeout, so a request without one loses nothing on export.
+#[test]
+fn an_unlimited_timeout_has_no_note() {
     let (_d, c) = with("settings:\n  timeout: 0\n");
-    let z = notes(&c);
-    assert_eq!(z.len(), 1, "{z:?}");
-    assert_eq!(z[0].0, "a / timeout");
-    assert!(z[0].1.contains("no timeout"), "{}", z[0].1);
-    assert!(z[0].1.contains("inherit the default timeout"), "{}", z[0].1);
-    assert_ne!(z[0].1, n[0].1);
+    assert!(notes(&c).is_empty(), "{:?}", notes(&c));
 }
 
 #[test]
