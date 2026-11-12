@@ -8,7 +8,7 @@ use std::path::Path;
 
 use apinata_core::EnvVariable;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex};
@@ -32,7 +32,6 @@ use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep};
 use crate::style;
 use crate::ui;
-use crate::ui::LockButton as _;
 use crate::workspace::{GlobalOp, Workspace};
 
 /// The "…" menu's Rename entry.
