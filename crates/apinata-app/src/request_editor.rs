@@ -383,7 +383,7 @@ impl RequestEditor {
         let post_response = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
             t.set_follow(follow.clone());
-            t.set_placeholders("Name", "res.body.token", window, cx);
+            t.set_placeholders("Name", kv_table::POST_RESPONSE_PLACEHOLDER, window, cx);
             t.set_headings("Name", "Expression", cx);
             t
         });

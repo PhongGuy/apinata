@@ -618,3 +618,98 @@ fn an_edit_sent_before_a_refusal_is_delivered_keeps_it(cx: &mut TestAppContext) 
         "the refused header's error is shown"
     );
 }
+
+#[gpui_kit::test]
+fn save_shows_while_the_settings_are_unsaved_and_saves_them(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    assert!(!present(cx, win, "config-save-button"));
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| {
+            e.edit_rows(ConfigSection::Headers, vec![row("X-Trace", "1")], w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(present(cx, win, "config-save-button"));
+    cx.update_window(win, |_, w, cx| w.click("config-save-button", cx))
+        .unwrap();
+    cx.run_until_parked();
+    frame(cx, win);
+    let saved = String::from_utf8(bytes(&col, "users/folder.yml")).unwrap();
+    assert!(saved.contains("X-Trace"), "{saved}");
+    assert!(!present(cx, win, "config-save-button"));
+}
+
+#[gpui_kit::test]
+fn the_folder_tags_note_starts_where_the_tag_input_does(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Tags, cx));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let input = w.find("tag-input").bounds();
+        let note = w.find("config-tags-note").bounds();
+        assert_eq!(note.left(), input.left(), "{note:?} {input:?}");
+        assert!(note.top() >= input.bottom());
+        let label = w.within("config-row-tags").find("form-label").bounds();
+        assert!(label.right() <= input.left(), "{label:?} {input:?}");
+    })
+    .unwrap();
+}
+
+// The Inherit line of the folder's Auth section, read from its accessible label.
+fn folder_inherit_text(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("auth-inherit").label().map(str::to_owned)
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn an_inheriting_folder_names_the_auth_in_effect(cx: &mut TestAppContext) {
+    let users = format!("{}request:\n  auth: inherit\n", folder("Users"));
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &users),
+        ("users/a.yml", &request("a", "http://x")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Auth, cx));
+    frame(cx, win);
+    assert_eq!(
+        folder_inherit_text(cx, win).as_deref(),
+        Some("Inherits No Auth from the collection.")
+    );
+    // An unsaved change to the collection's auth shows at once.
+    ws.update(cx, |w, cx| {
+        w.send(
+            &root,
+            Command::Edit {
+                target: Target::Collection,
+                edit: apinata_app::command::Edit::Auth(AuthSpec::Bearer { token: "t".into() }),
+            },
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    frame(cx, win);
+    assert_eq!(
+        folder_inherit_text(cx, win).as_deref(),
+        Some("Inherits Bearer Token from the collection.")
+    );
+}
+
+#[gpui_kit::test]
+fn the_post_response_placeholder_reads_as_an_example(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (_win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    let (_, value) = ed.read_with(cx, |e, cx| e.post_response_table().read(cx).placeholders());
+    assert!(value.starts_with("e.g. "), "{value}");
+}

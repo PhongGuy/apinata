@@ -1796,6 +1796,10 @@ pub fn post_response_hints(base: &[PostResponseVar], rows: &[KvRow]) -> Vec<Stri
         .collect()
 }
 
+/// The Post-response table's expression placeholder, worded as an example so it never reads
+/// as a value already filled in.
+pub const POST_RESPONSE_PLACEHOLDER: &str = "e.g. res.body.token";
+
 /// The Post-response block under a Vars table: a muted heading with the id `ids.0`, `table`
 /// wrapped in `ids.1`, and one muted line per hint with the id `(ids.2, ix)`.
 pub fn post_response_block(

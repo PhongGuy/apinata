@@ -7,7 +7,7 @@ use apinata_core::{ScriptDecision, ScriptTrust};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
-use gpui_kit::{Subscription, TestSupportExt, Window, div};
+use gpui_kit::{Subscription, Window};
 
 use crate::app::AppState;
 use crate::approval_prompt::untrusted_text;
@@ -19,6 +19,9 @@ const CHOICES: [(&str, Option<ScriptDecision>); 3] = [
     ("Run scripts", Some(ScriptDecision::Allowed)),
     ("Never", Some(ScriptDecision::Blocked)),
 ];
+
+/// When each option runs this collection's scripts, Ask's question first.
+pub const DECISION_NOTE: &str = "Ask: before a send runs scripts you did not write in the app, you choose whether to run them. Run scripts: always run them. Never: never run them.";
 
 /// The option labels in order, for tests that pin the wording.
 pub fn choice_labels() -> [&'static str; 3] {
@@ -124,16 +127,16 @@ impl Render for ScriptSettingsView {
         );
         v_flex()
             .id("script-settings")
+            .w_full()
             .gap_2()
-            .child("Run this collection's scripts")
-            .child(group)
+            .child(ui::form_row(
+                "script-decision-row",
+                "Run this collection's scripts",
+                group,
+            ))
+            .child(ui::form_note("script-decision-note", DECISION_NOTE))
             .when_some(self.error.clone(), |el, error| {
-                el.child(
-                    div()
-                        .id("config-scripts-error")
-                        .test_support()
-                        .child(untrusted_text(&error)),
-                )
+                el.child(ui::form_note("config-scripts-error", untrusted_text(&error)).danger())
             })
     }
 }

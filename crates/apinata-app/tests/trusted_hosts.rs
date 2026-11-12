@@ -296,3 +296,45 @@ fn empty_lists_say_so(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "trusted-empty"));
     assert!(present(cx, win, "denied-empty"));
 }
+
+#[gpui_kit::test]
+fn the_add_button_trusts_the_typed_host(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, v) = view(cx, &fx);
+    replace_input(cx, win, None, "hosts-add", "api.example");
+    click(cx, win, "hosts-add-button");
+    assert_eq!(lists(cx, &v).0, ["api.example"]);
+    assert!(fx.store().is_trusted(fx.coll.path(), "api.example"));
+}
+
+#[gpui_kit::test]
+fn the_lists_say_they_apply_only_to_the_mcp_server(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, _v) = view(cx, &fx);
+    let note = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("hosts-note").label().map(str::to_owned)
+        })
+        .unwrap()
+        .unwrap_or_default();
+    assert!(note.contains("MCP server"), "{note}");
+    assert!(note.contains("from the app"), "{note}");
+}
+
+#[gpui_kit::test]
+fn trust_host_sits_left_of_its_input(cx: &mut TestAppContext) {
+    let fx = Fx::new();
+    let (win, _v) = view(cx, &fx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let label = w.within("hosts-add-row").find("form-label").bounds();
+        let input = w.find("hosts-add").bounds();
+        assert!(label.right() <= input.left(), "{label:?} {input:?}");
+        assert!(
+            (f32::from(label.top()) - f32::from(input.top())).abs() < 0.5,
+            "{label:?} {input:?}"
+        );
+    })
+    .unwrap();
+}
