@@ -478,27 +478,24 @@ pub fn tally(rows: &[RunRow]) -> Tally {
     t
 }
 
-/// "{n} request(s): {p} passed ({u} unverified, {t} no tests), {f} failed" then non-zero
-/// errored, not sent, cancelled, then "; {k} check(s) skipped" when any check was skipped. The
-/// parenthesis lists only non-zero parts; both are already inside `passed`.
+/// "{n} request(s): {p} passed ({u} unverified), {f} failed" then non-zero without tests,
+/// errored, not sent, cancelled, then "; {k} check(s) skipped" when any check was skipped. A
+/// request with no check is counted apart from `passed`; the unverified ones stay inside it.
 pub fn summary_line(t: &Tally) -> String {
     let n = t.passed + t.failed + t.errored + t.not_sent + t.cancelled;
     let noun = if n == 1 { "request" } else { "requests" };
-    let parts: Vec<String> = [(t.unverified, "unverified"), (t.no_tests, "no tests")]
-        .into_iter()
-        .filter(|(n, _)| *n > 0)
-        .map(|(n, w)| format!("{n} {w}"))
-        .collect();
-    let unverified = if parts.is_empty() {
-        String::new()
+    let unverified = if t.unverified > 0 {
+        format!(" ({} unverified)", t.unverified)
     } else {
-        format!(" ({})", parts.join(", "))
+        String::new()
     };
     let mut line = format!(
         "{n} {noun}: {} passed{unverified}, {} failed",
-        t.passed, t.failed
+        t.passed.saturating_sub(t.no_tests),
+        t.failed
     );
     let extras = [
+        (t.no_tests, "without tests"),
         (t.errored, "errored"),
         (t.not_sent, "not sent"),
         (t.cancelled, "cancelled"),
@@ -1195,10 +1192,23 @@ impl Render for RunnerView {
                     .children(rows),
             )
         });
+        // Skips read as muted notes, as the sidebar marks those requests; a file that did not
+        // load is a warning.
+        let skipped = model.skipped().iter().enumerate().map(|(k, note)| {
+            div()
+                .id(("run-skipped", k))
+                .test_support()
+                .aria_label(note.clone())
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(note.clone())
+        });
         let errors = model.load_errors().iter().enumerate().map(|(k, e)| {
             div()
                 .id(("run-load-error", k))
                 .test_support()
+                .aria_label(e.clone())
+                .text_color(ui::Tone::Warning.colour(cx))
                 .child(e.clone())
         });
         let notice = (!model.unsaved().is_empty()).then(|| {
@@ -1222,7 +1232,7 @@ impl Render for RunnerView {
             )
             .text_size(style::TEXT_SMALL)
         });
-        let has_errors = !model.load_errors().is_empty();
+        let has_errors = !model.load_errors().is_empty() || !model.skipped().is_empty();
         let row_count = model.rows().len();
         let view = cx.entity();
         let muted = cx.theme().muted_foreground;
@@ -1381,7 +1391,10 @@ impl Render for RunnerView {
             .children(notice.map(|d| d.flex_none()))
             .children(stale.map(|d| d.flex_none()))
             .when(has_errors, |d| {
-                d.child(shrink_scroll("run-notes").child(v_flex().gap_2().children(errors)))
+                d.child(
+                    shrink_scroll("run-notes")
+                        .child(v_flex().gap_2().children(skipped).children(errors)),
+                )
             })
             .children(plan)
             .when(!rows.is_empty() && !previewing, |d| {
@@ -1642,7 +1655,7 @@ mod tests {
         assert_eq!(t, want);
         assert_eq!(
             summary_line(&t),
-            "4 requests: 2 passed (1 no tests), 1 failed, 1 errored"
+            "4 requests: 1 passed, 1 failed, 1 without tests, 1 errored"
         );
         assert_eq!(summary_tone(&t), Tone::Danger);
         let green = tally(&[done(checked(Outcome::Passed, Verdict::Pass))]);
@@ -1651,7 +1664,7 @@ mod tests {
         let unchecked = tally(&[done(bare(Outcome::Passed))]);
         assert_eq!(
             summary_line(&unchecked),
-            "1 request: 1 passed (1 no tests), 0 failed"
+            "1 request: 0 passed, 0 failed, 1 without tests"
         );
         assert_eq!(summary_tone(&unchecked), Tone::Success);
     }
@@ -1700,7 +1713,7 @@ mod tests {
         ]);
         assert_eq!(
             summary_line(&two),
-            "3 requests: 3 passed (2 unverified, 1 no tests), 0 failed; 2 checks skipped"
+            "3 requests: 2 passed (2 unverified), 0 failed, 1 without tests; 2 checks skipped"
         );
         assert_eq!(
             (two.passed, two.unverified, two.no_tests, two.not_sent),

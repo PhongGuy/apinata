@@ -77,6 +77,20 @@ impl Unsupported {
         }
     }
 
+    /// The request type's own name, such as "gRPC".
+    pub fn kind_name(self) -> &'static str {
+        match self {
+            Unsupported::WebSocket => "WebSocket",
+            Unsupported::Grpc => "gRPC",
+        }
+    }
+
+    /// The runner's note for the request `name` it left out of a run.
+    pub fn skip_note(self, name: &str) -> String {
+        let kind = self.kind_name();
+        format!("{name} ({kind}) was skipped: {kind} requests cannot be sent yet")
+    }
+
     /// What its row's tooltip and the note on opening it say.
     pub fn notice(self) -> &'static str {
         match self {

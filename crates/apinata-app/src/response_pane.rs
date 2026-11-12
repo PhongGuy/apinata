@@ -14,8 +14,8 @@ use apinata_core::sse::{self, SseEvent};
 use apinata_core::{
     AssertionOutcome, BodyState, Comparison, ConnectCause, ConnectHint, ConsoleEntry, ConsoleLevel,
     CookieInfo, CookieOutcome, CookieRejection, ExecError, HOP_BODY_LIMIT, ItemPath, OAuth2Error,
-    Outcome, RequestResult, ResolveError, Response, RunError, TestOutcome, UndefinedHint, Verdict,
-    is_credential_header, is_credential_name,
+    Outcome, RequestResult, ResolveError, Response, RunError, ScriptPhase, TestOutcome,
+    UndefinedHint, Verdict, is_credential_header, is_credential_name,
 };
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::WindowExt as _;
@@ -3730,7 +3730,7 @@ fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
                     .test_support()
                     .flex_none()
                     .text_color(cx.theme().muted_foreground)
-                    .child(t.phase.as_str()),
+                    .child(test_source(t.phase)),
             )
             .child(text)
     });
@@ -5148,7 +5148,9 @@ pub fn redacted_assertion_line(o: &AssertionOutcome, r: &RequestResult) -> (&'st
 
 fn line_scrubbed(o: &AssertionOutcome, scrub: impl Fn(&str) -> String) -> (&'static str, String) {
     let a = o.assertion();
-    let mut text = format!("{} {}", a.expression(), a.operator());
+    // The editor's plain operator words, so a result reads as the row that set it up.
+    let operator = crate::assertions_section::operator_label(a.operator());
+    let mut text = format!("{} {operator}", a.expression());
     if let Some(value) = a.value() {
         text.push_str(&format!(" {value}"));
     }
@@ -5185,6 +5187,15 @@ pub fn test_line(t: &TestOutcome) -> (&'static str, String) {
         None => t.name.clone(),
     };
     (word, text)
+}
+
+/// The script a test entry came from, as the Tests tab names it.
+pub fn test_source(phase: ScriptPhase) -> &'static str {
+    match phase {
+        ScriptPhase::PreRequest => "Pre-request script",
+        ScriptPhase::PostResponse => "Post-response script",
+        _ => "Test script",
+    }
 }
 
 /// "N passed, N failed, N skipped" over the entries that are not script errors; `None` when

@@ -3,7 +3,8 @@
 use crate::support;
 
 use apinata_app::response_pane::{
-    ResponsePane, ResponseTab, shows_no_tests, test_line, test_summary, tests_total, verdict_colour,
+    ResponsePane, ResponseTab, shows_no_tests, test_line, test_source, test_summary, tests_total,
+    verdict_colour,
 };
 use apinata_app::ui::{Tone, success_count_badge};
 use apinata_core::{
@@ -82,6 +83,22 @@ fn each_entry_reads_as_a_verdict_and_a_line() {
             ),
             ("error", "Test script error: boom".to_string()),
         ]
+    );
+}
+
+#[test]
+fn each_entry_names_the_script_it_came_from() {
+    let sources: Vec<_> = [
+        ScriptPhase::PreRequest,
+        ScriptPhase::PostResponse,
+        ScriptPhase::Tests,
+    ]
+    .into_iter()
+    .map(test_source)
+    .collect();
+    assert_eq!(
+        sources,
+        ["Pre-request script", "Post-response script", "Test script"]
     );
 }
 

@@ -261,7 +261,7 @@ fn rows_name_their_request_and_a_failed_row_says_why(cx: &mut TestAppContext) {
     );
     // The Status column already shows the code, so the reason does not repeat it.
     let why = label(cx, &s, ("run-reason", a)).expect("a failed row's reason");
-    assert_eq!(why, "res.status eq 200: actual 500");
+    assert_eq!(why, "res.status equals 200: actual 500");
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         let (reason, name) = (
@@ -534,8 +534,29 @@ fn the_results_table_names_each_requests_result(cx: &mut TestAppContext) {
     );
     assert_eq!(
         label(cx, &s, "run-summary").as_deref(),
-        Some("2 requests: 2 passed (1 no tests), 0 failed")
+        Some("2 requests: 1 passed, 0 failed, 1 without tests")
     );
+}
+
+#[gpui_kit::test]
+fn a_request_the_app_cannot_send_shows_as_a_muted_skip_note(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200));
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &request("A", &format!("{}/a", server.uri()))),
+        (
+            "hello.yml",
+            "info:\n  name: Say hello\n  type: grpc\n  seq: 2\n",
+        ),
+    ]);
+    let s = started(cx, &col);
+    run_to_end(cx, &s, ItemPath::root());
+    assert_eq!(
+        label(cx, &s, ("run-skipped", 0usize)).as_deref(),
+        Some("Say hello (gRPC) was skipped: gRPC requests cannot be sent yet")
+    );
+    assert!(!present(cx, s.win, ("run-load-error", 0usize)));
 }
 
 #[gpui_kit::test]
