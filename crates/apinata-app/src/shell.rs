@@ -2491,8 +2491,9 @@ impl Shell {
         Some((root, state))
     }
 
-    // The mock toggle, then while it runs the address it answers on with a copy button and a
-    // line saying how many examples it serves and how to stop it.
+    // While the mock runs, the address it answers on with a copy button and how many examples
+    // it serves, then the toggle. The group sits at the bar's right end, so the toggle comes
+    // last and stays under the pointer when the address appears or goes.
     fn mock_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (root, state) = self.current_mock(cx)?;
         let examples = self.workspace.read(cx).mock_examples(&root);
@@ -2519,7 +2520,7 @@ impl Shell {
         let shown = address.map(|addr| {
             let url = format!("http://{addr}");
             let copied = url.clone();
-            let status = crate::mock_server::status(examples.unwrap_or(0), addr.port());
+            let status = crate::mock_server::status(examples.unwrap_or(0));
             h_flex()
                 .gap(style::SPACE_1)
                 .child(
@@ -2552,13 +2553,13 @@ impl Shell {
         Some(
             h_flex()
                 .gap(style::SPACE_1)
+                .children(shown)
                 .child(
                     div()
                         .id("mock-toggle-slot")
                         .tooltip(ui::text_tooltip("mock-tooltip", tip))
                         .child(ui::solid_ring(toggle, cx)),
                 )
-                .children(shown)
                 .into_any_element(),
         )
     }

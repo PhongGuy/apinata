@@ -25,12 +25,12 @@ pub fn running_tip(port: u16) -> String {
     )
 }
 
-/// The status bar's short line for a server answering on `port` from `examples` examples.
-pub fn status(examples: usize, port: u16) -> String {
+/// The status bar's short line beside the address: how many examples the server answers from.
+pub fn status(examples: usize) -> String {
     match examples {
-        0 => format!("Mock on port {port}: no saved examples"),
-        1 => format!("Mock on port {port}: 1 example"),
-        n => format!("Mock on port {port}: {n} examples"),
+        0 => "No saved examples".to_owned(),
+        1 => "1 example".to_owned(),
+        n => format!("{n} examples"),
     }
 }
 
