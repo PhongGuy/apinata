@@ -318,8 +318,8 @@ impl RequestFile {
         }
     }
 
-    /// Set the root's `url` and re-derive the params as Bruno's `requestUrlChanged` does; the
-    /// current URL does nothing.
+    /// Set the root's `url` and re-derive the params as Bruno's `requestUrlChanged` does, except
+    /// that renaming a single path param keeps its value; the current URL does nothing.
     pub fn set_url(&mut self, url: impl Into<String>) {
         let url = url.into();
         if url == self.url() {
@@ -443,6 +443,7 @@ fn table_query_text(params: &[Param]) -> Vec<(String, String)> {
 
 /// The params a URL implies given the current ones: the URL's query params first, then its new
 /// path params, then the disabled query params and the enabled path params the URL still uses.
+/// When the URL swaps exactly one enabled path name for one new name, that param is renamed.
 /// Names and values are the URL's raw text: no escape is decoded, so a typed `%26` stays `%26`.
 fn derive_params(url: &str, current: &[Param]) -> Vec<Param> {
     let (base, query) = split_on_first(url, '?');
@@ -455,18 +456,38 @@ fn derive_params(url: &str, current: &[Param]) -> Vec<Param> {
     let from_query = parse_query_params(query.unwrap_or_default())
         .into_iter()
         .map(|(name, value)| Param::new(name, value.unwrap_or_default(), ParamKind::Query));
-    let new_path = path_names
+    let added: Vec<&String> = path_names
         .iter()
         .filter(|name| !kept_path.iter().any(|p| &p.name == *name))
+        .collect();
+    let dropped: Vec<&Param> = kept_path
+        .iter()
+        .copied()
+        .filter(|p| !path_names.contains(&p.name))
+        .collect();
+    // An edit that swaps exactly one path name for another is a rename: that row keeps its value
+    // and place, so a typo and its undo leave the params as they were.
+    let renamed = match (added.as_slice(), dropped.as_slice()) {
+        ([to], [from]) => Some((from.name.as_str(), to.as_str())),
+        _ => None,
+    };
+    let new_path = added
+        .into_iter()
+        .filter(|_| renamed.is_none())
         .map(|name| Param::new(name.as_str(), "", ParamKind::Path));
     let disabled_query = current
         .iter()
         .filter(|p| !p.enabled && p.kind == ParamKind::Query)
         .cloned();
-    let still_used = kept_path
-        .iter()
-        .filter(|p| path_names.contains(&p.name))
-        .map(|p| (*p).clone());
+    let still_used = kept_path.iter().filter_map(|p| {
+        let mut p = (*p).clone();
+        match renamed {
+            Some((from, to)) if p.name == from => p.name = to.to_owned(),
+            _ if !path_names.contains(&p.name) => return None,
+            _ => {}
+        }
+        Some(p)
+    });
     from_query
         .chain(new_path)
         .chain(disabled_query)

@@ -1262,14 +1262,15 @@ pub fn git_letter(id: ElementId, change: &GitChange, cx: &App) -> impl IntoEleme
 
 /// A request mode marker: a hollow circle the size of [`dirty_dot`], so a chosen mode never
 /// reads as unsaved changes. `words` names it and is its hover text.
-pub fn mode_ring(id: impl Into<ElementId>, words: &'static str) -> Stateful<Div> {
+pub fn mode_ring(id: impl Into<ElementId>, words: impl Into<SharedString>) -> Stateful<Div> {
     // Painted like `dirty_dot`, since the builder has no `App` to read the theme from.
+    let words = words.into();
     div()
         .id(id)
         .size(DOT)
         .flex_none()
-        .aria_label(words)
-        .tooltip(move |window, cx| Tooltip::new(words).build(window, cx))
+        .aria_label(words.clone())
+        .tooltip(move |window, cx| Tooltip::new(words.clone()).build(window, cx))
         .child(
             canvas(
                 |_, _, _| {},
