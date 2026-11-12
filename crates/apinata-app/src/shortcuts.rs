@@ -116,10 +116,10 @@ impl Chord {
     }
 }
 
-/// Whether the recorder takes a bare key for `cmd`: only when one of its own default chords
-/// is a bare key, so such a command can be given its default back.
-pub fn takes_bare_keys(cmd: &Command) -> bool {
-    defaults(cmd).iter().any(Chord::needs_modifier)
+/// Whether `chord` is one of `cmd`'s own default chords; the recorder takes such a chord even
+/// bare, so a rebound command can be given its default back.
+pub fn is_default(cmd: &Command, chord: &Chord) -> bool {
+    defaults(cmd).contains(chord)
 }
 
 fn is_function_key(key: &str) -> bool {

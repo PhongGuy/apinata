@@ -389,16 +389,24 @@ fn a_key_a_code_editor_takes_names_the_place(cx: &mut TestAppContext) {
     );
 }
 
-// A command whose own defaults are bare keys, such as the sidebar's Delete, can be given a bare
-// key back; one with function-key defaults still needs a modifier on any other key.
+// A command whose own defaults are bare keys, such as the sidebar's Delete, can be given those
+// keys back, but no other bare key; one with function-key defaults still needs a modifier.
 #[gpui_kit::test]
-fn a_command_with_bare_default_keys_takes_a_bare_key(cx: &mut TestAppContext) {
+fn a_command_takes_back_its_own_bare_default_keys_only(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     edit_keys(cx, |o| {
         o.insert("request.delete_in_sidebar".into(), vec!["alt-d".into()]);
     });
     open_prefs(cx, &s);
+    record(cx, &s, "request.delete_in_sidebar");
+    press(cx, &s, "d");
+    assert_eq!(
+        message(cx, &s, "request.delete_in_sidebar").as_deref(),
+        Some("Hold Ctrl, Alt or another modifier with this key"),
+        "only its own default keys go bare"
+    );
+    press(cx, &s, "escape");
     record(cx, &s, "request.delete_in_sidebar");
     press(cx, &s, "delete");
     assert_ne!(
