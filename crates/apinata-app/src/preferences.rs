@@ -1603,6 +1603,9 @@ impl Render for PreferencesView {
             });
         });
         let background = cx.theme().background;
+        // The scroll column reaches left of the rows by the keyboard list's gutter and pads it
+        // back, so that list's ring and highlight draw beside the rows without being clipped.
+        let gutter = crate::style::list_gutter(window);
         with_keys(v_flex().id("preferences").test_support(), &cx.entity())
             .track_focus(&self.focus)
             .flex_1()
@@ -1626,7 +1629,12 @@ impl Render for PreferencesView {
                             .child(
                                 column
                                     .id("preferences-scroll")
-                                    .size_full()
+                                    .absolute()
+                                    .top_0()
+                                    .bottom_0()
+                                    .left(-gutter)
+                                    .right_0()
+                                    .pl(gutter)
                                     .pr(SCROLLBAR_GUTTER)
                                     .overflow_y_scroll()
                                     .track_scroll(&self.scroll),

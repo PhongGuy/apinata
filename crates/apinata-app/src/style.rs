@@ -145,6 +145,12 @@ pub const RADIUS: Pixels = px(4.);
 /// Room for the kit's keyboard ring, a fixed 3 px outside a button at every zoom.
 pub const FOCUS_RING_ROOM: Pixels = px(3.);
 
+/// How far a keyboard list in Preferences reaches past its rows on each side: its ring's room
+/// and the highlight's padding, so the rows line up with every other section.
+pub fn list_gutter(window: &Window) -> Pixels {
+    FOCUS_RING_ROOM + resolve(SPACE_1, window)
+}
+
 /// Where every tab's content and the first tab start from the pane's left and top: the pane
 /// inset plus the ring room the request and response panes keep inside their clipping edge.
 pub fn tab_content_inset(window: &Window) -> Pixels {

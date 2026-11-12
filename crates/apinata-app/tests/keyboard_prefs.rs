@@ -405,3 +405,59 @@ fn end_scrolls_the_last_row_into_view(cx: &mut TestAppContext) {
         "{row:?} inside {view:?}"
     );
 }
+
+// The list's content lines up with every other section: its highlight and ring take the
+// gutter outside the rows, not room from them.
+#[gpui_kit::test]
+fn keyboard_rows_line_up_with_other_sections(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let (key_row, other) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            (
+                w.find("key-view.toggle_sidebar").bounds(),
+                w.find("pref-autosave").bounds(),
+            )
+        })
+        .unwrap();
+    assert_eq!(key_row.left(), other.left());
+    assert_eq!(key_row.right(), other.right());
+}
+
+// Once recording, Delete and Enter are keys offered to the recorder: neither unbinds the
+// command nor starts a new recording.
+#[gpui_kit::test]
+fn delete_and_enter_while_recording_go_to_the_recorder(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle sidebar");
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "enter");
+    let refused = Some("Hold Ctrl, Alt or another modifier with this key");
+    let message = |cx: &mut TestAppContext| {
+        cx.update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("key-view.toggle_sidebar-message")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap()
+    };
+    for k in ["delete", "backspace", "enter"] {
+        press_key(cx, s.win, k);
+        assert!(keymap_overrides(cx).is_empty(), "{k} unbinds nothing");
+        assert_eq!(
+            key_label(cx, &s, "view.toggle_sidebar").as_deref(),
+            Some("Press a key"),
+            "{k} leaves the recorder waiting"
+        );
+        assert_eq!(message(cx).as_deref(), refused, "the recorder answers {k}");
+    }
+    press_key(cx, s.win, "f5");
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("view.toggle_sidebar", &["f5"])])
+    );
+}

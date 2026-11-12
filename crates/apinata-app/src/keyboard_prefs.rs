@@ -349,6 +349,7 @@ impl KeyboardPrefs {
         cx: &mut Context<Self>,
     ) -> impl FnOnce(Vec<(SharedString, AnyElement)>) -> AnyElement + 'static {
         let focused = self.list.is_focused(window);
+        let gutter = crate::style::list_gutter(window);
         let theme = cx.theme();
         let (active, radius) = (theme.list_active, theme.radius);
         let edge = crate::sidebar::selection_edge_color(true, cx);
@@ -426,6 +427,7 @@ impl KeyboardPrefs {
                 .on_key_down(on_key)
                 .on_action(on_enter)
                 .relative()
+                .mx(-gutter)
                 .p(FOCUS_RING_ROOM)
                 .gap(SPACE_2)
                 .children(options)
