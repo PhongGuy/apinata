@@ -1800,6 +1800,16 @@ pub fn post_response_hints(base: &[PostResponseVar], rows: &[KvRow]) -> Vec<Stri
 /// as a value already filled in.
 pub const POST_RESPONSE_PLACEHOLDER: &str = "e.g. res.body.token";
 
+/// The column headings every variables table shares, environments included.
+pub const VAR_HEADINGS: (&str, &str) = ("Name", "Value");
+
+/// Gives a Vars table the variables headings and a matching name placeholder.
+pub fn name_vars(table: &mut KvTable, window: &mut Window, cx: &mut Context<KvTable>) {
+    let (name, value) = VAR_HEADINGS;
+    table.set_placeholders(name, value, window, cx);
+    table.set_headings(name, value, cx);
+}
+
 /// The Post-response block under a Vars table: a muted heading with the id `ids.0`, `table`
 /// wrapped in `ids.1`, and one muted line per hint with the id `(ids.2, ix)`.
 pub fn post_response_block(

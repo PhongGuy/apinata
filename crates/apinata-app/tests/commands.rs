@@ -596,7 +596,17 @@ fn the_two_variables_commands_say_what_each_does() {
     );
     assert_eq!(
         label("environment.runtime_variables"),
-        "Edit runtime variables"
+        "Edit variables set by requests"
+    );
+}
+
+#[test]
+fn the_layout_command_names_both_layouts() {
+    let cmds = registry();
+    let label = |id: &str| cmds.iter().find(|c| c.id == id).expect(id).label;
+    assert_eq!(
+        label("view.toggle_layout"),
+        "Toggle layout: stacked or side by side"
     );
 }
 

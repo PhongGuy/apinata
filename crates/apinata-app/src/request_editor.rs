@@ -385,13 +385,14 @@ impl RequestEditor {
         let vars = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
             t.set_follow(follow.clone());
+            kv_table::name_vars(&mut t, window, cx);
             t
         });
         let post_response = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
             t.set_follow(follow.clone());
             t.set_placeholders("Name", kv_table::POST_RESPONSE_PLACEHOLDER, window, cx);
-            t.set_headings("Name", "Expression", cx);
+            t.set_headings(kv_table::VAR_HEADINGS.0, kv_table::VAR_HEADINGS.1, cx);
             t
         });
         let collection_root = target_of(&workspace, tab, cx)

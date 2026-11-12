@@ -107,7 +107,7 @@ fn only_the_collection_row_offers_export() {
     assert!(!menu_entries(NodeKind::Request).contains(&MenuEntry::ExportPostman));
     assert_eq!(
         MenuEntry::ExportPostman.label(),
-        "Export collection to Postman (translate scripts)"
+        "Export collection to Postman, converting scripts"
     );
 }
 
@@ -307,7 +307,7 @@ fn only_the_collection_row_offers_export_keeping_scripts() {
     assert!(!menu_entries(NodeKind::Request).contains(&entry));
     assert_eq!(
         entry.label(),
-        "Export collection to Postman (copy scripts unchanged)"
+        "Export collection to Postman, keeping scripts as written"
     );
     let at = |e| entries.iter().position(|x| *x == e).unwrap();
     assert_eq!(at(entry), at(MenuEntry::ExportPostman) + 1);
@@ -345,7 +345,7 @@ fn the_keep_scripts_entry_exports_them_as_written(cx: &mut TestAppContext) {
 fn the_palette_exports_copying_scripts_unchanged(cx: &mut TestAppContext) {
     let col = scripted();
     let s = started(cx, &col);
-    palette(cx, &s, "copy scripts unchanged");
+    palette(cx, &s, "keeping scripts as written");
     assert_eq!(saved_pre_request(cx), "bru.setVar('k', 1);");
 }
 
@@ -527,8 +527,8 @@ fn the_export_report_keeps_its_lines_clear_of_the_scrollbar(cx: &mut TestAppCont
     );
 }
 
-const TRANSLATE: &str = "Export collection to Postman (translate scripts)";
-const UNCHANGED: &str = "Export collection to Postman (copy scripts unchanged)";
+const TRANSLATE: &str = "Export collection to Postman, converting scripts";
+const UNCHANGED: &str = "Export collection to Postman, keeping scripts as written";
 
 #[gpui_kit::test]
 fn the_collection_menu_says_what_each_postman_export_does_with_scripts(cx: &mut TestAppContext) {
