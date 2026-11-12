@@ -4,7 +4,7 @@
 use crate::support;
 
 use apinata_app::command::MockSource;
-use apinata_app::command::{Command, TreeOp};
+use apinata_app::command::{Command, Target, TreeOp};
 use apinata_app::mock_server::{MockServers, MockState};
 use apinata_app::session::{CollectionSession, Session};
 use apinata_app::snapshot::{CollectionSnapshot, SnapshotCache};
@@ -467,6 +467,7 @@ fn snapshot_of(root: &Path) -> Arc<CollectionSnapshot> {
         notices: Default::default(),
         context_generation: 0,
         dotenv_seq: 0,
+        save_seq: 0,
         dotenv_stored: Default::default(),
         dotenv_held: Default::default(),
         network_notice: None,
@@ -619,4 +620,30 @@ fn on_off_on_off_on_still_waits_for_the_old_listener_and_keeps_the_port(cx: &mut
         w.set_mock(&root, true, cx);
     });
     assert_eq!(running(cx, &s.ws, &s.root), first);
+}
+
+#[gpui_kit::test]
+fn a_save_followed_by_more_typing_in_one_batch_is_served(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    let dirty_at = |cx: &mut TestAppContext, url: &str| {
+        let snap = ws_snap(cx, &s.ws, &s.root);
+        let view = &snap.content.requests[&ip("users.yml")];
+        view.dirty && view.url == url
+    };
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("users.yml", "http://api.test/people"), cx)
+    });
+    wait_real(cx, |cx| dirty_at(cx, "http://api.test/people"));
+    // Sent together, the save and the next keystroke reach the actor as one batch, so the
+    // request is dirty both before and after the save.
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, Command::Save(Target::Request(ip("users.yml"))), cx);
+        w.send(&root, edit_url("users.yml", "http://api.test/later"), cx);
+    });
+    wait_real(cx, |cx| dirty_at(cx, "http://api.test/later"));
+    wait_real(cx, |_| get(addr, "/people").starts_with("HTTP/1.1 200"));
 }

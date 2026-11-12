@@ -233,10 +233,12 @@ impl MockServers {
 
 /// Whether the saved state the routes are built from may differ between two snapshots. A
 /// clean request's view is rebuilt only when its file or examples change; once it holds a
-/// draft, only example edits and outside changes to the file count.
+/// draft, only example edits and outside changes to the file count. Any save counts, since a
+/// later keystroke in the same batch can leave a saved request looking untouched.
 pub fn routes_differ(old: &CollectionSnapshot, new: &CollectionSnapshot) -> bool {
     if old.selected_environment != new.selected_environment
         || old.context_generation != new.context_generation
+        || old.save_seq != new.save_seq
     {
         return true;
     }
