@@ -1145,7 +1145,9 @@ impl Sidebar {
             rows.iter().find(|row| row.path == parent)?.name.clone()
         };
         let what = if folder { "folder" } else { "request" };
-        Some(format!("A {what} named {name} is already in {place}"))
+        Some(format!(
+            "A {what} named \"{name}\" is already in \"{place}\""
+        ))
     }
 
     // Enter and clicking away both commit a real change and end the rename; only Enter hands
@@ -3046,12 +3048,20 @@ impl Render for Sidebar {
                                 }
                                 // The group only heads its drafts and an Empty row only says
                                 // so: the row swallows the tree's mouse-down so a click neither
-                                // collapses nor selects it.
+                                // collapses nor selects it. Empty leaves the chevron slot blank,
+                                // so its word starts where a child's icon or method tag would.
                                 NodeKind::UnsavedGroup | NodeKind::Empty => item
                                     .child(
-                                        div()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(n.name.clone()),
+                                        h_flex()
+                                            .gap(style::SPACE_1)
+                                            .when(n.kind == NodeKind::Empty, |row| {
+                                                row.child(div().w(style::SPACE_4).flex_none())
+                                            })
+                                            .child(
+                                                marker("name", n)
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child(n.name.clone()),
+                                            ),
                                     )
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()

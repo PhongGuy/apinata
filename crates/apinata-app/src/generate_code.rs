@@ -11,8 +11,7 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{IndexPath, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, ClipboardItem, Entity, Global, Rems, Subscription, TestSupportExt, WeakEntity, Window,
-    div, rems,
+    App, ClipboardItem, Entity, Global, Rems, Subscription, TestSupportExt, WeakEntity, Window, div,
 };
 
 use crate::copy_curl::{confirm_secrets, plan_and_resolve};
@@ -221,12 +220,11 @@ impl Render for GenerateCodeView {
         let copy = ui::icon_button("generate-code-copy", IconName::Copy, "Copy", None)
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .on_click(cx.listener(|this, _, window, cx| this.copy(window, cx)));
-        // Tall enough that every target shows without scrolling; the kit still caps the popup
-        // to the window. A medium row is about 1.92 rem, plus list padding.
+        // Tall enough that every target shows without scrolling.
         let target = div().min_w_0().child(ui::dialog_select(
             Select::new(&self.select)
                 .id("generate-code-target")
-                .menu_max_h(rems(Target::ALL.len() as f32 * 2. + 1.)),
+                .menu_max_h(ui::menu_fits(Target::ALL.len())),
         ));
         let preview = div()
             .id("generate-code-preview")

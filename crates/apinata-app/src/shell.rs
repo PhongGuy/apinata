@@ -71,7 +71,7 @@ use crate::stand_in::StandIn;
 use crate::style;
 use crate::tab_area::TabArea;
 use crate::tabs::{TabId, TabKind};
-use crate::ui::{self, icon_button, no_window_move};
+use crate::ui::{self, LockButton as _, icon_button, no_window_move};
 use crate::update_install;
 use crate::updates::{CheckForUpdates, Report, Updates, UpdatesEvent, report_text};
 use crate::window_drop::{Dropped, classify};
@@ -133,6 +133,9 @@ pub const ENV_EDITOR_ICON: IconName = IconName::SlidersHorizontal;
 
 /// Tooltip and accessibility label of the environment editor button; one const, so they agree.
 pub const MANAGE_ENVIRONMENTS_TIP: &str = "Manage environments";
+
+/// Why the collection's environment select and the editor button are locked with nothing open.
+pub const NO_COLLECTION_ENV_TIP: &str = "Open a collection to use its environments";
 
 /// The icon of the title bar's global environments button.
 pub const GLOBAL_ENV_ICON: IconName = IconName::Globe;
@@ -1943,6 +1946,27 @@ impl Shell {
             })
     }
 
+    // Manage environments, locked with a tip saying why while no collection is open, as the
+    // collection's environment select beside it is.
+    fn environments_button(&self, cx: &App) -> Button {
+        if self.workspace.read(cx).current_root().is_some() {
+            return icon_button(
+                "environments",
+                ENV_EDITOR_ICON,
+                MANAGE_ENVIRONMENTS_TIP,
+                Some(&OpenEnvironments),
+            );
+        }
+        icon_button(
+            "environments",
+            ENV_EDITOR_ICON,
+            MANAGE_ENVIRONMENTS_TIP,
+            None,
+        )
+        .tooltip(NO_COLLECTION_ENV_TIP)
+        .lock(true, cx)
+    }
+
     // A title-bar slot for an env select: it starts at the minimum and grows to the full width.
     // In a `cramped` bar it may shrink below the minimum with weight `shrink`, its select
     // truncating; the heavier slot empties first.
@@ -2583,15 +2607,11 @@ impl Shell {
                                     cx,
                                 )))
                             }))
-                            .child(no_window_move(div().flex_none().child(ui::solid_ring(
-                                icon_button(
-                                    "environments",
-                                    ENV_EDITOR_ICON,
-                                    MANAGE_ENVIRONMENTS_TIP,
-                                    Some(&OpenEnvironments),
-                                ),
-                                cx,
-                            ))))
+                            .child(no_window_move(
+                                div()
+                                    .flex_none()
+                                    .child(ui::solid_ring(self.environments_button(cx), cx)),
+                            ))
                             .child(Self::app_menu_slot(
                                 crate::app_menu::app_menu(
                                     self.focus.clone(),

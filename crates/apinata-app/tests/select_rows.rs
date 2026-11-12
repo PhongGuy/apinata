@@ -75,6 +75,29 @@ fn auth_mode_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
     assert_eq!(s.read_with(cx, |s, _| s.mode()), Some(AuthMode::Bearer));
 }
 
+// The auth type list is tall enough for every type when the window has room, so the last
+// one shows without a scroll.
+#[gpui_kit::test]
+fn the_auth_mode_list_shows_every_type_without_scrolling(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, AuthSection::new);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&AuthSpec::None, w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("auth-mode", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        for mode in AuthMode::ALL {
+            let id = format!("auth-mode-option-{}", mode.key());
+            assert!(w.find(SharedString::from(id.clone())).visible(), "{id}");
+        }
+    })
+    .unwrap();
+}
+
 #[gpui_kit::test]
 fn body_mode_rows_have_ids_and_a_click_picks_one(cx: &mut TestAppContext) {
     let (win, host) = host_section(cx, |w, cx| BodySection::new(PathBuf::from("/c"), w, cx));

@@ -4,6 +4,7 @@ use apinata_app::closing::{CloseScope, close_detail, confirm_close_or_keep, dirt
 use apinata_app::command::{Command, Edit, Target};
 use apinata_app::sidebar::menu::MenuEntry;
 use apinata_app::sidebar::model::NodeKind;
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -255,8 +256,9 @@ fn a_scratch_draft_is_named_as_the_scratch_pad(cx: &mut TestAppContext) {
         vec![apinata_app::command::Target::Request(item)],
         0,
     )];
-    let detail =
-        s.ws.read_with(cx, |w, _| apinata_app::closing::unsaved_detail(w, &unsaved));
+    let detail = s.ws.read_with(cx, |w, _| {
+        apinata_app::closing::unsaved_detail(w, &unsaved, &CloseScope::Window)
+    });
     assert_eq!(detail, "1 unsaved change in the scratch pad.");
 }
 
@@ -454,4 +456,28 @@ fn a_queued_window_close_goes_with_a_window_closed_another_way(cx: &mut TestAppC
     cx.run_until_parked();
     assert_eq!(windows(cx), 0);
     assert!(!cx.update(|cx| apinata_app::closing::close_queued(id, cx)));
+}
+
+// Closing one collection names it as this collection rather than counting one collection.
+#[gpui_kit::test]
+fn closing_one_collection_says_this_collection(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    dirty_a(cx, &s);
+    s.ws.update(cx, |w, cx| {
+        w.send(&s.root, edit_url("b.yml", "http://x/8"), cx)
+    });
+    cx.run_until_parked();
+    close_collection(cx, &s);
+    let win = confirm_window(cx).expect("the close prompt");
+    let detail = cx
+        .update_window(win, |_, w, _| {
+            w.find("confirm-detail").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(
+        detail.as_deref(),
+        Some("2 unsaved changes in this collection.")
+    );
+    answer_confirm(cx, "confirm-cancel");
 }
