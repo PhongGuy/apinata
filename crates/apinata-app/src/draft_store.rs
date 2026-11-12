@@ -16,6 +16,24 @@ use crate::draft_file::{self, BuildError, DraftFile};
 use crate::persisted::{Persisted, SaveFailed};
 use crate::workspace::Workspace;
 
+/// The toast for reopening the drafts `names` at start or on reopening their collection: one
+/// by name, more by count.
+pub fn reopened_message(names: &[String]) -> String {
+    match names {
+        [one] => format!("Reopened \"{one}\"."),
+        many => format!("Reopened {} unsaved drafts.", many.len()),
+    }
+}
+
+/// `reopened_message`, adding that credentials were cleared from what was reopened.
+pub fn reopened_blanked_message(names: &[String]) -> String {
+    let whose = if names.len() == 1 { "Its" } else { "Some" };
+    format!(
+        "{} {whose} credentials were cleared; enter them again before sending.",
+        reopened_message(names)
+    )
+}
+
 /// The app's draft store, set by `app::start`.
 pub struct Drafts(pub Entity<DraftStore>);
 
@@ -33,8 +51,14 @@ pub enum DraftStoreEvent {
     },
     /// A draft file could not be written; the I/O error text.
     SaveFailed(String),
-    /// Restored drafts had their credentials blanked.
-    CredentialsBlanked,
+    /// Kept drafts were reopened, by name; `credentials_blanked` when any had its credentials
+    /// blanked.
+    Reopened {
+        /// The reopened drafts' names, oldest first.
+        names: Vec<String>,
+        /// Whether any of them had its credentials blanked.
+        credentials_blanked: bool,
+    },
 }
 
 /// Why a draft is not kept after restart.
@@ -220,8 +244,8 @@ impl DraftStore {
     }
 
     /// Moves `root`'s loaded drafts, oldest first, into the tracked set, each holding its file
-    /// as already written, and returns them to be opened. Emits `CredentialsBlanked` once when
-    /// any had its credentials blanked. A disabled store returns nothing.
+    /// as already written, and returns them to be opened. Emits `Reopened` once when
+    /// there are any. A disabled store returns nothing.
     pub fn take_root(&mut self, root: &Path, cx: &mut Context<Self>) -> Vec<DraftFile> {
         if !self.enabled() {
             return Vec::new();
@@ -255,8 +279,11 @@ impl DraftStore {
                 },
             );
         }
-        if files.iter().any(|f| f.credentials_blanked) {
-            cx.emit(DraftStoreEvent::CredentialsBlanked);
+        if !files.is_empty() {
+            cx.emit(DraftStoreEvent::Reopened {
+                names: files.iter().map(DraftFile::name).collect(),
+                credentials_blanked: files.iter().any(|f| f.credentials_blanked),
+            });
         }
         files
     }
