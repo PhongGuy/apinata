@@ -4,7 +4,7 @@ use crate::support;
 
 use apinata_app::env_table::{EnvRow, EnvTableEvent};
 use apinata_app::global_env_editor::open_global_env_editor;
-use apinata_app::global_env_selector::{GlobalEnvSelector, manage_global_environments};
+use apinata_app::global_env_selector::{GlobalEnvSelector, manage_global_environments, option_id};
 use apinata_app::workspace::{GlobalOp, Workspace};
 use apinata_core::{EnvVariable, VarValue};
 use gpui_kit::test::TestWindowExt as _;
@@ -716,9 +716,9 @@ fn escape_closes_the_dialog_after_a_name_is_committed(cx: &mut TestAppContext) {
     );
 }
 
-// The global editor shares the table: lock in the value cell, no colour or parent controls.
+// The global editor shares the table: lock in the value cell, and no parent control.
 #[gpui_kit::test]
-fn the_global_table_has_the_lock_but_no_colour_or_parent(cx: &mut TestAppContext) {
+fn the_global_table_has_the_lock_but_no_parent(cx: &mut TestAppContext) {
     support::init(cx);
     let vars =
         "name: g\nvariables:\n  - name: host\n    value: a\n  - secret: true\n    name: token\n";
@@ -733,7 +733,7 @@ fn the_global_table_has_the_lock_but_no_colour_or_parent(cx: &mut TestAppContext
             assert_eq!(lock.checked(), Some(secret));
             assert!(lock.bounds().right() <= cell.right());
         }
-        assert!(w.try_find("env-swatch-none").is_none() && w.try_find("env-extends").is_none());
+        assert!(w.try_find("env-extends").is_none());
     })
     .unwrap();
 }
@@ -1738,4 +1738,204 @@ fn a_coloured_global_shows_its_dot_in_the_list(cx: &mut TestAppContext) {
         assert!(row.try_find("global-env-item-dot").is_some(), "g has a dot");
     })
     .unwrap();
+}
+
+// The Color row's swatches set the global's colour, and it is saved to its file.
+#[gpui_kit::test]
+fn the_colour_picker_sets_and_saves_a_global_colour(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", "name: g\n")]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.try_find("global-env-color-row").is_some(), "a Color row");
+        w.click(("env-swatch", 0usize), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let color = |cx: &mut TestAppContext| {
+        ws.read_with(cx, |w, _| {
+            w.globals()
+                .and_then(|g| g.environment("g").and_then(|e| e.color()))
+        })
+    };
+    assert_eq!(color(cx).as_deref(), Some("#CE4F3B"));
+    let file = std::fs::read_to_string(g.path().join("g.yml")).unwrap();
+    assert!(file.contains("#CE4F3B"), "saved: {file}");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let swatch = w.within(("env-swatch", 0usize));
+        assert!(
+            swatch.try_find("env-swatch-ring").is_some(),
+            "Red is ringed"
+        );
+        w.click("env-swatch-none", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(color(cx), None);
+}
+
+// While the first global is being named, the empty state's message and button give way to a
+// line saying what a global environment is for.
+#[gpui_kit::test]
+fn naming_the_first_global_replaces_the_empty_state(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[]);
+    let (win, _editor) = open_editor_unselected(cx, &ws);
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("global-env-empty-create", cx);
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(present(cx, win, "global-env-name-input"));
+    assert!(!present(cx, win, "global-env-empty-label"));
+    assert!(!present(cx, win, "global-env-empty-create"));
+    assert!(present(cx, win, "global-env-about"));
+    cx.simulate_keystrokes(win, "escape");
+    frame(cx, win);
+    assert!(
+        present(cx, win, "global-env-empty-label"),
+        "Cancel brings it back"
+    );
+}
+
+// The list dot keeps the collection list's gap before the name.
+#[gpui_kit::test]
+fn the_global_list_dot_has_a_gap_before_the_name(cx: &mut TestAppContext) {
+    support::init(cx);
+    let red = "name: g\ncolor: \"#CE4F3B\"\n";
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", red)]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let gap_want = apinata_app::style::resolve(apinata_app::style::SPACE_1, w);
+        let row = w.within(("global-env-item", 0usize));
+        let dot = row.find("global-env-item-dot").bounds();
+        let name = w.find(("global-env-item-name", 0usize)).bounds();
+        assert_eq!(name.left() - dot.right(), gap_want, "{dot:?} {name:?}");
+    })
+    .unwrap();
+}
+
+// The title bar's globals picker draws a coloured global's dot, as the environment picker does.
+#[gpui_kit::test]
+fn the_globals_picker_row_shows_the_dot(cx: &mut TestAppContext) {
+    support::init(cx);
+    let red = "name: g\ncolor: \"#CE4F3B\"\n";
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", red), ("h.yml", "name: h\n")]);
+    let shared = ws.clone();
+    let (win, _) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
+            })
+        })
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("global-env-select", cx);
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let mut dotted = |item: &str| {
+            w.within(option_id(item))
+                .try_find("global-env-row-dot")
+                .is_some()
+        };
+        assert!(dotted("g"), "g is coloured");
+        assert!(!dotted("h"), "h has no colour");
+        let mut left = |item: &str| {
+            w.within(option_id(item))
+                .find("global-env-row-name")
+                .bounds()
+                .left()
+        };
+        let g = left("g");
+        assert_eq!(left("h"), g, "names line up");
+    })
+    .unwrap();
+}
+
+// A colour pick saves only the colour: typed values stay unsaved in the editor, and Discard
+// takes them back without losing the colour.
+#[gpui_kit::test]
+fn a_colour_pick_keeps_unsaved_typing_out_of_the_file(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", HOST_A)]);
+    let (win, editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    let table = editor.read_with(cx, |e, _| e.table().clone());
+    let input = table.read_with(cx, |t, _| t.value_input(0).unwrap().clone());
+    cx.update_window(win, |_, w, cx| {
+        input.update(cx, |s, cx| s.set_value("typed", w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(("env-swatch", 0usize), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let file = std::fs::read_to_string(g.path().join("g.yml")).unwrap();
+    assert!(file.contains("#CE4F3B"), "the colour is saved: {file}");
+    assert!(
+        file.contains("value: a") && !file.contains("typed"),
+        "{file}"
+    );
+    assert_eq!(first_value(cx, &editor), "typed");
+    assert!(editor.read_with(cx, |e, cx| e.has_edits(cx)), "still dirty");
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("global-env-discard", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-discard");
+    assert_eq!(first_value(cx, &editor), "a");
+    assert!(!editor.read_with(cx, |e, cx| e.has_edits(cx)));
+    let file = std::fs::read_to_string(g.path().join("g.yml")).unwrap();
+    assert!(file.contains("#CE4F3B"), "Discard keeps the colour: {file}");
+}
+
+// The closed globals picker shows the active global's dot beside its name.
+#[gpui_kit::test]
+fn the_closed_globals_picker_shows_the_active_dot(cx: &mut TestAppContext) {
+    support::init(cx);
+    let red = "name: g\ncolor: \"#CE4F3B\"\n";
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", red), ("h.yml", "name: h\n")]);
+    let shared = ws.clone();
+    let (win, _) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| GlobalEnvSelector::new(shared, w, cx))
+            })
+        })
+        .unwrap();
+    let shown = |cx: &mut TestAppContext| {
+        frame(cx, win);
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (w.within("global-env-select"))
+                .try_find("global-env-trigger-dot")
+                .is_some()
+        })
+        .unwrap()
+    };
+    assert!(!shown(cx), "no globals active");
+    ws.update(cx, |w, cx| w.select_picker_item("g", cx));
+    cx.run_until_parked();
+    assert!(shown(cx), "g is coloured");
+    ws.update(cx, |w, cx| w.select_picker_item("h", cx));
+    cx.run_until_parked();
+    assert!(!shown(cx), "h has no colour");
 }

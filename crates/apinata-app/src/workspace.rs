@@ -167,6 +167,13 @@ pub enum GlobalOp {
         /// Secret values to store, as (variable, value).
         secrets: Vec<(String, String)>,
     },
+    /// Set an environment's colour, `None` clearing it, and save the file.
+    SetColor {
+        /// The environment.
+        name: String,
+        /// `#rgb` or `#rrggbb`, or none.
+        color: Option<String>,
+    },
     /// Remove named orphans of an environment. Warnings become the error text.
     RemoveOrphans {
         /// The environment.
@@ -216,6 +223,10 @@ impl std::fmt::Debug for GlobalOp {
                     .field("secrets", &secrets)
                     .finish_non_exhaustive()
             }
+            GlobalOp::SetColor { name, color } => (f.debug_struct("SetColor"))
+                .field("name", name)
+                .field("color", color)
+                .finish(),
             GlobalOp::RemoveOrphans { name, names } => (f.debug_struct("RemoveOrphans"))
                 .field("name", name)
                 .field("names", names)
@@ -277,6 +288,13 @@ impl GlobalOp {
                     let key = globals.secret_key(name, variable);
                     store.set(&key, value).map_err(text)?;
                 }
+            }
+            GlobalOp::SetColor { name, color } => {
+                let Some(env) = globals.environment_mut(name) else {
+                    return Err(globals.environment_not_found(name).to_string());
+                };
+                env.set_color(color.clone());
+                env.save().map_err(text)?;
             }
             GlobalOp::RemoveOrphans { name, names } | GlobalOp::RemoveFileless { name, names } => {
                 let warnings = match self {

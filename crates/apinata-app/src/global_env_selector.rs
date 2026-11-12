@@ -5,12 +5,13 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription,
-    TestSupportExt as _, Window, div,
+    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render, SharedString,
+    Styled as _, Subscription, TestSupportExt as _, Window, div,
 };
 
 use crate::commands::label;
+use crate::env_color::{dotted, env_fill, picker_row};
 use crate::global_env_editor::open_global_env_editor;
 use crate::style::ENV_CONTROL_WIDTH;
 use crate::ui::ring_overlay;
@@ -41,10 +42,14 @@ pub fn option_id(item: &str) -> SharedString {
 pub struct GlobalEnvItem(
     /// The global environment name, or the fixed row.
     pub SharedString,
+    /// The environment's colour, drawn as a dot beside the name.
+    pub Option<Hsla>,
+    /// Whether some row has a dot, so a row without one keeps its space and names line up.
+    pub bool,
 );
 
 // As with the collection picker, the row content registers itself under `option_id` because
-// the kit draws select rows without `.test_support()`.
+// the kit draws select rows without `.test_support()`, and the dot leaves the title bare.
 impl SelectItem for GlobalEnvItem {
     type Value = SharedString;
 
@@ -52,15 +57,21 @@ impl SelectItem for GlobalEnvItem {
         self.0.clone()
     }
 
+    fn display_title(&self) -> Option<AnyElement> {
+        let fill = self.1?;
+        Some(dotted("global-env-trigger-dot", fill, self.0.clone()).into_any_element())
+    }
+
     fn value(&self) -> &SharedString {
         &self.0
     }
 
     fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let ids = ("global-env-row-dot", "global-env-row-name");
         div()
             .id(option_id(&self.0))
             .test_support()
-            .child(self.0.clone())
+            .child(picker_row(ids, self.1, self.2, self.0.clone()))
     }
 }
 
@@ -69,6 +80,8 @@ pub struct GlobalEnvSelector {
     workspace: Entity<Workspace>,
     select: Entity<SelectState<Vec<GlobalEnvItem>>>,
     listed: Vec<SharedString>,
+    // The dot colour of each `listed` entry.
+    dots: Vec<Option<Hsla>>,
     shown: Option<SharedString>,
     _subscriptions: Vec<Subscription>,
 }
@@ -96,6 +109,7 @@ impl GlobalEnvSelector {
             workspace,
             select,
             listed: Vec::new(),
+            dots: Vec::new(),
             shown: None,
             _subscriptions: subscriptions,
         };
@@ -149,13 +163,31 @@ impl GlobalEnvSelector {
         self.workspace.update(cx, |w, cx| w.reload_globals(cx));
     }
 
-    // Resets the items only when the names change, so an open popup is not rebuilt on every
-    // workspace notify; the shown value follows the selection.
+    // Resets the items only when the names or their colours change, so an open popup is not
+    // rebuilt on every workspace notify; the shown value follows the selection.
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let items = self.items(cx);
-        if items != self.listed {
-            let rows = items.iter().cloned().map(GlobalEnvItem).collect();
+        let dots: Vec<Option<Hsla>> = {
+            let globals = self.workspace.read(cx).globals();
+            (items.iter())
+                .map(|item| {
+                    let fixed = [NO_GLOBAL_ENVIRONMENT, manage_global_environments()];
+                    if fixed.contains(&item.as_ref()) {
+                        return None;
+                    }
+                    let color = globals.as_deref()?.environment(item)?.color();
+                    env_fill(color.as_deref())
+                })
+                .collect()
+        };
+        if items != self.listed || dots != self.dots {
+            let any = dots.iter().any(Option::is_some);
+            let rows = (items.iter().cloned())
+                .zip(dots.iter().copied())
+                .map(|(name, dot)| GlobalEnvItem(name, dot, any))
+                .collect();
             self.listed = items;
+            self.dots = dots;
             self.select
                 .update(cx, |s, cx| s.set_items(rows, window, cx));
             self.shown = None;
