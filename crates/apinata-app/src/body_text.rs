@@ -487,15 +487,18 @@ pub fn prepare_body(
 pub fn reindent_html(text: &str) -> String {
     let tokens = html_tokens(text);
     let mut lines: Vec<String> = Vec::new();
-    // The elements open at this point, innermost last.
+    // The elements open at this point, innermost last, and how many of each name, so a
+    // stray end tag is skipped without walking the whole stack.
     let mut open: Vec<&str> = Vec::new();
+    let mut open_count: std::collections::HashMap<&str, usize> = Default::default();
+    let indent = |depth: usize| "  ".repeat(depth.min(HTML_MAX_DEPTH));
     let closes = |at: usize, name: &str| match tokens.get(at) {
         Some(HtmlToken::Close(tag, n)) if n == name => Some(*tag),
         _ => None,
     };
     let mut i = 0;
     while i < tokens.len() {
-        let pad = "  ".repeat(open.len());
+        let pad = indent(open.len());
         match &tokens[i] {
             HtmlToken::Text(t) => {
                 let words = collapse(t);
@@ -506,10 +509,14 @@ pub fn reindent_html(text: &str) -> String {
             HtmlToken::Other(t) | HtmlToken::Raw(t) => lines.push(pad + t.trim()),
             HtmlToken::Close(tag, name) => {
                 // An end tag also closes what was left open inside it; a stray one closes nothing.
-                if let Some(at) = open.iter().rposition(|n| *n == name.as_str()) {
-                    open.truncate(at);
+                if open_count.get(name.as_str()).is_some_and(|n| *n > 0)
+                    && let Some(at) = open.iter().rposition(|n| *n == name.as_str())
+                {
+                    for gone in open.drain(at..) {
+                        open_count.entry(gone).and_modify(|n| *n -= 1);
+                    }
                 }
-                lines.push("  ".repeat(open.len()) + tag);
+                lines.push(indent(open.len()) + tag);
             }
             HtmlToken::Open(tag, _, true) => lines.push(pad + tag),
             HtmlToken::Open(tag, name, false) if HTML_RAW.contains(&name.as_str()) => {
@@ -547,6 +554,7 @@ pub fn reindent_html(text: &str) -> String {
                 } else {
                     lines.push(pad + tag);
                     open.push(name.as_str());
+                    *open_count.entry(name.as_str()).or_default() += 1;
                 }
             }
         }
@@ -558,6 +566,8 @@ pub fn reindent_html(text: &str) -> String {
     lines.join("\n")
 }
 
+// Deeper elements line up with the last indented level, so the output stays linear in size.
+const HTML_MAX_DEPTH: usize = 32;
 // Elements without content, which never take an end tag.
 const HTML_VOID: [&str; 14] = [
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
@@ -587,16 +597,24 @@ fn html_tokens(text: &str) -> Vec<HtmlToken<'_>> {
     while let Some(off) = text[pos..].find('<') {
         let at = pos + off;
         let rest = &text[at..];
+        let tag_like =
+            rest[1..].starts_with(|c: char| c.is_ascii_alphabetic() || "/!?".contains(c));
         let len = if rest.starts_with("<!--") {
             rest.find("-->").map(|e| e + 3)
-        } else if rest[1..].starts_with(|c: char| c.is_ascii_alphabetic() || "/!?".contains(c)) {
+        } else if tag_like {
             tag_len(rest)
         } else {
             None
         };
-        let Some(len) = len else {
-            pos = at + 1;
-            continue;
+        // A tag or comment that runs off the end makes the rest text; scanning on from the
+        // next `<` would rescan that same tail for each one.
+        let len = match len {
+            Some(len) => len,
+            None if rest.starts_with("<!--") || tag_like => break,
+            None => {
+                pos = at + 1;
+                continue;
+            }
         };
         if text_from < at {
             out.push(HtmlToken::Text(&text[text_from..at]));
@@ -615,9 +633,13 @@ fn html_tokens(text: &str) -> Vec<HtmlToken<'_>> {
             let end = (text[pos..].match_indices("</"))
                 .map(|(e, _)| pos + e)
                 .find(|&e| {
-                    text.as_bytes()[e + 2..]
+                    let after = &text.as_bytes()[e + 2..];
+                    after
                         .get(..name.len())
                         .is_some_and(|n| n.eq_ignore_ascii_case(name.as_bytes()))
+                        && !after
+                            .get(name.len())
+                            .is_some_and(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(b))
                 })
                 .unwrap_or(text.len());
             out.push(HtmlToken::Raw(&text[pos..end]));

@@ -716,3 +716,53 @@ fn pretty_html_tolerates_stray_and_unclosed_tags() {
     assert_eq!(reindent_html("</i>a < b"), "</i>\na < b");
     assert_eq!(reindent_html("  plain  "), "plain");
 }
+
+// Unterminated tags and comments end the scan, so a hostile body stays linear.
+#[test]
+fn pretty_html_stays_linear_on_unterminated_tags_and_comments() {
+    let tags = "<a".repeat(200_000);
+    assert_eq!(reindent_html(&tags), tags);
+    let comments = "<!--".repeat(200_000);
+    assert_eq!(reindent_html(&comments), comments);
+    let quotes = "<a x=\"".repeat(100_000);
+    assert_eq!(reindent_html(&quotes).len(), quotes.len());
+    let stray = format!("{}{}", "<div>".repeat(50_000), "</p>".repeat(50_000));
+    assert_eq!(reindent_html(&stray).lines().count(), 100_000);
+}
+
+#[test]
+fn pretty_html_indents_at_most_32_levels() {
+    let deep = "<div>".repeat(50_000);
+    let out = reindent_html(&deep);
+    let widest = out.lines().map(|l| l.len() - l.trim_start().len()).max();
+    assert_eq!(widest, Some(64));
+    assert!(out.len() <= 50_000 * 70, "{}", out.len());
+}
+
+#[test]
+fn pretty_html_handles_quotes_comments_case_and_non_ascii() {
+    assert_eq!(
+        reindent_html("<div><a title=\"x>y\">t</a></div>"),
+        "<div>\n  <a title=\"x>y\">t</a>\n</div>"
+    );
+    assert_eq!(
+        reindent_html("<div><!-- <p>no</p> --></div>"),
+        "<div>\n  <!-- <p>no</p> -->\n</div>"
+    );
+    assert_eq!(
+        reindent_html("<DIV><P>a</P><SCRIPT>x < y</SCRIPT></DIV>"),
+        "<DIV>\n  <P>a</P>\n  <SCRIPT>\n    x < y\n  </SCRIPT>\n</DIV>"
+    );
+    assert_eq!(
+        reindent_html("<p>héllo  wörld 日本</p><p>ü</p>"),
+        "<p>héllo wörld 日本</p>\n<p>ü</p>"
+    );
+}
+
+#[test]
+fn a_raw_element_ends_only_at_its_own_name() {
+    assert_eq!(
+        reindent_html("<script>a</scripts>b</script>"),
+        "<script>\n  a</scripts>b\n</script>"
+    );
+}

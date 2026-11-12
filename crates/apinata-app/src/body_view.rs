@@ -4003,20 +4003,32 @@ fn save_name(url: Option<&str>, request: &str, content_type: &str) -> String {
     format!("{}.{ext}", file_stem(request))
 }
 
-// A request name as a file stem: characters no file system takes become `-`, and a name
-// left blank or naming a directory falls back to `response`.
+// A request name as a file stem of at most 100 chars: characters no file system takes become
+// `-`, edge dots and spaces go, and a name left blank or naming a Windows device is `response`.
 fn file_stem(request: &str) -> String {
-    let stem: String = (request.trim().chars())
+    let edges = |c: char| c == '.' || c.is_whitespace();
+    let cleaned: String = (request.chars())
         .filter(|c| !c.is_control())
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
             c => c,
         })
         .collect();
-    if safe_file_name(&stem) {
-        stem
-    } else {
+    let cut: String = cleaned.trim_matches(edges).chars().take(100).collect();
+    let stem = cut.trim_matches(edges);
+    // Windows refuses a device name before the first dot, whatever the extension.
+    let base = stem.split('.').next().unwrap_or_default().trim_end();
+    let device = ["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|d| base.eq_ignore_ascii_case(d))
+        || (base.len() == 4
+            && (base.get(..3))
+                .is_some_and(|p| ["COM", "LPT"].iter().any(|d| p.eq_ignore_ascii_case(d)))
+            && matches!(base.as_bytes()[3], b'1'..=b'9'));
+    if device || !safe_file_name(stem) {
         "response".to_string()
+    } else {
+        stem.to_string()
     }
 }
 
@@ -4205,6 +4217,39 @@ mod save_name_tests {
         );
         assert_eq!(save_name(Some(URL), "..", "text/plain"), "response.txt");
         assert_eq!(save_name(Some(URL), " \t ", "text/plain"), "response.txt");
+    }
+
+    #[test]
+    fn windows_device_names_and_edge_dots_never_become_the_stem() {
+        for name in [
+            "CON",
+            "con",
+            "Nul",
+            "PRN",
+            "aux",
+            "COM1",
+            "lpt9",
+            "con.backup",
+        ] {
+            assert_eq!(
+                save_name(Some(URL), name, "text/plain"),
+                "response.txt",
+                "{name}"
+            );
+        }
+        assert_eq!(save_name(Some(URL), "COM10", "text/plain"), "COM10.txt");
+        assert_eq!(save_name(Some(URL), "abé", "text/plain"), "abé.txt");
+        assert_eq!(
+            save_name(Some(URL), " ..hidden. . ", "text/plain"),
+            "hidden.txt"
+        );
+    }
+
+    #[test]
+    fn a_long_request_name_is_cut_on_a_char_boundary() {
+        let name = "é".repeat(300);
+        let saved = save_name(Some(URL), &name, "application/json");
+        assert_eq!(saved, format!("{}.json", "é".repeat(100)));
     }
 
     #[test]
