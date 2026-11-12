@@ -92,11 +92,52 @@ fn a_url_edit_drops_path_params_the_url_no_longer_uses() {
     let params = "  params:\n    - name: id\n      value: \"9\"\n      type: path\n    - name: gone\n      value: g\n      type: path\n";
     let (_dir, path) = request("https://x.test/:id/:gone", params);
     let mut r = RequestFile::load(&path).expect("loads");
-    r.set_url("https://x.test/:id/:fresh");
+    r.set_url("https://x.test/:id/:a/:b");
     assert_eq!(
         r.params(),
-        vec![path_param("fresh", ""), path_param("id", "9")]
+        vec![
+            path_param("a", ""),
+            path_param("b", ""),
+            path_param("id", "9")
+        ]
     );
+}
+
+#[test]
+fn renaming_the_only_path_param_keeps_its_value_and_undoing_it_is_clean() {
+    let params = "  params:\n    - name: id\n      value: \"{{postId}}\"\n      type: path\n";
+    let (_dir, path) = request("{{baseUrl}}/posts/:id", params);
+    let mut r = RequestFile::load(&path).expect("loads");
+    r.set_url("{{baseUrl}}/posts/:idx");
+    assert_eq!(r.params(), vec![path_param("idx", "{{postId}}")]);
+    r.set_url("{{baseUrl}}/posts/:id");
+    assert_eq!(r.params(), vec![path_param("id", "{{postId}}")]);
+    assert!(!r.is_dirty());
+}
+
+#[test]
+fn a_renamed_path_param_keeps_its_row_among_the_others() {
+    let params = "  params:\n    - name: q\n      value: \"1\"\n      type: query\n    - name: a\n      value: x\n      type: path\n    - name: b\n      value: y\n      type: path\n      description: why\n";
+    let (_dir, path) = request("https://x.test/:a/:b?q=1", params);
+    let mut r = RequestFile::load(&path).expect("loads");
+    r.set_url("https://x.test/:a/:bz?q=1");
+    let mut renamed = path_param("bz", "y");
+    renamed.description = Some("why".to_owned());
+    assert_eq!(
+        r.params(),
+        vec![query("q", "1"), path_param("a", "x"), renamed]
+    );
+    r.set_url("https://x.test/:a/:b?q=1");
+    assert!(!r.is_dirty());
+}
+
+#[test]
+fn replacing_more_than_one_path_param_starts_the_new_ones_empty() {
+    let params = "  params:\n    - name: a\n      value: x\n      type: path\n    - name: b\n      value: y\n      type: path\n";
+    let (_dir, path) = request("https://x.test/:a/:b", params);
+    let mut r = RequestFile::load(&path).expect("loads");
+    r.set_url("https://x.test/:c/:d");
+    assert_eq!(r.params(), vec![path_param("c", ""), path_param("d", "")]);
 }
 
 #[test]
