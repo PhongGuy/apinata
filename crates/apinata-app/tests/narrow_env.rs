@@ -1001,3 +1001,48 @@ fn renaming_or_deleting_the_active_global_keeps_the_box_and_mark_right(cx: &mut 
     cx.run_until_parked();
     assert_active_shown(cx, win, &ws, &ed);
 }
+
+// A select squeezed away with focus on it strands that focus; it goes back to the control the
+// user was in before, here the body editor, not to the tab's first stop.
+#[gpui_kit::test]
+fn a_squeezed_select_hands_focus_back_to_the_body_editor(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::Section;
+    let (_col, _globals, s) = zoomed_globals(cx, 2.0);
+    resize(cx, s.win, 1400., 900.);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    let ed = editor_of(cx, &s, tab);
+    ed.update(cx, |e, cx| e.show(Section::Body, cx));
+    let body = ed.read_with(cx, |e, _| e.body().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        body.update(cx, |b, cx| {
+            b.set_mode(apinata_app::body_section::BodyMode::Json, w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        w.within("body").click_at("body-code", code_at(), cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    // A key in the editor records it as the control to return to.
+    press(cx, s.win, "right");
+    let held = cx.update_window(s.win, |_, w, cx| w.focused(cx)).unwrap();
+    let url = ed.read_with(cx, |e, cx| e.url_focus(cx));
+    assert!(
+        held.is_some() && held.as_ref() != Some(&url),
+        "in the body editor"
+    );
+    let env = s.shell.read_with(cx, |sh, _| sh.env_selector().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        let handle = env.read(cx).select().focus_handle(cx);
+        handle.focus(w, cx)
+    })
+    .unwrap();
+    frame(cx, s.win);
+    resize(cx, s.win, NARROW, 700.);
+    let now = cx.update_window(s.win, |_, w, cx| w.focused(cx)).unwrap();
+    assert_eq!(now, held, "focus is back in the body editor");
+    assert!(palette_reachable(cx, &s));
+}

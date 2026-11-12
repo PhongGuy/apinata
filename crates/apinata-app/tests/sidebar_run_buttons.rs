@@ -334,3 +334,35 @@ fn a_hidden_root_action_still_takes_a_click(cx: &mut TestAppContext) {
         s.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone()));
     assert_eq!(kind, Some(TabKind::Runner(apinata_core::ItemPath::root())));
 }
+
+// Tab reaches a root's hidden New request button, which shows once it holds focus.
+#[gpui_kit::test]
+fn tab_reaches_a_hidden_root_action_and_shows_it(cx: &mut TestAppContext) {
+    let (s, tree) = long_name_root(cx);
+    assert!(!root_name_clears_buttons(cx, s.win), "hidden at rest");
+    cx.update_window(s.win, |_, w, cx| tree.update(cx, |t, cx| t.focus(w, cx)))
+        .unwrap();
+    // Leave the row unselected so only the button's focus can show the actions.
+    tree.update(cx, |t, cx| t.set_selected_index(None, cx));
+    let mut reached = false;
+    for _ in 0..12 {
+        frame(cx, s.win);
+        let on = cx
+            .update_window(s.win, |_, w, _| {
+                w.try_find(("new-request", 0usize))
+                    .and_then(|e| e.focused())
+            })
+            .unwrap();
+        if on == Some(true) {
+            reached = true;
+            break;
+        }
+        cx.simulate_keystrokes(s.win, "tab");
+        cx.run_until_parked();
+    }
+    assert!(reached, "Tab lands on New request");
+    assert!(
+        root_name_clears_buttons(cx, s.win),
+        "the focused action shows and takes its room"
+    );
+}

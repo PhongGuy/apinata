@@ -1266,11 +1266,16 @@ impl Shell {
             .child(menu)
     }
 
-    // Moves focus that is out of reach of the shell's keys on to the active tab or the tree. An
-    // open dialog keeps its focus, and a drawn control keeps its own.
+    // Moves focus that is out of reach of the shell's keys back to the control the user was in,
+    // or, once that is gone, on to the active tab or the tree. Taking the record also ends a
+    // freeze left by an app menu removed while open. A dialog or a drawn control keeps focus.
     fn take_stranded_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !window.has_active_dialog(cx) && !window.is_action_available(&OpenCommandPalette, cx) {
-            self.hand_on_focus(window, cx);
+        if window.has_active_dialog(cx) || window.is_action_available(&OpenCommandPalette, cx) {
+            return;
+        }
+        match self.stand_in.take() {
+            Some(held) => self.refocus(&held, window, cx),
+            None => self.hand_on_focus(window, cx),
         }
     }
 
