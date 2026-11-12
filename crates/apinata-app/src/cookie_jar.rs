@@ -539,7 +539,8 @@ impl CookieJarView {
             (c.host_only, "This host only"),
         ]
         .into_iter()
-        .filter_map(|(on, label)| on.then(|| label.to_owned()))
+        .filter(|(on, _)| *on)
+        .map(|(_, label)| label.to_owned())
         .collect();
         // A cookie that set no SameSite shows nothing, rather than guessing a browser default.
         flags.extend(c.same_site.map(|s| format!("Same site: {}", s.as_str())));
