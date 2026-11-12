@@ -455,6 +455,8 @@ pub struct Workspace {
     // Where deleted items go; none by default, so a delete asks and is permanent.
     trash: Arc<dyn apinata_core::Trash>,
     open_faults: Faults,
+    // The collection the user just opened, which the shell reveals once its first snapshot lands.
+    reveal_pending: Option<PathBuf>,
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
@@ -559,6 +561,7 @@ impl Workspace {
             store,
             trash: Arc::new(NoTrash),
             open_faults: Faults::default(),
+            reveal_pending: None,
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
@@ -709,6 +712,22 @@ impl Workspace {
         } else {
             self.open(path, cx);
         }
+    }
+
+    /// `open_path` for a collection the user asked for: one not open before is marked so the
+    /// shell reveals it once it has loaded; see [`Workspace::take_reveal`].
+    pub fn open_revealed(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let root = absolute(&path);
+        let was_open = self.entry(&root).is_some();
+        self.open_path(path, cx);
+        self.reveal_pending = (!was_open && self.entry(&root).is_some()).then_some(root);
+    }
+
+    /// Whether `root` is the collection `open_revealed` last opened; true only once.
+    pub fn take_reveal(&mut self, root: &Path) -> bool {
+        self.reveal_pending
+            .take_if(|r| r.as_path() == root)
+            .is_some()
     }
 
     /// Opens each launch root with `open_path`, so a workspace folder works as well as a
@@ -2429,6 +2448,7 @@ impl Workspace {
         cx.notify();
         if let Some(error) = model.read(cx).open_error().map(str::to_owned) {
             self.collections.retain(|c| c.root != root);
+            self.reveal_pending.take_if(|r| r.as_path() == root);
             self.awaiting.retain(|a| a.root != root);
             self.drafts.retain(|(r, _)| r != root);
             self.draft_keys.retain(|(r, _), _| r != root);

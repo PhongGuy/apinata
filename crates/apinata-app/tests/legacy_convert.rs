@@ -115,6 +115,23 @@ fn new_folder_asks_for_a_parent_then_opens_the_copy(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_converted_collection_becomes_current_with_its_root_selected(cx: &mut TestAppContext) {
+    let (_files, win, view) = shell(cx);
+    let other = collection();
+    open_root(cx, &view, other.path().to_path_buf());
+    let src = legacy();
+    open_root(cx, &view, src.path().to_path_buf());
+    answer_confirm(cx, "legacy-in-place");
+    answer_confirm(cx, "legacy-convert");
+    frame(cx, win);
+    let root = src.path().to_path_buf();
+    let current = view.read_with(cx, |v, cx| v.workspace().read(cx).current_root());
+    assert_eq!(current.as_ref(), Some(&root));
+    let selected = view.read_with(cx, |v, cx| v.sidebar().read(cx).selected(cx));
+    assert_eq!(selected, Some((root, apinata_core::ItemPath::root())));
+}
+
+#[gpui_kit::test]
 fn in_place_asks_again_then_converts_and_opens_the_folder(cx: &mut TestAppContext) {
     let (_files, _win, view) = shell(cx);
     let src = legacy();

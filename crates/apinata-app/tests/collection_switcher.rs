@@ -355,21 +355,6 @@ fn switcher_paths_start_under_their_names(cx: &mut TestAppContext) {
     .unwrap();
 }
 
-// A collection of `n` requests, enough of them to overflow the sidebar.
-fn long_collection(n: usize) -> tempfile::TempDir {
-    let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
-    for i in 0..n {
-        files.push((
-            format!("r{i:02}.yml"),
-            request(&format!("r{i:02}"), "http://x/0"),
-        ));
-    }
-    let refs: Vec<(&str, &str)> = (files.iter())
-        .map(|(p, t)| (p.as_str(), t.as_str()))
-        .collect();
-    write_tree(&refs)
-}
-
 #[gpui_kit::test]
 fn choosing_an_open_collection_scrolls_its_root_to_the_top(cx: &mut TestAppContext) {
     let col = long_collection(80);

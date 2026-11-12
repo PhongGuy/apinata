@@ -219,8 +219,6 @@ pub struct Shell {
     pub(crate) legacy_offers: crate::legacy_convert::Offers,
     // Resolved recent-collection labels; render never reads opencollection.yml itself.
     recent_names: std::collections::HashMap<PathBuf, SharedString>,
-    // The collection the user just asked to open, made current and revealed once it loads.
-    opening: Option<PathBuf>,
     title: Slot<Shell, TitleInputs>,
     status: Slot<Shell, StatusInputs>,
     _subscriptions: Vec<Subscription>,
@@ -574,7 +572,6 @@ impl Shell {
             scroll_pending: Rc::default(),
             legacy_offers: Default::default(),
             recent_names: Default::default(),
-            opening: None,
             title: Slot::new(cx.weak_entity(), ShellPart::Title, false, cx),
             status: Slot::new(cx.weak_entity(), ShellPart::Status, false, cx),
             _subscriptions: subscriptions,
@@ -1423,12 +1420,9 @@ impl Shell {
         let absolute = crate::workspace::absolute(&root);
         let is_open = |w: &Workspace| w.collections().iter().any(|c| c.root() == absolute);
         let was_open = is_open(self.workspace.read(cx));
-        self.workspace.update(cx, |w, cx| w.open_path(root, cx));
-        self.opening = None;
+        self.workspace.update(cx, |w, cx| w.open_revealed(root, cx));
         if was_open {
             self.reveal_collection(&absolute, window, cx);
-        } else if is_open(self.workspace.read(cx)) {
-            self.opening = Some(absolute);
         }
         cx.notify();
     }
@@ -1442,16 +1436,12 @@ impl Shell {
     ) {
         match event {
             WorkspaceEvent::Opened(root) => {
-                if self.opening.as_ref() == Some(root) {
-                    self.opening = None;
+                if self.workspace.update(cx, |w, _| w.take_reveal(root)) {
                     self.reveal_collection(root, window, cx);
                 }
                 self.refresh_recent_names(cx);
             }
             WorkspaceEvent::OpenFailed { root, message } => {
-                if self.opening.as_ref() == Some(root) {
-                    self.opening = None;
-                }
                 let text: SharedString = crate::import_report::open_failure(root, message).into();
                 window.open_alert_dialog(cx, move |dialog, _, _| {
                     dialog

@@ -104,6 +104,25 @@ fn a_clone_with_a_collection_at_its_root_opens_it_and_remembers_the_parent(
 }
 
 #[gpui_kit::test]
+fn a_cloned_collection_becomes_current_with_its_root_selected(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let bare = sb.origin();
+    let (_col, s) = app(cx, sb.options());
+    let view = open_dialog(cx, &s);
+    let parent = dest_parent(&sb);
+    fill(cx, &s, &view, bare.to_str().unwrap(), &parent, "col");
+    click(cx, s.win, "clone-start");
+    let root = parent.join("col");
+    let want = Some((root.clone(), apinata_core::ItemPath::root()));
+    wait_for(cx, "the cloned root to be selected", |cx| {
+        let selected = (s.shell).read_with(cx, |v, cx| v.sidebar().read(cx).selected(cx));
+        selected == want
+    });
+    let current = s.ws.read_with(cx, |w, _| w.current_root());
+    assert_eq!(current, Some(root));
+}
+
+#[gpui_kit::test]
 fn a_repository_without_a_collection_stays_on_disk_with_a_notice(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let plain = sb.repo("plain");

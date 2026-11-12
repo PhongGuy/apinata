@@ -84,7 +84,7 @@ fn show(workspace: Entity<Workspace>, root: PathBuf, window: &mut Window, cx: &m
             _ => None,
         };
         match result {
-            Some(Ok(new_root)) => workspace.update(cx, |w, cx| w.open(new_root, cx)),
+            Some(Ok(new_root)) => workspace.update(cx, |w, cx| w.open_revealed(new_root, cx)),
             Some(Err(text)) => alert(text, cx).await,
             None => {}
         }
