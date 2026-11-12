@@ -242,6 +242,7 @@ struct ParamRow {
 pub struct OAuth2Editor {
     base: OAuth2Spec,
     inputs: Vec<Entity<InputState>>,
+    masks: ui::SecretMasks,
     flow: Choice,
     client_auth: Choice,
     placement: Choice,
@@ -374,6 +375,7 @@ impl OAuth2Editor {
         let mut editor = OAuth2Editor {
             base: OAuth2Spec::new(OAuth2Flow::AuthorizationCode),
             inputs,
+            masks: ui::SecretMasks::default(),
             flow,
             client_auth,
             placement,
@@ -844,7 +846,8 @@ impl OAuth2Editor {
             if let Some(text) = f.text(spec)
                 && !(f.masked() && f.text(&old) == Some(text))
             {
-                set_text(self.input(f), text, window, cx);
+                let input = self.input(f).clone();
+                self.masks.fill(&input, text, window, cx);
             }
         }
         // Rows are rebuilt only when their count changes, so typing in a row keeps its caret.
@@ -995,7 +998,8 @@ impl Render for OAuth2Editor {
                 let committed = self.committed(f).to_owned();
                 set_text(self.input(f), &committed, window, cx);
             }
-            ui::mask_unless_template(self.input(f), window, cx);
+            let input = self.input(f).clone();
+            self.masks.apply(&input, window, cx);
         }
         if std::mem::take(&mut self.focus_missing)
             && let Some(first) = self.missing.first()

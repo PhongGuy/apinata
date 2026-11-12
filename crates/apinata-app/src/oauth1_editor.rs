@@ -15,7 +15,6 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, EventEmitter, SharedString, Subscription, Window, div};
 
 use crate::auth_section::{field, secret_field};
-use crate::kv_table::set_text;
 use crate::oauth2_editor::{Choice, on_choice, pick};
 use crate::{style, ui};
 
@@ -160,6 +159,7 @@ static PLACEMENTS: [(OAuth1Placement, &str); 3] = [
 pub struct OAuth1Editor {
     base: OAuth1Spec,
     inputs: Vec<Entity<InputState>>,
+    masks: ui::SecretMasks,
     method: Choice,
     key_kind: Choice,
     /// The kind a key typed into an empty field gets; the file holds no kind without a key.
@@ -243,6 +243,7 @@ impl OAuth1Editor {
         let mut editor = OAuth1Editor {
             base: OAuth1Spec::default(),
             inputs,
+            masks: ui::SecretMasks::default(),
             method,
             key_kind,
             new_key: OAuth1KeyKind::Text,
@@ -350,7 +351,8 @@ impl OAuth1Editor {
         self.base = spec.clone();
         self.new_key = OAuth1KeyKind::Text;
         for f in FIELDS {
-            set_text(self.input(f), f.text(spec), window, cx);
+            let input = self.input(f).clone();
+            self.masks.fill(&input, f.text(spec), window, cx);
         }
         self.show_choices(window, cx);
     }
@@ -389,7 +391,8 @@ impl OAuth1Editor {
 impl Render for OAuth1Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         for f in FIELDS.into_iter().filter(|f| f.masked()) {
-            ui::mask_unless_template(self.input(f), window, cx);
+            let input = self.input(f).clone();
+            self.masks.apply(&input, window, cx);
         }
         let o = &self.base;
         let rsa = o.signature_method.is_rsa();

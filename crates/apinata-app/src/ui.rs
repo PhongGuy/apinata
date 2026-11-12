@@ -2934,6 +2934,7 @@ impl RenderOnce for FormRow {
         // centres on the control's first line and a wrapped label starts there.
         let label = div()
             .id("form-label")
+            .aria_label(self.label.clone())
             .test_support()
             .text_color(cx.theme().muted_foreground)
             .line_height(relative(FORM_LABEL_LINE_HEIGHT))
@@ -3313,6 +3314,45 @@ pub fn mask_unless_template(
     let masked = !is_variable_reference(&state.value());
     if state.presentation().is_masked() != masked {
         input.update(cx, |s, cx| s.set_masked(masked, window, cx));
+    }
+}
+
+/// Masks secret inputs by their text, as [`mask_unless_template`] does, but only when an
+/// input's text turns into or out of one `{{var}}` reference, so a reveal by the input's eye
+/// button holds while the user types.
+#[derive(Default)]
+pub struct SecretMasks(HashMap<gpui_kit::EntityId, bool>);
+
+impl SecretMasks {
+    /// Masks `input` unless its text is one reference, when that has changed since last seen.
+    pub fn apply(&mut self, input: &Entity<InputState>, window: &mut Window, cx: &mut App) {
+        let reference = is_variable_reference(&input.read(cx).value());
+        if self.0.insert(input.entity_id(), reference) == Some(reference) {
+            return;
+        }
+        if input.read(cx).presentation().is_masked() == reference {
+            input.update(cx, |s, cx| s.set_masked(!reference, window, cx));
+        }
+    }
+
+    /// Puts `text` in `input` for a value the user did not type; a changed text is masked
+    /// again by the next [`SecretMasks::apply`], so a reveal never shows it.
+    pub fn fill(
+        &mut self,
+        input: &Entity<InputState>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if input.read(cx).value() != text {
+            self.0.remove(&input.entity_id());
+        }
+        sync_input_text(input, text, window, cx);
+    }
+
+    /// Forgets every reveal, so the next [`SecretMasks::apply`] masks each input by its text.
+    pub fn forget(&mut self) {
+        self.0.clear();
     }
 }
 

@@ -3,7 +3,10 @@ use crate::support;
 use apinata_app::auth_section::{AuthField, AuthMode, AuthSection};
 use apinata_app::command::Edit;
 use apinata_app::style::{FORM_LABEL_WIDTH, JWT_BLOCK_MAX_HEIGHT, at_zoom};
-use apinata_core::{ApiKeyPlacement, AuthSpec, EdgeGridSpec};
+use apinata_core::{
+    ApiKeyPlacement, AuthSpec, EdgeGridSpec, OAuth1SignatureMethod, OAuth1Spec, OAuth2Flow,
+    OAuth2Spec,
+};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use gpui_kit::{px, size};
@@ -649,8 +652,8 @@ fn ntlm_notes_that_https_avoids_the_proxy_pitfall(cx: &mut TestAppContext) {
     assert_eq!(
         text.as_deref(),
         Some(
-            "Through an HTTP proxy, use https: plain http needs the proxy to keep one \
-             connection for the whole sign-in."
+            "When you go through a proxy, use an https address. Over plain http, sign-in can \
+             fail as if the password were wrong."
         )
     );
 }
@@ -772,4 +775,220 @@ mod jwt_view {
             "decoded block grew to {height:?}"
         );
     }
+}
+
+// The eye button reveals a secret, which stays shown through later renders and typing, and
+// a second press hides it again.
+#[gpui_kit::test]
+fn a_secret_field_reveals_with_its_eye_and_stays_shown_while_typing(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, basic("u", "hunter2"));
+    let pw = s.read_with(cx, |s, _| s.input(AuthField::Password).clone());
+    let masked = |cx: &mut TestAppContext| pw.read_with(cx, |i, _| i.presentation().is_masked());
+    let eye = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.within("auth-password").click("toggle-mask", cx)
+        })
+        .unwrap();
+        frame(cx, win);
+        frame(cx, win);
+    };
+    assert!(masked(cx));
+    eye(cx);
+    assert!(!masked(cx), "the eye shows the password");
+    type_at_end(cx, win, None, "auth-password", "!");
+    frame(cx, win);
+    assert!(!masked(cx), "typing keeps it shown");
+    assert_eq!(last_auth(cx, &host), basic("u", "hunter2!"));
+    eye(cx);
+    assert!(masked(cx), "a second press hides it");
+}
+
+// Every masked input in the Auth tab, the OAuth editors included, has the eye button, and a
+// plain one has none.
+#[gpui_kit::test]
+fn every_secret_input_has_an_eye_button(cx: &mut TestAppContext) {
+    let cases: [(AuthMode, &[&str]); 10] = [
+        (AuthMode::Basic, &["auth-password"]),
+        (AuthMode::Digest, &["auth-password"]),
+        (AuthMode::Wsse, &["auth-password"]),
+        (AuthMode::Ntlm, &["auth-password"]),
+        (AuthMode::Bearer, &["auth-token"]),
+        (AuthMode::ApiKey, &["auth-value"]),
+        (
+            AuthMode::AwsV4,
+            &["auth-aws-secret-access-key", "auth-aws-session-token"],
+        ),
+        (
+            AuthMode::EdgeGrid,
+            &[
+                "auth-eg-access-token",
+                "auth-eg-client-token",
+                "auth-eg-client-secret",
+            ],
+        ),
+        (
+            AuthMode::OAuth1,
+            &["oauth1-consumer-secret", "oauth1-token-secret"],
+        ),
+        (AuthMode::OAuth2, &["oauth2-client-secret"]),
+    ];
+    let (win, _host, s) = auth(cx, AuthSpec::None);
+    for (m, ids) in cases {
+        mode(cx, win, &s, m);
+        frame(cx, win);
+        for id in ids {
+            let has = cx
+                .update_window(win, |_, w, _| {
+                    w.within(*id).try_find("toggle-mask").is_some()
+                })
+                .unwrap();
+            assert!(has, "{m:?} {id} has the eye");
+        }
+    }
+    mode(cx, win, &s, AuthMode::Basic);
+    let plain = cx
+        .update_window(win, |_, w, _| {
+            w.within("auth-username").try_find("toggle-mask").is_some()
+        })
+        .unwrap();
+    assert!(!plain, "a plain field has no eye");
+    // The RSA private key and the password grant's password show only for their settings.
+    let mut rsa = OAuth1Spec::default();
+    rsa.signature_method = OAuth1SignatureMethod::RsaSha256;
+    let (win, _host, _s) = auth(cx, AuthSpec::OAuth1(rsa));
+    frame(cx, win);
+    let password_grant = AuthSpec::OAuth2(OAuth2Spec::new(OAuth2Flow::Password));
+    let (win2, _host2, _s2) = auth(cx, password_grant);
+    frame(cx, win2);
+    for (w, id) in [(win, "oauth1-private-key"), (win2, "oauth2-password")] {
+        let has = cx
+            .update_window(w, |_, w, _| w.within(id).try_find("toggle-mask").is_some())
+            .unwrap();
+        assert!(has, "{id} has the eye");
+    }
+}
+
+// Fields whose format is not obvious show a short example while empty.
+#[gpui_kit::test]
+fn auth_fields_show_example_placeholders(cx: &mut TestAppContext) {
+    let (_win, _host, s) = auth(cx, AuthSpec::None);
+    let hint = |cx: &mut TestAppContext, f: AuthField| {
+        let input = s.read_with(cx, |s, _| s.input(f).clone());
+        input.read_with(cx, |i, _| i.presentation().placeholder().to_string())
+    };
+    let expected = [
+        (AuthField::Key, "X-API-Key"),
+        (AuthField::Domain, "CORP"),
+        (AuthField::AccessKeyId, "AKIAIOSFODNN7EXAMPLE"),
+        (AuthField::Service, "execute-api"),
+        (AuthField::Region, "us-east-1"),
+        (AuthField::ProfileName, "default"),
+        (AuthField::BaseUrl, "https://akab-xxxx.luna.akamaiapis.net"),
+        (AuthField::Nonce, "Generated when sent"),
+        (AuthField::Timestamp, "Generated when sent"),
+        (AuthField::HeadersToSign, "X-Header-One, X-Header-Two"),
+        (AuthField::MaxBodySize, "131072"),
+    ];
+    for (f, want) in expected {
+        assert_eq!(hint(cx, f), want, "{f:?}");
+    }
+}
+
+// Field labels use sentence case, as the rest of the app does.
+#[gpui_kit::test]
+fn auth_field_labels_use_sentence_case(cx: &mut TestAppContext) {
+    let (win, _host, s) = auth(cx, AuthSpec::None);
+    let label = |cx: &mut TestAppContext, row: &'static str| {
+        cx.update_window(win, |_, w, _| {
+            w.within(row).find("form-label").label().map(str::to_owned)
+        })
+        .unwrap()
+    };
+    mode(cx, win, &s, AuthMode::ApiKey);
+    assert_eq!(label(cx, "auth-placement-row").as_deref(), Some("Add to"));
+    mode(cx, win, &s, AuthMode::AwsV4);
+    let aws = [
+        ("auth-aws-access-key-id-row", "Access key ID"),
+        ("auth-aws-secret-access-key-row", "Secret access key"),
+        ("auth-aws-session-token-row", "Session token"),
+        ("auth-aws-profile-name-row", "Profile name"),
+    ];
+    for (row, want) in aws {
+        assert_eq!(label(cx, row).as_deref(), Some(want), "{row}");
+    }
+    mode(cx, win, &s, AuthMode::EdgeGrid);
+    let edgegrid = [
+        ("auth-eg-access-token-row", "Access token"),
+        ("auth-eg-client-token-row", "Client token"),
+        ("auth-eg-client-secret-row", "Client secret"),
+        ("auth-eg-headers-to-sign-row", "Headers to sign"),
+        ("auth-eg-max-body-size-row", "Max body size"),
+    ];
+    for (row, want) in edgegrid {
+        assert_eq!(label(cx, row).as_deref(), Some(want), "{row}");
+    }
+}
+
+// Presses the eye of the secret input `id` and draws.
+fn press_eye(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) {
+    cx.update_window(win, |_, w, cx| w.within(id).click("toggle-mask", cx))
+        .unwrap();
+    frame(cx, win);
+    frame(cx, win);
+}
+
+// The password input is shared by several types, so a reveal must not carry a value the
+// user did not type into view.
+#[gpui_kit::test]
+fn a_revealed_password_is_hidden_again_when_the_auth_type_changes(cx: &mut TestAppContext) {
+    let (win, _host, s) = auth(cx, basic("u", "hunter2"));
+    let pw = s.read_with(cx, |s, _| s.input(AuthField::Password).clone());
+    press_eye(cx, win, "auth-password");
+    assert!(!pw.read_with(cx, |i, _| i.presentation().is_masked()));
+    mode(cx, win, &s, AuthMode::Digest);
+    frame(cx, win);
+    assert!(pw.read_with(cx, |i, _| i.presentation().is_masked()));
+}
+
+// A reload from the file that brings a new value hides a revealed field again.
+#[gpui_kit::test]
+fn a_revealed_password_is_hidden_again_when_a_reload_brings_a_new_value(cx: &mut TestAppContext) {
+    let (win, _host, s) = auth(cx, basic("u", "hunter2"));
+    let pw = s.read_with(cx, |s, _| s.input(AuthField::Password).clone());
+    press_eye(cx, win, "auth-password");
+    assert!(!pw.read_with(cx, |i, _| i.presentation().is_masked()));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&basic("u", "swordfish"), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(pw.read_with(cx, |i, _| i.presentation().is_masked()));
+}
+
+// The OAuth 2.0 client secret is hidden again when a reload brings a new one.
+#[gpui_kit::test]
+fn a_revealed_oauth2_secret_is_hidden_again_when_a_reload_brings_a_new_value(
+    cx: &mut TestAppContext,
+) {
+    let spec = |secret: &str| {
+        let mut o = OAuth2Spec::new(OAuth2Flow::ClientCredentials);
+        o.client_secret = secret.into();
+        AuthSpec::OAuth2(o)
+    };
+    let (win, _host, s) = auth(cx, spec("first"));
+    frame(cx, win);
+    let editor = s.read_with(cx, |s, _| s.oauth2().clone());
+    let secret = editor.read_with(cx, |e, _| {
+        e.input(apinata_app::oauth2_editor::OAuth2Field::ClientSecret)
+            .clone()
+    });
+    press_eye(cx, win, "oauth2-client-secret");
+    assert!(!secret.read_with(cx, |i, _| i.presentation().is_masked()));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&spec("second"), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert_eq!(secret.read_with(cx, |i, _| i.value().to_string()), "second");
+    assert!(secret.read_with(cx, |i, _| i.presentation().is_masked()));
 }
