@@ -5,11 +5,11 @@ use crate::support;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
-use apinata_app::history_palette::{RUN_TAG, UNSAVED_TAG, history_entries};
+use apinata_app::history_palette::{RUN_TAG, RUN_TIP, UNSAVED_TAG, history_entries, open_history};
 use apinata_app::last_response::{Limits, ResponseStore, SendExtra};
 use apinata_core::{Outcome, RequestResult, Response};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, TestAppContext};
+use gpui_kit::{AppContext as _, Focusable as _, TestAppContext};
 use support::*;
 
 const KEY: &str = "untitled-17600000000000000001.draft";
@@ -153,4 +153,114 @@ fn the_tags_share_one_column(cx: &mut TestAppContext) {
         }
     })
     .unwrap();
+}
+
+// Opens the History dialog over every listed send: the drafts sent as POST, a.yml as DELETE
+// and b.yml as PATCH, each with a detail of its own length.
+fn with_methods(cx: &mut TestAppContext, s: &Started) {
+    let store = cx.update(|cx| cx.global::<ResponseStore>().clone());
+    let mut recent = store.recent(std::slice::from_ref(&s.root), 100);
+    for r in recent.iter_mut() {
+        r.send.method = match r.item.as_str() {
+            "a.yml" => "DELETE",
+            "b.yml" => "PATCH",
+            _ => "POST",
+        }
+        .into();
+    }
+    let mut entries = s.ws.read_with(cx, |w, cx| history_entries(&recent, w, cx));
+    // Details of differing lengths, as real statuses and ages give.
+    let details = [
+        "200 · just now",
+        "404 · 3 minutes ago",
+        "201 · 11 months ago",
+        "0 · 1 day ago",
+    ];
+    for (e, d) in entries.iter_mut().zip(details) {
+        e.detail = d.to_owned();
+    }
+    let shell = s.shell.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        let fallback = shell.read(cx).focus_handle(cx);
+        open_history(fallback, entries, w, cx)
+    })
+    .unwrap();
+    wait_real(cx, |cx| {
+        frame(cx, s.win);
+        present(cx, s.win, "history-palette")
+    });
+}
+
+fn label_of(cx: &mut TestAppContext, s: &Started, id: (&'static str, usize)) -> Option<String> {
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.within("history-palette")
+            .try_find(id)
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+// Rows 0 and 1 are POST drafts, row 2 the DELETE runner send, row 3 the PATCH send: each shows
+// the sidebar's short tag, and the name or target keeps the URL alone.
+#[gpui_kit::test]
+fn history_rows_show_the_short_method_tag(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    with_methods(cx, &s);
+    let methods: Vec<_> = (0..4)
+        .map(|r| label_of(cx, &s, ("history-method", r)))
+        .collect();
+    let some = |t: &str| Some(t.to_owned());
+    assert_eq!(
+        methods,
+        [some("POST"), some("POST"), some("DEL"), some("PTCH")]
+    );
+    assert_eq!(
+        label_of(cx, &s, ("history-target", 2)),
+        some("http://127.0.0.1:9/a")
+    );
+    assert_eq!(
+        label_of(cx, &s, ("history-name", 0)),
+        some("http://127.0.0.1:9/kept")
+    );
+}
+
+// The status and age start in one column, whatever the target's or the age's length.
+#[gpui_kit::test]
+fn history_details_share_one_column(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    with_methods(cx, &s);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let lefts: Vec<_> = (0..4usize)
+            .map(|r| w.find(("history-detail", r)).bounds().left())
+            .collect();
+        assert!(lefts.iter().all(|l| *l == lefts[0]), "{lefts:?}");
+    })
+    .unwrap();
+}
+
+// The Run tag says what it means on hover.
+#[gpui_kit::test]
+fn the_run_tag_explains_itself(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    with_methods(cx, &s);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("history-tag", 2usize), cx)
+    })
+    .unwrap();
+    cx.executor().advance_clock(Duration::from_millis(800));
+    frame(cx, s.win);
+    let tip = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("history-tag-tooltip")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(tip.as_deref(), Some(RUN_TIP));
 }
