@@ -358,6 +358,7 @@ mod locked_hint;
 mod log_feed;
 mod mask_template;
 mod menu_focus;
+mod menu_hints;
 mod mock_toggle;
 mod name_hints;
 mod narrow_env;

@@ -4,8 +4,14 @@ use std::path::{Path, PathBuf};
 
 use apinata_core::{ItemPath, RequestKind};
 
+use gpui_kit::Action;
+
 use super::model::NodeKind;
 use super::multi::Tally;
+use super::{
+    CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, NewFolder,
+    OpenInTerminal, PasteSelected, RenameSelected, RunSelected, ShowInFileManager, SortByName,
+};
 use crate::commands::label;
 
 /// One context menu entry.
@@ -108,6 +114,53 @@ impl MenuEntry {
             MenuEntry::SaveDraft => "Save",
             MenuEntry::CloseDraft => "Close",
         }
+    }
+
+    /// Whether the entry destroys what it acts on, so the menu draws it in the danger colour.
+    pub fn is_destructive(self) -> bool {
+        self == MenuEntry::Delete
+    }
+
+    /// The entry's group; the menu puts a separator wherever the group changes.
+    pub fn group(self) -> u8 {
+        use MenuEntry as E;
+        match self {
+            E::NewRequest | E::NewGraphqlRequest | E::NewFolder => 0,
+            E::CloneItem | E::CopyItem | E::CutItem | E::PasteItem | E::SortByName => 1,
+            E::RunCollection | E::RunFolder | E::CollectionSettings | E::Settings => 2,
+            E::CopyAsCurl | E::GenerateCode | E::ConvertToGraphql | E::ConvertToHttp => 3,
+            E::ExportPostman | E::ExportPostmanKeepScripts | E::ExportOpenApi | E::ExportHtml => 4,
+            E::ShowInFileManager | E::OpenInTerminal | E::ShowChanges => 5,
+            E::CollapseAll | E::ExpandAll => 6,
+            E::Rename | E::Delete | E::Close => 7,
+            E::SaveDraft | E::CloseDraft => 8,
+        }
+    }
+
+    /// The command whose bound key the entry shows: only one that acts on the selected row as
+    /// the entry acts on its row. Entries whose command acts on the active tab or the current
+    /// collection instead show no key.
+    pub fn action(self) -> Option<Box<dyn Action>> {
+        use MenuEntry as E;
+        let action: Box<dyn Action> = match self {
+            E::NewRequest => Box::new(crate::keymap::NewRequest),
+            E::NewGraphqlRequest => Box::new(crate::keymap::NewGraphqlRequest),
+            E::NewFolder => Box::new(NewFolder),
+            E::CloneItem => Box::new(CloneSelected),
+            E::CopyItem => Box::new(CopySelected),
+            E::CutItem => Box::new(CutSelected),
+            E::PasteItem => Box::new(PasteSelected),
+            E::SortByName => Box::new(SortByName),
+            E::RunCollection | E::RunFolder => Box::new(RunSelected),
+            E::Rename => Box::new(RenameSelected),
+            E::Delete => Box::new(DeleteSelected),
+            E::ShowInFileManager => Box::new(ShowInFileManager),
+            E::OpenInTerminal => Box::new(OpenInTerminal),
+            E::CollapseAll => Box::new(CollapseAll),
+            E::ExpandAll => Box::new(ExpandAll),
+            _ => return None,
+        };
+        Some(action)
     }
 }
 
@@ -237,6 +290,30 @@ impl BulkEntry {
             BulkEntry::Copy(n) => format!("Copy {n} item{}", if n == 1 { "" } else { "s" }),
             BulkEntry::Cut(n) => format!("Cut {n} item{}", if n == 1 { "" } else { "s" }),
             BulkEntry::Delete(t) => format!("Delete {}", t.describe()),
+        }
+    }
+
+    /// Whether the entry destroys what it acts on, so the menu draws it in the danger colour.
+    pub fn is_destructive(self) -> bool {
+        matches!(self, BulkEntry::Delete(_))
+    }
+
+    /// The entry's group: Run, then Copy and Cut, then Delete, each under a separator.
+    pub fn group(self) -> u8 {
+        match self {
+            BulkEntry::Run(_) => 0,
+            BulkEntry::Copy(_) | BulkEntry::Cut(_) => 1,
+            BulkEntry::Delete(_) => 2,
+        }
+    }
+
+    /// The command acting on the whole selection, whose bound key the entry shows.
+    pub fn action(self) -> Box<dyn Action> {
+        match self {
+            BulkEntry::Run(_) => Box::new(RunSelected),
+            BulkEntry::Copy(_) => Box::new(CopySelected),
+            BulkEntry::Cut(_) => Box::new(CutSelected),
+            BulkEntry::Delete(_) => Box::new(DeleteSelected),
         }
     }
 }

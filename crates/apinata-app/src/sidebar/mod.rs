@@ -24,7 +24,6 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::menu::PopupMenuItem;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::tree::{TreeEvent, TreeState, tree};
@@ -3287,30 +3286,37 @@ impl Render for Sidebar {
                                             let plan = v.read(cx).run_plan(cx)?;
                                             (!plan.1.is_empty()).then_some(plan.2)
                                         });
+                                        let mut prev = None;
                                         for choice in bulk_entries(count, run) {
                                             let view = menu_view.clone();
-                                            menu = menu.item(
-                                                PopupMenuItem::new(choice.label()).on_click(
-                                                    move |_, window, cx| {
-                                                        view.update(cx, |s, cx| match choice {
-                                                            BulkEntry::Run(_) => s.run_selected(
-                                                                &RunSelected,
-                                                                window,
-                                                                cx,
-                                                            ),
-                                                            BulkEntry::Copy(_) => {
-                                                                s.copy_selection(window, cx)
-                                                            }
-                                                            BulkEntry::Cut(_) => {
-                                                                s.cut_selection(window, cx)
-                                                            }
-                                                            BulkEntry::Delete(_) => {
-                                                                s.confirm_delete_set(window, cx)
-                                                            }
-                                                        })
-                                                        .ok();
-                                                    },
-                                                ),
+                                            let line = ui::MenuLine::new(choice.label())
+                                                .action(Some(choice.action()))
+                                                .danger(choice.is_destructive())
+                                                .group_break(prev.is_some_and(|p: BulkEntry| {
+                                                    p.group() != choice.group()
+                                                }));
+                                            prev = Some(choice);
+                                            menu = line.add_to(
+                                                menu,
+                                                ui::SIDEBAR_ROW_KEYS,
+                                                move |_, window, cx| {
+                                                    view.update(cx, |s, cx| match choice {
+                                                        BulkEntry::Run(_) => {
+                                                            s.run_selected(&RunSelected, window, cx)
+                                                        }
+                                                        BulkEntry::Copy(_) => {
+                                                            s.copy_selection(window, cx)
+                                                        }
+                                                        BulkEntry::Cut(_) => {
+                                                            s.cut_selection(window, cx)
+                                                        }
+                                                        BulkEntry::Delete(_) => {
+                                                            s.confirm_delete_set(window, cx)
+                                                        }
+                                                    })
+                                                    .ok();
+                                                },
+                                                cx,
                                             );
                                         }
                                         return menu;
@@ -3320,12 +3326,9 @@ impl Render for Sidebar {
                                         view.update(cx, |s, cx| s.clear_multi(cx)).ok();
                                     });
                                 }
-                                // Items carry no separators, so an entry's index is its click
-                                // index in tests.
                                 let Some(node) = menu_rows.get(&entry.item().id) else {
                                     return menu;
                                 };
-                                // Show changes goes last, so the fixed entries keep their indices.
                                 let changed = node.kind == NodeKind::Request
                                     && git_change(&menu_git, node).is_some();
                                 let extra = changed.then_some(MenuEntry::ShowChanges);
@@ -3337,6 +3340,7 @@ impl Render for Sidebar {
                                             .flatten()
                                     })
                                     .flatten();
+                                let mut prev = None;
                                 for &choice in menu_entries(node.kind).iter().chain(&extra) {
                                     let choice = request_kind
                                         .map_or(choice, |k| menu::for_request_kind(choice, k));
@@ -3348,15 +3352,24 @@ impl Render for Sidebar {
                                             .unwrap_or(false))
                                         || (menu_scratch.as_deref() == Some(node.root.as_path())
                                             && menu::scratch_blocked(choice));
-                                    menu = menu.item(
-                                        ui::menu_item(choice.label(), blocked, cx).on_click(
-                                            move |_, window, cx| {
-                                                view.update(cx, |s, cx| {
-                                                    s.choose(&node, choice, window, cx)
-                                                })
-                                                .ok();
-                                            },
-                                        ),
+                                    let line = ui::MenuLine::new(choice.label())
+                                        .action(choice.action())
+                                        .disabled(blocked)
+                                        .danger(choice.is_destructive())
+                                        .group_break(prev.is_some_and(|p: MenuEntry| {
+                                            p.group() != choice.group()
+                                        }));
+                                    prev = Some(choice);
+                                    menu = line.add_to(
+                                        menu,
+                                        ui::SIDEBAR_ROW_KEYS,
+                                        move |_, window, cx| {
+                                            view.update(cx, |s, cx| {
+                                                s.choose(&node, choice, window, cx)
+                                            })
+                                            .ok();
+                                        },
+                                        cx,
                                     );
                                 }
                                 menu

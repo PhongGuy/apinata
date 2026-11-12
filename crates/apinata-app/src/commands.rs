@@ -137,6 +137,8 @@ pub struct Command {
 const STRUCTURED_ROWS: &str = "StructuredRows";
 // A table cell's input inside `STRUCTURED_ROWS_CONTEXT`; a test pins the two together.
 const STRUCTURED_ROWS_INPUT: &str = "StructuredRows > Input";
+// The sidebar's tree, where row keys such as F2 and Delete act on the selected row.
+const SIDEBAR_TREE: &str = "Sidebar > Tree";
 // The environment table's cells, which edit through the same history.
 const ENV_TABLE_INPUT: &str = "EnvTable > Input";
 
@@ -632,6 +634,18 @@ pub fn registry() -> Vec<Command> {
             shell_and(RenameSelected, SIDEBAR),
             &["secondary-r"],
         ),
+        {
+            // F2 renames in the tree alone; anywhere else it would rename a row out of sight.
+            let mut c = command(
+                "request.rename_in_sidebar",
+                "Rename in sidebar",
+                Request,
+                vec![at(RenameSelected, SIDEBAR_TREE)],
+                &["f2"],
+            );
+            c.scope = Scope::Pane(SIDEBAR);
+            hidden(c)
+        },
         command(
             "request.duplicate",
             "Duplicate selected",
@@ -681,6 +695,22 @@ pub fn registry() -> Vec<Command> {
             shell(DeleteSelected),
             &[],
         ),
+        {
+            // The last chord is the one menus show: Delete, or the Mac's Delete key (Backspace).
+            let mut c = command(
+                "request.delete_in_sidebar",
+                "Delete in sidebar",
+                Request,
+                vec![at(DeleteSelected, SIDEBAR_TREE)],
+                if cfg!(target_os = "macos") {
+                    &["delete", "backspace"]
+                } else {
+                    &["backspace", "delete"]
+                },
+            );
+            c.scope = Scope::Pane(SIDEBAR);
+            hidden(c)
+        },
         command(
             "request.run_selected",
             "Run selected requests",

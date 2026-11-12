@@ -15,6 +15,7 @@ use apinata_core::{DraftSnapshot, ItemPath};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Replace;
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::spinner::Spinner;
@@ -1916,6 +1917,14 @@ impl Shell {
                     .enumerate()
                     .map(|(ix, (id, icon, label))| {
                         let shell = shell.clone();
+                        // Each row shows the key its command has in the live keymap, if any.
+                        let action: Box<dyn Action> = match id {
+                            "switcher-open-collection" => Box::new(OpenCollection),
+                            "switcher-import-collection" => Box::new(ImportCollection),
+                            "switcher-clone-repository" => Box::new(CloneRepository),
+                            _ => Box::new(NewCollection),
+                        };
+                        let key = ui::key_in(action.as_ref(), &[SHELL_CONTEXT], cx);
                         Button::new(id)
                             .ghost()
                             .w_full()
@@ -1930,7 +1939,8 @@ impl Shell {
                                             .test_support()
                                             .child(Icon::new(icon).small()),
                                     )
-                                    .child(label),
+                                    .child(label)
+                                    .children(key.map(|k| Kbd::new(k).ml_auto())),
                             )
                             .on_click(cx.listener(move |state, _, window, cx| {
                                 state.dismiss(window, cx);

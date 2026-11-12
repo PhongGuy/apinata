@@ -12,16 +12,19 @@ use support::*;
 
 /// Right-click the row at `path` in `win` and pick Duplicate from its menu.
 fn duplicate(cx: &mut TestAppContext, win: AnyWindowHandle, path: &str, kind: NodeKind) {
-    let ix = menu_entries(kind)
-        .iter()
-        .position(|e| *e == MenuEntry::CloneItem)
-        .expect("Duplicate offered");
+    assert!(
+        menu_entries(kind).contains(&MenuEntry::CloneItem),
+        "Duplicate offered"
+    );
     frame(cx, win);
     cx.update_window(win, |_, w, cx| w.right_click(row(path), cx))
         .unwrap();
     frame(cx, win);
-    cx.update_window(win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(win, |_, w, cx| {
+        let ix = menu_index(w, MenuEntry::CloneItem.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     cx.run_until_parked();
     frame(cx, win);
 }

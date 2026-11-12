@@ -116,7 +116,7 @@ actions!(
 pub struct ActivateTab(pub usize);
 
 /// What a tab's context menu offers, in menu order.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum MenuChoice {
     Close,
     CloseOthers,
@@ -146,7 +146,22 @@ impl MenuChoice {
             MenuChoice::Reveal => label("tabs.reveal_in_sidebar"),
         }
     }
+
+    // The tab command of the same name, whose bound key the entry shows.
+    fn action(self) -> Box<dyn Action> {
+        match self {
+            MenuChoice::Close => Box::new(CloseTab),
+            MenuChoice::CloseOthers => Box::new(CloseOtherTabs),
+            MenuChoice::CloseToRight => Box::new(CloseTabsToTheRight),
+            MenuChoice::CloseSaved => Box::new(CloseSavedTabs),
+            MenuChoice::CloseAll => Box::new(CloseAllTabs),
+            MenuChoice::Reveal => Box::new(RevealInSidebar),
+        }
+    }
 }
+
+// The key contexts a tab's menu looks its key hints up in.
+const TAB_KEYS: &[&str] = &[SHELL_CONTEXT];
 
 /// The labels of a tab's context menu, in menu order.
 pub fn tab_menu_labels() -> [&'static str; 6] {
@@ -2333,7 +2348,7 @@ impl TabArea {
                             .ok();
                     },
                 );
-                // No separators, so each item's index is its click index in tests.
+                // The close choices, Reveal, the change entries and pinning each form a group.
                 for choice in MenuChoice::ALL {
                     let view = menu_view.clone();
                     let off = match choice {
@@ -2341,18 +2356,31 @@ impl TabArea {
                         MenuChoice::Reveal => !can_reveal,
                         _ => false,
                     };
-                    menu = menu.item(ui::menu_item(choice.label(), off, cx).on_click(
-                        move |_, window, cx| {
-                            view.update(cx, |a, cx| a.choose(choice, id, window, cx))
-                        },
-                    ));
+                    menu = ui::MenuLine::new(choice.label())
+                        .action(Some(choice.action()))
+                        .disabled(off)
+                        .group_break(choice == MenuChoice::Reveal)
+                        .add_to(
+                            menu,
+                            TAB_KEYS,
+                            move |_, window, cx| {
+                                view.update(cx, |a, cx| a.choose(choice, id, window, cx))
+                            },
+                            cx,
+                        );
                 }
-                // Discard changes and then Show changes follow the fixed choices, so their
-                // indices hold; Discard is always listed, greyed out when there is nothing to revert.
+                // Discard changes is always listed, greyed out when there is nothing to revert.
                 let view = menu_view.clone();
-                menu = menu.item(ui::menu_item("Discard changes", !discardable, cx).on_click(
-                    move |_, window, cx| view.update(cx, |a, cx| a.discard_tab(id, window, cx)),
-                ));
+                menu = ui::MenuLine::new("Discard changes")
+                    .action(Some(Box::new(DiscardChanges)))
+                    .disabled(!discardable)
+                    .group_break(true)
+                    .add_to(
+                        menu,
+                        TAB_KEYS,
+                        move |_, window, cx| view.update(cx, |a, cx| a.discard_tab(id, window, cx)),
+                        cx,
+                    );
                 if let Some((workspace, root, item)) = show_changes.clone() {
                     menu = menu.item(PopupMenuItem::new("Show changes").on_click(
                         move |_, window, cx| {
@@ -2361,13 +2389,21 @@ impl TabArea {
                         },
                     ));
                 }
-                // Last, so the indices of the fixed choices above hold.
                 let view = menu_view.clone();
-                menu.item(
-                    PopupMenuItem::new(if pinned { "Unpin tab" } else { "Pin tab" }).on_click(
+                let pin: Box<dyn Action> = if pinned {
+                    Box::new(UnpinTab)
+                } else {
+                    Box::new(PinTab)
+                };
+                ui::MenuLine::new(if pinned { "Unpin tab" } else { "Pin tab" })
+                    .action(Some(pin))
+                    .group_break(true)
+                    .add_to(
+                        menu,
+                        TAB_KEYS,
                         move |_, _, cx| view.update(cx, |a, cx| a.set_pinned(id, !pinned, cx)),
-                    ),
-                )
+                        cx,
+                    )
             });
         let dirty = self.is_dirty(entry, cx);
         let hovered = self.hovered == Some(id);
