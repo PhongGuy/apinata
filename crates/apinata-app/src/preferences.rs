@@ -266,7 +266,8 @@ impl PreferencesView {
             let shown = current.ca_file.as_ref().map(|p| p.display().to_string());
             InputState::new(window, cx).default_value(shown.unwrap_or_default())
         });
-        let keyboard = cx.new(KeyboardPrefs::new);
+        let scroll = ScrollHandle::new();
+        let keyboard = cx.new(|cx| KeyboardPrefs::new(cx).scrolled_by(scroll.clone()));
         let updates = cx.try_global::<AppState>().map(|s| s.updates.clone());
         let secrets = cx.try_global::<AppState>().map(|s| Arc::clone(&s.secrets));
         let mut subs = vec![
@@ -376,7 +377,7 @@ impl PreferencesView {
             error: None,
             errors: Vec::new(),
             status: None,
-            scroll: ScrollHandle::new(),
+            scroll,
             shown_sections: Vec::new(),
             jumped: None,
             focus: cx.focus_handle(),
@@ -1413,7 +1414,7 @@ impl PreferencesView {
                 },
             )),
         );
-        let keyboard = self.keyboard.update(cx, |k, cx| k.section(cx));
+        let keyboard = self.keyboard.update(cx, |k, cx| k.section(window, cx));
         vec![
             general, appearance, network, scripts, updates, history, keyboard,
         ]

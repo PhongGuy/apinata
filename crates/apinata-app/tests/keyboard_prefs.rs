@@ -227,3 +227,181 @@ fn unbind_removes_a_default_shortcut(cx: &mut TestAppContext) {
         Some(secondary("b"))
     );
 }
+
+const LIST: &str = "prefs-keyboard-list";
+
+// Whether row `id` shows the focused-row highlight the arrow keys move.
+fn on_row(cx: &mut TestAppContext, s: &Started, id: &str) -> bool {
+    shown(cx, s, &format!("key-{id}-focus-edge"))
+}
+
+fn option(cx: &mut TestAppContext, s: &Started, id: &str) -> (Option<String>, Option<bool>) {
+    let id = format!("key-{id}-option");
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let e = w.find(id);
+        (e.label().map(str::to_owned), e.selected())
+    })
+    .unwrap()
+}
+
+// The whole list is one stop: the next Tab leaves the rows for Reset all, and Up, Down, Home
+// and End move the highlighted row.
+#[gpui_kit::test]
+fn the_shortcut_list_is_one_tab_stop_with_arrow_keys(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let ids: Vec<_> = registry().iter().map(|c| c.id).collect();
+    let (first, second, last) = (ids[0], ids[1], ids[ids.len() - 1]);
+    tab_to(cx, s.win, LIST);
+    assert!(on_row(cx, &s, first), "focus lands on the first row");
+    press_key(cx, s.win, "down");
+    assert!(on_row(cx, &s, second));
+    assert!(!on_row(cx, &s, first));
+    assert_eq!(option(cx, &s, second).1, Some(true));
+    press_key(cx, s.win, "up");
+    assert!(on_row(cx, &s, first));
+    press_key(cx, s.win, "end");
+    assert!(on_row(cx, &s, last));
+    press_key(cx, s.win, "home");
+    assert!(on_row(cx, &s, first));
+    press_key(cx, s.win, "tab");
+    assert!(holds_focus(cx, s.win, "keys-reset-all"));
+    assert!(
+        !on_row(cx, &s, first),
+        "the highlight shows only while the list has focus"
+    );
+}
+
+#[gpui_kit::test]
+fn enter_on_the_focused_row_records_a_shortcut(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle sidebar");
+    tab_to(cx, s.win, LIST);
+    assert!(on_row(cx, &s, "view.toggle_sidebar"));
+    press_key(cx, s.win, "enter");
+    assert_eq!(
+        key_label(cx, &s, "view.toggle_sidebar").as_deref(),
+        Some("Press a key")
+    );
+    cx.simulate_keystrokes(s.win, &key("\\"));
+    frame(cx, s.win);
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("view.toggle_sidebar", &["secondary-\\"])])
+    );
+    assert!(holds_focus(cx, s.win, LIST), "the list keeps focus");
+}
+
+#[gpui_kit::test]
+fn escape_cancels_a_recording_started_from_the_list(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle sidebar");
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "enter");
+    press_key(cx, s.win, "escape");
+    assert_eq!(
+        key_label(cx, &s, "view.toggle_sidebar"),
+        Some(secondary("b"))
+    );
+    assert!(shown(cx, &s, "preferences"), "Preferences stays open");
+    assert!(holds_focus(cx, s.win, LIST));
+    assert!(keymap_overrides(cx).is_empty());
+}
+
+// Delete and Backspace unbind the focused row as its Unbind button does; Reset stays a stop.
+#[gpui_kit::test]
+fn delete_or_backspace_on_the_focused_row_unbinds_it(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle sidebar");
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "delete");
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("view.toggle_sidebar", &[])])
+    );
+    enter_on(cx, s.win, "key-view.toggle_sidebar-reset-button");
+    frame(cx, s.win);
+    assert!(keymap_overrides(cx).is_empty(), "Reset is reachable");
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "backspace");
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("view.toggle_sidebar", &[])])
+    );
+    press_key(cx, s.win, "delete");
+    assert_eq!(
+        keymap_overrides(cx),
+        overrides(&[("view.toggle_sidebar", &[])]),
+        "an unbound row stays as it is"
+    );
+}
+
+#[gpui_kit::test]
+fn the_focused_row_names_its_command_keys_and_actions(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let list = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find(LIST).label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(list.as_deref(), Some("Shortcuts"));
+    let keys = gpui_kit::component::kbd::Kbd::format(
+        &gpui_kit::Keystroke::parse_with_os(&key("b"), apinata_app::shortcuts::HOST_OS).unwrap(),
+    );
+    assert_eq!(
+        option(cx, &s, "view.toggle_sidebar").0,
+        Some(format!(
+            "Toggle sidebar, {keys}. Press Enter to record a new shortcut or Delete to remove it."
+        ))
+    );
+    assert_eq!(
+        option(cx, &s, "view.toggle_theme").0,
+        Some("Toggle theme, unbound. Press Enter to record a shortcut.".into())
+    );
+}
+
+#[gpui_kit::test]
+fn the_focused_list_draws_a_ring(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    search(cx, &s, "toggle sidebar");
+    tab_to(cx, s.win, LIST);
+    cx.update(|cx| apinata_app::focus_mode::set(apinata_app::focus_mode::Modality::Keyboard, cx));
+    frame(cx, s.win);
+    assert!(ring_drawn(cx, s.win, LIST));
+}
+
+// Moving the highlight past the visible rows scrolls the dialog so the row stays in sight.
+#[gpui_kit::test]
+fn end_scrolls_the_last_row_into_view(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let last = registry().last().unwrap().id;
+    tab_to(cx, s.win, LIST);
+    press_key(cx, s.win, "end");
+    frame(cx, s.win);
+    let (row, view) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let row = w.find(format!("key-{last}-option")).bounds();
+            (row, w.find("preferences-rows").bounds())
+        })
+        .unwrap();
+    assert!(
+        row.top() >= view.top() && row.bottom() <= view.bottom(),
+        "{row:?} inside {view:?}"
+    );
+}
