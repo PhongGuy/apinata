@@ -696,3 +696,37 @@ fn hovering_a_cut_header_name_shows_it_in_full(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(tip, Some(name));
 }
+
+#[gpui_kit::test]
+fn a_narrow_headers_table_gives_the_value_the_room(cx: &mut TestAppContext) {
+    let value = "application/json; charset=utf-8";
+    let s = send_once(
+        cx,
+        ResponseTemplate::new(200).insert_header("content-type", value),
+        "",
+    );
+    let (win, view) = pane(cx, &s);
+    cx.simulate_window_resize(win, gpui_kit::size(gpui_kit::px(320.), gpui_kit::px(600.)));
+    view.update(cx, |p, cx| p.set_tab(ResponseTab::Headers, cx));
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let ix = (0usize..16)
+            .find(|ix| {
+                (w.try_find(("header-value", *ix))).is_some_and(|e| e.label() == Some(value))
+            })
+            .expect("the content type row");
+        let name = w.find(("header-name", ix)).bounds();
+        let cell = w.find(("header-value", ix)).bounds();
+        assert!(
+            cell.size.width > name.size.width * 1.5,
+            "the name {name:?} crowds the value {cell:?}"
+        );
+        // One line pads to the name's height; the value breaks once, at its space.
+        assert!(
+            cell.size.height < name.size.height * 2.,
+            "the value wraps mid-word: {cell:?} beside {name:?}"
+        );
+    })
+    .unwrap();
+}
