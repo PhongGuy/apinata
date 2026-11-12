@@ -589,22 +589,27 @@ impl Report {
 }
 
 impl Summary {
-    /// `Requests: N (P passed (U unverified, T no tests), F failed, E errored, S not sent)`,
-    /// leaving out a zero part and the whole parenthesis when both are zero.
+    /// `Requests: N (P passed (U unverified), F failed, T without tests, E errored, S not
+    /// sent)`, leaving out a zero unverified or without-tests part. A request with no check is
+    /// counted apart from the passed ones here, though the JSON summary keeps it inside `passed`.
     pub(crate) fn requests_line(&self) -> String {
-        let parts: Vec<String> = [(self.unverified, "unverified"), (self.no_tests, "no tests")]
-            .into_iter()
-            .filter(|(n, _)| *n > 0)
-            .map(|(n, w)| format!("{n} {w}"))
-            .collect();
-        let unverified = if parts.is_empty() {
-            String::new()
+        let unverified = if self.unverified > 0 {
+            format!(" ({} unverified)", self.unverified)
         } else {
-            format!(" ({})", parts.join(", "))
+            String::new()
+        };
+        let untested = if self.no_tests > 0 {
+            format!(", {} without tests", self.no_tests)
+        } else {
+            String::new()
         };
         format!(
-            "Requests: {} ({} passed{unverified}, {} failed, {} errored, {} not sent)",
-            self.requests, self.passed, self.failed, self.errored, self.skipped
+            "Requests: {} ({} passed{unverified}, {} failed{untested}, {} errored, {} not sent)",
+            self.requests,
+            self.passed.saturating_sub(self.no_tests),
+            self.failed,
+            self.errored,
+            self.skipped
         )
     }
 }

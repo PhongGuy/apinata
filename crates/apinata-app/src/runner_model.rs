@@ -110,6 +110,8 @@ pub struct RunnerModel {
     plan_len: usize,
     iteration: usize,
     load_errors: Vec<String>,
+    // Requests of a type the app cannot send yet, one note each, apart from real load errors.
+    skipped: Vec<String>,
     // The same errors as (relative path, message), the shape the exported report carries.
     load_error_rows: Vec<(String, String)>,
     unsaved: Vec<String>,
@@ -192,6 +194,7 @@ impl RunnerModel {
             plan_len: 0,
             iteration: 0,
             load_errors: Vec::new(),
+            skipped: Vec::new(),
             load_error_rows: Vec::new(),
             unsaved: Vec::new(),
             cancel: None,
@@ -611,6 +614,11 @@ impl RunnerModel {
         &self.load_errors
     }
 
+    /// One note per request of a type the app cannot send yet, naming it as skipped.
+    pub fn skipped(&self) -> &[String] {
+        &self.skipped
+    }
+
     /// Names of the requests in the run's scope that had unsaved edits when Run was pressed,
     /// in path order; the run sends their saved files instead.
     pub fn unsaved(&self) -> &[String] {
@@ -675,6 +683,7 @@ impl RunnerModel {
         self.rows.clear();
         self.ran_with = self.choice();
         self.load_errors.clear();
+        self.skipped.clear();
         self.load_error_rows.clear();
         (self.plan_len, self.iteration) = (0, 0);
         self.unsaved = self.unsaved_names(cx);
@@ -797,15 +806,22 @@ impl RunnerModel {
                     extend_unique(&mut m.run_secrets, secret_values(file, &planned.context));
                 }
                 m.run_context = Some(planned.context.clone());
-                m.load_errors = planned
-                    .plan
-                    .load_errors()
-                    .iter()
-                    .map(|e| {
-                        let path = e.path().strip_prefix(&m.root).unwrap_or(e.path());
-                        format!("{}: {}", path.display(), e.message())
-                    })
-                    .collect();
+                // A file the sidebar lists as a type the app cannot send is a skip, named as the
+                // sidebar names it; anything else is a load error with its path.
+                let rows = m.workspace.read(cx).snapshot(&m.root, cx);
+                let rows = rows.as_ref().map_or(&[][..], |s| &s.content.rows[..]);
+                let (mut errors, mut skipped) = (Vec::new(), Vec::new());
+                for e in planned.plan.load_errors() {
+                    let row = rows.iter().find(|r| r.path.to_path(&m.root) == e.path());
+                    match row.and_then(|r| Some((r.unsupported?, &r.name))) {
+                        Some((kind, name)) => skipped.push(kind.skip_note(name)),
+                        None => {
+                            let path = e.path().strip_prefix(&m.root).unwrap_or(e.path());
+                            errors.push(format!("{}: {}", path.display(), e.message()));
+                        }
+                    }
+                }
+                (m.load_errors, m.skipped) = (errors, skipped);
                 m.load_error_rows = (planned.plan.load_errors().iter())
                     .map(|e| {
                         let rel = e.path().strip_prefix(&m.root).unwrap_or(e.path());

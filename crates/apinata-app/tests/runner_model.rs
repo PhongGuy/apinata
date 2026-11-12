@@ -162,6 +162,36 @@ fn cancel_ends_the_run_with_a_summary(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn requests_of_a_type_the_app_cannot_send_are_named_as_skipped(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200));
+    let col = suite(&server.uri(), "");
+    std::fs::write(
+        col.path().join("hello.yml"),
+        "info:\n  name: Say hello\n  type: grpc\n  seq: 4\n",
+    )
+    .unwrap();
+    std::fs::write(
+        col.path().join("api/chat.yml"),
+        "info:\n  name: Chat\n  type: websocket\n  seq: 3\n",
+    )
+    .unwrap();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let m = runner(cx, &ws, &root, "");
+    run_to_end(cx, &m);
+    let (errors, skipped) =
+        m.read_with(cx, |m, _| (m.load_errors().to_vec(), m.skipped().to_vec()));
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        skipped,
+        [
+            "Say hello (gRPC) was skipped: gRPC requests cannot be sent yet",
+            "Chat (WebSocket) was skipped: WebSocket requests cannot be sent yet",
+        ]
+    );
+}
+
+#[gpui_kit::test]
 fn load_errors_come_first_and_a_missing_target_fails(cx: &mut TestAppContext) {
     http_ready(cx);
     let server = mock_server(cx, ResponseTemplate::new(200));
