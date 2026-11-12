@@ -12,7 +12,7 @@ use gpui_kit::AsKeystroke as _;
 use gpui_kit::EntityInputHandler as _;
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::base::{Checkbox as BaseCheckbox, CheckboxIndicator};
+use gpui_kit::base::{Checkbox as BaseCheckbox, CheckboxIndicator, Radio as BaseRadio};
 use gpui_kit::component::Colorize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::Dialog;
@@ -2269,6 +2269,8 @@ pub struct Checkbox {
     lock: bool,
     /// Takes keyboard focus when drawn, for a box standing where focus just was.
     take_focus: bool,
+    /// Drawn round with a dot instead of a tick: one choice among its neighbours.
+    radio: bool,
 }
 
 /// A controlled checkbox with the kit control's behaviour (click, Enter and Space toggle; a
@@ -2287,6 +2289,7 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool) -> Checkbox {
         mixed: false,
         lock: false,
         take_focus: false,
+        radio: false,
     }
 }
 
@@ -2629,6 +2632,13 @@ impl Checkbox {
         self.tab_stop = tab_stop;
         self
     }
+
+    /// Draw a round mark with a dot when checked, for a box that picks one of several rows;
+    /// clicks and keys behave as for any checkbox.
+    pub fn radio(mut self, radio: bool) -> Self {
+        self.radio = radio;
+        self
+    }
 }
 
 /// The colours a checkbox paints; see [`checkbox_look`].
@@ -2752,7 +2762,25 @@ impl RenderOnce for Checkbox {
                 .border_color(look.border)
                 .bg(look.fill)
                 .opacity(look.opacity)
-                .when_some(look.tick, |d, tick| {
+                // A round mark centres a dot where a box would draw its tick; the empty marker
+                // is a test hook naming the shape.
+                .when(self.radio, |d| {
+                    d.rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("checkbox-radio")
+                                .test_support()
+                                .absolute()
+                                .size_0(),
+                        )
+                        .when_some(look.tick, |d, tick| {
+                            d.child(div().size(CHECKBOX_SIZE * 0.5).rounded_full().bg(tick))
+                        })
+                })
+                .when_some(look.tick.filter(|_| !self.radio), |d, tick| {
                     d.child(
                         svg()
                             .absolute()
@@ -2776,8 +2804,40 @@ impl RenderOnce for Checkbox {
                     )
                 }),
         };
+        let label = label.map(|label| {
+            div()
+                .flex_1()
+                .overflow_hidden()
+                .line_height(relative(1.25))
+                .text_color(if self.disabled { muted } else { fg })
+                .child(label)
+        });
+        let parts = ControlParts {
+            focused: is_focused,
+            indicator: indicator.into_any_element(),
+            label: label.map(IntoElement::into_any_element),
+            tooltip: self.tooltip,
+        };
+        // A radio mark uses the kit's radio primitive, which announces a radio button and
+        // ignores a click on the picked row, so `on_click` only ever hears `true`.
+        if self.radio {
+            let base = BaseRadio::new(self.id)
+                .key_context(DIALOG_FOOTER_CONTEXT)
+                .checked(checked)
+                .disabled(self.disabled)
+                .tab_stop(self.tab_stop)
+                .track_focus(&focus)
+                .when_some(a11y_label, |b, label| b.accessibility_label(label))
+                .when_some(self.on_click, |b, on_click| {
+                    b.on_change(move |_, _, window, cx| {
+                        window.prevent_default();
+                        on_click(&true, window, cx);
+                    })
+                });
+            return control_frame(base, parts, fg, window, cx).into_any_element();
+        }
         // In a dialog, Enter toggles the box as Space does rather than answering the dialog.
-        BaseCheckbox::new(self.id)
+        let base = BaseCheckbox::new(self.id)
             .key_context(DIALOG_FOOTER_CONTEXT)
             .checked(checked)
             .disabled(self.disabled)
@@ -2789,42 +2849,52 @@ impl RenderOnce for Checkbox {
                     window.prevent_default();
                     on_click(&!checked, window, cx);
                 })
-            })
-            .flex()
-            .flex_row()
-            .items_start()
-            .gap_2()
-            .line_height(relative(1.))
-            .text_size(TEXT_CONTROL)
-            .text_color(fg)
-            .rounded(RADIUS * 0.5)
-            // The marker is absolute and empty, so focusing never shifts the layout.
-            .when(is_focused, |b| {
-                b.focus_ring_style(window, cx).child(
-                    div()
-                        .id("checkbox-focus")
-                        .test_support()
-                        .absolute()
-                        .size_0(),
-                )
-            })
-            .child(indicator)
-            .when_some(label, |b, label| {
-                b.child(
-                    div()
-                        .flex_1()
-                        .overflow_hidden()
-                        .line_height(relative(1.25))
-                        .text_color(if self.disabled { muted } else { fg })
-                        .child(label),
-                )
-            })
-            // A press never moves focus, as with the kit control.
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-            .when_some(self.tooltip, |b, text| {
-                b.tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
-            })
+            });
+        control_frame(base, parts, fg, window, cx).into_any_element()
     }
+}
+
+/// What a [`Checkbox`] draws inside its base control, box or radio alike.
+struct ControlParts {
+    focused: bool,
+    indicator: AnyElement,
+    label: Option<AnyElement>,
+    tooltip: Option<SharedString>,
+}
+
+// The layout, focus ring, mark, label and tooltip shared by the box and radio controls.
+fn control_frame<E>(base: E, parts: ControlParts, fg: Hsla, window: &Window, cx: &App) -> E
+where
+    E: gpui_kit::Styled
+        + gpui_kit::ParentElement
+        + gpui_kit::StatefulInteractiveElement
+        + IntoElement,
+{
+    base.flex()
+        .flex_row()
+        .items_start()
+        .gap_2()
+        .line_height(relative(1.))
+        .text_size(TEXT_CONTROL)
+        .text_color(fg)
+        .rounded(RADIUS * 0.5)
+        // The marker is absolute and empty, so focusing never shifts the layout.
+        .when(parts.focused, |b| {
+            b.focus_ring_style(window, cx).child(
+                div()
+                    .id("checkbox-focus")
+                    .test_support()
+                    .absolute()
+                    .size_0(),
+            )
+        })
+        .child(parts.indicator)
+        .children(parts.label)
+        // A press never moves focus, as with the kit control.
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .when_some(parts.tooltip, |b, text| {
+            b.tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
+        })
 }
 
 /// The key context of a [`dialog_footer`] and of each [`checkbox`], where Enter is unbound so a

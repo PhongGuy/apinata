@@ -364,3 +364,111 @@ fn a_cut_file_path_keeps_its_file_name_and_tips_the_full_path(cx: &mut TestAppCo
         .unwrap();
     assert_eq!(tip, Some(path));
 }
+
+// The mark on row `ix` is round and the picker's text, as drawn.
+fn mark_and_picker(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    ix: usize,
+) -> (bool, Option<String>) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        (
+            w.within(("kv-enabled", ix))
+                .try_find("checkbox-radio")
+                .is_some(),
+            w.find(("kv-pick", ix)).label().map(str::to_owned),
+        )
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_file_body_row_draws_a_round_mark_and_picks_one_file(cx: &mut TestAppContext) {
+    let (win, _view) = host(
+        cx,
+        KvColumns::FILE_BODY,
+        file_rows(&[entry("a.bin", true), entry("b.bin", false)]),
+    );
+    for ix in [0, 1] {
+        assert_eq!(
+            mark_and_picker(cx, win, ix),
+            (true, Some(s("File"))),
+            "row {ix}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn a_multipart_row_keeps_a_square_box_and_picks_files(cx: &mut TestAppContext) {
+    let (win, _view) = host(cx, KvColumns::MULTIPART, vec![row("f", "")]);
+    assert_eq!(mark_and_picker(cx, win, 0), (false, Some(s("Files"))));
+}
+
+// Each file row's mark as drawn: (role, checked, accessible name).
+fn marks(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    n: usize,
+) -> Vec<(Option<gpui_kit::Role>, Option<bool>, Option<String>)> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        (0..n)
+            .map(|ix| {
+                let e = w.find(("kv-enabled", ix));
+                (e.role(), e.checked(), e.label().map(str::to_owned))
+            })
+            .collect()
+    })
+    .unwrap()
+}
+
+fn picked(marks: &[(Option<gpui_kit::Role>, Option<bool>, Option<String>)]) -> Vec<bool> {
+    marks.iter().map(|m| m.1 == Some(true)).collect()
+}
+
+#[gpui_kit::test]
+fn a_file_body_mark_is_a_radio_named_for_what_it_does(cx: &mut TestAppContext) {
+    let (win, _view) = host(cx, KvColumns::FILE_BODY, file_rows(&[entry("a.bin", true)]));
+    let (role, _, name) = marks(cx, win, 1).remove(0);
+    assert_eq!(role, Some(gpui_kit::Role::RadioButton));
+    assert_eq!(name.as_deref(), Some("Send this file"));
+}
+
+#[gpui_kit::test]
+fn picking_a_file_row_clears_the_others_at_once(cx: &mut TestAppContext) {
+    let (win, view) = host(
+        cx,
+        KvColumns::FILE_BODY,
+        file_rows(&[entry("a.bin", true), entry("b.bin", false)]),
+    );
+    cx.update_window(win, |_, w, cx| w.click(("kv-enabled", 1usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(picked(&marks(cx, win, 2)), [false, true]);
+    let rows = last(cx, &view);
+    assert_eq!((rows[0].enabled, rows[1].enabled), (false, true));
+}
+
+#[gpui_kit::test]
+fn clicking_the_picked_file_row_keeps_it_picked(cx: &mut TestAppContext) {
+    let (win, view) = host(
+        cx,
+        KvColumns::FILE_BODY,
+        file_rows(&[entry("a.bin", true), entry("b.bin", false)]),
+    );
+    cx.update_window(win, |_, w, cx| w.click(("kv-enabled", 0usize), cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(picked(&marks(cx, win, 2)), [true, false]);
+    assert!(view.read_with(cx, |h, _| h.changes.is_empty()));
+}
+
+// A file that marks two entries selected shows only the first as picked.
+#[gpui_kit::test]
+fn two_selected_files_show_as_one(cx: &mut TestAppContext) {
+    let rows = file_rows(&[entry("a.bin", true), entry("b.bin", true)]);
+    assert_eq!((rows[0].enabled, rows[1].enabled), (true, false));
+    let (win, _view) = host(cx, KvColumns::FILE_BODY, rows);
+    assert_eq!(picked(&marks(cx, win, 2)), [true, false]);
+}

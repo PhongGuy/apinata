@@ -3345,7 +3345,8 @@ impl Render for Sidebar {
                                     let choice = request_kind
                                         .map_or(choice, |k| menu::for_request_kind(choice, k));
                                     let (view, node) = (menu_view.clone(), node.clone());
-                                    // Pasting a folder into itself is refused, so the entry greys out.
+                                    // Paste greys out with nothing cut or copied, or when it
+                                    // would put a folder into itself.
                                     let blocked = (choice == MenuEntry::PasteItem
                                         && view
                                             .read_with(cx, |s, _| s.paste_blocked(&node))
