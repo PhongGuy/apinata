@@ -9,7 +9,7 @@ use apinata_app::session::{CollectionSession, Session};
 use apinata_app::workspace::Workspace;
 use apinata_core::{ExampleBody, ExampleBodyKind, ExampleResponse};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Focusable as _, TestAppContext};
 use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
@@ -375,34 +375,27 @@ fn a_remembered_port_in_use_falls_back_to_a_free_one(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_status_counts_the_examples_and_says_how_to_stop(cx: &mut TestAppContext) {
+fn the_status_names_the_port_and_counts_the_examples(cx: &mut TestAppContext) {
     let col = mocked();
     let s = start(cx, &col);
     assert!(!present(cx, s.win, "mock-status"));
     click(cx, s.win, "mock-toggle");
     let addr = running(cx, &s.ws, &s.root);
-    let want = format!(
-        "Serving 1 example on port {}. Click Mock to stop.",
-        addr.port()
-    );
+    let want = format!("Mock on port {}: 1 example", addr.port());
     assert_eq!(label(cx, s.win, "mock-status"), Some(want));
 }
 
 #[test]
-fn the_status_hints_at_saving_an_example_when_there_are_none() {
+fn the_status_stays_short_with_and_without_examples() {
     use apinata_app::mock_server::status;
-    assert_eq!(
-        status(0, 4567),
-        "No saved examples yet on port 4567. Save a response as an example to serve it. Click Mock to stop."
-    );
-    assert_eq!(
-        status(3, 4567),
-        "Serving 3 examples on port 4567. Click Mock to stop."
-    );
+    assert_eq!(status(0, 4567), "Mock on port 4567: no saved examples");
+    assert_eq!(status(3, 4567), "Mock on port 4567: 3 examples");
 }
 
 #[gpui_kit::test]
-fn hovering_the_running_toggle_names_the_port_and_how_to_stop(cx: &mut TestAppContext) {
+fn hovering_the_running_toggle_names_the_port_how_to_add_examples_and_how_to_stop(
+    cx: &mut TestAppContext,
+) {
     let col = mocked();
     let s = start(cx, &col);
     // Started without a click, which would leave the pointer pressed on the toggle.
@@ -414,8 +407,35 @@ fn hovering_the_running_toggle_names_the_port_and_how_to_stop(cx: &mut TestAppCo
         .unwrap();
     cx.executor().advance_clock(Duration::from_secs(2));
     let want = format!(
-        "The mock server answers on port {}. Click to stop it.",
+        "Answering on port {} with saved examples. Save a response as an example to add one. Click to stop the mock server.",
         addr.port()
     );
     assert_eq!(label(cx, s.win, "mock-tooltip"), Some(want));
+}
+
+fn palette(cx: &mut TestAppContext, s: &Started, text: &str) {
+    let shell = s.shell.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        shell.read(cx).focus_handle(cx).focus(w, cx)
+    })
+    .unwrap();
+    cx.simulate_keystrokes(s.win, &key("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(text, cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.simulate_keystrokes(s.win, "enter");
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn the_palette_starts_and_stops_the_mock(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    palette(cx, &s, "toggle mock server");
+    let addr = running(cx, &s.ws, &s.root);
+    assert!(get(addr, "/users").starts_with("HTTP/1.1 200"));
+    palette(cx, &s, "toggle mock server");
+    assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
+    wait_real(cx, |_| refused(addr));
 }

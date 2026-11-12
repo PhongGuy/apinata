@@ -38,6 +38,7 @@ const IDS: &[&str] = &[
     "collection.open_demo",
     "collection.switch_branch",
     "collection.show_changes",
+    "collection.toggle_mock",
     "collection.settings",
     "collection.run",
     "collection.run_folder",

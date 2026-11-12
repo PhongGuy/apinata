@@ -125,7 +125,9 @@ actions!(
         /// Opens the global environments editor.
         OpenGlobalEnvironments,
         /// Closes the current collection, asking first about unsaved changes.
-        CloseCollection
+        CloseCollection,
+        /// Starts the current collection's mock server, or stops it when it runs.
+        ToggleMockServer
     ]
 );
 
@@ -1027,6 +1029,13 @@ impl Shell {
     }
 
     // Opens the Changes dialog, as the title bar's changed-file count does.
+    // The palette's twin of the status bar toggle, for the current user collection.
+    fn toggle_mock_server(&mut self, _: &ToggleMockServer, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some((root, _)) = self.current_mock(cx) {
+            self.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx));
+        }
+    }
+
     fn show_changes(&mut self, _: &ShowChanges, window: &mut Window, cx: &mut Context<Self>) {
         let Some(root) = self.repository_root(window, cx) else {
             return;
@@ -2840,6 +2849,7 @@ impl Render for Shell {
                 }),
             )
             .on_action(cx.listener(Self::show_changes))
+            .on_action(cx.listener(Self::toggle_mock_server))
             .on_action(
                 cx.listener(|this, _: &NewCollection, window, cx| this.prompt_new(window, cx)),
             )

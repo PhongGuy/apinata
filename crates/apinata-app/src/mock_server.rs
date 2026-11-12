@@ -17,20 +17,20 @@ use crate::tokio_bridge;
 /// The toggle's tooltip while the server is off.
 pub const MOCK_TIP: &str = "Answer calls on 127.0.0.1 with this collection's saved examples";
 
-/// The toggle's tooltip while the server answers on `port`.
+/// The toggle's tooltip while the server answers on `port`: how to add examples and stop it.
 pub fn running_tip(port: u16) -> String {
-    format!("The mock server answers on port {port}. Click to stop it.")
+    format!(
+        "Answering on port {port} with saved examples. Save a response as an example to add \
+         one. Click to stop the mock server."
+    )
 }
 
-/// The status bar's line for a server answering on `port` from `examples` saved examples.
+/// The status bar's short line for a server answering on `port` from `examples` examples.
 pub fn status(examples: usize, port: u16) -> String {
-    let stop = "Click Mock to stop.";
     match examples {
-        0 => format!(
-            "No saved examples yet on port {port}. Save a response as an example to serve it. {stop}"
-        ),
-        1 => format!("Serving 1 example on port {port}. {stop}"),
-        n => format!("Serving {n} examples on port {port}. {stop}"),
+        0 => format!("Mock on port {port}: no saved examples"),
+        1 => format!("Mock on port {port}: 1 example"),
+        n => format!("Mock on port {port}: {n} examples"),
     }
 }
 

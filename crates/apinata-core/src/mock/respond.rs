@@ -16,16 +16,20 @@ pub(crate) struct Prepared {
     pub binary: bool,
 }
 
-/// Headers the server frames itself, so a recorded value would corrupt the reply.
-const SKIPPED: [&str; 5] = [
+/// Headers the server frames itself, so a recorded value would corrupt the reply, and headers
+/// that describe the original response and go stale when it is replayed.
+const SKIPPED: [&str; 8] = [
     "content-length",
     "transfer-encoding",
     "connection",
     "content-encoding",
     "keep-alive",
+    "date",
+    "etag",
+    "alt-svc",
 ];
 
-/// Status defaults to 200; framing headers are dropped silently, and headers invalid as HTTP
+/// Status defaults to 200; framing and stale headers are dropped silently, and headers invalid as HTTP
 /// are dropped with a warning each.
 pub(crate) fn prepare(example: &ExampleResponse) -> (Prepared, Vec<String>) {
     let response = example.to_response();
@@ -168,6 +172,20 @@ mod tests {
         let names: Vec<&str> = p.headers.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names, ["Content-Type", "X-Ok"]);
         assert_eq!(warnings.len(), 2, "{warnings:?}");
+    }
+
+    #[test]
+    fn prepare_leaves_out_headers_that_go_stale_on_replay() {
+        let mut r = ExampleResponse::new(200);
+        r.headers = vec![
+            ("Date".into(), "Mon, 01 Jan 2024 00:00:00 GMT".into()),
+            ("ETAG".into(), "\"abc\"".into()),
+            ("alt-svc".into(), "h3=\":443\"".into()),
+            ("X-Kept".into(), "1".into()),
+        ];
+        let (p, _) = prepare(&r);
+        let names: Vec<&str> = p.headers.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["X-Kept"]);
     }
 
     #[test]
