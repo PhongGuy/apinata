@@ -148,6 +148,69 @@ fn drafts_restore_dirty_with_their_keys_after_the_saved_tabs(cx: &mut TestAppCon
     let view = &snap.content.requests[&tabs[1].0];
     assert_eq!(view.url, "http://127.0.0.1:9/two");
     assert!(view.dirty, "a restored draft is unsaved");
+    assert_eq!(toasts(cx, &s), 1, "one toast says the drafts were reopened");
+}
+
+#[test]
+fn the_reopened_toast_names_one_draft_and_counts_more() {
+    use apinata_app::draft_store::reopened_message;
+    assert_eq!(
+        reopened_message(&["Untitled request".to_owned()]),
+        "Reopened \"Untitled request\"."
+    );
+    assert_eq!(
+        reopened_message(&["a".to_owned(), "b".to_owned()]),
+        "Reopened 2 unsaved drafts."
+    );
+}
+
+#[test]
+fn the_reopened_toast_says_when_credentials_were_cleared() {
+    use apinata_app::draft_store::reopened_blanked_message;
+    assert_eq!(
+        reopened_blanked_message(&["a".to_owned()]),
+        "Reopened \"a\". Its credentials were cleared; enter them again before sending."
+    );
+    assert_eq!(
+        reopened_blanked_message(&["a".to_owned(), "b".to_owned()]),
+        "Reopened 2 unsaved drafts. Some credentials were cleared; enter them again before sending."
+    );
+}
+
+#[gpui_kit::test]
+fn restored_drafts_reopen_with_one_toast(cx: &mut TestAppContext) {
+    let col = tree();
+    let root = col.path().to_path_buf();
+    let one = draft(
+        &root,
+        1_760_600_000_001,
+        "",
+        "http://127.0.0.1:9/one",
+        false,
+    );
+    let two = draft(
+        &root,
+        1_760_600_000_002,
+        "",
+        "http://127.0.0.1:9/two",
+        false,
+    );
+    let s = restarted(
+        cx,
+        data_dir(&root, CollectionSession::default(), &[one, two]),
+        root,
+    );
+    assert_eq!(draft_tabs(cx, &s).len(), 2);
+    cx.run_until_parked();
+    assert_eq!(toasts(cx, &s), 1, "one toast for both drafts");
+}
+
+#[gpui_kit::test]
+fn a_start_with_no_drafts_shows_no_toast(cx: &mut TestAppContext) {
+    let col = tree();
+    let root = col.path().to_path_buf();
+    let s = restarted(cx, data_dir(&root, CollectionSession::default(), &[]), root);
+    cx.run_until_parked();
     assert_eq!(toasts(cx, &s), 0);
 }
 
@@ -236,7 +299,11 @@ fn blanked_credentials_toast_once_and_survive_and_bad_neighbours_do_not_stop_sta
     .unwrap();
     let s = restarted(cx, files, root);
     assert_eq!(draft_tabs(cx, &s).len(), 1);
-    assert_eq!(toasts(cx, &s), 1, "one blanked-credentials toast");
+    assert_eq!(
+        toasts(cx, &s),
+        1,
+        "one reopened toast, saying the credentials were cleared"
+    );
     assert!(drafts.join("corrupt.json").exists() && drafts.join("huge.json").exists());
     wait_save(cx);
     let kept = draft_file::load_dir(&drafts);
@@ -263,7 +330,7 @@ fn the_blanked_credentials_toast_shows_once_per_draft_across_restarts(cx: &mut T
     );
     let drafts = files.path().join("drafts");
     let s = restarted(cx, files, root.clone());
-    assert_eq!(toasts(cx, &s), 1, "the first restart informs the user");
+    assert_eq!(toasts(cx, &s), 1, "the reopened toast informs the user");
     wait_save(cx);
     let after = draft_file::load_dir(&drafts);
     assert_eq!(after.drafts.len(), 1);
@@ -272,7 +339,11 @@ fn the_blanked_credentials_toast_shows_once_per_draft_across_restarts(cx: &mut T
     let second = data_dir(&root, CollectionSession::default(), &after.drafts);
     let s2 = restarted(cx, second, root);
     assert_eq!(draft_tabs(cx, &s2).len(), 1);
-    assert_eq!(toasts(cx, &s2), 0, "the second restart stays quiet");
+    assert_eq!(
+        toasts(cx, &s2),
+        1,
+        "the second restart shows only the plain reopened toast"
+    );
 }
 
 #[gpui_kit::test]

@@ -242,6 +242,15 @@ impl DraftFile {
         DraftSnapshot::from_json(&self.request).ok()
     }
 
+    /// The draft's request name; "Untitled request" when the stored request names none.
+    pub fn name(&self) -> String {
+        let request: Option<serde_json::Value> = serde_json::from_str(&self.request).ok();
+        (request.as_ref())
+            .and_then(|r| r.pointer("/info/name")?.as_str())
+            .unwrap_or("Untitled request")
+            .to_owned()
+    }
+
     /// The history key as an item path; None unless it names a draft.
     pub fn item_key(&self) -> Option<ItemPath> {
         ItemPath::new(&self.key).filter(ItemPath::is_draft)
