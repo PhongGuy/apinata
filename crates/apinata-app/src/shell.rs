@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::sync::{Arc, LazyLock};
 
 use apinata_core::import::{
-    CollectionOptions, ImportBundle, ImportReport, ImportedRequest, parse_collections,
-    write_collection,
+    CollectionOptions, EnvironmentFormat, FormatError, ImportBundle, ImportReport, ImportedRequest,
+    parse_collections, write_collection,
 };
 use apinata_core::{DraftSnapshot, ItemPath};
 
@@ -1125,46 +1125,17 @@ impl Shell {
         crate::import_link::open(cx.weak_entity(), window, cx);
     }
 
-    /// Hands collections already parsed (from a fetched link) to the folder prompt and the write.
+    /// Writes collections the Import dialog parsed into `parent`, its Create in folder.
     pub(crate) fn place_imported(
         &mut self,
         bundles: Vec<ImportBundle>,
+        parent: PathBuf,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let store = Arc::clone(self.workspace.read(cx).store());
         cx.spawn_in(window, async move |this, cx| {
-            place_bundles(&this, bundles, store, cx).await
-        })
-        .detach();
-    }
-
-    // Asks for the file and parses it off the main thread before asking where it goes, so a bad
-    // file fails at once; cancelling either prompt does nothing. A failed write keeps and opens
-    // the collections before it.
-    pub(crate) fn browse_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let store = Arc::clone(self.workspace.read(cx).store());
-        let reply = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some("Import collection".into()),
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let Some(file) = first_path(reply.await) else {
-                return;
-            };
-            let bundles = match cx
-                .background_spawn(async move { parse_bundles(&file) })
-                .await
-            {
-                Ok(bundles) => bundles,
-                Err(message) => {
-                    let _ = this.update_in(cx, |_, window, cx| import_failed(message, window, cx));
-                    return;
-                }
-            };
-            place_bundles(&this, bundles, store, cx).await;
+            place_bundles(&this, bundles, store, Some(parent), cx).await
         })
         .detach();
     }
@@ -1191,7 +1162,7 @@ impl Shell {
                         let _ = this.update(cx, |this, cx| this.draft_from_drop(*request, cx));
                     }
                     Dropped::Collections(bundles) => {
-                        place_bundles(&this, bundles, Arc::clone(&store), cx).await;
+                        place_bundles(&this, bundles, Arc::clone(&store), None, cx).await;
                     }
                     Dropped::Refused(message) => {
                         let _ = this.update_in(cx, |_, window, cx| {
@@ -3457,29 +3428,46 @@ fn import_failed(message: String, window: &mut Window, cx: &mut App) {
     });
 }
 
-// Asks where the imported collections go, writes them there off the main thread, and opens
-// what landed with its report. A cancelled prompt does nothing; a failed write keeps and opens
-// the collections before it.
+// Writes the imported collections into `parent`, asking for it first when `None`, off the main
+// thread, and opens what landed with its report. A cancelled prompt does nothing; a failed
+// write keeps and opens the collections before it.
 async fn place_bundles(
     this: &WeakEntity<Shell>,
     bundles: Vec<ImportBundle>,
     store: Arc<dyn apinata_core::SecretStore>,
+    parent: Option<PathBuf>,
     cx: &mut AsyncWindowContext,
 ) {
-    let Ok(reply) = this.update(cx, |_, cx| {
-        cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: Some("Import into".into()),
-        })
-    }) else {
-        return;
+    let parent = match parent {
+        Some(parent) => parent,
+        None => {
+            let Ok(reply) = this.update(cx, |_, cx| {
+                cx.prompt_for_paths(PathPromptOptions {
+                    files: false,
+                    directories: true,
+                    multiple: false,
+                    prompt: Some("Import into".into()),
+                })
+            }) else {
+                return;
+            };
+            let Some(parent) = first_path(reply.await) else {
+                return;
+            };
+            parent
+        }
     };
-    let Some(parent) = first_path(reply.await) else {
-        return;
-    };
-    let job = cx.background_spawn(async move { write_bundles(&bundles, &parent, &*store) });
+    // A chosen Create in folder may not exist yet, as with a clone's parent.
+    let job = cx.background_spawn(async move {
+        match crate::clone_form::ensure_parent(&parent) {
+            Ok(()) => write_bundles(&bundles, &parent, &*store),
+            Err(e) => (
+                Vec::new(),
+                None,
+                Some(crate::import_report::failure_at(&parent, &e.to_string())),
+            ),
+        }
+    });
     let (roots, report, error) = job.await;
     let _ = this.update_in(cx, |this, window, cx| {
         // Open what landed before any error, so the user sees it behind the alert. Each opens
@@ -3515,8 +3503,16 @@ pub fn parse_bundles(file: &Path) -> Result<Vec<ImportBundle>, String> {
 pub fn parse_bundles_from(file: &Path, input: &[u8]) -> Result<Vec<ImportBundle>, String> {
     let mut options = CollectionOptions::default();
     options.name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
-    parse_collections(None, input, &options).map_err(|e| crate::ui::plain_quotes(&e.to_string()))
+    parse_collections(None, input, &options).map_err(|e| match e {
+        // An environment file is a near miss: point at the action that takes it.
+        FormatError::Unrecognized { .. } if EnvironmentFormat::detect(input).is_some() => {
+            ENVIRONMENT_FILE.to_owned()
+        }
+        e => crate::ui::plain_quotes(&e.to_string()),
+    })
 }
+
+const ENVIRONMENT_FILE: &str = "This is an environment file, not a collection. To add it, open a collection and choose Import environment.";
 
 // Each written root with the first environment its import produced.
 type Written = Vec<(PathBuf, Option<String>)>;

@@ -1,5 +1,6 @@
-//! The Import collection dialog: a link to fetch, or Browse for a file. A fetched body goes
-//! through the same parse and write path as a chosen file, so both write identical collections.
+//! The Import collection dialog: a link to fetch, or Browse for a file, and the folder the new
+//! collection is created in. A fetched body goes through the same parse and write path as a
+//! chosen file, so both write identical collections.
 
 use crate::theme::SelectedStyle;
 use crate::ui::{ChooseButton as _, LockButton as _};
@@ -8,8 +9,8 @@ use std::sync::Arc;
 
 use apinata_core::ItemPath;
 use apinata_core::import::{
-    ChangedField, FetchError, ImportBundle, ImportSource, UpdateSummary, classify_source,
-    default_import_name, fetch_source,
+    ChangedField, CollectionFormat, FetchError, ImportBundle, ImportSource, UpdateSummary,
+    classify_source, default_import_name, fetch_source,
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -52,6 +53,20 @@ pub enum PickStyle {
     Primary,
 }
 
+/// A row of the collection or folder list: a ghost button with its label at the start, a check
+/// on the chosen row and, when it is the one current choice, the selected fill.
+fn pick_row(id: SharedString, label: String, style: PickStyle, cx: &App) -> Button {
+    Button::new(id)
+        .ghost()
+        .w_full()
+        .accessibility_label(label.clone())
+        .child(div().flex_1().min_w_0().truncate().child(label))
+        .when(style != PickStyle::Plain, |b| {
+            b.child(gpui_kit::component::Icon::new(IconName::Check))
+        })
+        .choose(style == PickStyle::Primary, SelectedStyle::Ghost, cx)
+}
+
 /// A small muted heading above a picker list.
 fn heading(id: &'static str, text: &'static str, cx: &App) -> impl IntoElement {
     div()
@@ -92,6 +107,15 @@ pub enum Phase {
     Applying,
     /// The update is applied.
     Done(Summary),
+}
+
+/// The Link field's hint, worded as an example so it never reads as a filled value.
+pub const LINK_PLACEHOLDER: &str = "e.g. https://host/openapi.json";
+
+/// The line under the title naming every format a new collection can be imported from.
+pub fn formats_text() -> String {
+    let labels: Vec<&str> = CollectionFormat::ALL.iter().map(|f| f.label()).collect();
+    format!("Formats: {}", labels.join(", "))
 }
 
 /// Why a collection without a spec baseline cannot be updated.
@@ -146,6 +170,8 @@ pub struct ImportLinkDialog {
     refocus: bool,
     // The file picked with Browse; it is the source only while the field still shows its path.
     file: Option<PathBuf>,
+    // The Create in folder a new collection is written into; None when there is no home folder.
+    parent: Option<PathBuf>,
     // The parsed spec an update previews and applies.
     bundle: Option<Arc<ImportBundle>>,
     // The in-flight fetch; dropping it aborts the request, so Cancel and close drop it.
@@ -171,9 +197,14 @@ pub fn open(
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<ImportLinkDialog> {
+    // New collections share the clone dialog's folder, so both land in one place by default.
+    let saved = cx
+        .try_global::<crate::app::AppState>()
+        .and_then(|s| s.settings.read(cx).get().clone_parent.clone());
+    let home = dirs::home_dir();
+    let parent = crate::clone_form::default_parent(saved.as_deref(), home.as_deref());
     let view = cx.new(|cx| {
-        let link =
-            cx.new(|cx| InputState::new(window, cx).placeholder("https://host/openapi.json"));
+        let link = cx.new(|cx| InputState::new(window, cx).placeholder(LINK_PLACEHOLDER));
         ImportLinkDialog {
             shell,
             link,
@@ -190,6 +221,7 @@ pub fn open(
             focus: cx.focus_handle(),
             refocus: false,
             file: None,
+            parent,
             bundle: None,
             task: None,
             asking: None,
@@ -719,6 +751,25 @@ impl ImportLinkDialog {
         cx.notify();
     }
 
+    /// The Link field's hint.
+    pub fn placeholder(&self) -> &'static str {
+        LINK_PLACEHOLDER
+    }
+
+    /// The Create in folder a new collection goes into, if one is known.
+    pub fn parent(&self) -> Option<&Path> {
+        self.parent.as_deref()
+    }
+
+    /// Sets the Create in folder and clears a shown failure.
+    pub fn set_parent(&mut self, parent: PathBuf, cx: &mut Context<Self>) {
+        self.parent = Some(parent);
+        if matches!(self.phase, Phase::Failed(_)) {
+            self.phase = Phase::Idle;
+        }
+        cx.notify();
+    }
+
     /// The link field's text.
     pub fn link(&self, cx: &App) -> String {
         self.link.read(cx).value().to_string()
@@ -832,9 +883,14 @@ impl ImportLinkDialog {
                 }
             }
             Ok(bundles) => {
+                let Some(parent) = self.parent.clone() else {
+                    self.phase = Phase::Failed(NO_PARENT.to_owned());
+                    cx.notify();
+                    return;
+                };
                 window.close_dialog(cx);
                 let shell = self.shell.clone();
-                let _ = shell.update(cx, |s, cx| s.place_imported(bundles, window, cx));
+                let _ = shell.update(cx, |s, cx| s.place_imported(bundles, parent, window, cx));
             }
         }
     }
@@ -848,16 +904,20 @@ impl ImportLinkDialog {
         window.close_dialog(cx);
     }
 
-    // Update mode: asks for a file and previews it as the link would be.
+    // Asks for a file and imports or previews it as the link would be, in either mode.
     fn browse_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(self.phase, Phase::Fetching | Phase::Applying) {
             return;
         }
+        let prompt = match self.mode {
+            Mode::New => "Import collection",
+            Mode::Update => "Choose spec",
+        };
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Choose spec".into()),
+            prompt: Some(prompt.into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let Some(file) = crate::shell::first_path(reply.await) else {
@@ -873,11 +933,27 @@ impl ImportLinkDialog {
         .detach();
     }
 
-    // Closes the dialog and runs the file prompt, as Import did before it had a link field.
-    fn browse(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.task = None;
-        window.close_dialog(cx);
-        let _ = self.shell.update(cx, |s, cx| s.browse_import(window, cx));
+    // Asks for the Create in folder and remembers it for the next import and clone.
+    fn choose_parent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let reply = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Create in".into()),
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(parent) = crate::shell::first_path(reply.await) else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| {
+                if let Some(state) = cx.try_global::<crate::app::AppState>() {
+                    let (settings, saved) = (state.settings.clone(), parent.clone());
+                    settings.update(cx, |p, cx| p.update(cx, |s| s.clone_parent = Some(saved)));
+                }
+                this.set_parent(parent, cx);
+            });
+        })
+        .detach();
     }
 }
 
@@ -912,6 +988,7 @@ const STOPPED: &str = "The update stopped unexpectedly. Try again.";
 const PRUNE_NOTE: &str =
     "Only requests you have not edited are removed; they go to the trash and can be restored";
 const CLOSED: &str = "That collection is no longer open";
+const NO_PARENT: &str = "Choose a folder to create the collection in.";
 const MANY: &str = "This spec holds several collections; update needs one";
 
 /// One plain sentence per way a fetch can fail; the link's own credentials never appear.
@@ -1143,44 +1220,90 @@ impl Render for ImportLinkDialog {
                 .bg(ui::field_fill(false, cx)),
             &self.link,
         );
+        // Browse sits beside the link in both modes; its id says which mode it serves.
+        let browse_id = match self.mode {
+            Mode::New => "import-link-browse",
+            Mode::Update => "import-update-browse",
+        };
         // The row must span the control column, or the flex_1 field collapses to its content.
         let control = h_flex()
             .w_full()
             .min_w_0()
             .gap(SPACE_1)
             .child(div().flex_1().child(input))
-            .when(self.mode == Mode::Update, |row| {
-                row.child(
-                    // Wrapped alone: the link field beside it keeps Enter to start the import.
-                    Button::new("import-update-browse")
-                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                        .label("Browse…")
-                        .lock(busy, cx)
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.browse_source(window, cx)),
-                        ),
-                )
-            });
+            .child(
+                // Wrapped alone: the link field beside it keeps Enter to start the import.
+                Button::new(browse_id)
+                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                    .flex_none()
+                    .label("Browse…")
+                    .lock(busy, cx)
+                    .on_click(cx.listener(|this, _, window, cx| this.browse_source(window, cx))),
+            );
         let field =
             ui::form_row("import-link-row", "Link", control).label_width(SHORT_FORM_LABEL_WIDTH);
-        // The mode and picker lists hold buttons only, so a focused one takes Enter.
-        let modes = v_flex()
-            .key_context(ui::DIALOG_FOOTER_CONTEXT)
-            .gap(SPACE_1)
-            .child(
-                Button::new("import-mode-new")
-                    .label("Import as a new collection")
-                    .w_full()
-                    .when(self.mode == Mode::New, |b| b.primary())
-                    .on_click(cx.listener(|this, _, _, cx| this.set_mode(Mode::New, cx))),
-            )
-            .child(
-                Button::new("import-mode-update")
-                    .label("Update an open collection")
-                    .w_full()
-                    .when(self.mode == Mode::Update, |b| b.primary())
-                    .on_click(cx.listener(|this, _, _, cx| this.set_mode(Mode::Update, cx))),
+        let formats = (self.mode == Mode::New).then(|| {
+            div()
+                .id("import-link-formats")
+                .test_support()
+                .text_size(TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(formats_text())
+        });
+        let parent_row = (self.mode == Mode::New).then(|| {
+            let home = dirs::home_dir();
+            let shown = self.parent.as_deref().map_or_else(
+                || "No folder chosen".to_owned(),
+                |p| crate::path_display::tilde(p, home.as_deref()),
             );
+            let full = self
+                .parent
+                .as_deref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            let control = h_flex()
+                .w_full()
+                .min_w_0()
+                .gap(SPACE_1)
+                .items_center()
+                .child(
+                    div()
+                        .id("import-link-parent")
+                        .test_support()
+                        .aria_label(full)
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .truncate()
+                        .child(shown),
+                )
+                .child(
+                    Button::new("import-link-parent-change")
+                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                        .flex_none()
+                        .label("Change…")
+                        .lock(busy, cx)
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.choose_parent(window, cx)),
+                        ),
+                );
+            ui::form_row("import-link-parent-row", "Create in", control)
+                .label_width(SHORT_FORM_LABEL_WIDTH)
+        });
+        let view = cx.entity().downgrade();
+        let modes = ui::segmented(
+            "import-mode",
+            ["New collection", "Update an open collection"],
+            match self.mode {
+                Mode::New => 0,
+                Mode::Update => 1,
+            },
+            move |ix, _, cx| {
+                let mode = if *ix == 0 { Mode::New } else { Mode::Update };
+                let _ = view.update(cx, |this, cx| this.set_mode(mode, cx));
+            },
+        )
+        .ids(["import-mode-new", "import-mode-update"]);
         let mode_row = !matches!(self.phase, Phase::Applying | Phase::Done(_));
         let picking = self.mode == Mode::Update
             && !matches!(
@@ -1189,28 +1312,9 @@ impl Render for ImportLinkDialog {
             );
         let picker = picking.then(|| {
             let rows = self.targets.iter().enumerate().map(|(n, t)| {
-                let style = self.target_style(n);
-                let row = Button::new(SharedString::from(format!("import-update-target-{n}")))
-                    .label(t.name.clone())
-                    .w_full()
-                    .when(style == PickStyle::Primary, |b| b.primary())
-                    // A check says "chosen" in any theme; an accent outline backs it up when the
-                    // folder list below holds the filled control, so no shade is relied on.
-                    .when(self.target_marker(n), |b| b.icon(IconName::Check))
-                    .when(style == PickStyle::Marked, |b| {
-                        b.primary()
-                            .outline()
-                            .choose(true, SelectedStyle::ChosenOutlinePrimary, cx)
-                    })
-                    // Only the filled primary row lacks an edge; a marked row keeps its outline.
-                    .map(|b| {
-                        let locked = t.baseline != Some(true);
-                        if style == PickStyle::Primary {
-                            b.lock_filled(locked, cx)
-                        } else {
-                            b.lock(locked, cx)
-                        }
-                    })
+                let id = SharedString::from(format!("import-update-target-{n}"));
+                let row = pick_row(id, t.name.clone(), self.target_style(n), cx)
+                    .lock(t.baseline != Some(true), cx)
                     .on_click(cx.listener(move |this, _, _, cx| this.select_target(n, cx)));
                 v_flex().child(row).children(t.reason().map(|why| {
                     div()
@@ -1241,18 +1345,9 @@ impl Render for ImportLinkDialog {
         let styles = self.scope_styles();
         let scope_picker = self.scope_picker_shown().then(|| {
             let rows = scopes.into_iter().enumerate().map(|(n, scope)| {
-                let style = styles[n];
-                let label = self.scope_name(scope.as_ref());
-                Button::new(SharedString::from(format!("import-update-folder-{n}")))
-                    .label(label)
-                    .w_full()
-                    .map(|b| {
-                        if style == PickStyle::Primary {
-                            b.primary().lock_filled(self.replanning, cx)
-                        } else {
-                            b.lock(self.replanning, cx)
-                        }
-                    })
+                let id = SharedString::from(format!("import-update-folder-{n}"));
+                pick_row(id, self.scope_name(scope.as_ref()), styles[n], cx)
+                    .lock(self.replanning, cx)
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.select_scope(scope.clone(), cx)),
                     )
@@ -1343,11 +1438,7 @@ impl Render for ImportLinkDialog {
                         .label("Cancel")
                         .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
                 ),
-                (self.mode == Mode::New).then(|| {
-                    Button::new("import-link-browse")
-                        .label("Browse…")
-                        .on_click(cx.listener(|this, _, window, cx| this.browse(window, cx)))
-                }),
+                [],
                 Button::new("import-link-import")
                     .label(if busy { "Fetching…" } else { "Import" })
                     .primary()
@@ -1365,8 +1456,10 @@ impl Render for ImportLinkDialog {
             .test_support()
             .track_focus(&self.focus)
             .gap(SPACE_2)
+            .children(formats.filter(|_| showing_link))
             .children(mode_row.then_some(modes))
             .children(showing_link.then_some(field))
+            .children(parent_row.filter(|_| showing_link))
             .children(picker)
             .children(scope_picker)
             .children(scope_label)
