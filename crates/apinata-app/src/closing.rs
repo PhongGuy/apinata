@@ -7,15 +7,16 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use apinata_core::ItemPath;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::{App, AsyncWindowContext, Entity, Global, WeakEntity, Window, WindowId};
 
 use crate::command::{Command, NoticeKind, Target};
 use crate::runner_model::RunnerModel;
 use crate::shell::Shell;
-use crate::snapshot::Content;
+use crate::snapshot::{CollectionSnapshot, Content};
 use crate::tab_area::TabArea;
-use crate::workspace::{Workspace, WorkspaceEvent};
-use crate::{confirm, dialog_guard, draft_store, save_draft};
+use crate::workspace::{Workspace, WorkspaceEvent, display_name};
+use crate::{confirm, dialog_guard, draft_store, save_draft, ui};
 
 /// The unsaved work of one open collection.
 #[derive(Debug, Clone, PartialEq)]
@@ -396,17 +397,26 @@ fn ask_to_close(
         return;
     }
     let unsaved = unsaved_in(&workspace, &scope, window, cx);
+    let note = kept_drafts_note(workspace.read(cx), &scope, cx);
     if unsaved.is_empty() {
+        // Nothing is lost, but a closing collection still says its drafts come back with it.
+        if let (CloseScope::Collection(_), Some(note)) = (&scope, note) {
+            window.push_notification(ui::info_toast(note), cx);
+        }
         proceed(&workspace, &scope, window, cx, &kept);
         return;
     }
     let listed = listed_drafts(&workspace, &unsaved, cx);
+    let mut detail = unsaved_detail(workspace.read(cx), &unsaved, &scope, cx);
+    if let Some(note) = note {
+        detail = format!("{detail} {note}");
+    }
     let id = window.window_handle().window_id();
     cx.default_global::<Prompting>().0.insert(id);
     let answer = confirm::ask(
         confirm::save_ask(
             "Save changes before closing?".into(),
-            Some(unsaved_detail(workspace.read(cx), &unsaved, &scope).into()),
+            Some(detail.into()),
             "Discard",
             "Save all",
         ),
@@ -626,27 +636,60 @@ fn ask_to_stop_runs(runs: Vec<Entity<RunnerModel>>, kept: Kept, window: &mut Win
         .detach();
 }
 
-/// The close prompt's detail line for `unsaved` when closing `scope`, naming the scratch pad as
-/// itself rather than counting it among the collections, and one closing collection as this one.
-pub fn unsaved_detail(workspace: &Workspace, unsaved: &[Unsaved], scope: &CloseScope) -> String {
-    let docs: usize = unsaved.iter().map(|u| u.targets.len()).sum();
+/// The close prompt's detail line for `unsaved` when closing `scope`: the changed documents by
+/// name, then where they are, naming the scratch pad as itself and one closing collection as
+/// this one.
+pub fn unsaved_detail(
+    workspace: &Workspace,
+    unsaved: &[Unsaved],
+    scope: &CloseScope,
+    cx: &App,
+) -> String {
+    let names: Vec<String> = (unsaved.iter())
+        .flat_map(|u| {
+            let snapshot = workspace.snapshot(&u.root, cx);
+            (u.targets.iter()).map(move |t| target_name(&u.root, snapshot.as_deref(), t))
+        })
+        .collect();
     if let CloseScope::Collection(root) = scope
         && !workspace.is_scratch(root)
     {
-        return detail_in(docs, "this collection");
+        return detail_in(&names, Some("this collection"));
     }
     let scratch = unsaved.iter().any(|u| workspace.is_scratch(&u.root));
     let collections = unsaved
         .iter()
         .filter(|u| !workspace.is_scratch(&u.root))
         .count();
-    close_detail(docs, collections, scratch)
+    close_detail(&names, collections, scratch)
 }
 
-/// The close prompt's detail line for `documents` unsaved changes across `collections`
-/// collections and, when `scratch`, the scratch pad, with nouns agreeing in number; zero
-/// documents means only pending writes.
-pub fn close_detail(documents: usize, collections: usize, scratch: bool) -> String {
+// The name a close prompt shows for `target`: its own name, else its file or folder name.
+fn target_name(root: &Path, snapshot: Option<&CollectionSnapshot>, target: &Target) -> String {
+    let content = snapshot.map(|s| &s.content);
+    let last = |item: &ItemPath| {
+        item.as_str()
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    match target {
+        Target::Request(item) => (content.and_then(|c| c.requests.get(item)))
+            .map_or_else(|| last(item), |r| r.name.clone()),
+        Target::Folder(item) => {
+            (content.and_then(|c| c.folders.get(item)?.name.clone())).unwrap_or_else(|| last(item))
+        }
+        Target::Collection => (content.and_then(|c| c.collection.name.clone()))
+            .unwrap_or_else(|| display_name(root).to_string()),
+        Target::Environment(name) => name.clone(),
+    }
+}
+
+/// The close prompt's detail line for the changed documents `names` across `collections`
+/// collections and, when `scratch`, the scratch pad; past two names the rest are counted, and
+/// no names means only pending writes. One collection alone goes unsaid.
+pub fn close_detail(names: &[String], collections: usize, scratch: bool) -> String {
     let plural =
         |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
     let mut places = Vec::new();
@@ -656,16 +699,59 @@ pub fn close_detail(documents: usize, collections: usize, scratch: bool) -> Stri
     if scratch {
         places.push("the scratch pad".to_owned());
     }
-    detail_in(documents, &places.join(" and "))
+    let places = places.join(" and ");
+    if names.is_empty() {
+        return format!("Changes to {places} are still being applied.");
+    }
+    detail_in(
+        names,
+        (collections > 1 || scratch).then_some(places.as_str()),
+    )
 }
 
-// The detail line for `documents` unsaved changes in `places`.
-fn detail_in(documents: usize, places: &str) -> String {
-    match documents {
-        0 => format!("Changes to {places} are still being applied."),
-        1 => format!("1 unsaved change in {places}."),
-        n => format!("{n} unsaved changes in {places}."),
+// The detail line naming the changed documents `names`, said to be in `places` when given.
+fn detail_in(names: &[String], places: Option<&str>) -> String {
+    let Some(subject) = name_list(names) else {
+        let places = places.unwrap_or("this collection");
+        return format!("Changes to {places} are still being applied.");
+    };
+    let verb = if names.len() == 1 { "has" } else { "have" };
+    match places {
+        Some(places) => format!("{subject} {verb} unsaved changes in {places}."),
+        None => format!("{subject} {verb} unsaved changes."),
     }
+}
+
+// `names` quoted for a sentence: one or two in full, past that the first and a count.
+fn name_list(names: &[String]) -> Option<String> {
+    match names {
+        [] => None,
+        [one] => Some(format!("\"{one}\"")),
+        [a, b] => Some(format!("\"{a}\" and \"{b}\"")),
+        [first, rest @ ..] => Some(format!("\"{first}\" and {} others", rest.len())),
+    }
+}
+
+/// The line telling the user that the dirty drafts in `scope`, which a close leaves out of its
+/// prompt, are kept and come back: next time for the window and the scratch pad, on reopening
+/// for a collection. `None` when `scope` holds no such draft.
+pub fn kept_drafts_note(workspace: &Workspace, scope: &CloseScope, cx: &App) -> Option<String> {
+    let names = workspace.kept_drafts(only(scope), cx);
+    let subject = name_list(&names)?;
+    let (verb, kept, reopen) = if names.len() == 1 {
+        ("is", "a draft", "reopens")
+    } else {
+        ("are", "drafts", "reopen")
+    };
+    let when = match scope {
+        CloseScope::Collection(root) if !workspace.is_scratch(root) => {
+            "when you open this collection again"
+        }
+        _ => "next time",
+    };
+    Some(format!(
+        "{subject} {verb} kept as {kept} and {reopen} {when}."
+    ))
 }
 
 // The tab area's Save check over the environment tabs in scope, which then stores their secret

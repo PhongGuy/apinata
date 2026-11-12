@@ -208,38 +208,46 @@ fn a_collection_whose_save_fails_is_reported_kept(cx: &mut TestAppContext) {
     assert!(kept.get());
 }
 
+fn names(list: &[&str]) -> Vec<String> {
+    list.iter().map(|n| (*n).to_owned()).collect()
+}
+
 #[test]
-fn the_detail_agrees_in_number() {
+fn the_detail_names_the_changes_and_agrees_in_number() {
     assert_eq!(
-        close_detail(1, 1, false),
-        "1 unsaved change in 1 collection."
+        close_detail(&names(&["a"]), 1, false),
+        "\"a\" has unsaved changes."
     );
     assert_eq!(
-        close_detail(2, 1, false),
-        "2 unsaved changes in 1 collection."
+        close_detail(&names(&["a", "b"]), 1, false),
+        "\"a\" and \"b\" have unsaved changes."
     );
     assert_eq!(
-        close_detail(3, 2, false),
-        "3 unsaved changes in 2 collections."
+        close_detail(&names(&["Get post", "b", "c"]), 2, false),
+        "\"Get post\" and 2 others have unsaved changes in 2 collections."
     );
     assert_eq!(
-        close_detail(0, 2, false),
+        close_detail(&[], 2, false),
         "Changes to 2 collections are still being applied."
+    );
+    assert_eq!(
+        close_detail(&[], 1, false),
+        "Changes to 1 collection are still being applied."
     );
 }
 
 #[test]
 fn the_detail_names_the_scratch_pad_as_itself() {
     assert_eq!(
-        close_detail(1, 0, true),
-        "1 unsaved change in the scratch pad."
+        close_detail(&names(&["x"]), 0, true),
+        "\"x\" has unsaved changes in the scratch pad."
     );
     assert_eq!(
-        close_detail(3, 2, true),
-        "3 unsaved changes in 2 collections and the scratch pad."
+        close_detail(&names(&["x", "y", "z"]), 2, true),
+        "\"x\" and 2 others have unsaved changes in 2 collections and the scratch pad."
     );
     assert_eq!(
-        close_detail(0, 0, true),
+        close_detail(&[], 0, true),
         "Changes to the scratch pad are still being applied."
     );
 }
@@ -256,10 +264,13 @@ fn a_scratch_draft_is_named_as_the_scratch_pad(cx: &mut TestAppContext) {
         vec![apinata_app::command::Target::Request(item)],
         0,
     )];
-    let detail = s.ws.read_with(cx, |w, _| {
-        apinata_app::closing::unsaved_detail(w, &unsaved, &CloseScope::Window)
+    let detail = s.ws.read_with(cx, |w, cx| {
+        apinata_app::closing::unsaved_detail(w, &unsaved, &CloseScope::Window, cx)
     });
-    assert_eq!(detail, "1 unsaved change in the scratch pad.");
+    assert_eq!(
+        detail,
+        "\"Untitled request\" has unsaved changes in the scratch pad."
+    );
 }
 
 // Types into a saved request and closes its tab in the same breath, before the actor has
@@ -458,6 +469,31 @@ fn a_queued_window_close_goes_with_a_window_closed_another_way(cx: &mut TestAppC
     assert!(!cx.update(|cx| apinata_app::closing::close_queued(id, cx)));
 }
 
+fn prompt_detail(cx: &mut TestAppContext) -> Option<String> {
+    let win = confirm_window(cx).expect("the close prompt");
+    cx.update_window(win, |_, w, _| {
+        w.find("confirm-detail").label().map(str::to_owned)
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_window_prompt_names_the_changed_requests(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    dirty_a(cx, &s);
+    s.ws.update(cx, |w, cx| {
+        w.send(&s.root, edit_url("b.yml", "http://x/8"), cx)
+    });
+    cx.run_until_parked();
+    assert!(!close_window(cx, &s));
+    assert_eq!(
+        prompt_detail(cx).as_deref(),
+        Some("\"a\" and \"b\" have unsaved changes.")
+    );
+    answer_confirm(cx, "confirm-cancel");
+}
+
 // Closing one collection names it as this collection rather than counting one collection.
 #[gpui_kit::test]
 fn closing_one_collection_says_this_collection(cx: &mut TestAppContext) {
@@ -477,7 +513,7 @@ fn closing_one_collection_says_this_collection(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(
         detail.as_deref(),
-        Some("2 unsaved changes in this collection.")
+        Some("\"a\" and \"b\" have unsaved changes in this collection.")
     );
     answer_confirm(cx, "confirm-cancel");
 }

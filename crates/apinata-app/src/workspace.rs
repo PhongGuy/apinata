@@ -1692,6 +1692,25 @@ impl Workspace {
             .collect()
     }
 
+    /// The names of the dirty drafts in every open collection, or only in `only`, that the
+    /// draft store keeps, so a close leaves them out of its prompt; in `dirty_targets` order.
+    pub fn kept_drafts(&self, only: Option<&Path>, cx: &App) -> Vec<String> {
+        let only = only.map(absolute);
+        (self.collections.iter())
+            .filter(|c| only.as_ref().is_none_or(|o| *o == c.root))
+            .filter_map(|c| Some((c, c.model.read(cx).snapshot()?)))
+            .flat_map(|(c, s)| {
+                (dirty_targets(&s.content).into_iter())
+                    .filter(|t| self.kept_draft(&c.root, &s.content, t, cx))
+                    .filter_map(|t| match t {
+                        Target::Request(item) => Some(s.content.requests.get(&item)?.name.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     // Whether `target` is a draft of `root` whose current content the draft store keeps.
     fn kept_draft(&self, root: &Path, content: &Content, target: &Target, cx: &App) -> bool {
         let Target::Request(item) = target else {
