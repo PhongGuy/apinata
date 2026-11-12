@@ -26,7 +26,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    Action, AnyElement, App, AppContext, AsyncWindowContext, ClickEvent, Context, Decorations,
+    Action, AnyElement, App, AppContext, AsyncWindowContext, ClickEvent, Context, Decorations, Div,
     DragMoveEvent, Entity, ExternalPaths, FocusHandle, Focusable, FontWeight, Hsla, Image,
     ImageFormat, InteractiveElement, IntoElement, MouseButton, ParentElement, PathPromptOptions,
     Pixels, Rems, Render, Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
@@ -1865,7 +1865,13 @@ impl Shell {
                     h_flex()
                         .w_full()
                         .justify_between()
-                        .child(v_flex().flex_1().min_w_0().child(reveal).child(path))
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .child(reveal)
+                                .child(under_name(path)),
+                        )
                         .child(gear)
                 });
                 let recent_rows = recent.iter().enumerate().map(|(ix, root)| {
@@ -1883,7 +1889,11 @@ impl Shell {
                                 shell.update(cx, |s, cx| s.open(root.clone(), window, cx));
                                 state.dismiss(window, cx);
                             }));
-                    v_flex().w_full().min_w_0().child(button).child(path)
+                    v_flex()
+                        .w_full()
+                        .min_w_0()
+                        .child(button)
+                        .child(under_name(path))
                 });
                 // The collection actions head the list, so the title bar can drop their
                 // buttons; each one dismisses the popover before its native prompt opens.
@@ -3213,12 +3223,7 @@ fn switcher_row(
     } else {
         "switch-unchecked"
     };
-    let check = div()
-        .id((slot, id.1))
-        .test_support()
-        .flex_none()
-        .when(!checked, |d| d.invisible())
-        .child(Icon::new(IconName::Check).small());
+    let check = check_slot(checked).id((slot, id.1)).test_support();
     Button::new(id)
         .ghost()
         .w_full()
@@ -3229,7 +3234,14 @@ fn switcher_row(
                 .min_w_0()
                 .gap(style::SPACE_2)
                 .child(check)
-                .child(div().min_w_0().truncate().child(name))
+                .child(
+                    div()
+                        .id((name_id(id.0), id.1))
+                        .test_support()
+                        .min_w_0()
+                        .truncate()
+                        .child(name),
+                )
                 // A collection sharing its name with another listed one shows where it differs.
                 .children(hint.map(|hint| {
                     div()
@@ -3243,6 +3255,36 @@ fn switcher_row(
                         .child(hint)
                 })),
         )
+}
+
+// The leading slot of a switcher row: a check, kept invisible when unchecked so it still holds
+// the column every name starts in.
+fn check_slot(checked: bool) -> Div {
+    div()
+        .flex_none()
+        .when(!checked, |d| d.invisible())
+        .child(Icon::new(IconName::Check).small())
+}
+
+// A switcher row's path line, inset by the row button's padding and an empty check slot so the
+// path starts at the same left edge as the name above it.
+fn under_name(path: impl IntoElement) -> Div {
+    h_flex()
+        .w_full()
+        .min_w_0()
+        .px_2p5()
+        .gap(style::SPACE_2)
+        .child(check_slot(false))
+        .child(path)
+}
+
+// The test id of a switcher row's name, by the row's own id.
+fn name_id(row: &'static str) -> &'static str {
+    if row == "recent" {
+        "recent-name"
+    } else {
+        "switch-open-name"
+    }
 }
 
 // The test id of a switcher row's hint, by the row's own id.
@@ -3327,7 +3369,7 @@ fn root_path_text(
         .test_support()
         .aria_label(full.clone())
         .aria_value(shown.clone())
-        .px(style::SPACE_2)
+        .min_w_0()
         .max_w(style::RECENT_LIST_WIDTH)
         .truncate()
         .text_size(style::TEXT_SMALL)
