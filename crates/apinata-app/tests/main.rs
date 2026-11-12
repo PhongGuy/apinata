@@ -440,6 +440,7 @@ mod response_secret_redaction;
 mod response_states;
 mod response_tab_keys;
 mod response_tests;
+mod response_tests_layout;
 mod response_timing;
 mod restore_disk;
 mod ring_gap;

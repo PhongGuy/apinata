@@ -17,7 +17,7 @@ use apinata_core::{
     Outcome, RequestResult, ResolveError, Response, RunError, ScriptPhase, TestOutcome,
     UndefinedHint, Verdict, is_credential_header, is_credential_name,
 };
-use gpui_kit::base::SelectableText;
+use gpui_kit::base::{ObservedElement, SelectableText};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -32,8 +32,8 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     Action, Anchor, AnyElement, App, ClipboardItem, Div, ElementId, Entity, FocusHandle, Focusable,
     FontFeatures, FontWeight, Global, Hsla, Pixels, Rems, ScrollHandle, ScrollStrategy,
-    SharedString, Subscription, Svg, Task, TestSupportExt, UniformListScrollHandle, WeakEntity,
-    Window, canvas, div, relative, rems, svg, uniform_list,
+    SharedString, Stateful, Subscription, Svg, Task, TestSupportExt, UniformListScrollHandle,
+    WeakEntity, Window, canvas, div, relative, rems, svg, uniform_list,
 };
 
 use crate::app::AppState;
@@ -798,7 +798,7 @@ impl ResponsePane {
                 .iter()
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
-            tab_reveal: ui::Reveal::default(),
+            tab_reveal: ui::Reveal::whole_at_left(),
             tab_focus_reveal: ui::Reveal::default(),
             tab_fades: ui::StripFades::default(),
             cookies: Vec::new(),
@@ -3186,10 +3186,14 @@ impl ResponsePane {
                         .children(heading)
                         .children(result.assertions.iter().enumerate().map(|(ix, o)| {
                             let (verdict, text) = redacted_assertion_line(o, result);
+                            // The engine's own words stay on offer behind the plain sentence.
+                            let engine = assertion_engine_text(o)
+                                .map(|raw| format!("{text}\n{}", result.redact(raw)));
                             h_flex()
                                 .id(("assertion", ix))
                                 .test_support()
                                 .aria_label(text.clone())
+                                .items_start()
                                 .gap(style::SPACE_2)
                                 .child(
                                     div()
@@ -3199,7 +3203,12 @@ impl ResponsePane {
                                         .text_color(verdict_colour(verdict, cx))
                                         .child(verdict),
                                 )
-                                .child(text)
+                                .child(wrapping_line(("assertion-text", ix), text).when_some(
+                                    engine,
+                                    |line, tip| {
+                                        line.tooltip(ui::text_tooltip("assertion-tooltip", tip))
+                                    },
+                                ))
                         }))
                         .children(tests_block(result, cx)),
                 )
@@ -3715,6 +3724,7 @@ fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
             .id(("test", ix))
             .test_support()
             .aria_label(text.clone())
+            .items_start()
             .gap(style::SPACE_2)
             .child(
                 div()
@@ -3732,7 +3742,7 @@ fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
                     .text_color(cx.theme().muted_foreground)
                     .child(test_source(t.phase)),
             )
-            .child(text)
+            .child(wrapping_line(("test-text", ix), text))
     });
     Some(
         v_flex()
@@ -3746,6 +3756,18 @@ fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
             ))
             .children(rows),
     )
+}
+
+// A result line that takes the row's remaining width and wraps there, so a long value never
+// runs past the pane's edge.
+fn wrapping_line(id: (&'static str, usize), text: String) -> ObservedElement<Stateful<Div>> {
+    div()
+        .id(id)
+        .test_support()
+        .aria_label(text.clone())
+        .flex_1()
+        .min_w_0()
+        .child(text)
 }
 
 // A group's heading row: its name, then the group's own counts in muted text.
@@ -5159,7 +5181,11 @@ fn line_scrubbed(o: &AssertionOutcome, scrub: impl Fn(&str) -> String) -> (&'sta
         Verdict::Fail { actual, detail, .. } => {
             text.push_str(&format!(": actual {}", scrub(actual)));
             if let Some(detail) = detail {
-                text.push_str(&format!("; {}", ui::plain_quotes(&scrub(detail))));
+                let shown = match parse_error_sentence(actual, detail) {
+                    Some(sentence) => sentence.to_owned(),
+                    None => ui::plain_quotes(&scrub(detail)),
+                };
+                text.push_str(&format!("; {shown}"));
             }
             "fail"
         }
@@ -5170,6 +5196,27 @@ fn line_scrubbed(o: &AssertionOutcome, scrub: impl Fn(&str) -> String) -> (&'sta
         _ => "skipped",
     };
     (verdict, text)
+}
+
+// A script engine's parse error on a check, in plain words. Only a failed right side leaves a
+// real actual value; a failed left side reads "undefined", as an undefined value does too.
+fn parse_error_sentence(actual: &str, detail: &str) -> Option<&'static str> {
+    detail.starts_with("SyntaxError").then_some(match actual {
+        "undefined" => "the check is not valid JavaScript",
+        _ => "the expected value is not valid JavaScript",
+    })
+}
+
+/// The script engine's own message that [`assertion_line`] put into plain words, if it did.
+pub fn assertion_engine_text(o: &AssertionOutcome) -> Option<&str> {
+    match o.verdict() {
+        Verdict::Fail {
+            actual,
+            detail: Some(detail),
+            ..
+        } => parse_error_sentence(actual, detail).map(|_| detail.as_str()),
+        _ => None,
+    }
 }
 
 /// A script test entry's verdict word and its line: the name, then a fail's detail or a
