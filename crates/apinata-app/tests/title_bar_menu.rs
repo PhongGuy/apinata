@@ -209,13 +209,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let rows: Vec<Option<String>> = cx
         .update_window(s.win, |_, w, _| {
-            (0..32usize)
-                .map(|ix| {
-                    w.within("popup-menu")
-                        .try_find(ix)
-                        .map(|e| e.label().unwrap_or("").to_owned())
-                })
-                .collect()
+            (0..32usize).map(|ix| row_label(w, ix)).collect()
         })
         .unwrap();
     let mut want: Vec<Option<String>> = Vec::new();
@@ -242,13 +236,7 @@ fn the_git_entries_form_one_separated_group(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let rows: Vec<String> = cx
         .update_window(s.win, |_, w, _| {
-            (0usize..)
-                .map_while(|ix| {
-                    w.within("popup-menu")
-                        .try_find(ix)
-                        .map(|e| e.label().unwrap_or("").to_owned())
-                })
-                .collect()
+            (0usize..).map_while(|ix| row_label(w, ix)).collect()
         })
         .unwrap();
     let at = rows
@@ -266,6 +254,22 @@ fn the_git_entries_form_one_separated_group(cx: &mut TestAppContext) {
         ],
         "{rows:?}"
     );
+}
+
+// An open menu row's name: its own label, or for a greyed entry, which is drawn as an element
+// to carry its reason, the label of the entry inside; a separator has none.
+fn row_label(w: &mut gpui_kit::Window, ix: usize) -> Option<String> {
+    let row = w.within("popup-menu").try_find(ix)?;
+    Some(match row.label() {
+        Some(label) => label.to_owned(),
+        None => w
+            .within("popup-menu")
+            .within(ix)
+            .elements()
+            .iter()
+            .find_map(|e| e.label().map(str::to_owned))
+            .unwrap_or_default(),
+    })
 }
 
 // Hovers the app-menu slot long enough for a tooltip, then reports whether its tip is drawn.

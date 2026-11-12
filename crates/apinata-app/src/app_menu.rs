@@ -5,8 +5,9 @@ use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::DropdownMenu as _;
-use gpui_kit::{Action, Anchor, App, FocusHandle, IntoElement};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::prelude::*;
+use gpui_kit::{Action, Anchor, App, FocusHandle, IntoElement, TestSupportExt as _, div};
 
 use crate::commands::registry;
 use crate::stand_in::StandIn;
@@ -114,7 +115,7 @@ pub fn app_menu(
 ) -> impl IntoElement {
     // The open popup holds focus, so entries dispatch from the shell's handle to reach
     // the same handlers as the shell's key bindings.
-    let disabled = app_menu_disabled(scratch_only, in_repo, updates);
+    let disabled = app_menu_disabled_reasons(scratch_only, in_repo, updates);
     crate::ui::solid_ring(Button::new("app-menu").ghost().compact(), cx)
         .icon(IconName::Menu)
         .accessibility_label("Application menu")
@@ -124,7 +125,10 @@ pub fn app_menu(
                 |menu, (i, group)| {
                     let menu = if i > 0 { menu.separator() } else { menu };
                     group.into_iter().fold(menu, |menu, (label, action)| {
-                        menu.menu_with_disabled(label, action, disabled.contains(&label))
+                        match disabled.iter().find(|(l, _)| *l == label) {
+                            Some(&(_, reason)) => menu.item(greyed_entry(label, reason)),
+                            None => menu.menu(label, action),
+                        }
                     })
                 },
             )
@@ -136,6 +140,9 @@ pub fn app_menu(
             window.refresh();
         })
 }
+
+/// The id of the tooltip that says why a greyed entry cannot be used.
+pub const APP_MENU_REASON_TIP: &str = "app-menu-reason-tooltip";
 
 /// Command ids of the entries that act on a collection, which need a real one open.
 pub(crate) const COLLECTION_ONLY: [&str; 7] = [
@@ -155,13 +162,47 @@ const REPOSITORY_ONLY: [&str; 2] = ["collection.switch_branch", "collection.show
 /// scratch pad is open, those that act on a repository while the collection is in none, and
 /// Check for updates on a build without an update source.
 pub fn app_menu_disabled(scratch_only: bool, in_repo: bool, updates: bool) -> Vec<&'static str> {
+    app_menu_disabled_reasons(scratch_only, in_repo, updates)
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect()
+}
+
+/// The entries `app_menu_disabled` greys out, each with the reason its tooltip gives.
+pub fn app_menu_disabled_reasons(
+    scratch_only: bool,
+    in_repo: bool,
+    updates: bool,
+) -> Vec<(&'static str, &'static str)> {
     registry()
         .into_iter()
-        .filter(|c| {
-            (scratch_only && COLLECTION_ONLY.contains(&c.id))
-                || (!in_repo && REPOSITORY_ONLY.contains(&c.id))
-                || (!updates && c.id == "view.check_for_updates")
+        .filter_map(|c| {
+            let reason = if scratch_only && COLLECTION_ONLY.contains(&c.id) {
+                "Open a collection to use this"
+            } else if !in_repo && REPOSITORY_ONLY.contains(&c.id) {
+                "Open a collection in a git repository"
+            } else if !updates && c.id == "view.check_for_updates" {
+                crate::updates::NOT_CONFIGURED
+            } else {
+                return None;
+            };
+            Some((c.label, reason))
         })
-        .map(|c| c.label)
         .collect()
+}
+
+// A greyed entry drawn as an element, since the kit's plain items take no tooltip; it fills the
+// row so a hover anywhere on it shows the reason.
+fn greyed_entry(label: &'static str, reason: &'static str) -> PopupMenuItem {
+    PopupMenuItem::element(move |_, cx| {
+        crate::ui::menu_label_cue(div(), cx)
+            .id(label)
+            .test_support()
+            .w_full()
+            .aria_label(label)
+            .aria_description(reason)
+            .tooltip(crate::ui::text_tooltip(APP_MENU_REASON_TIP, reason))
+            .child(label)
+    })
+    .disabled(true)
 }

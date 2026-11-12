@@ -4,7 +4,9 @@ use crate::support;
 
 use apinata_app::app::{AppState, VolatileSecrets};
 use apinata_app::executor::proxy_password_key;
-use apinata_app::preferences::{PAC_HINT, PAC_PLACEHOLDER, PROXY_NOTE, parse_proxy_port};
+use apinata_app::preferences::{
+    NETWORK_RESTART, PAC_HINT, PAC_PLACEHOLDER, PROXY_NOTE, parse_proxy_port,
+};
 use apinata_app::settings::{ProxyMode, Settings};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext};
@@ -441,23 +443,27 @@ fn the_proxy_help_shows_under_the_control_in_system_mode_only(cx: &mut TestAppCo
     }
 }
 
-// Every proxy mode says once, not twice, that its settings wait for a restart.
+// Whatever the proxy mode, the settings read only at start share one note in the Network
+// section instead of one under each control.
 #[gpui_kit::test]
-fn each_proxy_mode_names_the_restart_once(cx: &mut TestAppContext) {
+fn the_network_section_names_the_restart_once(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
     for mode in 0..4 {
         choose(cx, &s, "global-proxy-mode", mode);
-        let notes = [
-            present(cx, s.win, "pref-proxy-mode-restart"),
-            present(cx, s.win, "prefs-proxy-restart"),
-        ];
-        assert_eq!(
-            notes.iter().filter(|n| **n).count(),
-            1,
-            "mode {mode}: under the control, after the fields: {notes:?}"
-        );
+        let notes = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                w.within("prefs-network")
+                    .elements()
+                    .iter()
+                    .filter_map(|e| e.label().or(e.value()).map(str::to_owned))
+                    .filter(|l| l.contains("after restart"))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap();
+        assert_eq!(notes, [NETWORK_RESTART], "mode {mode}");
     }
 }
 
@@ -486,40 +492,4 @@ fn the_pac_placeholder_fits_its_field(cx: &mut TestAppContext) {
         text <= room,
         "{PAC_PLACEHOLDER:?} is {text:?} wide in {room:?}"
     );
-}
-
-// The manual proxy fields and the PAC source say, after the last of them, that they wait for
-// a restart, as the Proxy control does.
-#[gpui_kit::test]
-fn the_proxy_fields_say_they_take_effect_after_restart(cx: &mut TestAppContext) {
-    use gpui_kit::test::TestWindowExt as _;
-    let col = two_requests();
-    let s = started(cx, &col);
-    open_prefs(cx, &s);
-    assert!(
-        !present(cx, s.win, "prefs-proxy-restart"),
-        "Off has no fields"
-    );
-    for (mode, last) in [(2, "pref-proxy-bypass"), (3, "pref-proxy-pac")] {
-        choose(cx, &s, "global-proxy-mode", mode);
-        reveal(cx, &s, "prefs-proxy-restart");
-        let note = drawn(cx, &s, "prefs-proxy-restart");
-        let last = drawn(cx, &s, last);
-        assert!(
-            note.top() >= last.bottom() - gpui_kit::px(1.)
-                && note.bottom() <= drawn(cx, &s, "pref-ca-file").top() + gpui_kit::px(1.),
-            "mode {mode}: the note {note:?} after the last proxy row {last:?}"
-        );
-        let text = cx
-            .update_window(s.win, |_, w, cx| {
-                w.render_frame(cx);
-                w.find("prefs-proxy-restart").label().map(str::to_owned)
-            })
-            .unwrap();
-        assert_eq!(
-            text.as_deref(),
-            Some("The proxy settings above take effect after restart"),
-            "mode {mode}"
-        );
-    }
 }
