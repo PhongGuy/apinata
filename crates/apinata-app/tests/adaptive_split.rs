@@ -191,8 +191,7 @@ fn the_divider_still_drags_when_stacked_with_a_result(cx: &mut TestAppContext) {
 
 fn need(zoom: f32) -> Pixels {
     floor(zoom)
-        + at_zoom(METHOD_SELECT, zoom)
-        + at_zoom(CUSTOM_METHOD, zoom)
+        + at_zoom(METHOD_SELECT, zoom).max(at_zoom(CUSTOM_METHOD, zoom))
         + at_zoom(SPACE_2, zoom)
         + at_zoom(REQUEST_BUTTONS_WIDTH, zoom)
         + at_zoom(URL_ROW_SLACK, zoom)

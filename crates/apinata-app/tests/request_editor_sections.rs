@@ -156,27 +156,16 @@ fn tab_walks_the_method_the_url_and_the_section_tabs(cx: &mut TestAppContext) {
     let method = ed.read_with(cx, |e, cx| e.method_focus(cx));
     let first = ed.read_with(cx, |e, _| e.section_focus(0));
     let second = ed.read_with(cx, |e, _| e.section_focus(1));
-    let custom = ed.read_with(cx, |e, cx| e.custom_method_focus(cx));
     cx.update_window(win, |_, w, cx| url.focus(w, cx)).unwrap();
     press(cx, win, "shift-tab");
     assert!(
-        focused(cx, win, &custom),
-        "shift-tab from the url reaches the custom method input"
-    );
-    press(cx, win, "shift-tab");
-    assert!(
         focused(cx, win, &method),
-        "shift-tab from the custom input reaches the method"
-    );
-    press(cx, win, "tab");
-    assert!(
-        focused(cx, win, &custom),
-        "tab from the method reaches the custom input"
+        "shift-tab from the url reaches the method"
     );
     press(cx, win, "tab");
     assert!(
         focused(cx, win, &url),
-        "tab from the custom input reaches the url"
+        "tab from the method reaches the url"
     );
     let mut reached = false;
     for _ in 0..3 {

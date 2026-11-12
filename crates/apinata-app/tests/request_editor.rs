@@ -329,6 +329,164 @@ fn the_closed_method_picker_keeps_the_verb_colour(cx: &mut TestAppContext) {
     );
 }
 
+fn found(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, id: &str) -> bool {
+    let id = id.to_string();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).is_some()
+    })
+    .unwrap()
+}
+
+// Opens the method picker and picks its last row, which swaps in the custom method field.
+fn pick_custom(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle) {
+    cx.update_window(win, |_, w, cx| w.click("method", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("method-option-custom", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn no_custom_method_box_shows_until_custom_is_picked(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    assert!(found(cx, win, "method"));
+    assert!(!found(cx, win, "custom-method"), "no box beside the picker");
+    pick_custom(cx, win);
+    assert!(found(cx, win, "custom-method"), "the field opens");
+    assert!(!found(cx, win, "method"), "in place of the picker");
+}
+
+#[gpui_kit::test]
+fn a_custom_method_typed_in_the_field_is_saved_and_shown(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    pick_custom(cx, win);
+    let focus = ed.read_with(cx, |e, cx| e.custom_method_focus(cx));
+    assert!(
+        cx.update_window(win, |_, w, _| focus.is_focused(w))
+            .unwrap()
+    );
+    cx.simulate_keystrokes(win, "p u r g e enter");
+    cx.run_until_parked();
+    assert_eq!(view_of(cx, &ws, &root, "a.yml").method, "PURGE");
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.method(cx)),
+        Some(SharedString::from("PURGE"))
+    );
+    assert!(!found(cx, win, "custom-method"), "the field closes");
+    let title = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let m = w.find("method");
+            m.value()
+                .or(m.label())
+                .map(str::to_owned)
+                .unwrap_or_default()
+        })
+        .unwrap();
+    assert!(title.contains("PURGE"), "the picker shows {title:?}");
+    let method = ed.read_with(cx, |e, cx| e.method_focus(cx));
+    assert!(
+        cx.update_window(win, |_, w, _| method.is_focused(w))
+            .unwrap(),
+        "focus returns to the picker"
+    );
+    cx.update_window(win, |_, w, cx| ed.update(cx, |e, cx| e.save(w, cx)))
+        .unwrap();
+    cx.run_until_parked();
+    let saved = std::fs::read_to_string(col.path().join("a.yml")).unwrap();
+    assert!(saved.contains("method: PURGE"), "{saved}");
+}
+
+#[gpui_kit::test]
+fn a_saved_custom_method_shows_in_the_picker(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("a.yml", &A.replace("method: POST", "method: PURGE")),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.method(cx)),
+        Some(SharedString::from("PURGE"))
+    );
+    let title = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let m = w.find("method");
+            m.value()
+                .or(m.label())
+                .map(str::to_owned)
+                .unwrap_or_default()
+        })
+        .unwrap();
+    assert!(title.contains("PURGE"), "the picker shows {title:?}");
+    assert!(!found(cx, win, "custom-method"));
+}
+
+#[gpui_kit::test]
+fn an_invalid_custom_method_is_refused_and_the_field_stays(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    pick_custom(cx, win);
+    cx.simulate_keystrokes(win, "g e space t enter");
+    cx.run_until_parked();
+    assert!(ed.read_with(cx, |e, _| e.custom_method_error().is_some()));
+    assert!(found(cx, win, "custom-method-error"));
+    assert!(
+        found(cx, win, "custom-method"),
+        "the refused text stays to fix"
+    );
+    assert_eq!(view_of(cx, &ws, &root, "a.yml").method, "POST");
+}
+
+#[gpui_kit::test]
+fn escape_closes_the_custom_field_and_keeps_the_method(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    pick_custom(cx, win);
+    cx.simulate_keystrokes(win, "p u r g e escape");
+    cx.run_until_parked();
+    assert!(!found(cx, win, "custom-method"));
+    assert!(found(cx, win, "method"));
+    assert_eq!(view_of(cx, &ws, &root, "a.yml").method, "POST");
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.method(cx)),
+        Some(SharedString::from("POST"))
+    );
+    let shown = ed.read_with(cx, |e, cx| e.custom_method_input().read(cx).value());
+    assert_eq!(shown.as_ref(), "");
+}
+
+#[gpui_kit::test]
+fn the_url_starts_right_after_the_method_picker(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let method = w.find("method").bounds();
+        let url = w.find("url").bounds();
+        let gap = apinata_app::style::SPACE_2.to_pixels(w.rem_size());
+        assert_eq!(url.top(), method.top(), "method {method:?} url {url:?}");
+        assert!(
+            url.left() - method.right() <= gap + gpui_kit::px(1.),
+            "nothing sits between: method {method:?} url {url:?}"
+        );
+    })
+    .unwrap();
+}
+
 fn type_custom(
     cx: &mut TestAppContext,
     ed: &gpui_kit::Entity<apinata_app::request_editor::RequestEditor>,
@@ -485,9 +643,10 @@ fn enter_on_an_invalid_custom_method_keeps_the_error_visible(cx: &mut TestAppCon
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    let focus = ed.read_with(cx, |e, cx| e.custom_method_focus(cx));
-    cx.update_window(win, |_, w, cx| focus.focus(w, cx))
-        .unwrap();
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| e.open_custom_method(w, cx))
+    })
+    .unwrap();
     cx.run_until_parked();
     // Real keystrokes, so the error must outlive every event Enter itself produces.
     cx.simulate_keystrokes(win, "g e space t enter");

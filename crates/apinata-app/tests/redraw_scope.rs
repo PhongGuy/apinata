@@ -634,8 +634,13 @@ fn the_method_follows_an_edit_from_elsewhere(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_custom_method_shows_what_is_typed(cx: &mut TestAppContext) {
-    let (s, _editor, _col) = typing_after_a_send(cx);
+    let (s, editor, _col) = typing_after_a_send(cx);
     type_burst(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        editor.update(cx, |e, cx| e.open_custom_method(w, cx))
+    })
+    .unwrap();
+    draw(cx, s.win);
     cx.update_window(s.win, |_, w, cx| {
         w.click("custom-method", cx);
         w.input("PURGE", cx);

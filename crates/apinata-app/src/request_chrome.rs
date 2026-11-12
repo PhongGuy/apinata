@@ -14,10 +14,8 @@ use crate::request_editor::RequestEditor;
 pub enum ChromePart {
     /// The collection, folder and request name line.
     Breadcrumb,
-    /// The method picker.
+    /// The method picker, or the custom method field in its place.
     Method,
-    /// The custom method input.
-    CustomMethod,
     /// The URL input.
     Url,
     /// Save, Send (or Cancel, Stop) and Generate code.
@@ -28,10 +26,9 @@ pub enum ChromePart {
 
 impl ChromePart {
     /// Every part, in the order the editor holds them.
-    pub const ALL: [ChromePart; 6] = [
+    pub const ALL: [ChromePart; 5] = [
         ChromePart::Breadcrumb,
         ChromePart::Method,
-        ChromePart::CustomMethod,
         ChromePart::Url,
         ChromePart::Buttons,
         ChromePart::Sections,

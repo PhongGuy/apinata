@@ -226,7 +226,7 @@ pub const VARIABLES_BUTTON_FROM: Rems = ui(480.);
 pub const TITLE_NAME_FLOOR: Rems = ui(48.);
 /// The method select's fixed width.
 pub const METHOD_SELECT: Rems = ui(96.);
-/// The custom method input beside the select.
+/// The custom method field, which opens in the method select's place.
 pub const CUSTOM_METHOD: Rems = ui(104.);
 /// The URL input's floor: 16 rem. A side-by-side request pane too narrow to hold it beside the
 /// method and the buttons gives way to the stacked layout.

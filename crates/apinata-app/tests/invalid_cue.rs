@@ -230,9 +230,10 @@ fn the_custom_method_marks_a_refused_verb(cx: &mut TestAppContext) {
     ]);
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    let focus = ed.read_with(cx, |e, cx| e.custom_method_focus(cx));
-    cx.update_window(win, |_, w, cx| focus.focus(w, cx))
-        .unwrap();
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| e.open_custom_method(w, cx))
+    })
+    .unwrap();
     cx.run_until_parked();
     cx.simulate_keystrokes(win, "g e space t enter");
     cx.run_until_parked();
@@ -308,11 +309,12 @@ fn the_custom_method_keeps_its_bounds_when_marked(cx: &mut TestAppContext) {
     ]);
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    let focus = ed.read_with(cx, |e, cx| e.custom_method_focus(cx));
-    cx.update_window(win, |_, w, cx| focus.focus(w, cx))
-        .unwrap();
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| e.open_custom_method(w, cx))
+    })
+    .unwrap();
     cx.run_until_parked();
-    cx.simulate_keystrokes(win, "g e t enter");
+    cx.simulate_keystrokes(win, "g e t");
     cx.run_until_parked();
     assert!(ed.read_with(cx, |e, _| e.custom_method_error().is_none()));
     let rest = bounds(cx, win, "custom-method");
