@@ -321,17 +321,17 @@ fn wsse_edits_username_and_masked_password(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn switching_to_wsse_sends_an_empty_spec_and_back_restores(cx: &mut TestAppContext) {
+fn switching_to_wsse_carries_the_credentials_and_back_restores(cx: &mut TestAppContext) {
     let (win, host, s) = auth(cx, basic("u", "p"));
     mode(cx, win, &s, AuthMode::Wsse);
-    assert_eq!(last_auth(cx, &host), wsse("", ""));
+    assert_eq!(last_auth(cx, &host), wsse("u", "p"));
     type_at_end(cx, win, None, "auth-username", "w");
     cx.run_until_parked();
-    assert_eq!(last_auth(cx, &host), wsse("w", ""));
+    assert_eq!(last_auth(cx, &host), wsse("uw", "p"));
     mode(cx, win, &s, AuthMode::Basic);
     assert_eq!(last_auth(cx, &host), basic("u", "p"));
     mode(cx, win, &s, AuthMode::Wsse);
-    assert_eq!(last_auth(cx, &host), wsse("w", ""));
+    assert_eq!(last_auth(cx, &host), wsse("uw", "p"));
 }
 
 fn eg(f: impl FnOnce(&mut EdgeGridSpec)) -> AuthSpec {
@@ -659,17 +659,17 @@ fn ntlm_notes_that_https_avoids_the_proxy_pitfall(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn switching_to_ntlm_sends_an_empty_spec_and_back_restores(cx: &mut TestAppContext) {
+fn switching_to_ntlm_carries_the_credentials_and_back_restores(cx: &mut TestAppContext) {
     let (win, host, s) = auth(cx, basic("u", "p"));
     mode(cx, win, &s, AuthMode::Ntlm);
-    assert_eq!(last_auth(cx, &host), ntlm("", "", ""));
+    assert_eq!(last_auth(cx, &host), ntlm("u", "p", ""));
     type_at_end(cx, win, None, "auth-domain", "D");
     cx.run_until_parked();
-    assert_eq!(last_auth(cx, &host), ntlm("", "", "D"));
+    assert_eq!(last_auth(cx, &host), ntlm("u", "p", "D"));
     mode(cx, win, &s, AuthMode::Basic);
     assert_eq!(last_auth(cx, &host), basic("u", "p"));
     mode(cx, win, &s, AuthMode::Ntlm);
-    assert_eq!(last_auth(cx, &host), ntlm("", "", "D"));
+    assert_eq!(last_auth(cx, &host), ntlm("u", "p", "D"));
     mode(cx, win, &s, AuthMode::Wsse);
     assert!(shown(cx, win, ["auth-domain"]) == [false]);
 }
@@ -992,4 +992,60 @@ fn a_revealed_oauth2_secret_is_hidden_again_when_a_reload_brings_a_new_value(
     frame(cx, win);
     assert_eq!(secret.read_with(cx, |i, _| i.value().to_string()), "second");
     assert!(secret.read_with(cx, |i, _| i.presentation().is_masked()));
+}
+
+fn digest(u: &str, p: &str) -> AuthSpec {
+    AuthSpec::Digest {
+        username: u.into(),
+        password: p.into(),
+    }
+}
+
+// Basic, Digest, WSSE and NTLM share a username and password: a type with none of its own
+// takes the ones typed, the password still masked.
+#[gpui_kit::test]
+fn switching_to_a_type_without_credentials_carries_the_typed_ones(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, basic("", ""));
+    type_at_end(cx, win, None, "auth-username", "al");
+    type_at_end(cx, win, None, "auth-password", "pw");
+    cx.run_until_parked();
+    assert_eq!(last_auth(cx, &host), basic("al", "pw"));
+    mode(cx, win, &s, AuthMode::Digest);
+    assert_eq!(last_auth(cx, &host), digest("al", "pw"));
+    let pw = s.read_with(cx, |s, _| s.input(AuthField::Password).clone());
+    assert_eq!(
+        pw.read_with(cx, |i, _| (
+            i.presentation().is_masked(),
+            i.value().to_string()
+        )),
+        (true, "pw".into())
+    );
+    mode(cx, win, &s, AuthMode::Ntlm);
+    assert_eq!(last_auth(cx, &host), ntlm("al", "pw", ""));
+}
+
+#[gpui_kit::test]
+fn a_type_with_its_own_credentials_keeps_them(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, digest("d", "dp"));
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.load(&basic("u", "p"), w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+    mode(cx, win, &s, AuthMode::Digest);
+    assert_eq!(last_auth(cx, &host), digest("d", "dp"));
+}
+
+#[gpui_kit::test]
+fn switching_back_restores_the_first_types_credentials(cx: &mut TestAppContext) {
+    let (win, host, s) = auth(cx, basic("u", "p"));
+    mode(cx, win, &s, AuthMode::Wsse);
+    assert_eq!(last_auth(cx, &host), wsse("u", "p"));
+    type_at_end(cx, win, None, "auth-password", "2");
+    cx.run_until_parked();
+    assert_eq!(last_auth(cx, &host), wsse("u", "p2"));
+    mode(cx, win, &s, AuthMode::Basic);
+    assert_eq!(last_auth(cx, &host), basic("u", "p"));
+    mode(cx, win, &s, AuthMode::Wsse);
+    assert_eq!(last_auth(cx, &host), wsse("u", "p2"));
 }

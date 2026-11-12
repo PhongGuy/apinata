@@ -569,16 +569,28 @@ impl AuthSection {
         }
     }
 
-    /// Switches to `mode`, sending its remembered value or else its empty value.
+    /// Switches to `mode`, sending its remembered value or else its empty value; a type with
+    /// no username and password of its own takes the ones shown.
     pub fn set_mode(&mut self, mode: AuthMode, window: &mut Window, cx: &mut Context<Self>) {
         if self.mode == Some(mode) {
             return;
         }
-        let auth = self
+        let mut auth = self
             .memory
             .get(&mode)
             .cloned()
             .unwrap_or_else(|| mode.empty());
+        // Basic, Digest, WSSE and NTLM share these fields, so switching never seems to drop
+        // what was typed; the type left keeps its own copy in memory.
+        if let Some(mut shown) = self.current(cx)
+            && let Some((user, pass)) = credentials(&mut shown)
+            && let Some((to_user, to_pass)) = credentials(&mut auth)
+            && to_user.is_empty()
+            && to_pass.is_empty()
+        {
+            *to_user = std::mem::take(user);
+            *to_pass = std::mem::take(pass);
+        }
         self.show(mode, &auth, window, cx);
         self.emit(auth, cx);
     }
@@ -926,6 +938,19 @@ impl AuthSection {
             return self.emit(auth, cx);
         }
         cx.emit(SectionEdit::new(Edit::Auth(auth)).after_loads(loads));
+    }
+}
+
+// The username and password of a type that has them.
+fn credentials(auth: &mut AuthSpec) -> Option<(&mut String, &mut String)> {
+    match auth {
+        AuthSpec::Basic { username, password }
+        | AuthSpec::Digest { username, password }
+        | AuthSpec::Wsse { username, password }
+        | AuthSpec::Ntlm {
+            username, password, ..
+        } => Some((username, password)),
+        _ => None,
     }
 }
 
