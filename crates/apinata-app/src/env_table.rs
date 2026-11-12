@@ -1096,6 +1096,7 @@ impl EnvVarTable {
         let slot =
             |real: &'static str, hidden: &'static str| (if blank { hidden } else { real }, ix);
         let name_locked = row.meta.secret && !row.meta.unsaved;
+        let eyes = self.has_eyes();
         let off = !blank && !row.meta.enabled;
         let muted = cx.theme().muted_foreground;
         // Each Tab stop reports its own bounds: the row is wider than a narrow area, and
@@ -1213,7 +1214,7 @@ impl EnvVarTable {
                         cx,
                     ))
                     .child(followed("env-secret-follow", self.render_lock(ix, cx)))
-                    .child(self.render_action_slot(ix, cx)),
+                    .children(eyes.then(|| self.render_action_slot(ix, cx))),
             )
             .child(
                 div()
@@ -1315,7 +1316,14 @@ impl EnvVarTable {
             .into_any_element()
     }
 
-    /// Row `ix`'s show or hide eye, in a fixed slot so plain rows keep the same columns.
+    // Only secret rows have an eye, so a table without one drops the slot from every row and
+    // the heading, and the value runs to the lock instead of stopping at an empty gap.
+    fn has_eyes(&self) -> bool {
+        self.rows.iter().any(|r| r.meta.secret)
+    }
+
+    /// Row `ix`'s show or hide eye. While some row is secret every row has this fixed slot, so
+    /// plain rows keep the same columns as secret ones.
     fn render_action_slot(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         // Rows are drawn for indices up to `rows.len()`, the blank row, and `row` answers all of them.
         #[allow(clippy::expect_used)]
@@ -1398,7 +1406,10 @@ impl EnvVarTable {
                     .gap_2()
                     .child(text(value))
                     .child(div().flex_none().w(CHECKBOX_SIZE))
-                    .child(div().flex_none().w(ACTION_SLOT_WIDTH)),
+                    .children(
+                        self.has_eyes()
+                            .then(|| div().flex_none().w(ACTION_SLOT_WIDTH)),
+                    ),
             )
             // Delete is an icon button, as wide as the eye's slot.
             .child(div().flex_none().w(ACTION_SLOT_WIDTH))

@@ -107,7 +107,7 @@ fn directory(g: &Globals) -> Vec<(String, Vec<u8>)> {
 fn rename_to(cx: &mut TestAppContext, g: &Globals, to: &str) {
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
     })
     .unwrap();
     cx.simulate_keystrokes(g.win, &secondary("a"));
@@ -306,7 +306,7 @@ fn a_second_enter_during_a_rename_sends_nothing(cx: &mut TestAppContext) {
     let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
         w.press(&secondary("a"), cx);
         w.input("Delta", cx);
         w.press("enter", cx);
@@ -457,7 +457,7 @@ fn a_failed_guard_save_does_not_mark_the_name_field(cx: &mut TestAppContext) {
 fn rename_then_rename_beta(cx: &mut TestAppContext, g: &Globals, to: &str) {
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
         w.press(&secondary("a"), cx);
         w.input(to, cx);
         w.press("enter", cx);
@@ -470,7 +470,7 @@ fn rename_then_rename_beta(cx: &mut TestAppContext, g: &Globals, to: &str) {
     .unwrap();
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
     })
     .unwrap();
 }
@@ -520,7 +520,7 @@ fn a_rename_opened_on_the_new_name_before_the_outcome_stays_open(cx: &mut TestAp
             win.update(cx, |_, w, cx| {
                 w.render_frame(cx);
                 assert!(w.try_find(NAME).is_some(), "the outcome has not landed yet");
-                w.click("global-env-rename", cx);
+                global_rename_in(w, cx);
                 w.press("end", cx);
                 w.input("X", cx);
             })
@@ -544,7 +544,7 @@ fn a_late_refusal_leaves_a_reopened_field_with_the_same_text(cx: &mut TestAppCon
     let g = globals(cx, &["Alpha", "Beta"], "Alpha", "Alpha");
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
         w.press(&secondary("a"), cx);
         w.input(CORE_REFUSES, cx);
         w.press("enter", cx);
@@ -554,7 +554,7 @@ fn a_late_refusal_leaves_a_reopened_field_with_the_same_text(cx: &mut TestAppCon
         .unwrap();
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
         w.press(&secondary("a"), cx);
         w.input(CORE_REFUSES, cx);
     })
