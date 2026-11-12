@@ -3,7 +3,9 @@
 
 use crate::support;
 
-use apinata_app::palette::{GoToRequest, index_path, palette_items, request_entries};
+use apinata_app::palette::{
+    Availability, GoToRequest, index_path, palette_items, palette_items_for, request_entries,
+};
 use apinata_app::snapshot::Unsupported;
 use apinata_app::tab_area::ActivateNextTab;
 use gpui_kit::component::WindowExt as _;
@@ -209,12 +211,21 @@ fn the_command_palette_offers_go_to_request(cx: &mut TestAppContext) {
     let col = zoo();
     let s = started(cx, &col);
     search(cx, s.win, "go to request");
-    let ix = (palette_items().iter())
-        .position(|e| e.action.partial_eq(&GoToRequest))
-        .expect("listed");
+    // Rows are placed among the shown commands, and the test app has no update source, so
+    // Check for updates is hidden; key hints keep their place in the full list.
+    let shown = palette_items_for(Availability {
+        updates: false,
+        ..Availability::all()
+    });
+    let at = |items: &[_]| {
+        (items.iter())
+            .position(|e: &apinata_app::palette::PaletteEntry| e.action.partial_eq(&GoToRequest))
+            .expect("listed")
+    };
+    let (row, ix) = (at(&shown), at(&palette_items()));
     cx.update_window(s.win, |_, w, _| {
         let palette = w.within("command-palette");
-        assert!(palette.try_find(index_path(&palette_items(), ix)).is_some());
+        assert!(palette.try_find(index_path(&shown, row)).is_some());
         let hint = palette.find(("palette-kbd", ix));
         assert_eq!(hint.label(), Some(secondary("p").as_str()));
     })

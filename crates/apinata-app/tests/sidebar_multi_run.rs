@@ -219,6 +219,9 @@ fn open_palette_lists_run_selected(cx: &mut TestAppContext, s: &Started) -> bool
         beautify: false,
         beautify_query: false,
         undo_delete: false,
+        // Nothing was sent, so the response commands are hidden; nor is there an update source.
+        has_response: false,
+        updates: false,
         ..Availability::all()
     });
     let ix = items
