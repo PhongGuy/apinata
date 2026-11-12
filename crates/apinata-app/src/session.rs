@@ -14,9 +14,14 @@ pub const MIN_WIDTH: f32 = 320.0;
 /// The shortest saved window that is restored.
 pub const MIN_HEIGHT: f32 = 240.0;
 
-/// The smallest the main window can be made, the same as the smallest one restored.
+/// The narrowest the main window can be made: the request row's method and URL share a line.
+pub const WINDOW_MIN_WIDTH: f32 = 640.0;
+/// The shortest the main window can be made.
+pub const WINDOW_MIN_HEIGHT: f32 = 480.0;
+
+/// The smallest the main window can be made.
 pub fn min_window_size() -> Size<Pixels> {
-    size(px(MIN_WIDTH), px(MIN_HEIGHT))
+    size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))
 }
 
 /// What the app restores on the next start.
@@ -330,15 +335,19 @@ impl SavedBounds {
         }
     }
 
-    /// The bounds to restore, or `None` when they are smaller than the minimum or
-    /// intersect none of `displays` (a monitor that has since been disconnected).
+    /// The bounds to restore, grown to the window minimum, or `None` when they are smaller
+    /// than the restore minimum or intersect none of `displays` (a monitor that has since
+    /// been disconnected).
     pub fn to_window(&self, displays: &[Bounds<Pixels>]) -> Option<WindowBounds> {
         if self.width < MIN_WIDTH || self.height < MIN_HEIGHT {
             return None;
         }
         let b = Bounds::new(
             point(px(self.x), px(self.y)),
-            size(px(self.width), px(self.height)),
+            size(
+                px(self.width.max(WINDOW_MIN_WIDTH)),
+                px(self.height.max(WINDOW_MIN_HEIGHT)),
+            ),
         );
         if !displays.iter().any(|d| d.intersects(&b)) {
             return None;

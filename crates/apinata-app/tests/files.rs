@@ -183,6 +183,28 @@ fn saved_bounds_restore_on_a_visible_display() {
     }
 }
 
+// A saved window smaller than the window minimum, but large enough to restore, grows to it.
+#[test]
+fn a_small_saved_window_restores_at_the_window_minimum() {
+    use apinata_app::session::{WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH};
+    let screens = [b(0., 0., 1920., 1080.)];
+    let small = SavedBounds::from_window(WindowBounds::Windowed(b(100., 80., 400., 300.)));
+    assert_eq!(
+        small.to_window(&screens),
+        Some(WindowBounds::Windowed(b(
+            100.,
+            80.,
+            WINDOW_MIN_WIDTH,
+            WINDOW_MIN_HEIGHT
+        )))
+    );
+    let narrow = SavedBounds::from_window(WindowBounds::Windowed(b(100., 80., 500., 900.)));
+    assert_eq!(
+        narrow.to_window(&screens),
+        Some(WindowBounds::Windowed(b(100., 80., WINDOW_MIN_WIDTH, 900.)))
+    );
+}
+
 #[test]
 fn bounds_off_every_display_or_too_small_are_dropped() {
     let screens = [b(0., 0., 1920., 1080.)];

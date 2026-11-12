@@ -4,7 +4,7 @@
 use crate::support;
 
 use apinata_app::app::window_options;
-use apinata_app::session::{MIN_HEIGHT, MIN_WIDTH, Session};
+use apinata_app::session::{Session, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext, px, size};
 use support::*;
@@ -41,11 +41,11 @@ fn a_narrow_window_keeps_the_url_beside_the_method(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn the_main_window_has_the_session_minimum_size() {
+fn the_main_window_has_a_minimum_size() {
     let opts = window_options(&Session::default(), &[]);
     assert_eq!(
         opts.window_min_size,
-        Some(size(px(MIN_WIDTH), px(MIN_HEIGHT)))
+        Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT)))
     );
 }
 
@@ -54,7 +54,7 @@ fn the_request_bar_and_sections_fit_the_minimum_window(cx: &mut TestAppContext) 
     let col = two_requests();
     let s = started(cx, &col);
     open_tab(cx, &s.ws, &s.root, "a.yml");
-    resize(cx, &s, MIN_WIDTH, MIN_HEIGHT);
+    resize(cx, &s, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         let pane = w.find("request-column").bounds();
@@ -62,12 +62,8 @@ fn the_request_bar_and_sections_fit_the_minimum_window(cx: &mut TestAppContext) 
         let url = w.find("url").bounds();
         let send = w.find("send-slot").bounds();
         let tabs = w.find("section-strip").bounds();
-        // Too narrow for a usable URL beside the method boxes, it takes its own line.
-        assert!(
-            url.top() >= method.bottom(),
-            "method {method:?} url {url:?}"
-        );
-        assert!(url.size.width >= method.size.width, "url {url:?}");
+        assert_eq!(url.top(), method.top(), "method {method:?} url {url:?}");
+        assert!(url.left() > method.right(), "method {method:?} url {url:?}");
         for (name, b) in [
             ("method", method),
             ("url", url),
@@ -79,10 +75,6 @@ fn the_request_bar_and_sections_fit_the_minimum_window(cx: &mut TestAppContext) 
                 "{name} {b:?} pane {pane:?}"
             );
         }
-        assert!(
-            send.top() >= url.bottom(),
-            "send wraps below: {send:?} {url:?}"
-        );
     })
     .unwrap();
 }
