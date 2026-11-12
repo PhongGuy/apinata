@@ -1225,7 +1225,7 @@ fn the_list_shows_each_colour_and_keeps_the_names_in_line(cx: &mut TestAppContex
         };
         assert!(dotted(0), "dev is coloured");
         assert!(!dotted(1), "prod has no colour");
-        let mut left = |ix: usize| w.find(("env-item-name", ix)).bounds().left();
+        let left = |ix: usize| w.find(("env-item-name", ix)).bounds().left();
         assert_eq!(left(0), left(1));
     })
     .unwrap();
