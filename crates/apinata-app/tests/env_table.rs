@@ -755,6 +755,35 @@ fn env_columns_have_headings(cx: &mut TestAppContext) {
     .unwrap();
 }
 
+#[gpui_kit::test]
+fn the_enabled_column_has_a_heading_and_each_box_a_tooltip(cx: &mut TestAppContext) {
+    use apinata_app::env_table::{ENABLE_ROW, ENABLED_HEADING};
+    let (win, _host, _t) = host(cx, rows());
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(w.find("env-head-enabled").label(), Some(ENABLED_HEADING));
+        assert_eq!(w.find(("env-enabled", 0usize)).label(), Some(ENABLE_ROW));
+        let head = w.find("env-head-enabled").bounds();
+        let check = w.find(("env-enabled", 0usize)).bounds();
+        assert_eq!(head.center().x, check.center().x);
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_turned_off_row_is_dimmed(cx: &mut TestAppContext) {
+    let mut rows = rows();
+    rows[0].enabled = false;
+    let (win, _host, _t) = host(cx, rows);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let off = apinata_app::env_table::ROW_OFF;
+        assert_eq!(w.find(("env-row", 0usize)).label(), Some(off));
+        assert_eq!(w.find(("env-row", 1usize)).label(), None);
+    })
+    .unwrap();
+}
+
 #[test]
 fn table_cells_share_one_monospace_input() {
     for (file, src) in [

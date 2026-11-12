@@ -6,13 +6,14 @@
 
 use apinata_core::{EnvVariable, VarValue};
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     AnyElement, App, AppContext, Context, DragMoveEvent, Entity, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, ParentElement, Rems, Render, Styled, Subscription,
-    TestSupportExt, Window, div,
+    Focusable, InteractiveElement, IntoElement, ParentElement, Rems, Render,
+    StatefulInteractiveElement as _, Styled, Subscription, TestSupportExt, Window, div,
 };
 use std::cell::Cell;
 
@@ -37,6 +38,15 @@ pub const ENV_TABLE_CONTEXT: &str = "EnvTable";
 
 /// The column headings.
 pub const ENV_HEADINGS: [&str; 2] = ["Name", "Value"];
+
+/// The enabled column's heading: its tooltip and accessibility label.
+pub const ENABLED_HEADING: &str = "Checked variables are used";
+
+/// A row's enabled checkbox: its tooltip and accessibility label.
+pub const ENABLE_ROW: &str = "Use this variable";
+
+/// The accessibility label of a row that is turned off, which is drawn dimmed.
+pub const ROW_OFF: &str = "Not used";
 
 /// A masked secret row's value placeholder: the value is hidden, whether or not one is stored.
 pub const SECRET_HIDDEN: &str = "••••••••";
@@ -1083,6 +1093,8 @@ impl EnvVarTable {
         let slot =
             |real: &'static str, hidden: &'static str| (if blank { hidden } else { real }, ix);
         let name_locked = row.meta.secret && !row.meta.unsaved;
+        let off = !blank && !row.meta.enabled;
+        let muted = cx.theme().muted_foreground;
         // Each Tab stop reports its own bounds: the row is wider than a narrow area, and
         // following the row keeps only its left edge in view.
         let follow = &self.follow;
@@ -1090,10 +1102,11 @@ impl EnvVarTable {
         // Each input sits borderless in a shared-look cell whose edge shows on hover or focus;
         // the minimum sits on the cell, so the lock and eye never eat into it.
         let cell = |input: &Entity<InputState>,
-                    field,
+                    field: Input,
                     (edge, id): (&'static str, &'static str),
                     cx: &App| {
             let focused = input.focus_handle(cx).contains_focused(window, cx);
+            let field = field.when(off, |f| f.text_color(muted));
             let cell = kv_grid::kv_cell((edge, ix), field, input, focused, cx);
             div()
                 .flex_1()
@@ -1113,6 +1126,7 @@ impl EnvVarTable {
             .map(|(_, s)| s);
         let row = h_flex()
             .id(("env-row", ix))
+            .when(off, |r| r.aria_label(ROW_OFF))
             .test_support()
             .track_focus(&row.within)
             .relative()
@@ -1159,6 +1173,8 @@ impl EnvVarTable {
                     .when(blank, |d| d.invisible())
                     .child(
                         ui::checkbox(slot("env-enabled", "env-slot-enabled"), row.meta.enabled)
+                            .accessible_name(ENABLE_ROW)
+                            .tooltip(ENABLE_ROW)
                             .tab_stop(false)
                             .take_focus(!blank && self.take_control_focus(ix, Control::Check))
                             .on_click(cx.listener(move |t, on: &bool, window, cx| {
@@ -1355,7 +1371,19 @@ impl EnvVarTable {
             .rounded(RADIUS)
             .bg(fill)
             .child(div().flex_none().w(KV_GRIP_WIDTH))
-            .child(div().flex_none().w(CHECKBOX_SIZE))
+            // The checkbox column's heading is a tick that names the column on hover.
+            .child(
+                div()
+                    .id("env-head-enabled")
+                    .aria_label(ENABLED_HEADING)
+                    .test_support()
+                    .flex_none()
+                    .flex()
+                    .justify_center()
+                    .w(CHECKBOX_SIZE)
+                    .tooltip(|window, cx| Tooltip::new(ENABLED_HEADING).build(window, cx))
+                    .child(Icon::new(IconName::Check).small().text_color(muted)),
+            )
             .child(text(name).id("env-head-name").test_support())
             // The value heading spans the cell's lock and eye slots, so it shrinks no further
             // than the value cell and keeps over it down to the row's minimum.

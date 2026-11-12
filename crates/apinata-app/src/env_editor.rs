@@ -29,6 +29,7 @@ use crate::banner::{self, Banner, Choice};
 use crate::command::{Command, Edit, EnvOp, Field, Notice, NoticeKind, Target};
 use crate::edit_history::EditHistory;
 use crate::edit_track::{self, LoadStamps, same_value};
+use crate::env_color::{dot_or_space, env_fill};
 use crate::env_table::{
     DUPLICATE_SECRET_NAMES, EnvTableEvent, EnvVarTable, SecretRecord, env_rows, env_vars_from,
     secret_records, secrets_collide,
@@ -129,6 +130,9 @@ enum Sent {
 pub const ENV_SWATCHES: [&str; 6] = [
     "#CE4F3B", "#2E8A54", "#346AB2", "#C77A0F", "#B83D7F", "#8D44B2",
 ];
+
+/// The presets' names, in `ENV_SWATCHES` order: each swatch's tooltip and accessibility label.
+pub const ENV_SWATCH_NAMES: [&str; 6] = ["Red", "Green", "Blue", "Orange", "Pink", "Purple"];
 
 // Which name the name input is collecting.
 #[derive(Clone, Copy, PartialEq)]
@@ -1806,10 +1810,11 @@ impl EnvEditor {
         let custom = color
             .clone()
             .filter(|c| !ENV_SWATCHES.iter().any(|p| p.eq_ignore_ascii_case(c)));
-        let none = swatch("env-swatch-none", "None", None, chosen(None), cx)
+        let none = swatch("env-swatch-none", "No color", None, chosen(None), cx)
             .on_click(cx.listener(|e, _, window, cx| e.pick(None, window, cx)));
-        let presets = ENV_SWATCHES.iter().enumerate().map(|(ix, hex)| {
-            swatch(("env-swatch", ix), hex, Some(hex), chosen(Some(hex)), cx)
+        let presets = ENV_SWATCHES.iter().zip(ENV_SWATCH_NAMES).enumerate();
+        let presets = presets.map(|(ix, (hex, name))| {
+            swatch(("env-swatch", ix), name, Some(hex), chosen(Some(hex)), cx)
                 .on_click(cx.listener(move |e, _, window, cx| e.pick(Some(hex), window, cx)))
         });
         let presets: Vec<_> = presets.collect();
@@ -1965,11 +1970,11 @@ fn env_menu(menu: PopupMenu, editor: Entity<EnvEditor>, locked: bool) -> PopupMe
     .on_click(move |_, window, cx| editor.update(cx, |e, cx| e.delete(window, cx)));
     menu.item(rename)
         .item(
-            PopupMenuItem::new("Export")
+            PopupMenuItem::new("Export to Postman…")
                 .on_click(move |_, window, cx| export.update(cx, |e, cx| e.export(window, cx))),
         )
         .item(
-            PopupMenuItem::new("Export all environments…").on_click(move |_, window, cx| {
+            PopupMenuItem::new("Export all to Postman…").on_click(move |_, window, cx| {
                 export_all.update(cx, |e, cx| e.export_all(window, cx))
             }),
         )
@@ -2014,8 +2019,16 @@ impl Render for EnvEditor {
         let mark_color = self.mark_color(window, cx);
         let mut naming = self.naming_field(window, cx);
         let renaming = self.naming == Some(Naming::Rename);
+        // Each name is led by its colour's dot; once any has one, the rest keep its space.
+        let fills: Vec<_> = {
+            let workspace = self.workspace.read(cx);
+            (names.iter())
+                .map(|n| env_fill(workspace.environment_color(&self.root, n, cx).as_deref()))
+                .collect()
+        };
+        let dotted = fills.iter().any(Option::is_some);
         let mut items = Vec::with_capacity(names.len() + 1);
-        for (ix, name) in names.iter().enumerate() {
+        for (ix, (name, fill)) in names.iter().zip(fills).enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
             // Rename edits the name in its row's place, as the sidebar's rename does.
             if chosen
@@ -2059,12 +2072,20 @@ impl Render for EnvEditor {
                 .when(focused, |row| row.focus_ring_style(window, cx))
                 .child(mark)
                 .child(
-                    div()
+                    h_flex()
                         .flex_1()
                         .min_w_0()
                         .pl(style::SPACE_2)
-                        .truncate()
-                        .child(name.clone()),
+                        .gap(style::SPACE_1)
+                        .when(dotted, |row| row.child(dot_or_space("env-item-dot", fill)))
+                        .child(
+                            div()
+                                .id(("env-item-name", ix))
+                                .test_support()
+                                .min_w_0()
+                                .truncate()
+                                .child(name.clone()),
+                        ),
                 )
                 .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)));
             items.push(

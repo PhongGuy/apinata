@@ -238,6 +238,12 @@ fn the_global_environments_dialog_exports_every_global(cx: &mut TestAppContext) 
     })
     .unwrap();
     frame(cx, s.win);
+    let label = cx
+        .update_window(s.win, |_, w, _| {
+            w.find("global-env-export").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(label.as_deref(), Some("Export all to Postman…"));
     cx.update_window(s.win, |_, w, cx| w.click("global-env-export", cx))
         .unwrap();
     cx.run_until_parked();
