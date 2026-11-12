@@ -88,7 +88,7 @@ fn note(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
 }
 
 #[gpui_kit::test]
-fn websocket_and_grpc_rows_show_their_kind_tag(cx: &mut TestAppContext) {
+fn every_row_shows_its_method_or_kind_tag(cx: &mut TestAppContext) {
     let col = zoo();
     let s = started(cx, &col);
     let mut tag_of = |query: &str, path: &str| {
@@ -100,7 +100,11 @@ fn websocket_and_grpc_rows_show_their_kind_tag(cx: &mut TestAppContext) {
     };
     assert_eq!(tag_of("Socket", "ws.yml").as_deref(), Some("WS"));
     assert_eq!(tag_of("Greeter", "rpc.yml").as_deref(), Some("gRPC"));
-    assert_eq!(tag_of("lion", "lion.yml"), None, "an http row has no tag");
+    assert_eq!(
+        tag_of("lion", "lion.yml").as_deref(),
+        Some("GET"),
+        "an http row shows its method as the sidebar does"
+    );
 }
 
 #[gpui_kit::test]

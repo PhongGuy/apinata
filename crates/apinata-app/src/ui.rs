@@ -1048,6 +1048,17 @@ impl MethodTag {
     }
 }
 
+/// The tag a request row shows: the kind of one the app cannot send yet, else its method.
+pub fn request_tag(
+    method: Option<&str>,
+    unsupported: Option<crate::snapshot::Unsupported>,
+) -> Option<MethodTag> {
+    if let Some(kind) = unsupported {
+        return Some(method_tag("").with_label(kind.tag()));
+    }
+    method.map(method_tag)
+}
+
 /// A method tag for `method`, abbreviated by [`short_method`].
 pub fn method_tag(method: &str) -> MethodTag {
     MethodTag {
@@ -1464,7 +1475,8 @@ pub fn strip_overflow(
             .icon(IconName::ChevronDown)
             .accessibility_label("All tabs")
             .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
-                menu = menu.scrollable(true);
+                let height = window.window_bounds().get_bounds().size.height;
+                menu = menu.scrollable(menu_may_overflow(labels.len(), height, window.rem_size()));
                 start_on(&menu, selected, window, cx);
                 for (ix, label) in labels.iter().enumerate() {
                     let on_pick = Rc::clone(&on_pick);
@@ -1477,6 +1489,15 @@ pub fn strip_overflow(
                 menu
             }),
     )
+}
+
+/// Whether a dropdown of `rows` entries may outgrow the kit's menu height in a window
+/// `window_height` tall at `rem`, so it must scroll.
+pub fn menu_may_overflow(rows: usize, window_height: Pixels, rem: Pixels) -> bool {
+    // The kit caps a scrolling menu at half the window or 28.125 rem; a row is reckoned a
+    // little taller than the kit draws it, so a list near the cap scrolls rather than clips.
+    let cap = (window_height * 0.5).min(rem * 28.125) - rem * 0.5;
+    rem * 2.25 * rows as f32 > cap
 }
 
 /// A tab strip's overflow `chevron`, boxed with the ring's room on both sides: the strip ends
@@ -3637,6 +3658,7 @@ pub(crate) fn redraw_on_settings<V: 'static>(
 #[derive(Debug, Clone)]
 pub struct IdItem {
     id: SharedString,
+    title_id: SharedString,
     label: SharedString,
     tint: Option<StatusClass>,
 }
@@ -3649,6 +3671,7 @@ impl IdItem {
     pub fn new(select: &str, key: &str, label: impl Into<SharedString>) -> Self {
         IdItem {
             id: format!("{select}-option-{key}").into(),
+            title_id: format!("{select}-title").into(),
             label: label.into(),
             tint: None,
         }
@@ -3698,5 +3721,36 @@ impl gpui_kit::component::select::SelectItem for IdItem {
             .test_support()
             .when_some(self.color(cx), |d, color| d.text_color(color))
             .child(self.label.clone())
+    }
+
+    // A tinted row keeps its tint once chosen, so the closed select reads as its open rows do.
+    fn display_title(&self) -> Option<AnyElement> {
+        let class = self.tint?;
+        Some(
+            TintedTitle {
+                id: self.title_id.clone(),
+                label: self.label.clone(),
+                class,
+            }
+            .into_any_element(),
+        )
+    }
+}
+
+// A closed select's title in its row's tint, found by `{select}-title`.
+#[derive(IntoElement)]
+struct TintedTitle {
+    id: SharedString,
+    label: SharedString,
+    class: StatusClass,
+}
+
+impl RenderOnce for TintedTitle {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        div()
+            .id(self.id)
+            .test_support()
+            .text_color(self.class.color(cx))
+            .child(self.label)
     }
 }

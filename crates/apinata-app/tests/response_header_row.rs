@@ -513,3 +513,18 @@ fn the_icon_dropdowns_show_their_names_on_hover(cx: &mut TestAppContext) {
         assert_eq!(label(cx, s.win, tip), Some(name.to_owned()), "{id}");
     }
 }
+
+// History and More actions sit side by side in a compact pane; a chevron on both read as two
+// copies of one control, so More actions shows the overflow ellipsis instead.
+#[gpui_kit::test]
+fn more_actions_is_not_a_second_chevron_beside_history(cx: &mut TestAppContext) {
+    let (s, _server) = redirected(cx, 1280.);
+    resize(cx, &s, 880.);
+    let shown = recorded(cx, s.win);
+    let glyph = |id: &str| shown.iter().find(|(i, _)| *i == id).map(|(_, g)| g.clone());
+    assert_eq!(
+        glyph("response-more"),
+        Some(gpui_kit::assets::IconName::Ellipsis.path())
+    );
+    assert!(glyph("response-history").is_some(), "{shown:?}");
+}

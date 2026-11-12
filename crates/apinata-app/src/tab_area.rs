@@ -2400,6 +2400,7 @@ impl TabArea {
                 menu = ui::MenuLine::new("Discard changes")
                     .action(Box::new(DiscardChanges))
                     .disabled(!discardable)
+                    .danger(true)
                     .group_break(true)
                     .add_to(
                         menu,
@@ -2580,7 +2581,12 @@ impl TabArea {
                 .tooltip("All tabs")
                 .accessibility_label("All tabs")
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
-                    menu = menu.scrollable(true);
+                    // A scrolling menu draws its scrollbar, so only a list that may not fit scrolls.
+                    menu = menu.scrollable(ui::menu_may_overflow(
+                        labels.len(),
+                        window.window_bounds().get_bounds().size.height,
+                        window.rem_size(),
+                    ));
                     crate::ui::start_on(&menu, selected, window, cx);
                     let rows = labels.iter().zip(&details).zip(&dirty).enumerate();
                     for (ix, ((label, detail), &dirty)) in rows {
