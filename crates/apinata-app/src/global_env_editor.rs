@@ -1312,12 +1312,13 @@ impl Render for GlobalEnvEditor {
                 },
             )),
         ));
-        let editor = cx.entity().downgrade();
-        let pick = move |c: Option<&'static str>, window: &mut Window, cx: &mut App| {
-            editor.update(cx, |e, cx| e.pick(c, window, cx)).ok();
-        };
-        let swatches = env_editor::swatch_row(self.color(cx).as_deref(), &self.follow, pick, cx);
         let body = if selected {
+            let editor = cx.entity().downgrade();
+            let pick = move |c: Option<&'static str>, window: &mut Window, cx: &mut App| {
+                editor.update(cx, |e, cx| e.pick(c, window, cx)).ok();
+            };
+            let color = self.color(cx);
+            let swatches = env_editor::swatch_row(color.as_deref(), &self.follow, pick, cx);
             v_flex()
                 .flex_1()
                 .min_w(style::ENV_PANE_MIN)
