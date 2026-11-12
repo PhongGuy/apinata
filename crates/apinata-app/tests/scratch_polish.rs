@@ -116,7 +116,7 @@ fn pasting_curl_into_a_draft_clears_the_previous_response(cx: &mut TestAppContex
 
 #[test]
 fn the_scratch_menu_greys_out_collection_only_entries() {
-    let off = app_menu_disabled(true, false);
+    let off = app_menu_disabled(true, false, true);
     for want in [
         "Export collection to Postman (translate scripts)",
         "Export collection to Postman (copy scripts unchanged)",
@@ -129,13 +129,13 @@ fn the_scratch_menu_greys_out_collection_only_entries() {
         assert!(off.contains(&want), "{want} is disabled: {off:?}");
     }
     assert!(!off.contains(&"Open collection"));
-    assert!(app_menu_disabled(false, true).is_empty());
+    assert!(app_menu_disabled(false, true, true).is_empty());
 }
 
 #[test]
 fn outside_a_repository_the_menu_greys_out_the_repository_entries() {
     assert_eq!(
-        app_menu_disabled(false, false),
+        app_menu_disabled(false, false, true),
         ["Switch branch…", "Show changes…"]
     );
 }
