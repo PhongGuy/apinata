@@ -371,7 +371,9 @@ impl CloneView {
         }
         window.close_dialog(cx);
         match clone_form::classify(&root) {
-            Opened::Collection(root) => self.workspace.update(cx, |w, cx| w.open_path(root, cx)),
+            Opened::Collection(root) => {
+                self.workspace.update(cx, |w, cx| w.open_revealed(root, cx))
+            }
             Opened::NoCollection(root) => {
                 window.push_notification(ui::info_toast(clone_form::no_collection_text(&root)), cx)
             }

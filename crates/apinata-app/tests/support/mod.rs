@@ -162,6 +162,21 @@ pub fn workspace(
     cx.new(|cx| apinata_app::workspace::Workspace::new(store, session, cx))
 }
 
+/// A collection of `n` requests, enough of them to overflow the sidebar.
+pub fn long_collection(n: usize) -> TempDir {
+    let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
+    for i in 0..n {
+        files.push((
+            format!("r{i:02}.yml"),
+            request(&format!("r{i:02}"), "http://x/0"),
+        ));
+    }
+    let refs: Vec<(&str, &str)> = (files.iter())
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    write_tree(&refs)
+}
+
 pub fn collection() -> TempDir {
     write_tree(&[
         ("opencollection.yml", ROOT),
@@ -1126,6 +1141,24 @@ pub fn started_on(
     prepare: impl FnOnce(&apinata_app::persist::Paths),
     store: std::sync::Arc<dyn apinata_core::SecretStore>,
 ) -> Started {
+    start_session(cx, &[col.path()], prepare, store)
+}
+
+/// `started`, with the saved session holding every one of `roots` open, in order.
+pub fn started_with_session(
+    cx: &mut gpui_kit::TestAppContext,
+    roots: &[&std::path::Path],
+) -> Started {
+    let store = std::sync::Arc::new(apinata_core::MemoryStore::new());
+    start_session(cx, roots, |_| {}, store)
+}
+
+fn start_session(
+    cx: &mut gpui_kit::TestAppContext,
+    roots: &[&std::path::Path],
+    prepare: impl FnOnce(&apinata_app::persist::Paths),
+    store: std::sync::Arc<dyn apinata_core::SecretStore>,
+) -> Started {
     use gpui_kit::AppContext;
     use gpui_kit::test::TestWindowExt as _;
     init(cx);
@@ -1134,7 +1167,7 @@ pub fn started_on(
     apinata_app::persist::save_json(&paths.settings, &test_settings()).unwrap();
     prepare(&paths);
     let session = apinata_app::session::Session {
-        open: vec![col.path().to_path_buf()],
+        open: roots.iter().map(|r| r.to_path_buf()).collect(),
         ..Default::default()
     };
     apinata_app::persist::save_json(&paths.session, &session).unwrap();
@@ -1147,7 +1180,7 @@ pub fn started_on(
     let ws = shell.read_with(cx, |s, _| s.workspace().clone());
     Started {
         files,
-        root: col.path().to_path_buf(),
+        root: roots[0].to_path_buf(),
         win,
         shell,
         ws,
