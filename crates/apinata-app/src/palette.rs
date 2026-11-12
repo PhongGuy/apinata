@@ -70,6 +70,8 @@ pub struct RequestEntry {
     pub folders: Vec<String>,
     /// The kind of a request the app lists but cannot send yet; `None` for one it can.
     pub unsupported: Option<Unsupported>,
+    /// The request's HTTP method as written in its file; `None` for a kind it cannot send.
+    pub method: Option<String>,
 }
 
 impl RequestEntry {
@@ -127,6 +129,7 @@ pub fn request_entries(ws: &Workspace, cx: &App) -> Vec<RequestEntry> {
                     .map(str::to_owned)
                     .collect(),
                 unsupported: row.unsupported,
+                method: (snapshot.content.requests.get(&row.path)).map(|r| r.method.clone()),
             });
         }
     }
@@ -893,11 +896,11 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
 
 // A request row shows its name, with its collection and folders muted on the right where a
 // command row shows its key. A collection whose name another open one shares is followed by
-// its folder hint, as its tab and breadcrumb show it. A request the app cannot send yet is
-// followed by its sidebar row's kind tag, muted, so every name starts in one column.
+// its folder hint, as its tab and breadcrumb show it. Each name follows its sidebar row's
+// method or kind tag in a fixed column, so every name starts in one column.
 fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
     let label = entry.label.clone();
-    let unsupported = entry.unsupported;
+    let (method, unsupported) = (entry.method.clone(), entry.unsupported);
     let collection = entry.collection.clone();
     let hint = entry.hint.clone();
     let folders: String = entry.folders.iter().map(|f| format!(" / {f}")).collect();
@@ -911,23 +914,22 @@ fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
             .child(
                 h_flex()
                     .gap(style::SPACE_1)
+                    .children(
+                        crate::ui::request_tag(method.as_deref(), unsupported).map(|tag| {
+                            div()
+                                .id(("palette-request-kind", r))
+                                .test_support()
+                                .flex_none()
+                                .aria_label(tag.label().clone())
+                                .child(tag)
+                        }),
+                    )
                     .child(
                         div()
                             .id(("palette-request-name", r))
                             .test_support()
                             .child(label.clone()),
-                    )
-                    .children(unsupported.map(|kind| {
-                        div()
-                            .id(("palette-request-kind", r))
-                            .test_support()
-                            .flex_none()
-                            .aria_label(kind.tag())
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_size(style::TEXT_SMALL)
-                            .text_color(muted)
-                            .child(kind.tag())
-                    })),
+                    ),
             )
             .child(
                 h_flex()

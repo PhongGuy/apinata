@@ -36,8 +36,11 @@ pub(crate) const ACTION_SLOT_WIDTH: Rems = style::ui(26.);
 /// The key context around an environment table's rows, where the row-move keys bind.
 pub const ENV_TABLE_CONTEXT: &str = "EnvTable";
 
-/// The column headings.
-pub const ENV_HEADINGS: [&str; 2] = ["Name", "Value"];
+/// The column headings, the pair every variables table shares.
+pub const ENV_HEADINGS: [&str; 2] = [
+    crate::kv_table::VAR_HEADINGS.0,
+    crate::kv_table::VAR_HEADINGS.1,
+];
 
 /// The enabled column's heading: its tooltip and accessibility label.
 pub const ENABLED_HEADING: &str = "Checked variables are used";

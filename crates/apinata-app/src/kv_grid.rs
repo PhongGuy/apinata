@@ -15,7 +15,7 @@ use gpui_kit::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, ElementId, Entity, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Rems, Render, RenderOnce,
     SharedString, Stateful, StatefulInteractiveElement as _, Styled, TestSupportExt as _, Window,
-    canvas, div, transparent_black,
+    canvas, div, relative, transparent_black,
 };
 
 use crate::scroll_follow::{FocusFollow, Followed};
@@ -41,6 +41,8 @@ pub enum KvWidth {
     Flex,
     /// Exactly this wide.
     Fixed(Rems),
+    /// This part of the row's width, but never wider than the cap.
+    Share(f32, Rems),
 }
 
 /// One column of a key-value grid: its heading id and text, the id its cells carry, its width.
@@ -88,6 +90,21 @@ impl KvColumn {
         }
     }
 
+    /// A column taking `part` of the row's width up to `cap`, so it gives way before the
+    /// flexible columns in a narrow table.
+    pub fn share(
+        head_id: impl Into<ElementId>,
+        cell_id: &'static str,
+        heading: impl Into<SharedString>,
+        part: f32,
+        cap: Rems,
+    ) -> KvColumn {
+        KvColumn {
+            width: KvWidth::Share(part, cap),
+            ..KvColumn::flex(head_id, cell_id, heading)
+        }
+    }
+
     /// A column of a read-only view whose text stays on one line and, when cut, shows whole
     /// in a tooltip (`kv-cut-tooltip`) on hover.
     pub fn tip_when_cut(mut self) -> Self {
@@ -95,11 +112,13 @@ impl KvColumn {
         self
     }
 
-    /// `el` sized to the column: `flex_1().min_w_0()`, or the fixed width and `flex_none()`.
+    /// `el` sized to the column: `flex_1().min_w_0()`, or the fixed or shared width and
+    /// `flex_none()`.
     pub fn size<E: Styled>(&self, el: E) -> E {
         match self.width {
             KvWidth::Flex => el.flex_1().min_w_0(),
             KvWidth::Fixed(w) => el.w(w).flex_none(),
+            KvWidth::Share(part, cap) => el.w(relative(part)).max_w(cap).flex_none(),
         }
     }
 }
@@ -591,9 +610,9 @@ impl RenderOnce for KvView {
                 .zip(cells)
                 .enumerate()
                 .map(|(c, (col, cell))| {
-                    // A fixed column knows its width now. A flexible one is laid out after
-                    // render, so its tooltip decides in every frame it shows, from the width
-                    // that frame recorded.
+                    // A fixed column knows its width now. A flexible or shared one is laid out
+                    // after render, so its tooltip decides in every frame it shows, from the
+                    // width that frame recorded.
                     let tip = match (&cell, col.width) {
                         (KvCell::Text(text) | KvCell::Muted(text), width) if col.tip_when_cut => {
                             match width {
@@ -601,13 +620,16 @@ impl RenderOnce for KvView {
                                     cut_text(text, &mono, room.to_pixels(rem), window)
                                         .then(|| (text.clone(), None))
                                 }
-                                KvWidth::Flex => Some((text.clone(), Some(widths.clone()))),
+                                KvWidth::Flex | KvWidth::Share(..) => {
+                                    Some((text.clone(), Some(widths.clone())))
+                                }
                             }
                         }
                         _ => None,
                     };
                     let mono_tip = mono.clone();
-                    let measure = (col.tip_when_cut && col.width == KvWidth::Flex).then(|| {
+                    let laid_out = !matches!(col.width, KvWidth::Fixed(_));
+                    let measure = (col.tip_when_cut && laid_out).then(|| {
                         let widths = widths.clone();
                         canvas(
                             move |bounds, _, cx| {

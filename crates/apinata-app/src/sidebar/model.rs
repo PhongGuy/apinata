@@ -94,11 +94,7 @@ pub struct Node {
 impl Node {
     /// The method tag a request row shows: the row's short label, coloured by the full method.
     pub fn method_tag(&self) -> Option<crate::ui::MethodTag> {
-        if let Some(kind) = self.unsupported {
-            return Some(crate::ui::method_tag("").with_label(kind.tag()));
-        }
-        let m = self.method.as_deref()?;
-        Some(crate::ui::method_tag(m))
+        crate::ui::request_tag(self.method.as_deref(), self.unsupported)
     }
 }
 

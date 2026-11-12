@@ -91,8 +91,8 @@ const HTTP_VERSION_HINT: &str = "HTTP/1.1 is the default. Auto uses HTTP/2 when 
     server does not speak it.";
 const PROXY_PROTOCOLS: [&str; 4] = ["http", "https", "socks4", "socks5"];
 const ORIENTATIONS: [(Orientation, &str); 2] = [
-    (Orientation::Vertical, "Vertical"),
-    (Orientation::Horizontal, "Horizontal"),
+    (Orientation::Vertical, "Stacked"),
+    (Orientation::Horizontal, "Side by side"),
 ];
 
 // The proxy inputs; the password one starts blank since the store is never read here.

@@ -110,3 +110,21 @@ fn the_tab_menu_discard_is_disabled_for_a_draft(cx: &mut TestAppContext) {
     assert!(!confirm_open(cx));
     assert_eq!(url(&ws_snap(cx, &s.ws, &s.root), &draft), "http://changed");
 }
+
+// Discard changes throws edits away, so the tab menu draws it in the destructive colour as
+// it does Delete; the drawn entry registers its label, the kit's plain entry does not.
+#[gpui_kit::test]
+fn the_tab_menu_draws_discard_changes_as_destructive(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    s.ws.update(cx, |w, cx| {
+        w.send(&s.root, edit_url("a.yml", "http://changed"), cx)
+    });
+    cx.run_until_parked();
+    cx.update_window(s.win, |_, w, cx| w.right_click(("tab", 0usize), cx))
+        .unwrap();
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "Discard changes"));
+}

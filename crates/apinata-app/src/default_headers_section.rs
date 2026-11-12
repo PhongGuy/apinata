@@ -9,8 +9,10 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, EventEmitter, SharedString, Styled, TestSupportExt, Window, div};
 
 use crate::command::Edit;
+use crate::kv_grid;
+use crate::kv_table::KvColumns;
 use crate::section::SectionEdit;
-use crate::style::{HEADER_NAME_WIDTH, SPACE_1, SPACE_2, TEXT_SMALL};
+use crate::style::{KV_ACTION_WIDTH, KV_GRIP_WIDTH, SPACE_1, SPACE_2, TEXT_SMALL};
 use crate::ui;
 
 /// Read-only rows for the default headers, over the headers the user set themselves.
@@ -86,6 +88,7 @@ pub fn header_cell<E: Styled>(el: E, cx: &App) -> E {
 impl Render for DefaultHeadersSection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
+        let columns = KvColumns::DESCRIBED.describe(("", ""));
         let rows = default_headers().into_iter().map(|header| {
             let slug = slug(&header.name);
             let overridden = self.own.contains(&slug);
@@ -104,30 +107,40 @@ impl Render for DefaultHeadersSection {
             .disabled(overridden)
             .accessible_name(format!("Send {}", header.name))
             .on_click(cx.listener(move |t, on: &bool, _, cx| t.set_sent(&name, *on, cx)));
+            // The headers table's slots and columns, so name and value sit under its headings.
+            let [name_col, value_col, note_col] = &columns[..] else {
+                unreachable!("a described table has three columns")
+            };
             h_flex()
                 .id(SharedString::from(format!("default-header-{slug}")))
                 .test_support()
                 .gap(SPACE_2)
                 .items_center()
-                .child(toggle)
+                .child(div().flex_none().w(KV_GRIP_WIDTH))
+                .child(kv_grid::check_slot(toggle))
                 .child(
-                    header_cell(div(), cx)
-                        .w(HEADER_NAME_WIDTH)
-                        .text_color(if sent { cx.theme().foreground } else { muted })
-                        .child(header.name.clone()),
+                    name_col.size(
+                        header_cell(div(), cx)
+                            .id(SharedString::from(format!("default-header-{slug}-name")))
+                            .test_support()
+                            .truncate()
+                            .text_color(if sent { cx.theme().foreground } else { muted })
+                            .child(header.name.clone()),
+                    ),
                 )
                 .child(
-                    header_cell(div(), cx)
-                        .id(SharedString::from(format!("default-header-{slug}-value")))
-                        .test_support()
-                        .aria_label(shown.clone())
-                        .min_w_0()
-                        .truncate()
-                        .text_color(muted)
-                        .child(shown),
+                    value_col.size(
+                        header_cell(div(), cx)
+                            .id(SharedString::from(format!("default-header-{slug}-value")))
+                            .test_support()
+                            .aria_label(shown.clone())
+                            .truncate()
+                            .text_color(muted)
+                            .child(shown),
+                    ),
                 )
-                .when(overridden, |r| {
-                    r.child(
+                .child(note_col.size(div()).when(overridden, |d| {
+                    d.child(
                         div()
                             .id(SharedString::from(format!(
                                 "default-header-{slug}-overridden"
@@ -137,7 +150,8 @@ impl Render for DefaultHeadersSection {
                             .text_color(muted)
                             .child("set above"),
                     )
-                })
+                }))
+                .child(div().flex_none().w(KV_ACTION_WIDTH))
         });
         v_flex()
             .id("default-headers")

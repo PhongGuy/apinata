@@ -2350,12 +2350,13 @@ impl Shell {
                         })),
                 )
         });
-        let layout_icon = match cx
+        // The button names the layout a click switches to.
+        let (layout_icon, layout_tip) = match cx
             .try_global::<AppState>()
             .map(|s| s.settings.read(cx).get().response_orientation)
         {
-            Some(Orientation::Horizontal) => IconName::Columns2,
-            _ => IconName::Rows2,
+            Some(Orientation::Horizontal) => (IconName::Columns2, "Switch to stacked layout"),
+            _ => (IconName::Rows2, "Switch to side by side layout"),
         };
         // The observed wrapper carries the id and the height; the kit bar fills it without
         // vertical padding so the extra-small buttons fit inside the border.
@@ -2394,7 +2395,7 @@ impl Shell {
                         icon_button(
                             "toggle-layout",
                             layout_icon,
-                            "Toggle layout",
+                            layout_tip,
                             Some(&ToggleOrientation),
                         )
                         .xsmall(),
@@ -3492,20 +3493,28 @@ async fn place_bundles(
 
 /// Reads and parses every collection `file` holds, each named after the file's stem where the
 /// format takes a name. Answers the failure as alert text when the file cannot be read or parsed.
-pub fn parse_bundles(file: &Path) -> Result<Vec<ImportBundle>, String> {
+pub fn parse_bundles(file: &Path, formats_shown: bool) -> Result<Vec<ImportBundle>, String> {
     let input =
         std::fs::read(file).map_err(|e| crate::import_report::failure_at(file, &e.to_string()))?;
-    parse_bundles_from(file, &input)
+    parse_bundles_from(file, &input, formats_shown)
 }
 
-/// `parse_bundles` over bytes already read from `file`, which only names the collection.
-pub fn parse_bundles_from(file: &Path, input: &[u8]) -> Result<Vec<ImportBundle>, String> {
+/// `parse_bundles` over bytes already read from `file`, which only names the collection. With
+/// `formats_shown`, the caller already lists the formats, so an unknown input is named alone.
+pub fn parse_bundles_from(
+    file: &Path,
+    input: &[u8],
+    formats_shown: bool,
+) -> Result<Vec<ImportBundle>, String> {
     let mut options = CollectionOptions::default();
     options.name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
     parse_collections(None, input, &options).map_err(|e| match e {
         // An environment file is a near miss: point at the action that takes it.
         FormatError::Unrecognized { .. } if EnvironmentFormat::detect(input).is_some() => {
             ENVIRONMENT_FILE.to_owned()
+        }
+        FormatError::Unrecognized { kind, .. } if formats_shown => {
+            format!("Not a recognized {kind} format.")
         }
         e => crate::ui::plain_quotes(&e.to_string()),
     })
