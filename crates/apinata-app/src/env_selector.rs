@@ -19,8 +19,9 @@ use gpui_kit::{
 };
 
 use crate::command::Command;
+use crate::env_color::{dotted, picker_row};
 use crate::shell::NO_COLLECTION_ENV_TIP;
-use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, SPACE_1, resolve};
+use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, resolve};
 use crate::tabs::TabKind;
 use crate::ui::ring_overlay;
 use crate::workspace::Workspace;
@@ -76,29 +77,12 @@ impl SelectItem for EnvItem {
     }
 
     fn render(&self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        // Once any row has a dot, the others keep its space, so every name starts in line.
-        let dot = (self.1.is_some() || self.2)
-            .then(|| crate::env_color::dot_or_space("env-row-dot", self.1));
-        div().id(option_id(&self.0)).test_support().child(
-            h_flex().min_w_0().gap(SPACE_1).children(dot).child(
-                div()
-                    .id("env-row-name")
-                    .test_support()
-                    .min_w_0()
-                    .truncate()
-                    .child(self.0.clone()),
-            ),
-        )
+        let ids = ("env-row-dot", "env-row-name");
+        div()
+            .id(option_id(&self.0))
+            .test_support()
+            .child(picker_row(ids, self.1, self.2, self.0.clone()))
     }
-}
-
-// The name led by a dot of `fill`, kept on one line so a long name still ellipsizes.
-fn dotted(dot_id: &'static str, fill: Hsla, name: SharedString) -> impl IntoElement {
-    h_flex()
-        .min_w_0()
-        .gap(SPACE_1)
-        .child(crate::env_color::dot(dot_id, fill))
-        .child(div().min_w_0().truncate().child(name))
 }
 
 /// A select over the current collection's environments that picks its selected one.

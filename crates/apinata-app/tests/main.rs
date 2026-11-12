@@ -454,6 +454,7 @@ mod runner_model;
 mod runner_rerun_failed;
 mod runner_retry;
 mod runner_saved_options;
+mod runner_script_trust;
 mod runner_scrollbar;
 mod runner_selection;
 mod runner_stream;
