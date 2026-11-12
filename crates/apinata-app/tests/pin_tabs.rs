@@ -99,21 +99,11 @@ fn the_context_menu_offers_pin_tab_and_then_unpin_tab(cx: &mut TestAppContext) {
         cx.update_window(s.win, |_, w, cx| w.right_click(("tab", tab), cx))
             .unwrap();
         frame(cx, s.win);
-        let mut last = None;
-        for ix in 0..8usize {
-            let label = cx
-                .update_window(s.win, |_, w, _| {
-                    w.within("popup-menu")
-                        .try_find(ix)
-                        .and_then(|n| n.label().map(str::to_owned))
-                })
-                .unwrap();
-            match label {
-                Some(l) => last = Some((ix, l)),
-                None => break,
-            }
-        }
-        last.unwrap()
+        cx.update_window(s.win, |_, w, _| {
+            let labels = menu_labels(w);
+            (labels.len() - 1, labels.last().cloned().flatten().unwrap())
+        })
+        .unwrap()
     };
     let (ix, label) = label_at_end(cx, 1);
     assert_eq!(label, "Pin tab");

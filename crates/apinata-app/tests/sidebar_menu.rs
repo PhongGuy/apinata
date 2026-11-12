@@ -18,15 +18,15 @@ fn choose(
     kind: NodeKind,
     entry: MenuEntry,
 ) {
-    let ix = menu_entries(kind)
-        .iter()
-        .position(|e| *e == entry)
-        .expect("entry offered");
+    assert!(menu_entries(kind).contains(&entry), "entry offered");
     cx.update_window(h.win, |_, w, cx| w.right_click(row(path), cx))
         .unwrap();
     frame(cx, h.win);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(h.win, |_, w, cx| {
+        let ix = menu_index(w, entry.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     cx.run_until_parked();
 }
 

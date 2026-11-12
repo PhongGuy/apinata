@@ -212,12 +212,15 @@ fn toasts(cx: &mut TestAppContext, h: &SidebarHarness) -> usize {
 }
 
 fn choose(cx: &mut TestAppContext, h: &SidebarHarness, path: &str, kind: NodeKind, e: MenuEntry) {
-    let ix = menu_entries(kind).iter().position(|x| *x == e).unwrap();
+    assert!(menu_entries(kind).contains(&e), "entry offered");
     cx.update_window(h.win, |_, w, cx| w.right_click(row(path), cx))
         .unwrap();
     frame(cx, h.win);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(h.win, |_, w, cx| {
+        let ix = menu_index(w, e.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     cx.run_until_parked();
 }
 

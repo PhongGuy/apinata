@@ -53,14 +53,12 @@ fn a_clean_tab_discards_without_asking(cx: &mut TestAppContext) {
     assert!(!confirm_open(cx));
 }
 
-fn tab_menu_item(cx: &mut TestAppContext, s: &Started, ix: usize) -> Option<String> {
+// Opens the first tab's menu and clicks Discard changes.
+fn discard_from_menu(cx: &mut TestAppContext, s: &Started) {
     cx.update_window(s.win, |_, w, cx| w.right_click(("tab", 0usize), cx))
         .unwrap();
     frame(cx, s.win);
-    cx.update_window(s.win, |_, w, _| {
-        w.within("popup-menu").find(ix).label().map(str::to_owned)
-    })
-    .unwrap()
+    click_menu(cx, s.win, "Discard changes");
 }
 
 #[gpui_kit::test]
@@ -73,10 +71,7 @@ fn the_tab_menu_discards_a_changed_tab_after_asking(cx: &mut TestAppContext) {
         w.send(&s.root, edit_url("a.yml", "http://changed"), cx)
     });
     cx.run_until_parked();
-    assert_eq!(tab_menu_item(cx, &s, 6).as_deref(), Some("Discard changes"));
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(6usize, cx))
-        .unwrap();
-    cx.run_until_parked();
+    discard_from_menu(cx, &s);
     answer_confirm(cx, "confirm-discard");
     assert!(!dirty(cx, &s));
 }
@@ -87,10 +82,7 @@ fn the_tab_menu_discard_does_nothing_for_a_clean_tab(cx: &mut TestAppContext) {
     let s = started(cx, &col);
     open_tab(cx, &s.ws, &s.root, "a.yml");
     frame(cx, s.win);
-    assert_eq!(tab_menu_item(cx, &s, 6).as_deref(), Some("Discard changes"));
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(6usize, cx))
-        .unwrap();
-    cx.run_until_parked();
+    discard_from_menu(cx, &s);
     assert!(!confirm_open(cx));
 }
 
@@ -114,10 +106,7 @@ fn the_tab_menu_discard_is_disabled_for_a_draft(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
     frame(cx, s.win);
-    assert_eq!(tab_menu_item(cx, &s, 6).as_deref(), Some("Discard changes"));
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(6usize, cx))
-        .unwrap();
-    cx.run_until_parked();
+    discard_from_menu(cx, &s);
     assert!(!confirm_open(cx));
     assert_eq!(url(&ws_snap(cx, &s.ws, &s.root), &draft), "http://changed");
 }

@@ -1,7 +1,6 @@
 use crate::support;
 
-use apinata_app::sidebar::menu::{BulkEntry, bulk_entries, menu_entries};
-use apinata_app::sidebar::model::NodeKind;
+use apinata_app::sidebar::menu::{BulkEntry, bulk_entries};
 use apinata_app::sidebar::multi::Tally;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext};
@@ -98,9 +97,7 @@ fn a_range_over_a_folder_row_labels_run_and_delete_honestly(cx: &mut TestAppCont
     right_click(cx, &h, "e/y.yml");
     let labels = cx
         .update_window(h.win, |_, w, _| {
-            (0..4)
-                .filter_map(|ix| w.within("popup-menu").find(ix).label().map(str::to_owned))
-                .collect::<Vec<_>>()
+            menu_labels(w).into_iter().flatten().collect::<Vec<_>>()
         })
         .unwrap();
     assert_eq!(
@@ -122,13 +119,8 @@ fn right_click_inside_the_set_opens_the_bulk_menu_and_keeps_the_set(cx: &mut Tes
     secondary_click(cx, h.win, row("c.yml"));
     right_click(cx, &h, "a.yml");
     assert_eq!(keys(cx, &h), ["a.yml", "c.yml"]);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(3usize, cx))
-        .unwrap();
-    cx.run_until_parked();
-    assert!(
-        confirm_open(cx),
-        "entry 3 is Delete 2 requests (entries 0 to 2 are Run, Copy, Cut)"
-    );
+    click_menu(cx, h.win, "Delete 2 requests");
+    assert!(confirm_open(cx), "Delete 2 requests asks first");
     answer_confirm(cx, "confirm-delete");
     frame(cx, h.win);
     assert!(!h.root.join("a.yml").exists() && !h.root.join("c.yml").exists());
@@ -143,13 +135,7 @@ fn right_click_outside_the_set_clears_it_and_opens_the_row_menu(cx: &mut TestApp
     secondary_click(cx, h.win, row("c.yml"));
     right_click(cx, &h, "b.yml");
     assert!(keys(cx, &h).is_empty());
-    let delete = menu_entries(NodeKind::Request)
-        .iter()
-        .position(|e| *e == apinata_app::sidebar::menu::MenuEntry::Delete)
-        .unwrap();
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(delete, cx))
-        .unwrap();
-    cx.run_until_parked();
+    click_menu(cx, h.win, "Delete");
     answer_confirm(cx, "confirm-delete");
     frame(cx, h.win);
     assert!(
@@ -207,9 +193,7 @@ fn the_four_entry_bulk_menu_fits_a_1000x480_window(cx: &mut TestAppContext) {
     right_click(cx, &h, "a.yml");
     let (labels, menu, window) = cx
         .update_window(h.win, |_, w, _| {
-            let labels: Vec<String> = (0..4)
-                .filter_map(|ix| w.within("popup-menu").find(ix).label().map(str::to_owned))
-                .collect();
+            let labels: Vec<String> = menu_labels(w).into_iter().flatten().collect();
             (labels, w.find("popup-menu").bounds(), w.viewport_size())
         })
         .unwrap();

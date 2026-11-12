@@ -1241,19 +1241,95 @@ pub fn choose_menu(
 ) {
     use gpui_kit::AppContext;
     use gpui_kit::test::TestWindowExt as _;
-    let ix = apinata_app::sidebar::menu::menu_entries(kind)
-        .iter()
-        .position(|e| *e == entry)
-        .expect("entry offered");
+    assert!(
+        apinata_app::sidebar::menu::menu_entries(kind).contains(&entry),
+        "entry offered"
+    );
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         w.right_click(row(path), cx)
     })
     .unwrap();
     frame(cx, win);
-    cx.update_window(win, |_, w, cx| w.within("popup-menu").click(ix, cx))
+    // A GraphQL row names its conversion entry after the other kind.
+    let label = cx
+        .update_window(win, |_, w, _| {
+            let other = apinata_app::sidebar::menu::MenuEntry::ConvertToHttp.label();
+            match try_menu_index(w, entry.label()) {
+                None if entry == apinata_app::sidebar::menu::MenuEntry::ConvertToGraphql => other,
+                _ => entry.label(),
+            }
+        })
         .unwrap();
+    click_menu(cx, win, label);
+}
+
+/// The index of the open popup menu's entry labelled `label`; separators count, so this is
+/// the index `within("popup-menu").click` takes. Panics when no entry has the label.
+pub fn menu_index(w: &mut gpui_kit::Window, label: &str) -> usize {
+    try_menu_index(w, label).unwrap_or_else(|| panic!("{label:?} is in the menu"))
+}
+
+/// [`menu_index`], or `None` when no entry of the open menu has the label.
+pub fn try_menu_index(w: &mut gpui_kit::Window, label: &str) -> Option<usize> {
+    use gpui_kit::test::TestWindowExt as _;
+    // A plain entry carries its label itself; a drawn one (Delete, a greyed-out entry in a
+    // high-contrast theme) carries it on the element inside.
+    (0..64usize).find(|&ix| {
+        let mut menu = w.within("popup-menu");
+        match menu.try_find(ix) {
+            None => false,
+            Some(item) if item.label() == Some(label) => true,
+            Some(_) => menu.within(ix).try_find_by_label(label).is_some(),
+        }
+    })
+}
+
+/// The labels of the open popup menu's entries in order, `None` for each separator.
+pub fn menu_labels(w: &mut gpui_kit::Window) -> Vec<Option<String>> {
+    use gpui_kit::test::TestWindowExt as _;
+    let mut labels = Vec::new();
+    for ix in 0..64usize {
+        let mut menu = w.within("popup-menu");
+        let Some(item) = menu.try_find(ix) else {
+            break;
+        };
+        let label = item.label().map(str::to_owned).or_else(|| {
+            let inner = menu.within(ix).elements();
+            inner.iter().find_map(|e| e.label().map(str::to_owned))
+        });
+        labels.push(label);
+    }
+    labels
+}
+
+/// Clicks the open popup menu's entry labelled `label`, then lets it run.
+pub fn click_menu(cx: &mut gpui_kit::TestAppContext, win: gpui_kit::AnyWindowHandle, label: &str) {
+    use gpui_kit::AppContext;
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(win, |_, w, cx| {
+        let ix = menu_index(w, label);
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     cx.run_until_parked();
+}
+
+/// The key hints painted on the open popup menu's entry `label`, without the label itself.
+pub fn menu_row_keys(w: &mut gpui_kit::Window, label: &str) -> Vec<String> {
+    use gpui_kit::test::TestWindowExt as _;
+    let ix = menu_index(w, label);
+    let row = w.within("popup-menu").find(ix).bounds();
+    let menu = gpui_kit::ElementId::Name("popup-menu".into());
+    let mut keys: Vec<String> = gpui_kit::base::test_support::texts(w)
+        .into_iter()
+        .filter(|t| t.path().contains(&menu) && row.contains(&t.bounds().center()))
+        // The label starts at the row's left edge; a hint sits at its right end.
+        .filter(|t| t.bounds().origin.x > row.center().x)
+        .map(|t| t.text().to_owned())
+        .collect();
+    keys.dedup();
+    keys
 }
 
 /// Opens the title bar's collection switcher and clicks `id` in its dropdown.

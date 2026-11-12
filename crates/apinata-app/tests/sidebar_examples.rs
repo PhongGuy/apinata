@@ -98,15 +98,14 @@ fn expand(cx: &mut TestAppContext, h: &SidebarHarness) {
 }
 
 fn choose_on(cx: &mut TestAppContext, h: &SidebarHarness, id: SharedString, entry: MenuEntry) {
-    let ix = menu_entries(NodeKind::Example)
-        .iter()
-        .position(|e| *e == entry)
-        .unwrap();
     cx.update_window(h.win, |_, w, cx| w.right_click(id, cx))
         .unwrap();
     frame(cx, h.win);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(h.win, |_, w, cx| {
+        let ix = menu_index(w, entry.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     cx.run_until_parked();
 }
 
@@ -263,15 +262,14 @@ fn selected_example_actions_act_on_the_example_not_the_request(cx: &mut TestAppC
 fn a_request_with_examples_renames_on_its_own_row(cx: &mut TestAppContext) {
     let h = open_sidebar_with(cx, files());
     expand(cx, &h);
-    let ix = menu_entries(NodeKind::Request)
-        .iter()
-        .position(|e| *e == MenuEntry::Rename)
-        .unwrap();
     cx.update_window(h.win, |_, w, cx| w.right_click(row("users.yml"), cx))
         .unwrap();
     frame(cx, h.win);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(h.win, |_, w, cx| {
+        let ix = menu_index(w, MenuEntry::Rename.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     frame(cx, h.win);
     assert_eq!(
         h.view.read_with(cx, |s, _| s.renaming()),

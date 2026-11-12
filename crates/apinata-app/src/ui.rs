@@ -30,12 +30,12 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, Corners, Div, ElementId,
-    Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Rems, Render, RenderOnce, ScrollEvent, ScrollHandle,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _,
-    Window, actions, canvas, div, fill, linear_color_stop, linear_gradient, outline, px, relative,
-    svg, transparent_black,
+    Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, ClickEvent, Corners, Div,
+    ElementId, Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _,
+    IntoElement, KeyContext, Keystroke, MouseButton, ParentElement as _, Pixels, Rems, Render,
+    RenderOnce, ScrollEvent, ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, TestSupportExt as _, Window, actions, canvas, div, fill, linear_color_stop,
+    linear_gradient, outline, px, relative, svg, transparent_black,
 };
 
 use crate::app::AppState;
@@ -2448,6 +2448,136 @@ pub fn menu_item(label: impl Into<SharedString>, disabled: bool, cx: &App) -> Po
             .child(label.clone())
     })
     .disabled(true)
+}
+
+/// The key context stack a sidebar row's menu looks its key hints up in.
+pub const SIDEBAR_ROW_KEYS: &[&str] = &[SHELL_CONTEXT, "Sidebar", "Tree"];
+
+/// The first keystroke bound to `action` with focus inside the `stack` of key contexts,
+/// outermost first, read from the live keymap: the binding that would win there, unless
+/// another action takes its keys.
+pub fn key_in(action: &dyn Action, stack: &[&str], cx: &App) -> Option<Keystroke> {
+    let stack: Vec<KeyContext> = (stack.iter())
+        .filter_map(|c| KeyContext::parse(c).ok())
+        .collect();
+    let keymap = cx.key_bindings();
+    let keymap = keymap.borrow();
+    let binding = keymap.bindings_for_action(action).rev().find(|b| {
+        let (found, _) = keymap.bindings_for_input(b.keystrokes(), &stack);
+        found.first().is_some_and(|f| f.action().partial_eq(action))
+    })?;
+    binding
+        .keystrokes()
+        .first()
+        .map(|k| k.as_keystroke().clone())
+}
+
+/// One right-click menu entry: its label, the action whose bound key shows beside it, and
+/// whether it is greyed out, destructive, or opens a new group below a separator.
+pub struct MenuLine {
+    label: SharedString,
+    action: Option<Box<dyn Action>>,
+    disabled: bool,
+    danger: bool,
+    group_break: bool,
+}
+
+impl MenuLine {
+    /// A plain, enabled entry with no key hint.
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            action: None,
+            disabled: false,
+            danger: false,
+            group_break: false,
+        }
+    }
+
+    /// The action whose bound key the entry shows; the click still runs the entry's own handler.
+    pub fn action(mut self, action: Box<dyn Action>) -> Self {
+        self.action = Some(action);
+        self
+    }
+
+    /// Greys the entry out.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    /// Draws the label in the danger colour, for an entry that destroys what it acts on.
+    pub fn danger(mut self, danger: bool) -> Self {
+        self.danger = danger;
+        self
+    }
+
+    /// Puts a separator above the entry.
+    pub fn group_break(mut self, group_break: bool) -> Self {
+        self.group_break = group_break;
+        self
+    }
+
+    /// Appends the entry to `menu`, after a separator when it opens a group. A plain entry is
+    /// the kit's own item, whose key hint the kit finds along the menu's trigger; a drawn one
+    /// (danger, or greyed out in a high-contrast theme) reads its key for `keys_in` itself.
+    pub fn add_to(
+        self,
+        menu: PopupMenu,
+        keys_in: &'static [&'static str],
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> PopupMenu {
+        let menu = if self.group_break {
+            menu.separator()
+        } else {
+            menu
+        };
+        let MenuLine {
+            label,
+            action,
+            disabled,
+            danger,
+            ..
+        } = self;
+        let cue = menu_item_look(disabled, cx).italic;
+        if !danger && !cue {
+            let item = PopupMenuItem::new(label).disabled(disabled);
+            let item = match action {
+                Some(action) => item.action(action),
+                None => item,
+            };
+            return menu.item(item.on_click(on_click));
+        }
+        let item = PopupMenuItem::element(move |_, cx| {
+            let text = div();
+            let text = if disabled {
+                menu_label_cue(text, cx)
+            } else {
+                text.text_color(cx.theme().danger)
+            };
+            let key = (action.as_ref()).and_then(|a| key_in(a.as_ref(), keys_in, cx));
+            h_flex()
+                .w_full()
+                .gap_3()
+                .items_center()
+                .justify_between()
+                .child(
+                    text.id(label.clone())
+                        .test_support()
+                        .aria_label(label.clone())
+                        .child(label.clone()),
+                )
+                .children(key.map(|k| {
+                    Kbd::new(k)
+                        .p_0()
+                        .flex_nowrap()
+                        .border_0()
+                        .bg(gpui_kit::transparent_white())
+                }))
+        });
+        menu.item(item.disabled(disabled).on_click(on_click))
+    }
 }
 
 impl Checkbox {
