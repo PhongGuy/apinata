@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_query};
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -459,8 +459,10 @@ impl GraphqlSection {
     }
 
     // Load or Refresh by the store's state for the URL, the file button, and any error inline.
+    // A schema read from a file is not the URL's, so its lead offers the URL load, not a refresh.
     fn schema_row(&self, cx: &mut Context<Self>) -> Div {
         let state = graphql_schema_store::state(cx, &self.schema_url);
+        let from_file = graphql_schema_store::source(cx, &self.schema_url).is_some();
         let load = |id: &'static str, label: &'static str| {
             Button::new(id)
                 .label(label)
@@ -477,6 +479,9 @@ impl GraphqlSection {
                 .text_color(cx.theme().muted_foreground)
                 .child("Loading schema")
                 .into_any_element(),
+            Some(SchemaState::Loaded(_)) if from_file => {
+                load("graphql-schema-load", "Load schema from URL").into_any_element()
+            }
             Some(SchemaState::Loaded(_)) => {
                 load("graphql-schema-refresh", "Refresh schema").into_any_element()
             }
@@ -498,10 +503,14 @@ impl GraphqlSection {
             ),
             _ => None,
         };
+        // Ghost toggles like the app's other toolbar toggles, so the open pane's fill stands out,
+        // and announced as pressed while their pane is open.
         let toggle = |id: &'static str, label: &'static str, panel: SidePanel| {
             Button::new(id)
+                .ghost()
                 .label(label)
-                .choose(self.side == panel, SelectedStyle::Plain, cx)
+                .toggled(self.side == panel)
+                .choose(self.side == panel, SelectedStyle::Ghost, cx)
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_side(panel, cx)))
         };
         let builder = toggle("graphql-builder-toggle", "Builder", SidePanel::Builder);
