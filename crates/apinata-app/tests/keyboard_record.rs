@@ -15,7 +15,10 @@ fn click(cx: &mut TestAppContext, s: &Started, id: &str) {
 
 fn record(cx: &mut TestAppContext, s: &Started, id: &str) {
     click(cx, s, &format!("key-{id}-keys"));
-    assert_eq!(key_label(cx, s, id).as_deref(), Some("Press a key"));
+    assert_eq!(
+        key_label(cx, s, id).as_deref(),
+        Some("Press a shortcut, or Escape to cancel")
+    );
 }
 
 fn press(cx: &mut TestAppContext, s: &Started, ks: &str) {
@@ -79,7 +82,7 @@ fn escape_cancels_and_modifier_presses_are_ignored(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert_eq!(
         key_label(cx, &s, "view.toggle_sidebar").as_deref(),
-        Some("Press a key")
+        Some("Press a shortcut, or Escape to cancel")
     );
     press(cx, &s, "escape");
     assert_eq!(
@@ -106,7 +109,7 @@ fn a_bare_key_is_refused_but_a_function_key_is_taken(cx: &mut TestAppContext) {
     );
     assert_eq!(
         key_label(cx, &s, "view.toggle_theme").as_deref(),
-        Some("Press a key")
+        Some("Press a shortcut, or Escape to cancel")
     );
     let typed = prefs.read_with(cx, |p, cx| p.search().read(cx).value().to_string());
     assert_eq!(typed, "", "the refused key types nothing");

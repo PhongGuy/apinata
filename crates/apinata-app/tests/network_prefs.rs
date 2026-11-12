@@ -4,7 +4,7 @@ use crate::support;
 
 use apinata_app::app::{AppState, VolatileSecrets};
 use apinata_app::executor::proxy_password_key;
-use apinata_app::preferences::{PAC_HINT, PROXY_NOTE, parse_proxy_port};
+use apinata_app::preferences::{PAC_HINT, PAC_PLACEHOLDER, PROXY_NOTE, parse_proxy_port};
 use apinata_app::settings::{ProxyMode, Settings};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext};
@@ -157,6 +157,7 @@ fn the_ca_file_is_chosen_typed_and_cleared(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
+    choose(cx, &s, "global-proxy-mode", 1);
     assert!(present(cx, s.win, "prefs-proxy-note"));
     assert_eq!(
         PROXY_NOTE,
@@ -410,37 +411,81 @@ fn drawn(
     .unwrap()
 }
 
-// The help on what System reads sits right under the Proxy control in every mode, above the
-// rows that follow it, rather than after the cookie settings.
+// The help on what System reads sits right under the Proxy control in System mode, above
+// the rows that follow it, and is gone in the modes it does not describe.
 #[gpui_kit::test]
-fn the_proxy_help_sits_under_the_proxy_control(cx: &mut TestAppContext) {
+fn the_proxy_help_shows_under_the_control_in_system_mode_only(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
-    for (mode, next) in [
-        (1, "pref-ca-file"),
-        (2, "pref-proxy-protocol"),
-        (3, "pref-proxy-pac"),
-    ] {
+    choose(cx, &s, "global-proxy-mode", 1);
+    reveal(cx, &s, "prefs-proxy-note");
+    let control = drawn(cx, &s, "pref-proxy-mode");
+    let note = drawn(cx, &s, "prefs-proxy-note");
+    let next = drawn(cx, &s, "pref-ca-file");
+    assert!(
+        note.top() >= control.bottom() - gpui_kit::px(1.)
+            && note.top() <= control.bottom() + gpui_kit::px(16.),
+        "the help {note:?} right under the control {control:?}"
+    );
+    assert!(
+        note.bottom() <= next.top() + gpui_kit::px(1.),
+        "the help {note:?} above the next row {next:?}"
+    );
+    for mode in [0, 2, 3] {
         choose(cx, &s, "global-proxy-mode", mode);
-        reveal(cx, &s, "prefs-proxy-note");
-        let control = drawn(cx, &s, "pref-proxy-mode");
-        let note = drawn(cx, &s, "prefs-proxy-note");
-        let next = drawn(cx, &s, next);
         assert!(
-            note.top() >= control.bottom() - gpui_kit::px(1.)
-                && note.top() <= control.bottom() + gpui_kit::px(16.),
-            "mode {mode}: the help {note:?} right under the control {control:?}"
-        );
-        assert!(
-            note.bottom() <= next.top() + gpui_kit::px(1.),
-            "mode {mode}: the help {note:?} above the next row {next:?}"
-        );
-        assert!(
-            note.bottom() <= drawn(cx, &s, "pref-store-cookies").top(),
-            "mode {mode}: the help comes before the cookie settings"
+            !present(cx, s.win, "prefs-proxy-note"),
+            "mode {mode} hides the System help"
         );
     }
+}
+
+// Every proxy mode says once, not twice, that its settings wait for a restart.
+#[gpui_kit::test]
+fn each_proxy_mode_names_the_restart_once(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    for mode in 0..4 {
+        choose(cx, &s, "global-proxy-mode", mode);
+        let notes = [
+            present(cx, s.win, "pref-proxy-mode-restart"),
+            present(cx, s.win, "prefs-proxy-restart"),
+        ];
+        assert_eq!(
+            notes.iter().filter(|n| **n).count(),
+            1,
+            "mode {mode}: under the control, after the fields: {notes:?}"
+        );
+    }
+}
+
+// The PAC example fits inside its input at the input's text size, so it is never cut.
+#[gpui_kit::test]
+fn the_pac_placeholder_fits_its_field(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    choose(cx, &s, "global-proxy-mode", 3);
+    reveal(cx, &s, "global-proxy-pac");
+    let (text, room) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            // The kit's medium input pads 10 px each side and draws its text at 0.875 rem.
+            let room = w.find("global-proxy-pac").bounds().size.width - gpui_kit::px(20.);
+            let size = w.rem_size() * 0.875;
+            let run = w.text_style().to_run(PAC_PLACEHOLDER.len());
+            let line = w
+                .text_system()
+                .shape_line(PAC_PLACEHOLDER.into(), size, &[run], None);
+            (line.width, room)
+        })
+        .unwrap();
+    assert!(
+        text <= room,
+        "{PAC_PLACEHOLDER:?} is {text:?} wide in {room:?}"
+    );
 }
 
 // The manual proxy fields and the PAC source say, after the last of them, that they wait for
