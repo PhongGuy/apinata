@@ -72,9 +72,9 @@ pub const FILTER_PLACEHOLDER: &str = "Filter";
 /// The tooltip on the filter field, where the `tag:` and `method:` terms are named.
 pub const FILTER_TOOLTIP: &str = "Filter by name. Use tag:name or method:get.";
 
-// A collection root's hint shrinks this many times faster than its name, so the name keeps its
-// room until the hint is gone.
-const HINT_SHRINK: f32 = 10_000.;
+// A collection root's hint shrinks this many times slower than its name: twins share the name,
+// so the hint is what tells them apart and keeps its room until the name is gone.
+const HINT_SHRINK: f32 = 1. / 10_000.;
 
 // The group every tree row carries, so a row's run button shows while the row is hovered.
 const ROW_GROUP: &str = "sidebar-row";
@@ -2871,7 +2871,7 @@ impl Render for Sidebar {
                                                             .unwrap_or(false),
                                                     ))
                                                     // Two same-named collections show where they
-                                                    // differ; the hint gives way before the name.
+                                                    // differ; the name gives way before the hint.
                                                     .children(n.hint.clone().map(|hint| {
                                                         marker("hint", n)
                                                             .min_w_0()

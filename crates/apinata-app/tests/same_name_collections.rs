@@ -1,6 +1,6 @@
 //! Two open collections that share a name stay apart in the window: their runner and
 //! environment tabs, the breadcrumb and the palette's request rows carry the folder hint, and
-//! the sidebar root keeps its name whole while the hint gives way.
+//! the sidebar root keeps its hint whole while the name gives way.
 
 use crate::support::{self, *};
 
@@ -169,7 +169,12 @@ fn root_row(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> [Bounds
 }
 
 #[gpui_kit::test]
-fn a_twin_root_keeps_its_name_and_the_hint_gives_way(cx: &mut TestAppContext) {
+fn a_twin_root_keeps_its_hint_and_the_name_gives_way(cx: &mut TestAppContext) {
+    // Wide enough that nothing in either row is cut: the hints' whole widths.
+    let wide = twins(cx, Some(400.));
+    let [name0, whole0, _] = root_row(cx, wide.win, 0);
+    let [name1, whole1, _] = root_row(cx, wide.win, 1);
+    assert_eq!(name0.size.width, name1.size.width, "both names whole");
     for width in [None, Some(200.)] {
         let t = twins(cx, width);
         let gap = cx
@@ -177,20 +182,32 @@ fn a_twin_root_keeps_its_name_and_the_hint_gives_way(cx: &mut TestAppContext) {
                 apinata_app::style::SPACE_1.to_pixels(w.rem_size())
             })
             .unwrap();
-        let [name0, hint0, new0] = root_row(cx, t.win, 0);
-        let [name1, hint1, new1] = root_row(cx, t.win, 1);
-        assert_eq!(
-            name0.size.width, name1.size.width,
-            "the same name gets the same room at {width:?}"
-        );
-        assert!(hint0.left() >= name0.right(), "{hint0:?} {name0:?}");
-        for (hint, new) in [(hint0, new0), (hint1, new1)] {
+        for (ix, whole) in [(0usize, whole0), (1, whole1)] {
+            let [name, hint, new] = root_row(cx, t.win, ix);
+            assert_eq!(
+                hint.size.width, whole.size.width,
+                "row {ix} keeps its whole hint at {width:?}"
+            );
+            assert!(hint.left() >= name.right(), "{hint:?} {name:?}");
             assert!(
                 hint.right() + gap <= new.left(),
                 "a gap before the icons at {width:?}: {hint:?} {new:?}"
             );
         }
     }
+}
+
+#[gpui_kit::test]
+fn the_title_bar_drops_the_hint_once_a_twin_closes(cx: &mut TestAppContext) {
+    let t = twins(cx, None);
+    assert!(present(cx, t.win, "collection-switcher-hint"));
+    t.ws.update(cx, |w, cx| w.close(&t.roots[1], cx));
+    cx.run_until_parked();
+    frame(cx, t.win);
+    assert!(
+        !present(cx, t.win, "collection-switcher-hint"),
+        "the name is unique among open collections again"
+    );
 }
 
 // The text each drawn request row of the palette shows on its right, its pieces in paint order
