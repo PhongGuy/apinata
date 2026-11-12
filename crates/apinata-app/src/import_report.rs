@@ -1,7 +1,9 @@
 //! The import report: a summary and the notes an import left, grouped by kind, shown in a
 //! dialog after the import. The export report shows its notes in the same dialog.
 
-use crate::style::{DIALOG_FOOTER_GAP, ROW_HEIGHT, SPACE_1, SPACE_2, SPACE_3, resolve};
+use crate::style::{
+    DIALOG_FOOTER_GAP, ROW_HEIGHT, SCROLLBAR_GUTTER, SPACE_1, SPACE_2, SPACE_3, resolve,
+};
 use crate::ui::{dialog_footer, form_heading, plain_quotes};
 use apinata_core::import::{ImportNote, ImportReport, NoteKind};
 use gpui_kit::component::WindowExt;
@@ -176,7 +178,9 @@ pub fn open_report(
                     .child(
                         div()
                             .id(ids.scroll)
+                            .test_support()
                             .max_h(room.max(px(0.)))
+                            .pr(SCROLLBAR_GUTTER)
                             .overflow_y_scroll()
                             .track_scroll(&scroll)
                             .child(div().flex().flex_col().gap(SPACE_3).children(sections)),

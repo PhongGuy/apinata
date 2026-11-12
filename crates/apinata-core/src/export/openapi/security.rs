@@ -33,7 +33,7 @@ pub(super) fn map_auth(spec: &AuthSpec) -> Mapped {
         AuthSpec::Basic { .. } => http("basic", "basicAuth"),
         AuthSpec::Bearer { .. } => http("bearer", "bearerAuth"),
         AuthSpec::Digest { .. } => http("digest", "digestAuth"),
-        AuthSpec::ApiKey { key, .. } if key.trim().is_empty() => unmappable("apikey"),
+        AuthSpec::ApiKey { key, .. } if key.trim().is_empty() => unmappable("API Key"),
         AuthSpec::ApiKey { key, placement, .. } => {
             let place = match placement {
                 ApiKeyPlacement::Header => "header",
@@ -46,11 +46,11 @@ pub(super) fn map_auth(spec: &AuthSpec) -> Mapped {
             }
         }
         AuthSpec::OAuth2(spec) => oauth2(spec),
-        AuthSpec::OAuth1(_) => unmappable("oauth1"),
-        AuthSpec::AwsV4 { .. } => unmappable("awsv4"),
-        AuthSpec::Wsse { .. } => unmappable("wsse"),
-        AuthSpec::Ntlm { .. } => unmappable("ntlm"),
-        AuthSpec::EdgeGrid(_) => unmappable("akamai-edgegrid"),
+        AuthSpec::OAuth1(_) => unmappable("OAuth 1.0"),
+        AuthSpec::AwsV4 { .. } => unmappable("AWS Sig v4"),
+        AuthSpec::Wsse { .. } => unmappable("WSSE"),
+        AuthSpec::Ntlm { .. } => unmappable("NTLM"),
+        AuthSpec::EdgeGrid(_) => unmappable("Akamai EdgeGrid"),
         AuthSpec::Unsupported { mode } => unmappable(mode),
     }
 }
@@ -101,7 +101,7 @@ pub(super) fn credential_url_notes(spec: &AuthSpec) -> Vec<String> {
         for (name, value) in parsed.query_pairs() {
             if literal_credential_query(&name, &value) {
                 details.push(format!(
-                    "oauth2 {label} URL query parameter {name} holds a literal credential, written into the document as a flow URL"
+                    "OAuth 2.0 {label} URL query parameter {name} holds a literal credential, written into the document as a flow URL"
                 ));
             }
         }
@@ -117,7 +117,7 @@ fn oauth2(spec: &OAuth2Spec) -> Mapped {
     for (key, url, label) in urls {
         if !is_absolute_http(url) {
             return Mapped::Unmappable(format!(
-                "the oauth2 authentication cannot be exported: its {label} URL is not an absolute http or https URL"
+                "the OAuth 2.0 authentication cannot be exported: its {label} URL is not an absolute http or https URL"
             ));
         }
         obj.insert(key.into(), url.as_str().into());

@@ -150,10 +150,9 @@ const REPORT_IDS: crate::import_report::ReportIds = crate::import_report::Report
     close: "export-report-close",
 };
 
-/// Writes the export atomically; the error names the file, as the CLI's does.
+/// Writes the export atomically; the error names the file in plain words, as the CLI's does.
 pub fn write_export(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    apinata_core::export::write_atomic(path, bytes)
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    apinata_core::export::write_atomic(path, bytes).map_err(|e| e.to_string())
 }
 
 /// Prompts for a target file, starting in the collection's parent directory, then exports the

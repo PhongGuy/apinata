@@ -192,7 +192,10 @@ fn inherited_auth_applies_and_only_a_differing_requirement_is_written() {
     );
     assert_eq!(
         openapi_notes(&c),
-        pairs(&[("d / auth", "the awsv4 authentication cannot be exported")])
+        pairs(&[(
+            "d / auth",
+            "the AWS Sig v4 authentication cannot be exported"
+        )])
     );
     assert_no_secrets(&openapi(&c).json);
 }
@@ -230,14 +233,14 @@ fn unmappable_auth_is_noted_where_it_is_written() {
     ] {
         assert_eq!(security(&v, name), want, "{name}");
     }
-    let token = "the oauth2 authentication cannot be exported: its token URL is not an absolute http or https URL";
-    let authorize = "the oauth2 authentication cannot be exported: its authorization URL is not an absolute http or https URL";
+    let token = "the OAuth 2.0 authentication cannot be exported: its token URL is not an absolute http or https URL";
+    let authorize = "the OAuth 2.0 authentication cannot be exported: its authorization URL is not an absolute http or https URL";
     assert_eq!(
         openapi_notes(&c),
         pairs(&[
             (
                 "collection / auth",
-                "the ntlm authentication cannot be exported"
+                "the NTLM authentication cannot be exported"
             ),
             ("d / auth", token),
             ("e / auth", token),
@@ -271,8 +274,8 @@ fn oauth2_urls_with_credentials_or_padding_and_blank_api_key_names_are_unmappabl
     let (_d, c) = open_with_root(ROOT, &files);
     let v = openapi_doc(&c);
     assert!(v.get("components").is_none(), "{v}");
-    let token = "the oauth2 authentication cannot be exported: its token URL is not an absolute http or https URL";
-    let apikey = "the apikey authentication cannot be exported";
+    let token = "the OAuth 2.0 authentication cannot be exported: its token URL is not an absolute http or https URL";
+    let apikey = "the API Key authentication cannot be exported";
     assert_eq!(
         openapi_notes(&c),
         pairs(&[
@@ -299,7 +302,10 @@ fn oauth1_is_noted_as_not_exportable() {
     assert_eq!(security(&v, "o"), None);
     assert_eq!(
         openapi_notes(&c),
-        pairs(&[("o / auth", "the oauth1 authentication cannot be exported")])
+        pairs(&[(
+            "o / auth",
+            "the OAuth 1.0 authentication cannot be exported"
+        )])
     );
 }
 
@@ -316,11 +322,11 @@ fn an_oauth2_url_with_a_literal_credential_in_its_query_gets_a_note() {
         pairs(&[
             (
                 "r / auth",
-                &format!("oauth2 authorization URL query parameter api_key {tail}")
+                &format!("OAuth 2.0 authorization URL query parameter api_key {tail}")
             ),
             (
                 "r / auth",
-                &format!("oauth2 token URL query parameter client_secret {tail}")
+                &format!("OAuth 2.0 token URL query parameter client_secret {tail}")
             ),
         ])
     );
@@ -363,7 +369,7 @@ fn a_collection_level_oauth2_url_with_a_literal_credential_gets_a_note_once() {
         openapi_notes(&c),
         pairs(&[(
             "collection / auth",
-            "oauth2 token URL query parameter access_token holds a literal credential, written into the document as a flow URL"
+            "OAuth 2.0 token URL query parameter access_token holds a literal credential, written into the document as a flow URL"
         )])
     );
 }

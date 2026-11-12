@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use anyhow::Context as _;
 use apinata_core::export::{HarExchange, har_log, sent_exchange, write_atomic};
 use apinata_core::{
     ItemPath, IterationData, RequestFile, RequestResult, RunReport, VarContext, iteration_total,
@@ -74,8 +73,7 @@ impl HarPlan {
                 Err(why) => eprintln!("note: {} is left out of the HAR: {why}", result.path),
             }
         }
-        write_atomic(&self.path, har_log(&exchanges).as_bytes())
-            .with_context(|| format!("cannot write the HAR file {}", self.path.display()))
+        Ok(write_atomic(&self.path, har_log(&exchanges).as_bytes())?)
     }
 
     fn exchange(

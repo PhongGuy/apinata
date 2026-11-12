@@ -68,7 +68,7 @@ fn folders_come_first_then_requests_by_seq_and_opaque_items_are_left_out() {
         notes(&c),
         pairs(&[(
             "g",
-            "only HTTP requests are exported; this grpc item was left out"
+            "only HTTP requests are exported; this gRPC item was left out"
         )])
     );
 }
@@ -193,7 +193,7 @@ fn what_has_no_place_in_the_file_is_noted_in_tree_order() {
             ),
             (
                 "f / g",
-                "only HTTP requests are exported; this websocket item was left out"
+                "only HTTP requests are exported; this WebSocket item was left out"
             ),
         ])
     );

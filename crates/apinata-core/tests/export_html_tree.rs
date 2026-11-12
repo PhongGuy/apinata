@@ -65,7 +65,7 @@ fn sections_follow_the_postman_walk_with_positional_anchors() {
         "{page}"
     );
     assert!(page.contains("</article>\n</main>\n"), "{page}");
-    let detail = "only HTTP requests are exported; this grpc item was left out";
+    let detail = "only HTTP requests are exported; this gRPC item was left out";
     assert_eq!(html_notes(&c), pairs(&[("g", detail)]));
 }
 
