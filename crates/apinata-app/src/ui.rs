@@ -12,7 +12,7 @@ use gpui_kit::AsKeystroke as _;
 use gpui_kit::EntityInputHandler as _;
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::base::{Checkbox as BaseCheckbox, CheckboxIndicator};
+use gpui_kit::base::{Checkbox as BaseCheckbox, CheckboxIndicator, Radio as BaseRadio};
 use gpui_kit::component::Colorize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::Dialog;
@@ -30,12 +30,12 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, Corners, Div, ElementId,
-    Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Rems, Render, RenderOnce, ScrollEvent, ScrollHandle,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _,
-    Window, actions, canvas, div, fill, linear_color_stop, linear_gradient, outline, px, relative,
-    svg, transparent_black,
+    Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, ClickEvent, Corners, Div,
+    ElementId, Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _,
+    IntoElement, KeyContext, Keystroke, MouseButton, ParentElement as _, Pixels, Rems, Render,
+    RenderOnce, ScrollEvent, ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, TestSupportExt as _, Window, actions, canvas, div, fill, linear_color_stop,
+    linear_gradient, outline, px, relative, svg, transparent_black,
 };
 
 use crate::app::AppState;
@@ -2269,6 +2269,8 @@ pub struct Checkbox {
     lock: bool,
     /// Takes keyboard focus when drawn, for a box standing where focus just was.
     take_focus: bool,
+    /// Drawn round with a dot instead of a tick: one choice among its neighbours.
+    radio: bool,
 }
 
 /// A controlled checkbox with the kit control's behaviour (click, Enter and Space toggle; a
@@ -2287,6 +2289,7 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool) -> Checkbox {
         mixed: false,
         lock: false,
         take_focus: false,
+        radio: false,
     }
 }
 
@@ -2450,6 +2453,136 @@ pub fn menu_item(label: impl Into<SharedString>, disabled: bool, cx: &App) -> Po
     .disabled(true)
 }
 
+/// The key context stack a sidebar row's menu looks its key hints up in.
+pub const SIDEBAR_ROW_KEYS: &[&str] = &[SHELL_CONTEXT, "Sidebar", "Tree"];
+
+/// The first keystroke bound to `action` with focus inside the `stack` of key contexts,
+/// outermost first, read from the live keymap: the binding that would win there, unless
+/// another action takes its keys.
+pub fn key_in(action: &dyn Action, stack: &[&str], cx: &App) -> Option<Keystroke> {
+    let stack: Vec<KeyContext> = (stack.iter())
+        .filter_map(|c| KeyContext::parse(c).ok())
+        .collect();
+    let keymap = cx.key_bindings();
+    let keymap = keymap.borrow();
+    let binding = keymap.bindings_for_action(action).rev().find(|b| {
+        let (found, _) = keymap.bindings_for_input(b.keystrokes(), &stack);
+        found.first().is_some_and(|f| f.action().partial_eq(action))
+    })?;
+    binding
+        .keystrokes()
+        .first()
+        .map(|k| k.as_keystroke().clone())
+}
+
+/// One right-click menu entry: its label, the action whose bound key shows beside it, and
+/// whether it is greyed out, destructive, or opens a new group below a separator.
+pub struct MenuLine {
+    label: SharedString,
+    action: Option<Box<dyn Action>>,
+    disabled: bool,
+    danger: bool,
+    group_break: bool,
+}
+
+impl MenuLine {
+    /// A plain, enabled entry with no key hint.
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            action: None,
+            disabled: false,
+            danger: false,
+            group_break: false,
+        }
+    }
+
+    /// The action whose bound key the entry shows; the click still runs the entry's own handler.
+    pub fn action(mut self, action: Box<dyn Action>) -> Self {
+        self.action = Some(action);
+        self
+    }
+
+    /// Greys the entry out.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    /// Draws the label in the danger colour, for an entry that destroys what it acts on.
+    pub fn danger(mut self, danger: bool) -> Self {
+        self.danger = danger;
+        self
+    }
+
+    /// Puts a separator above the entry.
+    pub fn group_break(mut self, group_break: bool) -> Self {
+        self.group_break = group_break;
+        self
+    }
+
+    /// Appends the entry to `menu`, after a separator when it opens a group. A plain entry is
+    /// the kit's own item, whose key hint the kit finds along the menu's trigger; a drawn one
+    /// (danger, or greyed out in a high-contrast theme) reads its key for `keys_in` itself.
+    pub fn add_to(
+        self,
+        menu: PopupMenu,
+        keys_in: &'static [&'static str],
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        cx: &App,
+    ) -> PopupMenu {
+        let menu = if self.group_break {
+            menu.separator()
+        } else {
+            menu
+        };
+        let MenuLine {
+            label,
+            action,
+            disabled,
+            danger,
+            ..
+        } = self;
+        let cue = menu_item_look(disabled, cx).italic;
+        if !danger && !cue {
+            let item = PopupMenuItem::new(label).disabled(disabled);
+            let item = match action {
+                Some(action) => item.action(action),
+                None => item,
+            };
+            return menu.item(item.on_click(on_click));
+        }
+        let item = PopupMenuItem::element(move |_, cx| {
+            let text = div();
+            let text = if disabled {
+                menu_label_cue(text, cx)
+            } else {
+                text.text_color(cx.theme().danger)
+            };
+            let key = (action.as_ref()).and_then(|a| key_in(a.as_ref(), keys_in, cx));
+            h_flex()
+                .w_full()
+                .gap_3()
+                .items_center()
+                .justify_between()
+                .child(
+                    text.id(label.clone())
+                        .test_support()
+                        .aria_label(label.clone())
+                        .child(label.clone()),
+                )
+                .children(key.map(|k| {
+                    Kbd::new(k)
+                        .p_0()
+                        .flex_nowrap()
+                        .border_0()
+                        .bg(gpui_kit::transparent_white())
+                }))
+        });
+        menu.item(item.disabled(disabled).on_click(on_click))
+    }
+}
+
 impl Checkbox {
     /// A disabled box ignores clicks and keys and leaves the tab order.
     pub fn disabled(mut self, disabled: bool) -> Self {
@@ -2497,6 +2630,13 @@ impl Checkbox {
     /// Whether Tab stops on the box; true by default.
     pub fn tab_stop(mut self, tab_stop: bool) -> Self {
         self.tab_stop = tab_stop;
+        self
+    }
+
+    /// Draw a round mark with a dot when checked, for a box that picks one of several rows;
+    /// clicks and keys behave as for any checkbox.
+    pub fn radio(mut self, radio: bool) -> Self {
+        self.radio = radio;
         self
     }
 }
@@ -2622,7 +2762,25 @@ impl RenderOnce for Checkbox {
                 .border_color(look.border)
                 .bg(look.fill)
                 .opacity(look.opacity)
-                .when_some(look.tick, |d, tick| {
+                // A round mark centres a dot where a box would draw its tick; the empty marker
+                // is a test hook naming the shape.
+                .when(self.radio, |d| {
+                    d.rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("checkbox-radio")
+                                .test_support()
+                                .absolute()
+                                .size_0(),
+                        )
+                        .when_some(look.tick, |d, tick| {
+                            d.child(div().size(CHECKBOX_SIZE * 0.5).rounded_full().bg(tick))
+                        })
+                })
+                .when_some(look.tick.filter(|_| !self.radio), |d, tick| {
                     d.child(
                         svg()
                             .absolute()
@@ -2646,8 +2804,40 @@ impl RenderOnce for Checkbox {
                     )
                 }),
         };
+        let label = label.map(|label| {
+            div()
+                .flex_1()
+                .overflow_hidden()
+                .line_height(relative(1.25))
+                .text_color(if self.disabled { muted } else { fg })
+                .child(label)
+        });
+        let parts = ControlParts {
+            focused: is_focused,
+            indicator: indicator.into_any_element(),
+            label: label.map(IntoElement::into_any_element),
+            tooltip: self.tooltip,
+        };
+        // A radio mark uses the kit's radio primitive, which announces a radio button and
+        // ignores a click on the picked row, so `on_click` only ever hears `true`.
+        if self.radio {
+            let base = BaseRadio::new(self.id)
+                .key_context(DIALOG_FOOTER_CONTEXT)
+                .checked(checked)
+                .disabled(self.disabled)
+                .tab_stop(self.tab_stop)
+                .track_focus(&focus)
+                .when_some(a11y_label, |b, label| b.accessibility_label(label))
+                .when_some(self.on_click, |b, on_click| {
+                    b.on_change(move |_, _, window, cx| {
+                        window.prevent_default();
+                        on_click(&true, window, cx);
+                    })
+                });
+            return control_frame(base, parts, fg, window, cx).into_any_element();
+        }
         // In a dialog, Enter toggles the box as Space does rather than answering the dialog.
-        BaseCheckbox::new(self.id)
+        let base = BaseCheckbox::new(self.id)
             .key_context(DIALOG_FOOTER_CONTEXT)
             .checked(checked)
             .disabled(self.disabled)
@@ -2659,42 +2849,52 @@ impl RenderOnce for Checkbox {
                     window.prevent_default();
                     on_click(&!checked, window, cx);
                 })
-            })
-            .flex()
-            .flex_row()
-            .items_start()
-            .gap_2()
-            .line_height(relative(1.))
-            .text_size(TEXT_CONTROL)
-            .text_color(fg)
-            .rounded(RADIUS * 0.5)
-            // The marker is absolute and empty, so focusing never shifts the layout.
-            .when(is_focused, |b| {
-                b.focus_ring_style(window, cx).child(
-                    div()
-                        .id("checkbox-focus")
-                        .test_support()
-                        .absolute()
-                        .size_0(),
-                )
-            })
-            .child(indicator)
-            .when_some(label, |b, label| {
-                b.child(
-                    div()
-                        .flex_1()
-                        .overflow_hidden()
-                        .line_height(relative(1.25))
-                        .text_color(if self.disabled { muted } else { fg })
-                        .child(label),
-                )
-            })
-            // A press never moves focus, as with the kit control.
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-            .when_some(self.tooltip, |b, text| {
-                b.tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
-            })
+            });
+        control_frame(base, parts, fg, window, cx).into_any_element()
     }
+}
+
+/// What a [`Checkbox`] draws inside its base control, box or radio alike.
+struct ControlParts {
+    focused: bool,
+    indicator: AnyElement,
+    label: Option<AnyElement>,
+    tooltip: Option<SharedString>,
+}
+
+// The layout, focus ring, mark, label and tooltip shared by the box and radio controls.
+fn control_frame<E>(base: E, parts: ControlParts, fg: Hsla, window: &Window, cx: &App) -> E
+where
+    E: gpui_kit::Styled
+        + gpui_kit::ParentElement
+        + gpui_kit::StatefulInteractiveElement
+        + IntoElement,
+{
+    base.flex()
+        .flex_row()
+        .items_start()
+        .gap_2()
+        .line_height(relative(1.))
+        .text_size(TEXT_CONTROL)
+        .text_color(fg)
+        .rounded(RADIUS * 0.5)
+        // The marker is absolute and empty, so focusing never shifts the layout.
+        .when(parts.focused, |b| {
+            b.focus_ring_style(window, cx).child(
+                div()
+                    .id("checkbox-focus")
+                    .test_support()
+                    .absolute()
+                    .size_0(),
+            )
+        })
+        .child(parts.indicator)
+        .children(parts.label)
+        // A press never moves focus, as with the kit control.
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .when_some(parts.tooltip, |b, text| {
+            b.tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
+        })
 }
 
 /// The key context of a [`dialog_footer`] and of each [`checkbox`], where Enter is unbound so a

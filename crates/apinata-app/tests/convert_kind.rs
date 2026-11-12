@@ -5,7 +5,7 @@ use crate::support;
 
 use apinata_app::command::{Command, Edit, Target};
 use apinata_app::shell::{ImportCurl, Shell};
-use apinata_app::sidebar::menu::{MenuEntry, menu_entries};
+use apinata_app::sidebar::menu::MenuEntry;
 use apinata_app::sidebar::model::NodeKind;
 use apinata_app::tabs::TabKind;
 use apinata_core::{BodySpec, ItemPath, RequestKind};
@@ -66,10 +66,6 @@ fn palette(cx: &mut TestAppContext, s: &Started, text: &str) {
 
 // The label of the row menu's convert entry, which names the kind it converts to.
 fn convert_label(cx: &mut TestAppContext, s: &Started, rel: &str) -> String {
-    let ix = menu_entries(NodeKind::Request)
-        .iter()
-        .position(|e| *e == MenuEntry::ConvertToGraphql)
-        .expect("offered");
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         w.right_click(row(rel), cx)
@@ -78,7 +74,10 @@ fn convert_label(cx: &mut TestAppContext, s: &Started, rel: &str) -> String {
     frame(cx, s.win);
     let label = cx
         .update_window(s.win, |_, w, _| {
-            w.within("popup-menu").find(ix).label().map(str::to_owned)
+            menu_labels(w)
+                .into_iter()
+                .flatten()
+                .find(|l| l.starts_with("Convert to"))
         })
         .unwrap();
     cx.simulate_keystrokes(s.win, "escape");

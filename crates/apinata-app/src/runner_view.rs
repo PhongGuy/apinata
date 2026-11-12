@@ -749,7 +749,7 @@ fn option_row() -> Div {
 }
 
 // An option as a fixed-width label column and a control column at least as wide as a form
-// input, so options in the same column line up from row to row. A checkbox has no label.
+// input, so options in the same column line up from row to row.
 fn option_slot(label: Option<impl IntoElement>, control: impl IntoElement) -> Div {
     h_flex()
         .flex_none()
@@ -839,11 +839,12 @@ impl Render for RunnerView {
             }
         });
         let m4 = self.model.clone();
-        let field = |state: &Entity<InputState>, id: &'static str, width| {
+        // Every field takes the one control width, so each column reads as one edge.
+        let field = |state: &Entity<InputState>, id: &'static str| {
             ui::padded_input(
                 Input::new(state)
                     .id(id)
-                    .w(width)
+                    .w(style::FORM_INPUT_WIDTH)
                     .bg(ui::field_fill(false, cx)),
                 state,
             )
@@ -890,7 +891,6 @@ impl Render for RunnerView {
                         ))
                 }));
         let retry_unsafe = v_flex()
-            .flex_1()
             .min_w_0()
             .gap_1()
             .child(
@@ -926,23 +926,22 @@ impl Render for RunnerView {
                 option_row()
                     .child(option_slot(
                         Some(option_label("run-tags-label", "Tags", cx)),
-                        field(&tags, "run-tags", style::FORM_INPUT_WIDTH),
+                        field(&tags, "run-tags"),
                     ))
                     .child(option_slot(
                         Some(option_label("run-exclude-tags-label", "Exclude tags", cx)),
-                        field(&exclude_tags, "run-exclude-tags", style::FORM_INPUT_WIDTH),
-                    ))
-                    .child(option_slot(None::<Div>, bail)),
+                        field(&exclude_tags, "run-exclude-tags"),
+                    )),
             )
             .child(
                 option_row()
                     .child(option_slot(
                         Some(option_label("run-iterations-label", "Iterations", cx)),
-                        field(&iterations, "run-iterations", style::SHORT_INPUT_WIDTH),
+                        field(&iterations, "run-iterations"),
                     ))
                     .child(option_slot(
                         Some(option_label("run-delay-label", "Delay (ms)", cx)),
-                        field(&delay, "run-delay", style::SHORT_INPUT_WIDTH),
+                        field(&delay, "run-delay"),
                     ))
                     // Last in its row: a chosen file's name widens it.
                     .child(option_slot(
@@ -969,7 +968,7 @@ impl Render for RunnerView {
                             RETRIES_HINT,
                             cx,
                         )),
-                        field(&retries, "run-retries", style::SHORT_INPUT_WIDTH),
+                        field(&retries, "run-retries"),
                     ))
                     .child(option_slot(
                         Some(hinted_label(
@@ -978,18 +977,25 @@ impl Render for RunnerView {
                             RETRY_DELAY_HINT,
                             cx,
                         )),
-                        field(&retry_delay, "run-retry-delay", style::SHORT_INPUT_WIDTH),
+                        field(&retry_delay, "run-retry-delay"),
                     )),
             )
-            // The unsafe-retry choice and its warning take the rest of the width under the
-            // control column, so the warning wraps there instead of pushing past the pane.
+            // The checkboxes carry their own text, so they get a row under the control column
+            // and take the rest of the width there, where the warning wraps.
             .child(
                 h_flex()
                     .w_full()
                     .gap_2()
                     .items_start()
                     .child(div().flex_none().w(style::RUN_OPTION_LABEL_WIDTH))
-                    .child(retry_unsafe),
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_2()
+                            .child(bail)
+                            .child(retry_unsafe),
+                    ),
             );
         // The export buttons appear once a run exists and work once it has finished.
         let finished = matches!(model.state(), RunState::Finished(_));

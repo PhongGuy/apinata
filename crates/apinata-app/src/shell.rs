@@ -15,6 +15,7 @@ use apinata_core::{DraftSnapshot, ItemPath};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Replace;
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::spinner::Spinner;
@@ -1870,64 +1871,73 @@ impl Shell {
                         .child(under_name(path))
                 });
                 // The collection actions head the list, so the title bar can drop their
-                // buttons; each one dismisses the popover before its native prompt opens.
+                // buttons; each one dismisses the popover before its native prompt opens, and
+                // carries its command so the row can show that command's key.
                 let actions = [
                     (
                         "switcher-open-collection",
                         IconName::FolderOpen,
                         "Open collection…",
+                        Box::new(OpenCollection) as Box<dyn Action>,
                     ),
                     (
                         "switcher-import-collection",
                         IconName::Import,
                         "Import collection…",
+                        Box::new(ImportCollection) as Box<dyn Action>,
                     ),
                     (
                         "switcher-new-collection",
                         IconName::FolderPlus,
                         "New collection…",
+                        Box::new(NewCollection) as Box<dyn Action>,
                     ),
                     (
                         "switcher-clone-repository",
                         IconName::GitBranch,
                         "Clone repository…",
+                        Box::new(CloneRepository) as Box<dyn Action>,
                     ),
                 ];
                 // The kit centres a button's content, so each row carries one full-width
                 // child that puts the icon and label at the row's left edge.
-                let action_rows = actions
-                    .into_iter()
-                    .enumerate()
-                    .map(|(ix, (id, icon, label))| {
-                        let shell = shell.clone();
-                        Button::new(id)
-                            .ghost()
-                            .w_full()
-                            .accessibility_label(label)
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .gap(style::SPACE_2)
-                                    .child(
-                                        div()
-                                            .id(("switcher-icon", ix))
-                                            .test_support()
-                                            .child(Icon::new(icon).small()),
-                                    )
-                                    .child(label),
-                            )
-                            .on_click(cx.listener(move |state, _, window, cx| {
-                                state.dismiss(window, cx);
-                                shell.update(cx, |s, cx| match id {
-                                    "switcher-open-collection" => s.prompt_open(window, cx),
-                                    "switcher-import-collection" => s.prompt_import(window, cx),
-                                    "switcher-clone-repository" => {
-                                        s.clone_repository(&CloneRepository, window, cx)
-                                    }
-                                    _ => s.prompt_new(window, cx),
-                                });
-                            }))
-                    });
+                let action_rows =
+                    actions
+                        .into_iter()
+                        .enumerate()
+                        .map(|(ix, (id, icon, label, action))| {
+                            let shell = shell.clone();
+                            // Each row shows the key its command has in the live keymap, if any.
+                            let key = ui::key_in(action.as_ref(), &[SHELL_CONTEXT], cx);
+                            Button::new(id)
+                                .ghost()
+                                .w_full()
+                                .accessibility_label(label)
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .gap(style::SPACE_2)
+                                        .child(
+                                            div()
+                                                .id(("switcher-icon", ix))
+                                                .test_support()
+                                                .child(Icon::new(icon).small()),
+                                        )
+                                        .child(label)
+                                        .children(key.map(|k| Kbd::new(k).ml_auto())),
+                                )
+                                .on_click(cx.listener(move |state, _, window, cx| {
+                                    state.dismiss(window, cx);
+                                    shell.update(cx, |s, cx| match id {
+                                        "switcher-open-collection" => s.prompt_open(window, cx),
+                                        "switcher-import-collection" => s.prompt_import(window, cx),
+                                        "switcher-clone-repository" => {
+                                            s.clone_repository(&CloneRepository, window, cx)
+                                        }
+                                        _ => s.prompt_new(window, cx),
+                                    });
+                                }))
+                        });
                 let has_rows = !open.is_empty() || !recent.is_empty();
                 div()
                     .flex()

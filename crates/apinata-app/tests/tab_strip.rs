@@ -245,3 +245,22 @@ fn the_all_tabs_menu_shows_the_same_detail_as_the_tabs(cx: &mut TestAppContext) 
         "the root one"
     );
 }
+
+#[gpui_kit::test]
+fn the_all_tabs_menu_marks_unsaved_tabs_with_the_dot(cx: &mut TestAppContext) {
+    let a = open_area(cx);
+    open_tab(cx, &a.ws, &a.root, "a.yml");
+    open_tab(cx, &a.ws, &a.root, "b.yml");
+    a.ws.update(cx, |w, cx| {
+        w.send(&a.root, edit_url("a.yml", "http://x/1"), cx)
+    });
+    cx.run_until_parked();
+    cx.update_window(a.win, |_, w, cx| w.click("tab-overflow", cx))
+        .unwrap();
+    frame(cx, a.win);
+    assert!(present(cx, a.win, ("tab-menu-dirty", 0usize)), "a.yml");
+    assert!(
+        !present(cx, a.win, ("tab-menu-dirty", 1usize)),
+        "b.yml is saved"
+    );
+}

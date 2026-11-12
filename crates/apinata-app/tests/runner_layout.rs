@@ -297,7 +297,7 @@ fn the_options_line_up_in_columns_at_1280x800(cx: &mut TestAppContext) {
     assert_options_in_columns(cx, &s, 1280.);
     // At the default size each group keeps to one line.
     for group in [
-        &["run-tags-label", "run-exclude-tags-label", "run-bail"][..],
+        &["run-tags-label", "run-exclude-tags-label"][..],
         &["run-iterations-label", "run-delay-label", "run-data-label"],
         &[
             "run-fail-on-status-label",
@@ -315,6 +315,40 @@ fn the_options_line_up_in_columns_at_1280x800(cx: &mut TestAppContext) {
             );
         }
     }
+}
+
+// Every text field and the status choice share one width, so no column mixes a wide control
+// with a narrow one.
+#[gpui_kit::test]
+fn every_option_control_has_one_width(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 3);
+    let s = started(cx, &col);
+    open_sized(cx, &s, 1280., 800.);
+    let widths: Vec<(&str, Pixels)> = OPTION_PAIRS
+        .iter()
+        .map(|(_, id)| (*id, find(cx, &s, id).size.width))
+        .collect();
+    assert!(
+        widths
+            .iter()
+            .all(|(_, w)| (*w - widths[0].1).abs() <= SLACK),
+        "option controls differ in width: {widths:?}"
+    );
+}
+
+// The stop-after-failure checkbox takes a row of its own under the options it would otherwise
+// share a line with, not an option slot with an empty label.
+#[gpui_kit::test]
+fn stop_after_the_first_failure_sits_on_its_own_row(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 3);
+    let s = started(cx, &col);
+    open_sized(cx, &s, 1280., 800.);
+    let bail = find(cx, &s, "run-bail");
+    let last = find(cx, &s, "run-fail-on-status");
+    assert!(
+        bail.top() >= last.bottom() - SLACK,
+        "run-bail {bail:?} shares a line with the option rows above {last:?}"
+    );
 }
 
 #[gpui_kit::test]

@@ -116,7 +116,7 @@ actions!(
 pub struct ActivateTab(pub usize);
 
 /// What a tab's context menu offers, in menu order.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum MenuChoice {
     Close,
     CloseOthers,
@@ -146,7 +146,22 @@ impl MenuChoice {
             MenuChoice::Reveal => label("tabs.reveal_in_sidebar"),
         }
     }
+
+    // The tab command of the same name, whose bound key the entry shows.
+    fn action(self) -> Box<dyn Action> {
+        match self {
+            MenuChoice::Close => Box::new(CloseTab),
+            MenuChoice::CloseOthers => Box::new(CloseOtherTabs),
+            MenuChoice::CloseToRight => Box::new(CloseTabsToTheRight),
+            MenuChoice::CloseSaved => Box::new(CloseSavedTabs),
+            MenuChoice::CloseAll => Box::new(CloseAllTabs),
+            MenuChoice::Reveal => Box::new(RevealInSidebar),
+        }
+    }
 }
+
+// The key contexts a tab's menu looks its key hints up in.
+const TAB_KEYS: &[&str] = &[SHELL_CONTEXT];
 
 /// The labels of a tab's context menu, in menu order.
 pub fn tab_menu_labels() -> [&'static str; 6] {
@@ -2333,7 +2348,7 @@ impl TabArea {
                             .ok();
                     },
                 );
-                // No separators, so each item's index is its click index in tests.
+                // The close choices, Reveal, the change entries and pinning each form a group.
                 for choice in MenuChoice::ALL {
                     let view = menu_view.clone();
                     let off = match choice {
@@ -2341,18 +2356,31 @@ impl TabArea {
                         MenuChoice::Reveal => !can_reveal,
                         _ => false,
                     };
-                    menu = menu.item(ui::menu_item(choice.label(), off, cx).on_click(
-                        move |_, window, cx| {
-                            view.update(cx, |a, cx| a.choose(choice, id, window, cx))
-                        },
-                    ));
+                    menu = ui::MenuLine::new(choice.label())
+                        .action(choice.action())
+                        .disabled(off)
+                        .group_break(choice == MenuChoice::Reveal)
+                        .add_to(
+                            menu,
+                            TAB_KEYS,
+                            move |_, window, cx| {
+                                view.update(cx, |a, cx| a.choose(choice, id, window, cx))
+                            },
+                            cx,
+                        );
                 }
-                // Discard changes and then Show changes follow the fixed choices, so their
-                // indices hold; Discard is always listed, greyed out when there is nothing to revert.
+                // Discard changes is always listed, greyed out when there is nothing to revert.
                 let view = menu_view.clone();
-                menu = menu.item(ui::menu_item("Discard changes", !discardable, cx).on_click(
-                    move |_, window, cx| view.update(cx, |a, cx| a.discard_tab(id, window, cx)),
-                ));
+                menu = ui::MenuLine::new("Discard changes")
+                    .action(Box::new(DiscardChanges))
+                    .disabled(!discardable)
+                    .group_break(true)
+                    .add_to(
+                        menu,
+                        TAB_KEYS,
+                        move |_, window, cx| view.update(cx, |a, cx| a.discard_tab(id, window, cx)),
+                        cx,
+                    );
                 if let Some((workspace, root, item)) = show_changes.clone() {
                     menu = menu.item(PopupMenuItem::new("Show changes").on_click(
                         move |_, window, cx| {
@@ -2361,13 +2389,21 @@ impl TabArea {
                         },
                     ));
                 }
-                // Last, so the indices of the fixed choices above hold.
                 let view = menu_view.clone();
-                menu.item(
-                    PopupMenuItem::new(if pinned { "Unpin tab" } else { "Pin tab" }).on_click(
+                let pin: Box<dyn Action> = if pinned {
+                    Box::new(UnpinTab)
+                } else {
+                    Box::new(PinTab)
+                };
+                ui::MenuLine::new(if pinned { "Unpin tab" } else { "Pin tab" })
+                    .action(pin)
+                    .group_break(true)
+                    .add_to(
+                        menu,
+                        TAB_KEYS,
                         move |_, _, cx| view.update(cx, |a, cx| a.set_pinned(id, !pinned, cx)),
-                    ),
-                )
+                        cx,
+                    )
             });
         let dirty = self.is_dirty(entry, cx);
         let hovered = self.hovered == Some(id);
@@ -2499,12 +2535,13 @@ impl TabArea {
 }
 
 impl TabArea {
-    // `#tab-overflow`: a dropdown naming every tab in order, the active one checked, so a
-    // tab scrolled out of the strip is one click away.
+    // `#tab-overflow`: a dropdown naming every tab in order, the active one checked and the
+    // unsaved ones dotted as on the strip, so a tab scrolled out of view is one click away.
     fn overflow_menu(
         &self,
         labels: Vec<String>,
         details: Vec<Option<String>>,
+        dirty: Vec<bool>,
         selected: usize,
     ) -> impl IntoElement + use<> {
         let workspace = self.workspace.clone();
@@ -2519,11 +2556,12 @@ impl TabArea {
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
                     menu = menu.scrollable(true);
                     crate::ui::start_on(&menu, selected, window, cx);
-                    for (ix, (label, detail)) in labels.iter().zip(&details).enumerate() {
+                    let rows = labels.iter().zip(&details).zip(&dirty).enumerate();
+                    for (ix, ((label, detail), &dirty)) in rows {
                         let workspace = workspace.clone();
                         let reveal = reveal.clone();
                         menu = menu.item(
-                            menu_tab_item(ix, label, detail.as_deref())
+                            menu_tab_item(ix, label, detail.as_deref(), dirty)
                                 .checked(ix == selected)
                                 .on_click(move |_, _, cx| {
                                     // A pick of the already active tab must still scroll it back
@@ -2541,26 +2579,38 @@ impl TabArea {
     }
 }
 
-// An All tabs entry: the tab's label, then its muted hint as the tab shows it.
-fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>) -> PopupMenuItem {
-    let Some(detail) = detail else {
+// An All tabs entry: the tab's label, then its muted hint as the tab shows it, then the
+// unsaved dot when the tab has unsaved edits.
+fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>, dirty: bool) -> PopupMenuItem {
+    if detail.is_none() && !dirty {
         return PopupMenuItem::new(label.to_owned());
-    };
-    let (label, detail) = (SharedString::from(label.to_owned()), detail.to_owned());
+    }
+    let label = SharedString::from(label.to_owned());
+    let detail = detail.map(str::to_owned);
     PopupMenuItem::element(move |_, cx| {
+        let name = match &detail {
+            Some(detail) => format!("{label} {detail}"),
+            None => label.to_string(),
+        };
         h_flex()
             .id(("tab-menu-item", ix))
             .test_support()
             .gap(style::SPACE_2)
-            .aria_label(format!("{label} {detail}"))
+            .items_center()
+            .aria_label(name)
             .child(label.clone())
-            .child(
-                div()
-                    .id(("tab-menu-detail", ix))
-                    .test_support()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(detail.clone()),
-            )
+            .when_some(detail.clone(), |d, detail| {
+                d.child(
+                    div()
+                        .id(("tab-menu-detail", ix))
+                        .test_support()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(detail),
+                )
+            })
+            .when(dirty, |d| {
+                d.child(ui::dirty_dot(("tab-menu-dirty", ix)).test_support())
+            })
     })
 }
 
@@ -2670,13 +2720,14 @@ impl TabArea {
         let selected = entries.iter().position(|e| e.id == active).unwrap_or(0);
         let labels: Vec<String> = entries.iter().map(|e| self.tab_label(e, cx)).collect();
         let details = self.details(&entries, &labels, cx);
+        let dirty: Vec<bool> = entries.iter().map(|e| self.is_dirty(e, cx)).collect();
         let tabs: Vec<Tab> = entries
             .iter()
             .zip(details.iter().cloned())
             .enumerate()
             .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, cx))
             .collect();
-        let overflow = self.overflow_menu(labels, details, selected);
+        let overflow = self.overflow_menu(labels, details, dirty, selected);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
         // gap precedes it, so the filler pulls back by that gap and trails the tab by its width.
         let pad = style::resolve(style::ui(12.), window);

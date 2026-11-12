@@ -112,15 +112,14 @@ fn the_collection_menu_acts_on_that_collection(cx: &mut TestAppContext) {
         ),
         (MenuEntry::CollapseAll, vec![""]),
     ] {
-        let ix = menu_entries(NodeKind::Collection)
-            .iter()
-            .position(|e| *e == entry)
-            .expect("offered on the collection row");
         cx.update_window(h.win, |_, w, cx| w.right_click(row(""), cx))
             .unwrap();
         frame(cx, h.win);
-        cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-            .unwrap();
+        cx.update_window(h.win, |_, w, cx| {
+            let ix = menu_index(w, entry.label());
+            w.within("popup-menu").click(ix, cx)
+        })
+        .unwrap();
         cx.run_until_parked();
         assert_eq!(kept(cx, &h), expected, "{entry:?}");
     }
@@ -168,15 +167,14 @@ fn header_actions_reach_every_collection_and_the_row_menu_only_its_own(cx: &mut 
     assert_eq!(kept_of(cx, &h, &second), [""]);
 
     // The first collection's row menu opens only that collection's folders.
-    let ix = menu_entries(NodeKind::Collection)
-        .iter()
-        .position(|e| *e == MenuEntry::ExpandAll)
-        .expect("offered on the collection row");
     cx.update_window(h.win, |_, w, cx| w.right_click(row(""), cx))
         .unwrap();
     frame(cx, h.win);
-    cx.update_window(h.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    cx.update_window(h.win, |_, w, cx| {
+        let ix = menu_index(w, MenuEntry::ExpandAll.label());
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
     cx.run_until_parked();
     assert_eq!(kept(cx, &h), ["", "docs", "users", "users/admin"]);
     assert_eq!(kept_of(cx, &h, &second), [""], "the other one is untouched");

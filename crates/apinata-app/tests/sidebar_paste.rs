@@ -470,8 +470,7 @@ fn dirs(dir: &Path) -> Vec<String> {
 // The kit's menu does not expose the disabled flag, so a click on the Paste entry is the check.
 #[gpui_kit::test]
 fn the_paste_entry_is_disabled_inside_the_copied_folder(cx: &mut TestAppContext) {
-    use apinata_app::sidebar::menu::{MenuEntry, menu_entries};
-    use apinata_app::sidebar::model::NodeKind;
+    use apinata_app::sidebar::menu::MenuEntry;
     for cut_it in [false, true] {
         let col = nested();
         let s = started(cx, &col);
@@ -483,15 +482,14 @@ fn the_paste_entry_is_disabled_inside_the_copied_folder(cx: &mut TestAppContext)
         }
         let before = toasts(cx, &s);
         for target in ["f", "f/sub"] {
-            let ix = menu_entries(NodeKind::Folder)
-                .iter()
-                .position(|e| *e == MenuEntry::PasteItem)
-                .unwrap();
             cx.update_window(s.win, |_, w, cx| w.right_click(row(target), cx))
                 .unwrap();
             frame(cx, s.win);
-            cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-                .unwrap();
+            cx.update_window(s.win, |_, w, cx| {
+                let ix = menu_index(w, MenuEntry::PasteItem.label());
+                w.within("popup-menu").click(ix, cx)
+            })
+            .unwrap();
             cx.run_until_parked();
             frame(cx, s.win);
         }
@@ -499,6 +497,52 @@ fn the_paste_entry_is_disabled_inside_the_copied_folder(cx: &mut TestAppContext)
         assert_eq!(dirs(&col.path().join("f")), ["sub"], "cut={cut_it}");
         assert_eq!(dirs(&col.path().join("f/sub")), Vec::<String>::new());
         assert_eq!(toasts(cx, &s), before, "a disabled entry does nothing");
+    }
+}
+
+// With nothing cut or copied, every row's Paste entry greys out, the collection row's too.
+#[gpui_kit::test]
+fn paste_greys_out_while_nothing_is_cut_or_copied(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::model::{Node, NodeKind};
+    use apinata_core::ItemPath;
+    let col = nested();
+    let s = started(cx, &col);
+    let node = |path: ItemPath, kind| Node {
+        id: format!("{path:?}").into(),
+        collection: 0,
+        root: s.root.clone(),
+        path,
+        kind,
+        name: "n".to_owned(),
+        method: None,
+        dirty: false,
+        disk: Default::default(),
+        expanded: false,
+        children: Vec::new(),
+        example: None,
+        hint: None,
+        unsupported: None,
+    };
+    let sb = sidebar(cx, &s);
+    let rows = [
+        (ItemPath::root(), NodeKind::Collection),
+        (ip("f"), NodeKind::Folder),
+    ];
+    for (path, kind) in rows.clone() {
+        let n = node(path.clone(), kind);
+        assert!(
+            sb.read_with(cx, |sb, _| sb.paste_blocked(&n)),
+            "{path:?} empty"
+        );
+    }
+    plain(cx, &s, "fb");
+    copy(cx, &s);
+    for (path, kind) in rows {
+        let n = node(path.clone(), kind);
+        assert!(
+            !sb.read_with(cx, |sb, _| sb.paste_blocked(&n)),
+            "{path:?} copied"
+        );
     }
 }
 

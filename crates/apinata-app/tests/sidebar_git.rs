@@ -294,12 +294,10 @@ fn started_changed(cx: &mut TestAppContext, sb: &Sandbox) -> (tempfile::TempDir,
 fn show_changes_opens_the_dialog_on_the_row(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let (_col, s) = started_changed(cx, &sb);
-    let ix = menu_entries(NodeKind::Request).len();
     cx.update_window(s.win, |_, w, cx| w.right_click(row("health.yml"), cx))
         .unwrap();
     frame(cx, s.win);
-    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(ix, cx))
-        .unwrap();
+    click_menu(cx, s.win, "Show changes");
     frame(cx, s.win);
     let selected = cx.update(|cx| {
         current(cx).and_then(|v| {
@@ -315,14 +313,15 @@ fn show_changes_opens_the_dialog_on_the_row(cx: &mut TestAppContext) {
 fn an_unchanged_row_offers_no_show_changes(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let (_col, s) = started_changed(cx, &sb);
-    let ix = menu_entries(NodeKind::Request).len();
     cx.update_window(s.win, |_, w, cx| w.right_click(row("status.yml"), cx))
         .unwrap();
     frame(cx, s.win);
     let (last, extra) = cx
         .update_window(s.win, |_, w, _| {
-            let menu = w.within("popup-menu");
-            (menu.try_find(ix - 1).is_some(), menu.try_find(ix).is_some())
+            (
+                try_menu_index(w, "Delete").is_some(),
+                try_menu_index(w, "Show changes").is_some(),
+            )
         })
         .unwrap();
     assert!(last, "the menu is open");

@@ -26,7 +26,8 @@ use crate::persisted::Persisted;
 use crate::prefs_section::PrefsSection;
 use crate::shortcuts::{
     Chord, Overrides, Resolution, assign, conflicted, conflicts_with, diagnose, effective,
-    input_chord, reset, reset_all, reset_conflict, reset_resolving, scope_label, shown_place,
+    input_chord, is_default, reset, reset_all, reset_conflict, reset_resolving, scope_label,
+    shown_place,
 };
 use crate::style::{FOCUS_RING_ROOM, SPACE_1, SPACE_2, TEXT_SMALL};
 use crate::ui;
@@ -201,8 +202,9 @@ impl KeyboardPrefs {
         cx.notify();
     }
 
-    // Modifier taps are ignored, a bare Escape cancels, a bare key asks for a modifier,
-    // a taken key asks how to settle it, and any other key is assigned at once.
+    // Modifier taps are ignored, a bare Escape cancels, a bare key asks for a modifier unless
+    // it is one of the command's own defaults, a taken key asks how to settle it, and any
+    // other key is assigned at once.
     fn pressed(&mut self, keystroke: &Keystroke, cx: &mut Context<Self>) {
         let (Some(id), None) = (self.row, &self.prompt) else {
             return;
@@ -214,11 +216,12 @@ impl KeyboardPrefs {
         if bare && chord.keystroke().key == "escape" {
             return self.cancel(cx);
         }
-        if chord.needs_modifier() {
+        let cmds = registry();
+        let bare_ok = (cmds.iter()).any(|c| c.id == id && is_default(c, &chord));
+        if chord.needs_modifier() && !bare_ok {
             self.message = Some(NEEDS_MODIFIER.into());
             return cx.notify();
         }
-        let cmds = registry();
         let others = conflicts_with(&cmds, &self.overrides(cx), id, &chord);
         self.intercept = None;
         if others.is_empty() {
