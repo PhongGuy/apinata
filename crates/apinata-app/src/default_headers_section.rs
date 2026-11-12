@@ -6,7 +6,7 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
-use gpui_kit::{EventEmitter, SharedString, TestSupportExt, Window, div};
+use gpui_kit::{App, EventEmitter, SharedString, Styled, TestSupportExt, Window, div};
 
 use crate::command::Edit;
 use crate::section::SectionEdit;
@@ -77,6 +77,12 @@ fn slug(name: &str) -> String {
     name.to_ascii_lowercase()
 }
 
+/// Styles a header name or value cell as the header table draws its cells: small mono text.
+pub fn header_cell<E: Styled>(el: E, cx: &App) -> E {
+    el.text_size(TEXT_SMALL)
+        .font_family(cx.theme().mono_font_family.clone())
+}
+
 impl Render for DefaultHeadersSection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
@@ -105,20 +111,18 @@ impl Render for DefaultHeadersSection {
                 .items_center()
                 .child(toggle)
                 .child(
-                    div()
+                    header_cell(div(), cx)
                         .w(HEADER_NAME_WIDTH)
-                        .text_size(TEXT_SMALL)
                         .text_color(if sent { cx.theme().foreground } else { muted })
                         .child(header.name.clone()),
                 )
                 .child(
-                    div()
+                    header_cell(div(), cx)
                         .id(SharedString::from(format!("default-header-{slug}-value")))
                         .test_support()
                         .aria_label(shown.clone())
                         .min_w_0()
                         .truncate()
-                        .text_size(TEXT_SMALL)
                         .text_color(muted)
                         .child(shown),
                 )
