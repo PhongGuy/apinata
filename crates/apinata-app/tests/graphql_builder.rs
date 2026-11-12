@@ -91,6 +91,19 @@ fn builder_and_docs_toggles_close_each_other(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "graphql-builder"));
 }
 
+// The request already has a Docs tab, so the schema browser's toggle is named Schema.
+#[gpui_kit::test]
+fn the_schema_toggle_is_not_named_docs(cx: &mut TestAppContext) {
+    let (win, _s) = section(cx, "{ users { id } }", true);
+    frame(cx, win);
+    let label = cx
+        .update_window(win, |_, w, _| {
+            w.find("graphql-docs-toggle").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(label.as_deref(), Some("Schema"));
+}
+
 #[gpui_kit::test]
 fn the_builder_shows_the_schema_states(cx: &mut TestAppContext) {
     let (win, _s) = section(cx, "", false);

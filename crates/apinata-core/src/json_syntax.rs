@@ -8,7 +8,7 @@ pub struct JsonSyntaxError {
     pub line: usize,
     /// 1-based column in characters on that line.
     pub column: usize,
-    /// A short reason, such as `expected value`.
+    /// A short reason in plain words, such as `Remove the comma before }`.
     pub message: String,
 }
 
@@ -40,15 +40,50 @@ pub fn json_syntax_error(text: &str) -> Option<JsonSyntaxError> {
         at -= 1;
     }
     let full = err.to_string();
-    let message = full
+    let raw = full
         .rfind(" at line ")
-        .map_or(full.as_str(), |i| &full[..i])
-        .to_string();
+        .map_or(full.as_str(), |i| &full[..i]);
+    let offset = masked
+        .split('\n')
+        .take(line - 1)
+        .map(|l| l.len() + 1)
+        .sum::<usize>()
+        + at;
+    let message = plain_message(raw, &masked, offset, err.is_eof());
     Some(JsonSyntaxError {
         line,
         column: line_text[..at].chars().count() + 1,
         message,
     })
+}
+
+// Rewords the parser's `raw` reason in plain words. The character at byte `offset` and the
+// one before it name the common slips (a trailing comma, single quotes, a bare word) that the
+// parser only reports as a generic expectation.
+fn plain_message(raw: &str, text: &str, offset: usize, eof: bool) -> String {
+    let here = (!eof).then(|| text[offset..].chars().next()).flatten();
+    let before = text[..offset].trim_end().chars().next_back();
+    let message = match (raw, here) {
+        (_, Some(close @ ('}' | ']'))) if before == Some(',') => {
+            return format!("Remove the comma before {close}");
+        }
+        (_, Some('\'')) => "Use double quotes instead of single quotes",
+        ("EOF while parsing an object", _) => "The JSON ends before the closing }",
+        ("EOF while parsing a list", _) => "The JSON ends before the closing ]",
+        ("EOF while parsing a string", _) => "The JSON ends inside a string; add the closing \"",
+        ("EOF while parsing a value", _) => "The JSON ends where a value should be",
+        _ if eof => "The JSON ends too early",
+        ("key must be a string", _) => "Put the key in double quotes",
+        ("expected `,` or `}`", _) => "Add a comma between items, or close the object with }",
+        ("expected `,` or `]`", _) => "Add a comma between items, or close the list with ]",
+        ("expected `:`", _) => "Add a colon after the key",
+        ("expected value", Some(c)) if c.is_alphabetic() => "Put text in double quotes",
+        ("expected value", _) => "A value is missing here",
+        ("expected ident", _) => "Use true, false or null, or put text in double quotes",
+        ("trailing characters", _) => "Remove the text after the end of the JSON",
+        _ => "This is not valid JSON",
+    };
+    message.to_owned()
 }
 
 // Swaps each single-line placeholder for filler of the same char count, so every line and

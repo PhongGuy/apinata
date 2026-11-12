@@ -416,7 +416,7 @@ impl BodySection {
         cx.notify();
     }
 
-    /// The JSON marker text (`Line 2, column 6: expected value`) while a JSON body is invalid.
+    /// The JSON marker text (`Line 2, column 6: A value is missing here`) for an invalid body.
     pub fn json_error(&self) -> Option<String> {
         let e = self.json_error.as_ref()?;
         Some(format!(

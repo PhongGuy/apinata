@@ -350,11 +350,12 @@ fn settings_timeout(cx: &mut TestAppContext) {
 fn settings_all(cx: &mut TestAppContext) {
     let c = case(cx, "settings-all");
     open_section(cx, &c, Section::Settings);
+    // The limit is set first: with following off its field is disabled.
+    replace_input(cx, c.win, Some("settings"), "set-max-redirects", "2");
+    cx.run_until_parked();
     for id in ["set-encode-url", "set-follow-redirects", "set-forward-auth"] {
         click(cx, &c, "settings", id);
     }
-    replace_input(cx, c.win, Some("settings"), "set-max-redirects", "2");
-    cx.run_until_parked();
     act(
         cx,
         &c,

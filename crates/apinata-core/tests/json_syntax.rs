@@ -19,27 +19,106 @@ fn valid_and_blank_bodies_have_no_error() {
 fn a_missing_closing_brace_points_past_the_end() {
     let (line, column, message) = at("{\"a\": 1");
     assert_eq!((line, column), (1, 8));
-    assert!(message.contains("EOF"), "{message}");
-    assert!(
-        !message.contains("line"),
-        "position leaked into message: {message}"
-    );
+    assert_eq!(message, "The JSON ends before the closing }");
 }
 
 #[test]
 fn a_missing_value_on_the_second_line() {
     let (line, column, message) = at("{\n\"b\": }");
     assert_eq!((line, column), (2, 6));
-    assert_eq!(message, "expected value");
+    assert_eq!(message, "A value is missing here");
 }
 
 #[test]
 fn a_trailing_comma_is_reported() {
     let (line, column, message) = at("[1,2,]");
     assert_eq!((line, column), (1, 6));
-    assert_eq!(message, "expected value");
-    let (line, column, _) = at("{\"a\":1,}");
+    assert_eq!(message, "Remove the comma before ]");
+    let (line, column, message) = at("{\"a\":1,}");
     assert_eq!((line, column), (1, 8));
+    assert_eq!(message, "Remove the comma before }");
+}
+
+#[test]
+fn a_trailing_comma_on_its_own_line_is_named() {
+    let (line, column, message) = at("{\n  \"a\": 1,\n}");
+    assert_eq!((line, column), (3, 1));
+    assert_eq!(message, "Remove the comma before }");
+}
+
+#[test]
+fn a_missing_comma_is_named() {
+    let (_, _, message) = at("{\"a\": 1 \"b\": 2}");
+    assert_eq!(
+        message,
+        "Add a comma between items, or close the object with }"
+    );
+    let (_, _, message) = at("[1 2]");
+    assert_eq!(
+        message,
+        "Add a comma between items, or close the list with ]"
+    );
+}
+
+#[test]
+fn an_unquoted_key_is_named() {
+    let (line, column, message) = at("{a: 1}");
+    assert_eq!((line, column), (1, 2));
+    assert_eq!(message, "Put the key in double quotes");
+}
+
+#[test]
+fn single_quotes_are_named() {
+    let (line, column, message) = at("{'a': 1}");
+    assert_eq!((line, column), (1, 2));
+    assert_eq!(message, "Use double quotes instead of single quotes");
+    let (_, _, message) = at("{\"a\": 'x'}");
+    assert_eq!(message, "Use double quotes instead of single quotes");
+}
+
+#[test]
+fn an_unexpected_end_says_what_is_missing() {
+    assert_eq!(at("[1, 2").2, "The JSON ends before the closing ]");
+    assert_eq!(at("[1,").2, "The JSON ends where a value should be");
+    assert_eq!(
+        at("{\"a\": \"x").2,
+        "The JSON ends inside a string; add the closing \""
+    );
+}
+
+#[test]
+fn a_missing_colon_and_bare_words_are_named() {
+    assert_eq!(at("{\"a\" 1}").2, "Add a colon after the key");
+    assert_eq!(at("{\"a\": hello}").2, "Put text in double quotes");
+    assert_eq!(
+        at("{\"a\": tru}").2,
+        "Use true, false or null, or put text in double quotes"
+    );
+    assert_eq!(at("{} x").2, "Remove the text after the end of the JSON");
+}
+
+#[test]
+fn anything_else_gets_a_plain_generic_message() {
+    let (line, column, message) = at("[\"a\\q\"]");
+    assert_eq!((line, column), (1, 5));
+    assert_eq!(message, "This is not valid JSON");
+}
+
+#[test]
+fn no_message_keeps_the_parser_wording() {
+    for text in [
+        "{\"a\":1,}",
+        "[1 2]",
+        "{a: 1}",
+        "[1,",
+        "{\"a\" 1}",
+        "[\"a\\q\"]",
+    ] {
+        let message = at(text).2;
+        for raw in ["EOF", "expected", "key must", "`", " at line "] {
+            assert!(!message.contains(raw), "{text:?} gave {message:?}");
+        }
+    }
 }
 
 #[test]

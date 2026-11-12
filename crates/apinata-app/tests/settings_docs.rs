@@ -82,6 +82,44 @@ fn max_redirects_take_digits_only(cx: &mut TestAppContext) {
     assert!(!found(cx, win, "set-invalid"));
 }
 
+// With following off the limit means nothing, so its field is disabled and says why on
+// hover; the number itself is kept for when following comes back on.
+#[gpui_kit::test]
+fn max_redirects_wait_while_following_is_off(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.max_redirects = 7;
+    let (win, host, s) = settings(cx, base);
+    let input = s.read_with(cx, |s, _| s.max_redirects_input().clone());
+    let disabled = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+        input.read_with(cx, |i, _| i.presentation().is_disabled())
+    };
+    assert!(!disabled(cx));
+    click(cx, win, "set-follow-redirects");
+    assert!(disabled(cx));
+    assert_eq!(last(cx, &host).max_redirects, 7);
+    cx.update_window(win, |_, w, cx| w.hover("set-max-redirects", cx))
+        .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(2));
+    let tip = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("set-max-redirects-tooltip")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        tip.as_deref(),
+        Some(apinata_app::settings_section::MAX_REDIRECTS_OFF_TIP)
+    );
+    click(cx, win, "set-follow-redirects");
+    assert!(!disabled(cx));
+    assert_eq!(input.read_with(cx, |i, _| i.value().to_string()), "7");
+    assert_eq!(last(cx, &host).max_redirects, 7);
+}
+
 #[gpui_kit::test]
 fn timeout_is_inherited_or_custom(cx: &mut TestAppContext) {
     let mut base = RequestSettings::new();
