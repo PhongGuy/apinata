@@ -9,7 +9,7 @@ pub use apinata_core::collection_relative;
 use apinata_core::{BodySpec, JsonSyntaxError, VariableSet, json_syntax_error};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{
-    Editor, EditorState, InputEvent, RangeDecoration, RangeDecorationCollection,
+    Editor, EditorState, Input, InputEvent, RangeDecoration, RangeDecorationCollection,
     RangeDecorationStyle, TextDecoration, TextDecorationCollection,
 };
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
@@ -21,7 +21,7 @@ use gpui_kit::{
     Subscription, TestSupportExt, Window, div,
 };
 
-use crate::body_text::{beautify_json, beautify_xml, minify_json, minify_xml};
+use crate::body_text::{beautify_json, beautify_xml, format_size, minify_json, minify_xml};
 use crate::command::Edit;
 use crate::kv_table::{
     KvColumns, KvEvent, KvRow, KvTable, PickFiles, file_rows, files_from, header_rows,
@@ -537,7 +537,7 @@ impl BodySection {
                         }
                         t.set_files(ix, Some(files), window, cx)
                     });
-                    // The first file swaps an empty file body's first step for the table.
+                    // The first file swaps an empty file body's first step for the file's view.
                     cx.notify();
                 }
             });
@@ -644,6 +644,96 @@ impl BodySection {
                     .on_click(cx.listener(|this, _, window, cx| this.pick(0, window, cx))),
             )
     }
+
+    /// A file body with one entry: the file's name and size, its content type, and buttons to
+    /// change or remove it, or to add another file to choose between.
+    fn render_file_one(&self, row: &KvRow, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let path = row
+            .files
+            .as_ref()
+            .and_then(|f| f.first())
+            .filter(|p| !p.is_empty());
+        let name = path.map_or("No file chosen".to_owned(), |p| {
+            let name = Path::new(p).file_name().map(|n| n.to_string_lossy());
+            name.map_or(p.clone(), |n| n.into_owned())
+        });
+        // The size is read where the request would read the file; a path with a variable in
+        // it, or a file that is gone, shows no size.
+        let size = path
+            .and_then(|p| std::fs::metadata(self.root.join(p)).ok())
+            .filter(|m| m.is_file())
+            .map(|m| format_size(m.len()));
+        let content_type = self.table.read(cx).content_type_input(0).cloned();
+        let choose = if path.is_some() {
+            "Change\u{2026}"
+        } else {
+            "Choose file\u{2026}"
+        };
+        h_flex()
+            .id("body-file-one")
+            .test_support()
+            .w_full()
+            .flex_wrap()
+            .items_center()
+            .gap(style::SPACE_2)
+            .child(
+                div()
+                    .id("body-file-name")
+                    .test_support()
+                    .aria_label(name.clone())
+                    .when(path.is_none(), |d| {
+                        d.text_color(cx.theme().muted_foreground)
+                    })
+                    .child(name),
+            )
+            .children(size.map(|size| {
+                div()
+                    .id("body-file-size")
+                    .test_support()
+                    .aria_label(size.clone())
+                    .text_color(cx.theme().muted_foreground)
+                    .child(size)
+            }))
+            .children(content_type.map(|state| {
+                div()
+                    .w(style::MODE_SELECT_WIDTH)
+                    .child(crate::ui::padded_input(
+                        Input::new(&state)
+                            .id("body-file-type")
+                            .aria_label("Content type")
+                            .w_full()
+                            .bg(crate::ui::field_fill(false, cx)),
+                        &state,
+                    ))
+            }))
+            .child(
+                Button::new("body-file-change")
+                    .label(choose)
+                    .on_click(cx.listener(|this, _, window, cx| this.pick(0, window, cx))),
+            )
+            .child(
+                Button::new("body-file-remove")
+                    .ghost()
+                    .label("Remove")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        let body = BodyMode::File.empty();
+                        this.show(BodyMode::File, &body, window, cx);
+                        this.emit(body, None, false, cx);
+                    })),
+            )
+            .child(self.render_file_add(cx))
+    }
+
+    /// The button that adds one more file to a file body, whose radios then pick the one sent.
+    fn render_file_add(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        Button::new("body-file-add")
+            .ghost()
+            .label("Add another file\u{2026}")
+            .on_click(cx.listener(|this, _, window, cx| {
+                let next = this.table.read(cx).rows(cx).len();
+                this.pick(next, window, cx)
+            }))
+    }
 }
 
 impl Render for BodySection {
@@ -653,8 +743,28 @@ impl Render for BodySection {
         if key != self.decorated {
             self.decorate(cx);
         }
-        let content = match (self.mode, &self.unsupported) {
-            (None, kind) => div()
+        // A file body draws its first step, its lone file, or the table of files to choose from.
+        let file_rows = (self.mode == Some(BodyMode::File)).then(|| self.table.read(cx).rows(cx));
+        let file_view = file_rows.as_deref().map(|rows| match rows {
+            [] => self.render_file_empty(cx).into_any_element(),
+            [row] => self.render_file_one(row, cx).into_any_element(),
+            _ => v_flex()
+                .w_full()
+                .gap(style::SPACE_2)
+                .items_start()
+                .child(
+                    div()
+                        .id("body-table")
+                        .test_support()
+                        .w_full()
+                        .child(self.table.clone()),
+                )
+                .child(self.render_file_add(cx))
+                .into_any_element(),
+        });
+        let content = match (file_view, self.mode, &self.unsupported) {
+            (Some(view), _, _) => view,
+            (None, None, kind) => div()
                 .id("body-unsupported")
                 .test_support()
                 .child(format!(
@@ -662,21 +772,18 @@ impl Render for BodySection {
                     kind.as_deref().unwrap_or("unknown")
                 ))
                 .into_any_element(),
-            (Some(BodyMode::None), _) => div()
+            (None, Some(BodyMode::None), _) => div()
                 .id("body-none")
                 .test_support()
                 .child("This request has no body.")
                 .into_any_element(),
-            (Some(BodyMode::File), _) if self.table.read(cx).rows(cx).is_empty() => {
-                self.render_file_empty(cx).into_any_element()
-            }
-            (Some(mode), _) if mode.is_table() => div()
+            (None, Some(mode), _) if mode.is_table() => div()
                 .id("body-table")
                 .test_support()
                 .w_full()
                 .child(self.table.clone())
                 .into_any_element(),
-            (Some(_), _) => div()
+            (None, Some(_), _) => div()
                 .id("body-code")
                 .test_support()
                 .w_full()
