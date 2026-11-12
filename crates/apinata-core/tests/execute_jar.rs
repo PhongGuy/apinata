@@ -2,7 +2,9 @@
 
 use crate::common;
 
-use apinata_core::{CookieInfo, CookieJar, ExecOptions, Executor, MemoryStore, SecretStore};
+use apinata_core::{
+    CookieInfo, CookieJar, ExecOptions, Executor, MemoryStore, SameSite, SecretStore,
+};
 use common::{executor, resolved_one};
 use std::sync::Arc;
 use wiremock::matchers::path;
@@ -180,4 +182,44 @@ async fn a_cookie_inserted_into_the_shared_jar_is_sent() {
     let echo = resolved_one("GET", &format!("{}/echo", server.uri()), "", "");
     exec.send(&echo).await.expect("sent");
     assert_eq!(last_cookie(&server).await.as_deref(), Some("manual=m1"));
+}
+
+#[tokio::test]
+async fn a_set_cookie_same_site_is_listed_and_survives_a_save_and_reload() {
+    let server = MockServer::start().await;
+    Mock::given(path("/same"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .append_header("set-cookie", "a=1; Path=/; SameSite=Strict")
+                .append_header("set-cookie", "b=1; Path=/; samesite=lax")
+                .append_header("set-cookie", "c=1; Path=/; SameSite=None")
+                .append_header("set-cookie", "d=1; Path=/"),
+        )
+        .mount(&server)
+        .await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("cookies.json");
+    let keys: Arc<dyn SecretStore> = Arc::new(MemoryStore::new());
+    let jar = Arc::new(CookieJar::open(path.clone(), keys.clone()));
+    jar.load();
+    let exec = Executor::new(ExecOptions::new().cookie_jar(jar.clone())).expect("client");
+    let set = resolved_one("GET", &format!("{}/same", server.uri()), "", "");
+    exec.send(&set).await.expect("sent");
+    let same_sites = |jar: &CookieJar| -> Vec<(String, Option<SameSite>)> {
+        jar.list()
+            .into_iter()
+            .map(|c| (c.name, c.same_site))
+            .collect()
+    };
+    let expected = vec![
+        ("a".to_owned(), Some(SameSite::Strict)),
+        ("b".to_owned(), Some(SameSite::Lax)),
+        ("c".to_owned(), Some(SameSite::None)),
+        ("d".to_owned(), None),
+    ];
+    assert_eq!(same_sites(&jar), expected);
+    jar.save().expect("saved");
+    let again = CookieJar::open(path, keys);
+    again.load();
+    assert_eq!(same_sites(&again), expected);
 }

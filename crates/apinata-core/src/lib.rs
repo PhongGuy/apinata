@@ -153,7 +153,7 @@ pub use config_file::{CollectionFile, FolderFile};
 pub use connect_hint::ConnectHint;
 pub use context::{ContextOptions, SecretReadFailure, VarContext};
 pub use cookies::{
-    CookieError, CookieInfo, CookieJar, CookieOutcome, CookieRejection, SetCookie,
+    CookieError, CookieInfo, CookieJar, CookieOutcome, CookieRejection, SameSite, SetCookie,
     dropped_cookies_notice,
 };
 pub use credential_names::{

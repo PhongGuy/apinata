@@ -6,7 +6,7 @@ use apinata_app::cookie_jar::{
 };
 use apinata_app::executor::{SharedExecutor, install, shared};
 use apinata_app::persist::Paths;
-use apinata_core::{CookieInfo, CookieJar, Persistence, SecretStore};
+use apinata_core::{CookieInfo, CookieJar, Persistence, SameSite, SecretStore};
 use apinata_core::{ExecOptions, Executor, MemoryStore};
 use chrono::TimeZone as _;
 use gpui_kit::ElementId;
@@ -982,5 +982,63 @@ fn a_dropped_cookie_warns_on_the_first_launch_only(
     assert!(
         !on_disk.contains("co.uk") && on_disk.contains("kept"),
         "{on_disk}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_cookies_same_site_shows_in_its_flags_and_an_edit_keeps_it(cx: &mut TestAppContext) {
+    let (win, exec, view) = dialog(cx, true);
+    let exec = exec.unwrap();
+    for (name, same_site) in [
+        ("a-strict", Some(SameSite::Strict)),
+        ("b-none", Some(SameSite::None)),
+        ("c-unset", None),
+    ] {
+        let mut c = CookieInfo::new("same.test", name, "1");
+        c.secure = name == "a-strict";
+        c.same_site = same_site;
+        exec.cookies().insert(c).unwrap();
+    }
+    view.update(cx, |v, cx| v.refresh(cx));
+    frame(cx, win);
+    let row = |cx: &mut TestAppContext, name: &str| {
+        view.read_with(cx, |v, _| v.cookies().iter().position(|c| c.name == name))
+            .expect("listed")
+    };
+    let flags = |cx: &mut TestAppContext, ix: usize| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find(("jar-flags", ix)).label().map(str::to_owned)
+        })
+        .unwrap()
+    };
+    let strict = row(cx, "a-strict");
+    assert_eq!(
+        flags(cx, strict).as_deref(),
+        Some("HTTPS only, This host only, Same site: Strict")
+    );
+    let none = row(cx, "b-none");
+    assert_eq!(
+        flags(cx, none).as_deref(),
+        Some("This host only, Same site: None")
+    );
+    let unset = row(cx, "c-unset");
+    assert_eq!(flags(cx, unset).as_deref(), Some("This host only"));
+
+    cx.update_window(win, |_, w, cx| w.click(("jar-edit", strict), cx))
+        .unwrap();
+    frame(cx, win);
+    replace_input(cx, win, None, "jar-form-value", "2");
+    click(cx, win, "jar-form-save");
+    cx.run_until_parked();
+    let edited = exec
+        .cookies()
+        .list()
+        .into_iter()
+        .find(|c| c.name == "a-strict")
+        .expect("kept");
+    assert_eq!(
+        (edited.value.as_str(), edited.same_site),
+        ("2", Some(SameSite::Strict))
     );
 }

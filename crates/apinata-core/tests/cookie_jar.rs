@@ -1,6 +1,6 @@
 //! The cookie jar's own API: adding cookies with validation, and saving them sealed.
 
-use apinata_core::{CookieError, CookieInfo, CookieJar};
+use apinata_core::{CookieError, CookieInfo, CookieJar, SameSite};
 use std::time::{Duration, SystemTime};
 
 fn secs(t: SystemTime) -> u64 {
@@ -480,4 +480,66 @@ fn check_names_every_invalid_field_in_dialog_order_and_stores_nothing() {
         .collect();
     assert_eq!(fields, ["domain", "path", "name", "expires"]);
     assert!(CookieJar::check(&CookieInfo::new("a.test", "sid", "v")).is_empty());
+}
+
+#[test]
+fn an_inserted_same_site_is_listed_and_round_trips_a_plain_file() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("jar.json");
+    let jar = CookieJar::default();
+    for (name, same_site) in [
+        ("strict", Some(SameSite::Strict)),
+        ("lax", Some(SameSite::Lax)),
+        ("none", Some(SameSite::None)),
+        ("unset", None),
+    ] {
+        let mut c = CookieInfo::new("same-site.test", name, "1");
+        c.same_site = same_site;
+        jar.insert(c).unwrap();
+    }
+    let shape = |jar: &CookieJar| -> Vec<(String, Option<SameSite>)> {
+        jar.list()
+            .into_iter()
+            .map(|c| (c.name, c.same_site))
+            .collect()
+    };
+    let listed = shape(&jar);
+    assert_eq!(
+        listed,
+        [
+            ("lax".to_owned(), Some(SameSite::Lax)),
+            ("none".to_owned(), Some(SameSite::None)),
+            ("strict".to_owned(), Some(SameSite::Strict)),
+            ("unset".to_owned(), None),
+        ]
+    );
+    jar.write_file(&file).unwrap();
+    let again = CookieJar::default();
+    again.read_file(&file).unwrap();
+    assert_eq!(shape(&again), listed);
+}
+
+#[test]
+fn a_file_without_same_site_or_with_an_unknown_one_loads_it_unset() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("jar.json");
+    let row = |name: &str, extra: &str| {
+        format!(
+            r#"{{"domain":"old.test","path":"/","name":"{name}","value":"1","expires":null,"secure":false,"httpOnly":false,"hostOnly":true{extra}}}"#
+        )
+    };
+    let text = format!(
+        "[{},{}]",
+        row("old", ""),
+        row("odd", r#","sameSite":"Sometimes""#)
+    );
+    std::fs::write(&file, text).unwrap();
+    let jar = CookieJar::default();
+    jar.read_file(&file).unwrap();
+    let listed: Vec<_> = jar
+        .list()
+        .into_iter()
+        .map(|c| (c.name, c.same_site))
+        .collect();
+    assert_eq!(listed, [("odd".to_owned(), None), ("old".to_owned(), None)]);
 }

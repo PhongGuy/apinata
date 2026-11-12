@@ -353,6 +353,9 @@ struct SavedCookie {
     secure: bool,
     http_only: bool,
     host_only: bool,
+    /// "Strict", "Lax" or "None"; absent in older files, and an unknown word loads as unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    same_site: Option<String>,
 }
 
 impl From<&cookie_store::Cookie<'_>> for SavedCookie {
@@ -370,6 +373,7 @@ impl From<&cookie_store::Cookie<'_>> for SavedCookie {
             secure: c.secure,
             http_only: c.http_only,
             host_only: c.host_only,
+            same_site: c.same_site.map(|s| s.as_str().to_owned()),
         }
     }
 }
@@ -387,6 +391,7 @@ impl From<SavedCookie> for CookieInfo {
             secure: c.secure,
             http_only: c.http_only,
             host_only: c.host_only,
+            same_site: c.same_site.as_deref().and_then(SameSite::from_word),
         }
     }
 }
@@ -425,6 +430,54 @@ pub struct CookieInfo {
     pub http_only: bool,
     /// Whether the cookie is sent to its exact host only, having set no `Domain`.
     pub host_only: bool,
+    /// The cookie's `SameSite` attribute; `None` when it set none.
+    pub same_site: Option<SameSite>,
+}
+
+/// A cookie's `SameSite` attribute: whether it goes along on requests started by other sites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SameSite {
+    /// Sent only on requests the cookie's own site starts.
+    Strict,
+    /// Also sent when the user follows a link from another site.
+    Lax,
+    /// Sent on every request, whichever site starts it.
+    None,
+}
+
+impl SameSite {
+    /// The attribute's value as a `Set-Cookie` header spells it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SameSite::Strict => "Strict",
+            SameSite::Lax => "Lax",
+            SameSite::None => "None",
+        }
+    }
+
+    fn from_word(word: &str) -> Option<SameSite> {
+        [SameSite::Strict, SameSite::Lax, SameSite::None]
+            .into_iter()
+            .find(|s| s.as_str().eq_ignore_ascii_case(word))
+    }
+}
+
+// The store's own type stays private, so the public enum names no dependency type.
+fn same_site_of(s: cookie::SameSite) -> SameSite {
+    match s {
+        cookie::SameSite::Strict => SameSite::Strict,
+        cookie::SameSite::Lax => SameSite::Lax,
+        cookie::SameSite::None => SameSite::None,
+    }
+}
+
+fn raw_same_site(s: SameSite) -> cookie::SameSite {
+    match s {
+        SameSite::Strict => cookie::SameSite::Strict,
+        SameSite::Lax => cookie::SameSite::Lax,
+        SameSite::None => cookie::SameSite::None,
+    }
 }
 
 impl CookieInfo {
@@ -443,6 +496,7 @@ impl CookieInfo {
             secure: false,
             http_only: false,
             host_only: true,
+            same_site: None,
         }
     }
 }
@@ -458,6 +512,7 @@ impl fmt::Debug for CookieInfo {
             .field("secure", &self.secure)
             .field("http_only", &self.http_only)
             .field("host_only", &self.host_only)
+            .field("same_site", &self.same_site)
             .finish_non_exhaustive()
     }
 }
@@ -490,6 +545,7 @@ fn info(c: &cookie_store::Cookie<'_>) -> CookieInfo {
         secure: c.secure().unwrap_or(false),
         http_only: c.http_only().unwrap_or(false),
         host_only: matches!(c.domain, CookieDomain::HostOnly(_)),
+        same_site: c.same_site().map(same_site_of),
     }
 }
 
@@ -511,6 +567,7 @@ fn put(store: &mut CookieStore, c: &CookieInfo) -> Result<(), cookie_store::Cook
     }
     raw.set_secure(c.secure);
     raw.set_http_only(c.http_only);
+    raw.set_same_site(c.same_site.map(raw_same_site));
     if let Some(at) = c.expires {
         raw.set_expires(time::OffsetDateTime::from(at));
     }
