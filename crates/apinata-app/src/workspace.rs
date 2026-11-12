@@ -938,9 +938,7 @@ impl Workspace {
         self.trashed_tabs.retain(|(r, _), _| *r != root);
         self.restores.retain(|(r, _), _| *r != root);
         self.run_unchecked.remove(&root);
-        if let Some(stop) = self.mocks.stop(&root, cx) {
-            stop.detach();
-        }
+        self.mocks.stop(&root, cx);
         let tabs = &self.tabs;
         self.kept_views.retain(|t, _| tabs.get(*t).is_some());
         self.forget_open(&root, cx);
@@ -2528,6 +2526,7 @@ impl Workspace {
             });
         }
         self.sync_watch(root, cx);
+        self.refresh_mock(root, cx);
         self.persist_tabs(cx);
     }
 
@@ -3358,7 +3357,12 @@ impl Workspace {
         self.mocks.state(&absolute(root))
     }
 
-    /// Test-only: later mock starts bind `port` instead of a free one.
+    /// How many saved examples the running mock server of `root` answers from.
+    pub fn mock_examples(&self, root: &Path) -> Option<usize> {
+        self.mocks.examples(&absolute(root))
+    }
+
+    /// Test-only: later mock starts bind `port` instead of the remembered one.
     #[doc(hidden)]
     pub fn set_mock_port(&mut self, port: u16) {
         self.mocks.set_port(port);
@@ -3377,10 +3381,8 @@ impl Workspace {
     pub fn set_mock(&mut self, root: &Path, on: bool, cx: &mut Context<Self>) {
         let root = absolute(root);
         if !on {
-            if let Some(stop) = self.mocks.stop(&root, cx) {
-                stop.detach();
-            }
-            self.save_mock(&root, false, cx);
+            self.mocks.stop(&root, cx);
+            self.save_mock(&root, None, cx);
             cx.notify();
             return;
         }
@@ -3395,14 +3397,27 @@ impl Workspace {
         {
             return;
         }
-        let port = self.mocks.port();
+        // The collection's port is kept so clients still reach a restarted server; a port
+        // someone else took gives way to a free one rather than failing.
+        let (port, fallback) = match self.mocks.port() {
+            Some(port) => (port, false),
+            None => (self.remembered_port(&root, cx).unwrap_or(0), true),
+        };
+        let stopping = self.mocks.take_stopping(&root);
+        let seen = self.snapshot(&root, cx);
         let key = root.clone();
-        self.mocks.begin(root, |id| {
+        self.mocks.begin(root, seen, |id| {
             cx.spawn(async move |this, cx| {
                 let source = (source.recv().await)
                     .unwrap_or_else(|_| Err("the collection closed".to_owned()));
+                if let Some(stopping) = stopping {
+                    stopping.await;
+                }
                 let started = match source {
-                    Ok(source) => cx.update(|cx| mock_server::start(source, port, cx)).await,
+                    Ok(source) => {
+                        cx.update(|cx| mock_server::start(source, port, fallback, cx))
+                            .await
+                    }
                     Err(e) => Err(e),
                 };
                 this.update(cx, |w, cx| w.mock_started(&key, id, started, cx))
@@ -3423,13 +3438,16 @@ impl Workspace {
     ) {
         match started {
             Ok(handle) => {
+                let port = handle.addr().port();
                 if self.mocks.finish(root, id, handle) {
-                    self.save_mock(root, true, cx);
+                    self.save_mock(root, Some(port), cx);
+                    // Files saved while it was starting are served too.
+                    self.refresh_mock(root, cx);
                 }
             }
             Err(message) => {
                 if self.mocks.fail(root, id) {
-                    self.save_mock(root, false, cx);
+                    self.save_mock(root, None, cx);
                     let root = root.to_path_buf();
                     cx.emit(WorkspaceEvent::MockFailed { root, message });
                 }
@@ -3438,20 +3456,63 @@ impl Workspace {
         cx.notify();
     }
 
+    // Rebuilds the routes of `root`'s running mock server from the saved files when the
+    // latest snapshot shows they changed; bursts of changes share one rebuild at a time.
+    fn refresh_mock(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot(root, cx) else {
+            return;
+        };
+        if self.mocks.observe(root, snapshot) {
+            self.reload_mock(root, cx);
+        }
+    }
+
+    fn reload_mock(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let (reply, source) = async_channel::bounded(1);
+        if self.send(root, Command::MockSource { reply }, cx).is_none() {
+            return;
+        }
+        let key = root.to_path_buf();
+        let task = cx.spawn(async move |this, cx| {
+            // A source that fails to build keeps the routes the server already has.
+            let source = source.recv().await.ok().and_then(Result::ok);
+            this.update(cx, |w, cx| {
+                if w.mocks.reloaded(&key, source.as_ref()) {
+                    w.reload_mock(&key, cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        });
+        self.mocks.reloading(root, task);
+    }
+
     fn remembered_mock(&self, root: &Path, cx: &App) -> bool {
         let session = self.session.read(cx).get();
         session.collections.get(root).is_some_and(|c| c.mock)
     }
 
-    // Writes the mock choice of `root` when it differs; a root without a UTF-8 path is not
-    // stored, as `Session::remember` does.
-    fn save_mock(&mut self, root: &Path, on: bool, cx: &mut Context<Self>) {
-        if root.to_str().is_none() || self.remembered_mock(root, cx) == on {
+    fn remembered_port(&self, root: &Path, cx: &App) -> Option<u16> {
+        let session = self.session.read(cx).get();
+        session.collections.get(root).and_then(|c| c.mock_port)
+    }
+
+    // Writes whether `root`'s mock runs, and the port it bound, when either differs; the port
+    // outlives turning it off. A root without a UTF-8 path is not stored, as
+    // `Session::remember` does.
+    fn save_mock(&mut self, root: &Path, bound: Option<u16>, cx: &mut Context<Self>) {
+        let on = bound.is_some();
+        let port = bound.or(self.remembered_port(root, cx));
+        if root.to_str().is_none()
+            || (self.remembered_mock(root, cx) == on && self.remembered_port(root, cx) == port)
+        {
             return;
         }
         self.session.update(cx, |p, cx| {
             p.update(cx, |s| {
-                s.collections.entry(root.to_path_buf()).or_default().mock = on;
+                let entry = s.collections.entry(root.to_path_buf()).or_default();
+                entry.mock = on;
+                entry.mock_port = port;
             })
         });
     }

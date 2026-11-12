@@ -3,9 +3,11 @@
 
 use crate::support;
 
+use apinata_app::command::{Command, TreeOp};
 use apinata_app::mock_server::MockState;
 use apinata_app::session::{CollectionSession, Session};
 use apinata_app::workspace::Workspace;
+use apinata_core::{ExampleBody, ExampleBodyKind, ExampleResponse};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext};
 use std::io::{Read as _, Write as _};
@@ -259,11 +261,161 @@ fn on_off_on_in_quick_succession_leaves_exactly_one_server(cx: &mut TestAppConte
     wait_real(cx, |_| refused(addr));
 }
 
-// One short line: what the toggle serves, and that edits wait for a restart.
+// One short line: what the toggle serves and to whom, with no restart to remember.
 #[test]
 fn the_tooltip_is_one_short_line() {
     assert_eq!(
         apinata_app::mock_server::MOCK_TIP,
-        "Serve saved examples on 127.0.0.1 (turn off and on to apply edits)"
+        "Answer calls on 127.0.0.1 with this collection's saved examples"
     );
+}
+
+fn add_example(cx: &mut TestAppContext, ws: &gpui_kit::Entity<Workspace>, root: &Path) {
+    let mut response = ExampleResponse::new(200);
+    response.body = Some(ExampleBody::new(ExampleBodyKind::Text, "saved"));
+    let command = Command::Tree(TreeOp::AddExample {
+        item: ip("plain.yml"),
+        name: "ok".into(),
+        description: String::new(),
+        response,
+    });
+    ws.update(cx, |w, cx| w.send(root, command, cx));
+}
+
+fn with_plain() -> tempfile::TempDir {
+    let users = format!("{}{USERS}", request("users", "http://api.test/users"));
+    write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users.yml", &users),
+        ("plain.yml", &request("plain", "http://api.test/plain")),
+    ])
+}
+
+#[gpui_kit::test]
+fn a_newly_saved_example_is_served_by_the_running_mock_on_the_same_address(
+    cx: &mut TestAppContext,
+) {
+    let col = with_plain();
+    let s = start(cx, &col);
+    click(cx, s.win, "mock-toggle");
+    let addr = running(cx, &s.ws, &s.root);
+    assert!(get(addr, "/plain").starts_with("HTTP/1.1 404"));
+    add_example(cx, &s.ws, &s.root);
+    wait_real(cx, |_| get(addr, "/plain").starts_with("HTTP/1.1 200"));
+    assert!(get(addr, "/plain").ends_with("saved"));
+    assert_eq!(state(cx, &s.ws, &s.root), MockState::On(addr));
+    wait_real(cx, |cx| {
+        s.ws.read_with(cx, |w, _| w.mock_examples(&s.root)) == Some(2)
+    });
+}
+
+#[gpui_kit::test]
+fn turning_the_mock_off_and_on_keeps_its_port(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    click(cx, s.win, "mock-toggle");
+    let first = running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    click(cx, s.win, "mock-toggle");
+    frame(cx, s.win);
+    click(cx, s.win, "mock-toggle");
+    let second = running(cx, &s.ws, &s.root);
+    assert_eq!(second, first);
+    assert!(!present(cx, s.win, "toast-error"));
+    let session = s.ws.read_with(cx, |w, _| w.session().clone());
+    let saved = session_value(cx, &session);
+    assert_eq!(saved.collections[&s.root].mock_port, Some(first.port()));
+}
+
+// Opens `col` with a session that remembers the mock on `port`, as after an app restart.
+fn reopened(
+    cx: &mut TestAppContext,
+    col: &tempfile::TempDir,
+    port: u16,
+) -> (gpui_kit::Entity<Workspace>, tempfile::TempDir) {
+    cx.executor().allow_parking();
+    cx.update(apinata_app::tokio_bridge::init);
+    let root = col.path().to_path_buf();
+    let state_dir = tempfile::tempdir().unwrap();
+    let mut saved = Session::default();
+    saved.collections.insert(
+        root.clone(),
+        CollectionSession {
+            mock: true,
+            mock_port: Some(port),
+            ..Default::default()
+        },
+    );
+    let session = session_at(cx, &state_dir, saved);
+    let ws = workspace(cx, &session);
+    ws.update(cx, |w, cx| w.open(root, cx));
+    (ws, state_dir)
+}
+
+#[gpui_kit::test]
+fn a_reopened_collection_binds_its_remembered_port(cx: &mut TestAppContext) {
+    let col = mocked();
+    let port = free_port();
+    let (ws, _state) = reopened(cx, &col, port);
+    let addr = running(cx, &ws, col.path());
+    assert_eq!(addr.port(), port);
+}
+
+#[gpui_kit::test]
+fn a_remembered_port_in_use_falls_back_to_a_free_one(cx: &mut TestAppContext) {
+    let col = mocked();
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let (ws, _state) = reopened(cx, &col, port);
+    let addr = running(cx, &ws, col.path());
+    assert_ne!(addr.port(), port);
+    let session = ws.read_with(cx, |w, _| w.session().clone());
+    let saved = session_value(cx, &session);
+    assert_eq!(saved.collections[col.path()].mock_port, Some(addr.port()));
+}
+
+#[gpui_kit::test]
+fn the_status_counts_the_examples_and_says_how_to_stop(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    assert!(!present(cx, s.win, "mock-status"));
+    click(cx, s.win, "mock-toggle");
+    let addr = running(cx, &s.ws, &s.root);
+    let want = format!(
+        "Serving 1 example on port {}. Click Mock to stop.",
+        addr.port()
+    );
+    assert_eq!(label(cx, s.win, "mock-status"), Some(want));
+}
+
+#[test]
+fn the_status_hints_at_saving_an_example_when_there_are_none() {
+    use apinata_app::mock_server::status;
+    assert_eq!(
+        status(0, 4567),
+        "No saved examples yet on port 4567. Save a response as an example to serve it. Click Mock to stop."
+    );
+    assert_eq!(
+        status(3, 4567),
+        "Serving 3 examples on port 4567. Click Mock to stop."
+    );
+}
+
+#[gpui_kit::test]
+fn hovering_the_running_toggle_names_the_port_and_how_to_stop(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    // Started without a click, which would leave the pointer pressed on the toggle.
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.hover("mock-toggle", cx))
+        .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(2));
+    let want = format!(
+        "The mock server answers on port {}. Click to stop it.",
+        addr.port()
+    );
+    assert_eq!(label(cx, s.win, "mock-tooltip"), Some(want));
 }

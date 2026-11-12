@@ -94,6 +94,7 @@ pub struct MockHandle {
     routes: Vec<MockRoute>,
     warnings: Vec<String>,
     log: Arc<respond::HitLog>,
+    shared: Arc<server::Shared>,
     task: Option<tokio::task::JoinHandle<()>>,
 }
 
@@ -116,6 +117,16 @@ impl MockHandle {
     /// The most recent hits, oldest first.
     pub fn hits(&self) -> Vec<MockHit> {
         self.log.snapshot()
+    }
+
+    /// Rebuilds the routes from `collection` and answers from them from now on, on the same
+    /// listener, so clients keep their address. Requests already being answered finish with
+    /// the routes they started with.
+    pub fn reload(&mut self, collection: &Collection, ctx: &VarContext) {
+        let (table, warnings) = routes::RouteTable::build(collection, ctx);
+        self.routes = summarize(&table);
+        self.warnings = warnings;
+        *self.shared.table.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(table);
     }
 
     /// Stops the server; the listener is closed when this returns.
@@ -148,15 +159,7 @@ pub async fn start(
         return Err(MockError::NonLoopbackBind);
     }
     let (table, warnings) = routes::RouteTable::build(collection, ctx);
-    let routes = table
-        .routes()
-        .iter()
-        .map(|r| MockRoute {
-            method: r.method.clone(),
-            path: format!("/{}", r.segments.join("/")),
-            examples: r.entries.len(),
-        })
-        .collect();
+    let routes = summarize(&table);
 
     let want = SocketAddr::new(options.ip, options.port);
     let listener = tokio::net::TcpListener::bind(want)
@@ -168,19 +171,32 @@ pub async fn start(
 
     let log = Arc::new(respond::HitLog::new());
     let shared = Arc::new(server::Shared {
-        table,
+        table: std::sync::RwLock::new(Arc::new(table)),
         log: Arc::clone(&log),
         delay: options.delay,
         hook: options.hook,
     });
-    let task = tokio::spawn(server::accept_loop(listener, shared));
+    let task = tokio::spawn(server::accept_loop(listener, Arc::clone(&shared)));
     Ok(MockHandle {
         addr,
         routes,
         warnings,
         log,
+        shared,
         task: Some(task),
     })
+}
+
+fn summarize(table: &routes::RouteTable) -> Vec<MockRoute> {
+    table
+        .routes()
+        .iter()
+        .map(|r| MockRoute {
+            method: r.method.clone(),
+            path: format!("/{}", r.segments.join("/")),
+            examples: r.entries.len(),
+        })
+        .collect()
 }
 
 /// A route the server answers: a method, a path template and how many examples back it.

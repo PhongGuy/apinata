@@ -121,6 +121,9 @@ pub struct CollectionSession {
     /// Whether the collection's mock server runs; it starts again when the collection opens.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mock: bool,
+    /// The port the collection's mock server last bound, kept so clients find it again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mock_port: Option<u16>,
 }
 
 /// The runner options that outlive a restart. Tags and exclude tags are left out on purpose:

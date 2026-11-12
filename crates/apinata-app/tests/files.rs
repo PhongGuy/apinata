@@ -162,6 +162,7 @@ fn session_round_trips_with_per_collection_state() {
         expanded: Some(vec!["".into(), "users".into()]),
         runners: Default::default(),
         mock: true,
+        mock_port: Some(4567),
     };
     s.collections.insert("/c/a".into(), c);
     s.window = Some(SavedBounds::from_window(WindowBounds::Maximized(b(
