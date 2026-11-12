@@ -743,7 +743,10 @@ pub(crate) fn leave_editor(forward: bool, window: &mut Window, cx: &mut App) {
 /// one keeps it, as it still takes focus. The wrapper lends the editor its layout.
 pub fn ringed_editor(editor: Editor, state: &Entity<EditorState>) -> RingedField {
     RingedField {
-        child: editor.into_any_element(),
+        // Code reads as typed: no ligature turns `-->` or `=>` into an arrow.
+        child: editor
+            .font_features(crate::body_view::code_font_features())
+            .into_any_element(),
         source: RingSource::Editor(state.clone()),
         by_key: true,
     }

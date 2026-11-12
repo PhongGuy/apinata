@@ -25,7 +25,7 @@ use crate::kv_grid::{ActionShow, action_slot};
 use crate::response_pane::NAME_MASK;
 use crate::style::{
     JAR_EXPIRY_WIDTH, JAR_NAME_WIDTH, JAR_PATH_WIDTH, SCROLLBAR_GUTTER, SHORT_FORM_LABEL_WIDTH,
-    SPACE_2, TEXT_SMALL,
+    SPACE_2, SPACE_3, TEXT_SMALL,
 };
 use crate::ui::{self, LockButton as _};
 
@@ -841,7 +841,15 @@ impl Render for CookieJarView {
         let mut list = v_flex().gap_2();
         let shown = self.shown();
         if self.cookies.is_empty() {
-            list = list.child(div().id("jar-empty").test_support().child("No cookies."));
+            // The empty note stands apart from the search above and the footer below.
+            list = list.child(
+                div()
+                    .id("jar-empty")
+                    .test_support()
+                    .my(SPACE_3)
+                    .text_color(cx.theme().muted_foreground)
+                    .child("No cookies."),
+            );
         } else {
             if shown.is_empty() {
                 list = list.child(

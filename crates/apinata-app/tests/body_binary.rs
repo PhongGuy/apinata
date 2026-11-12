@@ -192,9 +192,9 @@ fn copy_keeps_base64_unbroken_across_rows(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn the_hex_rows_turn_ligatures_off() {
-    // `<=>` and `->` must stay separate glyphs in the ASCII column.
-    let features = apinata_app::body_view::hex_font_features();
+fn code_and_body_text_turn_ligatures_off() {
+    // `<=>`, `->` and an HTML comment's `-->` must stay separate glyphs.
+    let features = apinata_app::body_view::code_font_features();
     let has = |tag: &str| features.0.iter().any(|(t, v)| t == tag && *v == 0);
     assert!(has("calt") && has("liga"), "{:?}", features.0);
 }

@@ -207,6 +207,12 @@ fn an_unknown_body_shows_the_format_error(cx: &mut TestAppContext) {
         "{}",
         error(cx, &dlg)
     );
+    // The format list already shows above the field, so the error names only the problem.
+    assert!(
+        !error(cx, &dlg).contains(apinata_core::import::CollectionFormat::ALL[0].label()),
+        "{}",
+        error(cx, &dlg)
+    );
     assert!(dialog(cx, win));
     assert!(!cx.did_prompt_for_paths());
     assert!(opened(cx, &view).is_empty());
@@ -751,4 +757,55 @@ fn a_running_write_holds_cancel_and_escape_and_reads_importing(cx: &mut TestAppC
     frame(cx, win);
     assert!(dialog(cx, win), "Escape waits for the write");
     assert_eq!(phase(cx, &dlg), Phase::Writing);
+}
+
+// The field takes a link or a file path, and its label says so on one line.
+#[gpui_kit::test]
+fn the_source_field_is_labelled_link_or_file(cx: &mut TestAppContext) {
+    let (_files, win, _view) = shell(cx);
+    let _dlg = open_with(cx, win, "");
+    let label = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let l = w.within("import-link-row").find("form-label");
+            (l.label().map(str::to_owned), l.bounds().size.height)
+        })
+        .unwrap();
+    assert_eq!(label.0.as_deref(), Some("Link or file"));
+    assert_eq!(
+        label.1,
+        apinata_app::style::at_zoom(apinata_app::style::INPUT_HEIGHT, 1.0)
+    );
+}
+
+// The Create in path is cut to fit, so hovering it shows the whole path.
+#[gpui_kit::test]
+fn hovering_the_create_in_path_shows_it_whole(cx: &mut TestAppContext) {
+    let (_files, win, _view) = shell(cx);
+    let dlg = open_with(cx, win, "");
+    let into = tempfile::tempdir().unwrap();
+    let deep = into
+        .path()
+        .join("a-rather-long-folder-name")
+        .join("and-another-one");
+    let d = dlg.clone();
+    let parent = deep.clone();
+    cx.update(|cx| d.update(cx, |d, cx| d.set_parent(parent, cx)));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover("import-link-parent", cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    let tip = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("import-link-parent-tooltip")
+                .and_then(|t| t.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(tip, Some(deep.display().to_string()));
 }

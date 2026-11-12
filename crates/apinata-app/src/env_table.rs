@@ -35,8 +35,11 @@ pub(crate) const ACTION_SLOT_WIDTH: Rems = style::ui(26.);
 /// The key context around an environment table's rows, where the row-move keys bind.
 pub const ENV_TABLE_CONTEXT: &str = "EnvTable";
 
-/// The column headings.
-pub const ENV_HEADINGS: [&str; 2] = ["Name", "Value"];
+/// The column headings, the pair every variables table shares.
+pub const ENV_HEADINGS: [&str; 2] = [
+    crate::kv_table::VAR_HEADINGS.0,
+    crate::kv_table::VAR_HEADINGS.1,
+];
 
 /// A masked secret row's value placeholder: the value is hidden, whether or not one is stored.
 pub const SECRET_HIDDEN: &str = "••••••••";
