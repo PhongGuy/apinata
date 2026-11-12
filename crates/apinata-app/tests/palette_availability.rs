@@ -536,6 +536,8 @@ fn a_fully_hidden_group_keeps_later_sections_stable(cx: &mut TestAppContext) {
             .iter()
             .position(|g| *g == items[ix].group)
             .unwrap()
+            + 1,
+        "the leading Requests slot is section 0"
     );
 
     cx.simulate_keystrokes(s.win, &key("shift-p"));
@@ -550,14 +552,15 @@ fn a_fully_hidden_group_keeps_later_sections_stable(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert!(!s.shell.read_with(cx, |v, _| v.sidebar_visible()));
 
-    // The Requests group is the section after every registry group, hidden or not.
+    // The Requests group is the section after every registry group, hidden or not, and the
+    // leading Requests slot.
     assert!(tab_names(cx, &s.ws).is_empty());
     cx.simulate_keystrokes(s.win, &key("shift-p"));
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, cx| w.input("alpha", cx))
         .unwrap();
     frame(cx, s.win);
-    let requests = gpui_kit::component::IndexPath::new(0).section(PaletteGroup::ALL.len());
+    let requests = gpui_kit::component::IndexPath::new(0).section(PaletteGroup::ALL.len() + 1);
     cx.update_window(s.win, |_, w, cx| {
         w.within("command-palette").click(requests, cx)
     })

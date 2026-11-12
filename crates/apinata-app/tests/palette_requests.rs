@@ -295,3 +295,75 @@ fn the_next_tab_row_shows_ctrl_tab(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// A collection shaped like the demo's: post requests, and one request whose name starts
+// like the export commands do.
+fn posts() -> tempfile::TempDir {
+    write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("list.yml", &request("List posts", "http://x/posts")),
+        ("get.yml", &request("Get post", "http://x/posts/1")),
+        ("create.yml", &request("Create post", "http://x/posts")),
+        ("report.yml", &request("Export report", "http://x/report")),
+    ])
+}
+
+// The tops of the open palette's row for `path`'s request and its Export to Postman row.
+fn request_and_export_tops(cx: &mut TestAppContext, s: &Started, path: &str) -> (f32, f32) {
+    let r = (s.ws.read_with(cx, request_entries).iter())
+        .position(|e| e.path.as_str() == path)
+        .expect("offered");
+    let shown = palette_items_for(Availability {
+        updates: false,
+        ..Availability::all()
+    });
+    let export = (shown.iter())
+        .position(|e| e.action.partial_eq(&apinata_app::shell::ExportCollection))
+        .expect("listed");
+    cx.update_window(s.win, |_, w, _| {
+        let palette = w.within("command-palette");
+        let request = palette.find(("palette-request-name", r)).bounds().top();
+        let command = palette.find(index_path(&shown, export)).bounds().top();
+        (f32::from(request), f32::from(command))
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn requests_named_by_the_query_come_before_commands_matching_inside_a_word(
+    cx: &mut TestAppContext,
+) {
+    let col = posts();
+    let s = started(cx, &col);
+    // Typed a key at a time, as a person does, so the order flips while the list is showing.
+    search(cx, s.win, "p");
+    cx.simulate_keystrokes(s.win, "o s t");
+    frame(cx, s.win);
+    let (request, command) = request_and_export_tops(cx, &s, "get.yml");
+    assert!(
+        request < command,
+        "Get post ({request}) is above Export to Postman ({command})"
+    );
+    cx.simulate_keystrokes(s.win, "enter");
+    frame(cx, s.win);
+    cx.run_until_parked();
+    let tabs = tab_names(cx, &s.ws);
+    assert_eq!(
+        tabs.len(),
+        1,
+        "Enter opens the top row, a request: {tabs:?}"
+    );
+    assert!(["list.yml", "get.yml", "create.yml"].contains(&tabs[0].as_str()));
+}
+
+#[gpui_kit::test]
+fn commands_starting_with_the_query_stay_before_requests(cx: &mut TestAppContext) {
+    let col = posts();
+    let s = started(cx, &col);
+    search(cx, s.win, "export");
+    let (request, command) = request_and_export_tops(cx, &s, "report.yml");
+    assert!(
+        command < request,
+        "Export to Postman ({command}) is above Export report ({request})"
+    );
+}

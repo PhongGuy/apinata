@@ -159,14 +159,15 @@ fn index_paths_round_trip() {
             "entry {ix}"
         );
     }
-    assert_eq!(index_path(&items, 0), IndexPath::new(0).section(0));
+    // Section 0 is the slot the Requests group takes when it leads.
+    assert_eq!(index_path(&items, 0), IndexPath::new(0).section(1));
     let first_request = items
         .iter()
         .position(|e| e.group == PaletteGroup::Request)
         .unwrap();
     assert_eq!(
         index_path(&items, first_request),
-        IndexPath::new(0).section(1)
+        IndexPath::new(0).section(2)
     );
     assert_eq!(entry_index(&items, IndexPath::new(999).section(0)), None);
     assert_eq!(entry_index(&items, IndexPath::new(0).section(99)), None);
