@@ -622,7 +622,7 @@ fn enter_in_the_name_input_commits_and_keeps_the_dialog(cx: &mut TestAppContext)
     };
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-rename", cx);
+        global_rename_in(w, cx);
     })
     .unwrap();
     name(cx, "qa");
@@ -824,7 +824,7 @@ fn deleting_an_extended_global_environment_offers_only_cancel(cx: &mut TestAppCo
     };
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-delete", cx)
+        global_delete_in(w, cx)
     })
     .unwrap();
     cx.run_until_parked();
@@ -1512,7 +1512,9 @@ fn escape_closes_the_dialog_after_each_step_from_the_empty_pane(cx: &mut TestApp
             assert_eq!(names(cx, &s.ws), ["g1"]);
         }
         if steps >= 3 {
-            platform_click(cx, win, "global-env-delete");
+            platform_click(cx, win, "global-env-more");
+            settle_frames(cx, win);
+            platform_click(cx, win, "global-env-menu-delete");
             settle_frames(cx, win);
             platform_click(cx, win, "confirm-delete");
             settle_frames(cx, win);
@@ -1581,4 +1583,143 @@ fn discard_changes_restores_the_saved_global_environment(cx: &mut TestAppContext
         std::fs::read_to_string(g.path().join("g.yml")).unwrap(),
         body
     );
+}
+
+const ONE_VAR: &str = "name: g\nvariables:\n  - name: host\n    value: a\n";
+
+// Duplicate copies the file as saved, so it is off while edits are unsaved and its tip says
+// why, as in the collection editor.
+#[gpui_kit::test]
+fn duplicate_is_off_with_its_reason_while_edits_are_unsaved(cx: &mut TestAppContext) {
+    use apinata_app::env_editor::RENAME_LOCKED_REASON;
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", ONE_VAR)]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        assert_ne!(w.find("global-env-duplicate").disabled(), Some(true));
+    })
+    .unwrap();
+    replace_input(cx, win, None, ("env-value", 0usize), "b");
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let duplicate = w.find("global-env-duplicate");
+        assert_eq!(duplicate.disabled(), Some(true));
+        assert_eq!(duplicate.description(), Some(RENAME_LOCKED_REASON));
+        w.click("global-env-duplicate", cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(!present(cx, win, "confirm-save"), "no prompt");
+    assert_eq!(names(cx, &ws), ["g"]);
+}
+
+// The header is the collection editor's: the name, the "…" menu, Duplicate, Discard changes
+// and Save on one line, with Rename, Export all and Delete in the menu.
+#[gpui_kit::test]
+fn the_header_is_the_name_then_the_menu_and_save_on_one_line(cx: &mut TestAppContext) {
+    use apinata_app::env_editor::MORE_ACTIONS;
+    use apinata_app::global_env_editor::{
+        GLOBAL_ENV_MENU_DELETE, GLOBAL_ENV_MENU_EXPORT_ALL, GLOBAL_ENV_MENU_RENAME,
+    };
+    support::init(cx);
+    let (_c, g, _s, ws) = start(cx, &[("g.yml", ONE_VAR), ("h.yml", "name: h\n")]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let title = w.find("global-env-title");
+        assert_eq!(title.label(), Some("g"));
+        assert_eq!(w.find("global-env-more").label(), Some(MORE_ACTIONS));
+        let row: Vec<_> = [
+            "global-env-title",
+            "global-env-more",
+            "global-env-duplicate",
+            "global-env-discard",
+            "global-env-save",
+        ]
+        .into_iter()
+        .map(|id| w.find(id).bounds())
+        .collect();
+        for pair in row.windows(2) {
+            assert!(pair[0].right() <= pair[1].left(), "{pair:?} in order");
+            assert!(
+                (pair[0].center().y - pair[1].center().y).abs() < gpui_kit::px(1.),
+                "{pair:?} on one line"
+            );
+        }
+        for gone in [
+            "global-env-rename",
+            "global-env-export",
+            "global-env-delete",
+        ] {
+            assert!(w.try_find(gone).is_none(), "{gone} moved into the menu");
+        }
+        w.click("global-env-more", cx);
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        let menu = w.within("popup-menu");
+        assert_eq!(menu.find(GLOBAL_ENV_MENU_RENAME).label(), Some("Rename"));
+        assert_eq!(
+            menu.find(GLOBAL_ENV_MENU_EXPORT_ALL).label(),
+            Some("Export all environments…")
+        );
+        assert_eq!(menu.find("global-env-menu-delete").label(), Some("Delete"));
+    })
+    .unwrap();
+    cx.update_window(win, |_, w, cx| {
+        w.within("popup-menu").click(GLOBAL_ENV_MENU_DELETE, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-delete");
+    assert_eq!(names(cx, &ws), ["h"]);
+    assert!(!g.path().join("g.yml").exists());
+}
+
+// With no secret, and so no eye, the Value input runs to the lock and Remove follows it
+// with no empty slot between them.
+#[gpui_kit::test]
+fn the_value_input_fills_its_column(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", ONE_VAR)]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let gap = |a: gpui_kit::Bounds<gpui_kit::Pixels>, b: gpui_kit::Bounds<gpui_kit::Pixels>| {
+            b.left() - a.right()
+        };
+        let (head, value, lock, delete) = (
+            w.find("env-head-value").bounds(),
+            w.find(("env-value", 0usize)).bounds(),
+            w.find(("env-secret", 0usize)).bounds(),
+            w.find(("env-delete", 0usize)).bounds(),
+        );
+        assert!(w.try_find(("env-action-slot", 0usize)).is_none());
+        assert!(
+            gap(value, lock) <= gpui_kit::px(12.),
+            "{value:?} to {lock:?}"
+        );
+        assert!(
+            gap(lock, delete) <= gpui_kit::px(16.),
+            "{lock:?} to {delete:?}"
+        );
+        assert!(head.right() <= lock.right(), "{head:?} ends at the lock");
+    })
+    .unwrap();
+}
+
+// With no environments the pane's button is the one New.
+#[gpui_kit::test]
+fn the_empty_dialog_has_a_single_new_button(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[]);
+    let (win, _editor) = open_editor_unselected(cx, &ws);
+    frame(cx, win);
+    assert!(present(cx, win, "global-env-empty-create"));
+    assert!(!present(cx, win, "global-env-create"), "no second New");
 }

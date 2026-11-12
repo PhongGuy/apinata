@@ -1549,6 +1549,34 @@ pub fn env_menu(cx: &mut gpui_kit::TestAppContext, win: gpui_kit::AnyWindowHandl
     cx.run_until_parked();
 }
 
+/// Picks entry `ix` of the global editor's "…" menu inside one update of `w`, drawing before
+/// each click so the button and then the menu are there to press.
+pub fn global_menu_in(w: &mut gpui_kit::Window, cx: &mut gpui_kit::App, ix: usize) {
+    use gpui_kit::test::TestWindowExt as _;
+    w.render_frame(cx);
+    w.click("global-env-more", cx);
+    w.render_frame(cx);
+    w.within("popup-menu").click(ix, cx);
+}
+
+/// Opens the global editor's Rename field from its "…" menu, inside one update of `w`.
+pub fn global_rename_in(w: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
+    global_menu_in(
+        w,
+        cx,
+        apinata_app::global_env_editor::GLOBAL_ENV_MENU_RENAME,
+    );
+}
+
+/// Asks to delete the global editor's environment from its "…" menu, inside one update.
+pub fn global_delete_in(w: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
+    global_menu_in(
+        w,
+        cx,
+        apinata_app::global_env_editor::GLOBAL_ENV_MENU_DELETE,
+    );
+}
+
 /// Gives `ed`'s tab a finished result, as a restored kept send does on open.
 pub fn give_result(
     cx: &mut gpui_kit::TestAppContext,

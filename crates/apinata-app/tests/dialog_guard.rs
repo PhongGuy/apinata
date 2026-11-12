@@ -628,7 +628,7 @@ fn a_window_close_under_another_prompt_does_not_ask_for_the_editor(cx: &mut Test
     let (s, _col, _dir) = started_editing(cx);
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
-        w.click("global-env-delete", cx)
+        global_delete_in(w, cx)
     })
     .unwrap();
     frame(cx, s.win);
@@ -699,8 +699,10 @@ fn creating_an_environment_asks_and_carries_no_secrets(cx: &mut TestAppContext) 
     assert_eq!(stored(cx, &g.ws, "g", "tok"), None);
 }
 
+// Duplicate copies the file as saved, so with edits pending it is off and asks nothing; once
+// they are saved, the copy carries them.
 #[gpui_kit::test]
-fn duplicating_an_edited_environment_asks_and_save_copies_the_edit(cx: &mut TestAppContext) {
+fn duplicating_waits_for_the_edits_to_be_saved(cx: &mut TestAppContext) {
     let g = globals(cx, &[("g.yml", HOST)]);
     replace_input(cx, g.win, None, ("env-value", 0usize), "b");
     cx.update_window(g.win, |_, w, cx| {
@@ -708,20 +710,18 @@ fn duplicating_an_edited_environment_asks_and_save_copies_the_edit(cx: &mut Test
         w.click("global-env-duplicate", cx)
     })
     .unwrap();
-    assert_eq!(
-        drawn(cx, g.win, EDITOR),
-        (true, true),
-        "Duplicate asks first"
-    );
-    answer_confirm(cx, "confirm-save");
+    assert_eq!(drawn(cx, g.win, EDITOR), (false, true), "nothing asks");
+    assert!(!g.dir.path().join("g copy.yml").exists());
+    let _ = g.editor.update(cx, |e, cx| e.save(cx));
+    cx.run_until_parked();
+    cx.update_window(g.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("global-env-duplicate", cx)
+    })
+    .unwrap();
     wait_for(cx, "copy selected", |cx| {
         selected(cx, &g).as_deref() == Some("g copy")
     });
-    assert!(
-        file(&g, "g.yml").contains("value: b"),
-        "{}",
-        file(&g, "g.yml")
-    );
     let copy = file(&g, "g copy.yml");
     assert!(copy.contains("value: b"), "{copy}");
 }
