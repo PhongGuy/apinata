@@ -345,6 +345,7 @@ impl AuthSection {
         let max_body_size = input(false);
         // Fields whose format is not obvious show a short example while empty.
         let hints = [
+            (&username, "jdoe"),
             (&key, "X-API-Key"),
             (&domain, "CORP"),
             (&aws[0], "AKIAIOSFODNN7EXAMPLE"),

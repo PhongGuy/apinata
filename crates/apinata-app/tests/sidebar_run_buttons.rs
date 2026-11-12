@@ -4,6 +4,7 @@ use crate::support;
 
 use apinata_app::sidebar::{SidebarEvent, marker_id};
 use apinata_app::tabs::TabKind;
+use gpui_kit::component::tree::TreeState;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, ElementId, TestAppContext};
 use support::*;
@@ -264,4 +265,72 @@ fn the_run_button_tooltip_names_shift_enter(cx: &mut TestAppContext) {
     open_sidebar(cx);
     let tip = cx.update(|cx| apinata_app::sidebar::run_tooltip("collection.run", cx));
     assert!(tip.ends_with("(Shift+Enter)"), "tooltip was {tip:?}");
+}
+
+const LONG_ROOT: &str =
+    "opencollection: 1.0.0\ninfo:\n  name: A collection name far too long to fit the sidebar row\n";
+
+// The app over a collection whose name cannot fit beside the root row's actions, with the root
+// selected and the tree not focused, as the current collection is while the editor is in use.
+fn long_name_root(cx: &mut TestAppContext) -> (Started, gpui_kit::Entity<TreeState>) {
+    let col = write_tree(&[
+        ("opencollection.yml", LONG_ROOT),
+        (
+            "users/list.yml",
+            &request("List users", "http://127.0.0.1:9/users"),
+        ),
+    ]);
+    let s = started(cx, &col);
+    let tree = s
+        .shell
+        .read_with(cx, |sh, cx| sh.sidebar().read(cx).tree().clone());
+    tree.update(cx, |t, cx| t.set_selected_index(Some(0), cx));
+    frame(cx, s.win);
+    (s, tree)
+}
+
+// Whether the root's name ends before its New request button, which leads its actions.
+fn root_name_clears_buttons(cx: &mut TestAppContext, win: AnyWindowHandle) -> bool {
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| {
+        let name = w.find(("collection", 0usize)).bounds();
+        let new = w.find(("new-request", 0usize)).bounds();
+        name.right() <= new.left()
+    })
+    .unwrap()
+}
+
+// At rest a root's actions float hidden over its edge, so its name runs to the edge as other
+// roots' names do; hovered, they take their room.
+#[gpui_kit::test]
+fn a_root_shows_its_actions_only_on_hover_or_focused_selection(cx: &mut TestAppContext) {
+    let (s, _) = long_name_root(cx);
+    assert!(
+        !root_name_clears_buttons(cx, s.win),
+        "at rest the name runs under the hidden actions"
+    );
+    cx.update_window(s.win, |_, w, cx| w.hover(row(""), cx))
+        .unwrap();
+    assert!(
+        root_name_clears_buttons(cx, s.win),
+        "hovered, the actions take their room"
+    );
+}
+
+#[gpui_kit::test]
+fn a_focused_selected_root_shows_its_actions(cx: &mut TestAppContext) {
+    let (s, tree) = long_name_root(cx);
+    cx.update_window(s.win, |_, w, cx| tree.update(cx, |t, cx| t.focus(w, cx)))
+        .unwrap();
+    assert!(root_name_clears_buttons(cx, s.win));
+}
+
+// The hidden root actions still take a click.
+#[gpui_kit::test]
+fn a_hidden_root_action_still_takes_a_click(cx: &mut TestAppContext) {
+    let (s, _) = long_name_root(cx);
+    click(cx, s.win, ("run-collection", 0usize));
+    let kind =
+        s.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone()));
+    assert_eq!(kind, Some(TabKind::Runner(apinata_core::ItemPath::root())));
 }

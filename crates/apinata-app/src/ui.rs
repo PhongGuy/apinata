@@ -2319,7 +2319,7 @@ pub struct LockLook {
 /// The opacity of a control: 1 when enabled, `DISABLED_OPACITY` when disabled, and 1 for a
 /// disabled one in a high-contrast theme, where the half-opacity glyph falls under 4.5:1 and
 /// the look itself carries the disabled cue.
-fn control_opacity(disabled: bool, cx: &App) -> f32 {
+pub(crate) fn control_opacity(disabled: bool, cx: &App) -> f32 {
     if disabled && !full_strength(cx) {
         DISABLED_OPACITY
     } else {

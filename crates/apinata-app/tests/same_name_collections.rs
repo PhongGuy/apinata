@@ -183,6 +183,11 @@ fn a_twin_root_keeps_its_hint_and_the_name_gives_way(cx: &mut TestAppContext) {
             })
             .unwrap();
         for (ix, whole) in [(0usize, whole0), (1, whole1)] {
+            // The icons take their room only while shown, as on hover.
+            let node = node_id(ix, &ItemPath::root());
+            cx.update_window(t.win, |_, w, cx| w.hover(node, cx))
+                .unwrap();
+            frame(cx, t.win);
             let [name, hint, new] = root_row(cx, t.win, ix);
             assert_eq!(
                 hint.size.width, whole.size.width,

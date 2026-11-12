@@ -337,6 +337,14 @@ impl EnvSelector {
     }
 }
 
+impl EnvSelector {
+    /// The opacity the select draws at: dimmed as a disabled button is while no collection is
+    /// open, and at full strength in a high-contrast theme, where its muted text says locked.
+    pub fn select_opacity(&self, cx: &App) -> f32 {
+        crate::ui::control_opacity(self.root.is_none(), cx)
+    }
+}
+
 impl Render for EnvSelector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // A borderless select that fills the host's slot; "no environment" reads as a
@@ -384,6 +392,7 @@ impl Render for EnvSelector {
                     .flex_1()
                     .min_w_0()
                     .when(squeezed, |d| d.invisible())
+                    .opacity(self.select_opacity(cx))
                     .child(
                         Select::new(&self.select)
                             .id("env-select")

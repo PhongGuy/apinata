@@ -1266,11 +1266,27 @@ impl Shell {
             .child(menu)
     }
 
-    // Takes focus for the shell when what holds it is out of reach of the shell's keys. An open
-    // dialog keeps its focus, and a drawn control keeps its own.
+    // Moves focus that is out of reach of the shell's keys on to the active tab or the tree. An
+    // open dialog keeps its focus, and a drawn control keeps its own.
     fn take_stranded_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !window.has_active_dialog(cx) && !window.is_action_available(&OpenCommandPalette, cx) {
+            self.hand_on_focus(window, cx);
+        }
+    }
+
+    // Focus for the active tab, or the tree when no tab view is built. The shell's own handle
+    // takes it only while nothing else that could is drawn, since it shows no ring.
+    fn hand_on_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace.read(cx).shows_empty_state(cx) {
             self.focus.focus(window, cx);
+            return;
+        }
+        let area = self.tab_area.read(cx);
+        let to_tree = (area.active_focus(cx)).is_none_or(|f| f == area.focus_handle(cx));
+        if to_tree && !self.sidebar_visible {
+            self.focus.focus(window, cx);
+        } else {
+            (self.tab_area).update(cx, |t, cx| t.focus_fallback(window, cx));
         }
     }
 
@@ -1281,24 +1297,22 @@ impl Shell {
         if !window.is_action_available(&OpenCommandPalette, cx)
             && !self.workspace.read(cx).shows_empty_state(cx)
         {
-            let area = self.tab_area.read(cx);
-            let to_tree = (area.active_focus(cx)).is_none_or(|f| f == area.focus_handle(cx));
-            if to_tree && !self.sidebar_visible {
-                self.focus.focus(window, cx);
-            } else {
-                (self.tab_area).update(cx, |t, cx| t.focus_fallback(window, cx));
-            }
+            self.hand_on_focus(window, cx);
         }
         crate::focus_redraw::after_draw_move(window, cx);
     }
 
-    // Opens the environments tab of the collection the selector acts on, if any is open.
-    fn open_environments(&mut self, cx: &mut Context<Self>) {
-        self.workspace.update(cx, |w, cx| {
-            if let Some(root) = w.current_root() {
-                w.open_settings(&root, TabKind::Environments, cx);
-            }
+    // Opens the environments tab of the collection the selector acts on, if any is open, with
+    // focus in it, so the keys go on to the tab rather than staying where they were.
+    fn open_environments(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let opened = self.workspace.update(cx, |w, cx| {
+            let root = w.current_root()?;
+            w.open_settings(&root, TabKind::Environments, cx)
         });
+        if let Some(id) = opened {
+            (self.tab_area).update(cx, |t, cx| t.focus_tab(id, window, cx));
+            crate::focus_redraw::after_draw_move(window, cx);
+        }
     }
 
     // Exports the active environment of the current collection as saved; without one, says so
@@ -2808,7 +2822,9 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &ZoomIn, w, cx| this.zoom(ZoomStep::In, w, cx)))
             .on_action(cx.listener(|this, _: &ZoomOut, w, cx| this.zoom(ZoomStep::Out, w, cx)))
             .on_action(cx.listener(|this, _: &ResetZoom, w, cx| this.zoom(ZoomStep::Reset, w, cx)))
-            .on_action(cx.listener(|this, _: &OpenEnvironments, _, cx| this.open_environments(cx)))
+            .on_action(cx.listener(|this, _: &OpenEnvironments, window, cx| {
+                this.open_environments(window, cx)
+            }))
             .on_action(cx.listener(|this, _: &OpenCollectionSettings, window, cx| {
                 this.open_collection_settings(window, cx)
             }))
@@ -3036,7 +3052,7 @@ impl Render for Shell {
                 // environments tab, as the bar's environments button beside it does.
                 cx.listener(|this, _: &OpenEnvironmentSelector, window, cx| {
                     if this.env_selector.read(cx).squeezed() {
-                        return this.open_environments(cx);
+                        return this.open_environments(window, cx);
                     }
                     this.env_selector
                         .update(cx, |s, cx| s.open_menu(window, cx))

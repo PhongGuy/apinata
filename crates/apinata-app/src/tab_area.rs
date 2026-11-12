@@ -795,6 +795,20 @@ impl TabArea {
         cx.notify();
     }
 
+    /// Builds tab `id`'s view now if it is not yet, and focuses its first stop. False when no
+    /// such tab is open.
+    pub fn focus_tab(&mut self, id: TabId, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(entry) = self.workspace.read(cx).tabs().get(id).cloned() else {
+            return false;
+        };
+        if !self.editors.contains_key(&id) {
+            let view = self.view_for(&entry, window, cx);
+            self.editors.insert(id, (entry.kind, view));
+        }
+        self.editors[&id].1.stop(cx).focus(window, cx);
+        true
+    }
+
     /// The focus for the active tab: a request's URL input, another view's own handle, or
     /// the tab area's when that view is not built yet; `None` when no tab is open.
     pub fn active_focus(&self, cx: &App) -> Option<FocusHandle> {
@@ -821,14 +835,9 @@ impl TabArea {
     // A new draft is meant to be typed into at once, so its editor is built now rather than
     // at the next render, with focus in its URL input.
     fn focus_draft(&mut self, id: TabId, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(entry) = self.workspace.read(cx).tabs().get(id).cloned() else {
+        if !self.focus_tab(id, window, cx) {
             return;
-        };
-        if !self.editors.contains_key(&id) {
-            let view = self.view_for(&entry, window, cx);
-            self.editors.insert(id, (entry.kind, view));
         }
-        self.editors[&id].1.stop(cx).focus(window, cx);
         if let Some(seq) = self.workspace.update(cx, |w, _| w.take_kept_view(id)) {
             self.show_kept_send(id, seq, window, cx);
         }
