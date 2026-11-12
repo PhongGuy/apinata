@@ -420,6 +420,7 @@ mod request_editor;
 mod request_editor_sections;
 mod request_scroll_cue;
 mod request_sections;
+mod request_sections_layout;
 mod request_send;
 mod request_split;
 mod request_timeout;
