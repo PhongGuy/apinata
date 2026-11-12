@@ -323,3 +323,44 @@ fn file_rows_keep_the_columns_of_text_rows(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+#[gpui_kit::test]
+fn a_cut_file_path_keeps_its_file_name_and_tips_the_full_path(cx: &mut TestAppContext) {
+    let path = format!(
+        "/srv/{}reports/final-report.pdf",
+        "a-rather-long-folder-name/".repeat(12)
+    );
+    let (win, _view) = host(cx, KvColumns::FILE_BODY, file_rows(&[entry(&path, true)]));
+    for _ in 0..3 {
+        cx.run_until_parked();
+        cx.update_window(win, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+    }
+    let (shown, full) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let e = w.find(("kv-files", 0usize));
+            (e.value().map(str::to_owned), e.label().map(str::to_owned))
+        })
+        .unwrap();
+    let shown = shown.expect("the shown path");
+    assert!(shown.contains('…'), "{shown}");
+    assert!(shown.ends_with("reports/final-report.pdf"), "{shown}");
+    assert_eq!(full.as_deref(), Some(path.as_str()));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("kv-files", 0usize), cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    cx.run_until_parked();
+    let tip = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("kv-files-tooltip")
+                .map(|t| t.label().unwrap_or_default().to_owned())
+        })
+        .unwrap();
+    assert_eq!(tip, Some(path));
+}
