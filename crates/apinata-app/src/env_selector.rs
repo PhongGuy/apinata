@@ -14,10 +14,12 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, PathPromptOptions, Render,
-    SharedString, Styled as _, Subscription, TestSupportExt as _, Window, canvas, div,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, TestSupportExt as _,
+    Window, canvas, div,
 };
 
 use crate::command::Command;
+use crate::shell::NO_COLLECTION_ENV_TIP;
 use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, SPACE_1, resolve};
 use crate::tabs::TabKind;
 use crate::ui::ring_overlay;
@@ -346,6 +348,8 @@ impl Render for EnvSelector {
         // The control's room comes from the bar, never from the select, so hiding the select
         // cannot change the measurement that hid it. A change redraws once the frame is done.
         let squeezed = self.squeezed.get();
+        // With no collection there is nothing to choose; the tip says why instead.
+        let locked = self.root.is_none();
         let (cell, me) = (Rc::clone(&self.squeezed), cx.entity().downgrade());
         let measure = canvas(
             move |bounds, window, cx| {
@@ -367,6 +371,12 @@ impl Render for EnvSelector {
             .w_full()
             .max_w(ENV_CONTROL_WIDTH)
             .overflow_hidden()
+            .when(locked, |d| {
+                d.tooltip(crate::ui::text_tooltip(
+                    "env-control-tooltip",
+                    NO_COLLECTION_ENV_TIP,
+                ))
+            })
             // The select fills its parent's full width, so a shrinking wrapper sizes it to the
             // control's room and its own ellipsis shows instead of the control clipping.
             .child(
@@ -380,7 +390,7 @@ impl Render for EnvSelector {
                             .appearance(false)
                             .small()
                             // A disabled select tracks no focus, so Tab passes it.
-                            .disabled(squeezed)
+                            .disabled(squeezed || locked)
                             .when(none, |s| s.text_color(muted)),
                     ),
             )

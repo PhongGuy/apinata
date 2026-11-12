@@ -406,7 +406,7 @@ fn ask_to_close(
     let answer = confirm::ask(
         confirm::save_ask(
             "Save changes before closing?".into(),
-            Some(unsaved_detail(workspace.read(cx), &unsaved).into()),
+            Some(unsaved_detail(workspace.read(cx), &unsaved, &scope).into()),
             "Discard",
             "Save all",
         ),
@@ -626,10 +626,15 @@ fn ask_to_stop_runs(runs: Vec<Entity<RunnerModel>>, kept: Kept, window: &mut Win
         .detach();
 }
 
-/// The close prompt's detail line for `unsaved`, naming the scratch pad as itself rather than
-/// counting it among the collections.
-pub fn unsaved_detail(workspace: &Workspace, unsaved: &[Unsaved]) -> String {
+/// The close prompt's detail line for `unsaved` when closing `scope`, naming the scratch pad as
+/// itself rather than counting it among the collections, and one closing collection as this one.
+pub fn unsaved_detail(workspace: &Workspace, unsaved: &[Unsaved], scope: &CloseScope) -> String {
     let docs: usize = unsaved.iter().map(|u| u.targets.len()).sum();
+    if let CloseScope::Collection(root) = scope
+        && !workspace.is_scratch(root)
+    {
+        return detail_in(docs, "this collection");
+    }
     let scratch = unsaved.iter().any(|u| workspace.is_scratch(&u.root));
     let collections = unsaved
         .iter()
@@ -651,7 +656,11 @@ pub fn close_detail(documents: usize, collections: usize, scratch: bool) -> Stri
     if scratch {
         places.push("the scratch pad".to_owned());
     }
-    let places = places.join(" and ");
+    detail_in(documents, &places.join(" and "))
+}
+
+// The detail line for `documents` unsaved changes in `places`.
+fn detail_in(documents: usize, places: &str) -> String {
     match documents {
         0 => format!("Changes to {places} are still being applied."),
         1 => format!("1 unsaved change in {places}."),
