@@ -13,7 +13,7 @@ use crate::body_view::SCRUBBED_TIP;
 use crate::compare_view::{CompareRow, HeaderEye};
 use crate::diff_doc::{DiffRow, RowKind};
 use crate::diff_rows::{DiffPalette, diff_row};
-use crate::kv_grid::{ActionShow, action_slot};
+use crate::kv_grid::{ActionShow, action_slot, cut_line};
 use crate::style;
 use crate::theme::{self, Status};
 use crate::ui::{self, LockButton as _};
@@ -138,14 +138,25 @@ fn header_eye(ix: usize, name: &str, eye: HeaderEye, actions: &RowActions, cx: &
     action_slot(button, ActionShow::Always)
 }
 
-/// One row; `ix` keys its element ids and `actions` answer its clicks.
+/// One row; `ix` keys its element ids and `actions` answer its clicks. A header or JSON
+/// change ends in "…" where the pane cuts it, with the whole change in a tooltip.
 pub fn compare_row(
     ix: usize,
     row: &CompareRow,
     p: &ComparePalette,
     actions: &RowActions,
-    cx: &App,
+    window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
+    let change = |text: String, window: &mut Window, cx: &mut App| {
+        cut_line(
+            ("compare-text", ix).into(),
+            ("compare-text-width", ix).into(),
+            text.into(),
+            window,
+            cx,
+        )
+    };
     let line = || {
         h_flex()
             .id(("compare-row", ix))
@@ -184,13 +195,13 @@ pub fn compare_row(
             let row = line()
                 .aria_label(SharedString::from(text.clone()))
                 .bg(tint)
-                .child(change_mark(ix, flag, p));
+                .child(change_mark(ix, flag, p))
+                .child(change(text, window, cx));
             match eye {
                 Some(eye) => row
-                    .child(div().flex_1().min_w_0().overflow_hidden().child(text))
                     .child(header_eye(ix, name, *eye, actions, cx))
                     .into_any_element(),
-                None => row.child(text).into_any_element(),
+                None => row.into_any_element(),
             }
         }
         CompareRow::Volatile { count, open } => {
@@ -222,7 +233,7 @@ pub fn compare_row(
             line()
                 .bg(tint)
                 .child(change_mark(ix, flag, p))
-                .child(format!("{path}: {text}"))
+                .child(change(format!("{path}: {text}"), window, cx))
                 .into_any_element()
         }
         CompareRow::Diff(r) => diff_row(ix, r, &p.diff).into_any_element(),

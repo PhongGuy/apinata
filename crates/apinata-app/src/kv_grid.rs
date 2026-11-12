@@ -818,6 +818,49 @@ fn cut_tip(text: &SharedString, window: &mut Window, cx: &mut App) -> AnyView {
     .build(window, cx)
 }
 
+/// One line of `text` with id `id` that fills the rest of its row, ends in "…" where its room
+/// cuts it, and then shows the whole text in a tooltip; `key` keeps that room across frames.
+pub fn cut_line(
+    id: ElementId,
+    key: ElementId,
+    text: SharedString,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
+    let widths = window.use_keyed_state(key, cx, |_, _| Vec::<Option<Pixels>>::new());
+    let font = window.text_style().font_family.clone();
+    let record = widths.clone();
+    let measure = canvas(
+        move |bounds, _, cx| {
+            record.update(cx, |v, _| *v = vec![Some(bounds.size.width)]);
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_full();
+    let tip_text = text.clone();
+    div()
+        .id(id)
+        .test_support()
+        .relative()
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .tooltip(move |w, cx| {
+            let tip = cut_tip(&tip_text, w, cx);
+            cx.new(|_| FlexTip {
+                text: tip_text.clone(),
+                mono: font.clone(),
+                widths: widths.clone(),
+                col: 0,
+                tip,
+            })
+            .into()
+        })
+        .child(measure)
+        .child(text)
+}
+
 /// The row that takes focus once row `ix` is gone from `rows`: the one now at `ix`, else the
 /// one before it, else the table's empty row.
 pub fn after_delete<'a, T>(rows: &'a [T], ix: usize, blank: &'a T) -> &'a T {
