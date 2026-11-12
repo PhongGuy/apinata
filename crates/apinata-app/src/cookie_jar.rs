@@ -1,6 +1,7 @@
 //! The cookie jar dialog: lists the shared executor's cookies grouped by domain, adds and
-//! edits one through an inline form, and deletes one cookie, one domain or all of them. Each
-//! change is saved in the background; nothing is editable until the saved jar has loaded.
+//! edits one through an inline form, and deletes one cookie, or after asking, one domain or
+//! all of them. Each change is saved in the background; nothing is editable until the saved
+//! jar has loaded.
 
 use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime};
@@ -148,10 +149,10 @@ pub fn domain_matches(domain: &str, query: &str) -> bool {
     domain.to_lowercase().contains(&query.to_lowercase())
 }
 
-/// When a cookie expires, relative to `now`: "Session", "Expired", or "in N min|h|d".
+/// When a cookie expires, relative to `now`: "No expiry", "Expired", or "N min|h|d left".
 pub fn expiry_label(expires: Option<SystemTime>, now: SystemTime) -> String {
     let Some(at) = expires else {
-        return "Session".into();
+        return "No expiry".into();
     };
     let secs = match at.duration_since(now) {
         Ok(left) if !left.is_zero() => left.as_secs(),
@@ -159,9 +160,18 @@ pub fn expiry_label(expires: Option<SystemTime>, now: SystemTime) -> String {
     };
     // Each unit is floored, but anything still live shows at least one minute.
     match secs {
-        s if s < 3600 => format!("in {} min", (s / 60).max(1)),
-        s if s < 86_400 => format!("in {} h", s / 3600),
-        s => format!("in {} d", s / 86_400),
+        s if s < 3600 => format!("{} min left", (s / 60).max(1)),
+        s if s < 86_400 => format!("{} h left", s / 3600),
+        s => format!("{} d left", s / 86_400),
+    }
+}
+
+// "1 cookie" or "N cookies".
+fn cookie_count(n: usize) -> String {
+    if n == 1 {
+        "1 cookie".into()
+    } else {
+        format!("{n} cookies")
     }
 }
 
@@ -491,6 +501,52 @@ impl CookieJarView {
         self.changed(cx);
     }
 
+    /// Asks before deleting every cookie under `domain`, naming it and how many go.
+    pub fn ask_delete_domain(
+        &mut self,
+        domain: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let n = self.cookies.iter().filter(|c| c.domain == domain).count();
+        let title = format!("Delete {} for {domain}?", cookie_count(n));
+        self.confirm_then(title, move |v, cx| v.delete_domain(&domain, cx), window, cx);
+    }
+
+    /// Asks before [`Self::clear_shown`], naming how many go and, under a search, the search.
+    pub fn ask_clear_shown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let title = match (self.query.as_str(), self.cookies.len()) {
+            ("", 1) => "Delete 1 cookie?".to_owned(),
+            ("", n) => format!("Delete all {n} cookies?"),
+            (query, _) => {
+                let n = self.shown().len();
+                format!("Delete {} matching \"{query}\"?", cookie_count(n))
+            }
+        };
+        self.confirm_then(title, |v, cx| v.clear_shown(cx), window, cx);
+    }
+
+    // The delete prompt over the jar; only its Delete answer runs `then`. A no-op while not
+    // `editable`, so a locked jar never asks.
+    fn confirm_then(
+        &mut self,
+        title: String,
+        then: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.editable() {
+            return;
+        }
+        let answer = crate::confirm::ask(crate::confirm::delete_ask(title, None), window, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.recv().await == Ok(1) {
+                this.update(cx, then).ok();
+            }
+        })
+        .detach();
+    }
+
     /// Relists the jar and its persistence; while it loads, keeps one poll relisting it.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         let exec = shared(cx);
@@ -571,6 +627,9 @@ impl CookieJarView {
                 }));
             action_slot(button, ActionShow::Always)
         });
+        // The second line's values carry their meaning in words, so "/" reads as a path.
+        let path: SharedString = format!("Path {}", c.path).into();
+        let expiry: SharedString = expiry_label(c.expires, now).into();
         // Fixed widths for the name, path and expiry keep each row's value and flags at the
         // same x as every other row's, whatever the text; long text is cut short.
         let muted = cx.theme().muted_foreground;
@@ -621,7 +680,8 @@ impl CookieJarView {
                                     .w(JAR_PATH_WIDTH)
                                     .flex_none()
                                     .truncate()
-                                    .child(c.path.clone()),
+                                    .aria_label(path.clone())
+                                    .child(path),
                             )
                             .child(
                                 div()
@@ -629,7 +689,8 @@ impl CookieJarView {
                                     .test_support()
                                     .w(JAR_EXPIRY_WIDTH)
                                     .flex_none()
-                                    .child(expiry_label(c.expires, now)),
+                                    .aria_label(expiry.clone())
+                                    .child(expiry),
                             )
                             .child({
                                 let flags: SharedString = flags.join(", ").into();
@@ -884,8 +945,8 @@ impl Render for CookieJarView {
                                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                                     .label("Delete domain")
                                     .lock(!self.editable(), cx)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.delete_domain(&domain, cx)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.ask_delete_domain(domain.clone(), window, cx)
                                     })),
                             ),
                     );
@@ -907,7 +968,9 @@ impl Render for CookieJarView {
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .label(label)
                         .lock(!self.editable(), cx)
-                        .on_click(cx.listener(|this, _, _, cx| this.clear_shown(cx))),
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.ask_clear_shown(window, cx)),
+                        ),
                 );
             }
         }

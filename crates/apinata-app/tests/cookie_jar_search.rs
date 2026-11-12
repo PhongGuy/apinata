@@ -132,6 +132,7 @@ fn clear_under_a_search_removes_only_the_shown_domains(cx: &mut TestAppContext) 
     assert_eq!(clear_label(cx, win).as_deref(), Some("Clear shown"));
     cx.update_window(win, |_, w, cx| w.click("jar-clear", cx))
         .unwrap();
+    answer_confirm(cx, "confirm-delete");
     frame(cx, win);
     assert_eq!(
         left(cx, &view),
@@ -143,6 +144,7 @@ fn clear_under_a_search_removes_only_the_shown_domains(cx: &mut TestAppContext) 
     assert_eq!(clear_label(cx, win).as_deref(), Some("Clear all"));
     cx.update_window(win, |_, w, cx| w.click("jar-clear", cx))
         .unwrap();
+    answer_confirm(cx, "confirm-delete");
     frame(cx, win);
     assert!(left(cx, &view).is_empty());
 }
