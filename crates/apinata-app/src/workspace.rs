@@ -3362,6 +3362,12 @@ impl Workspace {
         self.mocks.examples(&absolute(root))
     }
 
+    /// Test-only: how many mock rebuilds have started.
+    #[doc(hidden)]
+    pub fn mock_rebuilds(&self) -> u64 {
+        self.mocks.rebuilds()
+    }
+
     /// Test-only: later mock starts bind `port` instead of the remembered one.
     #[doc(hidden)]
     pub fn set_mock_port(&mut self, port: u16) {
@@ -3403,15 +3409,15 @@ impl Workspace {
             Some(port) => (port, false),
             None => (self.remembered_port(&root, cx).unwrap_or(0), true),
         };
-        let stopping = self.mocks.take_stopping(&root);
+        let stopped = self.mocks.stopped(&root);
         let seen = self.snapshot(&root, cx);
         let key = root.clone();
         self.mocks.begin(root, seen, |id| {
             cx.spawn(async move |this, cx| {
                 let source = (source.recv().await)
                     .unwrap_or_else(|_| Err("the collection closed".to_owned()));
-                if let Some(stopping) = stopping {
-                    stopping.await;
+                if let Some(stopped) = stopped {
+                    let _ = stopped.recv().await;
                 }
                 let started = match source {
                     Ok(source) => {

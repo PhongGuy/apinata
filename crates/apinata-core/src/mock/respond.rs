@@ -29,8 +29,8 @@ const SKIPPED: [&str; 8] = [
     "alt-svc",
 ];
 
-/// Status defaults to 200; framing and stale headers are dropped silently, and headers invalid as HTTP
-/// are dropped with a warning each.
+/// Status defaults to 200; framing and stale headers are dropped silently, and headers invalid
+/// as HTTP are dropped with a warning each.
 pub(crate) fn prepare(example: &ExampleResponse) -> (Prepared, Vec<String>) {
     let response = example.to_response();
     let mut warnings = Vec::new();

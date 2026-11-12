@@ -1028,7 +1028,6 @@ impl Shell {
         Some(root)
     }
 
-    // Opens the Changes dialog, as the title bar's changed-file count does.
     // The palette's twin of the status bar toggle, for the current user collection.
     fn toggle_mock_server(&mut self, _: &ToggleMockServer, _: &mut Window, cx: &mut Context<Self>) {
         if let Some((root, _)) = self.current_mock(cx) {
@@ -1036,6 +1035,7 @@ impl Shell {
         }
     }
 
+    // Opens the Changes dialog, as the title bar's changed-file count does.
     fn show_changes(&mut self, _: &ShowChanges, window: &mut Window, cx: &mut Context<Self>) {
         let Some(root) = self.repository_root(window, cx) else {
             return;

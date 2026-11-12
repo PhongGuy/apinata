@@ -66,10 +66,12 @@ pub struct MockServers {
     slots: HashMap<PathBuf, Slot>,
     // The snapshot each server's routes were last asked for, to tell when the files moved on.
     seen: HashMap<PathBuf, Arc<CollectionSnapshot>>,
-    // A stop still closing its listener, which the next start waits for to reuse the port.
-    stopping: HashMap<PathBuf, Task<()>>,
+    // A stop still closing its listener, kept here so an abandoned start cannot cancel it; the
+    // receiver closes when it is done, and every later start waits for that to reuse the port.
+    stopping: HashMap<PathBuf, (Task<()>, async_channel::Receiver<()>)>,
     next: u64,
     port: Option<u16>,
+    rebuilds: u64,
 }
 
 impl MockServers {
@@ -112,9 +114,15 @@ impl MockServers {
         moved && reload.is_none()
     }
 
+    /// How many rebuilds have started, across every collection.
+    pub fn rebuilds(&self) -> u64 {
+        self.rebuilds
+    }
+
     /// Keeps `task` as `root`'s rebuild in flight.
     pub fn reloading(&mut self, root: &Path, task: Task<()>) {
         if let Some(Slot::On { reload, again, .. }) = self.slots.get_mut(root) {
+            self.rebuilds += 1;
             *reload = Some(task);
             *again = false;
         }
@@ -131,16 +139,20 @@ impl MockServers {
         else {
             return false;
         };
-        if let Some(source) = source {
-            handle.reload(&source.collection, &source.context);
+        match source {
+            Some(source) => handle.reload(&source.collection, &source.context),
+            // The routes are still the old ones, so the next snapshot must rebuild them.
+            None => {
+                self.seen.remove(root);
+            }
         }
         *reload = None;
         std::mem::take(again)
     }
 
-    /// The task closing `root`'s last stopped server, if one is still around.
-    pub fn take_stopping(&mut self, root: &Path) -> Option<Task<()>> {
-        self.stopping.remove(root)
+    /// Closes once `root`'s last stopped server has released its listener.
+    pub fn stopped(&self, root: &Path) -> Option<async_channel::Receiver<()>> {
+        self.stopping.get(root).map(|(_, done)| done.clone())
     }
 
     /// Records a start for `root` running as `task` and returns its id.
@@ -196,16 +208,18 @@ impl MockServers {
     }
 
     /// Stops `root`'s server, or abandons its start. The listener closes in the background;
-    /// the next start of `root` waits for that through [`MockServers::take_stopping`].
+    /// the next start of `root` waits for that through [`MockServers::stopped`].
     pub fn stop(&mut self, root: &Path, cx: &App) {
         self.seen.remove(root);
         match self.slots.remove(root) {
             Some(Slot::On { handle, .. }) if tokio_bridge::is_running(cx) => {
                 let stop = tokio_bridge::spawn(cx, handle.stop());
+                let (closed, done) = async_channel::bounded(1);
                 let task = cx.background_spawn(async move {
                     let _ = stop.await;
+                    drop(closed);
                 });
-                self.stopping.insert(root.to_path_buf(), task);
+                self.stopping.insert(root.to_path_buf(), (task, done));
             }
             _ => {}
         }
@@ -218,8 +232,8 @@ impl MockServers {
 }
 
 /// Whether the saved state the routes are built from may differ between two snapshots. A
-/// clean request's view is rebuilt only when its file or examples change; while both views
-/// hold a draft, only example edits and outside changes to the file count.
+/// clean request's view is rebuilt only when its file or examples change; once it holds a
+/// draft, only example edits and outside changes to the file count.
 pub fn routes_differ(old: &CollectionSnapshot, new: &CollectionSnapshot) -> bool {
     if old.selected_environment != new.selected_environment
         || old.context_generation != new.context_generation
@@ -238,7 +252,7 @@ pub fn routes_differ(old: &CollectionSnapshot, new: &CollectionSnapshot) -> bool
         .filter(|(_, r)| !r.draft)
         .any(|(path, r)| match old.get(path) {
             Some(was) if Arc::ptr_eq(was, r) => false,
-            Some(was) if was.dirty && r.dirty => saved_part(was) != saved_part(r),
+            Some(was) if r.dirty => saved_part(was) != saved_part(r),
             _ => true,
         })
 }

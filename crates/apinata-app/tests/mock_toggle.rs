@@ -3,16 +3,22 @@
 
 use crate::support;
 
+use apinata_app::command::MockSource;
 use apinata_app::command::{Command, TreeOp};
-use apinata_app::mock_server::MockState;
+use apinata_app::mock_server::{MockServers, MockState};
 use apinata_app::session::{CollectionSession, Session};
+use apinata_app::snapshot::{CollectionSnapshot, SnapshotCache};
 use apinata_app::workspace::Workspace;
+use apinata_core::mock::{self, MockOptions};
+use apinata_core::{Collection, ContextOptions, VarContext};
 use apinata_core::{ExampleBody, ExampleBodyKind, ExampleResponse};
+use gpui_kit::Task;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Focusable as _, TestAppContext};
 use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use support::*;
 
@@ -438,4 +444,179 @@ fn the_palette_starts_and_stops_the_mock(cx: &mut TestAppContext) {
     palette(cx, &s, "toggle mock server");
     assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
     wait_real(cx, |_| refused(addr));
+}
+
+// `plain.yml` with one example named `ok` whose text body is `body`.
+fn save_plain(col: &tempfile::TempDir, body: &str) {
+    let example = format!(
+        "examples:\n  - name: ok\n    response:\n      status: 200\n      body:\n        type: text\n        data: {body}\n"
+    );
+    let text = format!("{}{example}", request("plain", "http://api.test/plain"));
+    std::fs::write(col.path().join("plain.yml"), text).unwrap();
+}
+
+// A snapshot of the files as saved now, with every view new, as after a reload.
+fn snapshot_of(root: &Path) -> Arc<CollectionSnapshot> {
+    let c = Collection::open(root).unwrap();
+    Arc::new(CollectionSnapshot {
+        seq: 1,
+        acked: 0,
+        content: SnapshotCache::new().build(&c),
+        selected_environment: None,
+        stale: Default::default(),
+        notices: Default::default(),
+        context_generation: 0,
+        dotenv_seq: 0,
+        dotenv_stored: Default::default(),
+        dotenv_held: Default::default(),
+        network_notice: None,
+    })
+}
+
+fn source_of(root: &Path) -> MockSource {
+    let collection = Collection::open(root).unwrap();
+    let context = VarContext::new(&collection, ContextOptions::new()).unwrap();
+    MockSource {
+        collection,
+        context,
+    }
+}
+
+// Servers with `root`'s mock running on a free port, built straight from the saved files.
+fn serving(cx: &mut TestAppContext, root: &Path) -> (MockServers, SocketAddr) {
+    cx.executor().allow_parking();
+    cx.update(apinata_app::tokio_bridge::init);
+    let tokio = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let source = source_of(root);
+    let options = MockOptions::new().port(0);
+    let handle = tokio
+        .block_on(mock::start(&source.collection, &source.context, options))
+        .unwrap();
+    let addr = handle.addr();
+    let mut servers = MockServers::default();
+    let id = servers.begin(root.to_path_buf(), Some(snapshot_of(root)), |_| {
+        Task::ready(())
+    });
+    assert!(servers.finish(root, id, handle));
+    (servers, addr)
+}
+
+#[gpui_kit::test]
+fn a_save_during_a_rebuild_asks_for_exactly_one_more(cx: &mut TestAppContext) {
+    let col = with_plain();
+    let root = col.path();
+    let (mut servers, addr) = serving(cx, root);
+    save_plain(&col, "one");
+    assert!(servers.observe(root, snapshot_of(root)));
+    servers.reloading(root, Task::ready(()));
+    let one = source_of(root);
+    save_plain(&col, "two");
+    assert!(
+        !servers.observe(root, snapshot_of(root)),
+        "one rebuild at a time"
+    );
+    assert!(
+        servers.reloaded(root, Some(&one)),
+        "the later save asks for one more"
+    );
+    servers.reloading(root, Task::ready(()));
+    assert!(
+        !servers.reloaded(root, Some(&source_of(root))),
+        "and only one"
+    );
+    assert!(get(addr, "/plain").ends_with("two"));
+}
+
+#[gpui_kit::test]
+fn a_rebuild_whose_source_failed_runs_again_on_the_next_snapshot(cx: &mut TestAppContext) {
+    let col = with_plain();
+    let root = col.path();
+    let (mut servers, _addr) = serving(cx, root);
+    save_plain(&col, "one");
+    let saved = snapshot_of(root);
+    assert!(servers.observe(root, Arc::clone(&saved)));
+    servers.reloading(root, Task::ready(()));
+    assert!(!servers.reloaded(root, None));
+    assert!(
+        servers.observe(root, saved),
+        "the failed rebuild is retried"
+    );
+}
+
+#[gpui_kit::test]
+fn a_draft_edit_keeps_the_saved_routes_and_runs_no_rebuild(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    cx.run_until_parked();
+    let before = s.ws.read_with(cx, |w, _| w.mock_rebuilds());
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("users.yml", "http://api.test/other"), cx)
+    });
+    wait_real(cx, |cx| {
+        ws_snap(cx, &s.ws, &s.root).content.requests[&ip("users.yml")].dirty
+    });
+    cx.run_until_parked();
+    assert_eq!(s.ws.read_with(cx, |w, _| w.mock_rebuilds()), before);
+    assert!(get(addr, "/users").ends_with("{\"id\": 7}"));
+    assert!(get(addr, "/other").starts_with("HTTP/1.1 404"));
+}
+
+// The mock of `col` running with the real file watcher, so edits on disk reach it.
+fn watched_mock(cx: &mut TestAppContext, col: &tempfile::TempDir) -> (Watched, SocketAddr) {
+    cx.update(apinata_app::tokio_bridge::init);
+    let w = watched(cx, col);
+    let root = w.root.clone();
+    w.ws.update(cx, |ws, cx| ws.set_mock(&root, true, cx));
+    let addr = running(cx, &w.ws, &w.root);
+    (w, addr)
+}
+
+#[gpui_kit::test]
+fn an_example_body_saved_under_the_same_name_is_served(cx: &mut TestAppContext) {
+    let col = with_plain();
+    save_plain(&col, "one");
+    let (_w, addr) = watched_mock(cx, &col);
+    assert!(get(addr, "/plain").ends_with("one"));
+    save_plain(&col, "two");
+    wait_real(cx, |_| get(addr, "/plain").ends_with("two"));
+}
+
+#[gpui_kit::test]
+fn an_example_body_saved_under_an_open_draft_is_served(cx: &mut TestAppContext) {
+    let col = with_plain();
+    save_plain(&col, "one");
+    let (w, addr) = watched_mock(cx, &col);
+    let root = w.root.clone();
+    w.ws.update(cx, |ws, cx| {
+        ws.send(
+            &root,
+            edit_url("plain.yml", "http://api.test/plain?draft=1"),
+            cx,
+        )
+    });
+    wait_real(cx, |cx| {
+        ws_snap(cx, &w.ws, &w.root).content.requests[&ip("plain.yml")].dirty
+    });
+    save_plain(&col, "two");
+    wait_real(cx, |_| get(addr, "/plain").ends_with("two"));
+}
+
+#[gpui_kit::test]
+fn on_off_on_off_on_still_waits_for_the_old_listener_and_keeps_the_port(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let first = running(cx, &s.ws, &s.root);
+    // The second start is abandoned while it waits; the third must still wait for the first.
+    s.ws.update(cx, |w, cx| {
+        w.set_mock(&root, false, cx);
+        w.set_mock(&root, true, cx);
+        w.set_mock(&root, false, cx);
+        w.set_mock(&root, true, cx);
+    });
+    assert_eq!(running(cx, &s.ws, &s.root), first);
 }
