@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::sync::{Arc, LazyLock};
 
 use apinata_core::import::{
-    CollectionOptions, ImportBundle, ImportReport, ImportedRequest, parse_collections,
-    write_collection,
+    CollectionOptions, EnvironmentFormat, FormatError, ImportBundle, ImportReport, ImportedRequest,
+    parse_collections, write_collection,
 };
 use apinata_core::{DraftSnapshot, ItemPath};
 
@@ -1129,48 +1129,32 @@ impl Shell {
         crate::import_link::open(cx.weak_entity(), window, cx);
     }
 
-    /// Hands collections already parsed (from a fetched link) to the folder prompt and the write.
-    pub(crate) fn place_imported(
+    /// Opens what an import wrote, each in the first environment its import produced so its
+    /// first send has the variables, then its report and any failure behind it.
+    pub(crate) fn landed(
         &mut self,
-        bundles: Vec<ImportBundle>,
+        roots: Written,
+        report: Option<ImportReport>,
+        error: Option<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let store = Arc::clone(self.workspace.read(cx).store());
-        cx.spawn_in(window, async move |this, cx| {
-            place_bundles(&this, bundles, store, cx).await
-        })
-        .detach();
-    }
-
-    // Asks for the file and parses it off the main thread before asking where it goes, so a bad
-    // file fails at once; cancelling either prompt does nothing. A failed write keeps and opens
-    // the collections before it.
-    pub(crate) fn browse_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let store = Arc::clone(self.workspace.read(cx).store());
-        let reply = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some("Import collection".into()),
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let Some(file) = first_path(reply.await) else {
-                return;
-            };
-            let bundles = match cx
-                .background_spawn(async move { parse_bundles(&file) })
-                .await
-            {
-                Ok(bundles) => bundles,
-                Err(message) => {
-                    let _ = this.update_in(cx, |_, window, cx| import_failed(message, window, cx));
-                    return;
-                }
-            };
-            place_bundles(&this, bundles, store, cx).await;
-        })
-        .detach();
+        for (root, environment) in roots {
+            if let Some(name) = environment {
+                self.workspace
+                    .update(cx, |w, _| w.select_on_open(&root, name));
+            }
+            self.open(root, window, cx);
+        }
+        if let Some(report) = report {
+            if !report.notes.is_empty() {
+                crate::import_report::open("Import report", &report, window, cx);
+            }
+            self.last_import = Some(report);
+        }
+        if let Some(message) = error {
+            import_failed(message, window, cx);
+        }
     }
 
     // Each dropped path is sniffed off the main thread, then handled in order: a folder opens,
@@ -3495,24 +3479,7 @@ async fn place_bundles(
     let job = cx.background_spawn(async move { write_bundles(&bundles, &parent, &*store) });
     let (roots, report, error) = job.await;
     let _ = this.update_in(cx, |this, window, cx| {
-        // Open what landed before any error, so the user sees it behind the alert. Each opens
-        // in the first environment its import produced, so its first send has the variables.
-        for (root, environment) in roots {
-            if let Some(name) = environment {
-                this.workspace
-                    .update(cx, |w, _| w.select_on_open(&root, name));
-            }
-            this.open(root, window, cx);
-        }
-        if let Some(report) = report {
-            if !report.notes.is_empty() {
-                crate::import_report::open("Import report", &report, window, cx);
-            }
-            this.last_import = Some(report);
-        }
-        if let Some(message) = error {
-            import_failed(message, window, cx);
-        }
+        this.landed(roots, report, error, window, cx)
     });
 }
 
@@ -3528,16 +3495,24 @@ pub fn parse_bundles(file: &Path) -> Result<Vec<ImportBundle>, String> {
 pub fn parse_bundles_from(file: &Path, input: &[u8]) -> Result<Vec<ImportBundle>, String> {
     let mut options = CollectionOptions::default();
     options.name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
-    parse_collections(None, input, &options).map_err(|e| crate::ui::plain_quotes(&e.to_string()))
+    parse_collections(None, input, &options).map_err(|e| match e {
+        // An environment file is a near miss: point at the action that takes it.
+        FormatError::Unrecognized { .. } if EnvironmentFormat::detect(input).is_some() => {
+            ENVIRONMENT_FILE.to_owned()
+        }
+        e => crate::ui::plain_quotes(&e.to_string()),
+    })
 }
 
+const ENVIRONMENT_FILE: &str = "This is an environment file, not a collection. To add it, open a collection and choose Import environment.";
+
 // Each written root with the first environment its import produced.
-type Written = Vec<(PathBuf, Option<String>)>;
+pub(crate) type Written = Vec<(PathBuf, Option<String>)>;
 
 // Writes `bundles` in order into `parent`, stopping at the first failure. Answers the roots
 // written, their merged report (none if nothing landed), and the failure naming what was not
 // written.
-fn write_bundles(
+pub(crate) fn write_bundles(
     bundles: &[ImportBundle],
     parent: &Path,
     store: &dyn apinata_core::SecretStore,

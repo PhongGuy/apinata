@@ -81,10 +81,12 @@ fn a_json_body_enables_the_button_and_a_click_emits_the_body(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
-fn the_button_stays_in_a_compact_pane(cx: &mut TestAppContext) {
+fn a_compact_bar_leaves_the_button_to_the_pane_menu(cx: &mut TestAppContext) {
     let (win, view) = shown(cx, json(JSON), true);
+    assert!(!present(cx, win, "body-schema-test"));
+    assert!(view.read_with(cx, |v, _| v.schema_test_offered()));
     let got = watch(cx, &view);
-    click(cx, win);
+    view.update(cx, |v, cx| v.request_schema_test(cx));
     assert_eq!(got.borrow().len(), 1);
 }
 

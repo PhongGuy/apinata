@@ -15,8 +15,8 @@ use gpui_kit::{
 };
 use std::path::Path;
 
-/// One line per note in note order: "<source>: <detail>", plus " (<file>)" when set, with
-/// every backtick removed.
+/// One line per note in note order: "<source>: <detail>" (a carried script's note reads
+/// "<owner> <detail>"), plus " (<file>)" when set, with every backtick removed.
 pub fn lines(report: &ImportReport) -> Vec<String> {
     report.notes.iter().map(line).collect()
 }
@@ -219,9 +219,29 @@ fn count(n: usize, noun: &str) -> String {
 }
 
 fn line(note: &ImportNote) -> String {
-    let mut line = format!("{}: {}", note.source, note.detail);
+    let mut line = match script_owner(note) {
+        Some(owner) => format!("{owner} {}", note.detail),
+        None => format!("{}: {}", note.source, note.detail),
+    };
     if let Some(file) = &note.file {
         line.push_str(&format!(" ({file})"));
     }
     line.replace('`', "")
+}
+
+// A carried script's note names the script itself, so its event index is noise: the line reads
+// "Collection pre-request script: ..." or "<request> post-response script: ...".
+fn script_owner(note: &ImportNote) -> Option<String> {
+    let (owner, event) = note.source.rsplit_once(" / ")?;
+    let index = event.strip_prefix("event[")?.strip_suffix(']')?;
+    let names_script = ["pre-request script:", "post-response script:"]
+        .iter()
+        .any(|p| note.detail.starts_with(p));
+    if !names_script || index.parse::<usize>().is_err() {
+        return None;
+    }
+    Some(match owner {
+        "collection" => "Collection".to_owned(),
+        owner => owner.to_owned(),
+    })
 }

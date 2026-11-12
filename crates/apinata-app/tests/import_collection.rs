@@ -1,10 +1,11 @@
-//! Import collection: two prompts, a staged write through core, the collection opened, a report.
+//! Import collection: a file prompt, a staged write through core into the dialog's Create in
+//! folder, the collection opened, a report.
 
 use crate::support;
 
-use apinata_app::import_report;
 use apinata_app::session::Session;
 use apinata_app::shell::Shell;
+use apinata_app::{import_link, import_report};
 use apinata_core::MemoryStore;
 use apinata_core::import::{parse_collection, write_collection};
 use gpui_kit::component::WindowExt as _;
@@ -77,20 +78,23 @@ pub fn click_import(cx: &mut TestAppContext, win: AnyWindowHandle) {
     cx.run_until_parked();
 }
 
-/// Answers the file prompt, then the directory prompt.
+/// Points the open Import dialog's Create in folder at `into`.
+pub fn create_in(cx: &mut TestAppContext, into: &Path) {
+    let dialog = cx.read(import_link::current).expect("dialog open");
+    let into = into.to_path_buf();
+    dialog.update(cx, |d, cx| d.set_parent(into, cx));
+}
+
+/// Creates in `into`, then answers the file prompt; no folder prompt follows.
 pub fn answer(cx: &mut TestAppContext, file: PathBuf, into: PathBuf) {
     assert!(cx.did_prompt_for_paths());
+    create_in(cx, &into);
     cx.simulate_path_prompt_response(move |o| {
         assert!(o.files && !o.directories && !o.multiple);
         Some(vec![file])
     });
     cx.run_until_parked();
-    assert!(cx.did_prompt_for_paths());
-    cx.simulate_path_prompt_response(move |o| {
-        assert!(o.directories && !o.files && !o.multiple);
-        Some(vec![into])
-    });
-    cx.run_until_parked();
+    assert!(!cx.did_prompt_for_paths(), "no folder prompt follows");
 }
 
 #[gpui_kit::test]
@@ -158,7 +162,10 @@ fn a_cancelled_prompt_imports_nothing(cx: &mut TestAppContext) {
     cx.simulate_path_prompt_response(|_| None);
     cx.run_until_parked();
     assert!(opened(cx, &view).is_empty());
-    assert!(!dialog(cx, win));
+    assert!(
+        present(cx, win, "import-link-dialog"),
+        "the dialog stays for another try"
+    );
 }
 
 #[gpui_kit::test]
@@ -216,20 +223,38 @@ fn report_lines_name_each_note_without_backticks() {
 }
 
 #[gpui_kit::test]
-fn cancelling_the_folder_prompt_writes_nothing(cx: &mut TestAppContext) {
+fn a_good_file_lands_in_the_create_in_folder_without_a_second_prompt(cx: &mut TestAppContext) {
     let (files, win, view) = shell(cx);
     click_import(cx, win);
-    let file = input(files.path(), &shop(true));
+    let into = tempfile::tempdir().unwrap();
+    let parent = into.path().to_path_buf();
+    create_in(cx, &parent);
+    let file = input(files.path(), &shop(false));
     cx.simulate_path_prompt_response(move |_| Some(vec![file]));
     cx.run_until_parked();
-    assert!(cx.did_prompt_for_paths(), "a good file asks where it goes");
-    cx.simulate_path_prompt_response(|o| {
-        assert!(o.directories && !o.files);
-        None
-    });
-    cx.run_until_parked();
-    assert!(opened(cx, &view).is_empty());
-    assert!(!dialog(cx, win));
+    assert!(!cx.did_prompt_for_paths(), "the dialog already said where");
+    assert_eq!(opened(cx, &view), vec![parent.join("Shop")]);
+    assert!(!present(cx, win, "import-link-dialog"));
+}
+
+#[test]
+fn a_script_note_reads_as_its_owner_and_script() {
+    let text = format!(
+        r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"event":[{{"listen":"prerequest","script":{{"exec":["pm.environment.set('a', 1);"]}}}}],"item":[{{"name":"Get user","request":{{"method":"GET","url":"https://x.test/users/1"}}}}]}}"#
+    );
+    let lines = import_report::lines(&report_of(&text));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("Collection pre-request script: 1 Postman call translated")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .all(|l| !l.contains("event[") && !l.contains("pm call")),
+        "{lines:?}"
+    );
 }
 
 #[test]

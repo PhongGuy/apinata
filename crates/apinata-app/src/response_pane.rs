@@ -494,9 +494,11 @@ pub fn response_strip(horizontal: bool, window: &Window, cx: &App) -> impl IntoE
         .when(!horizontal, |d| d.truncate())
         .child(RESPONSE_HINT);
     let strip = match horizontal {
+        // Items keep their own width, so the key chip fits its text and not the column.
         true => v_flex()
             .w(style::RESPONSE_STRIP_WIDTH)
             .h_full()
+            .items_start()
             .gap(style::SPACE_1),
         false => h_flex()
             .w_full()
@@ -526,6 +528,20 @@ pub fn response_strip(horizontal: bool, window: &Window, cx: &App) -> impl IntoE
                     .child(kbd)
             }),
         )
+}
+
+// The menu's schema test entry and whether it is locked; with no tooltip in a menu, a lock
+// gives its reason in the label.
+fn schema_menu_label(lock: Option<&str>) -> (String, bool) {
+    match lock {
+        None => ("Add schema test".to_owned(), false),
+        Some(why) => {
+            let mut chars = why.chars();
+            let first = chars.next().map(|c| c.to_lowercase().collect::<String>());
+            let why = first.unwrap_or_default() + chars.as_str();
+            (format!("Add schema test ({why})"), true)
+        }
+    }
 }
 
 // The open comparison: its source, the result once computed, and what the list shows of it.
@@ -2640,6 +2656,10 @@ impl ResponsePane {
         let (can_copy, can_save, save_cut) = body.read_with(cx, |b, _| {
             (b.can_copy(), b.can_save(), b.save_lock().is_some())
         });
+        let schema = body.read_with(cx, |b, _| {
+            b.schema_test_offered()
+                .then(|| schema_menu_label(b.schema_test_lock()))
+        });
         // The menu has no tooltip, so a cut body says why in the label itself.
         let save_label = if save_cut {
             "Save body (cut at the size limit)"
@@ -2675,6 +2695,12 @@ impl ResponsePane {
                     .item(ui::menu_item(save_label, !can_save, cx).on_click(
                         move |_, window, cx| save.update(cx, |b, cx| b.save(window, cx)),
                     ));
+                if let Some((label, locked)) = &schema {
+                    let body = body.clone();
+                    menu = menu.item(ui::menu_item(label.clone(), *locked, cx).on_click(
+                        move |_, _, cx| body.update(cx, |b, cx| b.request_schema_test(cx)),
+                    ));
+                }
                 if let Some(enabled) = har {
                     menu =
                         menu.item(ui::menu_item("Export as HAR", !enabled, cx).on_click(

@@ -340,9 +340,9 @@ fn events_to_scripts(events: &[Value], at: &str, notes: &mut Vec<ImportNote>) ->
         }
         let translated = translate(&code);
         let detail = match translated.replaced {
-            0 => format!("{label} script carried as written; it asks before it first runs"),
+            0 => format!("{label} script: carried as written; it asks before it first runs"),
             n => format!(
-                "{label} script carried; {n} pm call{} translated to the app's script API; it asks before it first runs",
+                "{label} script: {n} Postman call{} translated; it asks before it first runs",
                 if n == 1 { "" } else { "s" }
             ),
         };

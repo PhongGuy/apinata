@@ -91,6 +91,60 @@ fn builder_and_docs_toggles_close_each_other(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "graphql-builder"));
 }
 
+// Each side toggle is announced as pressed exactly while its own panel is open.
+#[gpui_kit::test]
+fn the_side_toggles_announce_which_panel_is_open(cx: &mut TestAppContext) {
+    let (win, _s) = section(cx, "{ users { id } }", true);
+    frame(cx, win);
+    let pressed = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, _| {
+            let b = w.find("graphql-builder-toggle");
+            let d = w.find("graphql-docs-toggle");
+            (b.checked(), d.checked())
+        })
+        .unwrap()
+    };
+    assert_eq!(pressed(cx), (Some(false), Some(false)));
+    click(cx, win, "graphql-builder-toggle");
+    assert_eq!(pressed(cx), (Some(true), Some(false)));
+    click(cx, win, "graphql-docs-toggle");
+    assert_eq!(pressed(cx), (Some(false), Some(true)));
+    click(cx, win, "graphql-docs-toggle");
+    assert_eq!(pressed(cx), (Some(false), Some(false)));
+}
+
+// A schema read from a file offers a load from the URL, never a "refresh" of the URL's schema.
+#[gpui_kit::test]
+fn a_schema_from_a_file_offers_the_url_load_instead_of_refresh(cx: &mut TestAppContext) {
+    let (win, _s) = section(cx, "{ users { id } }", false);
+    let label = |cx: &mut TestAppContext, id: &'static str| {
+        cx.update_window(win, |_, w, _| w.find(id).label().map(str::to_owned))
+            .unwrap()
+    };
+    cx.update(|cx| {
+        let store = cx.default_global::<SchemaStore>();
+        let g = store.begin_file(URL, std::path::Path::new("/tmp/schema.graphqls"));
+        store.finish(URL, g, Ok(schema()));
+    });
+    frame(cx, win);
+    assert!(!present(cx, win, "graphql-schema-refresh"));
+    assert_eq!(
+        label(cx, "graphql-schema-load").as_deref(),
+        Some("Load schema from URL")
+    );
+    // A schema fetched from the URL keeps the refresh.
+    cx.update(|cx| {
+        let store = cx.default_global::<SchemaStore>();
+        let g = store.begin(URL);
+        store.finish(URL, g, Ok(schema()));
+    });
+    frame(cx, win);
+    assert_eq!(
+        label(cx, "graphql-schema-refresh").as_deref(),
+        Some("Refresh schema")
+    );
+}
+
 // The request already has a Docs tab, so the schema browser's toggle is named Schema.
 #[gpui_kit::test]
 fn the_schema_toggle_is_not_named_docs(cx: &mut TestAppContext) {

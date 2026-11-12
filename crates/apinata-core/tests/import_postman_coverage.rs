@@ -288,8 +288,14 @@ fn events_at_every_level_become_scripts_with_converted_notes() {
     assert_eq!(c.scripts.pre_request, "bru.setEnvVar('a', 1);");
     assert_eq!(c.scripts.post_response, "bru.setEnvVar('b', 2);\nlast();");
     for (source, text) in [
-        ("collection / event[0]", "pre-request script carried"),
-        ("collection / event[2]", "post-response script carried"),
+        (
+            "collection / event[0]",
+            "pre-request script: 1 Postman call translated",
+        ),
+        (
+            "collection / event[2]",
+            "post-response script: 1 Postman call translated",
+        ),
     ] {
         let note = c.notes.iter().find(|n| n.source == source).expect(source);
         assert_eq!(note.kind, NoteKind::Converted);
