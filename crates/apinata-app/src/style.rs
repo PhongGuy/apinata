@@ -58,8 +58,11 @@ pub const SPACE_5: Rems = ui(24.);
 pub const ROW_HEIGHT: Rems = ui(28.);
 /// The kit's Medium input height, so a form label lines up with its field.
 pub const INPUT_HEIGHT: Rems = rems(2.);
-/// Width of the name column in a read-only header table.
+/// Width of a header table's name column; in a read-only table, the most it takes.
 pub const HEADER_NAME_WIDTH: Rems = ui(220.);
+/// The part of a narrow read-only header table's row its name column takes, so a cut name
+/// (shown whole on hover) gives way before the value wraps.
+pub const HEADER_NAME_SHARE: f32 = 1. / 3.;
 /// Width of the wide fixed columns (Name, Domain) in the cookie table; the value column
 /// takes the rest.
 pub const COOKIE_COL_WIDTH: Rems = ui(120.);

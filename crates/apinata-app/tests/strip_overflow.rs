@@ -684,3 +684,53 @@ fn a_narrow_settings_strip_reaches_every_section(cx: &mut TestAppContext) {
         "the chosen section scrolls into view"
     );
 }
+
+// The overflow menu names each badged tab with its badge, so a cut badge reads whole there.
+#[gpui_kit::test]
+fn the_response_overflow_menu_carries_each_tabs_badge(cx: &mut TestAppContext) {
+    let extra = concat!(
+        "runtime:\n  assertions:\n",
+        "    - expression: res.status\n      operator: eq\n      value: \"500\"\n",
+    );
+    let s = send_once(
+        cx,
+        wiremock::ResponseTemplate::new(200).insert_header("x-a", "1"),
+        extra,
+    );
+    let headers = s.result.response.as_ref().unwrap().headers().len();
+    support::init(cx);
+    let model = s.model.clone();
+    let (win, _pane) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| ResponsePane::new(model, w, cx))
+            })
+        })
+        .unwrap();
+    cx.simulate_window_resize(win, size(px(300.), px(600.)));
+    settle(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("response-tab-overflow", cx))
+        .unwrap();
+    frame(cx, win);
+    let labels: Vec<String> = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let menu = w.within("popup-menu");
+            (0usize..16)
+                .map_while(|ix| {
+                    menu.try_find(ix)
+                        .map(|e| e.label().unwrap_or_default().to_owned())
+                })
+                .collect()
+        })
+        .unwrap();
+    assert!(labels.contains(&"Body".to_owned()), "{labels:?}");
+    assert!(
+        labels.contains(&format!("Headers ({headers})")),
+        "{labels:?}"
+    );
+    assert!(
+        labels.contains(&"Tests (1 failed)".to_owned()),
+        "{labels:?}"
+    );
+}

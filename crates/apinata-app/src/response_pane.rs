@@ -1390,6 +1390,20 @@ impl ResponsePane {
         })
     }
 
+    /// `tab`'s name in the strip's overflow menu: its label, followed by its badge in
+    /// brackets when it shows one, as "Tests (1 failed)" or "Headers (12)".
+    pub fn menu_label(&self, tab: ResponseTab, cx: &App) -> SharedString {
+        let badge = (self.badge_text(tab, cx)).or_else(|| {
+            (self.tab_count(tab, cx))
+                .filter(|n| *n > 0)
+                .map(|n| n.to_string())
+        });
+        match badge {
+            Some(badge) => format!("{} ({badge})", tab.label()).into(),
+            None => tab.label().into(),
+        }
+    }
+
     /// The "Cancelled" block: a calm note that keeps Retry when the host has one.
     fn cancelled_view(&self) -> ErrorView {
         ErrorView {
@@ -1717,7 +1731,7 @@ impl ResponsePane {
             .selected_index(selected)
             .children(tabs)
             .when(ui::strip_overflows(&self.tab_scroll), |bar| {
-                let labels = shown.iter().map(|t| t.label().into()).collect();
+                let labels = shown.iter().map(|t| self.menu_label(*t, cx)).collect();
                 bar.suffix(ui::strip_overflow(
                     "response-tab-overflow",
                     labels,
@@ -4007,10 +4021,11 @@ fn copy_with_toast(text: String, toast: &'static str, window: &mut Window, cx: &
 /// cells; the headings take `"{cell id}-head"`.
 pub(crate) fn header_table(ids: [&'static str; 3], pairs: &[(String, String)]) -> KvView {
     let columns = vec![
-        KvColumn::fixed(
+        KvColumn::share(
             SharedString::from(format!("{}-head", ids[1])),
             ids[1],
             "Name",
+            style::HEADER_NAME_SHARE,
             style::HEADER_NAME_WIDTH,
         )
         .tip_when_cut(),
