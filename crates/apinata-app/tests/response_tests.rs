@@ -297,6 +297,24 @@ fn a_pass_beside_a_skip_is_a_warning_not_green(cx: &mut TestAppContext) {
     assert_eq!(badge.as_deref(), Some("1 passed, 1 skipped"));
 }
 
+fn tests_badge(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(("response-count", ResponseTab::Tests as usize))
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+// A failure badge says how many failed, an errored script counting as a failure, rather than
+// the count of every check.
+#[gpui_kit::test]
+fn a_failure_badge_says_how_many_failed(cx: &mut TestAppContext) {
+    let (_s, win, view) = shown(cx, outcomes(), PASSES);
+    assert_eq!(tone(cx, &view), Tone::Danger);
+    assert_eq!(tests_badge(cx, win).as_deref(), Some("2 failed"));
+}
+
 #[gpui_kit::test]
 fn a_request_without_checks_says_no_tests(cx: &mut TestAppContext) {
     let (_s, win, view) = shown(cx, Vec::new(), "");

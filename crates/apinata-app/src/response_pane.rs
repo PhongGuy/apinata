@@ -1360,14 +1360,18 @@ impl ResponsePane {
         }
     }
 
-    /// The Tests badge's words, "{n} passed, {m} skipped", when a pass sits beside skips and
-    /// nothing failed; `None` keeps the plain number.
-    pub fn skip_badge_text(&self, tab: ResponseTab, cx: &App) -> Option<String> {
-        if self.count_tone(tab, cx) != Tone::Warning {
+    /// The Tests badge's words: "{n} failed" when a check failed or a script errored, and
+    /// "{n} passed, {m} skipped" when a pass sits beside skips; `None` keeps the plain number.
+    pub fn badge_text(&self, tab: ResponseTab, cx: &App) -> Option<String> {
+        let tone = self.count_tone(tab, cx);
+        if !matches!(tone, Tone::Danger | Tone::Warning) {
             return None;
         }
         let c = check_counts(&*done(self.send.read(cx))?);
-        Some(format!("{} passed, {} skipped", c.passed, c.skipped))
+        Some(match tone {
+            Tone::Danger => format!("{} failed", c.failed + c.errored),
+            _ => format!("{} passed, {} skipped", c.passed, c.skipped),
+        })
     }
 
     /// The "Cancelled" block: a calm note that keeps Retry when the host has one.
@@ -1616,23 +1620,22 @@ impl ResponsePane {
         let selected = self.tab_position(self.tab);
         let tabs = shown.iter().enumerate().map(|(pos, &t)| {
             let ix = t as usize;
-            let skip_text = self.skip_badge_text(t, cx);
-            let badge = self
-                .tab_count(t, cx)
-                .and_then(|n| match self.count_tone(t, cx) {
-                    Tone::Danger => ui::danger_count_badge(n),
-                    Tone::Success => ui::success_count_badge(n),
-                    Tone::Warning => match &skip_text {
-                        Some(text) => Some(ui::warning_text_badge(text.clone())),
-                        None => ui::warning_count_badge(n),
-                    },
-                    Tone::Muted => ui::count_badge(n),
-                });
+            let words = self.badge_text(t, cx);
+            let badge =
+                self.tab_count(t, cx)
+                    .and_then(|n| match (self.count_tone(t, cx), &words) {
+                        (Tone::Danger, Some(text)) => Some(ui::danger_text_badge(text.clone())),
+                        (Tone::Danger, None) => ui::danger_count_badge(n),
+                        (Tone::Success, _) => ui::success_count_badge(n),
+                        (Tone::Warning, Some(text)) => Some(ui::warning_text_badge(text.clone())),
+                        (Tone::Warning, None) => ui::warning_count_badge(n),
+                        (Tone::Muted, _) => ui::count_badge(n),
+                    });
             let count = badge.map(|b| {
                 div()
                     .id(("response-count", ix))
                     .test_support()
-                    .when_some(skip_text, |d, text| d.aria_label(text))
+                    .when_some(words, |d, text| d.aria_label(text))
                     .child(b)
             });
             // Each tab is its own Tab stop, as in the request's section strip: Enter or Space
