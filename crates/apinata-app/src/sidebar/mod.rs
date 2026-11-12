@@ -252,6 +252,8 @@ pub struct Sidebar {
     // The folder or root row under the pointer. Layout cannot follow a CSS-like group hover, so a
     // floating run slot learns of it from here and makes room for itself; see `RunSlot`.
     hovered: Option<SharedString>,
+    // The row whose right-click menu is open: the menu acts on it, so it stays marked.
+    menu_target: Option<SharedString>,
     // The rows chosen with modifier clicks; the kit tree's own selection stays the focus row.
     multi: Multi,
     // Multi-item commands in flight, each summarised by one toast when finished.
@@ -388,6 +390,7 @@ impl Sidebar {
             followed: None,
             pending_focus: None,
             hovered: None,
+            menu_target: None,
             multi: Multi::default(),
             batches: Vec::new(),
             clipboard: None,
@@ -2580,6 +2583,8 @@ impl Render for Sidebar {
         let drag_set = self.drag_set(cx);
         let menu_members = Rc::clone(&members);
         let list_active = cx.theme().list_active;
+        let list_hover = cx.theme().list_hover;
+        let menu_target = self.menu_target.clone();
         let muted = cx.theme().muted_foreground;
         // The scratch pad is listed: say what it is, since it looks like a collection.
         let scratch_only = {
@@ -2817,6 +2822,13 @@ impl Render for Sidebar {
                                 let id = id.clone();
                                 i.bg(list_active)
                                     .suffix(move |_, cx| selection_overlay(&id, false, cx))
+                            });
+                            // A row already lit as selected or in the set needs no second mark.
+                            let target = menu_target.as_ref() == Some(&id);
+                            let item = item.when(target && !selected && !member, |i| {
+                                let id = id.clone();
+                                i.bg(list_hover)
+                                    .suffix(move |_, cx| menu_target_overlay(&id, cx))
                             });
                             // Only the set being active gives rows a role, so single selection
                             // leaves the accessibility tree as it was.
@@ -3253,11 +3265,28 @@ impl Render for Sidebar {
                                 // the item started owns focus through its input instead.
                                 let before = menu_focus::held(window, cx);
                                 let (idle, tree_owner) = (menu_view.clone(), menu_view.clone());
+                                let marked = entry.item().id.clone();
+                                {
+                                    let (view, marked) = (menu_view.clone(), marked.clone());
+                                    window.defer(cx, move |_, cx| {
+                                        view.update(cx, |s, cx| {
+                                            s.menu_target = Some(marked);
+                                            cx.notify();
+                                        })
+                                        .ok();
+                                    });
+                                }
                                 menu_focus::watch_built(
                                     &menu,
                                     cx,
                                     move |cx| {
-                                        let idle = idle.read_with(cx, |s, _| s.rename.is_none());
+                                        // A later menu may have marked its own row already.
+                                        let idle = idle.update(cx, |s, cx| {
+                                            if s.menu_target.take_if(|t| *t == marked).is_some() {
+                                                cx.notify();
+                                            }
+                                            s.rename.is_none()
+                                        });
                                         match (before, idle.unwrap_or(false)) {
                                             (None, _) => menu_focus::Before::Nothing,
                                             (Some(held), true) => menu_focus::Before::Held(held),
@@ -3534,6 +3563,18 @@ fn selection_overlay(id: &SharedString, tree_focused: bool, cx: &App) -> impl In
             d
         })
         .border_color(selection_edge_color(tree_focused, cx))
+}
+
+/// The outline of the row a right-click menu acts on, in the focus accent so it reads apart
+/// from the selection's left edge.
+fn menu_target_overlay(id: &SharedString, cx: &App) -> impl IntoElement + use<> {
+    div()
+        .id(marker_id("menu-target", id))
+        .test_support()
+        .absolute()
+        .inset_0()
+        .border_1()
+        .border_color(selection_edge_color(true, cx))
 }
 
 /// A row's marker element, found in tests by `marker_id(kind, node)`.
