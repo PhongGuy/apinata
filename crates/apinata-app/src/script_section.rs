@@ -550,7 +550,7 @@ impl Render for ScriptSection {
                             .test_support()
                             .w_full()
                             .flex_1()
-                            .min_h(style::EDITOR_MIN_HEIGHT)
+                            .min_h(style::SCRIPT_EDITOR_MIN_HEIGHT)
                             .child(ui::ringed_editor(Editor::new(&e.code).h_full(), &e.code))
                             // Accepting a completion lets Enter bubble on, and an unhandled
                             // Enter is then typed as a newline; stop it at the accepted word.

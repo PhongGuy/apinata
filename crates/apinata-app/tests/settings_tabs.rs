@@ -346,3 +346,20 @@ fn the_collection_settings_tab_names_its_collection(cx: &mut TestAppContext) {
         "c Settings"
     );
 }
+
+// The tab stays bound to the collection it was opened for, so its title must say which.
+#[gpui_kit::test]
+fn the_environments_tab_names_its_collection(cx: &mut TestAppContext) {
+    let a = open_area(cx);
+    a.ws.update(cx, |w, cx| {
+        let _ = w.open_settings(&a.root, TabKind::Environments, cx);
+    });
+    cx.run_until_parked();
+    let entry =
+        a.ws.read_with(cx, |w, _| w.tabs().active().cloned())
+            .expect("a tab");
+    assert_eq!(
+        a.view.read_with(cx, |v, cx| v.tab_label(&entry, cx)),
+        "c Environments"
+    );
+}
