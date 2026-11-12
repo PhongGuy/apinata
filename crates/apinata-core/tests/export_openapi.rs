@@ -107,7 +107,7 @@ fn requests_become_operations_tagged_with_their_top_level_folder() {
             ),
             (
                 "g",
-                "only HTTP requests are exported; this grpc item was left out"
+                "only HTTP requests are exported; this gRPC item was left out"
             ),
         ])
     );

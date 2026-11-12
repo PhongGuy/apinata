@@ -198,7 +198,7 @@ impl Walker<'_> {
             let source = [trail, &[opaque.name()]].concat().join(" / ");
             let detail = format!(
                 "only HTTP requests are exported; this {} item was left out",
-                opaque.kind()
+                super::item_kind_label(opaque.kind())
             );
             self.notes.push(ExportNote::new(source, detail));
         }

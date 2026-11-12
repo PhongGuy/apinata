@@ -46,9 +46,9 @@ fn openapi_takes_the_unmappable_path_for_both() {
         pairs(&[
             (
                 "e / auth",
-                "the akamai-edgegrid authentication cannot be exported"
+                "the Akamai EdgeGrid authentication cannot be exported"
             ),
-            ("w / auth", "the wsse authentication cannot be exported"),
+            ("w / auth", "the WSSE authentication cannot be exported"),
         ])
     );
 }
@@ -76,7 +76,7 @@ fn postman_carries_edgegrid_and_notes_wsse() {
     assert_eq!(item("w")["request"]["auth"], json!({"type": "noauth"}));
     assert_eq!(
         notes(&c),
-        pairs(&[("w / auth", "the wsse authentication cannot be exported")])
+        pairs(&[("w / auth", "the WSSE authentication cannot be exported")])
     );
 }
 

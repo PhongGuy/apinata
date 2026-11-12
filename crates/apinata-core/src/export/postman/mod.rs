@@ -144,7 +144,7 @@ fn folder_items(
         let source = [trail, &[opaque.name()]].concat().join(" / ");
         let detail = format!(
             "only HTTP requests are exported; this {} item was left out",
-            opaque.kind()
+            super::item_kind_label(opaque.kind())
         );
         notes.push(ExportNote::new(source, detail));
     }
@@ -421,7 +421,7 @@ fn note_if(notes: &mut Vec<ExportNote>, path: &[&str], member: &str, lost: bool,
 fn note_unsupported_auth(notes: &mut Vec<ExportNote>, path: &[&str], spec: &AuthSpec) {
     let mode = match spec {
         AuthSpec::Unsupported { mode } => mode.as_str(),
-        AuthSpec::Wsse { .. } => "wsse",
+        AuthSpec::Wsse { .. } => "WSSE",
         _ => return,
     };
     let detail = format!("the {mode} authentication cannot be exported");

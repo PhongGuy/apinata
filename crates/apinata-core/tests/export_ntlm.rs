@@ -21,7 +21,7 @@ fn openapi_declares_no_scheme_for_ntlm_and_notes_it() {
     );
     assert_eq!(
         openapi_notes(&c),
-        pairs(&[("n / auth", "the ntlm authentication cannot be exported")])
+        pairs(&[("n / auth", "the NTLM authentication cannot be exported")])
     );
     let text = doc.to_string();
     assert!(!text.contains("ntlm-pw-secret") && !text.contains("ntlm-dom-secret"));

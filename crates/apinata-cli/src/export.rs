@@ -155,8 +155,7 @@ fn print_notes(notes: &[ExportNote]) {
     }
 }
 
-/// The core's atomic export write, with the path in the error.
+/// The core's atomic export write; its error already names the file.
 fn write_atomic(path: &Path, text: &str) -> anyhow::Result<()> {
-    export::write_atomic(path, text.as_bytes())
-        .with_context(|| format!("cannot write {}", path.display()))
+    Ok(export::write_atomic(path, text.as_bytes())?)
 }

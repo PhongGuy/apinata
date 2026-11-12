@@ -10,6 +10,7 @@ mod har;
 mod html;
 mod openapi;
 mod postman;
+mod write;
 
 pub use environment::{
     EnvironmentFile, postman_environment, postman_environment_files, postman_global_environment,
@@ -19,6 +20,16 @@ pub use har::{HarExchange, HarRefusal, har, har_log, sent_exchange};
 pub use html::{html, html_with};
 pub use openapi::openapi;
 pub use postman::{postman, postman_with};
+pub use write::{WriteError, write_atomic};
+
+/// An item kind as the sidebar spells it, for notes about items an export leaves out.
+fn item_kind_label(kind: &str) -> &str {
+    match kind {
+        "websocket" => "WebSocket",
+        "grpc" => "gRPC",
+        other => other,
+    }
+}
 
 /// Longest stem in UTF-16 units, leaving room for `.postman_environment.json` and a ` (n)`
 /// suffix inside Windows' 255-unit file name limit.
@@ -78,30 +89,6 @@ fn is_device_name(name: &str) -> bool {
     matches!(prefix.as_str(), "COM" | "LPT")
         && matches!(chars.next(), Some(c) if c.is_ascii_digit() || matches!(c, '\u{b9}' | '\u{b2}' | '\u{b3}'))
         && chars.next().is_none()
-}
-
-/// Writes `bytes` to a temporary file beside `path`, then renames it over `path`, so a reader
-/// never sees a half-written export. The file is meant to be shared, so on unix a new one gets
-/// the umask's ordinary mode and a replaced one keeps its mode. Fails when the parent is missing.
-pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::io::Write as _;
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(std::path::Path::new("."));
-    #[cfg_attr(not(unix), allow(unused_mut))]
-    let mut builder = tempfile::Builder::new();
-    // tempfile defaults to 0600; 0666 is filtered by the umask like any other new file.
-    #[cfg(unix)]
-    builder.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o666));
-    let mut file = builder.tempfile_in(parent)?;
-    file.write_all(bytes)?;
-    #[cfg(unix)]
-    if let Ok(existing) = std::fs::metadata(path) {
-        file.as_file().set_permissions(existing.permissions())?;
-    }
-    file.persist(path).map_err(|e| e.error)?;
-    Ok(())
 }
 
 /// A collection exported as Postman v2.1 JSON.

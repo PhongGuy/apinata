@@ -75,7 +75,7 @@ impl HarPlan {
             }
         }
         write_atomic(&self.path, har_log(&exchanges).as_bytes())
-            .with_context(|| format!("cannot write the HAR file {}", self.path.display()))
+            .context("the HAR file was not saved")
     }
 
     fn exchange(

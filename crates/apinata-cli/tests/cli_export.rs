@@ -121,7 +121,11 @@ fn failures_exit_3_and_write_nothing() {
     let missing = dest.path().join("missing/c.json");
     let out = export(col.path(), &missing);
     assert_eq!(out.status.code(), Some(3));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("missing"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let folder = dest.path().join("missing");
+    let plain = format!("the folder {} does not exist", folder.display());
+    assert!(stderr.contains(&plain), "{stderr}");
+    assert!(!stderr.contains("os error"), "{stderr}");
     assert!(!missing.exists());
     let empty = tempfile::tempdir().unwrap();
     assert_eq!(export(empty.path(), Path::new("-")).status.code(), Some(3));

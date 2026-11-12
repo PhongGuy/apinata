@@ -89,9 +89,14 @@ fn a_failed_write_names_the_file() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("missing/c.json");
     let err = write_export(&file, b"{}").unwrap_err();
-    assert!(
-        err.starts_with(&format!("cannot write {}: ", file.display())),
-        "{err}"
+    let folder = dir.path().join("missing");
+    assert_eq!(
+        err,
+        format!(
+            "cannot write {}: the folder {} does not exist",
+            file.display(),
+            folder.display()
+        )
     );
 }
 
@@ -430,7 +435,7 @@ fn show_details_lists_each_item_the_export_left_out(cx: &mut TestAppContext) {
     for (ix, name) in ["g1", "g2"].into_iter().enumerate() {
         assert_eq!(
             shown(cx, &s, ("export-note", ix)),
-            format!("{name}: only HTTP requests are exported; this grpc item was left out")
+            format!("{name}: only HTTP requests are exported; this gRPC item was left out")
         );
     }
     assert!(!present(cx, s.win, ("export-note", 2usize)));
@@ -494,6 +499,31 @@ fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
     assert!(
         gap(cx) >= gpui_kit::px(0.),
         "the last item scrolled into view"
+    );
+}
+
+#[gpui_kit::test]
+fn the_export_report_keeps_its_lines_clear_of_the_scrollbar(cx: &mut TestAppContext) {
+    use apinata_app::style::SCROLLBAR_GUTTER;
+    use gpui_kit::test::TestWindowExt as _;
+    let col = with_grpc_items(60);
+    let s = started(cx, &col);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    cx.update_window(s.win, |_, w, cx| w.click("export-details", cx))
+        .unwrap();
+    cx.run_until_parked();
+    let (view, note) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let view = w.find("export-report-scroll").bounds();
+            (view, w.find(("export-note", 0usize)).bounds())
+        })
+        .unwrap();
+    assert_eq!(
+        view.right() - note.right(),
+        SCROLLBAR_GUTTER,
+        "{note:?} in {view:?}"
     );
 }
 

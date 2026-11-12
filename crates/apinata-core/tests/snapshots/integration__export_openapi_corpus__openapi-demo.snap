@@ -394,8 +394,8 @@ expression: rendered(&out)
   }
 }
 --- notes
-Auth / SigV4 example / auth: the awsv4 authentication cannot be exported
-Auth / OAuth 1.0 example / auth: the oauth1 authentication cannot be exported
+Auth / SigV4 example / auth: the AWS Sig v4 authentication cannot be exported
+Auth / OAuth 1.0 example / auth: the OAuth 1.0 authentication cannot be exported
 Auth / NTLM example: GET /get has the same method and path as Auth / OAuth 1.0 example; this request was left out
 GraphQL / Get user / body: the GraphQL query and variables are not described; the operation has no request body
 collection / assertions: 11 items have assertions; OpenAPI has no place for them
