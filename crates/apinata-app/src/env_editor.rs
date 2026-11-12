@@ -61,9 +61,9 @@ pub const ENV_MENU_DELETE: usize = 4;
 
 /// Tooltip and accessibility label of `env-more`; one const, so they agree.
 pub const MORE_ACTIONS: &str = "More actions";
-/// Why Rename is off while the environment has unsaved edits: the locked entry's tooltip
-/// and accessibility label.
-pub const RENAME_LOCKED_REASON: &str = "Save or revert first";
+/// Why Rename and Duplicate are off while the environment has unsaved edits: the locked
+/// controls' tooltip and accessibility label.
+pub const RENAME_LOCKED_REASON: &str = "Save or discard changes first";
 
 /// The editor's notice after an outside change replaced a clean environment under typing.
 pub const SECRETS_CLEARED: &str = "This file changed on disk. Unsent secret values were cleared.";
@@ -692,6 +692,25 @@ impl EnvEditor {
             // Queued behind the save, so the actor answers from the file it just wrote.
             self.list_orphans(cx);
         }
+    }
+
+    /// Asks, then returns the selected environment to its saved file, as the changed-on-disk
+    /// banner's Reload does. A clean environment has nothing to discard, so nothing is asked.
+    pub fn discard_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(name), true) = (self.selected.clone(), self.is_locked(cx)) else {
+            return;
+        };
+        let title = format!("Discard changes to \"{name}\"?");
+        let answer = crate::confirm::ask(crate::confirm::discard_ask(title), window, cx);
+        cx.spawn(async move |this, cx| {
+            if answer.recv().await == Ok(1) {
+                this.update(cx, |e, cx| {
+                    e.send(Command::Revert(Target::Environment(name)), Sent::Plain, cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     // Refused before any typing is stored: two secrets of one name would share one value. A
@@ -1804,8 +1823,8 @@ impl EnvEditor {
             .children(custom.map(|b| Followed::new("env-swatch-custom-follow", follow, b)))
     }
 
-    // The pane's header: the name as a title that truncates, then the "…" menu, then Save
-    // at the right, the primary action only while there are edits to save.
+    // The pane's header: the name as a title that truncates, then the "…" menu, then Discard
+    // changes and Save at the right, live only while there are edits to drop or save.
     fn header(&self, locked: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let name = self.selected.clone().unwrap_or_default();
         let dirty = self.view(cx).is_some_and(|v| v.dirty);
@@ -1846,6 +1865,13 @@ impl EnvEditor {
                     .on_click(cx.listener(|e, _, window, cx| {
                         e.after_held(window, cx, |e, _, cx| e.duplicate(cx))
                     })),
+            ))
+            .child(followed(
+                "env-discard-follow",
+                Button::new("env-discard")
+                    .label("Discard changes")
+                    .lock(!locked, cx)
+                    .on_click(cx.listener(|e, _, window, cx| e.discard_asking(window, cx))),
             ))
             .child(followed(
                 "env-save-follow",

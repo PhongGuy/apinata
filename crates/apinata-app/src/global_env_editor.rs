@@ -30,6 +30,7 @@ use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep};
 use crate::style;
 use crate::ui;
+use crate::ui::LockButton as _;
 use crate::workspace::{GlobalOp, Workspace};
 
 // Which name the name input is collecting.
@@ -457,6 +458,28 @@ impl GlobalEnvEditor {
         if let Some(name) = self.selected.clone() {
             self.send(GlobalOp::Delete(name), cx);
         }
+    }
+
+    /// Asks, then reloads the selected environment as saved, dropping its typing and committed
+    /// secret values. With no edits there is nothing to discard, so nothing is asked.
+    pub fn discard_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(name), true) = (self.selected.clone(), self.has_edits(cx)) else {
+            return;
+        };
+        let title = format!("Discard changes to \"{name}\"?");
+        let answer = crate::confirm::ask(crate::confirm::discard_ask(title), window, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.recv().await == Ok(1) {
+                // Another environment chosen while the prompt was up keeps its own typing.
+                this.update_in(cx, |e, window, cx| {
+                    if e.selected.as_deref() == Some(name.as_str()) {
+                        e.select(&name, window, cx);
+                    }
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     /// Send `GlobalOp::Save` for the selected environment with the table's rows and its
@@ -1198,6 +1221,13 @@ impl Render for GlobalEnvEditor {
                 Button::new("global-env-delete")
                     .label("Delete")
                     .on_click(cx.listener(|e, _, window, cx| e.ask_delete(window, cx))),
+            ))
+            .child(followed(
+                "global-env-discard-follow",
+                Button::new("global-env-discard")
+                    .label("Discard changes")
+                    .lock(!self.has_edits(cx), cx)
+                    .on_click(cx.listener(|e, _, window, cx| e.discard_asking(window, cx))),
             ))
             .child(followed(
                 "global-env-save-follow",
