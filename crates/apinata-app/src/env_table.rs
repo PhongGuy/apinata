@@ -1303,7 +1303,8 @@ impl EnvVarTable {
         self.rows.iter().any(|r| r.meta.secret)
     }
 
-    /// Row `ix`'s show or hide eye, in a fixed slot so plain rows keep the same columns.
+    /// Row `ix`'s show or hide eye. While some row is secret every row has this fixed slot, so
+    /// plain rows keep the same columns as secret ones.
     fn render_action_slot(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         // Rows are drawn for indices up to `rows.len()`, the blank row, and `row` answers all of them.
         #[allow(clippy::expect_used)]

@@ -712,7 +712,11 @@ fn duplicating_waits_for_the_edits_to_be_saved(cx: &mut TestAppContext) {
     .unwrap();
     assert_eq!(drawn(cx, g.win, EDITOR), (false, true), "nothing asks");
     assert!(!g.dir.path().join("g copy.yml").exists());
-    let _ = g.editor.update(cx, |e, cx| e.save(cx));
+    cx.update_window(g.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("global-env-save", cx)
+    })
+    .unwrap();
     cx.run_until_parked();
     cx.update_window(g.win, |_, w, cx| {
         w.render_frame(cx);
@@ -724,6 +728,23 @@ fn duplicating_waits_for_the_edits_to_be_saved(cx: &mut TestAppContext) {
     });
     let copy = file(&g, "g copy.yml");
     assert!(copy.contains("value: b"), "{copy}");
+}
+
+// Cancelling the delete prompt from the "…" menu leaves focus in the dialog, so Escape still
+// closes it.
+#[gpui_kit::test]
+fn escape_closes_the_dialog_after_the_delete_prompt_is_cancelled(cx: &mut TestAppContext) {
+    let g = globals(cx, &[("g.yml", HOST)]);
+    cx.update_window(g.win, |_, w, cx| global_delete_in(w, cx))
+        .unwrap();
+    frame(cx, g.win);
+    assert!(present(cx, g.win, "confirm-delete"));
+    answer_confirm(cx, "confirm-cancel");
+    assert!(file(&g, "g.yml").contains("value: a"), "nothing deleted");
+    assert!(present(cx, g.win, EDITOR));
+    cx.simulate_keystrokes(g.win, "escape");
+    cx.run_until_parked();
+    assert!(!present(cx, g.win, EDITOR), "Escape closes the dialog");
 }
 
 // A dirty guarded dialog over the started app whose guard never saw the dialog open.

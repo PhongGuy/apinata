@@ -325,7 +325,7 @@ impl GlobalEnvEditor {
                 || table.has_secret_typing(cx))
     }
 
-    // Leaving the selected environment (another one, New, Duplicate) with edits pending asks
+    // Leaving the selected environment (another one, or New) with edits pending asks
     // first, as closing does; Cancel stays where it is.
     fn after_asking(
         &mut self,
@@ -1241,11 +1241,8 @@ impl Render for GlobalEnvEditor {
         .child(Followed::new("global-env-more-follow", &self.follow, more))
         .child(followed(
             "global-env-duplicate-follow",
-            env_editor::duplicate_button("global-env-duplicate", edits, cx).on_click(cx.listener(
-                |e, _, window, cx| {
-                    e.after_asking(window, cx, |e, window, cx| e.duplicate(window, cx))
-                },
-            )),
+            env_editor::duplicate_button("global-env-duplicate", edits, cx)
+                .on_click(cx.listener(|e, _, window, cx| e.duplicate(window, cx))),
         ))
         .child(followed(
             "global-env-discard-follow",
