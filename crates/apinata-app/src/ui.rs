@@ -2712,6 +2712,13 @@ actions!(
     ]
 );
 
+/// A kit select's menu height that shows `rows` medium rows without a scroll, in place of the
+/// kit's 20 rem cap; the kit still caps the popup to the window. A row is about 1.92 rem, plus
+/// the list's padding.
+pub fn menu_fits(rows: usize) -> Rems {
+    gpui_kit::rems(rows as f32 * 2. + 1.)
+}
+
 /// Wraps a kit `Select` that sits in a dialog. The kit select passes its Enter (Confirm) on
 /// to the dialog, which answers it; here Enter opens the select as Down does, and stops.
 pub fn dialog_select(select: impl IntoElement) -> Div {

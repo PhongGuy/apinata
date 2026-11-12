@@ -321,7 +321,7 @@ fn enter_on_a_siblings_name_keeps_the_rename_open_with_an_error(cx: &mut TestApp
     );
     assert_eq!(
         rename_error(cx, &h).as_deref(),
-        Some("A request named Status is already in c")
+        Some("A request named \"Status\" is already in \"c\"")
     );
     assert!(shown(cx, h.win, "sidebar-rename-invalid-icon"));
     // The reason floats just under the field, not somewhere else in the sidebar.
@@ -367,7 +367,7 @@ fn a_folder_named_like_a_sibling_folder_is_refused(cx: &mut TestAppContext) {
     type_and(cx, &h, "Users", "enter");
     assert_eq!(
         rename_error(cx, &h).as_deref(),
-        Some("A folder named Users is already in c")
+        Some("A folder named \"Users\" is already in \"c\"")
     );
     assert_eq!(
         h.view.read_with(cx, |s, _| s.renaming()),
@@ -456,7 +456,7 @@ fn the_refusal_names_the_folder_the_clash_is_in(cx: &mut TestAppContext) {
     type_and(cx, &h, "One", "enter");
     assert_eq!(
         rename_error(cx, &h).as_deref(),
-        Some("A request named One is already in Users")
+        Some("A request named \"One\" is already in \"Users\"")
     );
 }
 

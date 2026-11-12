@@ -208,3 +208,64 @@ fn a_request_dragged_onto_the_empty_row_moves_into_the_folder(cx: &mut TestAppCo
     assert!(h.root.join("empty/health.yml").exists());
     assert!(!h.root.join("health.yml").exists());
 }
+
+// With nothing open the collection's environment select and Manage environments are locked,
+// and each tip says why.
+#[gpui_kit::test]
+fn with_nothing_open_the_environment_controls_are_locked(cx: &mut TestAppContext) {
+    use apinata_app::shell::NO_COLLECTION_ENV_TIP;
+    let s = started_blank(cx, blank_data_dir());
+    cx.update_window(s.win, |_, w, _| {
+        assert_eq!(w.find("env-select").disabled(), Some(true), "select");
+        let manage = w.find("environments");
+        assert_eq!(manage.disabled(), Some(true), "Manage environments");
+        assert_eq!(manage.description(), Some(NO_COLLECTION_ENV_TIP));
+    })
+    .unwrap();
+    cx.update_window(s.win, |_, w, cx| w.hover("env-control", cx))
+        .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, s.win);
+    let tip = cx
+        .update_window(s.win, |_, w, _| {
+            w.try_find("env-control-tooltip")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        tip.as_deref(),
+        Some(NO_COLLECTION_ENV_TIP),
+        "the select's tip"
+    );
+}
+
+#[gpui_kit::test]
+fn with_a_collection_open_the_environment_controls_work(cx: &mut TestAppContext) {
+    let col = collection();
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, _| {
+        assert_ne!(w.find("env-select").disabled(), Some(true), "select");
+        let manage = w.find("environments");
+        assert_ne!(manage.disabled(), Some(true), "Manage environments");
+        assert_eq!(
+            manage.description(),
+            Some(apinata_app::shell::MANAGE_ENVIRONMENTS_TIP)
+        );
+    })
+    .unwrap();
+}
+
+// An empty folder's Empty word starts in the column its children's method tags would.
+#[gpui_kit::test]
+fn the_empty_row_sits_at_the_indent_of_the_folders_children(cx: &mut TestAppContext) {
+    let h = with_empty_folder(cx, sidebar_files());
+    cx.update_window(h.win, |_, w, _| {
+        let child = w.find(marker_id("method", &row("users/list.yml"))).bounds();
+        let empty = w
+            .find(marker_id("name", &empty_id(0, &ip("empty"))))
+            .bounds();
+        assert_eq!(empty.left(), child.left(), "{empty:?} vs {child:?}");
+    })
+    .unwrap();
+}

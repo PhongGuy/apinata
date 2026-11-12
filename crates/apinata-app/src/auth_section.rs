@@ -1188,6 +1188,7 @@ impl Render for AuthSection {
                 div().w(style::MODE_SELECT_WIDTH).max_w_full().child(
                     Select::new(&self.select)
                         .id("auth-mode")
+                        .menu_max_h(ui::menu_fits(AuthMode::ALL.len()))
                         .when_some(self.mode_placeholder(), |s, p| s.placeholder(p)),
                 ),
             )
