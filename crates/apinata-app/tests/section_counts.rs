@@ -132,3 +132,59 @@ fn each_mode_ring_says_what_it_marks(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(label.as_deref(), Some("Has a body"));
 }
+
+/// The Auth tab's ring words for `rel` in `col`, or `None` when the tab shows no ring.
+fn auth_ring(cx: &mut TestAppContext, col: &tempfile::TempDir, rel: &str) -> Option<String> {
+    let (_state, ws, root) = open_dir(cx, col);
+    let (win, ed) = editor_for(cx, &ws, &root, rel, false);
+    let marked = ed.read_with(cx, |e, cx| e.section_marked(Section::Auth, cx));
+    let words = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find(("section-mode", Section::Auth as usize))
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(marked, words.is_some(), "the ring follows section_marked");
+    words
+}
+
+#[gpui_kit::test]
+fn inheriting_no_auth_leaves_the_auth_tab_plain(cx: &mut TestAppContext) {
+    let text = format!("{}  auth: inherit\n", request("a", "http://x/a"));
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &text)]);
+    assert_eq!(auth_ring(cx, &col, "a.yml"), None);
+}
+
+#[gpui_kit::test]
+fn the_auth_ring_names_the_auth_that_applies(cx: &mut TestAppContext) {
+    let root = format!("{ROOT}request:\n  auth:\n    type: bearer\n    token: t\n");
+    let users = format!(
+        "{}request:\n  auth:\n    type: basic\n    username: u\n    password: p\n",
+        folder("users")
+    );
+    let inherits = |name: &str| format!("{}  auth: inherit\n", request(name, "http://x/"));
+    let own = format!(
+        "{}  auth:\n    type: apikey\n    key: k\n    value: v\n",
+        request("own", "http://x/")
+    );
+    let col = write_tree(&[
+        ("opencollection.yml", &root),
+        ("u/folder.yml", &users),
+        ("u/list.yml", &inherits("list")),
+        ("top.yml", &inherits("top")),
+        ("own.yml", &own),
+    ]);
+    assert_eq!(
+        auth_ring(cx, &col, "top.yml").as_deref(),
+        Some("Uses Bearer Token from the collection")
+    );
+    assert_eq!(
+        auth_ring(cx, &col, "u/list.yml").as_deref(),
+        Some("Uses Basic Auth from folder \"users\"")
+    );
+    assert_eq!(
+        auth_ring(cx, &col, "own.yml").as_deref(),
+        Some("Uses API Key")
+    );
+}

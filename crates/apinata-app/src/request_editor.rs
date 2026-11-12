@@ -303,7 +303,11 @@ enum PartInputs {
     // Whether Save shows, and which of Send, Cancel and Stop the slot holds.
     Buttons(bool, u8),
     // The request kind, the shown section, and each section's count and mode mark.
-    Sections(RequestKind, Section, Vec<(Option<usize>, bool)>),
+    Sections(
+        RequestKind,
+        Section,
+        Vec<(Option<usize>, Option<SharedString>)>,
+    ),
 }
 
 // What the breadcrumb line shows.
@@ -1337,33 +1341,44 @@ impl RequestEditor {
         }
     }
 
-    /// Whether Body or Auth has a mode other than none, Script holds a pre-request or
-    /// post-response script, or Tests holds a tests script; `false` for every other section.
+    /// Whether `section` shows a hollow ring; see `section_mark`.
     pub fn section_marked(&self, section: Section, cx: &App) -> bool {
-        self.view(cx).is_some_and(|view| match section {
+        self.section_mark(section, cx).is_some()
+    }
+
+    /// What a marked section's ring says when hovered: Body with a body, Auth when an auth
+    /// other than No Auth applies (its own or the one it inherits), Script with a pre-request
+    /// or post-response script, Tests with a tests script; `None` when unmarked.
+    pub fn section_mark(&self, section: Section, cx: &App) -> Option<SharedString> {
+        let view = self.view(cx)?;
+        let marked = match section {
             Section::Body => match &view.body {
                 BodySpec::Graphql { query, variables } => {
                     !query.is_empty() || !variables.is_empty()
                 }
                 body => !matches!(body, BodySpec::None),
             },
-            Section::Auth => !matches!(view.auth, AuthSpec::None),
+            Section::Auth => {
+                return match &view.auth {
+                    AuthSpec::None => None,
+                    AuthSpec::Inherit => {
+                        (view.inherited_use.as_ref()).map(|words| format!("Uses {words}").into())
+                    }
+                    auth => Some(format!("Uses {}", crate::auth_section::auth_label(auth)).into()),
+                };
+            }
             Section::Script => {
                 !view.scripts.pre_request.is_empty() || !view.scripts.post_response.is_empty()
             }
             Section::Tests => !view.scripts.tests.is_empty(),
             _ => false,
-        })
-    }
-
-    // What a marked section's ring says when hovered.
-    fn mark_words(section: Section) -> &'static str {
-        match section {
+        };
+        let words = match section {
             Section::Body => "Has a body",
-            Section::Auth => "Has auth",
             Section::Tests => "Has tests",
             _ => "Has a script",
-        }
+        };
+        marked.then(|| words.into())
     }
 
     // The kind of the request shown; HTTP until its snapshot arrives.
@@ -2577,7 +2592,7 @@ impl RequestEditor {
                 self.section,
                 Section::ALL
                     .iter()
-                    .map(|&s| (self.section_count(s, cx), self.section_marked(s, cx)))
+                    .map(|&s| (self.section_count(s, cx), self.section_mark(s, cx)))
                     .collect(),
             ),
         }
@@ -3281,7 +3296,7 @@ impl RequestEditor {
     fn section_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         // A counted section shows its enabled rows beside the label (nothing for zero);
-        // Body, Auth, Script and Tests instead show a hollow ring when they have content.
+        // Body, Auth, Script and Tests instead show a hollow ring naming what they hold.
         let kind = self.kind(cx);
         let selected = self.section as usize;
         let tabs = Section::ALL.iter().enumerate().map(|(ix, &s)| {
@@ -3297,12 +3312,11 @@ impl RequestEditor {
                         .child(badge)
                         .into_any_element(),
                 ),
-                None if self.section_marked(s, cx) => Some(
-                    ui::mode_ring(("section-mode", ix), Self::mark_words(s))
+                None => self.section_mark(s, cx).map(|words| {
+                    ui::mode_ring(("section-mode", ix), words)
                         .test_support()
-                        .into_any_element(),
-                ),
-                None => None,
+                        .into_any_element()
+                }),
             };
             // Each tab is its own tab stop; Enter or Space opens it as a click would. The
             // focus ring is an overlay on a padded box, since the kit tab clips anything
