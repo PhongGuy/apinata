@@ -15,7 +15,6 @@ use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, EventEmitter, SharedString, Subscription, Window, div};
 
 use crate::auth_section::{field, secret_field};
-use crate::kv_table::set_text;
 use crate::oauth2_editor::{Choice, on_choice, pick};
 use crate::{style, ui};
 
@@ -352,7 +351,8 @@ impl OAuth1Editor {
         self.base = spec.clone();
         self.new_key = OAuth1KeyKind::Text;
         for f in FIELDS {
-            set_text(self.input(f), f.text(spec), window, cx);
+            let input = self.input(f).clone();
+            self.masks.fill(&input, f.text(spec), window, cx);
         }
         self.show_choices(window, cx);
     }

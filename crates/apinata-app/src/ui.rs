@@ -3334,6 +3334,26 @@ impl SecretMasks {
             input.update(cx, |s, cx| s.set_masked(!reference, window, cx));
         }
     }
+
+    /// Puts `text` in `input` for a value the user did not type; a changed text is masked
+    /// again by the next [`SecretMasks::apply`], so a reveal never shows it.
+    pub fn fill(
+        &mut self,
+        input: &Entity<InputState>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if input.read(cx).value() != text {
+            self.0.remove(&input.entity_id());
+        }
+        sync_input_text(input, text, window, cx);
+    }
+
+    /// Forgets every reveal, so the next [`SecretMasks::apply`] masks each input by its text.
+    pub fn forget(&mut self) {
+        self.0.clear();
+    }
 }
 
 /// What a secret field shows while its value is in `.env`, or held for it until the save:

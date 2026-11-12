@@ -774,6 +774,10 @@ impl AuthSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Types share inputs, so a reveal never carries over to another type's values.
+        if self.mode != Some(mode) {
+            self.masks.forget();
+        }
         self.mode = Some(mode);
         self.unsupported = None;
         let label: SharedString = mode.label().into();
@@ -784,7 +788,7 @@ impl AuthSection {
             | AuthSpec::Digest { username, password }
             | AuthSpec::Wsse { username, password } => {
                 set_text(&self.username, username, window, cx);
-                set_text(&self.password, password, window, cx);
+                self.masks.fill(&self.password, password, window, cx);
             }
             AuthSpec::Ntlm {
                 username,
@@ -792,17 +796,17 @@ impl AuthSection {
                 domain,
             } => {
                 set_text(&self.username, username, window, cx);
-                set_text(&self.password, password, window, cx);
+                self.masks.fill(&self.password, password, window, cx);
                 set_text(&self.domain, domain, window, cx);
             }
-            AuthSpec::Bearer { token } => set_text(&self.token, token, window, cx),
+            AuthSpec::Bearer { token } => self.masks.fill(&self.token, token, window, cx),
             AuthSpec::ApiKey {
                 key,
                 value,
                 placement,
             } => {
                 set_text(&self.key, key, window, cx);
-                set_text(&self.value, value, window, cx);
+                self.masks.fill(&self.value, value, window, cx);
                 self.show_placement(*placement, window, cx);
             }
             AuthSpec::AwsV4 {
@@ -822,7 +826,7 @@ impl AuthSection {
                     profile_name,
                 ];
                 for (state, value) in self.aws.iter().zip(values) {
-                    set_text(state, value, window, cx);
+                    self.masks.fill(state, value, window, cx);
                 }
             }
             AuthSpec::EdgeGrid(e) => {
@@ -836,7 +840,7 @@ impl AuthSection {
                     &e.headers_to_sign,
                 ];
                 for (state, value) in self.edgegrid.iter().zip(values) {
-                    set_text(state, value, window, cx);
+                    self.masks.fill(state, value, window, cx);
                 }
                 self.edgegrid_max = e.max_body_size;
                 self.max_refused = false;

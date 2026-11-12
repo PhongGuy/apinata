@@ -846,7 +846,8 @@ impl OAuth2Editor {
             if let Some(text) = f.text(spec)
                 && !(f.masked() && f.text(&old) == Some(text))
             {
-                set_text(self.input(f), text, window, cx);
+                let input = self.input(f).clone();
+                self.masks.fill(&input, text, window, cx);
             }
         }
         // Rows are rebuilt only when their count changes, so typing in a row keeps its caret.
