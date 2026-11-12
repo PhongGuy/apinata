@@ -628,6 +628,11 @@ pub(super) mod stop_tests {
                 .unwrap()
                 .success()
         );
+        // Git reads `.gitattributes` only to compare a staged file whose stat no longer matches
+        // the index or shares the index's second, so a new mtime makes the commit open the pipe.
+        let an_hour_ago = std::time::SystemTime::now() - Duration::from_secs(3600);
+        let staged = fs::File::open(repo.root.join("a.txt")).unwrap();
+        staged.set_modified(an_hour_ago).unwrap();
         let started = Instant::now();
         let r = repo.write(&["commit", "-q", "-m", "x"]);
         assert!(matches!(r, Err(GitError::Timeout)), "{:?}", r.err());

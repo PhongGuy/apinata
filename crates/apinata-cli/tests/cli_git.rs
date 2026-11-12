@@ -432,6 +432,15 @@ fn mkfifo(path: &Path) {
     assert!(made.expect("mkfifo").success());
 }
 
+// Git compares a tracked file's content, and so reads `.gitattributes`, only when its stat no
+// longer matches the index or shares the index's second; a new mtime forces the comparison.
+#[cfg(unix)]
+fn restamp(path: &Path) {
+    let file = fs::File::open(path).unwrap();
+    let an_hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    file.set_modified(an_hour_ago).unwrap();
+}
+
 // `t.yml`, a link staged at `b.yml` and then retargeted at the pipe `p`, in the given repository.
 #[cfg(unix)]
 fn staged_link_retargeted_at_a_pipe(sb: &Sandbox, col: &Path) {
@@ -485,6 +494,7 @@ fn status_ends_at_the_time_limit_when_git_waits_on_a_pipe() {
     let sb = Sandbox::new();
     let col = clean(&sb);
     mkfifo(&col.parent().unwrap().join(".gitattributes"));
+    restamp(&col.join("opencollection.yml"));
     let out = cli(&sb, &col)
         .args(["git", "status"])
         .timeout(std::time::Duration::from_secs(30))
