@@ -101,6 +101,29 @@ fn websocket_and_grpc_rows_show_their_kind_tag(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_websocket_row_name_starts_where_an_http_row_name_does(cx: &mut TestAppContext) {
+    let col = zoo();
+    let s = started(cx, &col);
+    let entries = s.ws.read_with(cx, request_entries);
+    let ix = |path: &str| (entries.iter().position(|e| e.path.as_str() == path)).unwrap();
+    // Each row is measured in a search of its own; its row's height does not move its x.
+    let mut name_left = |query: &str, r: usize| {
+        search(cx, s.win, query);
+        let left = cx
+            .update_window(s.win, |_, w, _| {
+                w.find(("palette-request-name", r)).bounds().left()
+            })
+            .unwrap();
+        cx.simulate_keystrokes(s.win, "escape");
+        frame(cx, s.win);
+        left
+    };
+    let socket = name_left("Socket", ix("ws.yml"));
+    let lion = name_left("lion", ix("lion.yml"));
+    assert_eq!(socket, lion, "every row's name starts in one column");
+}
+
+#[gpui_kit::test]
 fn choosing_a_websocket_request_says_it_cannot_be_sent(cx: &mut TestAppContext) {
     let col = zoo();
     let s = started(cx, &col);

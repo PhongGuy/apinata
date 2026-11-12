@@ -805,8 +805,8 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
 
 // A request row shows its name, with its collection and folders muted on the right where a
 // command row shows its key. A collection whose name another open one shares is followed by
-// its folder hint, as its tab and breadcrumb show it. A request the app cannot send yet leads
-// with the kind tag its sidebar row shows.
+// its folder hint, as its tab and breadcrumb show it. A request the app cannot send yet is
+// followed by its sidebar row's kind tag, muted, so every name starts in one column.
 fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
     let label = entry.label.clone();
     let unsupported = entry.unsupported;
@@ -823,15 +823,23 @@ fn request_row(r: usize, entry: &RequestEntry) -> CommandItem {
             .child(
                 h_flex()
                     .gap(style::SPACE_1)
+                    .child(
+                        div()
+                            .id(("palette-request-name", r))
+                            .test_support()
+                            .child(label.clone()),
+                    )
                     .children(unsupported.map(|kind| {
                         div()
                             .id(("palette-request-kind", r))
                             .test_support()
                             .flex_none()
                             .aria_label(kind.tag())
-                            .child(crate::ui::method_tag("").with_label(kind.tag()))
-                    }))
-                    .child(label.clone()),
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_size(style::TEXT_SMALL)
+                            .text_color(muted)
+                            .child(kind.tag())
+                    })),
             )
             .child(
                 h_flex()
