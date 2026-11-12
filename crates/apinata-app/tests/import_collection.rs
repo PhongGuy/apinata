@@ -226,9 +226,8 @@ fn report_lines_name_each_note_without_backticks() {
 fn a_good_file_lands_in_the_create_in_folder_without_a_second_prompt(cx: &mut TestAppContext) {
     let (files, win, view) = shell(cx);
     click_import(cx, win);
-    // A folder that does not exist yet is made on the way.
     let into = tempfile::tempdir().unwrap();
-    let parent = into.path().join("new");
+    let parent = into.path().to_path_buf();
     create_in(cx, &parent);
     let file = input(files.path(), &shop(false));
     cx.simulate_path_prompt_response(move |_| Some(vec![file]));

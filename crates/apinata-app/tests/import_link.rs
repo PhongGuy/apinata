@@ -524,7 +524,7 @@ fn the_mode_is_one_segmented_control(cx: &mut TestAppContext) {
 fn the_link_placeholder_reads_as_an_example(cx: &mut TestAppContext) {
     let (_files, win, _view) = shell(cx);
     let dlg = open_with(cx, win, "");
-    let hint = dlg.read_with(cx, |d, _| d.placeholder());
+    let hint = dlg.read_with(cx, |d, cx| d.placeholder(cx));
     assert!(hint.starts_with("e.g. "), "{hint}");
 }
 
@@ -572,4 +572,162 @@ fn create_in_names_the_folder_and_change_picks_another(cx: &mut TestAppContext) 
         !present(cx, win, "import-link-parent"),
         "an update creates nothing"
     );
+}
+
+/// The Create in folder the settings remember, shared with the clone dialog.
+fn saved_folder(cx: &mut TestAppContext) -> Option<PathBuf> {
+    cx.update(|cx| {
+        cx.global::<apinata_app::app::AppState>()
+            .settings
+            .read(cx)
+            .get()
+            .clone_parent
+            .clone()
+    })
+}
+
+/// Opens the Import dialog in a started app.
+fn open_started(cx: &mut TestAppContext, s: &Started) -> Entity<ImportLinkDialog> {
+    switcher_click(cx, s.win, "switcher-import-collection");
+    frame(cx, s.win);
+    cx.read(import_link::current).expect("dialog open")
+}
+
+/// Puts `link` in the dialog's field and presses Import.
+fn import_link_text(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    dlg: &Entity<ImportLinkDialog>,
+    link: &str,
+) {
+    let (d, link) = (dlg.clone(), link.to_owned());
+    cx.update_window(win, |_, w, cx| {
+        d.update(cx, |d, cx| d.set_link(&link, w, cx))
+    })
+    .unwrap();
+    click(cx, win, "import-link-import");
+}
+
+/// Waits for the dialog to show a failure and answers its text.
+fn failed(cx: &mut TestAppContext, dlg: &Entity<ImportLinkDialog>) -> String {
+    wait_for(cx, "the failure", |cx| {
+        matches!(phase(cx, dlg), Phase::Failed(_))
+    });
+    error(cx, dlg)
+}
+
+#[gpui_kit::test]
+fn the_dialog_opens_in_the_saved_clone_folder(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let saved = tempfile::tempdir().unwrap();
+    let dir = saved.path().to_path_buf();
+    cx.update(|cx| {
+        let settings = cx.global::<apinata_app::app::AppState>().settings.clone();
+        settings.update(cx, |p, cx| p.update(cx, |s| s.clone_parent = Some(dir)));
+    });
+    let dlg = open_started(cx, &s);
+    let parent = dlg.read_with(cx, |d, _| d.parent().map(Path::to_path_buf));
+    assert_eq!(parent.as_deref(), Some(saved.path()));
+}
+
+#[gpui_kit::test]
+fn change_is_remembered_only_once_an_import_lands(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let dlg = open_started(cx, &s);
+    let into = tempfile::tempdir().unwrap();
+    click(cx, s.win, "import-link-parent-change");
+    let pick = into.path().to_path_buf();
+    cx.simulate_path_prompt_response(move |_| Some(vec![pick]));
+    cx.run_until_parked();
+    assert_eq!(saved_folder(cx), None, "a pick alone saves nothing");
+    let file = s.files.path().join("shop.json");
+    fs::write(&file, postman()).unwrap();
+    import_link_text(cx, s.win, &dlg, file.to_str().unwrap());
+    wait_for(cx, "the import to open", |cx| {
+        s.ws.read_with(cx, |w, _| {
+            w.collections()
+                .iter()
+                .any(|c| c.root() == into.path().join("Shop"))
+        })
+    });
+    assert_eq!(saved_folder(cx).as_deref(), Some(into.path()));
+}
+
+#[gpui_kit::test]
+fn without_a_folder_the_import_says_so_and_keeps_the_link(cx: &mut TestAppContext) {
+    let (files, win, view) = shell(cx);
+    let file = files.path().join("shop.json");
+    fs::write(&file, postman()).unwrap();
+    let dlg = open_with(cx, win, "");
+    dlg.update(cx, |d, cx| d.forget_parent_for_test(cx));
+    import_link_text(cx, win, &dlg, file.to_str().unwrap());
+    let msg = failed(cx, &dlg);
+    assert!(msg.contains("Choose a folder"), "{msg}");
+    assert!(dialog(cx, win));
+    assert_eq!(
+        dlg.read_with(cx, |d, cx| d.link(cx)),
+        file.to_str().unwrap()
+    );
+    assert!(opened(cx, &view).is_empty());
+}
+
+#[gpui_kit::test]
+fn a_missing_chosen_folder_is_named_and_not_recreated(cx: &mut TestAppContext) {
+    let (files, win, view) = shell(cx);
+    let file = files.path().join("shop.json");
+    fs::write(&file, postman()).unwrap();
+    let gone = files.path().join("unmounted");
+    let dlg = open_with(cx, win, "");
+    create_in(cx, &gone);
+    import_link_text(cx, win, &dlg, file.to_str().unwrap());
+    let msg = failed(cx, &dlg);
+    assert!(msg.contains("unmounted"), "{msg}");
+    assert!(msg.contains("no longer exists"), "{msg}");
+    assert!(!gone.exists(), "a chosen folder is never recreated");
+    assert!(dialog(cx, win));
+    assert_eq!(
+        dlg.read_with(cx, |d, cx| d.link(cx)),
+        file.to_str().unwrap()
+    );
+    assert!(opened(cx, &view).is_empty());
+}
+
+#[gpui_kit::test]
+fn the_built_in_default_folder_is_made_when_missing(cx: &mut TestAppContext) {
+    let (files, win, view) = shell(cx);
+    let file = files.path().join("shop.json");
+    fs::write(&file, postman()).unwrap();
+    let default = files.path().join("home/Apinata");
+    let dlg = open_with(cx, win, "");
+    let d = default.clone();
+    dlg.update(cx, |dlg, cx| dlg.set_default_for_test(d, cx));
+    import_link_text(cx, win, &dlg, file.to_str().unwrap());
+    wait_for(cx, "the import to open", |cx| !opened(cx, &view).is_empty());
+    assert_eq!(opened(cx, &view), vec![default.join("Shop")]);
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_failed_write_keeps_the_dialog_and_its_link(cx: &mut TestAppContext) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (files, win, view) = shell(cx);
+    let file = files.path().join("shop.json");
+    fs::write(&file, postman()).unwrap();
+    let locked = files.path().join("locked");
+    fs::create_dir(&locked).unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+    let dlg = open_with(cx, win, "");
+    create_in(cx, &locked);
+    import_link_text(cx, win, &dlg, file.to_str().unwrap());
+    let msg = failed(cx, &dlg);
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!msg.is_empty());
+    assert!(dialog(cx, win), "the dialog stays for another try");
+    assert_eq!(
+        dlg.read_with(cx, |d, cx| d.link(cx)),
+        file.to_str().unwrap()
+    );
+    assert!(opened(cx, &view).is_empty());
 }

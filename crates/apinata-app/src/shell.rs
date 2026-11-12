@@ -1125,19 +1125,32 @@ impl Shell {
         crate::import_link::open(cx.weak_entity(), window, cx);
     }
 
-    /// Writes collections the Import dialog parsed into `parent`, its Create in folder.
-    pub(crate) fn place_imported(
+    /// Opens what an import wrote, each in the first environment its import produced so its
+    /// first send has the variables, then its report and any failure behind it.
+    pub(crate) fn landed(
         &mut self,
-        bundles: Vec<ImportBundle>,
-        parent: PathBuf,
+        roots: Written,
+        report: Option<ImportReport>,
+        error: Option<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let store = Arc::clone(self.workspace.read(cx).store());
-        cx.spawn_in(window, async move |this, cx| {
-            place_bundles(&this, bundles, store, Some(parent), cx).await
-        })
-        .detach();
+        for (root, environment) in roots {
+            if let Some(name) = environment {
+                self.workspace
+                    .update(cx, |w, _| w.select_on_open(&root, name));
+            }
+            self.open(root, window, cx);
+        }
+        if let Some(report) = report {
+            if !report.notes.is_empty() {
+                crate::import_report::open("Import report", &report, window, cx);
+            }
+            self.last_import = Some(report);
+        }
+        if let Some(message) = error {
+            import_failed(message, window, cx);
+        }
     }
 
     // Each dropped path is sniffed off the main thread, then handled in order: a folder opens,
@@ -1162,7 +1175,7 @@ impl Shell {
                         let _ = this.update(cx, |this, cx| this.draft_from_drop(*request, cx));
                     }
                     Dropped::Collections(bundles) => {
-                        place_bundles(&this, bundles, Arc::clone(&store), None, cx).await;
+                        place_bundles(&this, bundles, Arc::clone(&store), cx).await;
                     }
                     Dropped::Refused(message) => {
                         let _ = this.update_in(cx, |_, window, cx| {
@@ -3428,66 +3441,32 @@ fn import_failed(message: String, window: &mut Window, cx: &mut App) {
     });
 }
 
-// Writes the imported collections into `parent`, asking for it first when `None`, off the main
-// thread, and opens what landed with its report. A cancelled prompt does nothing; a failed
-// write keeps and opens the collections before it.
+// Asks where the imported collections go, writes them there off the main thread, and opens
+// what landed with its report. A cancelled prompt does nothing; a failed write keeps and opens
+// the collections before it.
 async fn place_bundles(
     this: &WeakEntity<Shell>,
     bundles: Vec<ImportBundle>,
     store: Arc<dyn apinata_core::SecretStore>,
-    parent: Option<PathBuf>,
     cx: &mut AsyncWindowContext,
 ) {
-    let parent = match parent {
-        Some(parent) => parent,
-        None => {
-            let Ok(reply) = this.update(cx, |_, cx| {
-                cx.prompt_for_paths(PathPromptOptions {
-                    files: false,
-                    directories: true,
-                    multiple: false,
-                    prompt: Some("Import into".into()),
-                })
-            }) else {
-                return;
-            };
-            let Some(parent) = first_path(reply.await) else {
-                return;
-            };
-            parent
-        }
+    let Ok(reply) = this.update(cx, |_, cx| {
+        cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Import into".into()),
+        })
+    }) else {
+        return;
     };
-    // A chosen Create in folder may not exist yet, as with a clone's parent.
-    let job = cx.background_spawn(async move {
-        match crate::clone_form::ensure_parent(&parent) {
-            Ok(()) => write_bundles(&bundles, &parent, &*store),
-            Err(e) => (
-                Vec::new(),
-                None,
-                Some(crate::import_report::failure_at(&parent, &e.to_string())),
-            ),
-        }
-    });
+    let Some(parent) = first_path(reply.await) else {
+        return;
+    };
+    let job = cx.background_spawn(async move { write_bundles(&bundles, &parent, &*store) });
     let (roots, report, error) = job.await;
     let _ = this.update_in(cx, |this, window, cx| {
-        // Open what landed before any error, so the user sees it behind the alert. Each opens
-        // in the first environment its import produced, so its first send has the variables.
-        for (root, environment) in roots {
-            if let Some(name) = environment {
-                this.workspace
-                    .update(cx, |w, _| w.select_on_open(&root, name));
-            }
-            this.open(root, window, cx);
-        }
-        if let Some(report) = report {
-            if !report.notes.is_empty() {
-                crate::import_report::open("Import report", &report, window, cx);
-            }
-            this.last_import = Some(report);
-        }
-        if let Some(message) = error {
-            import_failed(message, window, cx);
-        }
+        this.landed(roots, report, error, window, cx)
     });
 }
 
@@ -3515,12 +3494,12 @@ pub fn parse_bundles_from(file: &Path, input: &[u8]) -> Result<Vec<ImportBundle>
 const ENVIRONMENT_FILE: &str = "This is an environment file, not a collection. To add it, open a collection and choose Import environment.";
 
 // Each written root with the first environment its import produced.
-type Written = Vec<(PathBuf, Option<String>)>;
+pub(crate) type Written = Vec<(PathBuf, Option<String>)>;
 
 // Writes `bundles` in order into `parent`, stopping at the first failure. Answers the roots
 // written, their merged report (none if nothing landed), and the failure naming what was not
 // written.
-fn write_bundles(
+pub(crate) fn write_bundles(
     bundles: &[ImportBundle],
     parent: &Path,
     store: &dyn apinata_core::SecretStore,

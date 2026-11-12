@@ -172,6 +172,8 @@ pub struct ImportLinkDialog {
     file: Option<PathBuf>,
     // The Create in folder a new collection is written into; None when there is no home folder.
     parent: Option<PathBuf>,
+    // The built-in folder under home, the only Create in folder made when it is missing.
+    default_parent: Option<PathBuf>,
     // The parsed spec an update previews and applies.
     bundle: Option<Arc<ImportBundle>>,
     // The in-flight fetch; dropping it aborts the request, so Cancel and close drop it.
@@ -203,6 +205,7 @@ pub fn open(
         .and_then(|s| s.settings.read(cx).get().clone_parent.clone());
     let home = dirs::home_dir();
     let parent = crate::clone_form::default_parent(saved.as_deref(), home.as_deref());
+    let default_parent = home.map(|h| h.join(crate::clone_form::DEFAULT_PARENT_DIR));
     let view = cx.new(|cx| {
         let link = cx.new(|cx| InputState::new(window, cx).placeholder(LINK_PLACEHOLDER));
         ImportLinkDialog {
@@ -222,6 +225,7 @@ pub fn open(
             refocus: false,
             file: None,
             parent,
+            default_parent,
             bundle: None,
             task: None,
             asking: None,
@@ -751,9 +755,23 @@ impl ImportLinkDialog {
         cx.notify();
     }
 
-    /// The Link field's hint.
-    pub fn placeholder(&self) -> &'static str {
-        LINK_PLACEHOLDER
+    /// The Link field's hint, as its input holds it.
+    pub fn placeholder(&self, cx: &App) -> String {
+        self.link.read(cx).presentation().placeholder().to_string()
+    }
+
+    /// Test-only: forgets the Create in folder, as when there is no home folder.
+    #[doc(hidden)]
+    pub fn forget_parent_for_test(&mut self, cx: &mut Context<Self>) {
+        self.parent = None;
+        cx.notify();
+    }
+
+    /// Test-only: makes `dir` the built-in default folder and the Create in folder.
+    #[doc(hidden)]
+    pub fn set_default_for_test(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        self.default_parent = Some(dir.clone());
+        self.set_parent(dir, cx);
     }
 
     /// The Create in folder a new collection goes into, if one is known.
@@ -888,11 +906,67 @@ impl ImportLinkDialog {
                     cx.notify();
                     return;
                 };
-                window.close_dialog(cx);
-                let shell = self.shell.clone();
-                let _ = shell.update(cx, |s, cx| s.place_imported(bundles, parent, window, cx));
+                self.write(bundles, parent, window, cx);
             }
         }
+    }
+
+    // Writes the parsed collections into `parent` while the dialog stays open, so a failure
+    // that wrote nothing keeps the link for another try. Only the built-in folder is made when
+    // missing; a chosen one that is gone (an unmounted drive) is reported, never recreated.
+    fn write(
+        &mut self,
+        bundles: Vec<ImportBundle>,
+        parent: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(shell) = self.shell.upgrade() else {
+            return;
+        };
+        let store = Arc::clone(shell.read(cx).workspace().read(cx).store());
+        let make = self.default_parent.as_ref() == Some(&parent);
+        self.phase = Phase::Fetching;
+        cx.notify();
+        let target = parent.clone();
+        let job = cx.background_spawn(async move {
+            let ready = if make {
+                crate::clone_form::ensure_parent(&target)
+                    .map_err(|e| crate::import_report::failure_at(&target, &e.to_string()))
+            } else if target.is_dir() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "The folder {} no longer exists. Choose another with Change….",
+                    target.display()
+                ))
+            };
+            match ready {
+                Ok(()) => crate::shell::write_bundles(&bundles, &target, &*store),
+                Err(message) => (Vec::new(), None, Some(message)),
+            }
+        });
+        self.task = Some(cx.spawn_in(window, async move |this, cx| {
+            let (roots, report, error) = job.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.task = None;
+                if roots.is_empty() {
+                    let message = error.unwrap_or_else(|| STOPPED.to_owned());
+                    this.phase = Phase::Failed(crate::import_report::failure_text(&message));
+                    cx.notify();
+                    return;
+                }
+                // Like a clone, the folder is remembered once something landed in it.
+                if let Some(state) = cx.try_global::<crate::app::AppState>() {
+                    let settings = state.settings.clone();
+                    settings.update(cx, |p, cx| p.update(cx, |s| s.clone_parent = Some(parent)));
+                }
+                window.close_dialog(cx);
+                let _ = this
+                    .shell
+                    .update(cx, |s, cx| s.landed(roots, report, error, window, cx));
+            });
+        }));
     }
 
     // Drops any fetch and closes.
@@ -933,7 +1007,7 @@ impl ImportLinkDialog {
         .detach();
     }
 
-    // Asks for the Create in folder and remembers it for the next import and clone.
+    // Asks for the Create in folder; it is remembered once an import lands in it.
     fn choose_parent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: false,
@@ -945,13 +1019,7 @@ impl ImportLinkDialog {
             let Some(parent) = crate::shell::first_path(reply.await) else {
                 return;
             };
-            let _ = this.update(cx, |this, cx| {
-                if let Some(state) = cx.try_global::<crate::app::AppState>() {
-                    let (settings, saved) = (state.settings.clone(), parent.clone());
-                    settings.update(cx, |p, cx| p.update(cx, |s| s.clone_parent = Some(saved)));
-                }
-                this.set_parent(parent, cx);
-            });
+            let _ = this.update(cx, |this, cx| this.set_parent(parent, cx));
         })
         .detach();
     }
