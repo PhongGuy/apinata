@@ -1109,6 +1109,7 @@ impl Render for RunnerView {
             };
             let entries = plan_entries(preview, &scope);
             let folder_names = model.folder_names(cx);
+            let muted = cx.theme().muted_foreground;
             let rows = entries.iter().enumerate().map(|(k, entry)| match entry {
                 PlanEntry::Folder { path, depth } => {
                     let members = folder_members(preview, path);
@@ -1157,7 +1158,22 @@ impl Render for RunnerView {
                                         }),
                                 )
                                 .child(ui::method_tag(&row.method))
-                                .child(row.name.clone()),
+                                // An unticked request's name dims, so the rows that will run
+                                // stand out; the id says which for tests.
+                                .child(
+                                    div()
+                                        .id((
+                                            if checked[ix] {
+                                                "run-plan-name"
+                                            } else {
+                                                "run-plan-name-off"
+                                            },
+                                            ix,
+                                        ))
+                                        .test_support()
+                                        .when(!checked[ix], |d| d.text_color(muted))
+                                        .child(row.name.clone()),
+                                ),
                         )
                         .into_any_element()
                 }

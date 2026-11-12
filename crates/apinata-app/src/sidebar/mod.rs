@@ -3085,15 +3085,13 @@ impl Render for Sidebar {
                                 }
                                 // The group only heads its drafts and an Empty row only says
                                 // so: the row swallows the tree's mouse-down so a click neither
-                                // collapses nor selects it. Empty leaves the chevron slot blank,
-                                // so its word starts where a child's icon or method tag would.
+                                // collapses nor selects it. Both leave the chevron slot blank, so
+                                // the word starts where a sibling's icon or method tag would.
                                 NodeKind::UnsavedGroup | NodeKind::Empty => item
                                     .child(
                                         h_flex()
                                             .gap(style::SPACE_1)
-                                            .when(n.kind == NodeKind::Empty, |row| {
-                                                row.child(div().w(style::SPACE_4).flex_none())
-                                            })
+                                            .child(div().w(style::SPACE_4).flex_none())
                                             .child(
                                                 marker("name", n)
                                                     .text_color(cx.theme().muted_foreground)

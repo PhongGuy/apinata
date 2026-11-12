@@ -7,10 +7,9 @@ use std::sync::Arc;
 
 use apinata_core::{ItemPath, KeyValue, PostResponseVar, ScriptPhase, Variable};
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tab::Tab;
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Role, ScrollHandle, Subscription,
@@ -921,11 +920,11 @@ impl ConfigEditor {
         });
     }
 
-    /// The page heading: "Collection Settings" or "Folder Settings".
+    /// The page heading: "Collection settings" or "Folder settings".
     pub fn title(&self, _cx: &App) -> String {
         match &self.target {
-            ConfigTarget::Collection => "Collection Settings".into(),
-            ConfigTarget::Folder(_) => "Folder Settings".into(),
+            ConfigTarget::Collection => "Collection settings".into(),
+            ConfigTarget::Folder(_) => "Folder settings".into(),
         }
     }
 
@@ -935,8 +934,9 @@ impl ConfigEditor {
             .is_some_and(|s| s.settings.read(cx).get().autosave)
     }
 
-    // Save appears while the settings hold unsaved changes. A clean page keeps its slot,
-    // invisible and inert, so the title row never changes height when it appears.
+    // Save appears while the settings hold unsaved changes, styled as the environment editors'
+    // Save. A clean page keeps its slot, invisible and inert, so the title row never changes
+    // height when it appears.
     fn save_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.save_possible(cx) {
             return None;
@@ -944,18 +944,12 @@ impl ConfigEditor {
         let dirty = self.view(cx).is_some_and(|v| v.dirty);
         let slot = div().id("config-save").test_support().flex_none();
         if !dirty {
-            let ghost = Button::new("config-save-slot")
-                .ghost()
-                .small()
-                .label("Save")
+            let hidden = crate::env_editor::save_button("config-save-slot", false)
                 .role(None::<Role>)
                 .tab_stop(false);
-            return Some(slot.invisible().child(ghost).into_any_element());
+            return Some(slot.invisible().child(hidden).into_any_element());
         }
-        let button = Button::new("config-save-button")
-            .ghost()
-            .small()
-            .label("Save")
+        let button = crate::env_editor::save_button("config-save-button", true)
             .tooltip_with_action(
                 crate::commands::label("request.save"),
                 &SaveConfig,

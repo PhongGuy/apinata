@@ -158,6 +158,15 @@ fn the_tags_share_one_column(cx: &mut TestAppContext) {
 // Opens the History dialog over every listed send: the drafts sent as POST, a.yml as DELETE
 // and b.yml as PATCH, each with a detail of its own length.
 fn with_methods(cx: &mut TestAppContext, s: &Started) {
+    with_methods_and(cx, s, |_| {});
+}
+
+// As `with_methods`, with `edit` applied to the entries before the dialog opens.
+fn with_methods_and(
+    cx: &mut TestAppContext,
+    s: &Started,
+    edit: impl FnOnce(&mut Vec<apinata_app::history_palette::HistoryEntry>),
+) {
     let store = cx.update(|cx| cx.global::<ResponseStore>().clone());
     let mut recent = store.recent(std::slice::from_ref(&s.root), 100);
     for r in recent.iter_mut() {
@@ -179,6 +188,7 @@ fn with_methods(cx: &mut TestAppContext, s: &Started) {
     for (e, d) in entries.iter_mut().zip(details) {
         e.detail = d.to_owned();
     }
+    edit(&mut entries);
     let shell = s.shell.clone();
     cx.update_window(s.win, |_, w, cx| {
         let fallback = shell.read(cx).focus_handle(cx);
@@ -263,4 +273,35 @@ fn the_run_tag_explains_itself(cx: &mut TestAppContext) {
         })
         .unwrap();
     assert_eq!(tip.as_deref(), Some(RUN_TIP));
+}
+
+// A long URL and a long name leave the status column where a short one has it.
+#[gpui_kit::test]
+fn a_long_url_keeps_the_details_in_their_column(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    with_methods_and(cx, &s, |entries| {
+        entries[2].target = format!("http://127.0.0.1:9/{}", "segment/".repeat(40));
+        entries[3].label = "A request with a rather long name".repeat(3);
+    });
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let lefts: Vec<_> = (0..4usize)
+            .map(|r| w.find(("history-detail", r)).bounds().left())
+            .collect();
+        assert!(lefts.iter().all(|l| *l == lefts[0]), "{lefts:?}");
+    })
+    .unwrap();
+}
+
+// A runner send is marked with a word that names who sent it, not one that reads as a button.
+#[gpui_kit::test]
+fn the_runner_tag_names_the_runner(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = seeded(cx, &col);
+    with_methods(cx, &s);
+    assert_eq!(
+        label_of(cx, &s, ("history-tag", 2)).as_deref(),
+        Some("Runner")
+    );
 }

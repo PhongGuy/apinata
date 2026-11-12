@@ -351,7 +351,7 @@ fn a_folder_page_is_headed_folder_settings(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
-    assert_eq!(ed.read_with(cx, |e, cx| e.title(cx)), "Folder Settings");
+    assert_eq!(ed.read_with(cx, |e, cx| e.title(cx)), "Folder settings");
 }
 
 #[gpui_kit::test]
@@ -359,7 +359,7 @@ fn the_collection_page_is_headed_collection_settings(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
-    assert_eq!(ed.read_with(cx, |e, cx| e.title(cx)), "Collection Settings");
+    assert_eq!(ed.read_with(cx, |e, cx| e.title(cx)), "Collection settings");
 }
 
 // Opens `kind`'s settings on `section` with the dock open in a short window, then checks that
@@ -772,4 +772,43 @@ fn autosave_shows_no_save_on_the_settings_page(cx: &mut TestAppContext) {
     assert!(dirty, "the edit is still unsaved");
     assert!(!present(cx, s.win, "config-save"));
     assert!(!present(cx, s.win, "config-save-button"));
+}
+
+// Unsaved settings offer the environment editors' Save for unsaved edits: one button style.
+#[gpui_kit::test]
+fn settings_save_matches_the_environment_editors_save(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        (
+            "environments/dev.yml",
+            "name: dev\nvariables:\n  - name: host\n    value: x\n",
+        ),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| {
+            e.edit_rows(ConfigSection::Headers, vec![row("X-Trace", "1")], w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, win);
+    let config = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("config-save-button").bounds().size
+        })
+        .unwrap();
+    let (env_win, _env) = support::env_editor(cx, &ws, &root);
+    type_at_end(cx, env_win, None, ("env-value", 0usize), "y");
+    cx.run_until_parked();
+    frame(cx, env_win);
+    let env = cx
+        .update_window(env_win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("env-save").bounds().size
+        })
+        .unwrap();
+    assert_eq!(config, env);
 }

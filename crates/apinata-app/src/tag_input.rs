@@ -210,6 +210,16 @@ impl Render for TagField {
                         .on_click(cx.listener(move |t, _, _, cx| t.remove(ix, cx))),
                 )
         });
+        // The frame's edge is drawn over its content, as a plain input draws its own inside
+        // its height, so the empty field is exactly as tall as the inputs beside it. Focus
+        // inside rings that edge.
+        let edge = div().absolute().inset_0().rounded(RADIUS);
+        let edge = if ringed {
+            edge.border_2()
+                .border_color(crate::focus_mode::accent_ring(theme))
+        } else {
+            edge.border_1().border_color(theme.border)
+        };
         h_flex()
             .id("tag-input")
             .test_support()
@@ -218,22 +228,11 @@ impl Render for TagField {
             .flex_wrap()
             .items_center()
             .gap(SPACE_1)
-            .p(SPACE_1)
-            .border_1()
-            .border_color(theme.border)
+            .px(SPACE_1)
             .rounded(RADIUS)
             .bg(ui::field_fill(false, cx))
             .capture_key_down(cx.listener(|this, e, _, cx| this.key_down(e, cx)))
             .children(chips)
-            // The frame is the input's only edge, so focus inside it rings the frame.
-            .children(ringed.then(|| {
-                div()
-                    .absolute()
-                    .inset_0()
-                    .rounded(RADIUS)
-                    .border_2()
-                    .border_color(crate::focus_mode::accent_ring(theme))
-            }))
             .child(
                 div().min_w(FORM_INPUT_WIDTH).flex_1().child(
                     ui::padded_input(
@@ -246,5 +245,6 @@ impl Render for TagField {
                     .frameless(),
                 ),
             )
+            .child(edge)
     }
 }

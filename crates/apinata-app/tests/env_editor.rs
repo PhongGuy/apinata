@@ -1159,6 +1159,33 @@ fn a_dirty_environment_offers_rename_disabled_with_its_reason(cx: &mut TestAppCo
     assert!(!present(cx, win, "env-name-input"));
 }
 
+// Hovering the disabled Rename shows why it is off.
+#[gpui_kit::test]
+fn a_locked_rename_explains_itself_on_hover(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    type_at_end(cx, win, None, ("env-value", 0usize), "y");
+    cx.run_until_parked();
+    env_menu(cx, win, ENV_MENU_RENAME);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover("env-rename-locked", cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    frame(cx, win);
+    let tip = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("env-rename-locked-tooltip")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(tip.as_deref(), Some(RENAME_LOCKED_REASON));
+}
+
 const COLORED: &str = "name: dev\ncolor: \"#123456\"\nvariables:\n  - name: host\n    value: x\n";
 
 fn ringed(

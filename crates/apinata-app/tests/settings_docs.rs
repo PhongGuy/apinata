@@ -445,3 +445,16 @@ fn the_timeout_hint_sits_under_its_input(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// With no tags yet, the Tags field is as tall as the inputs above it.
+#[gpui_kit::test]
+fn an_empty_tags_field_is_as_tall_as_the_other_inputs(cx: &mut TestAppContext) {
+    let (win, _host, _s) = settings(cx, RequestSettings::new());
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let tags = w.find("tag-input").bounds().size.height;
+        let redirects = w.find("set-max-redirects").bounds().size.height;
+        assert_eq!(tags, redirects);
+    })
+    .unwrap();
+}

@@ -295,3 +295,25 @@ fn a_drafts_breadcrumb_says_it_is_unsaved(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+// The sidebar's Unsaved group heads its drafts in the column where folder icons and request
+// method tags start, not out at the chevrons.
+#[gpui_kit::test]
+fn the_unsaved_group_lines_up_with_the_folders(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::marker_id;
+    use apinata_app::sidebar::model::unsaved_id;
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/list.yml", &request("List", "http://x/")),
+    ]);
+    let s = started(cx, &col);
+    cx.simulate_keystrokes(s.win, &key("n"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        let icon = w.find(marker_id("icon", &row("users"))).bounds();
+        let group = w.find(marker_id("name", &unsaved_id(0))).bounds();
+        assert_eq!(group.left(), icon.left(), "{group:?} vs {icon:?}");
+    })
+    .unwrap();
+}

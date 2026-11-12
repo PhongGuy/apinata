@@ -15,7 +15,6 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
@@ -1986,7 +1985,10 @@ pub fn locked_rename_label(cx: &App) -> impl IntoElement + gpui_kit::Styled + us
         .id("env-rename-locked")
         .test_support()
         .aria_label(RENAME_LOCKED_REASON)
-        .tooltip(|window, cx| Tooltip::new(RENAME_LOCKED_REASON).build(window, cx))
+        .tooltip(ui::text_tooltip(
+            "env-rename-locked-tooltip",
+            RENAME_LOCKED_REASON,
+        ))
         .child("Rename")
 }
 

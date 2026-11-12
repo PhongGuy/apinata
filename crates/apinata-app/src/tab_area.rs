@@ -1985,6 +1985,16 @@ impl TabArea {
             .collect()
     }
 
+    /// The method a request tab's tag shows; other tabs have none.
+    fn method_of(&self, entry: &TabEntry, cx: &App) -> Option<String> {
+        match &entry.kind {
+            TabKind::Request(item) => (self.workspace.read(cx))
+                .request(&entry.root, item, cx)
+                .map(|r| r.method.clone()),
+            _ => None,
+        }
+    }
+
     /// The title `entry`'s tab shows: a request's name, "<name> Settings" for a folder or the
     /// collection, "<name> Environments", "Run <name>" for a runner, or an example's name.
     pub fn tab_label(&self, entry: &TabEntry, cx: &App) -> String {
@@ -2266,14 +2276,7 @@ impl TabArea {
         let id = entry.id;
         let pinned = entry.pinned;
         let menu_view = view.clone();
-        let method = match &entry.kind {
-            TabKind::Request(item) => self
-                .workspace
-                .read(cx)
-                .request(&entry.root, item, cx)
-                .map(|r| ui::method_tag(&r.method)),
-            _ => None,
-        };
+        let method = self.method_of(entry, cx).map(|m| ui::method_tag(&m));
         // A request tab's git change, looked up the way the sidebar keys its request rows.
         let change = entry.item().and_then(|item| {
             let changes = self.workspace.read(cx).git_changes(&entry.root)?;
@@ -2562,11 +2565,12 @@ impl TabArea {
 }
 
 impl TabArea {
-    // `#tab-overflow`: a dropdown naming every tab in order, the active one checked and the
-    // unsaved ones dotted as on the strip, so a tab scrolled out of view is one click away.
+    // `#tab-overflow`: a dropdown naming every tab in order, method tagged, the active one checked
+    // and the unsaved ones dotted as on the strip, so a tab scrolled out of view is one click away.
     fn overflow_menu(
         &self,
         labels: Vec<String>,
+        methods: Vec<Option<String>>,
         details: Vec<Option<String>>,
         dirty: Vec<bool>,
         selected: usize,
@@ -2588,12 +2592,15 @@ impl TabArea {
                         window.rem_size(),
                     ));
                     crate::ui::start_on(&menu, selected, window, cx);
-                    let rows = labels.iter().zip(&details).zip(&dirty).enumerate();
-                    for (ix, ((label, detail), &dirty)) in rows {
+                    let rows = (labels.iter().zip(&methods))
+                        .zip(&details)
+                        .zip(&dirty)
+                        .enumerate();
+                    for (ix, (((label, method), detail), &dirty)) in rows {
                         let workspace = workspace.clone();
                         let reveal = reveal.clone();
                         menu = menu.item(
-                            menu_tab_item(ix, label, detail.as_deref(), dirty)
+                            menu_tab_item(ix, label, method.as_deref(), detail.as_deref(), dirty)
                                 .checked(ix == selected)
                                 .on_click(move |_, _, cx| {
                                     // A pick of the already active tab must still scroll it back
@@ -2611,13 +2618,20 @@ impl TabArea {
     }
 }
 
-// An All tabs entry: the tab's label, then its muted hint as the tab shows it, then the
-// unsaved dot when the tab has unsaved edits.
-fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>, dirty: bool) -> PopupMenuItem {
-    if detail.is_none() && !dirty {
+// An All tabs entry: a request's method tag, the tab's label, then its muted hint as the tab
+// shows it, then the unsaved dot when the tab has unsaved edits.
+fn menu_tab_item(
+    ix: usize,
+    label: &str,
+    method: Option<&str>,
+    detail: Option<&str>,
+    dirty: bool,
+) -> PopupMenuItem {
+    if method.is_none() && detail.is_none() && !dirty {
         return PopupMenuItem::new(label.to_owned());
     }
     let label = SharedString::from(label.to_owned());
+    let method = method.map(str::to_owned);
     let detail = detail.map(str::to_owned);
     PopupMenuItem::element(move |_, cx| {
         let name = match &detail {
@@ -2630,6 +2644,17 @@ fn menu_tab_item(ix: usize, label: &str, detail: Option<&str>, dirty: bool) -> P
             .gap(style::SPACE_2)
             .items_center()
             .aria_label(name)
+            .when_some(method.as_deref(), |d, method| {
+                let tag = ui::method_tag(method);
+                d.child(
+                    div()
+                        .id(("tab-menu-method", ix))
+                        .test_support()
+                        .flex_none()
+                        .aria_label(tag.label().clone())
+                        .child(tag),
+                )
+            })
             .child(label.clone())
             .when_some(detail.clone(), |d, detail| {
                 d.child(
@@ -2753,13 +2778,14 @@ impl TabArea {
         let labels: Vec<String> = entries.iter().map(|e| self.tab_label(e, cx)).collect();
         let details = self.details(&entries, &labels, cx);
         let dirty: Vec<bool> = entries.iter().map(|e| self.is_dirty(e, cx)).collect();
+        let methods: Vec<Option<String>> = entries.iter().map(|e| self.method_of(e, cx)).collect();
         let tabs: Vec<Tab> = entries
             .iter()
             .zip(details.iter().cloned())
             .enumerate()
             .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, cx))
             .collect();
-        let overflow = self.overflow_menu(labels, details, dirty, selected);
+        let overflow = self.overflow_menu(labels, methods, details, dirty, selected);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
         // gap precedes it, so the filler pulls back by that gap and trails the tab by its width.
         let pad = style::resolve(style::ui(12.), window);

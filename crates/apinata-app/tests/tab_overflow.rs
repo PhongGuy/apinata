@@ -1288,3 +1288,21 @@ fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_double_zoom_640(cx: &m
 fn a_tab_clear_of_the_fades_does_not_move_when_clicked_at_double_zoom_720(cx: &mut TestAppContext) {
     check_click_under_fade(cx, 720., 2.0, Under::Neither);
 }
+
+// The All tabs menu leads each request with the method tag its tab shows.
+#[gpui_kit::test]
+fn the_overflow_menu_shows_each_requests_method(cx: &mut TestAppContext) {
+    let n = strip(cx, 3, 360.);
+    cx.update_window(n.win, |_, w, cx| w.click("tab-overflow", cx))
+        .unwrap();
+    frame(cx, n.win);
+    cx.update_window(n.win, |_, w, _| {
+        for ix in 0..3usize {
+            let tag = w.find(("tab-menu-method", ix));
+            assert_eq!(tag.label(), Some("GET"), "row {ix}");
+            let item = w.find(("tab-menu-item", ix));
+            assert!(tag.bounds().right() <= item.bounds().right(), "row {ix}");
+        }
+    })
+    .unwrap();
+}
