@@ -37,7 +37,7 @@ fn every_command_has_a_row_with_its_keys(cx: &mut TestAppContext) {
     );
     assert_eq!(
         key_label(cx, &s, "tabs.next"),
-        Some(format!("{}, ctrl-pagedown", secondary("}")))
+        Some(format!("{}, ctrl-pagedown, ctrl-tab", secondary("}")))
     );
     assert_eq!(
         key_label(cx, &s, "view.toggle_theme"),
