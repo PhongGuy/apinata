@@ -226,6 +226,28 @@ fn the_dot_leaves_the_accessible_value_alone(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn dropdown_names_line_up_with_and_without_a_dot(cx: &mut TestAppContext) {
+    let col = coloured();
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, cx| w.click("env-select", cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        let mut left = |row: &str| {
+            w.within(option_id(row))
+                .find("env-row-name")
+                .bounds()
+                .left()
+        };
+        let dev = left("dev");
+        for row in ["plain", "prod", apinata_app::env_selector::NO_ENVIRONMENT] {
+            assert_eq!(left(row), dev, "{row}");
+        }
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
 fn dropdown_rows_show_a_dot_only_when_coloured(cx: &mut TestAppContext) {
     let col = coloured();
     let s = started(cx, &col);

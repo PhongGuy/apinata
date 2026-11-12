@@ -1084,14 +1084,14 @@ pub fn registry() -> Vec<Command> {
         ),
         command(
             "environment.export",
-            "Export current environment…",
+            "Export current environment to Postman…",
             Environment,
             shell(ExportEnvironment),
             &[],
         ),
         command(
             "environment.export_all",
-            "Export all environments…",
+            "Export all environments to Postman…",
             Environment,
             shell(ExportEnvironments),
             &[],
