@@ -109,11 +109,12 @@ pub fn app_menu(
     open: Rc<Cell<bool>>,
     scratch_only: bool,
     in_repo: bool,
+    updates: bool,
     cx: &App,
 ) -> impl IntoElement {
     // The open popup holds focus, so entries dispatch from the shell's handle to reach
     // the same handlers as the shell's key bindings.
-    let disabled = app_menu_disabled(scratch_only, in_repo);
+    let disabled = app_menu_disabled(scratch_only, in_repo, updates);
     crate::ui::solid_ring(Button::new("app-menu").ghost().compact(), cx)
         .icon(IconName::Menu)
         .accessibility_label("Application menu")
@@ -151,13 +152,15 @@ pub(crate) const COLLECTION_ONLY: [&str; 7] = [
 const REPOSITORY_ONLY: [&str; 2] = ["collection.switch_branch", "collection.show_changes"];
 
 /// The labels of the entries to grey out: those that act on a collection while only the
-/// scratch pad is open, and those that act on a repository while the collection is in none.
-pub fn app_menu_disabled(scratch_only: bool, in_repo: bool) -> Vec<&'static str> {
+/// scratch pad is open, those that act on a repository while the collection is in none, and
+/// Check for updates on a build without an update source.
+pub fn app_menu_disabled(scratch_only: bool, in_repo: bool, updates: bool) -> Vec<&'static str> {
     registry()
         .into_iter()
         .filter(|c| {
             (scratch_only && COLLECTION_ONLY.contains(&c.id))
                 || (!in_repo && REPOSITORY_ONLY.contains(&c.id))
+                || (!updates && c.id == "view.check_for_updates")
         })
         .map(|c| c.label)
         .collect()

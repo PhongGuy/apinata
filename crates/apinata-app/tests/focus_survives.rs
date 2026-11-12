@@ -689,9 +689,9 @@ fn global_environments_from_the_picker_closed_by_its_x_return_to_the_picker(
 }
 
 // The arrow steps from the menu button to the row of `action`: arrows skip greyed rows, and
-// these collections sit in no repository, so its repository rows are greyed.
+// these collections sit in no repository and tests have no update source, so those rows are greyed.
 fn enabled_menu_row(action: &dyn gpui_kit::Action) -> usize {
-    let off = apinata_app::app_menu::app_menu_disabled(false, false);
+    let off = apinata_app::app_menu::app_menu_disabled(false, false, false);
     let items = apinata_app::app_menu::app_menu_items();
     let ix = (items.iter())
         .position(|(_, a)| a.partial_eq(action))

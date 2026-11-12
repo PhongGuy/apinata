@@ -25,7 +25,7 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 21] = [
+const FLAGS: [(&str, Clear, &[&str]); 23] = [
     (
         "close_others",
         |a| a.close_others = false,
@@ -61,14 +61,25 @@ const FLAGS: [(&str, Clear, &[&str]); 21] = [
             "request.send",
             "request.copy_as_curl",
             "request.generate_code",
-            "request.save_as_example",
-            "request.export_har",
-            "request.compare_response",
             "request.copy_json_value",
             "request.copy_json_path",
             "request.set_json_variable",
             "request.assert_json_value",
         ],
+    ),
+    (
+        "has_response",
+        |a| a.has_response = false,
+        &[
+            "request.save_as_example",
+            "request.export_har",
+            "request.compare_response",
+        ],
+    ),
+    (
+        "updates",
+        |a| a.updates = false,
+        &["view.check_for_updates"],
     ),
     (
         "rename_idle",
@@ -558,13 +569,10 @@ fn a_fully_hidden_group_keeps_later_sections_stable(cx: &mut TestAppContext) {
 
 // The request-tab commands act only on a request tab; Save, Undo and Redo also act on the
 // environment and settings tabs, so only having no tab at all hides them.
-const REQUEST_ONLY: [&str; 10] = [
+const REQUEST_ONLY: [&str; 7] = [
     "request.send",
     "request.copy_as_curl",
     "request.generate_code",
-    "request.save_as_example",
-    "request.export_har",
-    "request.compare_response",
     "request.copy_json_value",
     "request.copy_json_path",
     "request.set_json_variable",
@@ -661,4 +669,50 @@ fn the_demo_command_is_listed_with_or_without_a_collection() {
         assert!(listed(a, "collection.open_demo"), "collection_open={open}");
     }
     assert!(!collection_scoped_ids().contains(&"collection.open_demo"));
+}
+
+// The commands that act on the response a request tab shows.
+const RESPONSE_ONLY: [&str; 3] = [
+    "request.save_as_example",
+    "request.export_har",
+    "request.compare_response",
+];
+
+#[gpui_kit::test]
+fn response_commands_need_a_shown_response(cx: &mut TestAppContext) {
+    let col = three();
+    let s = started(cx, &col);
+    let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    for id in RESPONSE_ONLY {
+        assert!(
+            !palette_lists(cx, &s, label(id)),
+            "{id} hidden before a send"
+        );
+    }
+    let editor = editor_of(cx, &s, tab);
+    give_result(cx, &editor);
+    frame(cx, s.win);
+    for id in RESPONSE_ONLY {
+        assert!(
+            palette_lists(cx, &s, label(id)),
+            "{id} listed with a response"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn check_for_updates_needs_an_update_source(cx: &mut TestAppContext) {
+    use apinata_app::updates::{CheckResult, Checker};
+    let col = three();
+    let s = started(cx, &col);
+    frame(cx, s.win);
+    let check = label("view.check_for_updates");
+    assert!(!palette_lists(cx, &s, check), "no source in tests");
+    let checker: Checker =
+        std::sync::Arc::new(|_| gpui_kit::Task::ready(Ok(CheckResult::UpToDate)));
+    let updates = cx.update(|cx| cx.global::<apinata_app::app::AppState>().updates.clone());
+    updates.update(cx, |u, cx| u.set_checker(Some(checker), cx));
+    frame(cx, s.win);
+    assert!(palette_lists(cx, &s, check));
 }

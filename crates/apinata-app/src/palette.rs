@@ -38,6 +38,7 @@ use crate::tab_area::{
     ConvertToHttp, CopyAsCurl, ExportHar, GenerateCode, MinifyBody, PinTab, ReopenClosedTab,
     RevealInSidebar, SaveAll, SaveAsExample, SendActive, StopActive, TabArea, UnpinTab,
 };
+use crate::updates::CheckForUpdates;
 use crate::workspace::Workspace;
 use crate::zoom;
 
@@ -228,6 +229,9 @@ pub struct Availability {
     /// Send, the copy and export commands and the JSON caret commands: the active tab is a
     /// request tab, a draft included.
     pub request_tab: bool,
+    /// "Save response as example", "Export as HAR" and "Compare response": the active request
+    /// tab shows a response.
+    pub has_response: bool,
     /// "Convert to GraphQL": the active tab is a saved HTTP request.
     pub to_graphql: bool,
     /// "Convert to HTTP": the active tab is a saved GraphQL request.
@@ -258,6 +262,8 @@ pub struct Availability {
     pub undo_delete: bool,
     /// "Switch branch" and "Show changes": the current collection sits in a git repository.
     pub git_repo: bool,
+    /// "Check for updates": this build has an update source.
+    pub updates: bool,
 }
 
 impl Availability {
@@ -276,6 +282,7 @@ impl Availability {
             beautify_query: true,
             has_tabs: true,
             request_tab: true,
+            has_response: true,
             to_graphql: true,
             to_http: true,
             rename_idle: true,
@@ -291,6 +298,7 @@ impl Availability {
             not_last: true,
             undo_delete: true,
             git_repo: true,
+            updates: true,
         }
     }
 }
@@ -359,9 +367,9 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.to_graphql, ConvertToGraphql.name()),
         (available.to_http, ConvertToHttp.name()),
         (available.request_tab, GenerateCode.name()),
-        (available.request_tab, SaveAsExample.name()),
-        (available.request_tab, ExportHar.name()),
-        (available.request_tab, Compare.name()),
+        (available.has_response, SaveAsExample.name()),
+        (available.has_response, ExportHar.name()),
+        (available.has_response, Compare.name()),
         (available.request_tab, CopyCaretJsonValue.name()),
         (available.request_tab, CopyCaretJsonPath.name()),
         (available.request_tab, SetCaretJsonVariable.name()),
@@ -382,6 +390,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.undo_delete, UndoDelete.name()),
         (available.git_repo, SwitchBranch.name()),
         (available.git_repo, ShowChanges.name()),
+        (available.updates, CheckForUpdates.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -442,13 +451,24 @@ pub fn entry_index(items: &[PaletteEntry], path: IndexPath) -> Option<usize> {
 /// Opens the palette over `window`, recording the focused handle (else `fallback`) to
 /// restore and dispatch from on confirm.
 pub fn open(fallback: FocusHandle, window: &mut Window, cx: &mut App) {
-    open_with(fallback, Vec::new(), None, None, None, true, window, cx);
+    open_with(
+        fallback,
+        Vec::new(),
+        None,
+        None,
+        None,
+        true,
+        true,
+        window,
+        cx,
+    );
 }
 
 /// `open` with a "Requests" group listing `requests` after the registry's groups;
 /// `sidebar` and `workspace` are read live for which commands apply, and the palette redraws
 /// when either changes; with none, their commands are always listed. `in_repo` is the host's
-/// own view of whether the current collection sits in a git repository.
+/// own view of whether the current collection sits in a git repository, and `updates` whether
+/// this build has an update source.
 // Each view the palette reads is its own optional argument, so a host passes only what it has.
 #[allow(clippy::too_many_arguments)]
 pub fn open_with(
@@ -458,6 +478,7 @@ pub fn open_with(
     workspace: Option<Entity<Workspace>>,
     tab_area: Option<Entity<TabArea>>,
     in_repo: bool,
+    updates: bool,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -466,6 +487,7 @@ pub fn open_with(
         workspace,
         tab_area,
         in_repo,
+        updates,
     };
     show(fallback, requests, Some(views), window, cx);
 }
@@ -487,6 +509,7 @@ struct Views {
     workspace: Option<Entity<Workspace>>,
     tab_area: Option<Entity<TabArea>>,
     in_repo: bool,
+    updates: bool,
 }
 
 // The palette dialog; with no `views` it lists the requests alone.
@@ -503,6 +526,7 @@ fn show(
         workspace,
         tab_area,
         in_repo,
+        updates,
     } = views.unwrap_or_default();
     let target = window.focused(cx).unwrap_or(fallback);
     // The dialog builder runs every frame, so the requests are shared, not rebuilt.
@@ -532,6 +556,7 @@ fn show(
             workspace.as_ref(),
             tab_area.as_ref(),
             in_repo,
+            updates,
             cx,
         );
         let (rem, cap) = (window.rem_size(), list_cap(window));
@@ -547,6 +572,7 @@ fn show(
                         workspace.as_ref(),
                         tab_area.as_ref(),
                         in_repo,
+                        updates,
                         cx,
                     );
                     let items = listed(commands, available);
@@ -575,6 +601,7 @@ fn availability_now(
     workspace: Option<&Entity<Workspace>>,
     tab_area: Option<&Entity<TabArea>>,
     git_repo: bool,
+    updates: bool,
     cx: &App,
 ) -> Availability {
     let (close_to_right, reveal) = workspace.map_or((true, true), |w| {
@@ -596,6 +623,7 @@ fn availability_now(
         beautify_query: tabs.is_none_or(|t| t.beautify_query),
         has_tabs: tabs.is_none_or(|t| t.has_tabs),
         request_tab: tabs.is_none_or(|t| t.request_tab),
+        has_response: tabs.is_none_or(|t| t.has_response),
         to_graphql: tabs.is_none_or(|t| t.to_graphql),
         to_http: tabs.is_none_or(|t| t.to_http),
         rename_idle: sidebar.is_none_or(|s| s.read(cx).renaming().is_none()),
@@ -611,6 +639,7 @@ fn availability_now(
         undo_delete: sidebar.is_none_or(|s| s.read(cx).can_undo_delete(cx)),
         collection_open: workspace.is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
         git_repo,
+        updates,
     }
 }
 
