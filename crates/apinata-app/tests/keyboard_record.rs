@@ -376,7 +376,7 @@ fn a_key_a_code_editor_takes_names_the_place(cx: &mut TestAppContext) {
     assert_eq!(
         message(cx, &s, "view.find_next_in_response"),
         Some(format!(
-            "{shown} is already used by Focus next control in code editors"
+            "{shown} is already used by Next tab, Focus next control in code editors"
         ))
     );
     click(cx, &s, "key-view.find_next_in_response-cancel");
@@ -392,6 +392,14 @@ fn a_key_a_code_editor_takes_names_the_place(cx: &mut TestAppContext) {
     assert_eq!(
         message(cx, &s, "view.focus_next_control"),
         Some(format!("{shown} is already used by Find next in response"))
+    );
+    click(cx, &s, "key-view.focus_next_control-cancel");
+    // A window-wide command the editor would hide is named by its label alone too.
+    record(cx, &s, "view.focus_next_control");
+    press(cx, &s, &key("w"));
+    assert_eq!(
+        message(cx, &s, "view.focus_next_control"),
+        Some(format!("{} is already used by Close tab", shown_chord("w")))
     );
 }
 

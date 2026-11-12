@@ -490,6 +490,34 @@ fn the_registry_reports_chords_shadowed_inside_code_editors() {
         ["tabs.next"]
     );
     assert!(conflicts_with(&cmds, &none, "tabs.next", &chord("ctrl-tab")).is_empty());
+    // Any other chord a code editor takes from the window is reported, both ways round.
+    assert_eq!(
+        conflicts_with(
+            &cmds,
+            &none,
+            "view.focus_next_control",
+            &chord("secondary-w")
+        ),
+        ["tabs.close"]
+    );
+    let w = map(&[("view.focus_next_control", &["secondary-w"])]);
+    assert_eq!(
+        conflicts_with(&cmds, &w, "tabs.close", &chord("secondary-w")),
+        ["view.focus_next_control"]
+    );
+    assert_eq!(
+        conflicted(&cmds, &w),
+        BTreeSet::from(["tabs.close", "view.focus_next_control"])
+    );
+    let tab = map(&[("view.focus_next_control", &["ctrl-shift-tab"])]);
+    assert_eq!(
+        conflicted(&cmds, &tab),
+        BTreeSet::from([
+            "tabs.previous",
+            "view.focus_next_control",
+            "view.focus_previous_control"
+        ])
+    );
     let find_next = if cfg!(target_os = "macos") {
         "cmd-g"
     } else {
@@ -506,7 +534,7 @@ fn the_registry_reports_chords_shadowed_inside_code_editors() {
             "view.find_next_in_response",
             &chord("ctrl-tab")
         ),
-        ["view.focus_next_control"]
+        ["tabs.next", "view.focus_next_control"]
     );
     let o = map(&[("view.focus_next_control", &[find_next])]);
     assert_eq!(
