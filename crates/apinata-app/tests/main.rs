@@ -481,6 +481,7 @@ mod script_approvals;
 mod script_approve;
 mod script_complete;
 mod script_section;
+mod script_settings;
 mod script_snippets;
 mod script_switch;
 mod script_timeout;

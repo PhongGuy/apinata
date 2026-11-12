@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use apinata_core::{ItemPath, KeyValue, PostResponseVar, ScriptPhase, Variable};
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tab::Tab;
-use gpui_kit::component::v_flex;
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, ScrollHandle, Subscription,
+    AnyElement, AnyView, App, Entity, FocusHandle, Focusable, Role, ScrollHandle, Subscription,
     TestSupportExt, Window, actions, div, relative,
 };
 
@@ -176,7 +177,7 @@ impl ConfigEditor {
         let vars = cx.new(|cx| KvTable::new(window, cx));
         let post_response = cx.new(|cx| {
             let mut t = KvTable::new(window, cx);
-            t.set_placeholders("Name", "res.body.token", window, cx);
+            t.set_placeholders("Name", kv_table::POST_RESPONSE_PLACEHOLDER, window, cx);
             t.set_headings("Name", "Expression", cx);
             t
         });
@@ -781,6 +782,11 @@ impl ConfigEditor {
         if !self.busy(Field::Auth, cx) {
             load_auth(&self.auth, &view.auth, window, cx);
         }
+        // A folder's Inherit names the auth its requests end up with; the collection has none.
+        if matches!(self.target, ConfigTarget::Folder(_)) {
+            let inherited = Some(view.inherited_auth.clone().into());
+            self.auth.update(cx, |a, cx| a.set_inherited(inherited, cx));
+        }
         if !self.busy(Field::Docs, cx) {
             self.docs.update(cx, |s, cx| s.load(&view.docs, window, cx));
         }
@@ -919,6 +925,45 @@ impl ConfigEditor {
         }
     }
 
+    // Save shows only for edits autosave will not write.
+    fn save_possible(&self, cx: &App) -> bool {
+        !cx.try_global::<AppState>()
+            .is_some_and(|s| s.settings.read(cx).get().autosave)
+    }
+
+    // Save appears while the settings hold unsaved changes. A clean page keeps its slot,
+    // invisible and inert, so the title row never changes height when it appears.
+    fn save_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.save_possible(cx) {
+            return None;
+        }
+        let dirty = self.view(cx).is_some_and(|v| v.dirty);
+        let slot = div().id("config-save").test_support().flex_none();
+        if !dirty {
+            let ghost = Button::new("config-save-slot")
+                .ghost()
+                .small()
+                .label("Save")
+                .role(None::<Role>)
+                .tab_stop(false);
+            return Some(slot.invisible().child(ghost).into_any_element());
+        }
+        let button = Button::new("config-save-button")
+            .ghost()
+            .small()
+            .label("Save")
+            .tooltip_with_action(
+                crate::commands::label("request.save"),
+                &SaveConfig,
+                Some("ConfigEditor"),
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.warn_unsaved(window, cx);
+                this.save(cx)
+            }));
+        Some(slot.child(button).into_any_element())
+    }
+
     fn section_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         let sections = self.sections();
@@ -1017,15 +1062,19 @@ impl ConfigEditor {
             .w_full()
             .when(fills, |d| d.flex().flex_col().flex_1())
             .child(view);
-        if self.section == ConfigSection::Tags {
-            return v_flex()
-                .gap(style::SPACE_2)
+        // Tags is a labelled row like the request's Settings tab, its note under the input.
+        if self.section == ConfigSection::Tags
+            && let Some(tags) = &self.tags
+        {
+            let row = ui::form_row("config-row-tags", "Tags", tags.clone()).hint(
+                "config-tags-note",
+                "A run can keep or skip requests by tag. A folder's tags apply to every request inside it.",
+            );
+            return div()
+                .id("config-tags")
+                .test_support()
                 .w_full()
-                .child(body)
-                .child(ui::form_note(
-                    "config-tags-note",
-                    "A run can keep or skip requests by tag. A folder's tags apply to every request inside it.",
-                ))
+                .child(row)
                 .into_any_element();
         }
         if self.section != ConfigSection::Vars {
@@ -1125,10 +1174,18 @@ impl Render for ConfigEditor {
                 this.save(cx)
             }))
             .child(
-                div()
-                    .id("config-title")
-                    .test_support()
-                    .child(self.title(cx)),
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id("config-title")
+                            .test_support()
+                            .child(self.title(cx)),
+                    )
+                    .children(self.save_button(cx)),
             )
             .children(banners)
             .child(self.section_bar(cx))

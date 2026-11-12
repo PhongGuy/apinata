@@ -17,7 +17,10 @@ use crate::app::AppState;
 use crate::approval_prompt::untrusted_text;
 use crate::{style, ui};
 
-/// Shows one collection's lists from the trust file; typing a host and pressing Enter
+/// What the lists govern, so trusting nothing never looks like a broken send.
+pub const HOSTS_NOTE: &str = "These lists only apply to requests an AI assistant sends through the MCP server: a trusted host goes through, a denied one is refused, and any other remote host is refused until you approve it in the app. Requests you send from the app are not checked against these lists.";
+
+/// Shows one collection's lists from the trust file; typing a host and pressing Enter or Add
 /// trusts it, and each listed host has a remove button.
 pub struct TrustedHostsView {
     trust_file: PathBuf,
@@ -41,20 +44,9 @@ impl TrustedHostsView {
         let input = cx.new(|cx| InputState::new(window, cx).placeholder("Host to trust"));
         let mut subs =
             vec![
-                cx.subscribe_in(&input, window, |this, state, e: &InputEvent, window, cx| {
+                cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| {
                     if matches!(e, InputEvent::PressEnter { .. }) {
-                        let typed = state.read(cx).value().to_string();
-                        let host = match bare_host(&typed) {
-                            Ok(host) => host,
-                            Err(message) => {
-                                this.error = Some(message);
-                                cx.notify();
-                                return;
-                            }
-                        };
-                        if this.write(|store, root| store.trust(root, &host), cx) {
-                            state.update(cx, |s, cx| s.set_value("", window, cx));
-                        }
+                        this.trust_typed(window, cx);
                     }
                 }),
             ];
@@ -105,6 +97,22 @@ impl TrustedHostsView {
             }
         }
         cx.notify();
+    }
+
+    // Trusts the typed host and clears the input; a host that is not bare shows why instead.
+    fn trust_typed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let typed = self.input.read(cx).value().to_string();
+        let host = match bare_host(&typed) {
+            Ok(host) => host,
+            Err(message) => {
+                self.error = Some(message);
+                cx.notify();
+                return;
+            }
+        };
+        if self.write(|store, root| store.trust(root, &host), cx) {
+            (self.input).update(cx, |s, cx| s.set_value("", window, cx));
+        }
     }
 
     // Reloads the store right before applying `edit` so entries written elsewhere survive;
@@ -196,35 +204,50 @@ impl Render for TrustedHostsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let trusted = host_rows(&self.trusted, "trusted-host", "trusted-remove", cx);
         let denied = host_rows(&self.denied, "denied-host", "denied-remove", cx);
+        let add = h_flex()
+            .gap_2()
+            .child(ui::padded_input(
+                Input::new(&self.input)
+                    .id("hosts-add")
+                    .w(style::WIDE_INPUT_WIDTH)
+                    .max_w_full()
+                    .bg(ui::field_fill(false, cx)),
+                &self.input,
+            ))
+            .child(
+                Button::new("hosts-add-button")
+                    .label("Add")
+                    .on_click(cx.listener(|this, _, window, cx| this.trust_typed(window, cx))),
+            );
+        // Each list is a labelled row like every other settings tab, its hosts in the control
+        // column.
+        let list = |rows: Vec<AnyElement>, empty: Option<AnyElement>| {
+            v_flex().gap_2().children(empty).children(rows)
+        };
+        let trusted_empty = trusted
+            .is_empty()
+            .then(|| empty_row("trusted-empty", "No trusted hosts yet.", cx).into_any_element());
+        let denied_empty = denied
+            .is_empty()
+            .then(|| empty_row("denied-empty", "No denied hosts.", cx).into_any_element());
         v_flex()
             .id("trusted-hosts")
+            .w_full()
             .gap_2()
-            .child(
-                h_flex().gap_2().child("Trust host").child(ui::padded_input(
-                    Input::new(&self.input)
-                        .id("hosts-add")
-                        .w(style::WIDE_INPUT_WIDTH)
-                        .bg(ui::field_fill(false, cx)),
-                    &self.input,
-                )),
-            )
+            .child(ui::form_row("hosts-add-row", "Trust host", add))
             .when_some(self.error.clone(), |el, error| {
-                el.child(
-                    div()
-                        .id("hosts-error")
-                        .test_support()
-                        .child(untrusted_text(&error)),
-                )
+                el.child(ui::form_note("hosts-error", untrusted_text(&error)).danger())
             })
-            .child("Trusted")
-            .when(trusted.is_empty(), |el| {
-                el.child(empty_row("trusted-empty", "No trusted hosts yet.", cx))
-            })
-            .children(trusted)
-            .child("Denied")
-            .when(denied.is_empty(), |el| {
-                el.child(empty_row("denied-empty", "No denied hosts.", cx))
-            })
-            .children(denied)
+            .child(ui::form_note("hosts-note", HOSTS_NOTE))
+            .child(ui::form_row(
+                "trusted-row",
+                "Trusted",
+                list(trusted, trusted_empty),
+            ))
+            .child(ui::form_row(
+                "denied-row",
+                "Denied",
+                list(denied, denied_empty),
+            ))
     }
 }

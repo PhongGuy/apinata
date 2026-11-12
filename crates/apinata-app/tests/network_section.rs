@@ -733,3 +733,47 @@ fn an_echo_keeps_a_cleared_proxy_host_cleared(cx: &mut TestAppContext) {
     assert_eq!(typed, "");
     assert!(present(cx, win, "proxy-host-incomplete"));
 }
+
+// One collection with a custom proxy, a host override and a certificate row.
+fn every_part(cx: &mut TestAppContext) -> AnyWindowHandle {
+    let mut network = with_proxy(custom("http", "proxy.local", None));
+    network.host_overrides = vec![apinata_core::HostOverride::new("a.test", "127.0.0.1")];
+    let (win, _host) = section(cx, network, false);
+    cx.update_window(win, |_, w, cx| w.click("cert-add", cx))
+        .unwrap();
+    frame(cx, win);
+    win
+}
+
+#[gpui_kit::test]
+fn proxy_fields_and_the_grids_share_one_input_style(cx: &mut TestAppContext) {
+    let win = every_part(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let proxy = w.find("proxy-host").bounds().size.height;
+        let host = w.find(("host-name", 0usize)).bounds().size.height;
+        let cert = w.find(("cert-domain", 0usize)).bounds().size.height;
+        assert_eq!(proxy, host, "proxy {proxy:?} host {host:?}");
+        assert_eq!(proxy, cert, "proxy {proxy:?} cert {cert:?}");
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_grid_notes_line_up_with_their_rows_and_buttons(cx: &mut TestAppContext) {
+    let win = every_part(cx);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        for (note, add, row) in [
+            ("hosts-note", "host-add", ("host-row", 0usize)),
+            ("cert-note", "cert-add", ("cert-row", 0usize)),
+        ] {
+            let note = w.find(note).bounds().left();
+            assert_eq!(note, w.find(add).bounds().left(), "{add}");
+            assert_eq!(note, w.find(row).bounds().left(), "{row:?}");
+        }
+        let text = w.find("cert-note").label().map(str::to_owned);
+        assert!(text.is_some_and(|t| t.contains("domain")));
+    })
+    .unwrap();
+}
