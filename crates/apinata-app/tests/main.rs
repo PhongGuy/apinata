@@ -616,6 +616,7 @@ mod trusted_hosts;
 mod typing_keys;
 mod ui_checkbox;
 mod ui_primitives;
+mod unavailable_entries;
 mod update_notice;
 mod update_prepare;
 mod update_restart;

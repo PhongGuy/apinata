@@ -204,6 +204,7 @@ pub(crate) struct TabPaletteFlags {
     pub beautify_query: bool,
     pub has_tabs: bool,
     pub request_tab: bool,
+    pub has_response: bool,
     pub to_graphql: bool,
     pub to_http: bool,
     pub close_all: bool,
@@ -1013,6 +1014,29 @@ impl TabArea {
         }
     }
 
+    /// The labels of `tab`'s menu entries that would do nothing: a close choice with no
+    /// unpinned tab to close, or Reveal for a tab with no sidebar row.
+    pub fn menu_disabled(&self, tab: TabId, cx: &App) -> Vec<&'static str> {
+        let tabs = self.workspace.read(cx).tabs();
+        let Some(entry) = tabs.entries().iter().find(|e| e.id == tab) else {
+            return tab_menu_labels().to_vec();
+        };
+        let unpinned =
+            |keep: &dyn Fn(&TabEntry) -> bool| tabs.entries().iter().any(|e| !e.pinned && keep(e));
+        MenuChoice::ALL
+            .into_iter()
+            .filter(|choice| match choice {
+                MenuChoice::Close => false,
+                MenuChoice::CloseOthers => !unpinned(&|e| e.id != tab),
+                MenuChoice::CloseToRight => tabs_right_of(tabs, tab).is_empty(),
+                MenuChoice::CloseSaved => !unpinned(&|e| !self.is_dirty(e, cx)),
+                MenuChoice::CloseAll => !unpinned(&|_| true),
+                MenuChoice::Reveal => reveal_path(&entry.kind).is_none(),
+            })
+            .map(MenuChoice::label)
+            .collect()
+    }
+
     /// Which state-dependent palette commands have something to do for the open tabs.
     pub(crate) fn palette_flags(&self, cx: &App) -> TabPaletteFlags {
         let ws = self.workspace.read(cx);
@@ -1030,6 +1054,10 @@ impl TabArea {
             beautify_query: editor.is_some_and(|e| e.read(cx).can_beautify_query(cx)),
             has_tabs: active.is_some(),
             request_tab: editor.is_some(),
+            has_response: editor.is_some_and(|e| {
+                let send = e.read(cx).send_model().read(cx);
+                matches!(send.state(), SendState::Done(r) if r.response.is_some())
+            }),
             to_graphql: self.active_converts_to(RequestKind::Graphql, cx),
             to_http: self.active_converts_to(RequestKind::Http, cx),
             close_all: tabs.entries().iter().any(|e| !e.pinned),
@@ -2256,8 +2284,7 @@ impl TabArea {
             .filter(|_| change.is_some())
             .map(|item| (self.workspace.clone(), entry.root.clone(), item.clone()));
         let discardable = self.discardable(entry, cx);
-        let can_close_right = !tabs_right_of(self.workspace.read(cx).tabs(), id).is_empty();
-        let can_reveal = reveal_path(&entry.kind).is_some();
+        let greyed = self.menu_disabled(id, cx);
         let name = self.tab_label(entry, cx);
         let name_for_drag: SharedString = name.clone().into();
         let name = if entry.preview {
@@ -2355,14 +2382,9 @@ impl TabArea {
                 // The close choices, Reveal, the change entries and pinning each form a group.
                 for choice in MenuChoice::ALL {
                     let view = menu_view.clone();
-                    let off = match choice {
-                        MenuChoice::CloseToRight => !can_close_right,
-                        MenuChoice::Reveal => !can_reveal,
-                        _ => false,
-                    };
                     menu = ui::MenuLine::new(choice.label())
                         .action(choice.action())
-                        .disabled(off)
+                        .disabled(greyed.contains(&choice.label()))
                         .group_break(choice == MenuChoice::Reveal)
                         .add_to(
                             menu,

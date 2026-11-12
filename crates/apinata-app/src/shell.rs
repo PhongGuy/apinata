@@ -1631,6 +1631,11 @@ impl Shell {
             .children(self.recent_list(window, cx))
     }
 
+    // Whether Check for updates has a source to ask; the menus grey it out or hide it otherwise.
+    fn updates_configured(&self, cx: &App) -> bool {
+        (self.updates.as_ref()).is_some_and(|u| u.read(cx).enabled())
+    }
+
     // A non-modal row offering the newer release; it renders nothing while there is no offer.
     fn update_notice(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let updates = self.updates.clone()?;
@@ -2635,6 +2640,7 @@ impl Shell {
                                     Rc::clone(&self.app_menu_open),
                                     scratch_only,
                                     self.branch.is_some(),
+                                    self.updates_configured(cx),
                                     cx,
                                 ),
                                 self.app_menu_open.get(),
@@ -2931,6 +2937,7 @@ impl Render for Shell {
                     Some(this.workspace.clone()),
                     Some(this.tab_area.clone()),
                     this.branch.is_some(),
+                    this.updates_configured(cx),
                     window,
                     cx,
                 )
