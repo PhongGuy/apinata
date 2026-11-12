@@ -350,11 +350,14 @@ fn the_url_row_buttons_wrap_below_the_url_in_a_narrow_pane_at_200_percent(cx: &m
                 "generate-code",
             ],
         );
+        // The URL takes the rest of its line and is never narrower than the method.
         let url = w.find("url").bounds();
-        let floor = apinata_app::style::at_zoom(apinata_app::style::URL_FIELD_MIN, 2.0);
+        let method = w.find("method").bounds();
+        let column = w.find("request-column").bounds();
+        let gap = apinata_app::style::at_zoom(apinata_app::style::SPACE_2, 2.0);
         assert!(
-            url.size.width >= floor - px(0.5),
-            "url too narrow to use: {url:?}"
+            url.size.width >= method.size.width && url.right() >= column.right() - gap,
+            "url {url:?} takes the rest of its line in {column:?}"
         );
         let save = w.find("save-request").bounds();
         let send = w.find("send-slot").bounds();

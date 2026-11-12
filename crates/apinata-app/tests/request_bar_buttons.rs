@@ -193,11 +193,11 @@ fn generate_codes_focus_ring_clears_the_column_edge(cx: &mut TestAppContext) {
     .unwrap();
 }
 
-// In a column of about 370 px the dirty Save, Send and Generate code wrap below the URL
-// before the URL drops under a usable width, so the scheme and host stay readable.
+// In a column of about 370 px the dirty Save, Send and Generate code wrap below the URL,
+// which takes the rest of its line and is never narrower than the method.
 #[gpui_kit::test]
 fn the_button_group_wraps_before_the_url_gets_unusable(cx: &mut TestAppContext) {
-    use apinata_app::style::{URL_FIELD_MIN, at_zoom};
+    use apinata_app::style::{SPACE_2, at_zoom};
     use gpui_kit::{VisualTestContext, px, size};
     let col = two_requests();
     let (_state, ws, root) = open_dir(cx, &col);
@@ -212,14 +212,13 @@ fn the_button_group_wraps_before_the_url_gets_unusable(cx: &mut TestAppContext) 
         cx.update_window(win, |_, w, cx| {
             w.render_frame(cx);
             let url = w.find("url").bounds();
+            let method = w.find("method").bounds();
+            let column = w.find("request-column").bounds();
             let save = w.find("save-request").bounds();
+            let gap = at_zoom(SPACE_2, 1.0);
             assert!(
-                url.size.width >= px(150.),
-                "{width}: url {url:?} too narrow"
-            );
-            assert!(
-                url.size.width >= at_zoom(URL_FIELD_MIN, 1.0) - px(0.5),
-                "{width}: {url:?}"
+                url.size.width >= method.size.width && url.right() >= column.right() - gap,
+                "{width}: url {url:?} takes the rest of its line in {column:?}"
             );
             assert!(
                 save.top() >= url.bottom(),
