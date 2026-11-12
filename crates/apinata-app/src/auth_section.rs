@@ -1080,23 +1080,39 @@ fn var_input(
         .max_w_full()
 }
 
-/// The Inherit text for `inherited`: the inherited mode's picker label, or the written mode
-/// when the editor does not model it, and the collection or the folder by its name.
-pub fn inherit_text(inherited: &InheritedAuth, collection: &Collection) -> String {
-    let label = match (AuthMode::of(inherited.auth()), inherited.auth()) {
+/// The picker label for `auth`, or the written mode when the editor does not model it.
+pub fn auth_label(auth: &AuthSpec) -> &str {
+    match (AuthMode::of(auth), auth) {
         (Some(mode), _) => mode.label(),
         (None, AuthSpec::Unsupported { mode }) => mode.as_str(),
         (None, _) => "unknown",
-    };
+    }
+}
+
+// The inherited auth's label and the level it comes from: `Bearer Token from the collection`.
+fn inherited_words(inherited: &InheritedAuth, collection: &Collection) -> String {
+    let label = auth_label(inherited.auth());
     match inherited.source() {
         AuthSource::Folder(path) => {
             let name = collection
                 .folder(path)
                 .map_or(path.file_name(), |f| f.name());
-            format!("Inherits {label} from folder \"{name}\".")
+            format!("{label} from folder \"{name}\"")
         }
-        _ => format!("Inherits {label} from the collection."),
+        _ => format!("{label} from the collection"),
     }
+}
+
+/// The Inherit text for `inherited`: the inherited mode's picker label, or the written mode
+/// when the editor does not model it, and the collection or the folder by its name.
+pub fn inherit_text(inherited: &InheritedAuth, collection: &Collection) -> String {
+    format!("Inherits {}.", inherited_words(inherited, collection))
+}
+
+/// The auth an inheriting item ends up using and where it comes from, or `None` when it
+/// inherits No Auth and so sends none.
+pub fn inherited_use(inherited: &InheritedAuth, collection: &Collection) -> Option<String> {
+    (!matches!(inherited.auth(), AuthSpec::None)).then(|| inherited_words(inherited, collection))
 }
 
 // The masked inputs, re-checked every render so a lone reference shows while typed.
