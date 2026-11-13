@@ -467,6 +467,9 @@ impl apinata_core::Trash for NoTrash {
     }
 }
 
+/// The tag that leaves a request out of a collection's runs until the user ticks it.
+pub const MANUAL_TAG: &str = "manual";
+
 /// The window's open collections and its session.
 pub struct Workspace {
     store: Arc<dyn SecretStore>,
@@ -499,6 +502,9 @@ pub struct Workspace {
     // Per collection root, the requests a runner's checkboxes leave out. Kept for the app's
     // lifetime only, and as exclusions so a request added later starts checked.
     run_unchecked: HashMap<PathBuf, HashSet<ItemPath>>,
+    // Per collection root, the requests a runner has listed, so the manual tag unticks each
+    // one only the first time and a re-tick sticks.
+    run_seen: HashMap<PathBuf, HashSet<ItemPath>>,
     // Typed script texts waiting for the write they ride on to be confirmed.
     awaiting: Vec<AwaitedApproval>,
     // Imports among `drafts`: applied to the draft once it is created.
@@ -562,8 +568,6 @@ pub struct Workspace {
     // The environment to select once a collection an import just wrote first loads, by
     // absolute root; a selection the session restores wins.
     import_envs: HashMap<PathBuf, String>,
-    // Roots whose only environment is selected when they first load with none saved.
-    sole_envs: HashSet<PathBuf>,
     // Each collection's mock server, stopped when its collection closes.
     mocks: MockServers,
 }
@@ -594,6 +598,7 @@ impl Workspace {
             selection_gone: HashMap::new(),
             runner_members: HashMap::new(),
             run_unchecked: HashMap::new(),
+            run_seen: HashMap::new(),
             awaiting: Vec::new(),
             kept_views: HashMap::new(),
             restored_active: None,
@@ -623,7 +628,6 @@ impl Workspace {
             script_sides: HashMap::new(),
             env_intents: HashMap::new(),
             import_envs: HashMap::new(),
-            sole_envs: HashSet::new(),
             mocks: MockServers::default(),
         }
     }
@@ -695,10 +699,28 @@ impl Workspace {
 
     // Moves the runner choice of `from`, or of everything under it when it is a folder, to `to`.
     fn follow_run_move(&mut self, root: &Path, from: &ItemPath, to: &ItemPath) {
-        if let Some(set) = self.run_unchecked.get_mut(root) {
-            *set = (set.drain())
-                .map(|item| crate::stale::rebase(&item, from, to).unwrap_or(item))
-                .collect();
+        for runs in [&mut self.run_unchecked, &mut self.run_seen] {
+            if let Some(set) = runs.get_mut(root) {
+                *set = (set.drain())
+                    .map(|item| crate::stale::rebase(&item, from, to).unwrap_or(item))
+                    .collect();
+            }
+        }
+    }
+
+    /// Unchecks each of `rows` tagged `manual` the first time a runner of the collection at
+    /// `root` lists it; later choices are the user's.
+    pub fn default_run_checks<'a>(
+        &mut self,
+        root: &Path,
+        rows: impl IntoIterator<Item = (&'a ItemPath, &'a [String])>,
+    ) {
+        let seen = self.run_seen.entry(root.to_path_buf()).or_default();
+        let unchecked = self.run_unchecked.entry(root.to_path_buf()).or_default();
+        for (item, tags) in rows {
+            if seen.insert(item.clone()) && tags.iter().any(|t| t == MANUAL_TAG) {
+                unchecked.insert(item.clone());
+            }
         }
     }
 
@@ -952,7 +974,6 @@ impl Workspace {
         self.draft_imports.retain(|(r, _), _| *r != root);
         self.env_intents.remove(&root);
         self.import_envs.remove(&root);
-        self.sole_envs.remove(&root);
         self.script_sides.retain(|(r, _), _| *r != root);
         self.restoring.remove(&root);
         self.restore_ids.retain(|(r, _), _| *r != root);
@@ -960,6 +981,7 @@ impl Workspace {
         self.trashed_tabs.retain(|(r, _), _| *r != root);
         self.restores.retain(|(r, _), _| *r != root);
         self.run_unchecked.remove(&root);
+        self.run_seen.remove(&root);
         self.mocks.stop(&root, cx);
         let tabs = &self.tabs;
         self.kept_views.retain(|t, _| tabs.get(*t).is_some());
@@ -1341,12 +1363,6 @@ impl Workspace {
     /// unless the session restores another; for a collection an import just wrote.
     pub fn select_on_open(&mut self, root: &Path, name: String) {
         self.import_envs.insert(absolute(root), name);
-    }
-
-    /// Selects the collection at `root`'s environment once it first loads after the next open,
-    /// when it has exactly one and the session restores none; for the bundled demo.
-    pub fn select_sole_on_open(&mut self, root: &Path) {
-        self.sole_envs.insert(absolute(root));
     }
 
     /// The environment names of the collection at `root` in its latest snapshot, in order.
@@ -2500,7 +2516,6 @@ impl Workspace {
             self.saved_drafts.retain(|(r, _), _| r != root);
             self.draft_imports.retain(|(r, _), _| r != root);
             self.import_envs.remove(root);
-            self.sole_envs.remove(root);
             self.restoring.remove(root);
             self.restore_ids.retain(|(r, _), _| r != root);
             self.trashed_tabs.retain(|(r, _), _| r != root);
@@ -2532,11 +2547,11 @@ impl Workspace {
             cx.emit(WorkspaceEvent::Opened(root.to_path_buf()));
             self.restore_tabs(root, cx);
             let preferred = self.import_envs.remove(root);
-            let sole = self.sole_envs.remove(root);
             if !self.restore_environment(root, cx) {
+                // With no saved choice, a collection's only environment is the obvious pick.
                 let names = self.environments(root, cx);
                 let only = match names.as_slice() {
-                    [only] if sole => Some(only.clone()),
+                    [only] if !self.chose_no_environment(root, cx) => Some(only.clone()),
                     _ => None,
                 };
                 if let Some(name) = preferred.filter(|n| names.contains(n)).or(only) {
@@ -2872,7 +2887,7 @@ impl Workspace {
             self.send(root, Command::SelectEnvironment(Some(name)), cx);
             true
         } else {
-            self.save_environment(root, None, cx);
+            self.save_environment(root, None, false, cx);
             false
         }
     }
@@ -2890,12 +2905,28 @@ impl Workspace {
             return;
         }
         let selected = snapshot.selected_environment.clone();
-        self.save_environment(root, selected, cx);
+        self.save_environment(root, selected, true, cx);
+    }
+
+    // Whether the session records the user picking No environment for `root`.
+    fn chose_no_environment(&self, root: &Path, cx: &App) -> bool {
+        let session = self.session.read(cx).get();
+        session
+            .collections
+            .get(root)
+            .is_some_and(|c| c.no_environment)
     }
 
     // Writes `name` as the session's environment of `root` when it differs; a root without a
-    // UTF-8 path is not stored, as `Session::remember` does.
-    fn save_environment(&mut self, root: &Path, name: Option<String>, cx: &mut Context<Self>) {
+    // UTF-8 path is not stored, as `Session::remember` does. `chosen` marks a change the user
+    // made, so clearing it records No environment as their pick.
+    fn save_environment(
+        &mut self,
+        root: &Path,
+        name: Option<String>,
+        chosen: bool,
+        cx: &mut Context<Self>,
+    ) {
         let session = self.session.read(cx).get();
         let stored = session
             .collections
@@ -2906,10 +2937,9 @@ impl Workspace {
         }
         self.session.update(cx, |p, cx| {
             p.update(cx, |s| {
-                s.collections
-                    .entry(root.to_path_buf())
-                    .or_default()
-                    .environment = name;
+                let entry = s.collections.entry(root.to_path_buf()).or_default();
+                entry.no_environment = chosen && name.is_none();
+                entry.environment = name;
             })
         });
     }
@@ -3051,8 +3081,10 @@ impl Workspace {
         }
         let content = &snapshot.content;
         // A request that left is forgotten, so one made again at its path starts checked.
-        if let Some(set) = self.run_unchecked.get_mut(root) {
-            set.retain(|item| content.requests.contains_key(item));
+        for runs in [&mut self.run_unchecked, &mut self.run_seen] {
+            if let Some(set) = runs.get_mut(root) {
+                set.retain(|item| content.requests.contains_key(item));
+            }
         }
         let before: Vec<TabId> = self.tabs.entries().iter().map(|e| e.id).collect();
         let active = self.tabs.active().map(|e| e.id);

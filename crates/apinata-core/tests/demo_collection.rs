@@ -105,6 +105,17 @@ fn smoke() -> Vec<String> {
     vec!["smoke".to_owned()]
 }
 
+// The runner leaves requests tagged manual unticked; the demo tags those that call other sites.
+fn manual() -> Vec<String> {
+    vec!["manual".to_owned()]
+}
+
+fn tag_manual(c: &mut Collection, folder: &ItemPath) {
+    let file = c.folder_file_mut(folder).expect("folder file");
+    file.set_tags(manual());
+    file.save().expect("save folder");
+}
+
 fn json(body: &str) -> BodySpec {
     BodySpec::Json(body.to_owned())
 }
@@ -117,7 +128,11 @@ fn build_demo(root: &Path) {
         "# Apinata Demo\n\nA small tour of Apinata.\n\n\
          - **Posts** and **Users** call [JSONPlaceholder]({BASE_URL}), a free fake REST API.\n\
          - **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n\
-         - **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\n\
+         - **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\
+         - **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\n\
+         Media, Auth and GraphQL call other sites, so they are tagged `manual` and Run collection \
+         leaves them unticked; tick them to include them. The SigV4 example only shows signing, \
+         so its made-up address never answers.\n\n\
          Sending a request needs network access."
     ));
     // Collection variables make every request work with no environment selected; the
@@ -250,6 +265,7 @@ fn build_demo(root: &Path) {
 
     let media = c.create_folder(&ItemPath::root(), "Media").expect("media");
     let folder = c.folder_file_mut(&media).expect("media folder file");
+    folder.set_tags(manual());
     folder.set_docs(
         "## Media\n\nResponses that are not JSON:\n\n\
          1. **Get XML** returns an XML document, shown re-indented and highlighted.\n\
@@ -268,6 +284,7 @@ fn build_demo(root: &Path) {
     // httpbin answers digest challenges; the AWS keys are the documentation's example pair,
     // so that request only shows signing in the timeline.
     let auth = c.create_folder(&ItemPath::root(), "Auth").expect("auth");
+    tag_manual(&mut c, &auth);
     add_request(
         &mut c,
         &auth,
@@ -347,6 +364,7 @@ fn build_demo(root: &Path) {
     let graphql = c
         .create_folder(&ItemPath::root(), "GraphQL")
         .expect("graphql");
+    tag_manual(&mut c, &graphql);
     add_graphql_request(
         &mut c,
         &graphql,
@@ -509,4 +527,25 @@ fn the_demo_data_file_feeds_get_user() {
         data.row(2).expect("row"),
         [("userId".to_owned(), "3".to_owned())]
     );
+}
+
+// Requests to hosts other than JSONPlaceholder carry the manual tag, so a plain run of the
+// demo calls JSONPlaceholder only.
+#[test]
+fn only_jsonplaceholder_requests_are_left_untagged_manual() {
+    let c = Collection::open(demo_dir()).expect("opens");
+    let plan = c.plan(c.root()).expect("plan");
+    let mut manual = 0;
+    for (request, tags) in plan.requests().zip(plan.tags()) {
+        let outside = !request.url().starts_with("{{baseUrl}}");
+        assert_eq!(
+            tags.iter().any(|t| t == "manual"),
+            outside,
+            "{} at {}",
+            request.name(),
+            request.url()
+        );
+        manual += usize::from(outside);
+    }
+    assert_eq!(manual, 7);
 }

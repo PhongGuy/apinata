@@ -311,6 +311,7 @@ fn enter_on_the_focused_cancel_button_cancels_without_writing(cx: &mut TestAppCo
 fn a_dialog_without_an_environment_defaults_to_the_collection(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
+    clear_environment(cx, &ws, &root);
     let (_win, form) = dialog(cx, &ws, &root);
     let answer = form.read_with(cx, |f, cx| f.answer(cx)).expect("a name");
     assert_eq!(answer.target, VarTarget::Collection);

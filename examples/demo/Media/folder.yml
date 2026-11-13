@@ -2,6 +2,8 @@ info:
   name: Media
   type: folder
   seq: 3
+  tags:
+    - manual
 
 request:
   auth: inherit

@@ -2,6 +2,8 @@ info:
   name: Auth
   type: folder
   seq: 4
+  tags:
+    - manual
 
 request:
   auth: inherit

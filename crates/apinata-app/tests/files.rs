@@ -147,6 +147,7 @@ fn session_round_trips_with_per_collection_state() {
     let c = CollectionSession {
         tabs: vec!["users/list.yml".into()],
         environment: Some("dev".into()),
+        no_environment: true,
         preview: Some("users/list.yml".into()),
         examples: vec![SavedExampleTab {
             example: SavedExample {

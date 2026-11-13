@@ -75,6 +75,7 @@ fn an_error_clears_on_its_own_edit_or_an_environment_change(cx: &mut TestAppCont
     http_ready(cx);
     let col = refused_tree();
     let (_state, ws, root) = open_dir(cx, &col);
+    clear_environment(cx, &ws, &root);
     let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
     let model = editor.read_with(cx, |e, _| e.send_model().clone());
     model.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));

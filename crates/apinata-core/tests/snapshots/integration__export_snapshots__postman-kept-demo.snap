@@ -5,7 +5,7 @@ expression: "rendered(&postman_with(&c, &keep))"
 {
   "info": {
     "name": "Apinata Demo",
-    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\nSending a request needs network access.",
+    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n- **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\nMedia, Auth and GraphQL call other sites, so they are tagged `manual` and Run collection leaves them unticked; tick them to include them. The SigV4 example only shows signing, so its made-up address never answers.\n\nSending a request needs network access.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [

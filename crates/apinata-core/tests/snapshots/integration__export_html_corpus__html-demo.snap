@@ -1,6 +1,5 @@
 ---
 source: crates/apinata-core/tests/export_html_corpus.rs
-assertion_line: 25
 expression: rendered(&out)
 ---
 <!doctype html>
@@ -91,7 +90,9 @@ tr.disabled td { opacity: 0.55; }
 <li><strong>Posts</strong> and <strong>Users</strong> call <a href="https://jsonplaceholder.typicode.com">JSONPlaceholder</a>, a free fake REST API.</li>
 <li><strong>Media</strong> calls <a href="https://httpbin.org">httpbin</a> for responses that are not JSON.</li>
 <li><strong>Auth</strong> shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.</li>
+<li><strong>GraphQL</strong> calls <a href="https://graphqlzero.almansi.me">GraphQLZero</a>, JSONPlaceholder's data over GraphQL.</li>
 </ul>
+<p>Media, Auth and GraphQL call other sites, so they are tagged <code>manual</code> and Run collection leaves them unticked; tick them to include them. The SigV4 example only shows signing, so its made-up address never answers.</p>
 <p>Sending a request needs network access.</p>
 </div>
 </header>
