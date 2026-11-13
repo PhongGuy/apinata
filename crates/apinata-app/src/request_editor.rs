@@ -2469,14 +2469,7 @@ impl Render for RequestEditor {
                 &self.column_scroll,
                 cx,
             ));
-        // Side by side the response needs its header's measured width plus its gutter; it is
-        // intrinsic, so a drag never changes it and the axis flips only on a resize or zoom.
-        let response_need = self
-            .response
-            .read(cx)
-            .min_width()
-            .unwrap_or_else(|| style::resolve(style::RESPONSE_STRIP_WIDTH, window))
-            + style::resolve(style::SPACE_2, window);
+        let response_need = self.response_need(window, cx);
         // A new orientation gets a fresh split, sized again from the workspace's ratio.
         let axis = Self::axis_in(window, cx, response_need);
         if axis != self.split_axis {
@@ -2957,18 +2950,37 @@ impl RequestEditor {
     /// side-by-side layout back.
     fn axis_in(window: &Window, cx: &App, response_need: Pixels) -> Orientation {
         let saved = Self::orientation_in(cx);
-        let Some(room) = cx.try_global::<TabAreaRoom>().map(|r| r.0) else {
-            return saved;
-        };
-        let need = Self::url_row_need(window);
-        // The request pane keeps what the response's minimum leaves of the split (the tab
-        // area less the editor's insets), not a share a drag changes, so no flip under the divider.
-        let pane = room - style::resolve(style::PANE_INSET, window) * 2. - response_need;
-        if saved == Orientation::Horizontal && pane < need {
+        if saved == Orientation::Horizontal && Self::too_narrow_in(window, cx, response_need) {
             Orientation::Vertical
         } else {
             saved
         }
+    }
+
+    /// Whether the tab area is too narrow to show this editor side by side, so a side-by-side
+    /// choice shows stacked.
+    pub fn too_narrow_for_side_by_side(&self, window: &Window, cx: &App) -> bool {
+        Self::too_narrow_in(window, cx, self.response_need(window, cx))
+    }
+
+    // The request pane keeps what the response's minimum leaves of the split (the tab area less
+    // the editor's insets), not a share a drag changes, so no flip under the divider.
+    fn too_narrow_in(window: &Window, cx: &App, response_need: Pixels) -> bool {
+        let Some(room) = cx.try_global::<TabAreaRoom>().map(|r| r.0) else {
+            return false;
+        };
+        let pane = room - style::resolve(style::PANE_INSET, window) * 2. - response_need;
+        pane < Self::url_row_need(window)
+    }
+
+    // Side by side the response needs its header's measured width plus its gutter; it is
+    // intrinsic, so a drag never changes it and the axis flips only on a resize or zoom.
+    fn response_need(&self, window: &Window, cx: &App) -> Pixels {
+        self.response
+            .read(cx)
+            .min_width()
+            .unwrap_or_else(|| style::resolve(style::RESPONSE_STRIP_WIDTH, window))
+            + style::resolve(style::SPACE_2, window)
     }
 
     /// The height of the request column's rows above the section body, as last laid out, or

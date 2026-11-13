@@ -25,7 +25,7 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 23] = [
+const FLAGS: [(&str, Clear, &[&str]); 24] = [
     (
         "close_others",
         |a| a.close_others = false,
@@ -37,6 +37,11 @@ const FLAGS: [(&str, Clear, &[&str]); 23] = [
         &["tabs.reopen"],
     ),
     ("stop", |a| a.stop = false, &["request.stop"]),
+    (
+        "side_by_side",
+        |a| a.side_by_side = false,
+        &["view.toggle_layout"],
+    ),
     ("discard", |a| a.discard = false, &["request.discard"]),
     ("save_all", |a| a.save_all = false, &["request.save_all"]),
     (
@@ -718,4 +723,22 @@ fn check_for_updates_needs_an_update_source(cx: &mut TestAppContext) {
     updates.update(cx, |u, cx| u.set_checker(Some(checker), cx));
     frame(cx, s.win);
     assert!(palette_lists(cx, &s, check));
+}
+
+// Too narrow for side by side the layout toggle would change nothing, so the palette leaves it
+// out; with room for both panes it is listed.
+#[gpui_kit::test]
+fn toggle_layout_needs_room_for_side_by_side(cx: &mut TestAppContext) {
+    use gpui_kit::{VisualTestContext, px, size};
+    let col = three();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    let toggle = label("view.toggle_layout");
+    for (width, listed) in [(800., false), (1800., true)] {
+        VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(width), px(600.)));
+        for _ in 0..3 {
+            frame(cx, s.win);
+        }
+        assert_eq!(palette_lists(cx, &s, toggle), listed, "at {width} px");
+    }
 }

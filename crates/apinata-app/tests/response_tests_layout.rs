@@ -202,3 +202,61 @@ fn a_parse_error_reads_as_a_sentence_with_the_engine_text_in_a_tooltip(cx: &mut 
     let tip = tooltip(cx, win, ("assertion-text", 0), "assertion-tooltip").unwrap_or_default();
     assert!(tip.contains(raw), "{tip:?}");
 }
+
+// The tooltip of a failed line holds only the engine's own words, since the line above it
+// already reads in full.
+#[gpui_kit::test]
+fn the_assertion_tooltip_shows_only_the_engine_text(cx: &mut TestAppContext) {
+    let check = Assertion::new("res.status", "eq", Some("7a4".into()));
+    let raw = "SyntaxError: expecting ';'";
+    let outcome = AssertionOutcome::new(check, Verdict::fail("74", Some(raw.into())));
+    let (_s, win) = tests_pane(cx, 600., vec![outcome]);
+    let tip = tooltip(cx, win, ("assertion-text", 0), "assertion-tooltip");
+    assert_eq!(tip.as_deref(), Some(raw));
+}
+
+// A long failed line's tooltip opens next to the pointer rather than stretching back across
+// the window.
+#[gpui_kit::test]
+fn the_assertion_tooltip_opens_near_the_pointer(cx: &mut TestAppContext) {
+    let long = "a-long-expected-value-".repeat(6);
+    let check = Assertion::new("res.body.name", "eq", Some(format!("{long}7a4")));
+    let raw = "SyntaxError: expecting ';'";
+    let outcome = AssertionOutcome::new(check, Verdict::fail("74", Some(raw.into())));
+    let (_s, win) = tests_pane(cx, 1400., vec![outcome]);
+    assert!(tooltip(cx, win, ("assertion-text", 0), "assertion-tooltip").is_some());
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let pointer = w.mouse_position();
+        let tip = w.find("assertion-tooltip").bounds();
+        let reach = px(320.);
+        assert!(
+            (tip.left() - pointer.x).abs() <= reach && (tip.right() - pointer.x).abs() <= reach,
+            "the tooltip {tip:?} sits far from the pointer {pointer:?}"
+        );
+    })
+    .unwrap();
+}
+
+// An unquoted expected value that is not a number or keyword is compared as text, and a
+// failed line says so; a quoted or numeric value needs no such note.
+#[test]
+fn an_unquoted_text_value_says_it_is_compared_as_text() {
+    let fail = |value: &str, actual: &str| {
+        let check = Assertion::new("res.body.name", "eq", Some(value.into()));
+        assertion_line(&AssertionOutcome::new(check, Verdict::fail(actual, None))).1
+    };
+    let text = fail("foo bar", "\"Leanne\"");
+    assert!(text.contains("compared as text"), "{text}");
+    assert!(text.contains("quote"), "{text}");
+    let number = fail("foo bar", "74");
+    assert!(number.contains("compared as text"), "{number}");
+    assert!(number.contains("number"), "{number}");
+    for plain in ["\"foo bar\"", "'foo bar'", "200", "true", "null"] {
+        let line = fail(plain, "\"Leanne\"");
+        assert!(!line.contains("compared as text"), "{plain}: {line}");
+    }
+    let passed = Assertion::new("res.body.name", "eq", Some("foo bar".into()));
+    let line = assertion_line(&AssertionOutcome::new(passed, Verdict::Pass)).1;
+    assert!(!line.contains("compared as text"), "{line}");
+}

@@ -168,6 +168,13 @@ impl Assertion {
         self.description.as_deref()
     }
 
+    /// Whether a single-value check reads its right side as plain text although it is not
+    /// quoted: it is no number, keyword, variable or template.
+    pub fn compares_as_text(&self) -> bool {
+        let (op, text) = rhs::split(self.bruno_value());
+        rhs::reads_as_text(op, &text)
+    }
+
     /// Converts one list entry as Bruno's filestore `toBrunoAssertions` does
     /// (bruno-filestore/src/formats/yml/common/assertions.ts:115-146).
     pub(crate) fn from_yaml(entry: &Yaml) -> Assertion {

@@ -4,10 +4,11 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::{ElementExt as _, Placement};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::prelude::*;
-use gpui_kit::{Action, Anchor, App, FocusHandle, IntoElement, TestSupportExt as _, div};
+use gpui_kit::{Action, Anchor, App, Bounds, FocusHandle, IntoElement, TestSupportExt as _, div};
 
 use crate::commands::registry;
 use crate::stand_in::StandIn;
@@ -192,17 +193,26 @@ pub fn app_menu_disabled_reasons(
 }
 
 // A greyed entry drawn as an element, since the kit's plain items take no tooltip; it fills the
-// row so a hover anywhere on it shows the reason.
+// row so a hover anywhere on it shows the reason, which opens beside the menu so it never hides
+// the entries below.
 fn greyed_entry(label: &'static str, reason: &'static str) -> PopupMenuItem {
     PopupMenuItem::element(move |_, cx| {
+        let row = Rc::new(Cell::new(Bounds::default()));
+        let painted = Rc::clone(&row);
         crate::ui::menu_label_cue(div(), cx)
             .id(label)
             .test_support()
             .w_full()
             .aria_label(label)
             .aria_description(reason)
-            .tooltip(crate::ui::text_tooltip(APP_MENU_REASON_TIP, reason))
+            .tooltip(crate::ui::text_tooltip_beside(
+                APP_MENU_REASON_TIP,
+                reason,
+                row,
+                Placement::Right,
+            ))
             .child(label)
+            .on_prepaint(move |bounds, _, _| painted.set(bounds))
     })
     .disabled(true)
 }
