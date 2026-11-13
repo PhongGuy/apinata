@@ -249,6 +249,9 @@ fn an_unquoted_text_value_says_it_is_compared_as_text() {
     let text = fail("foo bar", "\"Leanne\"");
     assert!(text.contains("compared as text"), "{text}");
     assert!(text.contains("quote"), "{text}");
+    // It already was compared as text, so the hint cannot advise quoting "if that is meant".
+    assert!(!text.contains("if that is meant"), "{text}");
+    assert!(text.contains("as written"), "{text}");
     let number = fail("foo bar", "74");
     assert!(number.contains("compared as text"), "{number}");
     assert!(number.contains("number"), "{number}");
