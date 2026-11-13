@@ -275,3 +275,81 @@ fn palette_rows_of_a_lone_name_are_unchanged(cx: &mut TestAppContext) {
     assert_eq!(palette_details(cx, s.win, "Get user"), ["c| / users"]);
     assert!(!present(cx, s.win, ("palette-request-hint", 0usize)));
 }
+
+// The text drawn under the element `id`, its pieces in paint order joined by "|".
+fn text_of(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    id: impl Into<gpui_kit::ElementId>,
+) -> String {
+    let id = id.into();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        (gpui_kit::base::test_support::texts(w).iter())
+            .filter(|t| t.path().contains(&id))
+            .map(|t| t.text().to_owned())
+            .collect::<Vec<_>>()
+            .join("|")
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn twins_in_folders_named_after_them_are_told_apart_by_their_parents(cx: &mut TestAppContext) {
+    let tmp = tempfile::tempdir().unwrap();
+    let roots = [
+        tmp.path().join("qa/Apinata Demo"),
+        tmp.path().join("examples/Apinata Demo"),
+    ];
+    for dir in &roots {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(
+            dir.join("opencollection.yml"),
+            "opencollection: 1.0.0\ninfo:\n  name: Apinata Demo\n",
+        )
+        .unwrap();
+    }
+    support::init(cx);
+    let state = tempfile::tempdir().unwrap();
+    let session = session_at(cx, &state, Session::default());
+    let ws = workspace(cx, &session);
+    for root in &roots {
+        ws.update(cx, |w, cx| w.open(root.clone(), cx));
+    }
+    cx.run_until_parked();
+    let shared = ws.clone();
+    let (win, _view) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| Shell::new(shared, w, cx))
+            })
+        })
+        .unwrap();
+    for root in &roots {
+        ws.update(cx, |w, cx| w.open_runner(root, ItemPath::root(), cx))
+            .expect("a runner tab");
+    }
+    frame(cx, win);
+    let tabs = [0usize, 1].map(|ix| text_of(cx, win, ("tab-detail", ix)));
+    assert_eq!(
+        tabs,
+        ["qa", "examples"],
+        "runner tabs name the parent folders"
+    );
+    let title = text_of(cx, win, "collection-switcher-hint");
+    assert!(
+        ["qa", "examples"].contains(&title.as_str()),
+        "the title bar names the parent folder: {title:?}"
+    );
+    cx.update_window(win, |_, w, cx| {
+        w.within("title-bar").click("collection-switcher", cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    let rows = [0usize, 1].map(|ix| text_of(cx, win, ("switch-open-hint", ix)));
+    assert_eq!(
+        rows,
+        ["qa", "examples"],
+        "the switcher rows name the parent folders"
+    );
+}
