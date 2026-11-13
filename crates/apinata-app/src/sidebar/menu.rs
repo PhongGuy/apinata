@@ -80,9 +80,10 @@ pub enum MenuEntry {
 }
 
 impl MenuEntry {
-    /// The entry's menu label; entries backed by a command take its registry name.
+    /// The entry's menu label; entries backed by a command take its registry name, less the
+    /// ellipsis the app menu and palette show, since tree menu rows carry none.
     pub fn label(self) -> &'static str {
-        match self {
+        let name = match self {
             MenuEntry::NewRequest => label("collection.new_request"),
             MenuEntry::NewGraphqlRequest => label("collection.new_graphql_request"),
             MenuEntry::NewFolder => label("collection.new_folder"),
@@ -113,7 +114,8 @@ impl MenuEntry {
             MenuEntry::ShowChanges => "Show changes",
             MenuEntry::SaveDraft => "Save",
             MenuEntry::CloseDraft => "Close",
-        }
+        };
+        name.trim_end_matches('…')
     }
 
     /// Whether the entry destroys what it acts on, so the menu draws it in the danger colour.

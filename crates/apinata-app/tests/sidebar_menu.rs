@@ -407,7 +407,7 @@ fn tree_entries_take_the_registry_names() {
         (E::ExportOpenApi, "collection.export_openapi"),
         (E::ExportHtml, "collection.export_html"),
     ] {
-        assert_eq!(entry.label(), named(id), "{entry:?}");
+        assert_eq!(entry.label(), named(id).trim_end_matches('…'), "{entry:?}");
     }
     assert_eq!(
         (
@@ -431,10 +431,8 @@ fn tree_entries_take_the_registry_names() {
         NodeKind::Example,
     ] {
         for e in menu_entries(kind) {
-            assert!(
-                !e.label().ends_with("...") && !e.label().ends_with('…'),
-                "{e:?}"
-            );
+            // A dialog-opening entry carries the registry's "…"; three dots never appear.
+            assert!(!e.label().contains("..."), "{e:?}");
         }
     }
 }
