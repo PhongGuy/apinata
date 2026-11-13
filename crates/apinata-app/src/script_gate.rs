@@ -5,7 +5,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use apinata_core::{ScriptDecision, ScriptOptions, ScriptTextKind, ScriptTrust, plan_script_texts};
+use apinata_core::{
+    ScriptDecision, ScriptOptions, ScriptTextKind, ScriptTrust, is_hidden_char,
+    is_variation_selector, plan_script_texts,
+};
 use gpui_kit::{AnyWindowHandle, App, AsyncApp, Entity, Global};
 
 use crate::app::AppState;
@@ -181,14 +184,46 @@ pub fn trust_question_about<'a>(
     ask
 }
 
-// A shown expression cut to a length that fits the dialog.
+// An author's expression as the dialog shows it, in quotes on one line: whitespace runs
+// become one space and invisible or direction characters are dropped, so it cannot pose as
+// dialog text; a long one is cut and says how much was hidden.
 fn clipped(text: &str) -> String {
     const MAX: usize = 60;
-    if text.chars().count() <= MAX {
-        return text.to_owned();
+    let kept: String = text
+        .chars()
+        .filter(|&c| c.is_whitespace() || !(is_hidden_char(c) || is_format_char(c)))
+        .collect();
+    let clean = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    let count = clean.chars().count();
+    if count <= MAX {
+        return format!("\u{201c}{clean}\u{201d}");
     }
-    let cut: String = text.chars().take(MAX - 1).collect();
-    format!("{cut}\u{2026}")
+    let cut: String = clean.chars().take(MAX - 1).collect();
+    format!(
+        "\u{201c}{}\u{2026}\u{201d} ({} more characters)",
+        cut.trim_end(),
+        count - (MAX - 1)
+    )
+}
+
+// Unicode format characters (Cf) and variation selectors that `is_hidden_char` leaves out.
+fn is_format_char(c: char) -> bool {
+    is_variation_selector(c)
+        || matches!(
+            c,
+            '\u{0600}'..='\u{0605}'
+                | '\u{06dd}'
+                | '\u{070f}'
+                | '\u{0890}'..='\u{0891}'
+                | '\u{08e2}'
+                | '\u{180e}'
+                | '\u{fff9}'..='\u{fffb}'
+                | '\u{110bd}'
+                | '\u{110cd}'
+                | '\u{13430}'..='\u{1343f}'
+                | '\u{1bca0}'..='\u{1bca3}'
+                | '\u{1d173}'..='\u{1d17a}'
+        )
 }
 
 /// What the gate decided before anything is asked.

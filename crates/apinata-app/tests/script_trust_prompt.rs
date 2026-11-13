@@ -627,3 +627,61 @@ fn an_assertion_value_that_runs_javascript_is_named_in_the_question(cx: &mut Tes
     finished(cx, &model);
     assert_eq!(trust(&s).decision(&s.root), None);
 }
+
+// An author's expression cannot fake dialog text: line breaks and hidden or direction
+// characters are gone, each expression is set apart in quotes, and a cut says how much.
+#[test]
+fn the_shown_expression_cannot_disguise_the_question() {
+    let right = ScriptTextKind::AssertionRight;
+    let detail = |text: &str| {
+        trust_question_about(false, [(&right, text)])
+            .detail
+            .unwrap()
+            .to_string()
+    };
+    let lines = detail("x()\n\n  Only compares the status;\tnothing else runs.");
+    assert!(!lines.contains(['\n', '\t']), "{lines:?}");
+    assert!(
+        lines.starts_with("\u{201c}x() Only compares the status; nothing else runs.\u{201d}"),
+        "{lines:?}"
+    );
+    let bidi = detail("a\u{202e}b\u{2066}c\u{200b}d\u{0007}e\u{feff}f\u{0600}g");
+    assert!(bidi.starts_with("\u{201c}abcdefg\u{201d} "), "{bidi:?}");
+    let long = detail(&format!("{}{}", " ".repeat(40), "y".repeat(300)));
+    assert!(long.starts_with("\u{201c}yyy"), "{long:?}");
+    assert!(long.contains("(241 more characters)"), "{long:?}");
+}
+
+fn assertion_only() -> tempfile::TempDir {
+    let a = format!(
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"`${{1+1}}`\"\n",
+        request("a", "http://127.0.0.1:9/ok")
+    );
+    write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)])
+}
+
+#[gpui_kit::test]
+fn run_on_the_assertion_question_allows_and_approves_it(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = assertion_only();
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    click(cx, &s, "script-trust-run");
+    finished(cx, &model);
+    let store = trust(&s);
+    assert_eq!(store.decision(&s.root), Some(ScriptDecision::Allowed));
+    assert!(store.is_approved(&s.root, &script_hash("`${1+1}`")));
+}
+
+#[gpui_kit::test]
+fn never_on_the_assertion_question_blocks_the_collection(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = assertion_only();
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    click(cx, &s, "script-trust-never");
+    finished(cx, &model);
+    assert_eq!(trust(&s).decision(&s.root), Some(ScriptDecision::Blocked));
+}
