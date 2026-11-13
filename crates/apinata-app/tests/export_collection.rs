@@ -443,6 +443,24 @@ fn with_grpc_items(n: usize) -> tempfile::TempDir {
     write_tree(&files)
 }
 
+// `n` HTTP requests, each with its own tag, so the report has `n` lines that do not group.
+fn with_tagged_requests(n: usize) -> tempfile::TempDir {
+    let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
+    for i in 1..=n {
+        let text = request(&format!("r{i:02}"), "http://x/a").replacen(
+            "  seq: 1\n",
+            &format!("  seq: {i}\n  tags: [t{i}]\n"),
+            1,
+        );
+        files.push((format!("r{i:02}.yml"), text));
+    }
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    write_tree(&files)
+}
+
 // Exports to Postman through the collection menu into a fresh file and returns its path.
 fn export_postman(cx: &mut TestAppContext, s: &Started, out: &tempfile::TempDir) -> PathBuf {
     choose_menu(
@@ -481,7 +499,7 @@ fn dialog_open(cx: &mut TestAppContext, s: &Started) -> bool {
 }
 
 #[gpui_kit::test]
-fn show_details_lists_each_item_the_export_left_out(cx: &mut TestAppContext) {
+fn show_details_gathers_the_items_the_export_left_out(cx: &mut TestAppContext) {
     let col = with_grpc_items(2);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
@@ -501,13 +519,11 @@ fn show_details_lists_each_item_the_export_left_out(cx: &mut TestAppContext) {
         shown(cx, &s, "export-summary"),
         format!("2 items were not carried over to {}.", file.display())
     );
-    for (ix, name) in ["g1", "g2"].into_iter().enumerate() {
-        assert_eq!(
-            shown(cx, &s, ("export-note", ix)),
-            format!("{name}: only HTTP requests are exported; this gRPC item was left out")
-        );
-    }
-    assert!(!present(cx, s.win, ("export-note", 2usize)));
+    assert_eq!(
+        shown(cx, &s, ("export-note", 0usize)),
+        "only HTTP requests are exported; this gRPC item was left out, in 2 places: g1; g2"
+    );
+    assert!(!present(cx, s.win, ("export-note", 1usize)));
     cx.update_window(s.win, |_, w, cx| {
         use gpui_kit::test::TestWindowExt as _;
         w.click("export-report-close", cx)
@@ -531,7 +547,7 @@ fn a_clean_export_offers_no_details(cx: &mut TestAppContext) {
 fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, point};
-    let col = with_grpc_items(60);
+    let col = with_tagged_requests(60);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
     export_postman(cx, &s, &out);
@@ -575,7 +591,7 @@ fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
 fn the_export_report_keeps_its_lines_clear_of_the_scrollbar(cx: &mut TestAppContext) {
     use apinata_app::style::SCROLLBAR_GUTTER;
     use gpui_kit::test::TestWindowExt as _;
-    let col = with_grpc_items(60);
+    let col = with_tagged_requests(60);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
     export_postman(cx, &s, &out);
