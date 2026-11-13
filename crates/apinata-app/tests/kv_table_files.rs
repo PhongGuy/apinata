@@ -325,7 +325,7 @@ fn file_rows_keep_the_columns_of_text_rows(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_cut_file_path_keeps_its_file_name_and_tips_the_full_path(cx: &mut TestAppContext) {
+fn a_file_body_row_shows_its_file_name_and_tips_the_full_path(cx: &mut TestAppContext) {
     let path = format!(
         "/srv/{}reports/final-report.pdf",
         "a-rather-long-folder-name/".repeat(12)
@@ -343,9 +343,7 @@ fn a_cut_file_path_keeps_its_file_name_and_tips_the_full_path(cx: &mut TestAppCo
             (e.value().map(str::to_owned), e.label().map(str::to_owned))
         })
         .unwrap();
-    let shown = shown.expect("the shown path");
-    assert!(shown.contains('…'), "{shown}");
-    assert!(shown.ends_with("reports/final-report.pdf"), "{shown}");
+    assert_eq!(shown.as_deref(), Some("final-report.pdf"));
     assert_eq!(full.as_deref(), Some(path.as_str()));
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
@@ -393,7 +391,7 @@ fn a_file_body_row_draws_a_round_mark_and_picks_one_file(cx: &mut TestAppContext
     for ix in [0, 1] {
         assert_eq!(
             mark_and_picker(cx, win, ix),
-            (true, Some(s("File"))),
+            (true, Some(s("Change\u{2026}"))),
             "row {ix}"
         );
     }
