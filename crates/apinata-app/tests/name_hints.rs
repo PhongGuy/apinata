@@ -117,6 +117,34 @@ fn same_named_collections_show_the_part_of_their_folder_that_differs() {
     assert_eq!(tags[c], "Demo");
 }
 
+#[test]
+fn a_folder_named_after_its_collection_is_not_repeated_in_the_hint() {
+    let a = Path::new("/home/dan/qa/Apinata Demo");
+    let b = Path::new("/home/dan/examples/Apinata Demo");
+    let got = collection_hints(&[(a, "Apinata Demo"), (b, "Apinata Demo")]);
+    assert_eq!(got, [some("qa"), some("examples")]);
+    // Beside a twin in another folder, the one named after itself names its parent instead.
+    let c = Path::new("/home/dan/Apinata/Apinata Demo");
+    let d = Path::new("/home/dan/Apinata/demo");
+    let got = collection_hints(&[(c, "Apinata Demo"), (d, "Apinata Demo")]);
+    assert_eq!(got, [some("Apinata"), some("demo")]);
+}
+
+#[test]
+fn a_collection_nested_in_a_same_named_one_keeps_its_folder_to_stay_apart() {
+    let a = Path::new("/home/dan/a");
+    let b = Path::new("/home/dan/a/Demo");
+    let got = collection_hints(&[(a, "Demo"), (b, "Demo")]);
+    assert!(got.iter().all(Option::is_some), "{got:?}");
+    assert_ne!(got[0], got[1]);
+}
+
+#[test]
+fn a_lone_collection_named_after_its_folder_gets_no_hint() {
+    let a = Path::new("/home/dan/qa/Apinata Demo");
+    assert_eq!(collection_hints(&[(a, "Apinata Demo")]), [None]);
+}
+
 #[cfg(windows)]
 #[test]
 fn collections_on_two_drives_name_their_drives() {

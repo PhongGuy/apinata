@@ -13,6 +13,7 @@ use apinata_core::import::{
 use apinata_core::{DraftSnapshot, ItemPath};
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Replace;
 use gpui_kit::component::kbd::Kbd;
@@ -1818,7 +1819,8 @@ impl Shell {
                         .min_w_0()
                         .truncate()
                         .text_color(muted)
-                        .child(hint)
+                        .child(hint.clone())
+                        .test_text(hint)
                 })),
                 None => b.label("No collection").text_color(muted),
             });
@@ -3291,7 +3293,8 @@ fn switcher_row(
                         .flex_shrink(8.)
                         .truncate()
                         .text_color(muted)
-                        .child(hint)
+                        .child(hint.clone())
+                        .test_text(hint)
                 })),
         )
 }
