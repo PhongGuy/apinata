@@ -49,15 +49,23 @@ fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item =
                     let view = w.find("tab-strip-viewport").bounds();
                     let at_end = w.try_find("tab-strip-fade-right").is_none();
                     let fade = w.try_find("tab-strip-fade-left").map(|f| f.bounds());
-                    // The cover is solid up to its last fade width, which only grades into
-                    // the strip; the whole cut tab, glyph slot included, must lie in the solid part.
-                    let grade =
+                    // The cover is solid up to where it grades over the gap before the next tab,
+                    // at most a fade width; the whole cut tab, glyph slot included, must lie in
+                    // the solid part.
+                    let fade_w =
                         apinata_app::style::resolve(apinata_app::style::STRIP_FADE_WIDTH, w);
                     let cut: Vec<String> = (0..count)
                         .filter_map(|ix| {
                             let b = w.within("tab-strip").find(ix).bounds();
                             let cut = b.left() < view.left() - px(0.5)
                                 && b.right() > view.left() + px(0.5);
+                            let gap = if ix + 1 < count {
+                                (w.within("tab-strip").find(ix + 1).bounds().left() - b.right())
+                                    .max(px(0.))
+                            } else {
+                                px(0.)
+                            };
+                            let grade = gap.min(fade_w);
                             let faded = at_end
                                 && fade.is_some_and(|f| b.right() <= f.right() - grade + px(0.5));
                             (cut && !faded).then(|| format!("tab {ix} {b:?}"))
