@@ -24,7 +24,7 @@ use crate::body_node::{
     AssertCaretJsonValue, CopyCaretJsonPath, CopyCaretJsonValue, SetCaretJsonVariable,
 };
 use crate::commands::registry;
-use crate::keymap::{DiscardChanges, RedoActive, SaveActive, UndoActive};
+use crate::keymap::{DiscardChanges, RedoActive, SaveActive, ToggleOrientation, UndoActive};
 use crate::shell::{ShowChanges, SwitchBranch};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
@@ -297,6 +297,8 @@ pub struct Availability {
     pub git_repo: bool,
     /// "Check for updates": this build has an update source.
     pub updates: bool,
+    /// "Toggle layout": the active request has room to show side by side.
+    pub side_by_side: bool,
 }
 
 impl Availability {
@@ -332,6 +334,7 @@ impl Availability {
             undo_delete: true,
             git_repo: true,
             updates: true,
+            side_by_side: true,
         }
     }
 }
@@ -424,6 +427,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.git_repo, SwitchBranch.name()),
         (available.git_repo, ShowChanges.name()),
         (available.updates, CheckForUpdates.name()),
+        (available.side_by_side, ToggleOrientation.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -591,6 +595,7 @@ fn show(
             tab_area.as_ref(),
             in_repo,
             updates,
+            window,
             cx,
         );
         let (rem, cap) = (window.rem_size(), list_cap(window));
@@ -607,6 +612,7 @@ fn show(
                         tab_area.as_ref(),
                         in_repo,
                         updates,
+                        window,
                         cx,
                     );
                     let items = listed(commands, available);
@@ -636,6 +642,7 @@ fn availability_now(
     tab_area: Option<&Entity<TabArea>>,
     git_repo: bool,
     updates: bool,
+    window: &Window,
     cx: &App,
 ) -> Availability {
     let (close_to_right, reveal) = workspace.map_or((true, true), |w| {
@@ -674,6 +681,7 @@ fn availability_now(
         collection_open: workspace.is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
         git_repo,
         updates,
+        side_by_side: tab_area.is_none_or(|t| !t.read(cx).too_narrow_for_side_by_side(window, cx)),
     }
 }
 
