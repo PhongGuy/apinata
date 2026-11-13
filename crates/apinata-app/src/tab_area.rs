@@ -370,7 +370,7 @@ impl TabArea {
             drop: None,
             before_menu: None,
             scroll: ScrollHandle::new(),
-            reveal: ui::Reveal::default(),
+            reveal: ui::Reveal::whole_at_left(),
             revealed: None,
             fades: ui::StripFades::default(),
             focus: cx.focus_handle(),
@@ -2827,7 +2827,10 @@ impl TabArea {
             .on_scroll(ui::wheel_sideways(&self.scroll))
             .child(bar)
             .children(fades)
-            .child(self.reveal.watch(&self.scroll, selected))
+            .child(
+                self.reveal
+                    .watch_strip(&self.scroll, selected, entries.len()),
+            )
             .into_any_element()
     }
 }

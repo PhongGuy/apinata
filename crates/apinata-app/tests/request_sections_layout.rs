@@ -92,6 +92,17 @@ fn never_cut(
                             (cut && !faded).then(|| format!("{sec:?} {b:?}"))
                         })
                         .collect();
+                    // With no tab cut at the left edge, the left fade keeps its usual width.
+                    let any_cut = Section::ALL.iter().any(|&sec| {
+                        let b = w.find(("section", sec as usize)).bounds();
+                        b.left() < view.left() - px(0.5) && b.right() > view.left() + px(0.5)
+                    });
+                    let grade =
+                        apinata_app::style::resolve(apinata_app::style::STRIP_FADE_WIDTH, w);
+                    assert!(
+                        any_cut || fade.is_none_or(|f| f.size.width <= grade + px(0.5)),
+                        "the left fade covers {fade:?} with no tab cut"
+                    );
                     Some((cut, format!("{view:?}, left fade {fade:?}")))
                 })
                 .unwrap();
