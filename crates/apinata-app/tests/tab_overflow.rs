@@ -823,22 +823,30 @@ fn check_min_scroll(cx: &mut TestAppContext, width: f32, zoom: f32) {
             .unwrap();
         let whole = before.left() >= view_left + if fl { fade } else { px(0.) } - px(1.)
             && before.right() <= view_right - if fr { fade } else { px(0.) } + px(1.);
-        let strip_before: Vec<_> = (0..count)
-            .map(|k| view_and_tab(cx, s.win, k).2.left())
-            .collect();
-        let sliver_before = left_sliver(cx, s.win, count);
+        let strip_before: Vec<_> = (0..count).map(|k| view_and_tab(cx, s.win, k).2).collect();
+        // Whether the strip moved by `shift` from here leaves some tab cut at its left edge.
+        let cut_after = |shift: gpui_kit::Pixels| {
+            strip_before.iter().any(|b| {
+                b.left() + shift < view_left - px(0.5) && b.right() + shift > view_left + px(0.5)
+            })
+        };
         s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
         frames(cx, s.win, 6);
         let why = format!("{width} px, zoom {zoom}, tab {ix}");
         assert_every_tab_drawn(cx, s.win, count, &why);
         let (_, _, after) = view_and_tab(cx, s.win, ix);
-        // The least scroll may leave a neighbour cut at the left edge; the strip then scrolls
-        // it whole or out of view where it can, so the tab lands elsewhere but clear of the fades.
-        let snapped = clear_of_fades(cx, s.win, ix, fade);
-        if whole && sliver_before.is_some() {
+        // The least scroll may leave a neighbour cut at the left edge; only then may the strip
+        // land elsewhere, with that tab scrolled whole or out and the chosen one clear of the fades.
+        let snap = |cx: &mut TestAppContext, least: gpui_kit::Pixels| {
+            cut_after(least)
+                && clear_of_fades(cx, s.win, ix, fade)
+                && left_sliver(cx, s.win, count).is_none()
+        };
+        if whole && (after.left() - before.left()).abs() >= px(1.) {
             assert!(
-                snapped,
-                "{why}: the left-edge snap left the tab under a fade"
+                snap(cx, px(0.)),
+                "{why}: a whole tab moved the strip by {:?} with no tab to snap",
+                after.left() - before.left()
             );
         } else if whole {
             assert!(
@@ -850,7 +858,7 @@ fn check_min_scroll(cx: &mut TestAppContext, width: f32, zoom: f32) {
                 .map(|k| view_and_tab(cx, s.win, k).2.left())
                 .collect();
             for (k, (a, b)) in strip_before.iter().zip(&moved).enumerate() {
-                assert!((*a - *b).abs() < px(1.), "{why}: tab {k} moved");
+                assert!((a.left() - *b).abs() < px(1.), "{why}: tab {k} moved");
             }
         } else if before.left() < view_left + if fl { fade } else { px(0.) }
             || after.size.width > view_right - view_left
@@ -858,13 +866,14 @@ fn check_min_scroll(cx: &mut TestAppContext, width: f32, zoom: f32) {
             // Clears the left fade, except the first tab, which only reaches the strip's start.
             let want = if ix == 0 { view_left } else { view_left + fade };
             assert!(
-                (after.left() - want).abs() < px(1.) || snapped,
+                (after.left() - want).abs() < px(1.) || snap(cx, want - before.left()),
                 "{why}: not clear of the left fade: {:?} vs {want:?}",
                 after.left()
             );
         } else if ix + 1 < count {
+            let want = view_right - fade;
             assert!(
-                (after.right() - (view_right - fade)).abs() < px(1.) || snapped,
+                (after.right() - want).abs() < px(1.) || snap(cx, want - before.right()),
                 "{why}: not clear of the right fade: {:?} vs {:?}",
                 after.right(),
                 view_right - fade
@@ -1210,9 +1219,9 @@ fn check_click_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32, kind: 
         let after = tab(cx, ix);
         // A whole tab stays put unless the wheel left another cut at the left edge, which the
         // choice then scrolls whole or out of view.
-        if kind == Under::Neither && sliver_before.is_none() {
+        if kind == Under::Neither && (after.left() - before.left()).abs() >= px(1.) {
             assert!(
-                (after.left() - before.left()).abs() < px(1.),
+                sliver_before.is_some() && left_sliver(cx, s.win, count).is_none(),
                 "{why}: a tab already clear of the fades moved"
             );
         }

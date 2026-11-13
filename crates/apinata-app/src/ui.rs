@@ -2144,12 +2144,12 @@ impl StripFades {
                 .w(STRIP_FADE_WIDTH)
         };
         if edges.0 {
-            // Over an item the strip cannot scroll whole or out of view, the fade turns solid
-            // up to the item's end and fades over its usual width only after it.
+            // Over an item the strip cannot scroll whole or out of view, the fade is solid
+            // across the whole item and grades over its usual width only after it.
             let (mut left, mut solid) = (fade("left"), 0.);
-            if seen.fade > px(0.) && cover > seen.fade {
-                left = left.w(cover);
-                solid = (cover - seen.fade) / cover;
+            if seen.fade > px(0.) && cover > px(0.) {
+                left = left.w(cover + seen.fade);
+                solid = cover / (cover + seen.fade);
             }
             out.push(
                 left.left(view.left() - host.left())
@@ -2223,7 +2223,7 @@ pub fn tail_clear_of_fades(
     let (hidden_left, hidden_right) = hidden_edges(scroll, items);
     let (view, x) = (scroll.bounds(), scroll.offset().x);
     let shown = if hidden_left { fade } else { px(0.) };
-    let from = view.left() + shown.max(left_cover(scroll, items));
+    let from = view.left() + shown + left_cover(scroll, items);
     let to = view.right() - if hidden_right { fade } else { px(0.) };
     let end = item.right() + x;
     end - tail >= from - px(1.) && end <= to + px(1.)
