@@ -12,7 +12,9 @@ use gpui_kit::AsKeystroke as _;
 use gpui_kit::EntityInputHandler as _;
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::base::{Checkbox as BaseCheckbox, CheckboxIndicator, Radio as BaseRadio};
+use gpui_kit::base::{
+    Checkbox as BaseCheckbox, CheckboxIndicator, Placement, Radio as BaseRadio, TooltipPositioner,
+};
 use gpui_kit::component::Colorize as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::Dialog;
@@ -30,12 +32,12 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, Anchor, AnyElement, App, BorderStyle, Bounds, BoxShadow, ClickEvent, Corners, Div,
-    ElementId, Entity, FocusHandle, FontFeatures, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, KeyContext, Keystroke, MouseButton, ParentElement as _, Pixels, Rems, Render,
-    RenderOnce, ScrollEvent, ScrollHandle, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled as _, TestSupportExt as _, Window, actions, canvas, div, fill, linear_color_stop,
-    linear_gradient, outline, px, relative, svg, transparent_black,
+    Action, Anchor, AnyElement, App, AppContext as _, BorderStyle, Bounds, BoxShadow, ClickEvent,
+    Context, Corners, Div, ElementId, Entity, FocusHandle, FontFeatures, FontWeight, Hsla,
+    InteractiveElement as _, IntoElement, KeyContext, Keystroke, MouseButton, ParentElement as _,
+    Pixels, Rems, Render, RenderOnce, ScrollEvent, ScrollHandle, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, actions, canvas,
+    div, fill, linear_color_stop, linear_gradient, outline, px, relative, svg, transparent_black,
 };
 
 use crate::app::AppState;
@@ -1252,6 +1254,41 @@ pub fn text_tooltip(
                 .child(text.clone())
         })
         .build(window, cx)
+    }
+}
+
+/// As [`text_tooltip`], but placed on `placement`'s side of the bounds `anchor` was last painted
+/// at instead of under the pointer, through the kit's tooltip positioner.
+pub fn text_tooltip_beside(
+    id: impl Into<SharedString>,
+    text: impl Into<SharedString>,
+    anchor: Rc<Cell<Bounds<Pixels>>>,
+    placement: Placement,
+) -> impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static {
+    let tip = text_tooltip(id, text);
+    move |window, cx| {
+        let tip = tip(window, cx);
+        let anchor = anchor.clone();
+        cx.new(|_| TooltipBeside {
+            anchor,
+            placement,
+            tip,
+        })
+        .into()
+    }
+}
+
+struct TooltipBeside {
+    anchor: Rc<Cell<Bounds<Pixels>>>,
+    placement: Placement,
+    tip: gpui_kit::AnyView,
+}
+
+impl Render for TooltipBeside {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        TooltipPositioner::new(self.anchor.get())
+            .placement(self.placement)
+            .child(self.tip.clone())
     }
 }
 

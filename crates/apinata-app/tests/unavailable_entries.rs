@@ -109,3 +109,73 @@ fn greyed_app_menu_entries_say_why_on_hover(cx: &mut TestAppContext) {
         cx.run_until_parked();
     }
 }
+
+// A greyed entry's reason opens beside the menu, level with its row, so it never hides the
+// entries below. The test collection is in no git repository.
+#[gpui_kit::test]
+fn greyed_app_menu_tips_open_beside_the_menu(cx: &mut TestAppContext) {
+    use apinata_app::app_menu::{APP_MENU_REASON_TIP, app_menu_groups};
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    // The popup row of `label`, counting one separator row between groups.
+    let row_of = |label: &str| {
+        let mut row = 0;
+        for (i, group) in app_menu_groups().iter().enumerate() {
+            row += usize::from(i > 0);
+            for (l, _) in group {
+                if *l == label {
+                    return row;
+                }
+                row += 1;
+            }
+        }
+        panic!("{label} is not in the menu")
+    };
+    let col = two_requests();
+    let s = started(cx, &col);
+    for id in ["collection.switch_branch", "view.check_for_updates"] {
+        cx.update_window(s.win, |_, w, cx| {
+            w.within("title-bar").click("app-menu", cx)
+        })
+        .unwrap();
+        frame(cx, s.win);
+        cx.update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.within("popup-menu").hover(label(id), cx)
+        })
+        .unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(800));
+        frame(cx, s.win);
+        let (tip, row, below, menu) = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                let tip = w.find(APP_MENU_REASON_TIP).bounds();
+                let menu = w.within("popup-menu");
+                let row = menu.find(row_of(label(id))).bounds();
+                let below = menu.find(row_of(label(id)) + 1).bounds();
+                (tip, row, below, w.find("popup-menu").bounds())
+            })
+            .unwrap();
+        assert!(!tip.intersects(&below), "{id}: {tip:?} covers {below:?}");
+        assert!(
+            !tip.intersects(&menu),
+            "{id}: {tip:?} covers the menu {menu:?}"
+        );
+        let gap = if tip.left() >= menu.right() {
+            tip.left() - menu.right()
+        } else {
+            menu.left() - tip.right()
+        };
+        assert!(
+            gap <= gpui_kit::px(24.),
+            "{id}: {tip:?} is far from the menu {menu:?}"
+        );
+        assert!(
+            (tip.center().y - row.center().y).abs() <= row.size.height,
+            "{id}: {tip:?} is not level with its row {row:?}"
+        );
+        cx.simulate_keystrokes(s.win, "escape");
+        cx.run_until_parked();
+    }
+}
