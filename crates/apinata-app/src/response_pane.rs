@@ -664,8 +664,6 @@ pub struct ResponsePane {
     load_task: Option<Task<()>>,
     // Whether the pane was narrower than its wide header's floor when last laid out.
     compact: Rc<Cell<bool>>,
-    // The pane's laid-out width, which decides when the tabs give way to the facts.
-    width: Rc<Cell<Pixels>>,
     // The pane's laid-out height, and the room of the split it sits in (set by the editor).
     height: Rc<Cell<Pixels>>,
     room: Rc<Cell<Pixels>>,
@@ -826,7 +824,6 @@ impl ResponsePane {
             history_task: None,
             load_task: None,
             compact: Rc::default(),
-            width: Rc::default(),
             height: Rc::default(),
             room: Rc::default(),
             details_open: false,
@@ -2340,11 +2337,7 @@ impl ResponsePane {
             // Wide, one line whose address truncates; compact, it wraps on a row of its own.
             h_flex()
                 .when(compact, |row| row.flex_wrap().w_full())
-                // Once the tabs must give way the address is cut away entirely.
-                .when(!compact, |row| match self.tabs_give_way(window) {
-                    true => row.flex_none().w(self.min.facts(window)),
-                    false => row.min_w(self.min.facts(window)),
-                })
+                .when(!compact, |row| row.min_w(self.min.facts(window)))
                 .justify_end()
                 .gap(style::SPACE_2)
                 .items_center()
@@ -2801,49 +2794,32 @@ impl ResponsePane {
         h.finish()
     }
 
-    // Whether the wide header is too short for the whole tabs beside the facts with the
-    // address cut away, so the strip must scroll; read from last frame's widths.
-    fn tabs_give_way(&self, window: &Window) -> bool {
-        self.min.tabs_whole.get() > Pixels::ZERO && self.width.get() < self.tabs_whole_need(window)
-    }
-
-    // The row the whole tabs need beside the facts with the address cut away.
-    fn tabs_whole_need(&self, window: &Window) -> Pixels {
-        let gap = style::resolve(style::SPACE_2, window);
-        self.min.tabs_whole.get() + gap + self.min.facts(window)
-    }
-
-    // The narrowest wide header: the facts with the address cut, beside the strip's floor.
+    // The narrowest wide header: the whole tabs beside the facts with the address cut. Any
+    // narrower and the facts take a row of their own, so a tab is never hidden to keep one row.
     fn wide_floor(&self, window: &Window) -> Pixels {
         let m = &self.min;
         let floor = style::resolve(style::RESPONSE_COMPACT_BELOW, window);
+        // Before the strip's first layout the whole width is unknown; its scrolling floor stands in.
+        let tabs = match m.tabs_whole.get() > Pixels::ZERO {
+            true => m.tabs_whole.get(),
+            false => m.tabs.get(),
+        };
         match m.facts_known() {
-            true => {
-                floor.max(m.facts(window) + style::resolve(style::SPACE_2, window) + m.tabs.get())
-            }
+            true => floor.max(m.facts(window) + style::resolve(style::SPACE_2, window) + tabs),
             false => floor,
         }
     }
 
     // A marker the size of the pane that reads its laid-out width each frame. On crossing
-    // the compact threshold, or the width where the tabs give way, it asks for one more
-    // frame, which re-renders this pane (the current view) with the matching header.
+    // the compact threshold it asks for one more frame, which re-renders this pane (the
+    // current view) with the matching header.
     fn width_watch(&self, window: &Window) -> impl IntoElement {
         let compact = Rc::clone(&self.compact);
-        let (height, width) = (Rc::clone(&self.height), Rc::clone(&self.width));
+        let height = Rc::clone(&self.height);
         let floor = self.wide_floor(window);
-        let need = match self.min.tabs_whole.get() > Pixels::ZERO {
-            true => self.tabs_whole_need(window),
-            false => Pixels::ZERO,
-        };
-        let give_way = self.tabs_give_way(window);
         canvas(
             move |bounds, window, _| {
                 height.set(bounds.size.height);
-                width.set(bounds.size.width);
-                if give_way != (need > Pixels::ZERO && bounds.size.width < need) {
-                    window.request_animation_frame();
-                }
                 let narrow = bounds.size.width < floor;
                 if narrow != compact.get() {
                     compact.set(narrow);
@@ -5059,13 +5035,12 @@ impl Render for ResponsePane {
             (SendState::Done(result), _) => {
                 let result = Arc::clone(result);
                 // One header row that never wraps: the tabs on the left, the status facts
-                // right-aligned. A short row cuts the address, then scrolls the tabs; below
-                // that floor the pane is compact, the tabs on a whole row over folded facts.
+                // right-aligned. A short row cuts the address; once the whole tabs and the facts
+                // no longer fit, the pane is compact, the tabs on a whole row over folded facts.
                 let header = match compact {
                     true => v_flex(),
                     false => h_flex().justify_end().items_center().overflow_hidden(),
                 };
-                let give_way = self.tabs_give_way(window);
                 let header = header
                     .w_full()
                     .gap(style::SPACE_2)
@@ -5075,16 +5050,10 @@ impl Render for ResponsePane {
                             .test_support()
                             .relative()
                             .when(compact, |strip| strip.w_full())
-                            // The strip keeps its tabs whole until the address is cut away,
-                            // then shrinks to its floor and scrolls.
+                            // Wide, the floor guarantees room for every tab, so the strip never
+                            // shrinks; the address gives way instead.
                             .when(!compact, |strip| {
-                                strip
-                                    .flex_grow(1.)
-                                    .max_w_full()
-                                    .map(|strip| match give_way {
-                                        true => strip.flex_shrink(1.).min_w(self.min.tabs.get()),
-                                        false => strip.flex_shrink_0(),
-                                    })
+                                strip.flex_grow(1.).max_w_full().flex_shrink_0()
                             })
                             .on_scroll(ui::wheel_sideways(&self.tab_scroll))
                             .child(self.tab_bar(window, cx))
