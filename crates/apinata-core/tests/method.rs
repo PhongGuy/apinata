@@ -53,7 +53,7 @@ fn the_refusal_reads_in_plain_words() {
     let err = normalize_method("GE T").expect_err("a space is refused");
     assert_eq!(
         err.to_string(),
-        "`GE T` is not a valid HTTP method: use letters, digits and common symbols, no spaces"
+        "`GE T` is not a valid HTTP method: use letters, digits, - or _, with no spaces"
     );
 }
 
