@@ -1551,7 +1551,8 @@ impl Shell {
     }
 
     // The recents list of the empty state: a muted heading, then one row per closed recent with
-    // the collection name over its muted, truncated path. Nothing renders without recents.
+    // the collection name over its muted, truncated path, all centred under the centred actions.
+    // Nothing renders without recents.
     fn recent_list(&self, window: &Window, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let recents = self.closed_recents(cx);
         if recents.is_empty() {
@@ -1571,6 +1572,7 @@ impl Shell {
                 .role(Role::Button)
                 .aria_label(name.clone())
                 .w_full()
+                .items_center()
                 .px(style::SPACE_2)
                 .py(style::SPACE_1)
                 .rounded(cx.theme().radius)
@@ -1579,13 +1581,21 @@ impl Shell {
                 .on_click(
                     cx.listener(move |this, _, window, cx| this.open(root.clone(), window, cx)),
                 )
-                .child(div().truncate().child(name))
+                .child(
+                    div()
+                        .id(("recent-name", ix))
+                        .test_support()
+                        .max_w_full()
+                        .truncate()
+                        .child(name),
+                )
                 .child(
                     div()
                         .id(("recent-path", ix))
                         .test_support()
                         .aria_label(full.clone())
                         .aria_value(path.clone())
+                        .max_w_full()
                         .truncate()
                         .text_size(style::TEXT_SMALL)
                         .text_color(muted)
@@ -1599,6 +1609,7 @@ impl Shell {
             v_flex()
                 .w(style::RECENT_LIST_WIDTH)
                 .max_w_full()
+                .items_center()
                 .gap(style::SPACE_1)
                 .child(
                     div()
