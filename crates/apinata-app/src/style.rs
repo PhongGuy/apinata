@@ -71,7 +71,7 @@ pub const JAR_NAME_WIDTH: Rems = ui(120.);
 /// The cookie jar row's path column, first on its second line.
 pub const JAR_PATH_WIDTH: Rems = ui(80.);
 /// The cookie jar row's expiry column, after the path, so every row's flags start at one x.
-pub const JAR_EXPIRY_WIDTH: Rems = ui(64.);
+pub const JAR_EXPIRY_WIDTH: Rems = ui(80.);
 /// Width of the cookie table's fixed columns, in order: Name, Domain, Path, Expires,
 /// HttpOnly, Secure. Narrow ones keep the table inside a common pane width.
 pub const COOKIE_FIXED_WIDTHS: [Rems; 6] =

@@ -2730,8 +2730,9 @@ impl RequestEditor {
             .map(|v| v.name.clone())
             .unwrap_or_default();
         let (mut folders, title) = crumbs(&item, &name);
-        let unsaved = item.is_draft();
-        if unsaved {
+        // The scratch pad holds nothing but drafts, so its name already says unsaved.
+        let unsaved = item.is_draft() && !workspace.is_scratch(&root);
+        if item.is_draft() {
             folders.clear();
         }
         // A folder shows its display name, as the sidebar and its settings tab do.

@@ -6,14 +6,16 @@ use apinata_core::ItemPath;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
-use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt, v_flex};
+use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Entity, Global, PathPromptOptions, Result, SharedString, Subscription, TestSupportExt,
     Window, div,
 };
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::rc::Rc;
 
 use crate::command::{Command, TreeOp};
@@ -47,8 +49,8 @@ pub fn folders(content: &Content) -> Vec<(ItemPath, SharedString)> {
         .collect()
 }
 
-/// Replaces the native folder prompt of the open-or-new entry; the closure returns the folder
-/// the user "picked", or `None` for a cancel. Tests set it, the app never does.
+/// Replaces the native folder prompts of the dialog's open and new choices; the closure returns
+/// the folder the user "picked", or `None` for a cancel. Tests set it, the app never does.
 #[derive(Clone)]
 pub struct FolderPickSeam(pub std::rc::Rc<dyn Fn() -> Option<PathBuf>>);
 impl Global for FolderPickSeam {}
@@ -200,49 +202,67 @@ impl SaveDraftForm {
                 choice
                     .select
                     .update(cx, |s, cx| s.set_selected_index(back, window, cx));
-                self.prompt_open(window, cx);
+                self.prompt_open(false, window, cx);
             }
             None => {}
         }
     }
 
-    // Asks for a directory, creates a collection in it when it is empty, opens it and picks it.
-    fn prompt_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    // Asks for a folder, opens it as a collection and picks it. `new` asks for a fresh folder
+    // and creates the collection there; otherwise a collection folder opens as it is and an
+    // empty one gets a new collection.
+    fn prompt_open(&mut self, new: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(choice) = self.choice.as_ref() else {
             return;
         };
         let workspace = choice.workspace.clone();
         // The seam, when set, answers in place of the native prompt.
         let seam = cx.try_global::<FolderPickSeam>().map(|s| Rc::clone(&s.0));
-        let native = seam.is_none().then(|| {
-            cx.prompt_for_paths(PathPromptOptions {
-                files: false,
-                directories: true,
-                multiple: false,
-                prompt: Some("Open or create collection".into()),
-            })
-        });
+        let native: Option<Pin<Box<dyn Future<Output = Option<PathBuf>>>>> = match (&seam, new) {
+            (Some(_), _) => None,
+            (None, true) => {
+                let start = dirs::home_dir().unwrap_or_default();
+                let reply = cx.prompt_for_new_path(&start, Some("New collection"));
+                Some(Box::pin(async move { reply.await.ok()?.ok()? }))
+            }
+            (None, false) => {
+                let reply = cx.prompt_for_paths(PathPromptOptions {
+                    files: false,
+                    directories: true,
+                    multiple: false,
+                    prompt: Some("Open or create collection".into()),
+                });
+                Some(Box::pin(async move {
+                    reply.await.ok()?.ok()??.into_iter().next()
+                }))
+            }
+        };
         cx.spawn_in(window, async move |this, cx| {
             let picked = match (seam, native) {
                 (Some(pick), _) => pick(),
-                (None, Some(reply)) => match reply.await {
-                    Ok(Ok(Some(paths))) => paths.into_iter().next(),
-                    _ => None,
-                },
+                (None, Some(reply)) => reply.await,
                 (None, None) => None,
             };
             let Some(dir) = picked else {
                 return;
             };
-            let made = dir.clone();
-            let job = cx.background_spawn(async move { create_if_empty(&made) });
-            if let Err(e) = job.await {
-                // A silent return would leave the user wondering why nothing opened.
-                let _ = this.update_in(cx, |_, window, cx| {
-                    window.push_notification(ui::info_toast(e), cx);
-                });
-                return;
-            }
+            let job = cx.background_spawn(async move {
+                if new {
+                    create_collection(&dir)
+                } else {
+                    create_if_empty(&dir).map(|()| dir)
+                }
+            });
+            let dir = match job.await {
+                Ok(dir) => dir,
+                Err(e) => {
+                    // A silent return would leave the user wondering why nothing opened.
+                    let _ = this.update_in(cx, |_, window, cx| {
+                        window.push_notification(ui::info_toast(e), cx);
+                    });
+                    return;
+                }
+            };
             let _ = this.update_in(cx, |this, window, cx| {
                 workspace.update(cx, |w, cx| w.open_path(dir.clone(), cx));
                 this.pick_opened(dir, window, cx);
@@ -343,34 +363,53 @@ impl SaveDraftForm {
 
 impl Render for SaveDraftForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // With nothing open there is nothing to pick, so the row offers to open or make one.
+        let none_open = self.choice.as_ref().is_some_and(|c| c.roots.is_empty());
         // One-word labels take a short column, so both fields fill the rest of the row.
         let collection = self.choice.as_ref().map(|c| {
-            ui::form_row(
-                "save-draft-collection-row",
-                "Collection",
+            let field = if none_open {
+                h_flex()
+                    .gap(SPACE_2)
+                    .child(
+                        Button::new("save-draft-open-collection")
+                            .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                            .label("Open collection…")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.prompt_open(false, window, cx)
+                            })),
+                    )
+                    .child(
+                        Button::new("save-draft-new-collection")
+                            .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                            .label("New collection…")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.prompt_open(true, window, cx)
+                            })),
+                    )
+                    .into_any_element()
+            } else {
                 ui::dialog_select(
                     Select::new(&c.select)
                         .id("save-draft-collection")
                         .placeholder("Choose a collection")
                         .w_full(),
                 )
-                .w_full(),
-            )
-            .label_width(SHORT_FORM_LABEL_WIDTH)
+                .w_full()
+                .into_any_element()
+            };
+            ui::form_row("save-draft-collection-row", "Collection", field)
+                .label_width(SHORT_FORM_LABEL_WIDTH)
         });
-        // With nothing open the select holds only the open entry; say why.
-        let none_open = self
-            .choice
-            .as_ref()
-            .is_some_and(|c| c.roots.is_empty())
-            .then(|| {
-                div()
-                    .id("save-draft-no-collection")
-                    .test_support()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("No collection is open. Open or create one to save into.")
-            });
+        // Folders belong to a collection, so the folder picker waits for one.
+        let no_pick = self.choice.as_ref().is_some_and(|c| c.picked.is_none());
+        let none_open = none_open.then(|| {
+            div()
+                .id("save-draft-no-collection")
+                .test_support()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("No collection is open. Open or create one to save into.")
+        });
         v_flex()
             .id("save-draft-form")
             .gap(SPACE_2)
@@ -394,8 +433,13 @@ impl Render for SaveDraftForm {
                 ui::form_row(
                     "save-draft-folder-row",
                     "Folder",
-                    ui::dialog_select(Select::new(&self.folder).id("save-draft-folder").w_full())
-                        .w_full(),
+                    ui::dialog_select(
+                        Select::new(&self.folder)
+                            .id("save-draft-folder")
+                            .disabled(no_pick)
+                            .w_full(),
+                    )
+                    .w_full(),
                 )
                 .label_width(SHORT_FORM_LABEL_WIDTH),
             )

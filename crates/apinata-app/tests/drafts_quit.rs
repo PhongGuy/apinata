@@ -107,6 +107,110 @@ fn closing_a_collection_prompts_for_an_unkept_draft(cx: &mut TestAppContext) {
     assert_eq!(s.ws.read_with(cx, |w, _| w.collections().len()), 1);
 }
 
+fn prompt_detail(cx: &mut TestAppContext) -> Option<String> {
+    use gpui_kit::test::TestWindowExt as _;
+    let win = confirm_window(cx).expect("the close prompt");
+    cx.update_window(win, |_, w, _| {
+        w.find("confirm-detail").label().map(str::to_owned)
+    })
+    .unwrap()
+}
+
+fn close_collection(cx: &mut TestAppContext, s: &Started) {
+    let (ws, scope) = (s.ws.clone(), CloseScope::Collection(s.root.clone()));
+    cx.update_window(s.win, |_, w, cx| {
+        confirm_close_or_keep(ws, scope, w, cx, |_| {})
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+fn toasts(cx: &mut TestAppContext, s: &Started) -> usize {
+    use gpui_kit::component::WindowExt as _;
+    cx.update_window(s.win, |_, w, cx| w.notifications(cx).len())
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_window_prompt_says_kept_drafts_reopen_next_time(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let (item, _) = new_draft(cx, &s);
+    edit(cx, &s, &item, Edit::Url("http://127.0.0.1:9/kept".into()));
+    edit(cx, &s, "a.yml", Edit::Url("http://x/changed".into()));
+    assert!(!close_window(cx, &s));
+    assert_eq!(
+        prompt_detail(cx).as_deref(),
+        Some(
+            "\"a\" has unsaved changes. \"Untitled request\" is kept as a draft and reopens next time."
+        )
+    );
+    answer_confirm(cx, "confirm-cancel");
+}
+
+#[gpui_kit::test]
+fn the_window_note_for_only_kept_drafts_says_they_reopen(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    for _ in 0..3 {
+        let (item, _) = new_draft(cx, &s);
+        edit(cx, &s, &item, Edit::Url("http://127.0.0.1:9/kept".into()));
+    }
+    cx.update(|cx| apinata_app::draft_store::flush_now(None, cx));
+    let note = s.ws.read_with(cx, |w, cx| {
+        apinata_app::closing::kept_drafts_note(w, &CloseScope::Window, cx)
+    });
+    assert_eq!(
+        note.as_deref(),
+        Some("\"Untitled request\" and 2 others are kept as drafts and reopen next time.")
+    );
+}
+
+#[gpui_kit::test]
+fn closing_a_collection_with_only_kept_drafts_says_they_are_kept(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let (item, _) = new_draft(cx, &s);
+    edit(cx, &s, &item, Edit::Url("http://127.0.0.1:9/kept".into()));
+    cx.update(|cx| apinata_app::draft_store::flush_now(None, cx));
+    let scope = CloseScope::Collection(s.root.clone());
+    let note = s.ws.read_with(cx, |w, cx| {
+        apinata_app::closing::kept_drafts_note(w, &scope, cx)
+    });
+    assert_eq!(
+        note.as_deref(),
+        Some(
+            "\"Untitled request\" is kept as a draft and reopens when you open this collection again."
+        )
+    );
+    let before = toasts(cx, &s);
+    close_collection(cx, &s);
+    assert!(!confirm_open(cx), "a kept draft is not lost");
+    assert!(s.ws.read_with(cx, |w, _| w.collections().is_empty()));
+    assert_eq!(
+        toasts(cx, &s),
+        before + 1,
+        "the close says the draft is kept"
+    );
+}
+
+#[gpui_kit::test]
+fn the_collection_prompt_says_kept_drafts_stay_with_it(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    let (item, _) = new_draft(cx, &s);
+    edit(cx, &s, &item, Edit::Url("http://127.0.0.1:9/kept".into()));
+    edit(cx, &s, "a.yml", Edit::Url("http://x/changed".into()));
+    close_collection(cx, &s);
+    assert_eq!(
+        prompt_detail(cx).as_deref(),
+        Some(
+            "\"a\" has unsaved changes in this collection. \"Untitled request\" is kept as a draft and reopens when you open this collection again."
+        )
+    );
+    answer_confirm(cx, "confirm-cancel");
+}
+
 #[gpui_kit::test]
 fn closing_and_reopening_the_collection_restores_its_drafts(cx: &mut TestAppContext) {
     let col = two_requests();

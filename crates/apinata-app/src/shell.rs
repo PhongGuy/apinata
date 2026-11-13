@@ -46,7 +46,9 @@ use crate::commands;
 use crate::console_dock::{ConsoleDock, ExpandDock};
 use crate::cookie_jar::open_cookie_jar;
 use crate::draft_file::MAX_DRAFTS;
-use crate::draft_store::{DraftStoreEvent, Drafts, NotKeptReason};
+use crate::draft_store::{
+    DraftStoreEvent, Drafts, NotKeptReason, reopened_blanked_message, reopened_message,
+};
 use crate::env_selector::EnvSelector;
 use crate::export::ExportFormat;
 use crate::git_status::{GitChanges, branch_text};
@@ -445,9 +447,16 @@ impl Shell {
                             };
                             window.push_notification(Notification::warning(text), cx);
                         }
-                        DraftStoreEvent::CredentialsBlanked => {
-                            let text = "Restored drafts had their credentials cleared; enter them again before sending.";
+                        DraftStoreEvent::Reopened {
+                            names,
+                            credentials_blanked: true,
+                        } => {
+                            let text = reopened_blanked_message(names);
                             window.push_notification(Notification::warning(text), cx);
+                        }
+                        DraftStoreEvent::Reopened { names, .. } => {
+                            let text = reopened_message(names);
+                            window.push_notification(ui::info_toast(text), cx);
                         }
                     }
                 },

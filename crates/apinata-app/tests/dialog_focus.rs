@@ -88,6 +88,8 @@ fn deleting_the_last_domain_by_key_lands_on_the_first_control(cx: &mut TestAppCo
     let s = app(cx, &col);
     let exec = jar(cx, &s, &["a.test"]);
     enter_on(cx, s.win, ("jar-domain-delete", 0usize));
+    assert!(confirm_open(cx), "a domain delete asks first");
+    press_key(cx, s.win, "enter");
     frame(cx, s.win);
     assert!(jar_domains(&exec).is_empty());
     assert!(holds_focus(cx, s.win, "jar-add"), "Add cookie takes focus");
@@ -101,6 +103,8 @@ fn deleting_a_domain_with_a_successor_keeps_focus_on_the_next(cx: &mut TestAppCo
     let s = app(cx, &col);
     let exec = jar(cx, &s, &["a.test", "b.test"]);
     enter_on(cx, s.win, ("jar-domain-delete", 0usize));
+    assert!(confirm_open(cx), "a domain delete asks first");
+    press_key(cx, s.win, "enter");
     frame(cx, s.win);
     assert_eq!(jar_domains(&exec), ["b.test"]);
     assert!(holds_focus(cx, s.win, ("jar-domain-delete", 0usize)));
@@ -113,6 +117,8 @@ fn deleting_the_trailing_domain_lands_on_the_first_control(cx: &mut TestAppConte
     let s = app(cx, &col);
     let exec = jar(cx, &s, &["a.test", "b.test"]);
     enter_on(cx, s.win, ("jar-domain-delete", 1usize));
+    assert!(confirm_open(cx), "a domain delete asks first");
+    press_key(cx, s.win, "enter");
     frame(cx, s.win);
     assert_eq!(jar_domains(&exec), ["a.test"]);
     assert!(holds_focus(cx, s.win, "jar-add"), "Add cookie takes focus");
@@ -248,12 +254,22 @@ fn removing_the_only_runtime_row_by_key_rings_the_add_name(cx: &mut TestAppConte
     );
 }
 
+// Answers the open delete prompt with Enter, as a keyboard user does, and draws the result.
+fn confirm_by_key(cx: &mut TestAppContext, win: AnyWindowHandle) {
+    assert!(confirm_open(cx), "a domain delete asks first");
+    platform_press(cx, win, "enter");
+    cx.run_until_parked();
+    next_frame(cx, win);
+    next_frame(cx, win);
+}
+
 #[gpui_kit::test]
 fn deleting_the_only_domain_by_key_rings_add_cookie_for_space(cx: &mut TestAppContext) {
     let col = collection();
     let s = app(cx, &col);
     jar(cx, &s, &["a.test"]);
     platform_enter_on(cx, s.win, ("jar-domain-delete", 0usize));
+    confirm_by_key(cx, s.win);
     assert!(ring_on(cx, s.win, "jar-add"), "Add cookie shows its ring");
     platform_press(cx, s.win, "space");
     assert!(present(cx, s.win, "jar-form"), "Space opens the add form");
@@ -265,6 +281,7 @@ fn deleting_the_trailing_domain_by_key_tabs_to_the_second_control(cx: &mut TestA
     let s = app(cx, &col);
     jar(cx, &s, &["a.test", "b.test"]);
     platform_enter_on(cx, s.win, ("jar-domain-delete", 1usize));
+    confirm_by_key(cx, s.win);
     assert!(ring_on(cx, s.win, "jar-add"), "Add cookie shows its ring");
     platform_press(cx, s.win, "tab");
     next_frame(cx, s.win);

@@ -165,3 +165,34 @@ fn an_unsaved_request_under_any_one_member_is_reported(cx: &mut TestAppContext) 
     assert_eq!(both.read_with(cx, |m, _| m.unsaved().to_vec()), ["one"]);
     both.update(cx, |m, cx| m.cancel(cx));
 }
+
+// A draft has no file, so no run could include it; the note names only saved requests.
+#[gpui_kit::test]
+fn unsaved_names_leave_out_drafts(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    ws.update(cx, |w, cx| w.new_draft(&root, ip("api"), cx));
+    cx.run_until_parked();
+    let drafts: Vec<_> = ws.read_with(cx, |w, cx| {
+        let snap = w.snapshot(&root, cx).unwrap();
+        let keys = snap.content.requests.keys();
+        keys.filter(|p| p.is_draft()).cloned().collect()
+    });
+    assert_eq!(drafts.len(), 1, "the draft is in the collection");
+    for (item, url) in [
+        (drafts[0].as_str(), "http://127.0.0.1:9/d"),
+        ("api/one.yml", "http://127.0.0.1:9/z"),
+    ] {
+        ws.update(cx, |w, cx| w.send(&root, edit_url(item, url), cx));
+    }
+    cx.run_until_parked();
+    let dirty = ws.read_with(cx, |w, cx| {
+        w.snapshot(&root, cx).unwrap().content.requests[&drafts[0]].dirty
+    });
+    assert!(dirty, "the edited draft is dirty");
+    let m = runner(cx, &ws, &root, &["api"]);
+    assert!(m.update(cx, |m, cx| m.start(cx)));
+    assert_eq!(m.read_with(cx, |m, _| m.unsaved().to_vec()), ["one"]);
+    m.update(cx, |m, cx| m.cancel(cx));
+}
