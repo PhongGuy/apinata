@@ -234,7 +234,11 @@ impl BodySection {
                 s.create_decorations_collection(Vec::new(), cx),
             )
         });
-        let table = cx.new(|cx| KvTable::new(window, cx));
+        let table = cx.new(|cx| {
+            let mut table = KvTable::new(window, cx);
+            table.set_file_root(root.clone());
+            table
+        });
         let mut subs = Vec::new();
         if let Some(app) = cx.try_global::<crate::app::AppState>() {
             let settings = app.settings.clone();
@@ -729,12 +733,16 @@ impl BodySection {
         Button::new("body-file-add")
             .ghost()
             .label("Add another file\u{2026}")
+            .tooltip("Keep several files and choose the one to send")
             .on_click(cx.listener(|this, _, window, cx| {
                 let next = this.table.read(cx).rows(cx).len();
                 this.pick(next, window, cx)
             }))
     }
 }
+
+// Above several files, what their radios decide.
+const CHOICE_NOTE: &str = "Only the selected file is sent.";
 
 impl Render for BodySection {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -752,6 +760,14 @@ impl Render for BodySection {
                 .w_full()
                 .gap(style::SPACE_2)
                 .items_start()
+                .child(
+                    div()
+                        .id("body-file-choice-note")
+                        .test_support()
+                        .aria_label(CHOICE_NOTE)
+                        .text_color(cx.theme().muted_foreground)
+                        .child(CHOICE_NOTE),
+                )
                 .child(
                     div()
                         .id("body-table")

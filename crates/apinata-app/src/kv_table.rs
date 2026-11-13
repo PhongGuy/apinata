@@ -3,7 +3,7 @@
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ use apinata_core::{
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::ActiveTheme;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Editor, EditorState, InputEvent, InputState};
 use gpui_kit::component::{Size, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
@@ -247,9 +247,10 @@ impl KvColumns {
             .collect()
     }
 
-    /// The pick button's text: a file body sends one file, a multipart field takes several.
+    /// The pick button's text: a multipart field takes several files, and a file body row
+    /// changes its one file, as the lone file's view does.
     fn pick_label(self) -> &'static str {
-        if self.name { "Files" } else { "File" }
+        if self.name { "Files" } else { "Change\u{2026}" }
     }
 
     /// The headings of the shown columns, in the same order as `describe`.
@@ -391,6 +392,8 @@ pub struct KvTable {
     pending_origin: Option<FocusHandle>,
     /// The text width and size a files cell last had, which every files cell shares.
     files_room: Rc<Cell<Option<(Pixels, Pixels)>>>,
+    /// The folder a file body's relative paths are read from, for their sizes.
+    file_root: Option<PathBuf>,
 }
 
 impl EventEmitter<KvEvent> for KvTable {}
@@ -430,6 +433,7 @@ impl KvTable {
             remove_focus: Cell::new(None),
             pending_origin: None,
             files_room: Rc::default(),
+            file_root: None,
             typed: None,
             drop: None,
         }
@@ -468,6 +472,11 @@ impl KvTable {
                 .update(cx, |s, cx| s.set_placeholder(value, window, cx));
         }
         cx.notify();
+    }
+
+    /// Read a file body's relative paths from `root` when showing their sizes.
+    pub fn set_file_root(&mut self, root: PathBuf) {
+        self.file_root = Some(root);
     }
 
     /// Use `hint` as the placeholder of every content-type cell, the empty row's included.
@@ -1087,6 +1096,18 @@ impl KvTable {
         }
     }
 
+    /// The size of a file body row's file, read where the request would read it; none for a
+    /// path with a variable in it or a file that is gone.
+    fn file_size(&self, files: &[String]) -> Option<String> {
+        let path = files.first().filter(|p| !p.is_empty())?;
+        let full = match &self.file_root {
+            Some(root) => root.join(path),
+            None => PathBuf::from(path),
+        };
+        let meta = std::fs::metadata(full).ok().filter(|m| m.is_file())?;
+        Some(crate::body_text::format_size(meta.len()))
+    }
+
     /// A files cell's text as shown and in full. Short of room, the paths share it evenly and
     /// each gives up its leading folders first, so the file names stay readable.
     fn files_text(&self, files: &[String], window: &Window) -> (String, String) {
@@ -1117,19 +1138,20 @@ impl KvTable {
     ) -> impl IntoElement + use<> {
         let locked = self.locked;
         let columns = self.columns;
+        let file_body = columns == KvColumns::FILE_BODY;
         let muted = cx.theme().muted_foreground;
         let fixed = row.meta.fixed;
         let off = !row.meta.enabled;
         let slotted = blank || fixed;
         let remove_id = (
-            if slotted {
+            if slotted || file_body {
                 "kv-slot-delete"
             } else {
                 "kv-delete"
             },
             ix,
         );
-        let take_remove_focus = !slotted && self.remove_focus.get() == Some(ix);
+        let take_remove_focus = !slotted && !file_body && self.remove_focus.get() == Some(ix);
         if take_remove_focus {
             self.remove_focus.set(None);
         }
@@ -1168,9 +1190,10 @@ impl KvTable {
                     cx: &App| {
             let live = !off && !disabled;
             let set = self.vars.clone().filter(|_| explains && live);
+            // An unchosen file in a file body is not off, only not sent, so it stays plain.
             let field = ui::table_input(input, disabled, win, cx)
                 .id((name, ix))
-                .when(off, |i| i.text_color(muted));
+                .when(off && !file_body, |i| i.text_color(muted));
             let focused = input.focus_handle(cx).contains_focused(win, cx);
             let shell = match mark {
                 Some((danger, icon)) => kv_grid::kv_cell_marked(
@@ -1312,36 +1335,60 @@ impl KvTable {
                 // Padded and bordered like a small input: the names start where typed text
                 // does, and an outer box shares out the row width as a cell's wrapper does.
                 Some(files) => {
-                    let (shown, full) = self.files_text(files, win);
+                    // A file body row names its file as the lone file's view does, with its size.
+                    let (shown, full) = if file_body {
+                        (file_names(files), files.join(", "))
+                    } else {
+                        self.files_text(files, win)
+                    };
                     let cut = shown != full;
+                    let size = file_body
+                        .then(|| self.file_size(files))
+                        .flatten()
+                        .map(|size| {
+                            div()
+                                .id(("kv-file-size", ix))
+                                .test_support()
+                                .aria_label(size.clone())
+                                .flex_none()
+                                .text_color(muted)
+                                .child(size)
+                        });
                     r.child(sized(
                         &cols,
                         "kv-value",
-                        div().child(
-                            div()
-                                .id(("kv-files", ix))
-                                .test_support()
-                                .aria_label(full)
-                                .aria_value(shown.clone())
-                                .w_full()
-                                .px(Size::Small.input_px())
-                                .border_1()
-                                .border_color(transparent_black())
-                                .when(cut, |d| {
-                                    d.tooltip(ui::text_tooltip(
-                                        "kv-files-tooltip",
-                                        files.join("\n"),
-                                    ))
-                                })
-                                .child(
-                                    div()
-                                        .relative()
-                                        .w_full()
-                                        .truncate()
-                                        .child(files_measure)
-                                        .child(shown),
-                                ),
-                        ),
+                        h_flex()
+                            .gap(style::SPACE_2)
+                            .child(
+                                div()
+                                    .id(("kv-files", ix))
+                                    .test_support()
+                                    .aria_label(full)
+                                    .aria_value(shown.clone())
+                                    .flex_1()
+                                    .min_w_0()
+                                    .px(Size::Small.input_px())
+                                    .border_1()
+                                    .border_color(transparent_black())
+                                    .when(cut, |d| {
+                                        d.tooltip(ui::text_tooltip(
+                                            "kv-files-tooltip",
+                                            files.join("\n"),
+                                        ))
+                                    })
+                                    .child(
+                                        div()
+                                            .relative()
+                                            .w_full()
+                                            .truncate()
+                                            // A file body names files in full, so it needs no
+                                            // room; its rows differ in width by their sizes, and
+                                            // a shared room would flip between them every frame.
+                                            .when(!file_body, |d| d.child(files_measure))
+                                            .child(shown),
+                                    ),
+                            )
+                            .children(size),
                     ))
                 }
                 None => r.child(cell(
@@ -1388,6 +1435,17 @@ impl KvTable {
                         .on_click(cx.listener(move |t, _, _, cx| t.pick(ix, cx))),
                 )
             })
+            // A file body row removes its file with a worded button, as the lone file's view
+            // does; the row's icon slot stays laid out, never shown, so the columns line up.
+            .when(file_body && !blank, |r| {
+                r.child(
+                    Button::new(("kv-delete", ix))
+                        .ghost()
+                        .label("Remove")
+                        .lock(locked, cx)
+                        .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
+                )
+            })
             .when(clears, |r| {
                 r.child(
                     div().flex_none().when(!has_files, |d| d.invisible()).child(
@@ -1428,11 +1486,11 @@ impl KvTable {
                     remove_id,
                     ui::icon_button(remove_id, IconName::Close, "Remove row", None)
                         .lock(locked || fixed, cx)
-                        .tab_stop(!slotted)
+                        .tab_stop(!slotted && !file_body)
                         .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
                     take_remove_focus,
                 ),
-                if slotted {
+                if slotted || file_body {
                     ActionShow::Never
                 } else if focused {
                     ActionShow::Always
@@ -1476,6 +1534,16 @@ impl KvTable {
                     div().flex_none().invisible().child(
                         Button::new("kv-head-slot-pick")
                             .label(columns.pick_label())
+                            .tab_stop(false),
+                    ),
+                )
+            })
+            .when(columns == KvColumns::FILE_BODY, |h| {
+                h.extra(
+                    div().flex_none().invisible().child(
+                        Button::new("kv-head-slot-remove")
+                            .ghost()
+                            .label("Remove")
                             .tab_stop(false),
                     ),
                 )
@@ -1996,4 +2064,16 @@ pub fn files_from(base: &[FileEntry], rows: &[KvRow]) -> Vec<FileEntry> {
         out[ix].selected = true;
     }
     out
+}
+
+// The files' own names, without their folders.
+fn file_names(files: &[String]) -> String {
+    (files.iter())
+        .map(|f| {
+            Path::new(f)
+                .file_name()
+                .map_or_else(|| f.clone(), |n| n.to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
