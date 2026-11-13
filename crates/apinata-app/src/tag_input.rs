@@ -224,7 +224,7 @@ impl Render for TagField {
             .id("tag-input")
             .test_support()
             .relative()
-            .w_full()
+            .w(FORM_INPUT_WIDTH)
             .flex_wrap()
             .items_center()
             .gap(SPACE_1)
@@ -234,7 +234,8 @@ impl Render for TagField {
             .capture_key_down(cx.listener(|this, e, _, cx| this.key_down(e, cx)))
             .children(chips)
             .child(
-                div().min_w(FORM_INPUT_WIDTH).flex_1().child(
+                // The text takes its own line under the chips, so it keeps the field's width.
+                div().w_full().child(
                     ui::padded_input(
                         Input::new(&self.input)
                             .id("tag-text")

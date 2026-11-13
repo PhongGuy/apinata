@@ -949,6 +949,8 @@ impl ConfigEditor {
                 .tab_stop(false);
             return Some(slot.invisible().child(hidden).into_any_element());
         }
+        let discard = crate::env_editor::discard_button("config-discard-button", true, cx)
+            .on_click(cx.listener(|this, _, window, cx| this.discard_asking(window, cx)));
         let button = crate::env_editor::save_button("config-save-button", true)
             .tooltip_with_action(
                 crate::commands::label("request.save"),
@@ -959,7 +961,28 @@ impl ConfigEditor {
                 this.warn_unsaved(window, cx);
                 this.save(cx)
             }));
-        Some(slot.child(button).into_any_element())
+        let buttons = h_flex().gap_2().child(discard).child(button);
+        Some(slot.child(buttons).into_any_element())
+    }
+
+    /// Asks, then returns the settings to their saved file, as the environment editors'
+    /// Discard changes does.
+    pub fn discard_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let title = format!("Discard changes to {}?", self.title(cx).to_lowercase());
+        let answer = crate::confirm::ask(crate::confirm::discard_ask(title), window, cx);
+        let (workspace, root, target) = (
+            self.workspace.clone(),
+            self.root.clone(),
+            self.target.target(),
+        );
+        cx.spawn(async move |_, cx| {
+            if answer.recv().await == Ok(1) {
+                workspace.update(cx, |w, cx| {
+                    w.send(&root, Command::Revert(target), cx);
+                });
+            }
+        })
+        .detach();
     }
 
     fn section_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
