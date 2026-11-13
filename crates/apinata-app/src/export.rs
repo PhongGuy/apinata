@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use apinata_core::export::ExportNote;
+use apinata_core::export::{ExportNote, ExportNoteKind};
 use apinata_core::{Collection, GlobalEnvironments, IgnorePolicy, OpenOptions};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -88,43 +88,82 @@ pub fn environments_exported_message(dir: &Path, count: usize, dirty: bool) -> S
     }
 }
 
-/// The toast after a successful export, counting the notes when there are any.
-pub fn exported_message(file: &Path, notes: usize) -> String {
+/// The toast after a successful export: how many items were not carried over, or, when
+/// nothing was lost, how many were changed to fit.
+pub fn exported_message(file: &Path, notes: &[ExportNote]) -> String {
     let shown = file.display();
-    match notes {
-        0 => format!("Exported to {shown}"),
-        1 => format!("Exported to {shown} (1 item not carried over)"),
-        n => format!("Exported to {shown} ({n} items not carried over)"),
+    match (
+        count(notes, ExportNoteKind::Lost),
+        count(notes, ExportNoteKind::Changed),
+    ) {
+        (0, 0) => format!("Exported to {shown}"),
+        (0, 1) => format!("Exported to {shown} (1 item changed to fit)"),
+        (0, n) => format!("Exported to {shown} ({n} items changed to fit)"),
+        (1, _) => format!("Exported to {shown} (1 item not carried over)"),
+        (n, _) => format!("Exported to {shown} ({n} items not carried over)"),
     }
 }
 
-/// The export report's summary: how many items `file` could not carry, singular or plural.
-pub fn report_summary(file: &Path, notes: usize) -> String {
+/// The export report's summary: how many items `file` could not carry, or that everything was
+/// carried with some changed to fit.
+pub fn report_summary(file: &Path, notes: &[ExportNote]) -> String {
     let shown = file.display();
-    match notes {
-        1 => format!("1 item was not carried over to {shown}."),
-        n => format!("{n} items were not carried over to {shown}."),
+    match (
+        count(notes, ExportNoteKind::Lost),
+        count(notes, ExportNoteKind::Changed),
+    ) {
+        (0, 1) => format!("Everything was carried over to {shown}; 1 item was changed to fit."),
+        (0, n) => format!("Everything was carried over to {shown}; {n} items were changed to fit."),
+        (1, _) => format!("1 item was not carried over to {shown}."),
+        (n, _) => format!("{n} items were not carried over to {shown}."),
     }
 }
 
-/// One line per note in note order, "<where>: <what was lost>", with every backtick removed.
-pub fn report_lines(notes: &[ExportNote]) -> Vec<String> {
-    notes
-        .iter()
-        .map(|n| format!("{}: {}", n.source, n.detail).replace('`', ""))
-        .collect()
+/// The report's sections, "Left out" then "Changed", each without backticks and only when it
+/// has notes. Notes with the same text share one line naming every place, in note order; the
+/// rest read "<where>: <what>".
+pub fn report_groups(notes: &[ExportNote]) -> Vec<(Option<&'static str>, Vec<String>)> {
+    [
+        ("Left out", ExportNoteKind::Lost),
+        ("Changed", ExportNoteKind::Changed),
+    ]
+    .into_iter()
+    .filter_map(|(heading, kind)| {
+        let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+        for note in notes.iter().filter(|n| n.kind == kind) {
+            match groups.iter_mut().find(|(detail, _)| *detail == note.detail) {
+                Some((_, sources)) => sources.push(&note.source),
+                None => groups.push((&note.detail, vec![&note.source])),
+            }
+        }
+        let lines: Vec<String> = groups
+            .into_iter()
+            .map(|(detail, sources)| match sources.as_slice() {
+                [one] => format!("{one}: {detail}"),
+                many => format!("{detail}, in {} places: {}", many.len(), many.join("; ")),
+            })
+            .map(|line| line.replace('`', ""))
+            .collect();
+        (!lines.is_empty()).then_some((Some(heading), lines))
+    })
+    .collect()
 }
 
-// The toast after a collection export. When something was not carried over, its "Show details"
-// opens the report that names each item, so the reader can judge the file before sharing it.
-fn exported_toast(path: &Path, notes: Vec<String>) -> Notification {
-    let toast = ui::info_toast(exported_message(path, notes.len()));
+fn count(notes: &[ExportNote], kind: ExportNoteKind) -> usize {
+    notes.iter().filter(|n| n.kind == kind).count()
+}
+
+// The toast after a collection export. When the report has anything, its "Show details" opens
+// it, so the reader can judge the file before sharing it.
+fn exported_toast(path: &Path, notes: Vec<ExportNote>) -> Notification {
+    let toast = ui::info_toast(exported_message(path, &notes));
     if notes.is_empty() {
         return toast;
     }
-    let summary = report_summary(path, notes.len());
+    let summary = report_summary(path, &notes);
+    let groups = report_groups(&notes);
     toast.action(move |_, _, cx| {
-        let (summary, notes, this) = (summary.clone(), notes.clone(), cx.entity());
+        let (summary, groups, this) = (summary.clone(), groups.clone(), cx.entity());
         Button::new("export-details")
             .ghost()
             .label("Show details")
@@ -134,7 +173,7 @@ fn exported_toast(path: &Path, notes: Vec<String>) -> Notification {
                     "Export report",
                     REPORT_IDS,
                     summary.clone(),
-                    vec![(None, notes.clone())],
+                    groups.clone(),
                     window,
                     cx,
                 );
@@ -195,7 +234,7 @@ pub fn export_collection(
                         let options =
                             apinata_core::export::PostmanOptions::new().keep_scripts(keep_scripts);
                         let out = apinata_core::export::postman_with(&collection, &options);
-                        (out.json, report_lines(&out.notes))
+                        (out.json, out.notes)
                     }
                     ExportFormat::OpenApi => {
                         let out = apinata_core::export::openapi(&collection);
@@ -205,11 +244,11 @@ pub fn export_collection(
                         } else {
                             out.json.clone()
                         };
-                        (text, report_lines(&out.notes))
+                        (text, out.notes)
                     }
                     ExportFormat::Html => {
                         let out = apinata_core::export::html(&collection);
-                        (out.html, report_lines(&out.notes))
+                        (out.html, out.notes)
                     }
                 };
                 write_export(&path, text.as_bytes())?;

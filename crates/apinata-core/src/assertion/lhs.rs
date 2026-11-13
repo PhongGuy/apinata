@@ -87,7 +87,7 @@ enum Root<'a> {
 }
 
 /// The accessors after a trimmed `res`; `None` when the text is not such a chain.
-fn parse_expression(expression: &str) -> Option<Vec<Segment>> {
+pub(crate) fn parse_expression(expression: &str) -> Option<Vec<Segment>> {
     js::js_trim(expression)
         .strip_prefix("res")
         .and_then(parse_segments)

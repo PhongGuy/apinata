@@ -3,10 +3,12 @@
 use crate::support;
 
 use apinata_app::export::{
-    default_file_name, exported_message, html_file_name, openapi_file_name, write_export,
+    default_file_name, exported_message, html_file_name, openapi_file_name, report_groups,
+    report_summary, write_export,
 };
 use apinata_app::sidebar::menu::{MenuEntry, menu_entries};
 use apinata_app::sidebar::model::NodeKind;
+use apinata_core::export::ExportNote;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::{AppContext as _, Focusable as _, TestAppContext};
 use std::path::{Path, PathBuf};
@@ -70,17 +72,84 @@ fn the_default_file_name_is_the_sanitized_collection_name() {
     assert_eq!(default_file_name("  "), "untitled.postman_collection.json");
 }
 
+fn lost(source: &str, detail: &str) -> ExportNote {
+    ExportNote::new(source, detail)
+}
+
+fn changed(source: &str, detail: &str) -> ExportNote {
+    ExportNote::changed(source, detail)
+}
+
 #[test]
-fn the_message_counts_what_was_not_carried_over() {
+fn the_message_counts_only_what_was_not_carried_over() {
     let file = Path::new("/tmp/c.json");
-    assert_eq!(exported_message(file, 0), "Exported to /tmp/c.json");
+    let translated = changed("a / pre-request script", "script translated");
+    assert_eq!(exported_message(file, &[]), "Exported to /tmp/c.json");
     assert_eq!(
-        exported_message(file, 1),
+        exported_message(file, &[lost("a / tags", "t"), translated.clone()]),
         "Exported to /tmp/c.json (1 item not carried over)"
     );
     assert_eq!(
-        exported_message(file, 3),
+        exported_message(file, &[lost("a", "x"), lost("b", "x"), lost("c", "x")]),
         "Exported to /tmp/c.json (3 items not carried over)"
+    );
+    assert_eq!(
+        exported_message(file, &[translated.clone(), translated.clone()]),
+        "Exported to /tmp/c.json (2 items changed to fit)"
+    );
+    assert_eq!(
+        report_summary(file, &[lost("a / tags", "t"), translated.clone()]),
+        "1 item was not carried over to /tmp/c.json."
+    );
+    assert_eq!(
+        report_summary(file, &[translated]),
+        "Everything was carried over to /tmp/c.json; 1 item was changed to fit."
+    );
+}
+
+#[test]
+fn the_report_groups_repeats_and_keeps_changes_apart() {
+    let asserts = "assertions have no place";
+    let notes = [
+        lost("Posts / List posts / assertions", asserts),
+        lost("Posts / List posts / tags", "tags were left out"),
+        changed(
+            "Users / List users / pre-request script",
+            "script `translated`",
+        ),
+        lost("Posts / Get post / assertions", asserts),
+        lost("Users / Get user / assertions", asserts),
+        lost("Users / Get user / timeout", "the 5 ms timeout"),
+    ];
+    assert_eq!(
+        report_groups(&notes),
+        vec![
+            (
+                Some("Left out"),
+                vec![
+                    "assertions have no place, in 3 places: Posts / List posts / assertions; Posts / Get post / assertions; Users / Get user / assertions".to_owned(),
+                    "Posts / List posts / tags: tags were left out".to_owned(),
+                    "Users / Get user / timeout: the 5 ms timeout".to_owned(),
+                ]
+            ),
+            (
+                Some("Changed"),
+                vec!["Users / List users / pre-request script: script translated".to_owned()]
+            ),
+        ]
+    );
+    // A note about a whole item names the item itself, not a member of it.
+    let skipped = "only HTTP requests are exported";
+    assert_eq!(
+        report_groups(&[lost("f / g", skipped), lost("h / g", skipped)]),
+        vec![(
+            Some("Left out"),
+            vec![format!("{skipped}, in 2 places: f / g; h / g")]
+        )]
+    );
+    assert_eq!(
+        report_groups(&[lost("collection / headers", "h")]),
+        vec![(Some("Left out"), vec!["collection / headers: h".to_owned()])]
     );
 }
 
@@ -374,6 +443,24 @@ fn with_grpc_items(n: usize) -> tempfile::TempDir {
     write_tree(&files)
 }
 
+// `n` HTTP requests, each with its own tag, so the report has `n` lines that do not group.
+fn with_tagged_requests(n: usize) -> tempfile::TempDir {
+    let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
+    for i in 1..=n {
+        let text = request(&format!("r{i:02}"), "http://x/a").replacen(
+            "  seq: 1\n",
+            &format!("  seq: {i}\n  tags: [t{i}]\n"),
+            1,
+        );
+        files.push((format!("r{i:02}.yml"), text));
+    }
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    write_tree(&files)
+}
+
 // Exports to Postman through the collection menu into a fresh file and returns its path.
 fn export_postman(cx: &mut TestAppContext, s: &Started, out: &tempfile::TempDir) -> PathBuf {
     choose_menu(
@@ -412,7 +499,7 @@ fn dialog_open(cx: &mut TestAppContext, s: &Started) -> bool {
 }
 
 #[gpui_kit::test]
-fn show_details_lists_each_item_the_export_left_out(cx: &mut TestAppContext) {
+fn show_details_gathers_the_items_the_export_left_out(cx: &mut TestAppContext) {
     let col = with_grpc_items(2);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
@@ -432,13 +519,11 @@ fn show_details_lists_each_item_the_export_left_out(cx: &mut TestAppContext) {
         shown(cx, &s, "export-summary"),
         format!("2 items were not carried over to {}.", file.display())
     );
-    for (ix, name) in ["g1", "g2"].into_iter().enumerate() {
-        assert_eq!(
-            shown(cx, &s, ("export-note", ix)),
-            format!("{name}: only HTTP requests are exported; this gRPC item was left out")
-        );
-    }
-    assert!(!present(cx, s.win, ("export-note", 2usize)));
+    assert_eq!(
+        shown(cx, &s, ("export-note", 0usize)),
+        "only HTTP requests are exported; this gRPC item was left out, in 2 places: g1; g2"
+    );
+    assert!(!present(cx, s.win, ("export-note", 1usize)));
     cx.update_window(s.win, |_, w, cx| {
         use gpui_kit::test::TestWindowExt as _;
         w.click("export-report-close", cx)
@@ -462,7 +547,7 @@ fn a_clean_export_offers_no_details(cx: &mut TestAppContext) {
 fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, point};
-    let col = with_grpc_items(60);
+    let col = with_tagged_requests(60);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
     export_postman(cx, &s, &out);
@@ -506,7 +591,7 @@ fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
 fn the_export_report_keeps_its_lines_clear_of_the_scrollbar(cx: &mut TestAppContext) {
     use apinata_app::style::SCROLLBAR_GUTTER;
     use gpui_kit::test::TestWindowExt as _;
-    let col = with_grpc_items(60);
+    let col = with_tagged_requests(60);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
     export_postman(cx, &s, &out);

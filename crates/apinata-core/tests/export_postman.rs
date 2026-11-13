@@ -187,10 +187,7 @@ fn what_has_no_place_in_the_file_is_noted_in_tree_order() {
                 "f / r / post-response variables",
                 "post-response variables have no place in the exported file"
             ),
-            (
-                "f / r / assertions",
-                "assertions have no place in the exported file"
-            ),
+            ("f / r / assertions", "assertions turned into Postman tests"),
             (
                 "f / g",
                 "only HTTP requests are exported; this WebSocket item was left out"

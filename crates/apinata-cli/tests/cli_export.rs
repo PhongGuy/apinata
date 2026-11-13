@@ -41,7 +41,7 @@ fn stdout_holds_the_collection_and_stderr_the_notes() {
     assert_eq!(v["item"][0]["name"], "a");
     assert_eq!(v["item"][0]["request"]["url"]["raw"], "http://x.test/a");
     assert!(
-        stderr.contains("note: a / assertions: assertions have no place in the exported file"),
+        stderr.contains("note: a / assertions: assertions turned into Postman tests"),
         "{stderr}"
     );
 }
