@@ -19,7 +19,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     Action, AnyElement, App, Div, Entity, FocusHandle, Focusable, PathPromptOptions, Rems,
-    ScrollHandle, Subscription, TestSupportExt, Window, div, rems,
+    ScrollHandle, Subscription, TestSupportExt, Window, div, px, rems,
 };
 
 use crate::body_text;
@@ -1401,6 +1401,16 @@ impl Render for RunnerView {
             .gap_2()
             .child(actions)
             .child(options_box)
+            // A line under the options, so the list scrolling up below them stops at an edge.
+            .child(
+                div()
+                    .id("run-list-divider")
+                    .test_support()
+                    .flex_none()
+                    .h(px(1.))
+                    .w_full()
+                    .bg(cx.theme().border),
+            )
             // One-line status keeps its height, so the list always starts below it; load
             // errors can run long, so they alone shrink and scroll.
             .children(waiting.map(|d| d.flex_none()))

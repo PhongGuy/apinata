@@ -1045,3 +1045,43 @@ fn a_squeezed_select_hands_focus_back_to_the_body_editor(cx: &mut TestAppContext
     assert_eq!(now, held, "focus is back in the body editor");
     assert!(palette_reachable(cx, &s));
 }
+
+// Being active is session state, not file content, so the box says Save is not needed.
+#[gpui_kit::test]
+fn the_active_box_says_it_applies_without_save(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
+    assert!(present(cx, win, ACTIVE));
+    let note = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            (w.try_find("global-env-active-note")).and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(note.as_deref(), Some("Applies at once, without Save"));
+}
+
+// The name field's Cancel and Create are full-size buttons with the header's spacing.
+#[gpui_kit::test]
+fn the_naming_buttons_are_full_size_and_spaced(cx: &mut TestAppContext) {
+    let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
+    resize(cx, win, 1000., 700.);
+    click(cx, win, "global-env-create");
+    let (cancel, create, save) = (
+        bounds(cx, win, "global-env-name-cancel"),
+        bounds(cx, win, "global-env-name-confirm"),
+        bounds(cx, win, "global-env-save"),
+    );
+    assert_eq!(
+        create.size.height, save.size.height,
+        "Create is a small button"
+    );
+    assert_eq!(
+        cancel.size.height, save.size.height,
+        "Cancel is a small button"
+    );
+    let gap = resolved(cx, win, apinata_app::style::SPACE_2);
+    assert!(
+        create.left() - cancel.right() >= gap - px(0.5),
+        "{cancel:?} crowds {create:?}"
+    );
+}
