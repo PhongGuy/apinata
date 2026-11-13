@@ -458,7 +458,7 @@ impl fmt::Debug for Response {
 }
 
 /// Headers whose repeats Node drops, keeping the first value.
-const SINGLE_VALUED: [&str; 18] = [
+pub(crate) const SINGLE_VALUED: [&str; 18] = [
     "age",
     "authorization",
     "content-length",

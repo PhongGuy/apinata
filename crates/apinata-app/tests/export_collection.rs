@@ -127,7 +127,7 @@ fn the_report_groups_repeats_and_keeps_changes_apart() {
             (
                 Some("Left out"),
                 vec![
-                    "assertions in 3 items: assertions have no place (Posts / List posts; Posts / Get post; Users / Get user)".to_owned(),
+                    "assertions have no place, in 3 places: Posts / List posts / assertions; Posts / Get post / assertions; Users / Get user / assertions".to_owned(),
                     "Posts / List posts / tags: tags were left out".to_owned(),
                     "Users / Get user / timeout: the 5 ms timeout".to_owned(),
                 ]
@@ -137,6 +137,15 @@ fn the_report_groups_repeats_and_keeps_changes_apart() {
                 vec!["Users / List users / pre-request script: script translated".to_owned()]
             ),
         ]
+    );
+    // A note about a whole item names the item itself, not a member of it.
+    let skipped = "only HTTP requests are exported";
+    assert_eq!(
+        report_groups(&[lost("f / g", skipped), lost("h / g", skipped)]),
+        vec![(
+            Some("Left out"),
+            vec![format!("{skipped}, in 2 places: f / g; h / g")]
+        )]
     );
     assert_eq!(
         report_groups(&[lost("collection / headers", "h")]),

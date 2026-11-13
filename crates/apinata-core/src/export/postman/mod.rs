@@ -262,9 +262,11 @@ fn settings_behavior(
         note_if(notes, path, "timeout", true, &detail);
     }
     let tags = req.tags();
-    // The same words for every request, so the report can gather them in one line.
-    let detail = "tags have no place in Postman and were left out";
-    note_if(notes, path, "tags", !tags.is_empty(), detail);
+    let detail = format!(
+        "tags have no place in Postman and were left out: {}",
+        tags.join(", ")
+    );
+    note_if(notes, path, "tags", !tags.is_empty(), &detail);
 }
 
 /// The events for the item at `path`, each script translated for Postman with its notes

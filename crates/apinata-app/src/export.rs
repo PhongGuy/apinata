@@ -120,8 +120,8 @@ pub fn report_summary(file: &Path, notes: &[ExportNote]) -> String {
 }
 
 /// The report's sections, "Left out" then "Changed", each without backticks and only when it
-/// has notes. Notes that say the same thing about the same member share one line naming
-/// every item, in note order; the rest read "<where>: <what>".
+/// has notes. Notes with the same text share one line naming every place, in note order; the
+/// rest read "<where>: <what>".
 pub fn report_groups(notes: &[ExportNote]) -> Vec<(Option<&'static str>, Vec<String>)> {
     [
         ("Left out", ExportNoteKind::Lost),
@@ -129,32 +129,18 @@ pub fn report_groups(notes: &[ExportNote]) -> Vec<(Option<&'static str>, Vec<Str
     ]
     .into_iter()
     .filter_map(|(heading, kind)| {
-        let mut groups: Vec<(&str, &str, Vec<&ExportNote>)> = Vec::new();
+        let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
         for note in notes.iter().filter(|n| n.kind == kind) {
-            let member = note.source.rsplit(" / ").next().unwrap_or_default();
-            match groups
-                .iter_mut()
-                .find(|(m, d, _)| *m == member && *d == note.detail)
-            {
-                Some((_, _, members)) => members.push(note),
-                None => groups.push((member, &note.detail, vec![note])),
+            match groups.iter_mut().find(|(detail, _)| *detail == note.detail) {
+                Some((_, sources)) => sources.push(&note.source),
+                None => groups.push((&note.detail, vec![&note.source])),
             }
         }
         let lines: Vec<String> = groups
             .into_iter()
-            .map(|(member, detail, group)| match group.as_slice() {
-                [one] => format!("{}: {}", one.source, one.detail),
-                many => {
-                    let owners: Vec<&str> = many
-                        .iter()
-                        .map(|n| n.source.rsplit_once(" / ").map_or("", |(owner, _)| owner))
-                        .collect();
-                    format!(
-                        "{member} in {} items: {detail} ({})",
-                        many.len(),
-                        owners.join("; ")
-                    )
-                }
+            .map(|(detail, sources)| match sources.as_slice() {
+                [one] => format!("{one}: {detail}"),
+                many => format!("{detail}, in {} places: {}", many.len(), many.join("; ")),
             })
             .map(|line| line.replace('`', ""))
             .collect();

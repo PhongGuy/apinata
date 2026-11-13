@@ -7,6 +7,7 @@ use crate::assertion::lhs::{Segment, parse_expression};
 use crate::assertion::rhs::{Operator, Scalar, literal, split};
 use crate::export::ExportNote;
 use crate::js::{self, js_trim};
+use crate::response::SINGLE_VALUED;
 
 const TURNED: &str = "assertions turned into Postman tests";
 const LEFT_OUT: &str = "these assertions could not be turned into Postman tests and were left out";
@@ -37,9 +38,11 @@ pub(super) fn tests(
         notes.push(ExportNote::changed(&source, TURNED));
     }
     if !left.is_empty() {
+        // Each assertion is quoted, so no text inside one can read as a separator.
+        let left: Vec<String> = left.iter().map(|name| quoted(name)).collect();
         notes.push(ExportNote::new(
             source,
-            format!("{LEFT_OUT}: {}", left.join("; ")),
+            format!("{LEFT_OUT}: {}", left.join(", ")),
         ));
     }
     lines
@@ -47,9 +50,12 @@ pub(super) fn tests(
 
 /// The `pm.expect` call for `expression` against `operator value` text, when both translate.
 fn expect(expression: &str, text: &str) -> Option<String> {
-    let actual = actual(expression)?;
+    let (actual, nested) = actual(expression)?;
     let (op, value) = split(text);
     let chain = match op {
+        // Reading through a missing value gives core an error object, which is defined and
+        // unequal to anything, while Postman throws; only these two operators would differ.
+        Operator::Neq | Operator::IsDefined if nested => return None,
         Operator::Eq => format!("to.equal({})", scalar(&value)?),
         Operator::Neq => format!("to.not.equal({})", scalar(&value)?),
         Operator::Gt => format!("to.be.above({})", number(&value)?),
@@ -66,25 +72,47 @@ fn expect(expression: &str, text: &str) -> Option<String> {
     Some(format!("pm.expect({actual}).{chain}"))
 }
 
-/// The Postman value for a status, status text, response time, one header or a JSON body path.
-fn actual(expression: &str) -> Option<String> {
+/// The Postman value for a status, status text, response time, one header or a JSON body path,
+/// and whether it is a body path that reads through a parent value.
+fn actual(expression: &str) -> Option<(String, bool)> {
     let segments = parse_expression(expression)?;
     let (Segment::Dot(first), rest) = segments.split_first()? else {
         return None;
     };
+    let plain = |text: &str| Some((text.to_owned(), false));
     match (first.as_str(), rest) {
-        ("status", []) => Some("pm.response.code".to_owned()),
-        ("statusText", []) => Some("pm.response.status".to_owned()),
-        ("responseTime", []) => Some("pm.response.responseTime".to_owned()),
-        ("headers", [Segment::Dot(name) | Segment::Key(name)]) => {
-            Some(format!("pm.response.headers.get({})", quoted(name)))
-        }
+        ("status", []) => plain("pm.response.code"),
+        ("statusText", []) => plain("pm.response.status"),
+        ("responseTime", []) => plain("pm.response.responseTime"),
+        ("headers", [Segment::Dot(name) | Segment::Key(name)]) => Some((header(name)?, false)),
         ("body", chain) if !chain.is_empty() => {
             let path: String = chain.iter().map(Segment::render).collect();
-            Some(format!("pm.response.json(){path}"))
+            Some((format!("pm.response.json(){path}"), chain.len() > 1))
         }
         _ => None,
     }
+}
+
+/// Header `name` as core reads it: by its lowercase name only, the first value of a header
+/// Node keeps once, other repeats joined, and undefined when absent. Postman's `get` ignores
+/// case and returns the last value, so the values are gathered by hand. `set-cookie` is an
+/// array in core and is left out.
+fn header(name: &str) -> Option<String> {
+    if name != name.to_ascii_lowercase() || name == "set-cookie" {
+        return None;
+    }
+    let values = format!(
+        "pm.response.headers.all().filter((h) => h.key.toLowerCase() === {}).map((h) => h.value)",
+        quoted(name)
+    );
+    if SINGLE_VALUED.contains(&name) {
+        return Some(format!("{values}[0]"));
+    }
+    let sep = if name == "cookie" { "; " } else { ", " };
+    Some(format!(
+        "((v) => v.length ? v.join({}) : undefined)({values})",
+        quoted(sep)
+    ))
 }
 
 /// The right side as a JavaScript literal. A variable is only known when the request runs, so

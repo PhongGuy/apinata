@@ -724,16 +724,16 @@ expression: "rendered(&postman_with(&c, &keep))"
 }
 --- notes
 Posts / List posts / assertions: assertions turned into Postman tests
-Posts / List posts / tags: tags have no place in Postman and were left out
+Posts / List posts / tags: tags have no place in Postman and were left out: smoke
 Posts / Get post / post-response variables: post-response variables have no place in the exported file
 Posts / Get post / assertions: assertions turned into Postman tests
-Posts / Get post / tags: tags have no place in Postman and were left out
+Posts / Get post / tags: tags have no place in Postman and were left out: smoke
 Posts / Create post / assertions: assertions turned into Postman tests
 Posts / Delete post / assertions: assertions turned into Postman tests
 Users / List users / assertions: assertions turned into Postman tests
-Users / List users / tags: tags have no place in Postman and were left out
+Users / List users / tags: tags have no place in Postman and were left out: smoke
 Users / Get user / assertions: assertions turned into Postman tests
-Users / Get user / tags: tags have no place in Postman and were left out
+Users / Get user / tags: tags have no place in Postman and were left out: smoke, data
 Media / Get XML / assertions: assertions turned into Postman tests
 Media / Get PNG / assertions: assertions turned into Postman tests
 Auth / Digest example / assertions: assertions turned into Postman tests
