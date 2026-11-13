@@ -198,7 +198,7 @@ pub fn app_menu_disabled_reasons(
 fn greyed_entry(label: &'static str, reason: &'static str) -> PopupMenuItem {
     PopupMenuItem::element(move |_, cx| {
         let row = Rc::new(Cell::new(Bounds::default()));
-        let painted = row.clone();
+        let painted = Rc::clone(&row);
         crate::ui::menu_label_cue(div(), cx)
             .id(label)
             .test_support()

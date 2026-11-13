@@ -1268,7 +1268,7 @@ pub fn text_tooltip_beside(
     let tip = text_tooltip(id, text);
     move |window, cx| {
         let tip = tip(window, cx);
-        let anchor = anchor.clone();
+        let anchor = Rc::clone(&anchor);
         cx.new(|_| TooltipBeside {
             anchor,
             placement,
