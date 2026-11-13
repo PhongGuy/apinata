@@ -1,5 +1,5 @@
-//! The wide response header stays one row: the address gives way first, then the tab strip
-//! scrolls, and below that the pane goes compact, so the body never jumps.
+//! The wide response header stays one row: the address gives way first, and once the whole
+//! tabs and the facts no longer fit side by side the pane goes compact, so no tab hides.
 
 use crate::support;
 
@@ -183,29 +183,29 @@ fn a_narrower_pane_cuts_the_address_and_keeps_every_button(cx: &mut TestAppConte
     );
 }
 
-// Narrower still, once the address is cut away entirely the tabs scroll behind their
-// fades, and only then does the pane fold to compact.
+// Narrower still, once the tabs and the facts no longer fit one row the pane folds to
+// compact, giving the tabs a row of their own, before any tab is scrolled out of sight.
 #[gpui_kit::test]
-fn the_tabs_scroll_before_the_pane_goes_compact(cx: &mut TestAppContext) {
+fn the_pane_goes_compact_before_a_tab_scrolls(cx: &mut TestAppContext) {
     let (s, _server) = redirected(cx, 1280.);
-    let mut scrolled = false;
+    let mut folded = false;
     for width in (880..=1280).rev().step_by(8) {
         resize(cx, &s, width as f32);
         if present(cx, s.win, "response-more") {
+            assert!(
+                !present(cx, s.win, "response-tab-overflow"),
+                "the tabs scroll on their own row at {width} px"
+            );
+            folded = true;
             break;
         }
         assert_one_row(cx, s.win);
-        if present(cx, s.win, "response-tab-overflow") {
-            let address = bounds(cx, s.win, "response-address").size.width;
-            assert_eq!(
-                address,
-                px(0.),
-                "the tabs scroll at {width} px beside an address"
-            );
-            scrolled = true;
-        }
+        assert!(
+            !present(cx, s.win, "response-tab-overflow"),
+            "a tab is scrolled out of the one-row header at {width} px"
+        );
     }
-    assert!(scrolled, "the strip never overflowed while wide");
+    assert!(folded, "the pane never went compact");
 }
 
 // The right edge of the last tab's content: its label or its badge, whichever ends later,
