@@ -401,7 +401,7 @@ fn assertion_columns_name_expression_operator_value_with_a_fixed_operator() {
         ]
     );
     // The value takes the larger share of what the operator leaves.
-    assert!(VALUE_GROW > 1.0);
+    const { assert!(VALUE_GROW > 1.0) };
 }
 
 fn hover_on(cx: &mut TestAppContext, win: AnyWindowHandle, target: impl Into<gpui_kit::ElementId>) {

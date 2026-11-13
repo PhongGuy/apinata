@@ -582,7 +582,7 @@ fn the_report_lists_the_places_under_their_kind(cx: &mut TestAppContext) {
     cx.update_window(s.win, |_, w, cx| {
         w.render_frame(cx);
         let note = w.find(("export-note", 0usize)).bounds();
-        let mut within = w.within(("export-note", 0usize));
+        let within = w.within(("export-note", 0usize));
         let kind = within.find("report-kind");
         assert_eq!(
             kind.label(),
