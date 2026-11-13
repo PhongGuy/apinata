@@ -122,7 +122,8 @@ const IMPORT_IDS: ReportIds = ReportIds {
 };
 
 /// A report dialog titled `title`: `summary`, then each group's optional heading and its lines
-/// in a box that scrolls when they outgrow the window, then a Close button.
+/// in a box that scrolls when they outgrow the window, then a Close button. A line's rows after
+/// its first ("report-kind") are drawn indented under it ("report-place", p).
 pub fn open_report(
     title: &'static str,
     ids: ReportIds,
@@ -139,12 +140,32 @@ pub fn open_report(
         let sections = groups.iter().enumerate().map(|(g, (heading, lines))| {
             let start = first;
             first += lines.len();
+            // A line's later rows are the places its first row applies to, set in under it.
             let notes = lines.iter().enumerate().map(move |(i, l)| {
+                let mut rows = l.split('\n');
+                let kind = rows.next().unwrap_or_default().to_owned();
+                let places = rows.enumerate().map(|(p, place)| {
+                    div()
+                        .id(("report-place", p))
+                        .test_support()
+                        .aria_label(place.to_owned())
+                        .ml(SPACE_3)
+                        .child(place.to_owned())
+                });
                 div()
                     .id((ids.note, start + i))
                     .test_support()
                     .aria_label(l.clone())
-                    .child(l.clone())
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .id("report-kind")
+                            .test_support()
+                            .aria_label(kind.clone())
+                            .child(kind),
+                    )
+                    .children(places)
             });
             div()
                 .flex()
