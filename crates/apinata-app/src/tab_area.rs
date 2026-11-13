@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use apinata_core::{ItemPath, NetworkEntry, RequestKind, RequestResult, SendSource};
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tab::{Tab, TabBar};
@@ -2357,7 +2358,8 @@ impl TabArea {
                         .test_support()
                         .min_w_0()
                         .text_color(cx.theme().muted_foreground)
-                        .child(detail),
+                        .child(detail.clone())
+                        .test_text(detail),
                 )
             })
             .context_menu(move |mut menu, window, cx| {

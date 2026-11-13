@@ -94,7 +94,7 @@ fn tail(segments: &[String], k: usize) -> &[String] {
 /// The hint of each (root, name) collection: the shortest part of its folder path that tells
 /// it apart from collections showing the same name.
 pub fn collection_hints(collections: &[(&Path, &str)]) -> Vec<Option<String>> {
-    let shown: Vec<Shown> = collections
+    let full: Vec<Shown> = collections
         .iter()
         .map(|&(root, name)| Shown {
             name: name.to_owned(),
@@ -105,7 +105,28 @@ pub fn collection_hints(collections: &[(&Path, &str)]) -> Vec<Option<String>> {
             file: None,
         })
         .collect();
+    // A folder named after its collection would only repeat the name, so the hint looks to the
+    // folders above it, unless that leaves the place of another collection with the name.
+    let shown: Vec<Shown> = (full.iter())
+        .map(|s| {
+            let place = short(s);
+            let clash =
+                (full.iter()).any(|o| !std::ptr::eq(o, s) && o.name == s.name && o.place == place);
+            Shown {
+                place: if clash { &s.place } else { place }.to_vec(),
+                ..s.clone()
+            }
+        })
+        .collect();
     hints(&shown)
+}
+
+// The place without its last folder when that folder carries the item's own name.
+fn short(s: &Shown) -> &[String] {
+    match s.place.split_last() {
+        Some((last, above)) if *last == s.name => above,
+        _ => &s.place,
+    }
 }
 
 /// What stands for each collection in an item's place: its name, or its hint when another
