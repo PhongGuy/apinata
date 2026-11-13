@@ -158,6 +158,15 @@ impl Field {
         }
     }
 
+    // The unit drawn beside the field, for the fields that measure something.
+    fn unit(self) -> Option<&'static str> {
+        match self {
+            Field::BodyCap => Some("MB"),
+            Field::ScriptTimeout | Field::RequestTimeout => Some("s"),
+            _ => None,
+        }
+    }
+
     // The short name a close warning gives the field.
     fn label(self) -> &'static str {
         match self {
@@ -228,14 +237,27 @@ impl PreferencesView {
             .max_body_bytes
             .map(|b| b.div_ceil(MB).to_string())
             .unwrap_or_default();
-        let body_cap = cx.new(|cx| InputState::new(window, cx).default_value(cap));
+        // Both limits that can be lifted say so the same way: an empty field is no limit.
+        let body_cap = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(cap)
+                .placeholder(NO_LIMIT)
+        });
         let history_limit = cx
             .new(|cx| InputState::new(window, cx).default_value(current.history_limit.to_string()));
         let script_timeout = cx.new(|cx| {
             InputState::new(window, cx).default_value(current.script_timeout_secs.to_string())
         });
+        let timeout = current.request_timeout_secs;
+        let timeout = if timeout == 0 {
+            String::new()
+        } else {
+            timeout.to_string()
+        };
         let request_timeout = cx.new(|cx| {
-            InputState::new(window, cx).default_value(current.request_timeout_secs.to_string())
+            InputState::new(window, cx)
+                .default_value(timeout)
+                .placeholder(NO_LIMIT)
         });
         let (zoom_text, editor_text, response_text) = shown_sizes(&current);
         let zoom = cx.new(|cx| InputState::new(window, cx).default_value(zoom_text));
@@ -601,9 +623,18 @@ impl PreferencesView {
         self.settings.update(cx, |p, cx| p.update(cx, f));
     }
 
-    // The field's input at the form width, with its refusal under it when it has one.
+    // The field's input at the form width with its unit beside it, and its refusal under it
+    // when it has one.
     fn field(&self, field: Field, window: &Window, cx: &App) -> Div {
-        self.with_error(field, self.framed(field, window, cx), cx)
+        let framed = self.framed(field, window, cx);
+        let control = match field.unit() {
+            Some(unit) => {
+                let id = SharedString::from(format!("{}-unit", field.id()));
+                ui::with_unit(framed, id, unit, cx)
+            }
+            None => framed,
+        };
+        self.with_error(field, control, cx)
     }
 
     // The field's input at the form width, marked while it is focused and refused.
@@ -871,6 +902,9 @@ pub fn parse_proxy_port(text: &str) -> Result<String, String> {
     }
 }
 
+/// What an empty limit field shows: it lifts the limit.
+const NO_LIMIT: &str = "No limit";
+
 // Blank means no cap; otherwise a positive whole number of MB.
 fn parse_body_cap(text: &str) -> Result<Option<u64>, String> {
     let text = text.trim();
@@ -910,9 +944,12 @@ pub fn parse_script_timeout(text: &str) -> Result<u32, String> {
         })
 }
 
-/// A whole number of seconds within [`REQUEST_TIMEOUT_SECS`].
+/// A whole number of seconds within [`REQUEST_TIMEOUT_SECS`]; blank is 0, no limit.
 pub fn parse_request_timeout(text: &str) -> Result<u32, String> {
     let text = text.trim();
+    if text.is_empty() {
+        return Ok(0);
+    }
     let (low, high) = (REQUEST_TIMEOUT_SECS.start(), REQUEST_TIMEOUT_SECS.end());
     text.parse::<u32>()
         .ok()
@@ -1219,14 +1256,14 @@ impl PreferencesView {
             )
             .row_with_terms(
                 "pref-body-cap",
-                "Largest response to keep (MB, blank for no limit)",
-                ["body cap", "size limit"],
+                "Largest response to keep",
+                ["body cap", "size limit", "no limit"],
                 self.field(Field::BodyCap, window, cx),
             )
             .row_with_terms(
                 "pref-request-timeout",
-                "Request timeout (seconds, 0 means no limit)",
-                ["request", "timeout", "limit"],
+                "Request timeout",
+                ["request", "timeout", "limit", "no limit"],
                 self.field(Field::RequestTimeout, window, cx),
             )
             .row("pref-http-version", "HTTP version", http_version);
@@ -1297,7 +1334,7 @@ impl PreferencesView {
             .row("pref-run-scripts", "Run scripts", run_scripts)
             .row_with_terms(
                 "pref-script-timeout",
-                "Script time limit (seconds)",
+                "Script time limit",
                 ["script", "timeout", "limit"],
                 self.field(Field::ScriptTimeout, window, cx),
             )

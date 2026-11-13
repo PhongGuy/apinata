@@ -347,6 +347,13 @@ fn assert_clear(cx: &mut TestAppContext) {
 fn settings_timeout(cx: &mut TestAppContext) {
     let c = case(cx, "settings-timeout");
     open_section(cx, &c, Section::Settings);
+    // The fixture has no limit, so the field shows once Custom is picked.
+    act(
+        cx,
+        &c,
+        |e| e.settings().clone(),
+        |s: &mut SettingsSection, w, cx| s.set_timeout_mode(TimeoutMode::Custom, w, cx),
+    );
     replace_input(cx, c.win, Some("settings"), "set-timeout", "5000");
     finish(cx, &c, "settings-timeout");
 }
