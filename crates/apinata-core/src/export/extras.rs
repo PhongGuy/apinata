@@ -13,9 +13,11 @@ use crate::script::ScriptPhase;
 
 /// The Postman events for one item's scripts, given a reader of its script per phase and
 /// `export`, which turns each non-blank trimmed script into the code to write.
-/// Tests join the post-response script in one `test` event, as Postman has no tests phase.
+/// Tests join the post-response script in one `test` event, as Postman has no tests phase,
+/// and the `checks` made from assertions close it.
 pub(super) fn events(
     script: impl Fn(ScriptPhase) -> String,
+    checks: Vec<String>,
     mut export: impl FnMut(ScriptPhase, &str) -> String,
 ) -> Vec<Value> {
     let mut lines = |phase| -> Vec<String> {
@@ -40,6 +42,13 @@ pub(super) fn events(
         }
         test.push("// Tests".to_owned());
         test.extend(tests);
+    }
+    if !checks.is_empty() {
+        if !test.is_empty() {
+            test.push(String::new());
+        }
+        test.push("// Assertions".to_owned());
+        test.extend(checks);
     }
     if !test.is_empty() {
         out.push(event("test", test));

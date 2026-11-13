@@ -187,8 +187,11 @@ pub(super) fn for_postman(code: &str, source: &str, notes: &mut Vec<ExportNote>)
             "script translated; {n} calls rewritten for Postman"
         )),
     };
-    if let Some(summary) = summary {
-        notes.push(ExportNote::new(source, summary));
+    // A translated script is carried over; one kept whole because its brackets do not balance is not.
+    match summary {
+        Some(summary) if out.kept => notes.push(ExportNote::new(source, summary)),
+        Some(summary) => notes.push(ExportNote::changed(source, summary)),
+        None => {}
     }
     for chain in &out.leftovers {
         let detail = format!(
