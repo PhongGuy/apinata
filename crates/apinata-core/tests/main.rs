@@ -170,6 +170,7 @@ mod export_openapi_responses;
 mod export_openapi_security;
 mod export_openapi_servers;
 mod export_postman;
+mod export_postman_assertions;
 mod export_postman_auth;
 mod export_postman_extras;
 mod export_postman_headers;

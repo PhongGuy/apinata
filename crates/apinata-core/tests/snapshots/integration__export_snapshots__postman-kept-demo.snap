@@ -35,7 +35,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               ],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get post",
@@ -61,7 +75,22 @@ expression: "rendered(&postman_with(&c, &keep))"
                 }
               ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));",
+                  "pm.test(\"res.body.id eq 1\", () => pm.expect(pm.response.json().id).to.equal(1));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Create post",
@@ -98,7 +127,21 @@ expression: "rendered(&postman_with(&c, &keep))"
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 201\", () => pm.expect(pm.response.code).to.equal(201));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Replace post",
@@ -179,7 +222,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -212,7 +269,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get user",
@@ -233,7 +304,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -260,7 +345,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Get PNG",
@@ -282,7 +381,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -326,7 +439,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "SigV4 example",
@@ -469,7 +596,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "NTLM example",
@@ -510,7 +651,21 @@ expression: "rendered(&postman_with(&c, &keep))"
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -568,19 +723,20 @@ expression: "rendered(&postman_with(&c, &keep))"
   ]
 }
 --- notes
-Posts / List posts / assertions: assertions have no place in the exported file
-Posts / List posts / tags: tags have no place in Postman and were left out: smoke
+Posts / List posts / assertions: assertions turned into Postman tests
+Posts / List posts / tags: tags have no place in Postman and were left out
 Posts / Get post / post-response variables: post-response variables have no place in the exported file
-Posts / Get post / assertions: assertions have no place in the exported file
-Posts / Get post / tags: tags have no place in Postman and were left out: smoke
-Posts / Create post / assertions: assertions have no place in the exported file
-Posts / Delete post / assertions: assertions have no place in the exported file
-Users / List users / assertions: assertions have no place in the exported file
-Users / List users / tags: tags have no place in Postman and were left out: smoke
-Users / Get user / assertions: assertions have no place in the exported file
-Users / Get user / tags: tags have no place in Postman and were left out: smoke, data
-Media / Get XML / assertions: assertions have no place in the exported file
-Media / Get PNG / assertions: assertions have no place in the exported file
-Auth / Digest example / assertions: assertions have no place in the exported file
-Auth / OAuth 1.0 example / assertions: assertions have no place in the exported file
-Auth / NTLM example / assertions: assertions have no place in the exported file
+Posts / Get post / assertions: assertions turned into Postman tests
+Posts / Get post / tags: tags have no place in Postman and were left out
+Posts / Create post / assertions: assertions turned into Postman tests
+Posts / Delete post / assertions: assertions turned into Postman tests
+Users / List users / assertions: assertions turned into Postman tests
+Users / List users / tags: tags have no place in Postman and were left out
+Users / Get user / assertions: assertions turned into Postman tests
+Users / Get user / tags: tags have no place in Postman and were left out
+Media / Get XML / assertions: assertions turned into Postman tests
+Media / Get PNG / assertions: assertions turned into Postman tests
+Auth / Digest example / assertions: assertions turned into Postman tests
+Auth / OAuth 1.0 example / assertions: assertions turned into Postman tests
+Auth / NTLM example / assertions: assertions turned into Postman tests
+scripts: scripts exported as written; their API calls are not translated

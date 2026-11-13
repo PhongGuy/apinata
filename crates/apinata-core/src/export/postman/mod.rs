@@ -1,5 +1,6 @@
 //! The Postman v2.1 collection exporter: tree walk, item order, requests, URLs and notes.
 
+mod assertions;
 mod script;
 
 use std::collections::HashMap;
@@ -21,7 +22,6 @@ use crate::sequence::sort_by_name_then_seq;
 const SCHEMA: &str = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
 const VARIABLES: &str = "variables set here have no place in the exported file";
 const POST_RESPONSE: &str = "post-response variables have no place in the exported file";
-const ASSERTIONS: &str = "assertions have no place in the exported file";
 const KEPT: &str = "scripts exported as written; their API calls are not translated";
 
 /// The collection as Postman v2.1 JSON, with a note for each thing the file cannot carry.
@@ -43,8 +43,8 @@ pub fn postman_with(collection: &Collection, options: &PostmanOptions) -> Postma
     let mut copies = HashMap::new();
     count_copies(collection, collection.tree(), &mut copies);
     if !file.headers().is_empty() {
-        let detail = headers_note(copies.get("").copied().unwrap_or(0));
-        notes.push(ExportNote::new("collection / headers", detail));
+        let n = copies.get("").copied().unwrap_or(0);
+        notes.push(headers_note("collection / headers", n));
     }
     let spec = file.auth();
     note_unsupported_auth(&mut notes, &["collection"], &spec);
@@ -69,7 +69,13 @@ pub fn postman_with(collection: &Collection, options: &PostmanOptions) -> Postma
     if let Some(auth) = auth(&spec) {
         root.insert("auth".into(), auth);
     }
-    let root_events = item_events(|p| file.script(p), &["collection"], options, &mut notes);
+    let root_events = item_events(
+        |p| file.script(p),
+        &["collection"],
+        options,
+        Vec::new(),
+        &mut notes,
+    );
     insert_events(&mut root, root_events, &mut scripted);
     if scripted && options.keep_scripts {
         notes.push(ExportNote::new("scripts", KEPT));
@@ -111,7 +117,7 @@ fn folder_items(
                     .map(|p| p.as_str().to_owned());
                 let n = key.and_then(|k| copies.get(&k).copied()).unwrap_or(0);
                 let source = [path.as_slice(), &["headers"]].concat().join(" / ");
-                notes.push(ExportNote::new(source, headers_note(n)));
+                notes.push(headers_note(&source, n));
             }
             note_if(
                 notes,
@@ -124,7 +130,7 @@ fn folder_items(
             note_if(notes, &path, "post-response variables", post, POST_RESPONSE);
             folder_auth = file.auth();
             note_unsupported_auth(notes, &path, &folder_auth);
-            folder_events = item_events(|p| file.script(p), &path, options, notes);
+            folder_events = item_events(|p| file.script(p), &path, options, Vec::new(), notes);
         }
         let children = folder_items(collection, copies, sub, &path, notes, scripted, options);
         out.insert("item".into(), children.into());
@@ -163,13 +169,7 @@ fn request_item(
     note_if(notes, path, "variables", !req.vars().is_empty(), VARIABLES);
     let post = !req.post_response_vars().is_empty();
     note_if(notes, path, "post-response variables", post, POST_RESPONSE);
-    note_if(
-        notes,
-        path,
-        "assertions",
-        !req.assertions().is_empty(),
-        ASSERTIONS,
-    );
+    let checks = assertions::tests(&req.assertions(), path, notes);
 
     let mut request = Map::new();
     request.insert("method".into(), req.method().into());
@@ -215,7 +215,7 @@ fn request_item(
         request.insert("body".into(), body);
     }
     item.insert("request".into(), request.into());
-    let req_events = item_events(|p| req.script(p), path, options, notes);
+    let req_events = item_events(|p| req.script(p), path, options, checks, notes);
     insert_events(&mut item, req_events, scripted);
     let examples = req.examples();
     if !examples.is_empty() {
@@ -262,22 +262,21 @@ fn settings_behavior(
         note_if(notes, path, "timeout", true, &detail);
     }
     let tags = req.tags();
-    let detail = format!(
-        "tags have no place in Postman and were left out: {}",
-        tags.join(", ")
-    );
-    note_if(notes, path, "tags", !tags.is_empty(), &detail);
+    // The same words for every request, so the report can gather them in one line.
+    let detail = "tags have no place in Postman and were left out";
+    note_if(notes, path, "tags", !tags.is_empty(), detail);
 }
 
 /// The events for the item at `path`, each script translated for Postman with its notes
-/// unless the options keep scripts as written.
+/// unless the options keep scripts as written; `checks` closes the test event.
 fn item_events(
     script: impl Fn(ScriptPhase) -> String,
     path: &[&str],
     options: &PostmanOptions,
+    checks: Vec<String>,
     notes: &mut Vec<ExportNote>,
 ) -> Vec<Value> {
-    events(script, |phase, code| {
+    events(script, checks, |phase, code| {
         if options.keep_scripts {
             return code.to_owned();
         }
@@ -338,13 +337,27 @@ fn count_copies(collection: &Collection, folder: &Folder, copies: &mut HashMap<S
     }
 }
 
-/// The note for a collection or folder with headers that reached `n` requests.
-fn headers_note(n: usize) -> String {
+/// The note at `source` for a collection or folder with headers that reached `n` requests;
+/// copied headers are carried over, unused ones are lost.
+fn headers_note(source: &str, n: usize) -> ExportNote {
     const WHY: &str = "because Postman has no collection or folder headers";
     match n {
-        0 => "headers were not copied anywhere: no request uses them (the folder is empty, or every request sets its own)".into(),
-        1 => format!("headers were copied into 1 request, {WHY}; importing the file back gives that request its own copy"),
-        n => format!("headers were copied into {n} requests, {WHY}; importing the file back gives each of those requests its own copy"),
+        0 => ExportNote::new(
+            source,
+            "headers were not copied anywhere: no request uses them (the folder is empty, or every request sets its own)",
+        ),
+        1 => ExportNote::changed(
+            source,
+            format!(
+                "headers were copied into 1 request, {WHY}; importing the file back gives that request its own copy"
+            ),
+        ),
+        n => ExportNote::changed(
+            source,
+            format!(
+                "headers were copied into {n} requests, {WHY}; importing the file back gives each of those requests its own copy"
+            ),
+        ),
     }
 }
 

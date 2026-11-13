@@ -58,7 +58,10 @@ expression: rendered(&postman(&c))
                   "",
                   "pm.test(\"response time covers the full wait when headers are held back\", () => {",
                   "  pm.expect(pm.response.responseTime).to.be.at.least(WAIT_MS - TIMER_SLACK_MS);",
-                  "});"
+                  "});",
+                  "",
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
                 ]
               }
             }
@@ -111,7 +114,10 @@ expression: rendered(&postman(&c))
                   "",
                   "pm.test(\"response time covers the full wait when the body streams slowly after immediate headers\", () => {",
                   "  pm.expect(pm.response.responseTime).to.be.at.least(WAIT_MS - TIMER_SLACK_MS);",
-                  "});"
+                  "});",
+                  "",
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
                 ]
               }
             }
@@ -525,9 +531,9 @@ expression: rendered(&postman(&c))
   ]
 }
 --- notes
-response-time / delayed headers / assertions: assertions have no place in the exported file
+response-time / delayed headers / assertions: assertions turned into Postman tests
 response-time / delayed headers / tests script: script translated; 3 calls rewritten for Postman
-response-time / delayed body / assertions: assertions have no place in the exported file
+response-time / delayed body / assertions: assertions turned into Postman tests
 response-time / delayed body / tests script: script translated; 3 calls rewritten for Postman
 variable-datatypes / variables: variables set here have no place in the exported file
 variable-datatypes / typed vars / variables: variables set here have no place in the exported file

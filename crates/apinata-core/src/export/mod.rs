@@ -202,15 +202,37 @@ impl PostmanOptions {
 pub struct ExportNote {
     /// Where it was: `collection / <member>`, or item names joined by ` / ` then the member.
     pub source: String,
-    /// What was lost.
+    /// What was lost or changed.
     pub detail: String,
+    /// Whether it was lost or carried over in another form.
+    pub kind: ExportNoteKind,
+}
+
+/// Whether an export note reports a loss or a change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ExportNoteKind {
+    /// The file does not carry it, or it will not work as written.
+    Lost,
+    /// The file carries it in another form, such as a translated script.
+    Changed,
 }
 
 impl ExportNote {
-    pub(crate) fn new(source: impl Into<String>, detail: impl Into<String>) -> ExportNote {
+    /// A note for something the file does not carry.
+    pub fn new(source: impl Into<String>, detail: impl Into<String>) -> ExportNote {
         ExportNote {
             source: source.into(),
             detail: detail.into(),
+            kind: ExportNoteKind::Lost,
+        }
+    }
+
+    /// A note for something the file carries in another form.
+    pub fn changed(source: impl Into<String>, detail: impl Into<String>) -> ExportNote {
+        ExportNote {
+            kind: ExportNoteKind::Changed,
+            ..ExportNote::new(source, detail)
         }
     }
 }

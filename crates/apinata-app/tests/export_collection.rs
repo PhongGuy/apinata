@@ -3,10 +3,12 @@
 use crate::support;
 
 use apinata_app::export::{
-    default_file_name, exported_message, html_file_name, openapi_file_name, write_export,
+    default_file_name, exported_message, html_file_name, openapi_file_name, report_groups,
+    report_summary, write_export,
 };
 use apinata_app::sidebar::menu::{MenuEntry, menu_entries};
 use apinata_app::sidebar::model::NodeKind;
+use apinata_core::export::ExportNote;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::{AppContext as _, Focusable as _, TestAppContext};
 use std::path::{Path, PathBuf};
@@ -70,17 +72,75 @@ fn the_default_file_name_is_the_sanitized_collection_name() {
     assert_eq!(default_file_name("  "), "untitled.postman_collection.json");
 }
 
+fn lost(source: &str, detail: &str) -> ExportNote {
+    ExportNote::new(source, detail)
+}
+
+fn changed(source: &str, detail: &str) -> ExportNote {
+    ExportNote::changed(source, detail)
+}
+
 #[test]
-fn the_message_counts_what_was_not_carried_over() {
+fn the_message_counts_only_what_was_not_carried_over() {
     let file = Path::new("/tmp/c.json");
-    assert_eq!(exported_message(file, 0), "Exported to /tmp/c.json");
+    let translated = changed("a / pre-request script", "script translated");
+    assert_eq!(exported_message(file, &[]), "Exported to /tmp/c.json");
     assert_eq!(
-        exported_message(file, 1),
+        exported_message(file, &[lost("a / tags", "t"), translated.clone()]),
         "Exported to /tmp/c.json (1 item not carried over)"
     );
     assert_eq!(
-        exported_message(file, 3),
+        exported_message(file, &[lost("a", "x"), lost("b", "x"), lost("c", "x")]),
         "Exported to /tmp/c.json (3 items not carried over)"
+    );
+    assert_eq!(
+        exported_message(file, &[translated.clone(), translated.clone()]),
+        "Exported to /tmp/c.json (2 items changed to fit)"
+    );
+    assert_eq!(
+        report_summary(file, &[lost("a / tags", "t"), translated.clone()]),
+        "1 item was not carried over to /tmp/c.json."
+    );
+    assert_eq!(
+        report_summary(file, &[translated]),
+        "Everything was carried over to /tmp/c.json; 1 item was changed to fit."
+    );
+}
+
+#[test]
+fn the_report_groups_repeats_and_keeps_changes_apart() {
+    let asserts = "assertions have no place";
+    let notes = [
+        lost("Posts / List posts / assertions", asserts),
+        lost("Posts / List posts / tags", "tags were left out"),
+        changed(
+            "Users / List users / pre-request script",
+            "script `translated`",
+        ),
+        lost("Posts / Get post / assertions", asserts),
+        lost("Users / Get user / assertions", asserts),
+        lost("Users / Get user / timeout", "the 5 ms timeout"),
+    ];
+    assert_eq!(
+        report_groups(&notes),
+        vec![
+            (
+                Some("Left out"),
+                vec![
+                    "assertions in 3 items: assertions have no place (Posts / List posts; Posts / Get post; Users / Get user)".to_owned(),
+                    "Posts / List posts / tags: tags were left out".to_owned(),
+                    "Users / Get user / timeout: the 5 ms timeout".to_owned(),
+                ]
+            ),
+            (
+                Some("Changed"),
+                vec!["Users / List users / pre-request script: script translated".to_owned()]
+            ),
+        ]
+    );
+    assert_eq!(
+        report_groups(&[lost("collection / headers", "h")]),
+        vec![(Some("Left out"), vec!["collection / headers: h".to_owned()])]
     );
 }
 

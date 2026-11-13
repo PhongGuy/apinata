@@ -137,11 +137,7 @@ fn tags_are_noted_by_request() {
     let n = notes(&c);
     assert_eq!(n.len(), 1, "{n:?}");
     assert_eq!(n[0].0, "a / tags");
-    assert!(
-        n[0].1.contains("smoke") && n[0].1.contains("slow"),
-        "{}",
-        n[0].1
-    );
+    assert_eq!(n[0].1, "tags have no place in Postman and were left out");
 }
 
 #[test]
