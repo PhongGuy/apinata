@@ -1177,6 +1177,12 @@ fn the_empty_dialog_stacks_its_action_under_its_message_like_the_editor(cx: &mut
             assert!(part.size.width < pane.size.width, "{part:?} hugs its text");
         }
         assert_centred_vertically(pane, label, button);
+        // With nothing to list there is no list beside it, so it is centred in the dialog.
+        let editor = w.find("global-env-editor").bounds();
+        assert!(
+            (pane.center().x - editor.center().x).abs() < px(1.),
+            "{pane:?} centred in {editor:?}"
+        );
     })
     .unwrap();
 }

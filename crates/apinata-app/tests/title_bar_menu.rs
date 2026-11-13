@@ -180,7 +180,13 @@ fn the_menu_is_five_groups_named_by_the_registry() {
                 "Collection settings",
             ],
             vec!["Clone repository…", "Switch branch…", "Show changes…"],
-            vec!["New request", "Save", "Save all", "Generate code"],
+            vec![
+                "New request",
+                "New GraphQL request",
+                "Save",
+                "Save all",
+                "Generate code",
+            ],
             vec![
                 "Manage environments",
                 "Manage globals…",
@@ -209,7 +215,7 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
     frame(cx, s.win);
     let rows: Vec<Option<String>> = cx
         .update_window(s.win, |_, w, _| {
-            (0..32usize).map(|ix| row_label(w, ix)).collect()
+            (0..40usize).map(|ix| row_label(w, ix)).collect()
         })
         .unwrap();
     let mut want: Vec<Option<String>> = Vec::new();
@@ -219,9 +225,9 @@ fn separators_split_the_open_menu_into_its_groups(cx: &mut TestAppContext) {
         }
         want.extend(group.iter().map(|(l, _)| Some(l.to_string())));
     }
-    want.push(None);
+    want.resize(40, None);
     assert_eq!(rows, want);
-    assert_eq!(app_menu_index(&OpenCookies), Some(24));
+    assert_eq!(app_menu_index(&OpenCookies), Some(25));
 }
 
 // The git entries sit together in the drawn menu, set apart by a separator on each side.

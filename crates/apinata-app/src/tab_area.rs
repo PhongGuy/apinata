@@ -2599,6 +2599,7 @@ impl TabArea {
                         window.window_bounds().get_bounds().size.height,
                         window.rem_size(),
                     ));
+                    menu = crate::ui::checks_right(menu);
                     crate::ui::start_on(&menu, selected, window, cx);
                     let rows = (labels.iter().zip(&methods))
                         .zip(&details)

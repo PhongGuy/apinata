@@ -5,7 +5,7 @@ use apinata_app::assertions_section::{
 };
 use apinata_app::command::Edit;
 use apinata_app::kv_grid::KvWidth;
-use apinata_app::style::{KV_CHECK_WIDTH, OPERATOR_SELECT_WIDTH};
+use apinata_app::style::{KV_CHECK_WIDTH, OPERATOR_SELECT_WIDTH, VALUE_GROW};
 use apinata_app::style::{ROW_HEIGHT, at_zoom};
 use apinata_core::{Assertion, RequestFile};
 use gpui_kit::test::TestWindowExt;
@@ -397,9 +397,11 @@ fn assertion_columns_name_expression_operator_value_with_a_fixed_operator() {
         [
             KvWidth::Flex,
             KvWidth::Fixed(OPERATOR_SELECT_WIDTH),
-            KvWidth::Flex
+            KvWidth::Grow(VALUE_GROW)
         ]
     );
+    // The value takes the larger share of what the operator leaves.
+    assert!(VALUE_GROW > 1.0);
 }
 
 fn hover_on(cx: &mut TestAppContext, win: AnyWindowHandle, target: impl Into<gpui_kit::ElementId>) {

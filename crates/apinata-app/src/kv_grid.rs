@@ -43,6 +43,16 @@ pub enum KvWidth {
     Fixed(Rems),
     /// This part of the row's width, but never wider than the cap.
     Share(f32, Rems),
+    /// Shares the free width with the other flexible columns, taking this many parts of it
+    /// to a plain flexible column's one.
+    Grow(f32),
+}
+
+impl KvWidth {
+    /// Whether the column shares the free width, so its read-only text wraps.
+    pub fn flexible(self) -> bool {
+        matches!(self, KvWidth::Flex | KvWidth::Grow(_))
+    }
 }
 
 /// One column of a key-value grid: its heading id and text, the id its cells carry, its width.
@@ -90,6 +100,19 @@ impl KvColumn {
         }
     }
 
+    /// A column sharing the free width, `parts` of it to a plain flexible column's one.
+    pub fn grow(
+        head_id: impl Into<ElementId>,
+        cell_id: &'static str,
+        heading: impl Into<SharedString>,
+        parts: f32,
+    ) -> KvColumn {
+        KvColumn {
+            width: KvWidth::Grow(parts),
+            ..KvColumn::flex(head_id, cell_id, heading)
+        }
+    }
+
     /// A column taking `part` of the row's width up to `cap`, so it gives way before the
     /// flexible columns in a narrow table.
     pub fn share(
@@ -112,13 +135,14 @@ impl KvColumn {
         self
     }
 
-    /// `el` sized to the column: `flex_1().min_w_0()`, or the fixed or shared width and
+    /// `el` sized to the column: its part of the free width, or the fixed or shared width and
     /// `flex_none()`.
     pub fn size<E: Styled>(&self, el: E) -> E {
         match self.width {
             KvWidth::Flex => el.flex_1().min_w_0(),
             KvWidth::Fixed(w) => el.w(w).flex_none(),
             KvWidth::Share(part, cap) => el.w(relative(part)).max_w(cap).flex_none(),
+            KvWidth::Grow(parts) => el.flex_1().flex_grow(parts).min_w_0(),
         }
     }
 }
@@ -620,7 +644,7 @@ impl RenderOnce for KvView {
                                     cut_text(text, &mono, room.to_pixels(rem), window)
                                         .then(|| (text.clone(), None))
                                 }
-                                KvWidth::Flex | KvWidth::Share(..) => {
+                                KvWidth::Flex | KvWidth::Share(..) | KvWidth::Grow(_) => {
                                     Some((text.clone(), Some(widths.clone())))
                                 }
                             }
@@ -724,9 +748,7 @@ impl RenderOnce for KvView {
                             .aria_label(label)
                             .test_support()
                             .py(KV_VIEW_PAD_Y)
-                            .when(col.width != KvWidth::Flex || col.tip_when_cut, |d| {
-                                d.truncate()
-                            })
+                            .when(!col.width.flexible() || col.tip_when_cut, |d| d.truncate())
                             .when_some(tip, |d, (text, flex)| {
                                 d.tooltip(move |w, cx| {
                                     let tip = cut_tip(&text, w, cx);

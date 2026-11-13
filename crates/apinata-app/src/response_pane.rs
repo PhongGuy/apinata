@@ -2420,7 +2420,7 @@ impl ResponsePane {
             // The menu is built once as it opens, so its ages are read then; a closed
             // menu draws no age and keeps no timer armed.
             let now = last_response::wall_now(cx);
-            menu = menu.scrollable(true);
+            menu = crate::ui::checks_right(menu.scrollable(true));
             for (ix, send) in sends.iter().enumerate() {
                 let (seq, line) = (send.seq, history_row(send, now));
                 let pane = pane.clone();
