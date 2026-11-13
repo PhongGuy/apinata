@@ -854,13 +854,17 @@ impl Shell {
         cx.notify();
     }
 
-    // Open request editors observe the settings, so they re-split on this write.
+    // Open request editors observe the settings, so they re-split on this write. While the
+    // window is too narrow for side by side the view stays stacked, so the choice stays too.
     fn toggle_orientation(
         &mut self,
         _: &ToggleOrientation,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.too_narrow_for_side_by_side(window, cx) {
+            return;
+        }
         let Some(settings) = cx.try_global::<AppState>().map(|s| s.settings.clone()) else {
             return;
         };
@@ -2338,9 +2342,13 @@ impl Shell {
         )
     }
 
+    fn too_narrow_for_side_by_side(&self, window: &Window, cx: &App) -> bool {
+        (self.tab_area.read(cx)).too_narrow_for_side_by_side(window, cx)
+    }
+
     // The window's foot: a marker and a manual reload for each collection no longer watched,
     // and the current collection's mock toggle.
-    fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn status_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mock = self.mock_controls(cx);
         let workspace = self.workspace.read(cx);
         let unwatched: Vec<_> = workspace
@@ -2370,11 +2378,14 @@ impl Shell {
                         })),
                 )
         });
-        // The button names the layout a click switches to.
+        // The button names the layout a click switches to. Too narrow for side by side, it
+        // shows the stacked view on screen and is off, saying why.
+        let narrow = self.too_narrow_for_side_by_side(window, cx);
         let (layout_icon, layout_tip) = match cx
             .try_global::<AppState>()
             .map(|s| s.settings.read(cx).get().response_orientation)
         {
+            _ if narrow => (IconName::Rows2, "Side by side needs a wider window"),
             Some(Orientation::Horizontal) => (IconName::Columns2, "Switch to stacked layout"),
             _ => (IconName::Rows2, "Switch to side by side layout"),
         };
@@ -2416,9 +2427,10 @@ impl Shell {
                             "toggle-layout",
                             layout_icon,
                             layout_tip,
-                            Some(&ToggleOrientation),
+                            (!narrow).then_some(&ToggleOrientation as &dyn Action),
                         )
-                        .xsmall(),
+                        .xsmall()
+                        .lock(narrow, cx),
                         cx,
                     )),
             )
@@ -2477,9 +2489,9 @@ impl Shell {
         }
     }
 
-    // What the status bar reads: the unwatched collections, the response layout and the
-    // current collection's mock server.
-    fn status_inputs(&self, cx: &App) -> StatusInputs {
+    // What the status bar reads: the unwatched collections, the response layout, whether side
+    // by side fits and the current collection's mock server.
+    fn status_inputs(&self, window: &Window, cx: &App) -> StatusInputs {
         let workspace = self.workspace.read(cx);
         let unwatched = (workspace.listed_collections(cx).into_iter())
             .enumerate()
@@ -2491,7 +2503,8 @@ impl Shell {
             .map(|s| s.settings.read(cx).get().response_orientation);
         let current = self.current_mock(cx);
         let examples = (current.as_ref()).and_then(|(root, _)| workspace.mock_examples(root));
-        StatusInputs(unwatched, orientation, current, examples)
+        let narrow = self.too_narrow_for_side_by_side(window, cx);
+        StatusInputs(unwatched, (orientation, narrow), current, examples)
     }
 
     // The current user collection and where its mock server stands; the scratch has none.
@@ -2703,7 +2716,7 @@ impl PartOwner for Shell {
     ) -> AnyElement {
         match part {
             ShellPart::Title => self.title_bar(window, cx),
-            ShellPart::Status => self.status_bar(cx).into_any_element(),
+            ShellPart::Status => self.status_bar(window, cx).into_any_element(),
         }
     }
 }
@@ -2736,7 +2749,7 @@ struct TitleInputs {
 #[derive(PartialEq)]
 struct StatusInputs(
     Vec<(usize, PathBuf)>,
-    Option<Orientation>,
+    (Option<Orientation>, bool),
     Option<(PathBuf, MockState)>,
     Option<usize>,
 );
@@ -2794,7 +2807,7 @@ impl Render for Shell {
         let inputs = self.title_inputs(window, cx);
         let full_width = StyleRefinement::default().w_full().flex_none();
         let title_bar = self.title.element(inputs, full_width.clone(), window, cx);
-        let inputs = self.status_inputs(cx);
+        let inputs = self.status_inputs(window, cx);
         let status_bar = self.status.element(inputs, full_width, window, cx);
         // The dock opens at its set height, but never above 40% of the height between the
         // bars, and leaves the tab area its minimum unless the dock minimum needs the room.

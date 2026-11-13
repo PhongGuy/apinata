@@ -1579,6 +1579,12 @@ impl TabArea {
         }
     }
 
+    /// Whether the active request tab is too narrow to show side by side; `false` without one.
+    pub fn too_narrow_for_side_by_side(&self, window: &Window, cx: &App) -> bool {
+        self.active_editor(cx)
+            .is_some_and(|e| e.read(cx).too_narrow_for_side_by_side(window, cx))
+    }
+
     fn active_editor(&self, cx: &App) -> Option<Entity<RequestEditor>> {
         let id = self.workspace.read(cx).tabs().active()?.id;
         self.editor(id).cloned()
