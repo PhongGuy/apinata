@@ -196,7 +196,7 @@ pub enum Prepared {
     /// Run with these options, asking nothing.
     Ready(ScriptOptions),
     /// Ask the trust question first.
-    Ask(TrustQuestion),
+    Ask(Box<TrustQuestion>),
 }
 
 /// The trust question still to ask; `ask` opens it and records the answer.
@@ -253,7 +253,7 @@ pub fn prepare(root: PathBuf, planned: &Planned, cx: &mut AsyncApp) -> Prepared 
         .iter()
         .map(|(_, t)| (t.kind.clone(), t.shown.clone()))
         .collect();
-    Prepared::Ask(TrustQuestion {
+    Prepared::Ask(Box::new(TrustQuestion {
         root,
         path,
         window,
@@ -262,7 +262,7 @@ pub fn prepare(root: PathBuf, planned: &Planned, cx: &mut AsyncApp) -> Prepared 
         on,
         scratch,
         about,
-    })
+    }))
 }
 
 impl TrustQuestion {
