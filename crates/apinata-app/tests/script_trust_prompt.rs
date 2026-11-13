@@ -8,11 +8,13 @@ use apinata_app::command::Command;
 use apinata_app::config_editor::ConfigSection;
 use apinata_app::response_pane::ResponsePane;
 use apinata_app::runner_model::{RunState, RunnerModel};
-use apinata_app::script_gate::trust_question;
 use apinata_app::script_gate::{Gate, approved_only, gate};
+use apinata_app::script_gate::{trust_question, trust_question_about};
 use apinata_app::settings::RunScripts;
 use apinata_app::tabs::TabKind;
-use apinata_core::{ScriptDecision, ScriptOptions, ScriptTrust, script_hash};
+use apinata_core::{
+    ScriptDecision, ScriptOptions, ScriptPhase, ScriptTextKind, ScriptTrust, script_hash,
+};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext, WindowOptions};
 use std::collections::BTreeSet;
@@ -559,4 +561,69 @@ fn settings_options_label_the_stored_block_never() {
         apinata_app::script_settings::choice_labels(),
         ["Ask", "Run scripts", "Never"]
     );
+}
+
+// Texts that are only assertion or variable expressions name what runs and show it, while the
+// choices, default and what Run stores stay those of the script question.
+#[test]
+fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
+    let right = ScriptTextKind::AssertionRight;
+    let q = trust_question_about(false, [(&right, "`${1+1}`")]);
+    assert_eq!(q.title.as_ref(), "This assertion runs JavaScript");
+    let detail = q.detail.as_deref().unwrap();
+    assert!(detail.contains("`${1+1}`"), "{detail}");
+    assert!(detail.contains("secrets"), "{detail}");
+    let plain = trust_question();
+    let parts = |q: &apinata_app::confirm::Ask| {
+        let c: Vec<(&str, String)> = q
+            .choices
+            .iter()
+            .map(|c| (c.id, c.label.to_string()))
+            .collect();
+        (c, q.default, q.cancel)
+    };
+    assert_eq!(parts(&q), parts(&plain));
+    let var = ScriptTextKind::Variable { name: "n".into() };
+    let q = trust_question_about(false, [(&var, "1 + 1")]);
+    assert_eq!(q.title.as_ref(), "This variable runs JavaScript");
+    let left = ScriptTextKind::AssertionLeft;
+    let q = trust_question_about(false, [(&left, "a()"), (&right, "b()")]);
+    assert_eq!(q.title.as_ref(), "These assertions run JavaScript");
+    let q = trust_question_about(false, [(&left, "a()"), (&var, "b()")]);
+    assert_eq!(
+        q.title.as_ref(),
+        "These assertions and variables run JavaScript"
+    );
+    let scratch = trust_question_about(true, [(&right, "`${1+1}`")]);
+    assert!(!scratch.detail.as_deref().unwrap().contains("collection"));
+    // Any script among the texts keeps the script question.
+    let script = ScriptTextKind::Script {
+        phase: ScriptPhase::PreRequest,
+        level: "request".into(),
+    };
+    let q = trust_question_about(false, [(&right, "`${1+1}`"), (&script, CODE)]);
+    assert_eq!(q.title.as_ref(), plain.title.as_ref());
+    assert_eq!(q.detail, plain.detail);
+}
+
+#[gpui_kit::test]
+fn an_assertion_value_that_runs_javascript_is_named_in_the_question(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let a = format!(
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"`${{1+1}}`\"\n",
+        request("a", "http://127.0.0.1:9/ok")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    assert_eq!(
+        label(cx, s.win, "confirm-dialog").as_deref(),
+        Some("This assertion runs JavaScript")
+    );
+    let detail = label(cx, s.win, "confirm-detail").unwrap_or_default();
+    assert!(detail.contains("`${1+1}`"), "{detail}");
+    cx.simulate_keystrokes(s.win, "enter");
+    finished(cx, &model);
+    assert_eq!(trust(&s).decision(&s.root), None);
 }
