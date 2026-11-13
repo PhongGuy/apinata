@@ -176,7 +176,7 @@ fn only_the_collection_row_offers_export() {
     assert!(!menu_entries(NodeKind::Request).contains(&MenuEntry::ExportPostman));
     assert_eq!(
         MenuEntry::ExportPostman.label(),
-        "Export collection to Postman, converting scripts"
+        "Export collection to Postman, converting scripts…"
     );
 }
 
@@ -241,7 +241,7 @@ fn only_the_collection_row_offers_openapi_export() {
     assert!(!menu_entries(NodeKind::Request).contains(&MenuEntry::ExportOpenApi));
     assert_eq!(
         MenuEntry::ExportOpenApi.label(),
-        "Export collection to OpenAPI"
+        "Export collection to OpenAPI…"
     );
 }
 
@@ -303,7 +303,7 @@ fn only_the_collection_row_offers_html_export() {
     assert!(!menu_entries(NodeKind::Request).contains(&MenuEntry::ExportHtml));
     assert_eq!(
         MenuEntry::ExportHtml.label(),
-        "Export collection to HTML documentation"
+        "Export collection to HTML documentation…"
     );
 }
 
@@ -376,7 +376,7 @@ fn only_the_collection_row_offers_export_keeping_scripts() {
     assert!(!menu_entries(NodeKind::Request).contains(&entry));
     assert_eq!(
         entry.label(),
-        "Export collection to Postman, keeping scripts as written"
+        "Export collection to Postman, keeping scripts as written…"
     );
     let at = |e| entries.iter().position(|x| *x == e).unwrap();
     assert_eq!(at(entry), at(MenuEntry::ExportPostman) + 1);
@@ -612,8 +612,8 @@ fn the_export_report_keeps_its_lines_clear_of_the_scrollbar(cx: &mut TestAppCont
     );
 }
 
-const TRANSLATE: &str = "Export collection to Postman, converting scripts";
-const UNCHANGED: &str = "Export collection to Postman, keeping scripts as written";
+const TRANSLATE: &str = "Export collection to Postman, converting scripts…";
+const UNCHANGED: &str = "Export collection to Postman, keeping scripts as written…";
 
 #[gpui_kit::test]
 fn the_collection_menu_says_what_each_postman_export_does_with_scripts(cx: &mut TestAppContext) {
@@ -674,4 +674,20 @@ fn the_palette_says_what_each_postman_export_does_with_scripts(cx: &mut TestAppC
         })
         .unwrap();
     assert_eq!(labels, [TRANSLATE, UNCHANGED]);
+}
+
+// Each export asks for a file first, so its label ends with an ellipsis.
+#[test]
+fn every_export_that_asks_for_a_file_ends_with_an_ellipsis() {
+    let commands = apinata_app::commands::registry();
+    for id in [
+        "collection.export",
+        "collection.export_keep_scripts",
+        "collection.export_openapi",
+        "collection.export_html",
+        "request.export_har",
+    ] {
+        let command = commands.iter().find(|c| c.id == id).expect(id);
+        assert!(command.label.ends_with('…'), "{id}: {}", command.label);
+    }
 }

@@ -248,3 +248,32 @@ fn the_palette_command_starts_the_same_flow_as_the_empty_state_button(cx: &mut T
     );
     let _ = view;
 }
+
+// The demo has one environment and no saved choice yet, so it opens with that one selected.
+#[gpui_kit::test]
+fn the_demo_opens_with_its_environment_selected(cx: &mut TestAppContext) {
+    let (win, view, _state) = welcome(cx, Session::default());
+    let parent = tempfile::tempdir().unwrap();
+    cx.update_window(win, |_, w, cx| {
+        w.within("no-collection-actions")
+            .click(("empty-action", 5usize), cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let chosen = parent.path().to_path_buf();
+    cx.simulate_path_prompt_response(move |_| Some(vec![chosen.clone()]));
+    let root = parent.path().join("Apinata Demo");
+    let selected = |cx: &mut TestAppContext| {
+        view.read_with(cx, |v, cx| {
+            v.workspace().read(cx).selected_environment(&root, cx)
+        })
+    };
+    for _ in 0..100 {
+        cx.run_until_parked();
+        if selected(cx).is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(selected(cx).as_deref(), Some("JSONPlaceholder"));
+}

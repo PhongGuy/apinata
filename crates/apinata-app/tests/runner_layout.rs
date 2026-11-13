@@ -466,3 +466,19 @@ fn a_long_data_file_name_stays_inside_the_options_at_800px(cx: &mut TestAppConte
         );
     }
 }
+
+// A line parts the options from the list under them, so rows scrolling up stop at an edge.
+#[gpui_kit::test]
+fn a_divider_parts_the_options_from_the_list(cx: &mut TestAppContext) {
+    let col = many("http://127.0.0.1:9", 40);
+    let s = started(cx, &col);
+    open_sized(cx, &s, 1280., 400.);
+    let options = find(cx, &s, "run-options-box");
+    let divider = find(cx, &s, "run-list-divider");
+    let plan = find(cx, &s, "run-plan");
+    assert!(
+        options.bottom() <= divider.top() + SLACK && divider.bottom() <= plan.top() + SLACK,
+        "divider {divider:?} not between options {options:?} and plan {plan:?}"
+    );
+    assert!(divider.size.height > px(0.), "{divider:?}");
+}

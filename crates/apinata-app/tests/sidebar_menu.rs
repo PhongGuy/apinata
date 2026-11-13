@@ -431,10 +431,8 @@ fn tree_entries_take_the_registry_names() {
         NodeKind::Example,
     ] {
         for e in menu_entries(kind) {
-            assert!(
-                !e.label().ends_with("...") && !e.label().ends_with('…'),
-                "{e:?}"
-            );
+            // A dialog-opening entry carries the registry's "…"; three dots never appear.
+            assert!(!e.label().contains("..."), "{e:?}");
         }
     }
 }

@@ -16,7 +16,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Entity, FocusHandle, Pixels, Result, ScrollHandle, Subscription,
-    TestSupportExt, Window, div, px,
+    TestSupportExt, Window, div, px, relative,
 };
 
 use crate::banner::{self, Banner, Choice};
@@ -44,6 +44,9 @@ pub const GLOBAL_ENV_MENU_DELETE: usize = 3;
 
 /// The empty pane's line on what a global environment is for.
 pub const GLOBAL_ENV_ABOUT: &str = "Global variables apply to every collection.";
+
+// Beside the Active box, which switches the global at once while the rest waits for Save.
+const ACTIVE_NOTE: &str = "Applies at once, without Save";
 
 // Which name the name input is collecting.
 #[derive(Clone, Copy, PartialEq)]
@@ -1327,10 +1330,24 @@ impl Render for GlobalEnvEditor {
                 .child(header)
                 .child(ui::form_row("global-env-color-row", "Color", swatches))
                 // A row of its own, so the checkbox hugs its label instead of the pane's width.
+                // Which global is active is session state, not file content, so it skips Save.
                 .child(
                     h_flex()
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                        .child(active_box),
+                        .gap(style::SPACE_2)
+                        .child(active_box)
+                        .child(
+                            div()
+                                .id("global-env-active-note")
+                                .test_support()
+                                .aria_label(ACTIVE_NOTE)
+                                .min_w_0()
+                                .text_size(style::TEXT_SMALL)
+                                // Tight lines, so the note never makes the row taller.
+                                .line_height(relative(1.25))
+                                .text_color(cx.theme().muted_foreground)
+                                .child(ACTIVE_NOTE),
+                        ),
                 )
                 .child(self.table.clone())
                 .children(orphans)

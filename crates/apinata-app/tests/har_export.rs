@@ -141,7 +141,7 @@ fn the_narrow_menu_and_the_palette_export_too(cx: &mut TestAppContext) {
         .iter()
         .find(|c| c.id == "request.export_har")
         .expect("a palette command");
-    assert_eq!(command.label, "Export response as HAR");
+    assert_eq!(command.label, "Export response as HAR…");
     cx.update_window(s.win, |_, w, cx| {
         w.dispatch_action(Box::new(apinata_app::tab_area::ExportHar), cx)
     })

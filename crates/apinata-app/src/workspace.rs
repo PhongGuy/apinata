@@ -562,6 +562,8 @@ pub struct Workspace {
     // The environment to select once a collection an import just wrote first loads, by
     // absolute root; a selection the session restores wins.
     import_envs: HashMap<PathBuf, String>,
+    // Roots whose only environment is selected when they first load with none saved.
+    sole_envs: HashSet<PathBuf>,
     // Each collection's mock server, stopped when its collection closes.
     mocks: MockServers,
 }
@@ -621,6 +623,7 @@ impl Workspace {
             script_sides: HashMap::new(),
             env_intents: HashMap::new(),
             import_envs: HashMap::new(),
+            sole_envs: HashSet::new(),
             mocks: MockServers::default(),
         }
     }
@@ -949,6 +952,7 @@ impl Workspace {
         self.draft_imports.retain(|(r, _), _| *r != root);
         self.env_intents.remove(&root);
         self.import_envs.remove(&root);
+        self.sole_envs.remove(&root);
         self.script_sides.retain(|(r, _), _| *r != root);
         self.restoring.remove(&root);
         self.restore_ids.retain(|(r, _), _| *r != root);
@@ -1337,6 +1341,12 @@ impl Workspace {
     /// unless the session restores another; for a collection an import just wrote.
     pub fn select_on_open(&mut self, root: &Path, name: String) {
         self.import_envs.insert(absolute(root), name);
+    }
+
+    /// Selects the collection at `root`'s environment once it first loads after the next open,
+    /// when it has exactly one and the session restores none; for the bundled demo.
+    pub fn select_sole_on_open(&mut self, root: &Path) {
+        self.sole_envs.insert(absolute(root));
     }
 
     /// The environment names of the collection at `root` in its latest snapshot, in order.
@@ -2490,6 +2500,7 @@ impl Workspace {
             self.saved_drafts.retain(|(r, _), _| r != root);
             self.draft_imports.retain(|(r, _), _| r != root);
             self.import_envs.remove(root);
+            self.sole_envs.remove(root);
             self.restoring.remove(root);
             self.restore_ids.retain(|(r, _), _| r != root);
             self.trashed_tabs.retain(|(r, _), _| r != root);
@@ -2521,10 +2532,16 @@ impl Workspace {
             cx.emit(WorkspaceEvent::Opened(root.to_path_buf()));
             self.restore_tabs(root, cx);
             let preferred = self.import_envs.remove(root);
-            if !self.restore_environment(root, cx)
-                && let Some(name) = preferred.filter(|n| self.environments(root, cx).contains(n))
-            {
-                self.send(root, Command::SelectEnvironment(Some(name)), cx);
+            let sole = self.sole_envs.remove(root);
+            if !self.restore_environment(root, cx) {
+                let names = self.environments(root, cx);
+                let only = match names.as_slice() {
+                    [only] if sole => Some(only.clone()),
+                    _ => None,
+                };
+                if let Some(name) = preferred.filter(|n| names.contains(n)).or(only) {
+                    self.send(root, Command::SelectEnvironment(Some(name)), cx);
+                }
             }
             // After the environment, so the actor builds the routes in the restored one.
             if self.remembered_mock(root, cx) {

@@ -15,7 +15,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, ThemeStyled as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, ThemeStyled as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -2352,17 +2352,11 @@ pub(crate) fn naming_buttons(
     h_flex()
         .flex_wrap()
         .justify_end()
-        .gap_1()
-        .child(
-            Button::new(cancel_id)
-                .label("Cancel")
-                .small()
-                .on_click(on_cancel),
-        )
+        .gap(style::SPACE_2)
+        .child(Button::new(cancel_id).label("Cancel").on_click(on_cancel))
         .child(
             Button::new(confirm_id)
                 .label(if creating { "Create" } else { "Rename" })
-                .small()
                 .primary()
                 .on_click(on_confirm),
         )
