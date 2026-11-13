@@ -54,7 +54,7 @@ fn dialog(
 #[test]
 fn expiry_labels() {
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-    assert_eq!(expiry_label(None, now), "No expiry");
+    assert_eq!(expiry_label(None, now), "Session");
     assert_eq!(
         expiry_label(Some(now - Duration::from_secs(1)), now),
         "Expired"
@@ -1091,6 +1091,33 @@ fn a_rows_path_and_expiry_carry_labels(cx: &mut TestAppContext) {
         })
         .expect("listed");
     assert_eq!(jar_label(cx, win, ("jar-path", ix)), "Path /api");
-    assert_eq!(jar_label(cx, win, ("jar-expiry", ix)), "No expiry");
+    assert_eq!(jar_label(cx, win, ("jar-expiry", ix)), "Session");
     assert_eq!(jar_label(cx, win, ("jar-flags", ix)), "This host only");
+}
+
+// A confirm over the Cookies dialog opens lower than it, so the Cookies title stays in view
+// above the question.
+#[gpui_kit::test]
+fn the_clear_confirm_leaves_the_cookies_title_in_view(cx: &mut TestAppContext) {
+    let (win, _exec, _view) = dialog(cx, true);
+    let add = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("jar-add").bounds()
+        })
+        .unwrap();
+    cx.update_window(win, |_, w, cx| w.click("jar-clear", cx))
+        .unwrap();
+    frame(cx, win);
+    let question = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("confirm-dialog").bounds()
+        })
+        .unwrap();
+    assert!(
+        question.top() > add.bottom(),
+        "{question:?} clear of the dialog's top {add:?}"
+    );
+    answer_confirm(cx, "confirm-cancel");
 }
