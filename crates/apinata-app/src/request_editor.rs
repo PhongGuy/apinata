@@ -755,7 +755,7 @@ impl RequestEditor {
             caret_key: None,
             caret_follow: 0,
             snippet_follow: 0,
-            section_reveal: ui::Reveal::default(),
+            section_reveal: ui::Reveal::whole_at_left(),
             section_focus_reveal: ui::Reveal::default(),
             section_fades: ui::StripFades::default(),
             section_focus: Section::ALL
@@ -3486,10 +3486,11 @@ impl RequestEditor {
                 cx,
             ))
             .child(ui::overflow_watch(&self.section_scroll, overflows))
-            .child(
-                self.section_reveal
-                    .watch(&self.section_scroll, self.section as usize),
-            )
+            .child(self.section_reveal.watch_strip(
+                &self.section_scroll,
+                self.section as usize,
+                Section::ALL.len(),
+            ))
             .children(self.section_focus_reveal.watch_focused(
                 &self.section_scroll,
                 self.section_focus.iter().position(|f| f.is_focused(window)),

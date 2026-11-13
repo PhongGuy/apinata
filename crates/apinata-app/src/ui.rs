@@ -1851,6 +1851,17 @@ impl Reveal {
     /// The marker that keeps item `ix` of the strip `scroll` tracks in view; draw it after
     /// the strip so the strip is measured first.
     pub fn watch(&self, scroll: &ScrollHandle, ix: usize) -> impl IntoElement + use<> {
+        self.watch_strip(scroll, ix, usize::MAX)
+    }
+
+    /// As `watch`, for a strip of `items` tabs whose scroll may hold more children after
+    /// them, such as the kit's trailing spacer, so only the tabs decide where fades show.
+    pub fn watch_strip(
+        &self,
+        scroll: &ScrollHandle,
+        ix: usize,
+        items: usize,
+    ) -> impl IntoElement + use<> {
         let (seen, settling, scroll) = (
             Rc::clone(&self.seen),
             Rc::clone(&self.settling),
@@ -1882,7 +1893,7 @@ impl Reveal {
                         return;
                     }
                     settling.set(None);
-                    if let Some(want) = left_edge_snap(&scroll, ix, fade) {
+                    if let Some(want) = left_edge_snap(&scroll, ix, items, fade) {
                         scroll.set_offset(gpui_kit::point(want, scroll.offset().y));
                         window.request_animation_frame();
                     }
@@ -1945,22 +1956,41 @@ impl Reveal {
 }
 
 // The offset that leaves no tab cut by the strip's left edge while item `chosen` stays clear
-// of the fades: the cut tab scrolled wholly out of view, else scrolled
-// back whole. None when no tab is cut there or neither move keeps the chosen item whole.
-fn left_edge_snap(scroll: &ScrollHandle, chosen: usize, fade: Pixels) -> Option<Pixels> {
+// of the fades: the cut tab scrolled wholly out of view, else scrolled back whole. None when
+// no tab is cut there or neither move keeps the chosen item whole. The first `items` children
+// are the tabs.
+fn left_edge_snap(
+    scroll: &ScrollHandle,
+    chosen: usize,
+    items: usize,
+    fade: Pixels,
+) -> Option<Pixels> {
     let (view, x, max) = (scroll.bounds(), scroll.offset().x, scroll.max_offset().x);
     let item = scroll.bounds_for_item(chosen)?;
-    let cut = (0..)
-        .map_while(|ix| scroll.bounds_for_item(ix).map(|b| (ix, b)))
-        .find(|(_, b)| b.left() + x < view.left() - px(1.) && b.right() + x > view.left() + px(1.));
-    let (cut_ix, cut) = cut?;
+    let items: Vec<_> = (0..items)
+        .map_while(|ix| scroll.bounds_for_item(ix))
+        .collect();
+    let (first, last) = (items.first()?, items.last()?);
+    let (cut_ix, cut) = items.iter().enumerate().find(|(_, b)| {
+        b.left() + x < view.left() - px(1.) && b.right() + x > view.left() + px(1.)
+    })?;
     if cut_ix == chosen {
         return None;
     }
+    // The chosen item keeps clear only of the fades drawn at that offset: a fade shows on a
+    // side only while the end item lies past it, as the strip's fades decide.
     let keeps_chosen = |at: Pixels| {
         let (left, right) = (item.left() + at, item.right() + at);
-        let room_left = if at < -px(1.) { fade } else { px(0.) };
-        let room_right = if at > -max + px(1.) { fade } else { px(0.) };
+        let room_left = if first.left() + at < view.left() - px(1.) {
+            fade
+        } else {
+            px(0.)
+        };
+        let room_right = if last.right() + at > view.right() + px(1.) {
+            fade
+        } else {
+            px(0.)
+        };
         left >= view.left() + room_left - px(1.) && right <= view.right() - room_right + px(1.)
     };
     let hide = view.left() - cut.right();
