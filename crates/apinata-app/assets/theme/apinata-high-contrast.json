@@ -442,7 +442,7 @@
         "warning.active.background": "#633B00",
         "warning.hover.background": "#633B00",
         "warning.foreground": "#FFFFFF",
-        "overlay": "#0000004D",
+        "overlay": "#00000066",
         "window.border": "#6B6B6B",
         "base.blue": "#0A3CA0",
         "base.blue.light": "#0A3CA0",

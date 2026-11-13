@@ -32,7 +32,8 @@ const TOKENS: &[(&str, &str, &str)] = &[
     ("danger", "#FF6B6B", "#B42525"),
     ("on_status", "#1B1530", "#FFFFFF"),
     ("transparent", "#00000000", "#00000000"),
-    ("overlay", "#00000080", "#0000004D"),
+    // The light backdrop is darker than its old 30% so a dialog clearly sits over the window.
+    ("overlay", "#00000080", "#00000066"),
 ];
 
 fn keys_for(token: &str, keys: &[&'static str]) -> Vec<(String, String)> {
