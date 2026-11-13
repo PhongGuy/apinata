@@ -1,4 +1,4 @@
-//! An open draft has a row under "Unsaved" for exactly as long as its tab is open.
+//! An open draft has a row, in a collection under "Unsaved", while its tab is open.
 
 use crate::support;
 
@@ -162,4 +162,30 @@ fn a_draft_whose_view_is_not_loaded_has_a_row(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert!(shown(cx, s.win, unsaved_id(0)));
     assert!(shown(cx, s.win, row("untitled-9.draft")));
+}
+
+#[gpui_kit::test]
+fn an_edited_draft_row_shows_the_dirty_dot_its_tab_shows(cx: &mut TestAppContext) {
+    use apinata_app::sidebar::marker_id;
+    let col = two_requests();
+    let s = started(cx, &col);
+    let draft = new_draft(cx, &s);
+    let dot = marker_id("dirty", &row(&draft));
+    assert!(!shown(cx, s.win, dot.clone()), "an untouched draft");
+    s.ws.update(cx, |w, cx| {
+        w.send(&s.root, edit_url(&draft, "http://x/9"), cx)
+    });
+    frame(cx, s.win);
+    assert!(shown(cx, s.win, dot));
+}
+
+#[gpui_kit::test]
+fn a_scratch_draft_sits_under_the_scratch_pad_without_an_unsaved_group(cx: &mut TestAppContext) {
+    let s = started_blank(cx, blank_data_dir());
+    s.ws.update(cx, |w, cx| w.new_scratch_request(cx));
+    cx.run_until_parked();
+    frame(cx, s.win);
+    let draft = active(cx, &s).expect("a scratch draft");
+    assert!(shown(cx, s.win, row(&draft)));
+    assert!(!shown(cx, s.win, unsaved_id(0)));
 }

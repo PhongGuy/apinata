@@ -2102,11 +2102,20 @@ impl Sidebar {
                     name: view
                         .as_ref()
                         .map_or_else(|| path.file_name().to_owned(), |v| v.name.clone()),
-                    method: view.map(|v| v.method.clone()).unwrap_or_default(),
+                    method: view.as_ref().map(|v| v.method.clone()).unwrap_or_default(),
+                    dirty: view.is_some_and(|v| v.dirty),
                 })
             })
             .collect();
-        let nodes = model::build(&inputs, &drafts, &self.expanded, &self.filter_text);
+        let nodes = model::build(
+            &inputs,
+            &drafts,
+            &self.expanded,
+            &self.filter_text,
+            open.iter()
+                .map(|(root, _)| root.as_path())
+                .find(|root| workspace.is_scratch(root)),
+        );
         // Computed before any early-out so a closed root empties the set.
         self.live_keys = open
             .iter()
@@ -3105,11 +3114,15 @@ impl Render for Sidebar {
                                 NodeKind::Draft => {
                                     let view = view.clone();
                                     let (root, path) = (n.root.clone(), n.path.clone());
-                                    item.child(
+                                    item.child(with_suffix(
                                         item_row(n, None, &paints, muted)
                                             .italic()
                                             .text_color(cx.theme().muted_foreground),
-                                    )
+                                        n,
+                                        &git,
+                                        false,
+                                        cx,
+                                    ))
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()
                                     })
