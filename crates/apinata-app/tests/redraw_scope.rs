@@ -696,6 +696,7 @@ fn the_url_follows_the_environment(cx: &mut TestAppContext) {
         ("j.yml", BODY_REQUEST),
     ]);
     let s = started(cx, &col);
+    clear_environment(cx, &s.ws, &s.root);
     let editor = editor_of(cx, &s, "j.yml");
     wait_for(cx, "variables", |cx| {
         editor.read_with(cx, |e, _| e.variables().is_some())
@@ -1157,6 +1158,7 @@ fn the_title_bar_follows_the_environment(cx: &mut TestAppContext) {
         ("j.yml", BODY_REQUEST),
     ]);
     let s = started(cx, &col);
+    clear_environment(cx, &s.ws, &s.root);
     let _editor = editor_of(cx, &s, "j.yml");
     cx.update_window(s.win, |_, w, cx| w.click("url", cx))
         .unwrap();

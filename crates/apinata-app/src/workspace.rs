@@ -562,8 +562,6 @@ pub struct Workspace {
     // The environment to select once a collection an import just wrote first loads, by
     // absolute root; a selection the session restores wins.
     import_envs: HashMap<PathBuf, String>,
-    // Roots whose only environment is selected when they first load with none saved.
-    sole_envs: HashSet<PathBuf>,
     // Each collection's mock server, stopped when its collection closes.
     mocks: MockServers,
 }
@@ -623,7 +621,6 @@ impl Workspace {
             script_sides: HashMap::new(),
             env_intents: HashMap::new(),
             import_envs: HashMap::new(),
-            sole_envs: HashSet::new(),
             mocks: MockServers::default(),
         }
     }
@@ -952,7 +949,6 @@ impl Workspace {
         self.draft_imports.retain(|(r, _), _| *r != root);
         self.env_intents.remove(&root);
         self.import_envs.remove(&root);
-        self.sole_envs.remove(&root);
         self.script_sides.retain(|(r, _), _| *r != root);
         self.restoring.remove(&root);
         self.restore_ids.retain(|(r, _), _| *r != root);
@@ -1341,12 +1337,6 @@ impl Workspace {
     /// unless the session restores another; for a collection an import just wrote.
     pub fn select_on_open(&mut self, root: &Path, name: String) {
         self.import_envs.insert(absolute(root), name);
-    }
-
-    /// Selects the collection at `root`'s environment once it first loads after the next open,
-    /// when it has exactly one and the session restores none; for the bundled demo.
-    pub fn select_sole_on_open(&mut self, root: &Path) {
-        self.sole_envs.insert(absolute(root));
     }
 
     /// The environment names of the collection at `root` in its latest snapshot, in order.
@@ -2500,7 +2490,6 @@ impl Workspace {
             self.saved_drafts.retain(|(r, _), _| r != root);
             self.draft_imports.retain(|(r, _), _| r != root);
             self.import_envs.remove(root);
-            self.sole_envs.remove(root);
             self.restoring.remove(root);
             self.restore_ids.retain(|(r, _), _| r != root);
             self.trashed_tabs.retain(|(r, _), _| r != root);
@@ -2532,11 +2521,11 @@ impl Workspace {
             cx.emit(WorkspaceEvent::Opened(root.to_path_buf()));
             self.restore_tabs(root, cx);
             let preferred = self.import_envs.remove(root);
-            let sole = self.sole_envs.remove(root);
             if !self.restore_environment(root, cx) {
+                // With no saved choice, a collection's only environment is the obvious pick.
                 let names = self.environments(root, cx);
                 let only = match names.as_slice() {
-                    [only] if sole => Some(only.clone()),
+                    [only] if !self.chose_no_environment(root, cx) => Some(only.clone()),
                     _ => None,
                 };
                 if let Some(name) = preferred.filter(|n| names.contains(n)).or(only) {
@@ -2872,7 +2861,7 @@ impl Workspace {
             self.send(root, Command::SelectEnvironment(Some(name)), cx);
             true
         } else {
-            self.save_environment(root, None, cx);
+            self.save_environment(root, None, false, cx);
             false
         }
     }
@@ -2890,12 +2879,33 @@ impl Workspace {
             return;
         }
         let selected = snapshot.selected_environment.clone();
-        self.save_environment(root, selected, cx);
+        // Clearing is the user picking No environment only while the cleared one still exists;
+        // a deleted environment was not a choice.
+        let stored =
+            (self.session.read(cx).get().collections.get(root)).and_then(|c| c.environment.clone());
+        let chosen = stored.is_some_and(|name| self.environments(root, cx).contains(&name));
+        self.save_environment(root, selected, chosen, cx);
+    }
+
+    // Whether the session records the user picking No environment for `root`.
+    fn chose_no_environment(&self, root: &Path, cx: &App) -> bool {
+        let session = self.session.read(cx).get();
+        session
+            .collections
+            .get(root)
+            .is_some_and(|c| c.no_environment)
     }
 
     // Writes `name` as the session's environment of `root` when it differs; a root without a
-    // UTF-8 path is not stored, as `Session::remember` does.
-    fn save_environment(&mut self, root: &Path, name: Option<String>, cx: &mut Context<Self>) {
+    // UTF-8 path is not stored, as `Session::remember` does. `chosen` marks a change the user
+    // made, so clearing it records No environment as their pick.
+    fn save_environment(
+        &mut self,
+        root: &Path,
+        name: Option<String>,
+        chosen: bool,
+        cx: &mut Context<Self>,
+    ) {
         let session = self.session.read(cx).get();
         let stored = session
             .collections
@@ -2906,10 +2916,9 @@ impl Workspace {
         }
         self.session.update(cx, |p, cx| {
             p.update(cx, |s| {
-                s.collections
-                    .entry(root.to_path_buf())
-                    .or_default()
-                    .environment = name;
+                let entry = s.collections.entry(root.to_path_buf()).or_default();
+                entry.no_environment = chosen && name.is_none();
+                entry.environment = name;
             })
         });
     }

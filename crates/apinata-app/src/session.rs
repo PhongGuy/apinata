@@ -70,6 +70,9 @@ pub struct CollectionSession {
     pub tabs: Vec<String>,
     /// The selected environment's name.
     pub environment: Option<String>,
+    /// Whether the user picked No environment, which a sole environment must not override.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_environment: bool,
     /// The open tab that was the preview tab, as a path relative to the root.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,

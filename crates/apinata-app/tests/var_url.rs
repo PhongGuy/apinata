@@ -57,6 +57,7 @@ fn hover_tip(
 fn the_url_bar_explains_each_placeholder_and_follows_the_environment(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
+    clear_environment(cx, &ws, &root);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
     wait_for(cx, "variables", |cx| {
         ed.read_with(cx, |e, _| e.variables().is_some())
