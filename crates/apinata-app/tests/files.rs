@@ -245,3 +245,11 @@ fn drafts_live_in_their_own_directory_of_the_data_dir() {
         dir.join("drafts")
     );
 }
+
+// A session file written before `no_environment` existed loads it as not chosen.
+#[test]
+fn an_old_session_without_no_environment_loads_it_as_false() {
+    let text = r#"{"collections":{"/c/a":{"tabs":[],"environment":null}}}"#;
+    let s: Session = serde_json::from_str(text).expect("parses");
+    assert!(!s.collections[std::path::Path::new("/c/a")].no_environment);
+}

@@ -1248,16 +1248,6 @@ impl Render for RunnerView {
             )
             .text_size(style::TEXT_SMALL)
         });
-        // Shown with the plan, so whoever wonders why some boxes start empty reads why.
-        let manual = model.manual_note().filter(|_| previewing).map(|text| {
-            div()
-                .id("run-manual-note")
-                .test_support()
-                .aria_label(text)
-                .text_size(style::TEXT_SMALL)
-                .text_color(cx.theme().muted_foreground)
-                .child(text)
-        });
         let has_errors = !model.load_errors().is_empty() || !model.skipped().is_empty();
         let row_count = model.rows().len();
         let view = cx.entity();
@@ -1426,7 +1416,6 @@ impl Render for RunnerView {
             .children(waiting.map(|d| d.flex_none()))
             .children(notice.map(|d| d.flex_none()))
             .children(stale.map(|d| d.flex_none()))
-            .children(manual.map(|d| d.flex_none()))
             .when(has_errors, |d| {
                 d.child(
                     shrink_scroll("run-notes")

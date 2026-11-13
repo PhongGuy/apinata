@@ -105,17 +105,6 @@ fn smoke() -> Vec<String> {
     vec!["smoke".to_owned()]
 }
 
-// The runner leaves requests tagged manual unticked; the demo tags those that call other sites.
-fn manual() -> Vec<String> {
-    vec!["manual".to_owned()]
-}
-
-fn tag_manual(c: &mut Collection, folder: &ItemPath) {
-    let file = c.folder_file_mut(folder).expect("folder file");
-    file.set_tags(manual());
-    file.save().expect("save folder");
-}
-
 fn json(body: &str) -> BodySpec {
     BodySpec::Json(body.to_owned())
 }
@@ -128,11 +117,8 @@ fn build_demo(root: &Path) {
         "# Apinata Demo\n\nA small tour of Apinata.\n\n\
          - **Posts** and **Users** call [JSONPlaceholder]({BASE_URL}), a free fake REST API.\n\
          - **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n\
-         - **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\
+         - **Auth** shows digest, NTLM, AWS Sig v4 and OAuth 1.0 signatures that httpbin echoes.\n\
          - **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\n\
-         Media, Auth and GraphQL call other sites, so they are tagged `manual` and Run collection \
-         leaves them unticked; tick them to include them. The SigV4 example only shows signing, \
-         so its made-up address never answers.\n\n\
          Sending a request needs network access."
     ));
     // Collection variables make every request work with no environment selected; the
@@ -265,7 +251,6 @@ fn build_demo(root: &Path) {
 
     let media = c.create_folder(&ItemPath::root(), "Media").expect("media");
     let folder = c.folder_file_mut(&media).expect("media folder file");
-    folder.set_tags(manual());
     folder.set_docs(
         "## Media\n\nResponses that are not JSON:\n\n\
          1. **Get XML** returns an XML document, shown re-indented and highlighted.\n\
@@ -281,10 +266,9 @@ fn build_demo(root: &Path) {
         });
     }
 
-    // httpbin answers digest challenges; the AWS keys are the documentation's example pair,
-    // so that request only shows signing in the timeline.
+    // httpbin answers digest challenges and echoes any signed request; the AWS keys are the
+    // documentation's example pair, which httpbin accepts since it checks no signature.
     let auth = c.create_folder(&ItemPath::root(), "Auth").expect("auth");
-    tag_manual(&mut c, &auth);
     add_request(
         &mut c,
         &auth,
@@ -304,7 +288,7 @@ fn build_demo(root: &Path) {
         &auth,
         "SigV4 example",
         "GET",
-        "https://example.execute-api.us-east-1.amazonaws.com/",
+        "https://httpbin.org/anything",
         |r| {
             r.set_auth(AuthSpec::AwsV4 {
                 access_key_id: "AKIDEXAMPLE".to_owned(),
@@ -314,6 +298,7 @@ fn build_demo(root: &Path) {
                 region: "us-east-1".to_owned(),
                 profile_name: String::new(),
             });
+            r.set_assertions(vec![status_is("200")]);
         },
     );
     add_request(
@@ -364,7 +349,6 @@ fn build_demo(root: &Path) {
     let graphql = c
         .create_folder(&ItemPath::root(), "GraphQL")
         .expect("graphql");
-    tag_manual(&mut c, &graphql);
     add_graphql_request(
         &mut c,
         &graphql,
@@ -529,23 +513,30 @@ fn the_demo_data_file_feeds_get_user() {
     );
 }
 
-// Requests to hosts other than JSONPlaceholder carry the manual tag, so a plain run of the
-// demo calls JSONPlaceholder only.
+// Every demo request goes to a public service that answers, never to a placeholder host, so
+// a plain run of the demo can pass.
 #[test]
-fn only_jsonplaceholder_requests_are_left_untagged_manual() {
+fn every_demo_request_targets_a_service_that_answers() {
+    const ANSWERING: [&str; 3] = [
+        "jsonplaceholder.typicode.com",
+        "httpbin.org",
+        "graphqlzero.almansi.me",
+    ];
     let c = Collection::open(demo_dir()).expect("opens");
     let plan = c.plan(c.root()).expect("plan");
-    let mut manual = 0;
-    for (request, tags) in plan.requests().zip(plan.tags()) {
-        let outside = !request.url().starts_with("{{baseUrl}}");
-        assert_eq!(
-            tags.iter().any(|t| t == "manual"),
-            outside,
-            "{} at {}",
-            request.name(),
-            request.url()
+    let mut seen = 0;
+    for request in plan.requests() {
+        let url = request.url().replace("{{baseUrl}}", BASE_URL);
+        let host = url
+            .strip_prefix("https://")
+            .and_then(|rest| rest.split(['/', ':', '?']).next())
+            .unwrap_or_default();
+        assert!(
+            ANSWERING.contains(&host),
+            "{} calls {host:?}, which is not a service known to answer",
+            request.name()
         );
-        manual += usize::from(outside);
+        seen += 1;
     }
-    assert_eq!(manual, 7);
+    assert_eq!(seen, 15);
 }

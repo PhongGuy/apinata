@@ -5,7 +5,7 @@ expression: rendered(&postman(&c))
 {
   "info": {
     "name": "Apinata Demo",
-    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n- **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\nMedia, Auth and GraphQL call other sites, so they are tagged `manual` and Run collection leaves them unticked; tick them to include them. The SigV4 example only shows signing, so its made-up address never answers.\n\nSending a request needs network access.",
+    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 and OAuth 1.0 signatures that httpbin echoes.\n- **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\nSending a request needs network access.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -492,20 +492,33 @@ expression: rendered(&postman(&c))
             },
             "description": "",
             "url": {
-              "raw": "https://example.execute-api.us-east-1.amazonaws.com/",
+              "raw": "https://httpbin.org/anything",
               "protocol": "https",
               "host": [
-                "example",
-                "execute-api",
-                "us-east-1",
-                "amazonaws",
-                "com"
+                "httpbin",
+                "org"
               ],
-              "path": [],
+              "path": [
+                "anything"
+              ],
               "query": [],
               "variable": []
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [
+                  "// Assertions",
+                  "pm.test(\"res.status eq 200\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "OAuth 1.0 example",
@@ -737,5 +750,6 @@ Users / Get user / tags: tags have no place in Postman and were left out: smoke,
 Media / Get XML / assertions: assertions turned into Postman tests
 Media / Get PNG / assertions: assertions turned into Postman tests
 Auth / Digest example / assertions: assertions turned into Postman tests
+Auth / SigV4 example / assertions: assertions turned into Postman tests
 Auth / OAuth 1.0 example / assertions: assertions turned into Postman tests
 Auth / NTLM example / assertions: assertions turned into Postman tests

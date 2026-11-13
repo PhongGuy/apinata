@@ -251,3 +251,35 @@ fn several_environments_open_with_none_selected(cx: &mut TestAppContext) {
     let (_state, ws, root) = open_dir(cx, &col);
     assert_eq!(chosen(cx, &ws, &root), None);
 }
+
+fn chose_none(cx: &mut TestAppContext, ws: &Entity<Workspace>, root: &Path) -> bool {
+    let session = ws.read_with(cx, |w, _| w.session().clone());
+    (session_value(cx, &session).collections.get(root)).is_some_and(|c| c.no_environment)
+}
+
+// Deleting the selected environment clears it, but that is not the user picking No environment.
+#[gpui_kit::test]
+fn deleting_the_selected_environment_is_not_recorded_as_choosing_none(cx: &mut TestAppContext) {
+    let col = with_envs();
+    let (_state, ws, root) = start_with(cx, &col, "dev");
+    ws.update(cx, |w, cx| {
+        w.send(
+            &root,
+            Command::Env(EnvOp::Delete { name: "dev".into() }),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert_eq!(saved(cx, &ws, &root), None);
+    assert!(!chose_none(cx, &ws, &root));
+}
+
+// Choosing No environment in the app is recorded as the user's pick.
+#[gpui_kit::test]
+fn picking_no_environment_is_recorded_as_a_choice(cx: &mut TestAppContext) {
+    let col = with_envs();
+    let (_state, ws, root) = start_with(cx, &col, "dev");
+    ws.update(cx, |w, cx| w.select_environment(&root, None, cx));
+    cx.run_until_parked();
+    assert!(chose_none(cx, &ws, &root));
+}

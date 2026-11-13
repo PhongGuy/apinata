@@ -2,8 +2,6 @@ info:
   name: GraphQL
   type: folder
   seq: 5
-  tags:
-    - manual
 
 request:
   auth: inherit

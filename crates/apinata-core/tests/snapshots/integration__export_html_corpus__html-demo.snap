@@ -89,10 +89,9 @@ tr.disabled td { opacity: 0.55; }
 <ul>
 <li><strong>Posts</strong> and <strong>Users</strong> call <a href="https://jsonplaceholder.typicode.com">JSONPlaceholder</a>, a free fake REST API.</li>
 <li><strong>Media</strong> calls <a href="https://httpbin.org">httpbin</a> for responses that are not JSON.</li>
-<li><strong>Auth</strong> shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.</li>
+<li><strong>Auth</strong> shows digest, NTLM, AWS Sig v4 and OAuth 1.0 signatures that httpbin echoes.</li>
 <li><strong>GraphQL</strong> calls <a href="https://graphqlzero.almansi.me">GraphQLZero</a>, JSONPlaceholder's data over GraphQL.</li>
 </ul>
-<p>Media, Auth and GraphQL call other sites, so they are tagged <code>manual</code> and Run collection leaves them unticked; tick them to include them. The SigV4 example only shows signing, so its made-up address never answers.</p>
 <p>Sending a request needs network access.</p>
 </div>
 </header>
@@ -264,7 +263,7 @@ tr.disabled td { opacity: 0.55; }
 </article>
 <article id="r-4-2">
 <h3><span class="method m-get">GET</span> SigV4 example</h3>
-<p class="url"><code>https://example.execute-api.us-east-1.amazonaws.com/</code></p>
+<p class="url"><code>https://httpbin.org/anything</code></p>
 <p class="auth">Auth: AWS Signature v4</p>
 </article>
 <article id="r-4-3">

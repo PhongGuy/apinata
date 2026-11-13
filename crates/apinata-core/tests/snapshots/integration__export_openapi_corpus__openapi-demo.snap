@@ -7,7 +7,7 @@ expression: rendered(&out)
   "info": {
     "title": "Apinata Demo",
     "version": "1.0.0",
-    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n- **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\nMedia, Auth and GraphQL call other sites, so they are tagged `manual` and Run collection leaves them unticked; tick them to include them. The SigV4 example only shows signing, so its made-up address never answers.\n\nSending a request needs network access."
+    "description": "# Apinata Demo\n\nA small tour of Apinata.\n\n- **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.\n- **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n- **Auth** shows digest, NTLM, AWS Sig v4 and OAuth 1.0 signatures that httpbin echoes.\n- **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\nSending a request needs network access."
   },
   "servers": [
     {
@@ -285,7 +285,7 @@ expression: rendered(&out)
         ]
       }
     },
-    "/": {
+    "/anything": {
       "get": {
         "tags": [
           "Auth"
@@ -294,7 +294,7 @@ expression: rendered(&out)
         "operationId": "authSigv4Example",
         "servers": [
           {
-            "url": "https://example.execute-api.us-east-1.amazonaws.com"
+            "url": "https://httpbin.org"
           }
         ],
         "responses": {
@@ -398,5 +398,5 @@ Auth / SigV4 example / auth: the AWS Sig v4 authentication cannot be exported
 Auth / OAuth 1.0 example / auth: the OAuth 1.0 authentication cannot be exported
 Auth / NTLM example: GET /get has the same method and path as Auth / OAuth 1.0 example; this request was left out
 GraphQL / Get user / body: the GraphQL query and variables are not described; the operation has no request body
-collection / assertions: 11 items have assertions; OpenAPI has no place for them
+collection / assertions: 12 items have assertions; OpenAPI has no place for them
 collection / variables: 1 item has variables; OpenAPI has no place for them

@@ -535,12 +535,6 @@ impl RunnerModel {
     }
 
     fn keep_plan(&mut self, planned: Vec<(PlannedRow, Vec<String>)>, cx: &mut Context<Self>) {
-        let rows = planned
-            .iter()
-            .map(|(row, tags)| (&row.path, tags.as_slice()));
-        let root = self.root.clone();
-        self.workspace
-            .update(cx, |w, _| w.default_run_checks(&root, rows));
         self.planned = planned;
         self.preview_loaded = true;
         self.refilter();
@@ -618,14 +612,6 @@ impl RunnerModel {
     /// The plan's load errors as "{path relative to root}: {message}".
     pub fn load_errors(&self) -> &[String] {
         &self.load_errors
-    }
-
-    /// Why some requests start unticked, when any listed request is tagged manual.
-    pub fn manual_note(&self) -> Option<&'static str> {
-        let tagged = |tags: &Vec<String>| tags.iter().any(|t| t == crate::workspace::MANUAL_TAG);
-        (self.planned.iter().any(|(_, tags)| tagged(tags))).then_some(
-            "Requests tagged manual start unticked. Tick them to include them in the run.",
-        )
     }
 
     /// One note per request of a type the app cannot send yet, naming it as skipped.
