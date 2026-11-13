@@ -97,9 +97,11 @@ pub fn tab_details(
 
 /// Where a tab's subject sits, for its hint: the collection's `tag`, then the folders above
 /// the request, folder or example it shows, and an example's request; collection-wide tabs
-/// have the tag alone.
+/// and drafts have the tag alone.
 pub fn tab_place(entry: &TabEntry, tag: &str, content: Option<&Content>) -> Vec<String> {
     match &entry.kind {
+        // A draft lives in no folder until it is saved, whichever folder it was started from.
+        TabKind::Request(path) if path.is_draft() => vec![tag.to_owned()],
         TabKind::Request(path) | TabKind::Folder(path) | TabKind::Runner(path) => {
             item_place(tag, content, path)
         }

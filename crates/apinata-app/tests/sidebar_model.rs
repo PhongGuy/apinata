@@ -73,6 +73,7 @@ fn nodes_nest_the_rows_under_their_collection() {
         &[],
         &expanded(dir.path(), &["", "users"]),
         "",
+        None,
     );
     assert_eq!(
         flat(&nodes),
@@ -112,6 +113,7 @@ fn an_opaque_item_yields_no_invalid_row() {
         &[],
         &expanded(dir.path(), &[""]),
         "",
+        None,
     );
     let invalid: Vec<&Node> = nodes[0]
         .children
@@ -144,6 +146,7 @@ fn rows_carry_dirty_and_disk_markers() {
         &[],
         &expanded(dir.path(), &[""]),
         "",
+        None,
     );
     assert!(find(&nodes, "0:health.yml").dirty);
     assert_eq!(find(&nodes, "0:health.yml").disk, DiskState::Present);
@@ -158,7 +161,7 @@ fn the_filter_keeps_matching_requests_and_expands_their_folders() {
     let input = [(dir.path(), "c", Some(&c))];
     let none = expanded(dir.path(), &[]);
     assert_eq!(
-        flat(&build(&input, &[], &none, "ADMIN")),
+        flat(&build(&input, &[], &none, "ADMIN", None)),
         [
             s("0:", NodeKind::Collection, true),
             s("0:users", NodeKind::Folder, true),
@@ -168,7 +171,7 @@ fn the_filter_keeps_matching_requests_and_expands_their_folders() {
     );
     // A folder's own name never matches; "Users" finds only the request named "List users".
     assert_eq!(
-        flat(&build(&input, &[], &none, "Users")),
+        flat(&build(&input, &[], &none, "Users", None)),
         [
             s("0:", NodeKind::Collection, true),
             s("0:users", NodeKind::Folder, true),
@@ -176,16 +179,16 @@ fn the_filter_keeps_matching_requests_and_expands_their_folders() {
         ]
     );
     assert_eq!(
-        flat(&build(&input, &[], &none, "sock")),
+        flat(&build(&input, &[], &none, "sock", None)),
         [
             s("0:", NodeKind::Collection, true),
             s("0:ws.yml", NodeKind::Opaque, false)
         ]
     );
-    assert_eq!(flat(&build(&input, &[], &none, "zzz")), Vec::new());
+    assert_eq!(flat(&build(&input, &[], &none, "zzz", None)), Vec::new());
     assert_eq!(
-        build(&input, &[], &none, "  "),
-        build(&input, &[], &none, "")
+        build(&input, &[], &none, "  ", None),
+        build(&input, &[], &none, "", None)
     );
 }
 
@@ -204,6 +207,7 @@ fn a_second_collection_and_an_opening_one_get_their_own_ids() {
         &[],
         &exp,
         "",
+        None,
     );
     assert_eq!(nodes.len(), 2);
     assert_eq!(nodes[1].id.as_ref(), "1:");
@@ -232,6 +236,7 @@ fn tree_items_mirror_the_nodes() {
         &[],
         &expanded(dir.path(), &[""]),
         "",
+        None,
     );
     let items = to_tree_items(&nodes);
     assert_eq!(items.len(), 1);
@@ -251,13 +256,13 @@ fn a_filter_drops_only_the_collections_without_a_match() {
     let o = content(&other);
     let input = [(dir.path(), "c", Some(&c)), (other.path(), "d", Some(&o))];
     let none = Expanded::new();
-    let ids: Vec<String> = build(&input, &[], &none, "ADMIN")
+    let ids: Vec<String> = build(&input, &[], &none, "ADMIN", None)
         .iter()
         .map(|n| n.id.to_string())
         .collect();
     assert_eq!(ids, ["0:", "1:"], "both match");
     let only_first = [(dir.path(), "c", Some(&c)), (other.path(), "d", None)];
-    let ids: Vec<String> = build(&only_first, &[], &none, "ADMIN")
+    let ids: Vec<String> = build(&only_first, &[], &none, "ADMIN", None)
         .iter()
         .map(|n| n.id.to_string())
         .collect();
@@ -281,6 +286,7 @@ fn a_shortened_method_tag_keeps_the_colour_of_its_full_method() {
         &[],
         &expanded(dir.path(), &[""]),
         "",
+        None,
     );
     for (id, label, class) in [
         ("0:p.yml", "PTCH", StatusClass::Info),
@@ -299,6 +305,7 @@ fn draft(root: &Path, path: &str, name: &str) -> OpenDraft {
         path: ip(path),
         name: name.into(),
         method: "GET".into(),
+        dirty: false,
     }
 }
 
@@ -315,7 +322,7 @@ fn open_drafts_head_their_collection_under_unsaved() {
         draft(dir.path(), "untitled-1.draft", "Untitled request 1"),
         draft(dir.path(), "users/untitled-2.draft", "Untitled request 2"),
     ];
-    let nodes = build(&input, &drafts, &open_root(dir.path()), "");
+    let nodes = build(&input, &drafts, &open_root(dir.path()), "", None);
     let group = &nodes[0].children[0];
     assert_eq!(UNSAVED_LABEL, "Unsaved");
     assert_eq!(
@@ -350,12 +357,57 @@ fn open_drafts_head_their_collection_under_unsaved() {
     assert_eq!(group.children[0].method.as_deref(), Some("GET"));
 }
 
+// Everything in the scratch pad is unsaved, so its drafts sit right under it, as the
+// breadcrumb shows them, and carry their dirty state like saved rows do.
+#[test]
+fn scratch_drafts_sit_directly_under_the_scratch_pad() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = [(dir.path(), "Scratch pad", None)];
+    let drafts = [
+        draft(dir.path(), "untitled-1.draft", "Untitled request"),
+        OpenDraft {
+            dirty: true,
+            ..draft(dir.path(), "untitled-2.draft", "Untitled request 2")
+        },
+    ];
+    let nodes = build(
+        &input,
+        &drafts,
+        &open_root(dir.path()),
+        "",
+        Some(dir.path()),
+    );
+    let rows: Vec<(String, NodeKind, bool)> = (nodes[0].children.iter())
+        .map(|n| (n.id.to_string(), n.kind, n.dirty))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("0:untitled-1.draft".to_owned(), NodeKind::Draft, false),
+            ("0:untitled-2.draft".to_owned(), NodeKind::Draft, true),
+        ]
+    );
+}
+
+#[test]
+fn a_collections_draft_row_carries_its_dirty_state() {
+    let dir = tree();
+    let c = content(&dir);
+    let input = [(dir.path(), "c", Some(&c))];
+    let drafts = [OpenDraft {
+        dirty: true,
+        ..draft(dir.path(), "untitled-1.draft", "Untitled request")
+    }];
+    let nodes = build(&input, &drafts, &open_root(dir.path()), "", None);
+    assert!(nodes[0].children[0].children[0].dirty);
+}
+
 #[test]
 fn without_drafts_there_is_no_unsaved_group() {
     let dir = tree();
     let c = content(&dir);
     let input = [(dir.path(), "c", Some(&c))];
-    let nodes = build(&input, &[], &open_root(dir.path()), "");
+    let nodes = build(&input, &[], &open_root(dir.path()), "", None);
     assert!(
         nodes[0]
             .children
@@ -371,7 +423,7 @@ fn the_filter_matches_draft_names() {
     let input = [(dir.path(), "c", Some(&c))];
     let none = expanded(dir.path(), &[]);
     let drafts = [draft(dir.path(), "untitled-1.draft", "Untitled request 1")];
-    let ids: Vec<String> = flat(&build(&input, &drafts, &none, "untitled"))
+    let ids: Vec<String> = flat(&build(&input, &drafts, &none, "untitled", None))
         .into_iter()
         .map(|(id, _, _)| id)
         .collect();
@@ -383,7 +435,7 @@ fn the_filter_matches_draft_names() {
             "0:untitled-1.draft".to_owned()
         ]
     );
-    assert!(flat(&build(&input, &drafts, &none, "zzz")).is_empty());
+    assert!(flat(&build(&input, &drafts, &none, "zzz", None)).is_empty());
 }
 
 #[test]
@@ -410,7 +462,7 @@ fn an_empty_folder_holds_one_disabled_empty_row() {
     ]);
     let c = content(&dir);
     let input = [(dir.path(), "c", Some(&c))];
-    let nodes = build(&input, &[], &expanded(dir.path(), &["", "empty"]), "");
+    let nodes = build(&input, &[], &expanded(dir.path(), &["", "empty"]), "", None);
     assert_eq!(
         flat(&nodes),
         [
@@ -427,7 +479,7 @@ fn an_empty_folder_holds_one_disabled_empty_row() {
     assert!(items[0].children[0].children[0].is_disabled());
     // A filter never keeps an empty folder, so it never shows the row either.
     assert_eq!(
-        flat(&build(&input, &[], &expanded(dir.path(), &[]), "a")).len(),
+        flat(&build(&input, &[], &expanded(dir.path(), &[]), "a", None)).len(),
         3
     );
 }

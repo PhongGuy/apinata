@@ -20,6 +20,7 @@ fn filtered(files: &[(&str, &str)], filter: &str) -> Vec<Node> {
         &[],
         &Expanded::new(),
         filter,
+        None,
     )
 }
 
@@ -105,6 +106,7 @@ fn same_named_collections_show_where_their_folders_differ() {
         &[],
         &Expanded::new(),
         "",
+        None,
     );
     assert_eq!(n[0].hint.as_deref(), Some("work/shop"));
     assert_eq!(n[1].hint.as_deref(), Some("play/shop"));
