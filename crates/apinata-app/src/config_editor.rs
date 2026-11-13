@@ -934,9 +934,9 @@ impl ConfigEditor {
             .is_some_and(|s| s.settings.read(cx).get().autosave)
     }
 
-    // Save appears while the settings hold unsaved changes, styled as the environment editors'
-    // Save. A clean page keeps its slot, invisible and inert, so the title row never changes
-    // height when it appears.
+    // Discard and Save appear while the settings hold unsaved changes, styled as the
+    // environment editors' pair. A clean page keeps both in their slot, invisible and inert,
+    // so the title row never changes size when they appear.
     fn save_button(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.save_possible(cx) {
             return None;
@@ -944,9 +944,14 @@ impl ConfigEditor {
         let dirty = self.view(cx).is_some_and(|v| v.dirty);
         let slot = div().id("config-save").test_support().flex_none();
         if !dirty {
-            let hidden = crate::env_editor::save_button("config-save-slot", false)
+            let discard = crate::env_editor::discard_button("config-discard-slot", true, cx)
                 .role(None::<Role>)
                 .tab_stop(false);
+            // Styled as the live pair, since the primary Save is narrower than a plain one.
+            let save = crate::env_editor::save_button("config-save-slot", true)
+                .role(None::<Role>)
+                .tab_stop(false);
+            let hidden = h_flex().gap_2().child(discard).child(save);
             return Some(slot.invisible().child(hidden).into_any_element());
         }
         let discard = crate::env_editor::discard_button("config-discard-button", true, cx)
@@ -966,7 +971,7 @@ impl ConfigEditor {
     }
 
     /// Asks, then returns the settings to their saved file, as the environment editors'
-    /// Discard changes does.
+    /// Discard changes does; a secret typed but not yet committed goes too.
     pub fn discard_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let title = format!("Discard changes to {}?", self.title(cx).to_lowercase());
         let answer = crate::confirm::ask(crate::confirm::discard_ask(title), window, cx);
@@ -975,12 +980,16 @@ impl ConfigEditor {
             self.root.clone(),
             self.target.target(),
         );
-        cx.spawn(async move |_, cx| {
-            if answer.recv().await == Ok(1) {
-                workspace.update(cx, |w, cx| {
-                    w.send(&root, Command::Revert(target), cx);
-                });
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.recv().await != Ok(1) {
+                return;
             }
+            let _ = this.update_in(cx, |e, window, cx| {
+                e.auth.update(cx, |a, cx| a.drop_pending(window, cx));
+            });
+            workspace.update(cx, |w, cx| {
+                w.send(&root, Command::Revert(target), cx);
+            });
         })
         .detach();
     }
