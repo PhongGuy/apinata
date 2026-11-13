@@ -1633,13 +1633,16 @@ impl Render for KvTable {
                 Followed::new(("kv-row-wrapper", ix), &self.follow, row).into_any_element()
             })
             .collect();
-        let blank = self.render_row(self.rows.len(), &self.blank, true, window, cx);
+        // A file body adds files through its own button, so it draws no empty row to type in.
+        if self.columns != KvColumns::FILE_BODY {
+            let blank = self.render_row(self.rows.len(), &self.blank, true, window, cx);
+            rows.push(
+                Followed::new(("kv-row-wrapper", self.rows.len()), &self.follow, blank)
+                    .into_any_element(),
+            );
+        }
         // A Remove focus lasts one draw, so one its row could not take never fires later.
         self.remove_focus.set(None);
-        rows.push(
-            Followed::new(("kv-row-wrapper", self.rows.len()), &self.follow, blank)
-                .into_any_element(),
-        );
         v_flex()
             .gap_1()
             .w_full()
