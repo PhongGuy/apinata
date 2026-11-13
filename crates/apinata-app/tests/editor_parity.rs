@@ -256,11 +256,11 @@ fn body_file(cx: &mut TestAppContext) {
         cx,
         c.win,
         Some("body"),
-        ("kv-ctype", 0usize),
+        "body-file-type",
         "application/octet-stream",
     );
     cx.run_until_parked();
-    pick(cx, &c, 1, &["b.json"]);
+    pick_with(cx, &c, "body-file-add", &["b.json"]);
     replace_input(cx, c.win, Some("body"), ("kv-ctype", 1usize), "");
     finish(cx, &c, "body-file");
 }

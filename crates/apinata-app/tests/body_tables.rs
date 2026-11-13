@@ -161,9 +161,15 @@ fn typed(path: &str, content_type: &str, selected: bool) -> FileEntry {
 }
 
 // Picks `path` for row `ix` of a file body that starts as `files`, and returns the body sent.
+// A lone file is changed through its own button, and a new file comes through "Add another".
 fn pick_file(cx: &mut TestAppContext, files: Vec<FileEntry>, ix: usize, path: &str) -> BodySpec {
+    let n = files.len();
     let (win, host) = body(cx, BodySpec::File(files));
-    click(cx, win, ("kv-pick", ix));
+    match (n, ix) {
+        (_, ix) if ix == n => press(cx, win, "body-file-add"),
+        (1, 0) => press(cx, win, "body-file-change"),
+        _ => click(cx, win, ("kv-pick", ix)),
+    }
     let path = PathBuf::from(path);
     cx.simulate_path_prompt_response(move |_| Some(vec![path]));
     cx.run_until_parked();
@@ -187,6 +193,41 @@ fn picking_a_file_on_the_empty_row_fills_its_content_type(cx: &mut TestAppContex
             typed("photo.PNG", "image/png", false)
         ])
     );
+}
+
+fn press(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(id, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+// Which file body view is drawn: the empty first step, the lone file, or the table.
+#[derive(Debug, PartialEq)]
+enum FileView {
+    Empty,
+    One,
+    Table,
+}
+
+fn file_view(cx: &mut TestAppContext, win: AnyWindowHandle) -> FileView {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let shown = [
+            w.try_find("body-file-empty").is_some(),
+            w.try_find("body-file-one").is_some(),
+            w.try_find("body-table").is_some(),
+        ];
+        match shown {
+            [true, false, false] => FileView::Empty,
+            [false, true, false] => FileView::One,
+            [false, false, true] => FileView::Table,
+            other => panic!("file body views shown: {other:?}"),
+        }
+    })
+    .unwrap()
 }
 
 fn file_empty_state(cx: &mut TestAppContext, win: AnyWindowHandle) -> (Option<String>, bool) {
@@ -231,7 +272,8 @@ fn an_empty_file_body_offers_choose_file_and_says_what_it_sends(cx: &mut TestApp
         last_body(cx, &host),
         BodySpec::File(vec![typed("photo.PNG", "image/png", true)])
     );
-    assert_eq!(file_empty_state(cx, win), (None, true));
+    assert_eq!(file_empty_state(cx, win), (None, false));
+    assert_eq!(file_view(cx, win), FileView::One);
 }
 
 #[gpui_kit::test]
@@ -246,11 +288,173 @@ fn a_cancelled_first_pick_keeps_the_empty_file_body(cx: &mut TestAppContext) {
     assert!(file_empty_state(cx, win).0.is_some());
 }
 
-// A file body that lists entries keeps its table, even when an entry has no file yet.
+// One entry with no file yet still shows as the lone file, offering to choose one.
 #[gpui_kit::test]
-fn a_file_body_with_entries_shows_its_table(cx: &mut TestAppContext) {
+fn a_lone_entry_without_a_file_offers_to_choose_one(cx: &mut TestAppContext) {
     let (win, _) = body(cx, BodySpec::File(vec![FileEntry::new("")]));
-    assert_eq!(file_empty_state(cx, win), (None, true));
+    assert_eq!(file_view(cx, win), FileView::One);
+    let (name, button) = cx
+        .update_window(win, |_, w, _| {
+            (
+                w.find("body-file-name").label().map(str::to_owned),
+                w.find("body-file-change").label().map(str::to_owned),
+            )
+        })
+        .unwrap();
+    assert_eq!(name.as_deref(), Some("No file chosen"));
+    assert_eq!(button.as_deref(), Some("Choose file\u{2026}"));
+}
+
+// What the lone file view says, as (name, content type label and value, size, change,
+// remove, add); `None` where an element is missing.
+type OneFile = [Option<String>; 7];
+
+fn one_file(cx: &mut TestAppContext, win: AnyWindowHandle) -> OneFile {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let label = |id: &'static str| w.try_find(id).and_then(|e| e.label().map(str::to_owned));
+        [
+            label("body-file-name"),
+            label("body-file-type"),
+            w.try_find("body-file-type")
+                .and_then(|e| e.value().map(str::to_owned)),
+            label("body-file-size"),
+            label("body-file-change"),
+            label("body-file-remove"),
+            label("body-file-add"),
+        ]
+    })
+    .unwrap()
+}
+
+fn some(s: &str) -> Option<String> {
+    Some(s.to_owned())
+}
+
+#[gpui_kit::test]
+fn one_file_shows_alone_with_no_blank_row(cx: &mut TestAppContext) {
+    let (win, _) = body(
+        cx,
+        BodySpec::File(vec![typed("data/photo.png", "image/png", true)]),
+    );
+    assert_eq!(file_view(cx, win), FileView::One);
+    assert_eq!(
+        one_file(cx, win),
+        [
+            some("photo.png"),
+            some("Content type"),
+            some("image/png"),
+            None,
+            some("Change\u{2026}"),
+            some("Remove"),
+            some("Add another file\u{2026}"),
+        ]
+    );
+    let rows = cx
+        .update_window(win, |_, w, _| {
+            [("kv-pick", 0usize), ("kv-pick", 1), ("kv-enabled", 1)]
+                .map(|id| w.try_find(id).is_some())
+        })
+        .unwrap();
+    assert_eq!(rows, [false; 3]);
+}
+
+#[gpui_kit::test]
+fn one_file_shows_its_size_when_it_can_be_read(cx: &mut TestAppContext) {
+    let path = std::env::temp_dir().join(format!("apinata-file-size-{}.bin", std::process::id()));
+    std::fs::write(&path, vec![0u8; 1536]).unwrap();
+    let entry = typed(&path.to_string_lossy(), "", true);
+    let (win, _) = body(cx, BodySpec::File(vec![entry]));
+    let size = one_file(cx, win)[3].clone();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(size.as_deref(), Some("1.5 KB"));
+}
+
+#[gpui_kit::test]
+fn typing_in_the_lone_files_content_type_edits_the_body(cx: &mut TestAppContext) {
+    let (win, host) = body(cx, BodySpec::File(vec![typed("a.txt", "text/plain", true)]));
+    type_at_end(cx, win, None, "body-file-type", ";x");
+    cx.run_until_parked();
+    assert_eq!(
+        last_body(cx, &host),
+        BodySpec::File(vec![typed("a.txt", "text/plain;x", true)])
+    );
+}
+
+#[gpui_kit::test]
+fn change_swaps_the_lone_file(cx: &mut TestAppContext) {
+    let (win, host) = body(
+        cx,
+        BodySpec::File(vec![typed("a.json", "application/json", true)]),
+    );
+    press(cx, win, "body-file-change");
+    cx.simulate_path_prompt_response(|o| {
+        assert!(!o.multiple && o.files && !o.directories);
+        Some(vec![PathBuf::from("/c/photo.png")])
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        last_body(cx, &host),
+        BodySpec::File(vec![typed("photo.png", "image/png", true)])
+    );
+    assert_eq!(file_view(cx, win), FileView::One);
+    assert_eq!(one_file(cx, win)[0].as_deref(), Some("photo.png"));
+}
+
+#[gpui_kit::test]
+fn remove_returns_the_lone_file_to_the_empty_state(cx: &mut TestAppContext) {
+    let (win, host) = body(cx, BodySpec::File(vec![typed("a.bin", "", true)]));
+    press(cx, win, "body-file-remove");
+    assert_eq!(last_body(cx, &host), BodySpec::File(vec![]));
+    assert_eq!(file_view(cx, win), FileView::Empty);
+    assert!(file_empty_state(cx, win).0.is_some());
+}
+
+// Several files keep the table, whose radios pick the one sent, with no empty row under it;
+// "Add another file" adds a row, and removing down to one file shows it alone.
+#[gpui_kit::test]
+fn two_files_keep_the_table_and_radios_without_a_blank_row(cx: &mut TestAppContext) {
+    let (win, host) = body(
+        cx,
+        BodySpec::File(vec![sel("a.bin", true), sel("b.bin", false)]),
+    );
+    assert_eq!(file_view(cx, win), FileView::Table);
+    let ids = cx
+        .update_window(win, |_, w, _| {
+            [
+                ("kv-pick", 0usize),
+                ("kv-pick", 1),
+                ("kv-pick", 2),
+                ("kv-enabled", 2),
+            ]
+            .map(|id| w.try_find(id).is_some())
+        })
+        .unwrap();
+    assert_eq!(ids, [true, true, false, false]);
+    click(cx, win, ("kv-enabled", 1));
+    assert_eq!(
+        last_body(cx, &host),
+        BodySpec::File(vec![sel("a.bin", false), sel("b.bin", true)])
+    );
+    press(cx, win, "body-file-add");
+    cx.simulate_path_prompt_response(|_| Some(vec![PathBuf::from("/c/c.txt")]));
+    cx.run_until_parked();
+    assert_eq!(
+        last_body(cx, &host),
+        BodySpec::File(vec![
+            sel("a.bin", false),
+            sel("b.bin", true),
+            typed("c.txt", "text/plain", false)
+        ])
+    );
+    for _ in 0..2 {
+        click(cx, win, ("kv-delete", 0));
+    }
+    assert_eq!(
+        last_body(cx, &host),
+        BodySpec::File(vec![typed("c.txt", "text/plain", true)])
+    );
+    assert_eq!(file_view(cx, win), FileView::One);
 }
 
 #[gpui_kit::test]
