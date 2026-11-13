@@ -224,6 +224,19 @@ fn remove_quotes(text: &str) -> &str {
     text
 }
 
+/// Whether `op`'s right side `text` is unquoted text the check compares as a plain string,
+/// rather than a number, keyword, quoted string, variable or template.
+pub(crate) fn reads_as_text(op: Operator, text: &str) -> bool {
+    use Operator::*;
+    let single = !op.is_unary() && !matches!(op, In | NotIn | Between | Matches | NotMatches);
+    let text = js::js_trim(text);
+    single
+        && !text.is_empty()
+        && !text.contains("{{")
+        && remove_quotes(text).len() == text.len()
+        && matches!(literal(text), Ok(Scalar::String(_)))
+}
+
 /// A right-hand operand shaped for its operator.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Rhs {

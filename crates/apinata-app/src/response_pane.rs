@@ -3187,8 +3187,7 @@ impl ResponsePane {
                         .children(result.assertions.iter().enumerate().map(|(ix, o)| {
                             let (verdict, text) = redacted_assertion_line(o, result);
                             // The engine's own words stay on offer behind the plain sentence.
-                            let engine = assertion_engine_text(o)
-                                .map(|raw| format!("{text}\n{}", result.redact(raw)));
+                            let engine = assertion_engine_text(o).map(|raw| result.redact(raw));
                             h_flex()
                                 .id(("assertion", ix))
                                 .test_support()
@@ -5180,12 +5179,23 @@ fn line_scrubbed(o: &AssertionOutcome, scrub: impl Fn(&str) -> String) -> (&'sta
         Verdict::Pass => "pass",
         Verdict::Fail { actual, detail, .. } => {
             text.push_str(&format!(": actual {}", scrub(actual)));
+            let parse_error = detail
+                .as_deref()
+                .and_then(|d| parse_error_sentence(actual, d));
             if let Some(detail) = detail {
-                let shown = match parse_error_sentence(actual, detail) {
+                let shown = match parse_error {
                     Some(sentence) => sentence.to_owned(),
                     None => ui::plain_quotes(&scrub(detail)),
                 };
                 text.push_str(&format!("; {shown}"));
+            }
+            // Unquoted text reads as a string, which surprises when a number or expression
+            // was meant, so the line says how the value was read.
+            if parse_error.is_none() && a.compares_as_text() {
+                text.push_str(match actual.parse::<f64>() {
+                    Ok(_) => "; the expected value is compared as text, but the actual value is a number",
+                    Err(_) => "; the expected value is compared as text, put it in quotes if that is meant",
+                });
             }
             "fail"
         }
