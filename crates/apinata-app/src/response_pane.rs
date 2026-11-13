@@ -5163,7 +5163,7 @@ fn line_scrubbed(o: &AssertionOutcome, scrub: impl Fn(&str) -> String) -> (&'sta
             if parse_error.is_none() && a.compares_as_text() {
                 text.push_str(match actual.parse::<f64>() {
                     Ok(_) => "; the expected value is compared as text, but the actual value is a number",
-                    Err(_) => "; the expected value is compared as text, put it in quotes if that is meant",
+                    Err(_) => "; the expected value is compared as text, as written; quote it to make that explicit",
                 });
             }
             "fail"

@@ -29,7 +29,7 @@ fn nodes_of(dir: &tempfile::TempDir, open: &[&str]) -> Vec<Node> {
     let mut set: HashSet<ItemPath> = open.iter().map(|p| ip(p)).collect();
     set.insert(ItemPath::root());
     let expanded = Expanded::from([(dir.path().to_path_buf(), set)]);
-    build(&[(dir.path(), "c", Some(&c))], &[], &expanded, "")
+    build(&[(dir.path(), "c", Some(&c))], &[], &expanded, "", None)
 }
 
 #[test]

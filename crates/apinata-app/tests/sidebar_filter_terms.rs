@@ -54,7 +54,13 @@ fn leaves(nodes: &[Node], out: &mut BTreeSet<String>) {
 
 fn kept(dir: &tempfile::TempDir, filter: &str) -> Vec<String> {
     let c = content(dir);
-    let nodes = build(&[(dir.path(), "c", Some(&c))], &[], &HashMap::new(), filter);
+    let nodes = build(
+        &[(dir.path(), "c", Some(&c))],
+        &[],
+        &HashMap::new(),
+        filter,
+        None,
+    );
     let mut out = BTreeSet::new();
     leaves(&nodes, &mut out);
     out.into_iter().collect()

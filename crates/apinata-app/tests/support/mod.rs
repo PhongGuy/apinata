@@ -2187,3 +2187,14 @@ pub fn ring_drawn(
     })
     .unwrap()
 }
+
+/// Clears the selected environment of the collection at `root`, for a test whose collection
+/// has one environment (so it opens selected) but needs to start without it.
+pub fn clear_environment(
+    cx: &mut gpui_kit::TestAppContext,
+    ws: &gpui_kit::Entity<apinata_app::workspace::Workspace>,
+    root: &std::path::Path,
+) {
+    let _ = ws.update(cx, |w, cx| w.select_environment(root, None, cx));
+    cx.run_until_parked();
+}

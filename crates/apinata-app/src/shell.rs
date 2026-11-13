@@ -1126,11 +1126,7 @@ impl Shell {
             let job = cx.background_spawn(async move { crate::demo_collection::install(&parent) });
             let result = job.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
-                Ok(root) => {
-                    // The demo's requests need its one environment, so it opens selected.
-                    (this.workspace).update(cx, |w, _| w.select_sole_on_open(&root));
-                    this.open(root, window, cx);
-                }
+                Ok(root) => this.open(root, window, cx),
                 Err(e) => {
                     let text: SharedString = crate::ui::plain_quotes(&e.to_string()).into();
                     window.open_alert_dialog(cx, move |dialog, _, _| {

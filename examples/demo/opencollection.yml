@@ -20,7 +20,8 @@ docs:
 
     - **Posts** and **Users** call [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free fake REST API.
     - **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.
-    - **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.
+    - **Auth** shows digest, NTLM, AWS Sig v4 and OAuth 1.0 signatures that httpbin echoes.
+    - **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.
 
     Sending a request needs network access.
   type: text/markdown

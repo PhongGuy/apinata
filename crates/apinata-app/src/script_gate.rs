@@ -5,7 +5,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use apinata_core::{ScriptDecision, ScriptOptions, ScriptTrust, plan_script_texts};
+use apinata_core::{
+    ScriptDecision, ScriptOptions, ScriptTextKind, ScriptTrust, is_hidden_char,
+    is_variation_selector, plan_script_texts,
+};
 use gpui_kit::{AnyWindowHandle, App, AsyncApp, Entity, Global};
 
 use crate::app::AppState;
@@ -126,12 +129,109 @@ pub fn trust_question_for(scratch: bool) -> Ask {
     }
 }
 
+/// The trust question for `texts` (each kind with its shown text): when only assertions or
+/// variables need JavaScript, it names them and shows what runs; choices and default are
+/// those of [`trust_question_for`], as is what each answer stores.
+pub fn trust_question_about<'a>(
+    scratch: bool,
+    texts: impl IntoIterator<Item = (&'a ScriptTextKind, &'a str)>,
+) -> Ask {
+    let mut ask = trust_question_for(scratch);
+    let (mut assertions, mut variables, mut shown) = (false, false, Vec::new());
+    for (kind, text) in texts {
+        match kind {
+            ScriptTextKind::AssertionLeft | ScriptTextKind::AssertionRight => assertions = true,
+            ScriptTextKind::Variable { .. } => variables = true,
+            // A script, or a kind this build does not know, keeps the script wording.
+            _ => return ask,
+        }
+        shown.push(text);
+    }
+    let title = match (assertions, variables, shown.len()) {
+        (_, _, 0) => return ask,
+        (true, false, 1) => "This assertion runs JavaScript",
+        (false, true, 1) => "This variable runs JavaScript",
+        (true, false, _) => "These assertions run JavaScript",
+        (false, true, _) => "These variables run JavaScript",
+        _ => "These assertions and variables run JavaScript",
+    };
+    const LISTED: usize = 3;
+    let mut list: Vec<String> = shown.iter().take(LISTED).map(|t| clipped(t)).collect();
+    if shown.len() > LISTED {
+        list.push(format!("{} more", shown.len() - LISTED));
+    }
+    let (verb, it) = if shown.len() == 1 {
+        ("runs", "it")
+    } else {
+        ("run", "them")
+    };
+    let (vars, scripts) = if scratch {
+        ("your variables", "the scratch pad's scripts")
+    } else {
+        ("this collection's variables", "this collection's scripts")
+    };
+    // Run stores a decision for every script, so the detail says so rather than implying
+    // only these expressions are approved.
+    ask.title = title.into();
+    ask.detail = Some(
+        format!(
+            "{} {verb} on your computer and can read {vars}, including secrets. Running {it} \
+             also lets {scripts} run from now on.",
+            list.join(", ")
+        )
+        .into(),
+    );
+    ask
+}
+
+// An author's expression as the dialog shows it, in quotes on one line: whitespace runs
+// become one space and invisible or direction characters are dropped, so it cannot pose as
+// dialog text; a long one is cut and says how much was hidden.
+fn clipped(text: &str) -> String {
+    const MAX: usize = 60;
+    let kept: String = text
+        .chars()
+        .filter(|&c| c.is_whitespace() || !(is_hidden_char(c) || is_format_char(c)))
+        .collect();
+    let clean = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    let count = clean.chars().count();
+    if count <= MAX {
+        return format!("\u{201c}{clean}\u{201d}");
+    }
+    let cut: String = clean.chars().take(MAX - 1).collect();
+    format!(
+        "\u{201c}{}\u{2026}\u{201d} ({} more characters)",
+        cut.trim_end(),
+        count - (MAX - 1)
+    )
+}
+
+// Unicode format characters (Cf) and variation selectors that `is_hidden_char` leaves out.
+fn is_format_char(c: char) -> bool {
+    is_variation_selector(c)
+        || matches!(
+            c,
+            '\u{0600}'..='\u{0605}'
+                | '\u{06dd}'
+                | '\u{070f}'
+                | '\u{0890}'..='\u{0891}'
+                | '\u{08e2}'
+                | '\u{180e}'
+                | '\u{fff9}'..='\u{fffb}'
+                | '\u{110bd}'
+                | '\u{110cd}'
+                | '\u{13430}'..='\u{1343f}'
+                | '\u{1bca0}'..='\u{1bca3}'
+                | '\u{1d173}'..='\u{1d17a}'
+        )
+}
+
 /// What the gate decided before anything is asked.
 pub enum Prepared {
     /// Run with these options, asking nothing.
     Ready(ScriptOptions),
     /// Ask the trust question first.
-    Ask(TrustQuestion),
+    Ask(Box<TrustQuestion>),
 }
 
 /// The trust question still to ask; `ask` opens it and records the answer.
@@ -143,6 +243,8 @@ pub struct TrustQuestion {
     off: ScriptOptions,
     on: ScriptOptions,
     scratch: bool,
+    // Each text's kind and its shown copy, which word the question.
+    about: Vec<(ScriptTextKind, String)>,
 }
 
 /// Decides the script options for `planned` without asking. Without `AppState`, a script
@@ -182,7 +284,11 @@ pub fn prepare(root: PathBuf, planned: &Planned, cx: &mut AsyncApp) -> Prepared 
     let Some(window) = window else {
         return Prepared::Ready(off);
     };
-    Prepared::Ask(TrustQuestion {
+    let about = texts
+        .iter()
+        .map(|(_, t)| (t.kind.clone(), t.shown.clone()))
+        .collect();
+    Prepared::Ask(Box::new(TrustQuestion {
         root,
         path,
         window,
@@ -190,7 +296,8 @@ pub fn prepare(root: PathBuf, planned: &Planned, cx: &mut AsyncApp) -> Prepared 
         off,
         on,
         scratch,
-    })
+        about,
+    }))
 }
 
 impl TrustQuestion {
@@ -205,9 +312,11 @@ impl TrustQuestion {
             off,
             on,
             scratch,
+            about,
         } = self;
         let Ok(answer) = window.update(cx, |_, window, cx| {
-            ask(trust_question_for(scratch), window, cx)
+            let about = about.iter().map(|(kind, text)| (kind, text.as_str()));
+            ask(trust_question_about(scratch, about), window, cx)
         }) else {
             return off;
         };

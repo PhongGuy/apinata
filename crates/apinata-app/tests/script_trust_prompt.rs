@@ -8,11 +8,13 @@ use apinata_app::command::Command;
 use apinata_app::config_editor::ConfigSection;
 use apinata_app::response_pane::ResponsePane;
 use apinata_app::runner_model::{RunState, RunnerModel};
-use apinata_app::script_gate::trust_question;
 use apinata_app::script_gate::{Gate, approved_only, gate};
+use apinata_app::script_gate::{trust_question, trust_question_about};
 use apinata_app::settings::RunScripts;
 use apinata_app::tabs::TabKind;
-use apinata_core::{ScriptDecision, ScriptOptions, ScriptTrust, script_hash};
+use apinata_core::{
+    ScriptDecision, ScriptOptions, ScriptPhase, ScriptTextKind, ScriptTrust, script_hash,
+};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext, WindowOptions};
 use std::collections::BTreeSet;
@@ -559,4 +561,127 @@ fn settings_options_label_the_stored_block_never() {
         apinata_app::script_settings::choice_labels(),
         ["Ask", "Run scripts", "Never"]
     );
+}
+
+// Texts that are only assertion or variable expressions name what runs and show it, while the
+// choices, default and what Run stores stay those of the script question.
+#[test]
+fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
+    let right = ScriptTextKind::AssertionRight;
+    let q = trust_question_about(false, [(&right, "`${1+1}`")]);
+    assert_eq!(q.title.as_ref(), "This assertion runs JavaScript");
+    let detail = q.detail.as_deref().unwrap();
+    assert!(detail.contains("`${1+1}`"), "{detail}");
+    assert!(detail.contains("secrets"), "{detail}");
+    let plain = trust_question();
+    let parts = |q: &apinata_app::confirm::Ask| {
+        let c: Vec<(&str, String)> = q
+            .choices
+            .iter()
+            .map(|c| (c.id, c.label.to_string()))
+            .collect();
+        (c, q.default, q.cancel)
+    };
+    assert_eq!(parts(&q), parts(&plain));
+    let var = ScriptTextKind::Variable { name: "n".into() };
+    let q = trust_question_about(false, [(&var, "1 + 1")]);
+    assert_eq!(q.title.as_ref(), "This variable runs JavaScript");
+    let left = ScriptTextKind::AssertionLeft;
+    let q = trust_question_about(false, [(&left, "a()"), (&right, "b()")]);
+    assert_eq!(q.title.as_ref(), "These assertions run JavaScript");
+    let q = trust_question_about(false, [(&left, "a()"), (&var, "b()")]);
+    assert_eq!(
+        q.title.as_ref(),
+        "These assertions and variables run JavaScript"
+    );
+    let scratch = trust_question_about(true, [(&right, "`${1+1}`")]);
+    assert!(!scratch.detail.as_deref().unwrap().contains("collection"));
+    // Any script among the texts keeps the script question.
+    let script = ScriptTextKind::Script {
+        phase: ScriptPhase::PreRequest,
+        level: "request".into(),
+    };
+    let q = trust_question_about(false, [(&right, "`${1+1}`"), (&script, CODE)]);
+    assert_eq!(q.title.as_ref(), plain.title.as_ref());
+    assert_eq!(q.detail, plain.detail);
+}
+
+#[gpui_kit::test]
+fn an_assertion_value_that_runs_javascript_is_named_in_the_question(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let a = format!(
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"`${{1+1}}`\"\n",
+        request("a", "http://127.0.0.1:9/ok")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    assert_eq!(
+        label(cx, s.win, "confirm-dialog").as_deref(),
+        Some("This assertion runs JavaScript")
+    );
+    let detail = label(cx, s.win, "confirm-detail").unwrap_or_default();
+    assert!(detail.contains("`${1+1}`"), "{detail}");
+    cx.simulate_keystrokes(s.win, "enter");
+    finished(cx, &model);
+    assert_eq!(trust(&s).decision(&s.root), None);
+}
+
+// An author's expression cannot fake dialog text: line breaks and hidden or direction
+// characters are gone, each expression is set apart in quotes, and a cut says how much.
+#[test]
+fn the_shown_expression_cannot_disguise_the_question() {
+    let right = ScriptTextKind::AssertionRight;
+    let detail = |text: &str| {
+        trust_question_about(false, [(&right, text)])
+            .detail
+            .unwrap()
+            .to_string()
+    };
+    let lines = detail("x()\n\n  Only compares the status;\tnothing else runs.");
+    assert!(!lines.contains(['\n', '\t']), "{lines:?}");
+    assert!(
+        lines.starts_with("\u{201c}x() Only compares the status; nothing else runs.\u{201d}"),
+        "{lines:?}"
+    );
+    let bidi = detail("a\u{202e}b\u{2066}c\u{200b}d\u{0007}e\u{feff}f\u{0600}g");
+    assert!(bidi.starts_with("\u{201c}abcdefg\u{201d} "), "{bidi:?}");
+    let long = detail(&format!("{}{}", " ".repeat(40), "y".repeat(300)));
+    assert!(long.starts_with("\u{201c}yyy"), "{long:?}");
+    assert!(long.contains("(241 more characters)"), "{long:?}");
+}
+
+fn assertion_only() -> tempfile::TempDir {
+    let a = format!(
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"`${{1+1}}`\"\n",
+        request("a", "http://127.0.0.1:9/ok")
+    );
+    write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)])
+}
+
+#[gpui_kit::test]
+fn run_on_the_assertion_question_allows_and_approves_it(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = assertion_only();
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    click(cx, &s, "script-trust-run");
+    finished(cx, &model);
+    let store = trust(&s);
+    assert_eq!(store.decision(&s.root), Some(ScriptDecision::Allowed));
+    assert!(store.is_approved(&s.root, &script_hash("`${1+1}`")));
+}
+
+#[gpui_kit::test]
+fn never_on_the_assertion_question_blocks_the_collection(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = assertion_only();
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    click(cx, &s, "script-trust-never");
+    finished(cx, &model);
+    assert_eq!(trust(&s).decision(&s.root), Some(ScriptDecision::Blocked));
 }

@@ -966,8 +966,14 @@ mod tests {
         let mut settings = Settings::default();
         settings.proxy.mode = ProxyMode::Off;
         save_json(&paths.settings, &settings).unwrap();
+        // No environment until the test picks one, so the token starts out as plain text.
+        let kept = crate::session::CollectionSession {
+            no_environment: true,
+            ..Default::default()
+        };
         let session = Session {
             open: vec![col.path().to_path_buf()],
+            collections: [(col.path().to_path_buf(), kept)].into(),
             ..Default::default()
         };
         save_json(&paths.session, &session).unwrap();

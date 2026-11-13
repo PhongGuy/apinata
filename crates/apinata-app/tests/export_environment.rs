@@ -113,6 +113,7 @@ fn the_palette_exports_the_active_environment(cx: &mut TestAppContext) {
 fn the_palette_without_an_active_environment_says_so(cx: &mut TestAppContext) {
     let col = tree();
     let s = started(cx, &col);
+    clear_environment(cx, &s.ws, &s.root);
     let before = toasts(cx, &s);
     palette(cx, &s, "export current environment");
     assert!(!cx.did_prompt_for_new_path());

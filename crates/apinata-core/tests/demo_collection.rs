@@ -117,7 +117,8 @@ fn build_demo(root: &Path) {
         "# Apinata Demo\n\nA small tour of Apinata.\n\n\
          - **Posts** and **Users** call [JSONPlaceholder]({BASE_URL}), a free fake REST API.\n\
          - **Media** calls [httpbin](https://httpbin.org) for responses that are not JSON.\n\
-         - **Auth** shows digest, NTLM, AWS Sig v4 signing and an OAuth 1.0 signature httpbin echoes.\n\n\
+         - **Auth** shows digest, NTLM, AWS Sig v4 and OAuth 1.0 signatures that httpbin echoes.\n\
+         - **GraphQL** calls [GraphQLZero](https://graphqlzero.almansi.me), JSONPlaceholder's data over GraphQL.\n\n\
          Sending a request needs network access."
     ));
     // Collection variables make every request work with no environment selected; the
@@ -265,8 +266,8 @@ fn build_demo(root: &Path) {
         });
     }
 
-    // httpbin answers digest challenges; the AWS keys are the documentation's example pair,
-    // so that request only shows signing in the timeline.
+    // httpbin answers digest challenges and echoes any signed request; the AWS keys are the
+    // documentation's example pair, which httpbin accepts since it checks no signature.
     let auth = c.create_folder(&ItemPath::root(), "Auth").expect("auth");
     add_request(
         &mut c,
@@ -287,7 +288,7 @@ fn build_demo(root: &Path) {
         &auth,
         "SigV4 example",
         "GET",
-        "https://example.execute-api.us-east-1.amazonaws.com/",
+        "https://httpbin.org/anything",
         |r| {
             r.set_auth(AuthSpec::AwsV4 {
                 access_key_id: "AKIDEXAMPLE".to_owned(),
@@ -297,6 +298,7 @@ fn build_demo(root: &Path) {
                 region: "us-east-1".to_owned(),
                 profile_name: String::new(),
             });
+            r.set_assertions(vec![status_is("200")]);
         },
     );
     add_request(
@@ -509,4 +511,32 @@ fn the_demo_data_file_feeds_get_user() {
         data.row(2).expect("row"),
         [("userId".to_owned(), "3".to_owned())]
     );
+}
+
+// Every demo request goes to a public service that answers, never to a placeholder host, so
+// a plain run of the demo can pass.
+#[test]
+fn every_demo_request_targets_a_service_that_answers() {
+    const ANSWERING: [&str; 3] = [
+        "jsonplaceholder.typicode.com",
+        "httpbin.org",
+        "graphqlzero.almansi.me",
+    ];
+    let c = Collection::open(demo_dir()).expect("opens");
+    let plan = c.plan(c.root()).expect("plan");
+    let mut seen = 0;
+    for request in plan.requests() {
+        let url = request.url().replace("{{baseUrl}}", BASE_URL);
+        let host = url
+            .strip_prefix("https://")
+            .and_then(|rest| rest.split(['/', ':', '?']).next())
+            .unwrap_or_default();
+        assert!(
+            ANSWERING.contains(&host),
+            "{} calls {host:?}, which is not a service known to answer",
+            request.name()
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 15);
 }

@@ -39,7 +39,7 @@ pub enum NodeKind {
     Empty,
 }
 
-/// An open draft tab, as the sidebar lists it under its collection's Unsaved group.
+/// An open draft tab, as the sidebar lists it under its collection.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub struct OpenDraft {
@@ -48,6 +48,8 @@ pub struct OpenDraft {
     pub name: String,
     /// Empty while the draft's view has not loaded; the row then shows no method.
     pub method: String,
+    /// Whether the draft holds edits, as its tab's dirty dot shows.
+    pub dirty: bool,
 }
 
 /// The label of the group that lists a collection's open drafts.
@@ -114,13 +116,15 @@ pub fn invalid_id(collection: usize, k: usize) -> SharedString {
 }
 
 /// One root node per (root, display name, content); `None` content is a collection still opening.
-/// Each collection's `drafts`, in the order given, head it under an Unsaved group.
+/// Each collection's `drafts`, in the order given, head it under an Unsaved group; the
+/// `scratch` pad, where everything is unsaved, lists its drafts directly instead.
 /// A non-blank filter leaves out the collections with no matching row.
 pub fn build(
     collections: &[(&Path, &str, Option<&Content>)],
     drafts: &[OpenDraft],
     expanded: &Expanded,
     filter: &str,
+    scratch: Option<&Path>,
 ) -> Vec<Node> {
     let filter = FilterTerms::parse(filter);
     let empty = HashSet::new();
@@ -138,7 +142,11 @@ pub fn build(
                 expanded: expanded.get(root).unwrap_or(&empty),
                 filter: filter.as_ref(),
             };
-            let mut children: Vec<Node> = ctx.unsaved_group(drafts).into_iter().collect();
+            let mut children: Vec<Node> = if scratch == Some(root) {
+                ctx.draft_rows(drafts)
+            } else {
+                ctx.unsaved_group(drafts).into_iter().collect()
+            };
             if let Some(content) = content {
                 children.extend(ctx.nest(&mut content.rows.iter().peekable(), 0, &[]));
                 if ctx.filter.is_none() {
@@ -240,9 +248,9 @@ impl Ctx<'_> {
         self.filter.is_some() || self.expanded.contains(path)
     }
 
-    /// The always-expanded group of this collection's drafts, or None when no draft is kept.
-    fn unsaved_group(&self, drafts: &[OpenDraft]) -> Option<Node> {
-        let children: Vec<Node> = drafts
+    /// This collection's draft rows that pass the filter, in the order given.
+    fn draft_rows(&self, drafts: &[OpenDraft]) -> Vec<Node> {
+        drafts
             .iter()
             .filter(|d| d.root == self.root && self.draft_matches(d))
             .map(|d| Node {
@@ -253,7 +261,7 @@ impl Ctx<'_> {
                 kind: NodeKind::Draft,
                 name: d.name.clone(),
                 method: (!d.method.is_empty()).then(|| d.method.clone()),
-                dirty: false,
+                dirty: d.dirty,
                 disk: DiskState::Present,
                 expanded: false,
                 children: Vec::new(),
@@ -261,7 +269,12 @@ impl Ctx<'_> {
                 hint: None,
                 unsupported: None,
             })
-            .collect();
+            .collect()
+    }
+
+    /// The always-expanded group of this collection's drafts, or None when no draft is kept.
+    fn unsaved_group(&self, drafts: &[OpenDraft]) -> Option<Node> {
+        let children = self.draft_rows(drafts);
         (!children.is_empty()).then(|| Node {
             id: unsaved_id(self.ix),
             collection: self.ix,
