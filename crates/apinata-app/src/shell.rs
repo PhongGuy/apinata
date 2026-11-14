@@ -261,9 +261,16 @@ impl Shell {
                         root,
                         path,
                         permanent,
+                        focus_url,
                     } => {
-                        this.workspace
+                        let opened = this
+                            .workspace
                             .update(cx, |w, cx| w.open_item(root, path.clone(), !permanent, cx));
+                        // The tab's first stop is its URL, where the keyboard goes on from Enter.
+                        if let Some(id) = opened.filter(|_| *focus_url) {
+                            (this.tab_area).update(cx, |t, cx| t.focus_tab(id, window, cx));
+                            crate::focus_redraw::after_draw_move(window, cx);
+                        }
                     }
                     SidebarEvent::OpenSettings { root, folder } => {
                         if folder.is_none()
