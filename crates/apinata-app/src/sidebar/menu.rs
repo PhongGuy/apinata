@@ -9,8 +9,9 @@ use gpui_kit::Action;
 use super::model::NodeKind;
 use super::multi::Tally;
 use super::{
-    CloneSelected, CopySelected, CutSelected, DeleteSelected, NewFolder, OpenInTerminal,
-    PasteSelected, RenameSelected, RunSelected, ShowInFileManager, SortByName,
+    CloneSelected, CloseSelectedDraft, CopySelected, CutSelected, DeleteSelected, FolderSettings,
+    NewFolder, OpenInTerminal, PasteSelected, RenameSelected, RunSelected, SaveSelectedDraft,
+    ShowInFileManager, SortByName,
 };
 use crate::commands::label;
 
@@ -156,6 +157,9 @@ impl MenuEntry {
             E::Delete => Box::new(DeleteSelected),
             E::ShowInFileManager => Box::new(ShowInFileManager),
             E::OpenInTerminal => Box::new(OpenInTerminal),
+            E::Settings => Box::new(FolderSettings),
+            E::SaveDraft => Box::new(SaveSelectedDraft),
+            E::CloseDraft => Box::new(CloseSelectedDraft),
             _ => return None,
         };
         Some(action)

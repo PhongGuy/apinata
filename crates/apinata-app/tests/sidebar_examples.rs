@@ -410,3 +410,37 @@ fn tab_skips_the_examples_chevron(cx: &mut TestAppContext) {
         cx.run_until_parked();
     }
 }
+
+#[gpui_kit::test]
+fn right_and_left_on_a_request_row_show_and_hide_its_examples(cx: &mut TestAppContext) {
+    let h = open_sidebar_with(cx, files());
+    let tree = h.view.read_with(cx, |s, _| s.tree().clone());
+    tree.update(cx, |t, cx| {
+        let ix = t.index_of(&row("users.yml"));
+        t.set_selected_index(ix, cx)
+    });
+    focus_tree(cx, &h);
+    frame(cx, h.win);
+    let drawn = |cx: &mut TestAppContext| {
+        h.view
+            .read_with(cx, |s, _| s.row_expanded(&row("users.yml")))
+    };
+    assert!(!shown(cx, h.win, ex(0)), "collapsed by default");
+    cx.simulate_keystrokes(h.win, "right");
+    cx.run_until_parked();
+    assert!(
+        shown(cx, h.win, ex(0)) && shown(cx, h.win, ex(1)),
+        "Right shows the examples"
+    );
+    assert_eq!(drawn(cx), Some(true));
+    cx.simulate_keystrokes(h.win, "left");
+    cx.run_until_parked();
+    assert!(!shown(cx, h.win, ex(0)), "Left hides them");
+    assert_eq!(drawn(cx), Some(false));
+    let selected = h.view.read_with(cx, |s, cx| s.selected(cx));
+    assert_eq!(
+        selected.map(|(_, p)| p),
+        Some(ip("users.yml")),
+        "the request stays selected"
+    );
+}

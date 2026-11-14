@@ -205,9 +205,15 @@ fn open_palette_lists_run_selected(cx: &mut TestAppContext, s: &Started) -> bool
         // Every request here is a saved HTTP file, so only Convert to GraphQL applies.
         to_graphql: request_tab,
         to_http: false,
+        // Copy as curl and Generate code act on a request row from the tree, which then also
+        // has the request's tab open.
+        request_target: request_tab,
         rename,
         duplicate,
         show_in_file_manager: show,
+        folder_settings: offers(cx, MenuEntry::Settings),
+        save_draft: offers(cx, MenuEntry::SaveDraft),
+        close_draft: offers(cx, MenuEntry::CloseDraft),
         close_saved: false,
         multi_tab: false,
         not_last: false,

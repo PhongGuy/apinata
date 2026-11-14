@@ -25,7 +25,7 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 24] = [
+const FLAGS: [(&str, Clear, &[&str]); 28] = [
     (
         "close_others",
         |a| a.close_others = false,
@@ -64,8 +64,6 @@ const FLAGS: [(&str, Clear, &[&str]); 24] = [
         |a| a.request_tab = false,
         &[
             "request.send",
-            "request.copy_as_curl",
-            "request.generate_code",
             "request.copy_json_value",
             "request.copy_json_path",
             "request.set_json_variable",
@@ -112,6 +110,26 @@ const FLAGS: [(&str, Clear, &[&str]); 24] = [
         &["tabs.next", "tabs.previous"],
     ),
     ("not_last", |a| a.not_last = false, &["tabs.last"]),
+    (
+        "request_target",
+        |a| a.request_target = false,
+        &["request.copy_as_curl", "request.generate_code"],
+    ),
+    (
+        "folder_settings",
+        |a| a.folder_settings = false,
+        &["collection.folder_settings"],
+    ),
+    (
+        "save_draft",
+        |a| a.save_draft = false,
+        &["request.save_draft"],
+    ),
+    (
+        "close_draft",
+        |a| a.close_draft = false,
+        &["request.close_draft"],
+    ),
     (
         "undo_delete",
         |a| a.undo_delete = false,
@@ -496,6 +514,7 @@ fn no_tabs() -> Availability {
         close_others: false,
         has_tabs: false,
         request_tab: false,
+        request_target: false,
         close_all: false,
         pin: false,
         unpin: false,
@@ -741,4 +760,66 @@ fn toggle_layout_needs_room_for_side_by_side(cx: &mut TestAppContext) {
         }
         assert_eq!(palette_lists(cx, &s, toggle), listed, "at {width} px");
     }
+}
+
+fn select_in_tree(cx: &mut TestAppContext, s: &Started, id: gpui_kit::SharedString) {
+    let sidebar = s.shell.read_with(cx, |v, _| v.sidebar().clone());
+    let tree = sidebar.read_with(cx, |v, _| v.tree().clone());
+    tree.update(cx, |t, cx| {
+        let ix = t.index_of(&id);
+        assert!(ix.is_some(), "{id} is a row");
+        t.set_selected_index(ix, cx)
+    });
+    cx.update_window(s.win, |_, w, cx| tree.update(cx, |t, cx| t.focus(w, cx)))
+        .unwrap();
+    frame(cx, s.win);
+}
+
+#[gpui_kit::test]
+fn row_commands_follow_the_tree_selection_with_no_tab_open(cx: &mut TestAppContext) {
+    let col = with_folder();
+    let s = started(cx, &col);
+    frame(cx, s.win);
+    let (curl, code, to_graphql, to_http, folder) = (
+        label("request.copy_as_curl"),
+        label("request.generate_code"),
+        label("request.convert_to_graphql"),
+        label("request.convert_to_http"),
+        label("collection.folder_settings"),
+    );
+    select_in_tree(cx, &s, row("a.yml"));
+    assert!(palette_lists(cx, &s, curl), "a request row copies as curl");
+    assert!(palette_lists(cx, &s, code), "and generates code");
+    assert!(
+        palette_lists(cx, &s, to_graphql),
+        "an HTTP row converts to GraphQL"
+    );
+    assert!(!palette_lists(cx, &s, to_http), "but not to HTTP");
+    assert!(
+        !palette_lists(cx, &s, folder),
+        "a request has no folder settings"
+    );
+    select_in_tree(cx, &s, row("f"));
+    assert!(palette_lists(cx, &s, folder), "a folder row has settings");
+    assert!(
+        !palette_lists(cx, &s, curl),
+        "no request and no tab: nothing to copy"
+    );
+}
+
+#[gpui_kit::test]
+fn draft_commands_need_a_selected_draft_row(cx: &mut TestAppContext) {
+    let col = three();
+    let s = started(cx, &col);
+    let (save, close) = (label("request.save_draft"), label("request.close_draft"));
+    select_in_tree(cx, &s, row("a.yml"));
+    assert!(!palette_lists(cx, &s, save) && !palette_lists(cx, &s, close));
+    s.ws.update(cx, |w, cx| w.new_draft(&s.root, ip(""), cx));
+    cx.run_until_parked();
+    let draft = tab_names(cx, &s.ws)
+        .into_iter()
+        .find(|t| ip(t).is_draft())
+        .expect("a draft");
+    select_in_tree(cx, &s, row(&draft));
+    assert!(palette_lists(cx, &s, save) && palette_lists(cx, &s, close));
 }
