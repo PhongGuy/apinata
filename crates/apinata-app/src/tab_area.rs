@@ -2482,6 +2482,9 @@ impl TabArea {
                                 a.close(vec![id], window, cx);
                             } else {
                                 a.reveal.clicked();
+                                if active {
+                                    a.reveal.request();
+                                }
                                 a.workspace.update(cx, |w, cx| {
                                     w.update_tabs(cx, |t| t.activate_index(ix))
                                 });
@@ -2498,9 +2501,13 @@ impl TabArea {
         let workspace = self.workspace.clone();
         let reveal = self.reveal.clone();
         // A click activates through the tab's own element, not `Tab::on_click`: the bar wraps
-        // that in its own reveal, which would fight the strip's least-scroll reveal.
+        // that in its own reveal, which would fight the strip's least-scroll reveal. Choosing
+        // the active tab changes nothing the reveal watches, so it is asked for here.
         let tab = StatefulInteractiveElement::on_click(Tab::new(), move |_, _, cx| {
             reveal.clicked();
+            if active {
+                reveal.request();
+            }
             workspace.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
         });
         tab.relative()
