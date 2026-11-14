@@ -1410,7 +1410,7 @@ fn a_malformed_file_colour_shows_as_a_custom_swatch_without_crashing(cx: &mut Te
 
 #[gpui_kit::test]
 fn colour_and_extends_share_the_form_grid(cx: &mut TestAppContext) {
-    use apinata_app::style::FORM_LABEL_WIDTH;
+    use apinata_app::style::SHORT_FORM_LABEL_WIDTH;
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, _ed) = env_editor(cx, &ws, &root);
@@ -1420,7 +1420,7 @@ fn colour_and_extends_share_the_form_grid(cx: &mut TestAppContext) {
         let extends = w.within("env-extends-row").find("form-control").bounds();
         assert_eq!(color.left(), extends.left());
         let label = w.within("env-color-row").find("form-label").bounds();
-        assert_eq!(label.size.width, at_zoom(FORM_LABEL_WIDTH, 1.0));
+        assert_eq!(label.size.width, at_zoom(SHORT_FORM_LABEL_WIDTH, 1.0));
         let select = w.find("env-extends").bounds();
         assert!(
             select.left() >= extends.left() - px(0.5),
