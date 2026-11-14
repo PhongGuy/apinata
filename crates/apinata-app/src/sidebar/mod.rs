@@ -18,7 +18,7 @@ use std::sync::Arc;
 use apinata_core::{DropTarget, ItemPath, RequestKind};
 use gpui_kit::Role;
 use gpui_kit::assets::IconName;
-use gpui_kit::base::actions::{SelectDown, SelectUp};
+use gpui_kit::base::actions::{Cancel, SelectDown, SelectUp};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
@@ -499,6 +499,17 @@ impl Sidebar {
             })
     }
 
+    /// The name of the one selected row, as the tree shows it.
+    pub fn selected_name(&self, cx: &App) -> Option<SharedString> {
+        let node = self.selected_node(cx).filter(|_| !self.multi.is_active())?;
+        Some(node.name.clone().into())
+    }
+
+    /// Whether the menu the keyboard opened is open.
+    pub fn key_menu_open(&self) -> bool {
+        self.key_menu.is_some()
+    }
+
     /// Whether the tree itself holds focus, not a button on one of its rows.
     pub fn tree_holds_focus(&self, window: &Window, cx: &App) -> bool {
         let in_menu = (self.key_menu.as_ref())
@@ -735,6 +746,18 @@ impl Sidebar {
     /// keyboard's way to the menu a right click opens. Escape closes it and the tree takes
     /// focus back.
     pub fn open_row_menu(&mut self, _: &OpenRowMenu, window: &mut Window, cx: &mut Context<Self>) {
+        // A rename's input sits in the tree, so its keys reach here; they stay typing.
+        if self.rename.is_some() {
+            return;
+        }
+        // A second press closes the menu, as a second right click does.
+        if let Some(k) = &self.key_menu {
+            let menu = k.menu.focus_handle(cx);
+            window.defer(cx, move |window, cx| {
+                menu.dispatch_action(&Cancel, window, cx)
+            });
+            return;
+        }
         let Some(row) = self.tree.read(cx).selected_item().map(|i| i.id.clone()) else {
             return;
         };
@@ -766,6 +789,30 @@ impl Sidebar {
             view.update(cx, |s, cx| s.show_key_menu(row, menu, window, cx))
                 .ok();
         });
+    }
+
+    // The keyboard's menu is drawn on its row, so it closes when that row is gone, no longer
+    // selected or being renamed, or when focus has left it. Focus it held goes to the tree.
+    fn drop_stale_key_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(k) = self.key_menu.as_ref().filter(|k| !k.fresh) else {
+            return;
+        };
+        let selected = self.tree.read(cx).selected_item().map(|i| i.id.clone());
+        let held = k.menu.focus_handle(cx).contains_focused(window, cx);
+        let stale = self.rename.is_some()
+            || !self.rows.contains_key(&k.row)
+            || selected.as_ref() != Some(&k.row)
+            || !held;
+        if !stale {
+            return;
+        }
+        self.key_menu = None;
+        if held && self.rename.is_none() {
+            let tree = self.tree.clone();
+            window.defer(cx, move |window, cx| {
+                tree.update(cx, |t, cx| t.focus(window, cx))
+            });
+        }
     }
 
     // Shows the keyboard's `menu` at `row` and gives it focus; it forgets itself once closed.
@@ -2744,6 +2791,7 @@ impl Render for Sidebar {
         let list_active = cx.theme().list_active;
         let list_hover = cx.theme().list_hover;
         let menu_target = self.menu_target.clone();
+        self.drop_stale_key_menu(window, cx);
         // The kit keeps a menu's cursor private; once this frame draws the keyboard's menu,
         // the kit's own Down moves the cursor to its first entry.
         if let Some(k) = self.key_menu.as_mut().filter(|k| k.fresh) {
@@ -2754,6 +2802,9 @@ impl Render for Sidebar {
             });
         }
         let key_menu = (self.key_menu.as_ref()).map(|k| (k.row.clone(), k.menu.clone()));
+        let menu_margin = style::resolve(style::SPACE_2, window);
+        // While the keyboard's menu is open the tree must not scroll its row away under it.
+        let scroll_shield = key_menu.is_some().then(|| key_menu_shield(window));
         let muted = cx.theme().muted_foreground;
         // The scratch pad is listed: say what it is, since it looks like a collection.
         let scratch_only = {
@@ -2779,6 +2830,7 @@ impl Render for Sidebar {
         });
         div()
             .id("sidebar-view")
+            .children(scroll_shield)
             .test_support()
             .key_context(KEY_CONTEXT)
             .size_full()
@@ -3030,7 +3082,9 @@ impl Render for Sidebar {
                                 |i| i.role(Role::ListItem).aria_selected(member),
                             );
                             let item = match key_menu.as_ref().filter(|(row, _)| *row == id) {
-                                Some((_, menu)) => item.child(key_menu_layer(menu.clone())),
+                                Some((_, menu)) => {
+                                    item.child(key_menu_layer(menu.clone(), menu_margin))
+                                }
                                 None => item,
                             };
                             let Some(n) = rows.get(&id) else {
@@ -3524,12 +3578,27 @@ struct KeyMenu {
 }
 
 // The keyboard's menu hangs below its row, drawn above everything as the kit draws a right
-// click's menu, and kept inside the window.
-fn key_menu_layer(menu: Entity<PopupMenu>) -> impl IntoElement {
+// click's menu, and kept `margin` inside the window.
+fn key_menu_layer(menu: Entity<PopupMenu>, margin: Pixels) -> impl IntoElement {
     div().absolute().top_full().left_0().child(
-        deferred(anchored().snap_to_window().child(menu))
+        deferred(anchored().snap_to_window_with_margin(margin).child(menu))
             .with_priority(gpui_kit::base::POPUP_PRIORITY),
     )
+}
+
+// A window-sized layer under the keyboard's menu that swallows wheel scrolling, as the kit's
+// own context menu does, so the menu's row cannot scroll out from under it.
+fn key_menu_shield(window: &Window) -> impl IntoElement {
+    let size = window.bounds().size;
+    deferred(
+        anchored().position(Default::default()).child(
+            div()
+                .w(size.width)
+                .h(size.height)
+                .on_scroll(|_, _, cx| cx.stop_propagation()),
+        ),
+    )
+    .with_priority(gpui_kit::base::POPUP_PRIORITY - 1)
 }
 
 /// Fills `menu` with row `id`'s context menu, as the sidebar stands now: the bulk menu for a

@@ -17,7 +17,8 @@ use gpui_kit::component::{ActiveTheme as _, IndexPath, WindowExt as _, h_flex};
 use gpui_kit::{
     Action, AnyElement, App, AppContext as _, AsKeystroke as _, Entity, FocusHandle,
     Focusable as _, InteractiveElement, IntoElement as _, KeyContext, ParentElement as _, Pixels,
-    StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, actions, div,
+    SharedString, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window,
+    actions, div,
 };
 
 use crate::body_node::{
@@ -592,6 +593,9 @@ fn show(
         updates,
         tree_request: (sidebar.as_ref()).and_then(|s| s.read(cx).tree_request_kind(window, cx)),
     };
+    let row_target = (sidebar.as_ref())
+        .filter(|_| opening.tree_request.is_some())
+        .and_then(|s| s.read(cx).selected_name(cx));
     // The dialog builder runs every frame, so the requests are shared, not rebuilt.
     let requests: Rc<[RequestEntry]> = requests.into();
     // The state outlives the dialog's per-render rebuild, so the query and highlight persist.
@@ -625,7 +629,12 @@ fn show(
         let (rem, cap) = (window.rem_size(), list_cap(window));
         let key = (dialog_state.read(cx).query(cx), available, rem, cap);
         let command = rows_key.render(&dialog_state, key, || {
-            palette(&dialog_state, &requests, commands, available, rem, cap, cx).on_confirm({
+            let listing = Listing {
+                commands,
+                available,
+                row_target: row_target.clone(),
+            };
+            palette(&dialog_state, &requests, &listing, rem, cap, cx).on_confirm({
                 let (target, requests) = (target.clone(), Rc::clone(&requests));
                 let (sidebar, workspace) = (sidebar.clone(), workspace.clone());
                 let tab_area = tab_area.clone();
@@ -792,13 +801,13 @@ fn listed(commands: bool, available: Availability) -> Vec<PaletteEntry> {
 fn palette(
     state: &gpui_kit::Entity<CommandState>,
     requests: &[RequestEntry],
-    commands: bool,
-    available: Availability,
+    listing: &Listing,
     rem: Pixels,
     cap: f32,
     cx: &App,
 ) -> Command {
-    let items = listed(commands, available);
+    let commands = listing.commands;
+    let items = listed(commands, listing.available);
     // Row ids keep their place in the full list, so a hidden entry shifts none of them.
     let all = palette_items();
     let query = state.read(cx).query(cx);
@@ -823,7 +832,8 @@ fn palette(
             let id = all
                 .iter()
                 .position(|a| a.action.partial_eq(e.action.as_ref()));
-            palette_row(id.unwrap_or_default(), e)
+            let target = (listing.row_target.as_ref()).filter(|_| acts_on_tree_row(e));
+            palette_row(id.unwrap_or_default(), e, target.cloned())
         });
         command = command.group(CommandGroup::new().label(group.label()).items(rows));
     }
@@ -948,7 +958,27 @@ fn list_height(
 
 // A row shows its label and the key bound in the entry's own context, so a key that only
 // works inside the request editor still shows while the palette has focus.
-fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
+// The commands that, run from the tree, act on its selected request rather than the tab.
+fn acts_on_tree_row(entry: &PaletteEntry) -> bool {
+    let name = entry.action.name();
+    [
+        CopyAsCurl.name(),
+        GenerateCode.name(),
+        ConvertToGraphql.name(),
+        ConvertToHttp.name(),
+    ]
+    .contains(&name)
+}
+
+// What the palette's command rows are built from: whether it lists commands at all, which
+// of them apply, and the tree's request that the row commands act on, if any.
+struct Listing {
+    commands: bool,
+    available: Availability,
+    row_target: Option<SharedString>,
+}
+
+fn palette_row(ix: usize, entry: &PaletteEntry, target: Option<SharedString>) -> CommandItem {
     let (label, context, area) = (entry.label, entry.context, entry.area);
     let action = entry.action.boxed_clone();
     let item = CommandItem::new().label(label);
@@ -970,6 +1000,16 @@ fn palette_row(ix: usize, entry: &PaletteEntry) -> CommandItem {
             .child(
                 h_flex()
                     .gap(style::SPACE_1)
+                    // The request a row command acts on, when that is the tree's row.
+                    .children(target.clone().map(|name| {
+                        div()
+                            .id(("palette-target", ix))
+                            .aria_label(name.clone())
+                            .test_support()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(name)
+                    }))
                     .children(area.map(|area| {
                         div()
                             .id(("palette-scope", ix))

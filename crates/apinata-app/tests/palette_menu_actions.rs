@@ -264,3 +264,29 @@ fn copy_as_curl_from_the_tree_copies_the_selected_request(cx: &mut TestAppContex
     let copied = copied.expect("curl copied");
     assert!(copied.contains("http://x/b"), "{copied}");
 }
+
+#[gpui_kit::test]
+fn a_row_command_from_the_tree_names_the_request_it_acts_on(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let col = folder_collection();
+    let s = support::started(cx, &col);
+    support::open_tab(cx, &s.ws, &s.root, "a.yml");
+    select_in_tree(cx, &s, support::row("b.yml"));
+    cx.simulate_keystrokes(s.win, &support::key("shift-p"));
+    support::frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input("Copy as curl", cx))
+        .unwrap();
+    support::frame(cx, s.win);
+    let curl = palette_items()
+        .iter()
+        .position(|e| e.label == "Copy as curl")
+        .expect("Copy as curl is a palette entry");
+    let named = cx
+        .update_window(s.win, |_, w, _| {
+            w.within("command-palette")
+                .try_find(("palette-target", curl))
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(named.as_deref(), Some("b"));
+}

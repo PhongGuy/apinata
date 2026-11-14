@@ -117,3 +117,111 @@ fn escape_closes_the_key_opened_menu_and_returns_to_the_tree(cx: &mut TestAppCon
     let selected = h.view.read_with(cx, |s, cx| s.selected(cx));
     assert_eq!(selected.map(|(_, p)| p), Some(ip("health.yml")));
 }
+
+fn renaming(cx: &mut TestAppContext, h: &SidebarHarness) -> bool {
+    h.view.read_with(cx, |s, _| s.renaming().is_some())
+}
+
+#[gpui_kit::test]
+fn with_no_row_selected_the_keys_open_nothing(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    let tree = h.view.read_with(cx, |s, _| s.tree().clone());
+    tree.update(cx, |t, cx| t.set_selected_index(None, cx));
+    focus_tree(cx, &h);
+    frame(cx, h.win);
+    for key in ["shift-f10", "menu"] {
+        keys(cx, &h, key);
+        assert!(labels(cx, &h).is_empty(), "{key} opens no menu");
+    }
+}
+
+#[gpui_kit::test]
+fn a_multi_selection_opens_the_bulk_menu_a_right_click_opens(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    select(cx, &h, "status.yml");
+    secondary_click(cx, h.win, row("health.yml"));
+    frame(cx, h.win);
+    assert!(
+        h.view.read_with(cx, |s, _| s.multi_active()),
+        "two rows are selected"
+    );
+    let clicked = right_click_labels(cx, &h, "health.yml");
+    assert!(
+        h.view.read_with(cx, |s, _| s.multi_active()),
+        "the set survived the menu"
+    );
+    focus_tree(cx, &h);
+    frame(cx, h.win);
+    keys(cx, &h, "shift-f10");
+    assert_eq!(labels(cx, &h), clicked);
+    assert!(
+        h.view.read_with(cx, |s, _| s.multi_active()),
+        "the set stays while it is open"
+    );
+}
+
+#[gpui_kit::test]
+fn the_keys_type_into_a_rename_and_open_no_menu(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    select(cx, &h, "status.yml");
+    keys(cx, &h, "f2");
+    assert!(renaming(cx, &h), "F2 starts a rename");
+    for key in ["shift-f10", "menu"] {
+        keys(cx, &h, key);
+        assert!(
+            labels(cx, &h).is_empty(),
+            "{key} opens no menu over the rename"
+        );
+        assert!(renaming(cx, &h), "the rename goes on after {key}");
+    }
+}
+
+#[gpui_kit::test]
+fn a_second_shift_f10_closes_the_menu_and_returns_to_the_tree(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    select(cx, &h, "health.yml");
+    keys(cx, &h, "shift-f10");
+    assert!(!labels(cx, &h).is_empty(), "the menu opened");
+    keys(cx, &h, "shift-f10");
+    assert!(labels(cx, &h).is_empty(), "the second press closed it");
+    assert!(tree_focused(cx, &h), "focus is back on the tree");
+}
+
+#[gpui_kit::test]
+fn the_menu_closes_when_its_row_is_removed(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    select(cx, &h, "health.yml");
+    keys(cx, &h, "shift-f10");
+    assert!(!labels(cx, &h).is_empty(), "the menu opened");
+    std::fs::remove_file(h.root.join("health.yml")).unwrap();
+    let changed = vec![h.root.join("health.yml")];
+    h.ws.update(cx, |w, cx| {
+        w.send(&h.root, apinata_app::command::Command::Reload(changed), cx)
+    });
+    cx.run_until_parked();
+    frame(cx, h.win);
+    assert!(!shown(cx, h.win, row("health.yml")), "the row is gone");
+    frame(cx, h.win);
+    assert!(labels(cx, &h).is_empty(), "its menu closed with it");
+    assert!(tree_focused(cx, &h), "focus is back on the tree");
+    assert!(
+        h.view.read_with(cx, |s, _| !s.key_menu_open()),
+        "the menu is forgotten"
+    );
+}
+
+#[gpui_kit::test]
+fn f2_while_the_menu_is_open_renames_and_closes_it(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    select(cx, &h, "status.yml");
+    keys(cx, &h, "shift-f10");
+    assert!(!labels(cx, &h).is_empty(), "the menu opened");
+    keys(cx, &h, "f2");
+    frame(cx, h.win);
+    assert!(renaming(cx, &h), "F2 renames the row");
+    assert!(labels(cx, &h).is_empty(), "the menu closed");
+    assert!(
+        h.view.read_with(cx, |s, _| !s.key_menu_open()),
+        "the menu is forgotten"
+    );
+}
