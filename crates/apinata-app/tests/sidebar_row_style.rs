@@ -197,38 +197,6 @@ fn tabbing_into_a_tree_without_a_selection_selects_the_first_row(cx: &mut TestAp
     );
 }
 
-#[gpui_kit::test]
-fn a_focused_row_button_hides_the_row_outline(cx: &mut TestAppContext) {
-    let h = open_sidebar(cx);
-    let id = row("health.yml");
-    cx.update_window(h.win, |_, w, cx| w.click(id.clone(), cx))
-        .unwrap();
-    cx.run_until_parked();
-    focus_tree(cx, &h);
-    frame(cx, h.win);
-    // The next Tab stop after the tree is the collection row's New request button.
-    cx.update_window(h.win, |_, w, cx| w.focus_next(cx))
-        .unwrap();
-    frame(cx, h.win);
-    let on_button = cx
-        .update_window(h.win, |_, w, _| w.find(("new-request", 0usize)).focused())
-        .unwrap();
-    assert_eq!(on_button, Some(true), "the case needs New request focused");
-    assert!(
-        !shown(cx, h.win, marker_id("focus-edge", &id)),
-        "two rings: the row keeps its outline while a button has focus"
-    );
-    assert!(shown(cx, h.win, marker_id("edge", &id)), "the bar stays");
-    // Shift+Tab back into the tree brings the outline back.
-    cx.update_window(h.win, |_, w, cx| w.focus_prev(cx))
-        .unwrap();
-    frame(cx, h.win);
-    assert!(
-        shown(cx, h.win, marker_id("focus-edge", &id)),
-        "back in the tree"
-    );
-}
-
 // Guard: a click focuses the kit tree directly, not through `tree_focus`, and must still ring.
 #[gpui_kit::test]
 fn clicking_a_row_shows_its_outline(cx: &mut TestAppContext) {

@@ -23,8 +23,8 @@ use crate::preferences::{
 };
 use crate::shortcuts::{Overrides, effective};
 use crate::sidebar::{
-    ClearFilter, ClearSelection, EnterTree, ExtendDown, ExtendUp, FILTER_CONTEXT, LeaveTree,
-    OpenSelected, PreviewSelected, RunSelected,
+    ClearFilter, ClearSelection, EnterTree, ExtendDown, ExtendUp, FILTER_CONTEXT,
+    KEY_CONTEXT as SIDEBAR, LeaveTree, OpenSelected, PreviewSelected, RunSelected,
 };
 use crate::ui::{
     ActivateSegment, DIALOG_FOOTER_CONTEXT, DIALOG_SELECT_CONTEXT, NextSegment, OpenSelect,
@@ -171,6 +171,9 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
             ClearFilter,
             Some(format!("{FILTER_CONTEXT} > Input").as_str()),
         ),
+        // Anywhere else in the sidebar, Escape clears the filter too, after the tree's own
+        // Escape has passed; with the filter empty it returns to the tree.
+        KeyBinding::new("escape", ClearFilter, Some(SIDEBAR)),
         // Nor from the rename input inside the tree, while the tree itself still sends.
         KeyBinding::new(
             secondary!("enter"),

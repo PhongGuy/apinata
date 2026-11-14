@@ -213,6 +213,24 @@ fn escape_in_another_input_clears_the_search_first(cx: &mut TestAppContext) {
     assert!(!dialog_open(cx, &s));
 }
 
+// The Zoom field has nothing of its own to cancel, so Escape there closes, as when Tab put
+// the keyboard there and when Enter has just applied a new zoom.
+#[gpui_kit::test]
+fn escape_in_the_zoom_field_closes(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    opened(cx, &s);
+    tab_to(cx, s.win, "zoom");
+    press(cx, &s, "escape");
+    assert!(!dialog_open(cx, &s), "Escape from a tabbed-to Zoom field");
+    opened(cx, &s);
+    replace_input(cx, s.win, None, "zoom", "200");
+    press(cx, &s, "enter");
+    assert!(dialog_open(cx, &s), "Enter only applies the zoom");
+    press(cx, &s, "escape");
+    assert!(!dialog_open(cx, &s), "Escape after Enter at 200%");
+}
+
 #[gpui_kit::test]
 fn escape_with_an_empty_search_closes_at_once(cx: &mut TestAppContext) {
     let col = two_requests();

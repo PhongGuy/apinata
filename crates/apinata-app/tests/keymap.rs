@@ -414,10 +414,10 @@ fn shift_tab_from_the_tree_passes_history_to_the_sidebar_filter(cx: &mut TestApp
     assert_eq!(in_tree, Some(false));
 }
 
-// Shift+tab from the control after the tree (New request) returns to the tree, not past it
-// to History: the tree's binding matches there too, as the button is the tree's descendant.
+// Shift+tab from the stop after the tree returns to the tree, not past it to History. The
+// tree is one stop, so Tab leaves the sidebar at once.
 #[gpui_kit::test]
-fn shift_tab_from_new_request_lands_on_the_tree(cx: &mut TestAppContext) {
+fn shift_tab_from_the_stop_after_the_tree_lands_on_the_tree(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     cx.update_window(s.win, |_, w, _| w.activate_window())
@@ -432,10 +432,12 @@ fn shift_tab_from_new_request_lands_on_the_tree(cx: &mut TestAppContext) {
     frame(cx, s.win);
     cx.simulate_keystrokes(s.win, "tab");
     frame(cx, s.win);
+    let after = cx.update_window(s.win, |_, w, cx| w.focused(cx)).unwrap();
+    assert_ne!(after, tree_handle, "Tab moves on from the tree");
     let on_button = cx
         .update_window(s.win, |_, w, _| w.find(("new-request", 0usize)).focused())
         .unwrap();
-    assert_eq!(on_button, Some(true), "tab reaches New request");
+    assert_ne!(on_button, Some(true), "not onto New request");
     cx.simulate_keystrokes(s.win, "shift-tab");
     frame(cx, s.win);
     let now = cx.update_window(s.win, |_, w, cx| w.focused(cx)).unwrap();

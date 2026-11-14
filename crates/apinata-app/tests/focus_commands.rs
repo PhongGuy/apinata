@@ -66,6 +66,49 @@ fn focus_url_works_from_the_sidebar(cx: &mut TestAppContext) {
     assert!(url_focused(cx, &s, &ed));
 }
 
+// Selects `rel`'s row in a focused tree and presses `key` there; the tab it opened, if any.
+fn press_on_row(cx: &mut TestAppContext, s: &Started, rel: &str, key: &str) -> Option<TabId> {
+    let sidebar = s.shell.read_with(cx, |v, _| v.sidebar().clone());
+    let tree = sidebar.read_with(cx, |v, _| v.tree().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        tree.update(cx, |t, cx| {
+            let ix = t.index_of(&row(rel));
+            t.set_selected_index(ix, cx);
+            t.focus(w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    press(cx, s, key);
+    s.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.id))
+}
+
+#[gpui_kit::test]
+fn enter_on_a_request_row_moves_focus_to_its_url(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    frame(cx, s.win);
+    let tab = press_on_row(cx, &s, "b.yml", "enter").expect("Enter opens b");
+    let ed = editor_of(cx, &s, tab);
+    assert!(url_focused(cx, &s, &ed), "the URL takes the keyboard");
+}
+
+#[gpui_kit::test]
+fn space_on_a_request_row_keeps_focus_in_the_tree(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    frame(cx, s.win);
+    let tab = press_on_row(cx, &s, "b.yml", "space").expect("Space previews b");
+    let ed = editor_of(cx, &s, tab);
+    assert!(!url_focused(cx, &s, &ed));
+    // Up still walks the tree, so the keys stayed there.
+    press(cx, &s, "up");
+    let sidebar = s.shell.read_with(cx, |v, _| v.sidebar().clone());
+    let tree = sidebar.read_with(cx, |v, _| v.tree().clone());
+    let now = tree.read_with(cx, |t, _| t.selected_item().map(|i| i.id.clone()));
+    assert_eq!(now, Some(row("a.yml")), "the tree keeps the keyboard");
+}
+
 #[gpui_kit::test]
 fn focus_url_works_from_a_table_cell(cx: &mut TestAppContext) {
     let col = two_requests();
