@@ -56,7 +56,7 @@ fn a_blank_name_falls_back_to_the_folder_everywhere(cx: &mut TestAppContext) {
         let area = s
             .shell
             .read_with(cx, |v, cx| v.tab_area().read(cx).tab_label(&entry, cx));
-        assert_eq!(area, format!("{dir} Settings"), "tab {name:?}");
+        assert_eq!(area, format!("{dir} settings"), "tab {name:?}");
     }
 }
 
