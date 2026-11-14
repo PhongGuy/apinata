@@ -109,7 +109,7 @@ pub const FORM_STACK_WIDTH: Rems = ui(520.);
 /// Line height of a form label: 18 px at the 13 px UI size, so a label line plus `SPACE_1`
 /// above and below is exactly `INPUT_HEIGHT`.
 pub const FORM_LABEL_LINE_HEIGHT: f32 = 18. / 13.;
-/// A short form label column, for a dialog whose labels are single words.
+/// A short form label column, for a form whose labels are single words.
 pub const SHORT_FORM_LABEL_WIDTH: Rems = ui(80.);
 /// The Import dialog's label column, wide enough for "Link or file" on one line.
 pub const IMPORT_FORM_LABEL_WIDTH: Rems = ui(100.);

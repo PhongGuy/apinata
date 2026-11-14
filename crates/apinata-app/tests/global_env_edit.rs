@@ -8,7 +8,7 @@ use apinata_app::global_env_selector::{GlobalEnvSelector, manage_global_environm
 use apinata_app::workspace::{GlobalOp, Workspace};
 use apinata_core::{EnvVariable, VarValue};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, Entity, TestAppContext, WindowOptions};
+use gpui_kit::{AppContext as _, Entity, Pixels, TestAppContext, WindowOptions};
 use support::*;
 
 struct Blank;
@@ -1776,6 +1776,41 @@ fn the_colour_picker_sets_and_saves_a_global_colour(cx: &mut TestAppContext) {
     .unwrap();
     cx.run_until_parked();
     assert_eq!(color(cx), None);
+}
+
+// The globals dialog and the collection tab share one form, so the Color row's swatches sit at
+// the same offset from their label in both, though the dialog's pane is the narrower.
+#[gpui_kit::test]
+fn the_colour_row_lays_out_alike_in_the_dialog_and_the_tab(cx: &mut TestAppContext) {
+    fn swatch_offset(w: &mut gpui_kit::Window, row: &'static str) -> (Pixels, Pixels) {
+        let label = w.within(row).find("form-label").bounds();
+        let swatches = w.within(row).find("env-swatches").bounds();
+        (swatches.left() - label.left(), swatches.top() - label.top())
+    }
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", "name: g\n")]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    let global = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            swatch_offset(w, "global-env-color-row")
+        })
+        .unwrap();
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("environments/dev.yml", "name: dev\n"),
+    ]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = env_editor(cx, &ws, &root);
+    frame(cx, win);
+    let tab = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            swatch_offset(w, "env-color-row")
+        })
+        .unwrap();
+    assert_eq!(global, tab, "swatch offset from the label: dialog vs tab");
 }
 
 // While the first global is being named, the empty state's message and button give way to a
