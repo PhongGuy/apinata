@@ -146,6 +146,69 @@ fn apikey_goes_to_a_header_or_the_query() {
 }
 
 #[test]
+fn an_auth_names_the_header_it_sets_over_the_request_own() {
+    let own = |name: &str, auth: &str| {
+        http(
+            U,
+            &format!("  headers:\n    - name: {name}\n      value: by-hand\n  auth:\n{auth}"),
+        )
+    };
+    let files = [
+        (
+            "basic.yml",
+            own(
+                "Authorization",
+                "    type: basic\n    username: u\n    password: p\n",
+            ),
+            Some("Authorization"),
+        ),
+        (
+            "bearer.yml",
+            own("authorization", "    type: bearer\n    token: t\n"),
+            Some("Authorization"),
+        ),
+        (
+            "apikey.yml",
+            own(
+                "X-Key",
+                "    type: apikey\n    key: X-Key\n    value: v\n    placement: header\n",
+            ),
+            Some("X-Key"),
+        ),
+        (
+            "query.yml",
+            own(
+                "api_key",
+                "    type: apikey\n    key: api_key\n    value: v\n    placement: query\n",
+            ),
+            None,
+        ),
+        ("none.yml", own("Authorization", "    type: none\n"), None),
+    ];
+    let mut tree = vec![("opencollection.yml", root(""))];
+    tree.extend(files.iter().map(|(rel, text, _)| (*rel, text.clone())));
+    let tree: Vec<(&str, &str)> = tree.iter().map(|(r, t)| (*r, t.as_str())).collect();
+    let (_dir, c, ctx) = setup(&tree);
+    for (rel, _, header) in &files {
+        let auth = c
+            .request(&ItemPath::new(rel).expect("a valid item path"))
+            .expect("the request")
+            .auth();
+        assert_eq!(auth.sets_header(), *header, "{rel}");
+        // The header it names is the one sent; the hand-set value is gone.
+        if let Some(name) = header {
+            let sent = headers_at(&c, &ctx, rel);
+            let named: Vec<_> = sent
+                .iter()
+                .filter(|(n, _)| n.eq_ignore_ascii_case(name))
+                .collect();
+            assert_eq!(named.len(), 1, "{rel}: {sent:?}");
+            assert_ne!(named[0].1, "by-hand", "{rel}");
+        }
+    }
+}
+
+#[test]
 fn inherit_takes_the_nearest_folder_with_real_auth_else_the_collection() {
     let root = root("  auth:\n    type: bearer\n    token: coll\n");
     let none = folder("  auth: none\n");

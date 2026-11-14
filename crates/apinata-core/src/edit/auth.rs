@@ -1,8 +1,8 @@
 //! A request's `http.auth` as the app edits it.
 
 use super::edgegrid::EdgeGridSpec;
-use super::oauth1::OAuth1Spec;
-use super::oauth2::OAuth2Spec;
+use super::oauth1::{OAuth1Placement, OAuth1Spec};
+use super::oauth2::{OAuth2Spec, TokenPlacement};
 use super::{Redacted, text};
 use crate::document::Document;
 use crate::js;
@@ -215,6 +215,32 @@ pub(crate) const CREDENTIAL_PATHS: &[&[&str]] = &[
 pub(crate) const PARAM_ROWS: &str = "additionalParameters";
 
 impl AuthSpec {
+    /// The header this auth writes when the request is sent, replacing a same-named header the
+    /// request sets; `None` for an auth that writes no header or one not modelled here.
+    pub fn sets_header(&self) -> Option<&str> {
+        const AUTHORIZATION: &str = "Authorization";
+        match self {
+            AuthSpec::Basic { .. }
+            | AuthSpec::Bearer { .. }
+            | AuthSpec::AwsV4 { .. }
+            | AuthSpec::EdgeGrid(_) => Some(AUTHORIZATION),
+            // Sending tests the raw key and value: either one empty sets no header.
+            AuthSpec::ApiKey {
+                key,
+                value,
+                placement: ApiKeyPlacement::Header,
+            } if !key.is_empty() && !value.is_empty() => Some(key),
+            AuthSpec::OAuth1(spec) if spec.placement == OAuth1Placement::Header => {
+                Some(AUTHORIZATION)
+            }
+            AuthSpec::OAuth2(spec) => match spec.token_placement {
+                TokenPlacement::Query { .. } => None,
+                _ => Some(AUTHORIZATION),
+            },
+            _ => None,
+        }
+    }
+
     pub(crate) fn from_yaml(value: Option<&Value>) -> AuthSpec {
         match value {
             None | Some(Value::Null) => AuthSpec::None,

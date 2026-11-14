@@ -142,6 +142,8 @@ pub struct RequestView {
     pub inherited_use: Option<String>,
     /// The headers the collection and folders add, with the level that supplies each.
     pub inherited_headers: Vec<crate::inherited_headers_section::InheritedRow>,
+    /// The header the request's auth, or the auth it inherits, writes over a same-named one.
+    pub auth_header: Option<String>,
     pub vars: Vec<Variable>,
     pub post_response_vars: Vec<PostResponseVar>,
     pub assertions: Vec<Assertion>,
@@ -605,6 +607,12 @@ fn request_view(path: &ItemPath, r: &RequestFile, collection: &Collection) -> Re
         (None, false)
     };
     let inherited = collection.inherited_auth(path);
+    let auth = r.auth();
+    let effective = match &auth {
+        AuthSpec::Inherit => inherited.auth(),
+        own => own,
+    };
+    let auth_header = effective.sets_header().map(str::to_owned);
     RequestView {
         name: r.name().to_owned(),
         kind: r.kind(),
@@ -614,7 +622,8 @@ fn request_view(path: &ItemPath, r: &RequestFile, collection: &Collection) -> Re
         query_mismatch: r.query_mismatch(),
         headers: r.headers(),
         body: r.body(),
-        auth: r.auth(),
+        auth,
+        auth_header,
         inherited_auth: inherit_text(&inherited, collection),
         inherited_use: inherited_use(&inherited, collection),
         inherited_headers: crate::inherited_headers_section::inherited_rows(collection, path),
