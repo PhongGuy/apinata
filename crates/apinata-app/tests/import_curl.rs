@@ -153,7 +153,6 @@ fn the_empty_editor_shows_an_example_command(cx: &mut TestAppContext) {
     import_curl(cx, s.win, &s.shell);
     let hint = cx
         .update_window(s.win, |_, w, cx| {
-            use gpui_kit::test::TestQueryExt as _;
             w.render_frame(cx);
             w.within("import-curl-input")
                 .elements()
