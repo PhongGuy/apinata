@@ -36,9 +36,10 @@ use crate::shell::{
     OpenVariablesOverview, ShowChanges, SwitchBranch, ToggleMockServer,
 };
 use crate::sidebar::{
-    CloneSelected, CollapseAll, CopySelected, CutSelected, DeleteSelected, ExpandAll, FocusFilter,
-    KEY_CONTEXT as SIDEBAR, NewFolder, OpenInTerminal, PasteSelected, RenameSelected, RunSelected,
-    ShowInFileManager, SortByName, UndoDelete,
+    CloneSelected, CloseSelectedDraft, CollapseAll, CopySelected, CutSelected, DeleteSelected,
+    ExpandAll, FocusFilter, FolderSettings, KEY_CONTEXT as SIDEBAR, NewFolder, OpenInTerminal,
+    PasteSelected, RenameSelected, RunSelected, SaveSelectedDraft, ShowInFileManager, SortByName,
+    UndoDelete,
 };
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
@@ -405,6 +406,13 @@ pub fn registry() -> Vec<Command> {
             &[],
         ),
         command(
+            "collection.folder_settings",
+            "Folder settings",
+            Collection,
+            shell(FolderSettings),
+            &[],
+        ),
+        command(
             "collection.run",
             "Run collection",
             Collection,
@@ -722,6 +730,20 @@ pub fn registry() -> Vec<Command> {
             c.scope = Scope::Pane(SIDEBAR);
             hidden(c)
         },
+        command(
+            "request.save_draft",
+            "Save selected draft",
+            Request,
+            shell(SaveSelectedDraft),
+            &[],
+        ),
+        command(
+            "request.close_draft",
+            "Close selected draft",
+            Request,
+            shell(CloseSelectedDraft),
+            &[],
+        ),
         command(
             "request.run_selected",
             "Run selected requests",

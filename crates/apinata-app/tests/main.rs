@@ -542,6 +542,7 @@ mod sidebar_git;
 mod sidebar_header;
 mod sidebar_keys;
 mod sidebar_menu;
+mod sidebar_menu_keys;
 mod sidebar_model;
 mod sidebar_move_selection;
 mod sidebar_multi;

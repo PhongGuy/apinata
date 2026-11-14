@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use apinata_core::ItemPath;
+use apinata_core::{ItemPath, RequestKind};
 
 use gpui_kit::base::TestTextExt as _;
 use gpui_kit::base::actions::Cancel;
@@ -28,7 +28,8 @@ use crate::keymap::{DiscardChanges, RedoActive, SaveActive, ToggleOrientation, U
 use crate::shell::{ShowChanges, SwitchBranch};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
-    CloneSelected, RenameSelected, RunSelected, ShowInFileManager, Sidebar, UndoDelete,
+    CloneSelected, CloseSelectedDraft, FolderSettings, RenameSelected, RunSelected,
+    SaveSelectedDraft, ShowInFileManager, Sidebar, UndoDelete,
 };
 use crate::snapshot::{RowKind, Unsupported};
 use crate::style;
@@ -265,10 +266,21 @@ pub struct Availability {
     /// "Save response as example", "Export as HAR" and "Compare response": the active request
     /// tab shows a response.
     pub has_response: bool,
-    /// "Convert to GraphQL": the active tab is a saved HTTP request.
+    /// "Copy as curl" and "Generate code": the active tab is a request tab, or the tree holds
+    /// focus on one request row, which they then act on.
+    pub request_target: bool,
+    /// "Convert to GraphQL": the active tab is a saved HTTP request, or from the tree, the
+    /// selected request is.
     pub to_graphql: bool,
-    /// "Convert to HTTP": the active tab is a saved GraphQL request.
+    /// "Convert to HTTP": the active tab is a saved GraphQL request, or from the tree, the
+    /// selected request is.
     pub to_http: bool,
+    /// "Folder settings": one folder row is selected.
+    pub folder_settings: bool,
+    /// "Save selected draft": one draft row is selected.
+    pub save_draft: bool,
+    /// "Close selected draft": one draft row is selected.
+    pub close_draft: bool,
     /// "Rename selected": no sidebar rename is already under way.
     pub rename_idle: bool,
     /// "Close all tabs": an unpinned tab is open.
@@ -318,8 +330,12 @@ impl Availability {
             has_tabs: true,
             request_tab: true,
             has_response: true,
+            request_target: true,
             to_graphql: true,
             to_http: true,
+            folder_settings: true,
+            save_draft: true,
+            close_draft: true,
             rename_idle: true,
             close_all: true,
             pin: true,
@@ -399,10 +415,10 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.has_tabs, UndoActive.name()),
         (available.has_tabs, RedoActive.name()),
         (available.request_tab, SendActive.name()),
-        (available.request_tab, CopyAsCurl.name()),
+        (available.request_target, CopyAsCurl.name()),
         (available.to_graphql, ConvertToGraphql.name()),
         (available.to_http, ConvertToHttp.name()),
-        (available.request_tab, GenerateCode.name()),
+        (available.request_target, GenerateCode.name()),
         (available.has_response, SaveAsExample.name()),
         (available.has_response, ExportHar.name()),
         (available.has_response, Compare.name()),
@@ -419,6 +435,9 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         ),
         (available.duplicate, CloneSelected.name()),
         (available.show_in_file_manager, ShowInFileManager.name()),
+        (available.folder_settings, FolderSettings.name()),
+        (available.save_draft, SaveSelectedDraft.name()),
+        (available.close_draft, CloseSelectedDraft.name()),
         (available.close_saved, CloseSavedTabs.name()),
         (available.multi_tab, ActivateNextTab.name()),
         (available.multi_tab, ActivatePrevTab.name()),
@@ -567,6 +586,12 @@ fn show(
         updates,
     } = views.unwrap_or_default();
     let target = window.focused(cx).unwrap_or(fallback);
+    // Opened from the tree, the request commands act on its selected request row.
+    let opening = Opening {
+        git_repo: in_repo,
+        updates,
+        tree_request: (sidebar.as_ref()).and_then(|s| s.read(cx).tree_request_kind(window, cx)),
+    };
     // The dialog builder runs every frame, so the requests are shared, not rebuilt.
     let requests: Rc<[RequestEntry]> = requests.into();
     // The state outlives the dialog's per-render rebuild, so the query and highlight persist.
@@ -593,8 +618,7 @@ fn show(
             sidebar.as_ref(),
             workspace.as_ref(),
             tab_area.as_ref(),
-            in_repo,
-            updates,
+            opening,
             window,
             cx,
         );
@@ -610,8 +634,7 @@ fn show(
                         sidebar.as_ref(),
                         workspace.as_ref(),
                         tab_area.as_ref(),
-                        in_repo,
-                        updates,
+                        opening,
                         window,
                         cx,
                     );
@@ -635,16 +658,28 @@ fn show(
     state.read(cx).focus_handle(cx).focus(window, cx);
 }
 
+// What holds for the palette's whole life, read once as it opens.
+#[derive(Clone, Copy)]
+struct Opening {
+    git_repo: bool,
+    updates: bool,
+    tree_request: Option<RequestKind>,
+}
+
 // Which commands have something to do right now; a missing sidebar or workspace means all of theirs.
 fn availability_now(
     sidebar: Option<&Entity<Sidebar>>,
     workspace: Option<&Entity<Workspace>>,
     tab_area: Option<&Entity<TabArea>>,
-    git_repo: bool,
-    updates: bool,
+    opening: Opening,
     window: &Window,
     cx: &App,
 ) -> Availability {
+    let Opening {
+        git_repo,
+        updates,
+        tree_request,
+    } = opening;
     let (close_to_right, reveal) = workspace.map_or((true, true), |w| {
         let tab = crate::tab_area::active_tab_commands(w.read(cx).tabs());
         (tab.close_to_right, tab.reveal)
@@ -665,8 +700,18 @@ fn availability_now(
         has_tabs: tabs.is_none_or(|t| t.has_tabs),
         request_tab: tabs.is_none_or(|t| t.request_tab),
         has_response: tabs.is_none_or(|t| t.has_response),
-        to_graphql: tabs.is_none_or(|t| t.to_graphql),
-        to_http: tabs.is_none_or(|t| t.to_http),
+        request_target: tree_request.is_some() || tabs.is_none_or(|t| t.request_tab),
+        to_graphql: match tree_request {
+            Some(kind) => kind == RequestKind::Http,
+            None => tabs.is_none_or(|t| t.to_graphql),
+        },
+        to_http: match tree_request {
+            Some(kind) => kind == RequestKind::Graphql,
+            None => tabs.is_none_or(|t| t.to_http),
+        },
+        folder_settings: offers(MenuEntry::Settings),
+        save_draft: offers(MenuEntry::SaveDraft),
+        close_draft: offers(MenuEntry::CloseDraft),
         rename_idle: sidebar.is_none_or(|s| s.read(cx).renaming().is_none()),
         close_all: tabs.is_none_or(|t| t.close_all),
         pin: tabs.is_none_or(|t| t.pin),

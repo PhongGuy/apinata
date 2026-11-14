@@ -170,3 +170,97 @@ fn close_collection_without_a_collection_does_nothing(cx: &mut TestAppContext) {
     assert!(s.ws.read_with(cx, |w, _| w.current_root().is_none()));
     assert!(!support::confirm_open(cx));
 }
+
+fn folder_collection() -> tempfile::TempDir {
+    support::write_tree(&[
+        ("opencollection.yml", support::ROOT),
+        ("a.yml", &support::request("a", "http://x/a")),
+        ("b.yml", &support::request("b", "http://x/b")),
+        ("f/folder.yml", &support::folder("F")),
+    ])
+}
+
+// Selects `id` in the shell's sidebar and gives the tree focus, as arrowing to it would.
+fn select_in_tree(cx: &mut TestAppContext, s: &support::Started, id: gpui_kit::SharedString) {
+    let sidebar = s.shell.read_with(cx, |v, _| v.sidebar().clone());
+    let tree = sidebar.read_with(cx, |v, _| v.tree().clone());
+    tree.update(cx, |t, cx| {
+        let ix = t.index_of(&id);
+        assert!(ix.is_some(), "{id} is a row");
+        t.set_selected_index(ix, cx)
+    });
+    cx.update_window(s.win, |_, w, cx| tree.update(cx, |t, cx| t.focus(w, cx)))
+        .unwrap();
+    support::frame(cx, s.win);
+}
+
+fn active_kind(
+    cx: &mut TestAppContext,
+    s: &support::Started,
+) -> Option<apinata_app::tabs::TabKind> {
+    s.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone()))
+}
+
+// A draft with a.yml's tab active after it, so the draft row is not the active tab.
+fn draft_behind_a(cx: &mut TestAppContext, s: &support::Started) -> String {
+    s.ws.update(cx, |w, cx| w.new_draft(&s.root, support::ip(""), cx));
+    cx.run_until_parked();
+    let draft = support::tab_names(cx, &s.ws)
+        .into_iter()
+        .find(|t| support::ip(t).is_draft())
+        .expect("a draft tab");
+    support::open_tab(cx, &s.ws, &s.root, "a.yml");
+    support::frame(cx, s.win);
+    draft
+}
+
+#[gpui_kit::test]
+fn folder_settings_opens_the_selected_folders_settings_tab(cx: &mut TestAppContext) {
+    let col = folder_collection();
+    let s = support::started(cx, &col);
+    select_in_tree(cx, &s, support::row("f"));
+    run(
+        cx,
+        s.win,
+        "collection.folder_settings",
+        PaletteGroup::Collection,
+    );
+    assert_eq!(
+        active_kind(cx, &s),
+        Some(apinata_app::tabs::TabKind::Folder(support::ip("f")))
+    );
+}
+
+#[gpui_kit::test]
+fn save_selected_draft_asks_for_a_name_while_another_tab_is_active(cx: &mut TestAppContext) {
+    let col = folder_collection();
+    let s = support::started(cx, &col);
+    let draft = draft_behind_a(cx, &s);
+    select_in_tree(cx, &s, support::row(&draft));
+    run(cx, s.win, "request.save_draft", PaletteGroup::Request);
+    support::frame(cx, s.win);
+    assert!(support::present(cx, s.win, "save-draft-dialog"));
+}
+
+#[gpui_kit::test]
+fn close_selected_draft_closes_it_while_another_tab_is_active(cx: &mut TestAppContext) {
+    let col = folder_collection();
+    let s = support::started(cx, &col);
+    let draft = draft_behind_a(cx, &s);
+    select_in_tree(cx, &s, support::row(&draft));
+    run(cx, s.win, "request.close_draft", PaletteGroup::Request);
+    support::frame(cx, s.win);
+    assert_eq!(support::tab_names(cx, &s.ws), ["a.yml"]);
+}
+
+#[gpui_kit::test]
+fn copy_as_curl_from_the_tree_copies_the_selected_request(cx: &mut TestAppContext) {
+    let col = folder_collection();
+    let s = support::started(cx, &col);
+    support::open_tab(cx, &s.ws, &s.root, "a.yml");
+    select_in_tree(cx, &s, support::row("b.yml"));
+    run(cx, s.win, "request.copy_as_curl", PaletteGroup::Request);
+    let copied = cx.read_from_clipboard().and_then(|c| c.text());
+    let copied = copied.expect("curl copied");
+    assert!(copied.contains("http://x/b"), "{copied}");
+}

@@ -49,6 +49,7 @@ const NOT_LISTED: &[&str] = &[
     "segmented::PrevSegment",
     "sidebar::OpenSelected",
     "sidebar::PreviewSelected",
+    "sidebar::OpenRowMenu",
     "sidebar::LeaveTree",
     "sidebar::ClearFilter",
     "sidebar::EnterTree",

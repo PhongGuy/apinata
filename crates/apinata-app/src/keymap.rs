@@ -24,7 +24,7 @@ use crate::preferences::{
 use crate::shortcuts::{Overrides, effective};
 use crate::sidebar::{
     ClearFilter, ClearSelection, EnterTree, ExtendDown, ExtendUp, FILTER_CONTEXT,
-    KEY_CONTEXT as SIDEBAR, LeaveTree, OpenSelected, PreviewSelected, RunSelected,
+    KEY_CONTEXT as SIDEBAR, LeaveTree, OpenRowMenu, OpenSelected, PreviewSelected, RunSelected,
 };
 use crate::ui::{
     ActivateSegment, DIALOG_FOOTER_CONTEXT, DIALOG_SELECT_CONTEXT, NextSegment, OpenSelect,
@@ -219,6 +219,9 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("up", PrevSegment, seg),
         KeyBinding::new("enter", OpenSelected, tree),
         KeyBinding::new("space", PreviewSelected, tree),
+        // The Menu key and Shift+F10 open the selected row's context menu, as on most desktops.
+        KeyBinding::new("menu", OpenRowMenu, tree),
+        KeyBinding::new("shift-f10", OpenRowMenu, tree),
         // F12 follows a name in the GraphQL query editor to its Docs page.
         KeyBinding::new(
             "f12",

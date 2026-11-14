@@ -24,17 +24,18 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Escape, Input, InputEvent, InputState};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::list::ListItem;
+use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::tree::{TreeEvent, TreeState, tree};
 use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    AnyElement, App, AppContext, ClickEvent, Context, DragMoveEvent, Edges, ElementId, Entity,
-    EventEmitter, FocusHandle, Hsla, InteractiveElement, IntoElement, Modifiers, MouseButton,
-    ParentElement, Pixels, Render, RenderOnce, ScrollStrategy, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, TestSupportExt, WeakEntity, Window, actions,
-    canvas, div, px,
+    AnyElement, App, AppContext, ClickEvent, Context, DismissEvent, DragMoveEvent, Edges,
+    ElementId, Entity, EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement,
+    Modifiers, MouseButton, ParentElement, Pixels, Render, RenderOnce, ScrollStrategy,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, TestSupportExt, WeakEntity,
+    Window, actions, anchored, canvas, deferred, div, px,
 };
 
 use crate::command::{Command, NoticeKind, TreeOp};
@@ -47,6 +48,7 @@ use crate::menu_focus;
 use crate::shell::collection_row;
 use crate::snapshot::{CollectionSnapshot, Content, DiskState, RowKind, Unsupported};
 use crate::stale::rebase;
+use crate::tab_area::{ConvertToGraphql, ConvertToHttp, CopyAsCurl, GenerateCode};
 use crate::tabs::TabId;
 use crate::workspace::{Workspace, WorkspaceEvent};
 use crate::{style, ui};
@@ -129,7 +131,15 @@ actions!(
         /// Opens every folder of every open collection.
         ExpandAll,
         /// Restores the newest delete still undoable, or passes the key on when there is none.
-        UndoDelete
+        UndoDelete,
+        /// Opens the selected row's context menu at the row, as a right click on it would.
+        OpenRowMenu,
+        /// Opens the selected folder's settings tab.
+        FolderSettings,
+        /// Saves the selected draft through the save dialog, whichever tab is active.
+        SaveSelectedDraft,
+        /// Closes the selected draft's tab, whichever tab is active.
+        CloseSelectedDraft
     ]
 );
 
@@ -256,6 +266,8 @@ pub struct Sidebar {
     hovered: Option<SharedString>,
     // The row whose right-click menu is open: the menu acts on it, so it stays marked.
     menu_target: Option<SharedString>,
+    // The context menu the keyboard opened, drawn at its row.
+    key_menu: Option<KeyMenu>,
     // The rows chosen with modifier clicks; the kit tree's own selection stays the focus row.
     multi: Multi,
     // Multi-item commands in flight, each summarised by one toast when finished.
@@ -393,6 +405,7 @@ impl Sidebar {
             pending_focus: None,
             hovered: None,
             menu_target: None,
+            key_menu: None,
             multi: Multi::default(),
             batches: Vec::new(),
             clipboard: None,
@@ -484,6 +497,18 @@ impl Sidebar {
                 entries.contains(&MenuEntry::RunFolder)
                     || entries.contains(&MenuEntry::RunCollection)
             })
+    }
+
+    /// Whether the tree itself holds focus, not a button on one of its rows.
+    pub fn tree_holds_focus(&self, window: &Window, cx: &App) -> bool {
+        let in_menu = (self.key_menu.as_ref())
+            .is_some_and(|k| k.menu.focus_handle(cx).contains_focused(window, cx));
+        !in_menu
+            && self.tree_focus.contains_focused(window, cx)
+            && !self
+                .button_focus
+                .iter()
+                .any(|f| f.contains_focused(window, cx))
     }
 
     /// Whether exactly one row is selected and its menu offers `entry`; the same test the
@@ -704,6 +729,128 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) {
         self.choose_selected(MenuEntry::OpenInTerminal, window, cx);
+    }
+
+    /// Opens the selected row's context menu below the row, its first entry highlighted, the
+    /// keyboard's way to the menu a right click opens. Escape closes it and the tree takes
+    /// focus back.
+    pub fn open_row_menu(&mut self, _: &OpenRowMenu, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.tree.read(cx).selected_item().map(|i| i.id.clone()) else {
+            return;
+        };
+        // The menu reads the sidebar while it is built, so it is built once this update ends.
+        let view = cx.entity().downgrade();
+        window.defer(cx, move |window, cx| {
+            let menu = PopupMenu::build(window, cx, |menu, window, cx| {
+                let tree = view.clone();
+                // The tree's handle is private, so the menu restores focus to it through the
+                // sidebar once it closes, unless an entry moved focus elsewhere.
+                menu_focus::watch(
+                    cx,
+                    window,
+                    |_| menu_focus::Before::Nothing,
+                    move |window, cx| {
+                        tree.update(cx, |s, cx| {
+                            if s.rename.is_none() {
+                                s.tree.update(cx, |t, cx| t.focus(window, cx))
+                            }
+                        })
+                        .ok();
+                    },
+                );
+                fill_row_menu(&view, &row, menu, window, cx)
+            });
+            if menu.read(cx).is_empty() {
+                return;
+            }
+            view.update(cx, |s, cx| s.show_key_menu(row, menu, window, cx))
+                .ok();
+        });
+    }
+
+    // Shows the keyboard's `menu` at `row` and gives it focus; it forgets itself once closed.
+    fn show_key_menu(
+        &mut self,
+        row: SharedString,
+        menu: Entity<PopupMenu>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let dismissed = cx.subscribe_in(&menu, window, |this, _, _: &DismissEvent, _, cx| {
+            this.key_menu = None;
+            cx.notify();
+        });
+        menu.focus_handle(cx).focus(window, cx);
+        self.key_menu = Some(KeyMenu {
+            row,
+            menu,
+            fresh: true,
+            _dismissed: dismissed,
+        });
+        cx.notify();
+    }
+
+    /// Opens the settings tab of the selected folder row.
+    pub fn folder_settings(
+        &mut self,
+        _: &FolderSettings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.choose_selected(MenuEntry::Settings, window, cx);
+    }
+
+    /// Saves the selected draft row's draft, as its Save menu entry does.
+    pub fn save_selected_draft(
+        &mut self,
+        _: &SaveSelectedDraft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.choose_selected(MenuEntry::SaveDraft, window, cx);
+    }
+
+    /// Closes the selected draft row's tab, as its Close menu entry does.
+    pub fn close_selected_draft(
+        &mut self,
+        _: &CloseSelectedDraft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.choose_selected(MenuEntry::CloseDraft, window, cx);
+    }
+
+    /// The kind of the one request row selected while the tree holds focus: the row the request
+    /// commands then act on in place of the active tab.
+    pub fn tree_request_kind(&self, window: &Window, cx: &App) -> Option<RequestKind> {
+        if self.multi.is_active() || !self.tree_holds_focus(window, cx) {
+            return None;
+        }
+        let node = self
+            .selected_node(cx)
+            .filter(|n| n.kind == NodeKind::Request)?;
+        self.request_kind(node, cx)
+    }
+
+    // With the tree focused on one request row, `entry` acts on that row; anywhere else the
+    // command passes on to the active tab.
+    fn on_tree_request(&mut self, entry: MenuEntry, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(kind) = self.tree_request_kind(window, cx) else {
+            return cx.propagate();
+        };
+        let Some(node) = self.selected_node(cx).cloned() else {
+            return cx.propagate();
+        };
+        // A conversion to the kind the request already has does nothing.
+        let converts = match entry {
+            MenuEntry::ConvertToGraphql => kind == RequestKind::Http,
+            MenuEntry::ConvertToHttp => kind == RequestKind::Graphql,
+            _ => true,
+        };
+        if !converts {
+            return;
+        }
+        self.choose(&node, entry, window, cx);
     }
 
     // Runs `entry` on the single selected row when its menu offers it.
@@ -2557,17 +2704,11 @@ impl Render for Sidebar {
         while self.button_focus.len() < collections {
             self.button_focus.push(cx.focus_handle());
         }
-        let tree_focused = self.rename.is_none()
-            && self.tree_focus.contains_focused(window, cx)
-            && !self
-                .button_focus
-                .iter()
-                .any(|f| f.contains_focused(window, cx));
+        let tree_focused = self.rename.is_none() && self.tree_holds_focus(window, cx);
         let button_focus = self.button_focus.clone();
-        let menu_rows = Rc::clone(&self.rows);
         self.tag_paints.borrow_mut().clear();
         let paints = Rc::clone(&self.tag_paints);
-        let (git, menu_git) = (Rc::clone(&self.git), Rc::clone(&self.git));
+        let git = Rc::clone(&self.git);
         let rollup = Rc::clone(&self.rollup);
         let hovered = self.hovered.clone();
         let busy: Vec<bool> = self
@@ -2600,10 +2741,19 @@ impl Render for Sidebar {
             });
         let multi_on = !members.is_empty();
         let drag_set = self.drag_set(cx);
-        let menu_members = Rc::clone(&members);
         let list_active = cx.theme().list_active;
         let list_hover = cx.theme().list_hover;
         let menu_target = self.menu_target.clone();
+        // The kit keeps a menu's cursor private; once this frame draws the keyboard's menu,
+        // the kit's own Down moves the cursor to its first entry.
+        if let Some(k) = self.key_menu.as_mut().filter(|k| k.fresh) {
+            k.fresh = false;
+            let handle = k.menu.focus_handle(cx);
+            window.defer(cx, move |window, cx| {
+                handle.dispatch_action(&SelectDown, window, cx)
+            });
+        }
+        let key_menu = (self.key_menu.as_ref()).map(|k| (k.row.clone(), k.menu.clone()));
         let muted = cx.theme().muted_foreground;
         // The scratch pad is listed: say what it is, since it looks like a collection.
         let scratch_only = {
@@ -2611,7 +2761,6 @@ impl Render for Sidebar {
             (ws.listed_collections(cx).iter()).any(|c| ws.is_scratch(c.root()))
         };
         let scratch_dir = self.workspace.read(cx).scratch_dir();
-        let menu_scratch = scratch_dir.clone();
         let view = cx.entity().downgrade();
         let menu_view = view.clone();
         let hover = self.hover.clone();
@@ -2668,9 +2817,34 @@ impl Render for Sidebar {
             .on_action(cx.listener(Self::clear_selection))
             .on_action(cx.listener(Self::extend_up))
             .on_action(cx.listener(Self::extend_down))
+            .on_action(cx.listener(Self::open_row_menu))
+            .on_action(cx.listener(Self::folder_settings))
+            .on_action(cx.listener(Self::save_selected_draft))
+            .on_action(cx.listener(Self::close_selected_draft))
+            .on_action(cx.listener(|this, _: &CopyAsCurl, window, cx| {
+                this.on_tree_request(MenuEntry::CopyAsCurl, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &GenerateCode, window, cx| {
+                this.on_tree_request(MenuEntry::GenerateCode, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ConvertToGraphql, window, cx| {
+                this.on_tree_request(MenuEntry::ConvertToGraphql, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ConvertToHttp, window, cx| {
+                this.on_tree_request(MenuEntry::ConvertToHttp, window, cx)
+            }))
             // A plain arrow moves the kit's selection out of the set; the set ends first.
-            .capture_action(cx.listener(|this, _: &SelectUp, _, cx| this.clear_multi(cx)))
-            .capture_action(cx.listener(|this, _: &SelectDown, _, cx| this.clear_multi(cx)))
+            // Inside the keyboard's menu the arrows walk its entries, and the set stays.
+            .capture_action(cx.listener(|this, _: &SelectUp, _, cx| {
+                if this.key_menu.is_none() {
+                    this.clear_multi(cx)
+                }
+            }))
+            .capture_action(cx.listener(|this, _: &SelectDown, _, cx| {
+                if this.key_menu.is_none() {
+                    this.clear_multi(cx)
+                }
+            }))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
                 if this.rename.is_some() {
                     this.cancel_rename(window, cx);
@@ -2855,6 +3029,10 @@ impl Render for Sidebar {
                                 multi_on && rows.get(&id).is_some_and(|n| selectable(n.kind)),
                                 |i| i.role(Role::ListItem).aria_selected(member),
                             );
+                            let item = match key_menu.as_ref().filter(|(row, _)| *row == id) {
+                                Some((_, menu)) => item.child(key_menu_layer(menu.clone())),
+                                None => item,
+                            };
                             let Some(n) = rows.get(&id) else {
                                 return item.child(entry.item().label.clone());
                             };
@@ -3284,7 +3462,7 @@ impl Render for Sidebar {
                             }
                         })
                         .context_menu(
-                            move |_, entry, mut menu, window, cx| {
+                            move |_, entry, menu, window, cx| {
                                 // The kit's dismissal can leave focus on the closed menu; put
                                 // it back where it was, or on the tree if that is gone. A rename
                                 // the item started owns focus through its input instead.
@@ -3328,115 +3506,132 @@ impl Render for Sidebar {
                                             .ok();
                                     },
                                 );
-                                // A row inside the active set opens the bulk menu; any other row
-                                // ends the set (deferred, the tree is busy building this menu).
-                                if multi_on {
-                                    if menu_members.contains(&entry.item().id) {
-                                        let count =
-                                            menu_view.upgrade().map_or(Tally::default(), |v| {
-                                                v.read(cx).bulk_tally(cx)
-                                            });
-                                        let run = menu_view.upgrade().and_then(|v| {
-                                            let plan = v.read(cx).run_plan(cx)?;
-                                            (!plan.1.is_empty()).then_some(plan.2)
-                                        });
-                                        let mut prev = None;
-                                        for choice in bulk_entries(count, run) {
-                                            let view = menu_view.clone();
-                                            let line = ui::MenuLine::new(choice.label())
-                                                .action(choice.action())
-                                                .danger(choice.is_destructive())
-                                                .group_break(prev.is_some_and(|p: BulkEntry| {
-                                                    p.group() != choice.group()
-                                                }));
-                                            prev = Some(choice);
-                                            menu = line.add_to(
-                                                menu,
-                                                ui::SIDEBAR_ROW_KEYS,
-                                                move |_, window, cx| {
-                                                    view.update(cx, |s, cx| match choice {
-                                                        BulkEntry::Run(_) => {
-                                                            s.run_selected(&RunSelected, window, cx)
-                                                        }
-                                                        BulkEntry::Copy(_) => {
-                                                            s.copy_selection(window, cx)
-                                                        }
-                                                        BulkEntry::Cut(_) => {
-                                                            s.cut_selection(window, cx)
-                                                        }
-                                                        BulkEntry::Delete(_) => {
-                                                            s.confirm_delete_set(window, cx)
-                                                        }
-                                                    })
-                                                    .ok();
-                                                },
-                                                cx,
-                                            );
-                                        }
-                                        return menu;
-                                    }
-                                    let view = menu_view.clone();
-                                    window.defer(cx, move |_, cx| {
-                                        view.update(cx, |s, cx| s.clear_multi(cx)).ok();
-                                    });
-                                }
-                                let Some(node) = menu_rows.get(&entry.item().id) else {
-                                    return menu;
-                                };
-                                let changed = node.kind == NodeKind::Request
-                                    && git_change(&menu_git, node).is_some();
-                                let extra = changed.then_some(MenuEntry::ShowChanges);
-                                let request_kind = (node.kind == NodeKind::Request)
-                                    .then(|| {
-                                        menu_view
-                                            .read_with(cx, |s, cx| s.request_kind(node, cx))
-                                            .ok()
-                                            .flatten()
-                                    })
-                                    .flatten();
-                                let mut prev = None;
-                                for &choice in menu_entries(node.kind).iter().chain(&extra) {
-                                    let choice = request_kind
-                                        .map_or(choice, |k| menu::for_request_kind(choice, k));
-                                    let (view, node) = (menu_view.clone(), node.clone());
-                                    // Paste greys out with nothing cut or copied, or when it
-                                    // would put a folder into itself.
-                                    let blocked = (choice == MenuEntry::PasteItem
-                                        && view
-                                            .read_with(cx, |s, _| s.paste_blocked(&node))
-                                            .unwrap_or(false))
-                                        || (menu_scratch.as_deref() == Some(node.root.as_path())
-                                            && menu::scratch_blocked(choice));
-                                    let line = ui::MenuLine::new(choice.label());
-                                    let line = match choice.action() {
-                                        Some(action) => line.action(action),
-                                        None => line,
-                                    };
-                                    let line = line
-                                        .disabled(blocked)
-                                        .danger(choice.is_destructive())
-                                        .group_break(prev.is_some_and(|p: MenuEntry| {
-                                            p.group() != choice.group()
-                                        }));
-                                    prev = Some(choice);
-                                    menu = line.add_to(
-                                        menu,
-                                        ui::SIDEBAR_ROW_KEYS,
-                                        move |_, window, cx| {
-                                            view.update(cx, |s, cx| {
-                                                s.choose(&node, choice, window, cx)
-                                            })
-                                            .ok();
-                                        },
-                                        cx,
-                                    );
-                                }
-                                menu
+                                fill_row_menu(&menu_view, &entry.item().id, menu, window, cx)
                             },
                         ),
                     ),
             )
     }
+}
+
+// The context menu the keyboard opened, and the row it acts on.
+struct KeyMenu {
+    row: SharedString,
+    menu: Entity<PopupMenu>,
+    // Not drawn yet, so its first entry is still to be highlighted.
+    fresh: bool,
+    _dismissed: Subscription,
+}
+
+// The keyboard's menu hangs below its row, drawn above everything as the kit draws a right
+// click's menu, and kept inside the window.
+fn key_menu_layer(menu: Entity<PopupMenu>) -> impl IntoElement {
+    div().absolute().top_full().left_0().child(
+        deferred(anchored().snap_to_window().child(menu))
+            .with_priority(gpui_kit::base::POPUP_PRIORITY),
+    )
+}
+
+/// Fills `menu` with row `id`'s context menu, as the sidebar stands now: the bulk menu for a
+/// row inside the active multi-selection, else the row's own entries. A right click and the
+/// keyboard both build it here, so their menus cannot drift apart.
+fn fill_row_menu(
+    view: &WeakEntity<Sidebar>,
+    id: &SharedString,
+    mut menu: PopupMenu,
+    window: &mut Window,
+    cx: &mut App,
+) -> PopupMenu {
+    let Some(sidebar) = view.upgrade() else {
+        return menu;
+    };
+    let s = sidebar.read(cx);
+    let multi_on = s.multi.is_active();
+    let member = multi_on
+        && s.multi
+            .keys()
+            .iter()
+            .any(|k| s.id_of(k).as_ref() == Some(id));
+    // A row inside the active set opens the bulk menu; any other row ends the set (deferred,
+    // the tree may be busy building this menu).
+    if member {
+        let count = s.bulk_tally(cx);
+        let run = s
+            .run_plan(cx)
+            .and_then(|plan| (!plan.1.is_empty()).then_some(plan.2));
+        let mut prev = None;
+        for choice in bulk_entries(count, run) {
+            let view = view.clone();
+            let line = ui::MenuLine::new(choice.label())
+                .action(choice.action())
+                .danger(choice.is_destructive())
+                .group_break(prev.is_some_and(|p: BulkEntry| p.group() != choice.group()));
+            prev = Some(choice);
+            menu = line.add_to(
+                menu,
+                ui::SIDEBAR_ROW_KEYS,
+                move |_, window, cx| {
+                    view.update(cx, |s, cx| match choice {
+                        BulkEntry::Run(_) => s.run_selected(&RunSelected, window, cx),
+                        BulkEntry::Copy(_) => s.copy_selection(window, cx),
+                        BulkEntry::Cut(_) => s.cut_selection(window, cx),
+                        BulkEntry::Delete(_) => s.confirm_delete_set(window, cx),
+                    })
+                    .ok();
+                },
+                cx,
+            );
+        }
+        return menu;
+    }
+    let node = s.rows.get(id).cloned();
+    let facts = node.as_ref().map(|node| {
+        let changed = node.kind == NodeKind::Request && git_change(&s.git, node).is_some();
+        let request_kind = (node.kind == NodeKind::Request)
+            .then(|| s.request_kind(node, cx))
+            .flatten();
+        let scratch = s.workspace.read(cx).scratch_dir();
+        (changed, request_kind, scratch, s.paste_blocked(node))
+    });
+    if multi_on {
+        let view = view.clone();
+        window.defer(cx, move |_, cx| {
+            view.update(cx, |s, cx| s.clear_multi(cx)).ok();
+        });
+    }
+    let (Some(node), Some((changed, request_kind, scratch, paste_blocked))) = (node, facts) else {
+        return menu;
+    };
+    let extra = changed.then_some(MenuEntry::ShowChanges);
+    let mut prev = None;
+    for &choice in menu_entries(node.kind).iter().chain(&extra) {
+        let choice = request_kind.map_or(choice, |k| menu::for_request_kind(choice, k));
+        let (view, node) = (view.clone(), node.clone());
+        // Paste greys out with nothing cut or copied, or when it would put a folder into
+        // itself; the scratch's row greys out what needs collection files.
+        let blocked = (choice == MenuEntry::PasteItem && paste_blocked)
+            || (scratch.as_deref() == Some(node.root.as_path()) && menu::scratch_blocked(choice));
+        let line = ui::MenuLine::new(choice.label());
+        let line = match choice.action() {
+            Some(action) => line.action(action),
+            None => line,
+        };
+        let line = line
+            .disabled(blocked)
+            .danger(choice.is_destructive())
+            .group_break(prev.is_some_and(|p: MenuEntry| p.group() != choice.group()));
+        prev = Some(choice);
+        menu = line.add_to(
+            menu,
+            ui::SIDEBAR_ROW_KEYS,
+            move |_, window, cx| {
+                view.update(cx, |s, cx| s.choose(&node, choice, window, cx))
+                    .ok();
+            },
+            cx,
+        );
+    }
+    menu
 }
 
 /// The note under a scratch-only sidebar.
