@@ -392,3 +392,73 @@ async fn profile_keys_reach_the_wire() {
     );
     assert_eq!(header(hop, "x-amz-security-token"), Some("ptok"));
 }
+
+/// Each send-time auth names the header it writes, and the wire carries only its value: the
+/// request's own same-named header is replaced, never sent beside it.
+#[tokio::test]
+async fn a_send_time_auth_names_the_header_it_replaces_on_the_wire() {
+    use crate::derived_support::{EDGEGRID, SIGV4, WSSE, oauth1};
+    use crate::oauth2_support::{
+        Fixture, ROOT, client_credentials, executor, on_grant, settings, token_response,
+    };
+    use apinata_core::{CancelHandle, ItemPath, RunOptions, send_one};
+    use std::sync::Arc;
+
+    let server = MockServer::start().await;
+    on_grant(
+        &server,
+        "client_credentials",
+        token_response(serde_json::json!({})),
+        1,
+    )
+    .await;
+    Mock::given(path("/r"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let oauth2 = format!(
+        "  auth:\n{}",
+        client_credentials(&server.uri(), &settings(true, true))
+    );
+    let cases = [
+        ("wsse.yml", "X-WSSE", WSSE.to_owned()),
+        ("sigv4.yml", "Authorization", SIGV4.to_owned()),
+        ("edgegrid.yml", "Authorization", EDGEGRID.to_owned()),
+        ("oauth1.yml", "Authorization", oauth1("header")),
+        ("oauth2.yml", "Authorization", oauth2),
+    ];
+    let texts: Vec<(String, String)> = cases
+        .iter()
+        .map(|(rel, name, auth)| {
+            let text = format!(
+                "info:\n  name: {rel}\n  type: http\nhttp:\n  method: GET\n  url: \"{}/r\"\n  headers:\n    - name: {name}\n      value: by-hand\n{auth}",
+                server.uri()
+            );
+            ((*rel).to_owned(), text)
+        })
+        .collect();
+    let mut files = vec![("opencollection.yml", ROOT)];
+    files.extend(texts.iter().map(|(r, t)| (r.as_str(), t.as_str())));
+    let fx = Fixture::new(&files);
+    let exec = Arc::new(executor());
+    for (rel, name, _) in &cases {
+        assert_eq!(fx.request(rel).auth().sets_header(), Some(*name), "{rel}");
+        let result = send_one(
+            ItemPath::new(rel).expect("path"),
+            fx.request(rel),
+            &fx.ctx,
+            &exec,
+            &RunOptions::new(),
+            &CancelHandle::new(),
+        )
+        .await;
+        let res = result.response.as_ref().expect("response");
+        let sent: Vec<_> = res.timeline()[0]
+            .request_headers
+            .iter()
+            .filter(|(n, _)| n.eq_ignore_ascii_case(name))
+            .collect();
+        assert_eq!(sent.len(), 1, "{rel}: {sent:?}");
+        assert_ne!(sent[0].1, "by-hand", "{rel}");
+    }
+}

@@ -1366,8 +1366,10 @@ impl Render for ImportLinkDialog {
                         .flex_1()
                         .min_w_0()
                         .overflow_hidden()
-                        .truncate()
-                        // The path is cut with an ellipsis to fit, so hovering shows it whole.
+                        .whitespace_nowrap()
+                        // Cut in the middle, so the last folder always shows; hovering shows
+                        // the path whole.
+                        .text_ellipsis_middle()
                         .when(self.parent.is_some(), |d| {
                             d.tooltip(ui::text_tooltip("import-link-parent-tooltip", full))
                         })

@@ -15,12 +15,6 @@ use gpui_kit::{
 };
 use std::path::Path;
 
-/// One line per note in note order: "<source>: <detail>" (a carried script's note reads
-/// "<owner> <detail>"), plus " (<file>)" when set, with every backtick removed.
-pub fn lines(report: &ImportReport) -> Vec<String> {
-    report.notes.iter().map(line).collect()
-}
-
 /// "<items>, <environments> imported; <notes>." with each count singular or plural.
 pub fn summary(report: &ImportReport) -> String {
     format!(
@@ -31,21 +25,83 @@ pub fn summary(report: &ImportReport) -> String {
     )
 }
 
-/// The non-empty note groups, each a plain heading with its notes' lines in note order:
-/// "Left out", "Changed", "Renamed", "Needs a value", then "Other".
+/// The non-empty note groups, each a plain heading with its kinds of note as [`kind_lines`]
+/// writes them, each place followed by its file: "Left out", "Changed", "Renamed",
+/// "Needs a value", then "Other".
 pub fn groups(report: &ImportReport) -> Vec<(&'static str, Vec<String>)> {
     HEADINGS
         .iter()
         .filter_map(|&heading| {
-            let lines: Vec<String> = report
-                .notes
-                .iter()
-                .filter(|n| self::heading(&n.kind) == heading)
-                .map(line)
-                .collect();
+            let lines = kind_lines(
+                report
+                    .notes
+                    .iter()
+                    .filter(|n| self::heading(&n.kind) == heading)
+                    .map(parts),
+            );
             (!lines.is_empty()).then_some((heading, lines))
         })
         .collect()
+}
+
+/// One note as [`kind_lines`] takes it.
+pub struct KindNote<'a> {
+    /// What happened, with any user-written name in backticks.
+    pub detail: &'a str,
+    /// Where it happened.
+    pub place: String,
+    /// The file it concerns, shown after its place.
+    pub file: Option<&'a str>,
+}
+
+/// One line per kind of note, in note order, without backticks: its words capitalised unless
+/// they open on a name in backticks, then every place it applies to on a row of its own. Words
+/// after a detail's first ": " outside backticks belong to its one place, so notes that differ
+/// only there share a kind; a name in backticks never splits. A place with a file reads
+/// "<place>, in <file>".
+pub fn kind_lines<'a>(notes: impl IntoIterator<Item = KindNote<'a>>) -> Vec<String> {
+    let mut kinds: Vec<(&str, Vec<String>)> = Vec::new();
+    for note in notes {
+        let (words, mut place) = match split_place(note.detail) {
+            Some((words, own)) => (words, format!("{}: {own}", note.place)),
+            None => (note.detail, note.place),
+        };
+        if let Some(file) = note.file {
+            place.push_str(&format!(", in {file}"));
+        }
+        match kinds.iter_mut().find(|(w, _)| *w == words) {
+            Some((_, places)) => places.push(place),
+            None => kinds.push((words, vec![place])),
+        }
+    }
+    kinds
+        .into_iter()
+        .map(|(words, places)| {
+            // Capitalised before the backticks go, so a detail opening on a name in backticks
+            // keeps that name's case as written.
+            let mut line = failure_text(words).replace('`', "");
+            for place in places {
+                line.push('\n');
+                line.push_str(&place.replace('`', ""));
+            }
+            line
+        })
+        .collect()
+}
+
+// `detail` split at its first ": " outside backticks, where core quotes user-written names.
+fn split_place(detail: &str) -> Option<(&str, &str)> {
+    let mut quoted = false;
+    for (at, c) in detail.char_indices() {
+        match c {
+            '`' => quoted = !quoted,
+            ':' if !quoted && detail[at + 1..].starts_with(' ') => {
+                return Some((&detail[..at], &detail[at + 2..]));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// `message` with its first character upper-cased, for an alert; core's errors start lowercase.
@@ -239,19 +295,28 @@ fn count(n: usize, noun: &str) -> String {
     }
 }
 
-fn line(note: &ImportNote) -> String {
-    let mut line = match script_owner(note) {
-        Some(owner) => format!("{owner} {}", note.detail),
-        None => format!("{}: {}", note.source, note.detail),
-    };
-    if let Some(file) = &note.file {
-        line.push_str(&format!(" ({file})"));
+// A carried script's note is placed at its owner's script, so its words are what happened to
+// it: "1 Postman call translated" under "Collection pre-request script".
+fn parts(note: &ImportNote) -> KindNote<'_> {
+    let file = note.file.as_deref();
+    if let Some(owner) = script_owner(note)
+        && let Some((script, words)) = note.detail.split_once(": ")
+    {
+        return KindNote {
+            detail: words,
+            place: format!("{owner} {script}"),
+            file,
+        };
     }
-    line.replace('`', "")
+    KindNote {
+        detail: &note.detail,
+        place: note.source.clone(),
+        file,
+    }
 }
 
-// A carried script's note names the script itself, so its event index is noise: the line reads
-// "Collection pre-request script: ..." or "<request> post-response script: ...".
+// The owner of a carried script's note, "Collection" or the request's name; its event index
+// is noise.
 fn script_owner(note: &ImportNote) -> Option<String> {
     let (owner, event) = note.source.rsplit_once(" / ")?;
     let index = event.strip_prefix("event[")?.strip_suffix(']')?;

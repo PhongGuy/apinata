@@ -3346,6 +3346,33 @@ impl RequestEditor {
         Some(banner.into_any_element())
     }
 
+    // A hand-set header the auth writes over when sending is named above the table, so the
+    // value shown is never mistaken for the one sent.
+    fn headers_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let view = self.view(cx)?;
+        let auth = view.auth_header.as_deref()?;
+        let own = view
+            .headers
+            .iter()
+            .find(|h| h.enabled && h.name.eq_ignore_ascii_case(auth))?;
+        let text = format!(
+            "Auth sets its own {} header, so the one here is not sent.",
+            own.name
+        );
+        Some(
+            div()
+                .id("headers-auth-replaced")
+                .aria_label(text.clone())
+                .test_support()
+                .w_full()
+                .mb(style::SPACE_2)
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(text)
+                .into_any_element(),
+        )
+    }
+
     // A file whose URL query and params block disagree gets one muted line over the table,
     // with a button to settle it for either side; the URL is what a send uses meanwhile.
     fn params_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -3660,6 +3687,7 @@ impl RequestEditor {
                     .id("headers")
                     .test_support()
                     .w_full()
+                    .children(self.headers_notice(cx))
                     .child(self.headers.clone())
                     .child(self.inherited_headers.clone())
                     .child(div().mt(style::SPACE_3).child(self.default_headers.clone()))

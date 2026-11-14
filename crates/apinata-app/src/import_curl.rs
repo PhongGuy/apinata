@@ -16,6 +16,9 @@ use crate::workspace::Workspace;
 /// The error shown when the text does not start with `curl`.
 const NOT_CURL: &str = "Not a curl command. Paste one that starts with curl.";
 
+/// What the empty editor shows, so the first open says what to paste.
+const HINT: &str = "Paste a curl command, for example curl https://api.example.com/users -H 'Accept: application/json'";
+
 /// A pasted command whose body is a GraphQL query becomes a GraphQL request; any other stays HTTP.
 pub fn graphql_or_http(request: ImportedRequest) -> ImportedRequest {
     request.as_graphql().unwrap_or(request)
@@ -69,7 +72,11 @@ impl Render for ImportCurlForm {
 /// Opens the "Import curl" dialog over `window` for the collection at `root`. Import parses
 /// the command into a new draft and closes; an error shows inline and keeps the dialog open.
 pub fn open(workspace: &Entity<Workspace>, root: PathBuf, window: &mut Window, cx: &mut App) {
-    let editor = cx.new(|cx| EditorState::new(window, cx).language("text"));
+    let editor = cx.new(|cx| {
+        EditorState::new(window, cx)
+            .language("text")
+            .placeholder(HINT)
+    });
     let form = cx.new(|_| ImportCurlForm {
         editor: editor.clone(),
         error: None,

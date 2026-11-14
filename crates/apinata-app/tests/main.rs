@@ -115,6 +115,7 @@ mod approvals_start;
 mod assert_value;
 mod assertions_move;
 mod assertions_section;
+mod auth_header_notice;
 mod auth_inherit;
 mod auth_secrets;
 mod auth_section;
