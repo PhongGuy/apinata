@@ -75,7 +75,7 @@ async fn a_tests_script_error_names_the_tests() {
     let result = server.ok("run_folder", json!({"path": ""})).await;
     assert_eq!(
         result["results"][0]["tests"][1]["message"],
-        "request tests, line 2: Error: boom"
+        "this request's tests, line 2: Error: boom"
     );
 }
 

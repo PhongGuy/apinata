@@ -354,7 +354,15 @@ async fn the_redacted_console_and_text_hide_a_secret_the_raw_console_keeps() {
     let (r, _) = send_full(dir.path(), "r.yml", on(), secret_ctx(), ExecOptions::new()).await;
     assert_eq!(r.console[0].text, format!("tok {SECRET}"));
     let shown: Vec<String> = r.redacted_console().into_iter().map(|c| c.text).collect();
-    assert_eq!(shown, ["tok [redacted]", "plain"]);
+    // The thrown error's console line is redacted like the lines the script logged.
+    assert_eq!(
+        shown,
+        [
+            "tok [redacted]",
+            "plain",
+            "this request's script, line 3: Error: [redacted]"
+        ]
+    );
     let error = r.error.as_ref().expect("script error").to_string();
     assert!(error.contains(SECRET));
     assert!(!r.redact(&error).contains(SECRET));

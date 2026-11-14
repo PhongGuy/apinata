@@ -44,7 +44,7 @@ async fn a_pre_request_not_a_function_quotes_its_line() {
     .await;
     assert_eq!(
         script_error(&r),
-        "request script, line 3: TypeError: not a function in \"o.baz();\""
+        "this request's script, line 3: TypeError: not a function in \"o.baz();\""
     );
 }
 
@@ -58,7 +58,7 @@ async fn a_post_response_not_a_function_quotes_its_line() {
     .await;
     let line = post_message(&r);
     assert!(
-        line.ends_with("request script, line 2: TypeError: not a function in \"o.baz();\""),
+        line.ends_with("this request's script, line 2: TypeError: not a function in \"o.baz();\""),
         "{line}"
     );
 }
@@ -73,7 +73,7 @@ async fn a_reference_error_quotes_its_line() {
     .await;
     assert_eq!(
         script_error(&r),
-        "request script, line 2: ReferenceError: nope is not defined in \"console.log(nope + a);\""
+        "this request's script, line 2: ReferenceError: nope is not defined in \"console.log(nope + a);\""
     );
 }
 
@@ -85,7 +85,7 @@ async fn a_user_throw_is_not_echoed() {
         ContextOptions::new(),
     )
     .await;
-    assert_eq!(script_error(&r), "request script, line 1: Error: x");
+    assert_eq!(script_error(&r), "this request's script, line 1: Error: x");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

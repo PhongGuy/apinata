@@ -199,5 +199,5 @@ async fn a_module_that_throws_is_attributed_to_the_requiring_script() {
     let result = send_in(dir.path(), &script("before-request", code), "").await;
     assert_eq!(result.outcome, Outcome::Errored);
     let message = script_error(&result);
-    assert_eq!(message, "request script, line 2: Error: boom");
+    assert_eq!(message, "this request's script, line 2: Error: boom");
 }

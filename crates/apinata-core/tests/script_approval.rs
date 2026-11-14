@@ -192,6 +192,13 @@ async fn an_unapproved_pre_request_script_sends_nothing() {
         }
         other => panic!("{other:?}"),
     }
+    // The request's own script is named as errors name it, never as "request script".
+    assert_eq!(
+        result.error.as_ref().map(ToString::to_string).as_deref(),
+        Some(
+            "pre-request script error, this request's script is not approved; approve it in the Apinata app"
+        )
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

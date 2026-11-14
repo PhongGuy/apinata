@@ -553,7 +553,7 @@ pub enum RunError {
         message: String,
     },
     /// A pre-request script threw, hit a limit or called an unsupported member, so nothing was sent.
-    #[error("{} script error: {message}", phase.as_str())]
+    #[error("{} script error, {message}", phase.as_str())]
     Script {
         /// The phase whose script failed.
         phase: ScriptPhase,
@@ -1639,10 +1639,7 @@ async fn exchange(
         None => {
             record.tests = segments(request, ctx, ScriptPhase::Tests)
                 .into_iter()
-                .map(|s| {
-                    let name = format!("{} tests", s.level);
-                    TestOutcome::skipped(ScriptPhase::Tests, name, "scripts are off")
-                })
+                .map(|s| TestOutcome::skipped(ScriptPhase::Tests, s.name(), "scripts are off"))
                 .collect();
         }
     }

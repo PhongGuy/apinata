@@ -103,8 +103,8 @@ fn two_script_errors_in_one_request_are_two_findings_in_message_order() {
     assert_eq!(
         found,
         [
-            message("request script, line 1: unexpected token in expression: ';'"),
-            message("request script, line 1: variable name expected"),
+            message("this request's script, line 1: unexpected token in expression: ';'"),
+            message("this request's script, line 1: variable name expected"),
         ]
     );
 }
@@ -126,7 +126,7 @@ fn two_scripts_failing_with_the_same_message_are_reported_once() {
             None,
             Severity::Error,
             FindingKind::ScriptSyntax,
-            "request script, line 1: variable name expected".to_owned()
+            "this request's script, line 1: variable name expected".to_owned()
         )]
     );
 }

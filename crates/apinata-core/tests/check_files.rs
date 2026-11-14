@@ -165,7 +165,7 @@ fn a_script_syntax_error_is_a_finding_with_the_engine_line() {
         .expect("a ScriptSyntax finding");
     assert_eq!((f.item(), f.severity()), ("a.yml", Severity::Error));
     assert!(
-        f.message().contains("request script, line 2"),
+        f.message().contains("this request's script, line 2"),
         "{}",
         f.message()
     );

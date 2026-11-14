@@ -175,8 +175,8 @@ fn two_script_errors_in_one_request_print_two_lines_in_message_order() {
     assert_eq!(
         lines[..2],
         [
-            "error: a.yml: request script, line 1: unexpected token in expression: ';'",
-            "error: a.yml: request script, line 1: variable name expected",
+            "error: a.yml: this request's script, line 1: unexpected token in expression: ';'",
+            "error: a.yml: this request's script, line 1: variable name expected",
         ]
     );
     assert!(lines[2].starts_with("2 errors, 0 warnings"), "{lines:?}");

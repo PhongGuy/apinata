@@ -1700,7 +1700,7 @@ mod tests {
         let mut r = r;
         r.tests = vec![TestOutcome::new(
             ScriptPhase::Tests,
-            "request tests",
+            "this request's tests",
             Verdict::skipped("scripts are off"),
         )];
         r

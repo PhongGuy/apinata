@@ -52,7 +52,7 @@ async fn scripts_off_warn_and_skip_each_tests_segment() {
     assert_eq!(
         tests(&result),
         [
-            "tests request tests: skipped scripts are off",
+            "tests this request's tests: skipped scripts are off",
             "tests folder f tests: skipped scripts are off",
             "tests collection tests: skipped scripts are off",
         ]
@@ -69,7 +69,7 @@ async fn sequential_flow_orders_tests_segments_outer_first() {
         [
             "tests collection tests: skipped scripts are off",
             "tests folder f tests: skipped scripts are off",
-            "tests request tests: skipped scripts are off",
+            "tests this request's tests: skipped scripts are off",
         ]
     );
 }
@@ -81,7 +81,7 @@ async fn an_unknown_flow_means_sandwich() {
     let result = send(dir.path(), "f/r.yml", RunOptions::new()).await;
     assert_eq!(
         tests(&result)[0],
-        "tests request tests: skipped scripts are off"
+        "tests this request's tests: skipped scripts are off"
     );
 }
 

@@ -1373,8 +1373,9 @@ impl ResponsePane {
         }
     }
 
-    /// The Tests badge's words: "{n} failed" when a check failed or a script errored, and
-    /// "{n} passed, {m} skipped" when a pass sits beside skips; `None` keeps the plain number.
+    /// The Tests badge's words: "{n} failed", "{m} errored" or both, counted as the total line
+    /// counts them, and "{n} passed, {m} skipped" when a pass sits beside skips; `None` keeps
+    /// the plain number.
     pub fn badge_text(&self, tab: ResponseTab, cx: &App) -> Option<String> {
         let tone = self.count_tone(tab, cx);
         if !matches!(tone, Tone::Danger | Tone::Warning) {
@@ -1382,7 +1383,12 @@ impl ResponsePane {
         }
         let c = check_counts(&*done(self.send.read(cx))?);
         Some(match tone {
-            Tone::Danger => format!("{} failed", c.failed + c.errored),
+            Tone::Danger => [(c.failed, "failed"), (c.errored, "errored")]
+                .into_iter()
+                .filter(|(n, _)| *n > 0)
+                .map(|(n, word)| format!("{n} {word}"))
+                .collect::<Vec<_>>()
+                .join(", "),
             _ => format!("{} passed, {} skipped", c.passed, c.skipped),
         })
     }
@@ -3730,14 +3736,17 @@ fn tests_block(result: &RequestResult, cx: &App) -> Option<Div> {
                     .text_color(verdict_colour(verdict, cx))
                     .child(verdict),
             )
-            .child(
-                div()
-                    .id(("test-phase", ix))
-                    .test_support()
-                    .flex_none()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(test_source(t.phase)),
-            )
+            // A script error's name already says which script failed.
+            .when(!t.script_error, |row| {
+                row.child(
+                    div()
+                        .id(("test-phase", ix))
+                        .test_support()
+                        .flex_none()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(test_source(t.phase)),
+                )
+            })
             .child(wrapping_line(("test-text", ix), text))
     });
     Some(
@@ -5220,7 +5229,8 @@ pub fn assertion_engine_text(o: &AssertionOutcome) -> Option<&str> {
 }
 
 /// A script test entry's verdict word and its line: the name, then a fail's detail or a
-/// skip's reason; an entry standing for a failed script reads as "error" with its message.
+/// skip's reason; an entry standing for a failed script reads as "error", its name and message
+/// joined by a comma, as "Post-response script error, this request's script, line 3: ...".
 pub fn test_line(t: &TestOutcome) -> (&'static str, String) {
     let (word, message) = match &t.verdict {
         Verdict::Pass => ("pass", None),
@@ -5229,8 +5239,9 @@ pub fn test_line(t: &TestOutcome) -> (&'static str, String) {
         _ => ("skipped", None),
     };
     let word = if t.script_error { "error" } else { word };
+    let joint = if t.script_error { ", " } else { ": " };
     let text = match message {
-        Some(m) => format!("{}: {}", t.name, ui::plain_quotes(m)),
+        Some(m) => format!("{}{joint}{}", t.name, ui::plain_quotes(m)),
         None => t.name.clone(),
     };
     (word, text)
