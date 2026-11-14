@@ -383,3 +383,42 @@ fn enter_on_a_target_in_the_open_select_picks_it_and_keeps_the_dialog(cx: &mut T
     let (target, _) = shown(cx).expect("the dialog stays open");
     assert_ne!(target, Target::Curl, "Enter picked the next target");
 }
+
+// A typical URL fits on one line: the dialog is wider than the default, never wider than the
+// window, and the code scrolls sideways instead of breaking a line mid-token.
+#[gpui_kit::test]
+fn the_code_is_wide_and_never_wraps(cx: &mut TestAppContext) {
+    use gpui_kit::{VisualTestContext, px, size};
+    let url = format!(
+        "https://jsonplaceholder.typicode.com/{}",
+        "segment/".repeat(20)
+    );
+    let col = with_request(&request("a", &url), &[]);
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    for (width, least) in [(1280., 640.), (640., 0.)] {
+        VisualTestContext::from_window(s.win, cx).simulate_resize(size(px(width), px(800.)));
+        palette(cx, &s, "generate code");
+        frame(cx, s.win);
+        frame(cx, s.win);
+        cx.update_window(s.win, |_, w, _| {
+            use gpui_kit::test::TestWindowExt as _;
+            let body = w.within("dialog").find("generate-code").bounds();
+            assert!(f32::from(body.size.width) >= least, "{width}: {body:?}");
+            assert!(
+                f32::from(body.right()) <= width,
+                "{width}: {body:?} past the window"
+            );
+        })
+        .unwrap();
+        let view = cx.update(|cx| current(cx)).expect("the dialog is open");
+        let (rows, lines) = cx.update(|cx| {
+            let editor = view.read(cx).editor().read(cx);
+            let map = editor.display_map();
+            (map.wrap_row_count(), map.buffer_line_count())
+        });
+        assert_eq!(rows, lines, "{width}: a long line wrapped");
+        close(cx, &s);
+    }
+}
