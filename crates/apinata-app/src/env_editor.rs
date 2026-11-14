@@ -1917,6 +1917,16 @@ fn swatch(
         .child(div().relative().p(style::SPACE_0).child(dot).children(ring))
 }
 
+/// One labelled row of an environment form. The tab and the globals dialog both build their
+/// rows here, so the label column and the control's place beside it match at any pane width.
+pub(crate) fn form_row(
+    id: &'static str,
+    label: &'static str,
+    control: impl IntoElement,
+) -> ui::FormRow {
+    ui::form_row(id, label, control).label_width(style::SHORT_FORM_LABEL_WIDTH)
+}
+
 /// An environment pane's header row: `name` as a semibold title (id `title_id`) that takes the
 /// room left and truncates, so the controls the caller adds stay on one line at the right.
 pub(crate) fn pane_header(title_id: &'static str, name: String) -> Div {
@@ -2298,8 +2308,8 @@ impl Render for EnvEditor {
                     .children(banners)
                     .children(secrets_kept)
                     .child(header)
-                    .child(ui::form_row("env-color-row", "Color", swatches))
-                    .child(ui::form_row(
+                    .child(form_row("env-color-row", "Color", swatches))
+                    .child(form_row(
                         "env-extends-row",
                         "Extends",
                         div()

@@ -1328,7 +1328,11 @@ impl Render for GlobalEnvEditor {
                 .gap_2()
                 .children(disk_banner)
                 .child(header)
-                .child(ui::form_row("global-env-color-row", "Color", swatches))
+                .child(env_editor::form_row(
+                    "global-env-color-row",
+                    "Color",
+                    swatches,
+                ))
                 // A row of its own, so the checkbox hugs its label instead of the pane's width.
                 // Which global is active is session state, not file content, so it skips Save.
                 .child(
