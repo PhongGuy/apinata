@@ -453,13 +453,17 @@ pub(crate) fn wrap(segments: &[Segment]) -> (String, Vec<u32>) {
 }
 
 impl Segment {
-    /// How errors name it: `<level> tests` for a tests script, else `<level> script`.
+    /// How errors name it: `<level> tests` for a tests script, else `<level> script`. The
+    /// request's own level reads "this request's", so it is never taken for the pre-request phase.
     fn name(&self) -> String {
         let noun = match self.phase {
             ScriptPhase::Tests => "tests",
             _ => "script",
         };
-        format!("{} {noun}", self.level)
+        match self.level.as_str() {
+            "request" => format!("this request's {noun}"),
+            level => format!("{level} {noun}"),
+        }
     }
 }
 
@@ -763,7 +767,7 @@ mod tests {
             ..seg(level, code)
         };
         for (level, want) in [
-            ("request", "request tests, line 2: Error: boom"),
+            ("request", "this request's tests, line 2: Error: boom"),
             ("folder users", "folder users tests, line 2: Error: boom"),
             ("collection", "collection tests, line 2: Error: boom"),
         ] {
@@ -779,7 +783,7 @@ mod tests {
             CancelHandle::new(),
         )
         .await;
-        let message = "request tests: null".to_owned();
+        let message = "this request's tests: null".to_owned();
         assert_eq!(run.failure, Some(Failure::Thrown { message }));
     }
 
@@ -790,7 +794,7 @@ mod tests {
             ..seg("request", "throw new Error('x')")
         }];
         let run = run_phase(segments, Vec::new(), limits(2_000, 16), CancelHandle::new()).await;
-        let message = "request script, line 1: Error: x".to_owned();
+        let message = "this request's script, line 1: Error: x".to_owned();
         assert_eq!(run.failure, Some(Failure::Thrown { message }));
     }
 
@@ -801,7 +805,7 @@ mod tests {
         match run.failure {
             Some(Failure::Thrown { message }) => {
                 assert!(
-                    message.starts_with("request script, line 2: SyntaxError"),
+                    message.starts_with("this request's script, line 2: SyntaxError"),
                     "{message}"
                 )
             }
@@ -822,7 +826,7 @@ mod tests {
         assert_eq!(
             run.failure,
             Some(Failure::Thrown {
-                message: "request script: null".into()
+                message: "this request's script: null".into()
             })
         );
     }
@@ -912,7 +916,7 @@ mod tests {
         assert_eq!(
             out.failure,
             Some(Failure::Thrown {
-                message: "request script: null".into()
+                message: "this request's script: null".into()
             })
         );
     }

@@ -8,6 +8,13 @@ use std::time::{Duration, Instant};
 use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+// `phase level:text` per console entry.
+fn console_phases(result: &apinata_core::RequestResult) -> Vec<String> {
+    (result.console.iter())
+        .map(|c| format!("{} {}:{}", c.phase.as_str(), c.level.as_str(), c.text))
+        .collect()
+}
+
 async fn server() -> MockServer {
     let s = MockServer::start().await;
     Mock::given(path("/ok"))
@@ -86,11 +93,19 @@ async fn a_throwing_pre_request_script_sends_nothing() {
             message,
             ..
         }) => {
-            assert_eq!(message, "request script, line 2: Error: stop")
+            assert_eq!(message, "this request's script, line 2: Error: stop")
         }
         other => panic!("{other:?}"),
     }
+    assert_eq!(
+        result.error.as_ref().map(ToString::to_string).as_deref(),
+        Some("pre-request script error, this request's script, line 2: Error: stop")
+    );
     assert_eq!(tests(&result), ["pre-request early: pass"]);
+    assert_eq!(
+        console_phases(&result),
+        ["pre-request error:this request's script, line 2: Error: stop"]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -110,11 +125,16 @@ async fn a_throwing_post_response_script_fails_and_tests_still_run() {
     assert_eq!(
         tests(&result),
         [
-            "post-response Post-response script error: fail request script, line 1: Error: bad",
+            "post-response Post-response script error: fail this request's script, line 1: Error: bad",
             "tests t: pass"
         ]
     );
     assert!(result.tests[0].script_error);
+    // The error also reaches the console, so its error filter finds it under its phase.
+    assert_eq!(
+        console_phases(&result),
+        ["post-response error:this request's script, line 1: Error: bad"]
+    );
     let report = run_dir(dir.path(), on()).await;
     assert_eq!(
         (report.summary.passed_tests, report.summary.failed_tests),

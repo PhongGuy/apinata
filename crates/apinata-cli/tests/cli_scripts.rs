@@ -109,7 +109,7 @@ async fn a_script_error_entry_is_marked_and_exits_1() {
     assert_eq!(code, 1);
     assert_eq!(
         report["results"][0]["tests"],
-        json!([{"phase": "post-response", "name": "Post-response script error", "status": "fail", "message": "request script, line 1: Error: x", "scriptError": true}])
+        json!([{"phase": "post-response", "name": "Post-response script error", "status": "fail", "message": "this request's script, line 1: Error: x", "scriptError": true}])
     );
     assert_eq!(report["summary"]["failed_tests"], 0);
 }
@@ -132,11 +132,14 @@ async fn a_tests_script_error_names_the_tests() {
     assert_eq!(code, 1);
     assert_eq!(
         report["results"][0]["tests"][1]["message"],
-        "request tests, line 2: Error: x"
+        "this request's tests, line 2: Error: x"
     );
     let out = apinata().arg("run").arg(dir.path()).output().expect("runs");
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("request tests, line 2: Error: x"), "{text}");
+    assert!(
+        text.contains("this request's tests, line 2: Error: x"),
+        "{text}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

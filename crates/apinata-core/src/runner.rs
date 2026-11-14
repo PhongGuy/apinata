@@ -553,7 +553,7 @@ pub enum RunError {
         message: String,
     },
     /// A pre-request script threw, hit a limit or called an unsupported member, so nothing was sent.
-    #[error("{} script error: {message}", phase.as_str())]
+    #[error("{} script error, {message}", phase.as_str())]
     Script {
         /// The phase whose script failed.
         phase: ScriptPhase,

@@ -94,7 +94,10 @@ mod tests {
     fn a_syntax_error_names_the_level_and_the_segment_line() {
         let errs = errors(&[seg("request", "let ok = 1;\nlet a = ;")]);
         assert_eq!(errs.len(), 1, "{errs:?}");
-        assert!(errs[0].starts_with("request script, line 2:"), "{errs:?}");
+        assert!(
+            errs[0].starts_with("this request's script, line 2:"),
+            "{errs:?}"
+        );
     }
 
     #[test]

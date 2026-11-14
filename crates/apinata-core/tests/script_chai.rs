@@ -118,7 +118,7 @@ async fn a_top_level_assertion_failure_takes_the_scripts_line_not_chais() {
     assert_eq!(
         tests(&result),
         [
-            "tests Test script error: fail request tests, line 2: AssertionError: expected 1 to equal 2"
+            "tests Test script error: fail this request's tests, line 2: AssertionError: expected 1 to equal 2"
         ]
     );
 }

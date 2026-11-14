@@ -375,6 +375,14 @@ impl Record {
                 },
                 script_error: false,
             }));
+        // A thrown error or a hit limit also reaches the console as an error of its phase.
+        if let Some(Failure::Thrown { message } | Failure::Limit { message }) = &run.failure {
+            self.console.push(ConsoleEntry {
+                phase,
+                level: ConsoleLevel::Error,
+                text: message.clone(),
+            });
+        }
         match run.failure {
             None => PhaseEnd::Ran,
             Some(Failure::Cancelled) => PhaseEnd::Cancelled,

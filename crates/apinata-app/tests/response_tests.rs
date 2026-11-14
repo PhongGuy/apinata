@@ -81,7 +81,7 @@ fn each_entry_reads_as_a_verdict_and_a_line() {
                 "skipped",
                 "later: bru.runRequest is not supported by Apinata".to_string()
             ),
-            ("error", "Test script error: boom".to_string()),
+            ("error", "Test script error, boom".to_string()),
         ]
     );
 }
@@ -121,9 +121,11 @@ fn the_tab_lists_assertions_then_tests_with_phases(cx: &mut TestAppContext) {
     let (_s, win, view) = shown(cx, outcomes(), extra);
     assert!(present(cx, win, ("assertion", 0usize)));
     assert!(present(cx, win, "tests-summary"));
-    for ix in 0..4usize {
+    for ix in 0..3usize {
         assert!(present(cx, win, ("test", ix)) && present(cx, win, ("test-phase", ix)));
     }
+    // A script error's own name says which script it was, so its row has no phase cell.
+    assert!(present(cx, win, ("test", 3usize)) && !present(cx, win, ("test-phase", 3usize)));
     assert_eq!(
         view.read_with(cx, |p, cx| p.tab_count(ResponseTab::Tests, cx)),
         Some(5)
@@ -323,13 +325,42 @@ fn tests_badge(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<String> 
     .unwrap()
 }
 
-// A failure badge says how many failed, an errored script counting as a failure, rather than
-// the count of every check.
+// A failure badge says how many failed and how many scripts errored, counted as the total
+// line counts them, rather than the count of every check.
 #[gpui_kit::test]
 fn a_failure_badge_says_how_many_failed(cx: &mut TestAppContext) {
     let (_s, win, view) = shown(cx, outcomes(), PASSES);
     assert_eq!(tone(cx, &view), Tone::Danger);
-    assert_eq!(tests_badge(cx, win).as_deref(), Some("2 failed"));
+    assert_eq!(tests_badge(cx, win).as_deref(), Some("1 failed, 1 errored"));
+}
+
+#[gpui_kit::test]
+fn a_script_error_alone_reads_as_errored_not_failed(cx: &mut TestAppContext) {
+    let tests = vec![
+        TestOutcome::new(ScriptPhase::Tests, "ok", Verdict::Pass),
+        error(
+            "Post-response script error",
+            "this request's script, line 3: boom",
+        ),
+    ];
+    let (_s, win, view) = shown(cx, tests, "");
+    assert_eq!(tone(cx, &view), Tone::Danger);
+    assert_eq!(
+        label(cx, win, "tests-total").as_deref(),
+        Some("1 passed, 0 failed, 1 errored")
+    );
+    assert_eq!(tests_badge(cx, win).as_deref(), Some("1 errored"));
+    let row = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find(("test-text", 1usize))
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        row.as_deref(),
+        Some("Post-response script error, this request's script, line 3: boom")
+    );
 }
 
 #[gpui_kit::test]
