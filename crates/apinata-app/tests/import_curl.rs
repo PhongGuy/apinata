@@ -145,6 +145,30 @@ fn the_url_placeholder_offers_the_paste(cx: &mut TestAppContext) {
     );
 }
 
+// The empty editor says what to paste, with an example, so the first open is not a blank box.
+#[gpui_kit::test]
+fn the_empty_editor_shows_an_example_command(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    import_curl(cx, s.win, &s.shell);
+    let hint = cx
+        .update_window(s.win, |_, w, cx| {
+            use gpui_kit::test::TestQueryExt as _;
+            w.render_frame(cx);
+            w.within("import-curl-input")
+                .elements()
+                .into_iter()
+                .find_map(|e| e.placeholder().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        hint.as_deref(),
+        Some(
+            "Paste a curl command, for example curl https://api.example.com/users -H 'Accept: application/json'"
+        )
+    );
+}
+
 fn press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
     cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
     frame(cx, win);
