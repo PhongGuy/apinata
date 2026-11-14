@@ -217,6 +217,7 @@ pub(crate) const PARAM_ROWS: &str = "additionalParameters";
 impl AuthSpec {
     /// The header this auth writes when the request is sent, replacing a same-named header the
     /// request sets; `None` for an auth that writes no header or one not modelled here.
+    /// An API key's header is its key as written, before variables are resolved.
     pub fn sets_header(&self) -> Option<&str> {
         const AUTHORIZATION: &str = "Authorization";
         match self {
@@ -233,6 +234,7 @@ impl AuthSpec {
             AuthSpec::OAuth1(spec) if spec.placement == OAuth1Placement::Header => {
                 Some(AUTHORIZATION)
             }
+            AuthSpec::Wsse { .. } => Some("X-WSSE"),
             AuthSpec::OAuth2(spec) => match spec.token_placement {
                 TokenPlacement::Query { .. } => None,
                 _ => Some(AUTHORIZATION),
