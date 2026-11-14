@@ -120,6 +120,8 @@ pub const FORM_INPUT_WIDTH: Rems = ui(160.);
 /// Body width of a dialog that sets no width of its own: the kit's 448 px default less its
 /// 16 px side paddings, which stay px.
 pub const DIALOG_BODY_WIDTH: Rems = ui(416.);
+/// The Generate Code dialog's body width, so a typical URL fits on one code line.
+pub const CODE_DIALOG_WIDTH: Rems = ui(720.);
 /// The Generate Code preview's height, before the window's room caps it.
 pub const CODE_PREVIEW_HEIGHT: Rems = ui(320.);
 /// The kit dialog's px padding on each edge; it does not follow the zoom.

@@ -3428,7 +3428,10 @@ impl RequestEditor {
                 .id(("section", ix))
                 .test_support()
                 .child(s.label_for(kind));
-            let mark = match self.section_count(s, cx).and_then(ui::count_badge) {
+            let badge = self.section_count(s, cx).and_then(ui::count_badge);
+            // The ring is too small to aim at, so the whole tab says what it marks.
+            let ring_words = badge.is_none().then(|| self.section_mark(s, cx)).flatten();
+            let mark = match badge {
                 Some(badge) => Some(
                     div()
                         .id(("section-count", ix))
@@ -3436,7 +3439,7 @@ impl RequestEditor {
                         .child(badge)
                         .into_any_element(),
                 ),
-                None => self.section_mark(s, cx).map(|words| {
+                None => ring_words.clone().map(|words| {
                     ui::mode_ring(("section-mode", ix), words)
                         .test_support()
                         .into_any_element()
@@ -3449,7 +3452,11 @@ impl RequestEditor {
             let editor = this.clone();
             Tab::new().child(
                 h_flex()
+                    .id(("section-tab", ix))
                     .relative()
+                    .when_some(ring_words, |d, words| {
+                        d.tooltip(ui::text_tooltip("section-mode-tooltip", words))
+                    })
                     .track_focus(focus)
                     .on_key_down(move |event, window, cx| {
                         let key = event.keystroke.key.as_str();

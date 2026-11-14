@@ -1820,13 +1820,21 @@ fn the_colour_row_lays_out_alike_in_the_dialog_and_the_tab(cx: &mut TestAppConte
 }
 
 // While the first global is being named, the empty state's message and button give way to a
-// line saying what a global environment is for.
+// line saying what a global environment is for, which stays where it was.
 #[gpui_kit::test]
 fn naming_the_first_global_replaces_the_empty_state(cx: &mut TestAppContext) {
     support::init(cx);
     let (_c, _g, _s, ws) = start(cx, &[]);
     let (win, _editor) = open_editor_unselected(cx, &ws);
     frame(cx, win);
+    let about_x = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("global-env-about").bounds().center().x
+        })
+        .unwrap()
+    };
+    let before = about_x(cx);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         w.click("global-env-empty-create", cx);
@@ -1837,6 +1845,11 @@ fn naming_the_first_global_replaces_the_empty_state(cx: &mut TestAppContext) {
     assert!(!present(cx, win, "global-env-empty-label"));
     assert!(!present(cx, win, "global-env-empty-create"));
     assert!(present(cx, win, "global-env-about"));
+    let after = about_x(cx);
+    assert!(
+        (f32::from(after) - f32::from(before)).abs() < 1.,
+        "the line moved sideways while naming: {before:?} to {after:?}"
+    );
     cx.simulate_keystrokes(win, "escape");
     frame(cx, win);
     assert!(
@@ -1979,4 +1992,30 @@ fn the_closed_globals_picker_shows_the_active_dot(cx: &mut TestAppContext) {
     ws.update(cx, |w, cx| w.select_picker_item("h", cx));
     cx.run_until_parked();
     assert!(!shown(cx), "h has no colour");
+}
+
+// Active is a form row like Color: its label in the label column, the box in the control column.
+#[gpui_kit::test]
+fn the_active_row_lines_up_with_the_colour_row(cx: &mut TestAppContext) {
+    support::init(cx);
+    let (_c, _g, _s, ws) = start(cx, &[("g.yml", "name: g\n")]);
+    let (win, _editor) = open_editor(cx, &ws, "g");
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let color_label = w.within("global-env-color-row").find("form-label").bounds();
+        let swatches = w
+            .within("global-env-color-row")
+            .find("env-swatches")
+            .bounds();
+        let active_label = w
+            .within("global-env-active-row")
+            .find("form-label")
+            .bounds();
+        let active_box = w.find("global-env-active").bounds();
+        assert_eq!(active_label.left(), color_label.left(), "labels");
+        assert_eq!(active_box.left(), swatches.left(), "controls");
+        assert_eq!(w.find("global-env-active").label(), Some("Active"));
+    })
+    .unwrap();
 }

@@ -1278,7 +1278,7 @@ impl Render for GlobalEnvEditor {
             "global-env-active-follow",
             &self.follow,
             ui::checkbox("global-env-active", in_use)
-                .label("Active")
+                .accessible_name("Active")
                 .tooltip("Use this environment for every collection's sends")
                 .on_click(move |on, _, cx| {
                     me.update(cx, |e, cx| e.set_active(*on, cx)).ok();
@@ -1333,11 +1333,14 @@ impl Render for GlobalEnvEditor {
                     "Color",
                     swatches,
                 ))
-                // A row of its own, so the checkbox hugs its label instead of the pane's width.
-                // Which global is active is session state, not file content, so it skips Save.
-                .child(
+                // A form row like Color, its box in the control column. Which global is active
+                // is session state, not file content, so it skips Save.
+                .child(env_editor::form_row(
+                    "global-env-active-row",
+                    "Active",
                     h_flex()
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                        .min_w_0()
                         .gap(style::SPACE_2)
                         .child(active_box)
                         .child(
@@ -1352,16 +1355,22 @@ impl Render for GlobalEnvEditor {
                                 .text_color(cx.theme().muted_foreground)
                                 .child(ACTIVE_NOTE),
                         ),
-                )
+                ))
                 .child(self.table.clone())
                 .children(orphans)
                 .children(fileless)
                 .into_any_element()
         } else {
             // The message and its action hug their content as one group, centred in the pane
-            // as the collection editor's empty state is. While the first name is typed in the
-            // list, only the line on what a global environment is for stays.
+            // as the collection editor's empty state is. While the first name is typed, the
+            // field takes the action's place and the line on what a global is for stays put.
             let naming = self.naming.is_some();
+            // Once something is listed, the list holds the field instead.
+            let field = if self.names(cx).is_empty() {
+                self.naming_field(window, cx)
+            } else {
+                None
+            };
             let muted = cx.theme().muted_foreground;
             let empty = v_flex()
                 .id("global-env-empty")
@@ -1395,7 +1404,8 @@ impl Render for GlobalEnvEditor {
                                 e.start_naming(Naming::Create, window, cx)
                             })),
                     )
-                });
+                })
+                .children(field.map(|f| div().w(list_width(window)).child(f)));
             v_flex()
                 .id("global-env-empty-pane")
                 .test_support()
@@ -1410,10 +1420,9 @@ impl Render for GlobalEnvEditor {
                 .children(fileless.map(|f| div().w_full().child(f)))
                 .into_any_element()
         };
-        // With nothing listed and no name being typed the list would be an empty strip, so the
-        // empty pane takes the whole dialog and its message is centred in it.
-        let list = (!self.names(cx).is_empty() || self.naming.is_some())
-            .then(|| self.render_list(window, cx));
+        // With nothing listed the list would be an empty strip, so the empty pane takes the
+        // whole dialog and its message is centred in it.
+        let list = (!self.names(cx).is_empty()).then(|| self.render_list(window, cx));
         v_flex()
             .id("global-env-editor")
             .test_support()

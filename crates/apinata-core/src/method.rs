@@ -16,7 +16,7 @@ impl fmt::Display for InvalidMethod {
         } else {
             write!(
                 f,
-                "`{}` is not a valid HTTP method: use letters, digits, - or _, with no spaces",
+                "\"{}\" is not a valid HTTP method: use letters, digits, - or _, with no spaces",
                 self.method
             )
         }
