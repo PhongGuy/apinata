@@ -203,15 +203,21 @@ fn report_of(text: &str) -> apinata_core::import::ImportReport {
         .1
 }
 
+// Every line of every group, in group order.
+fn all_lines(report: &apinata_core::import::ImportReport) -> Vec<String> {
+    import_report::groups(report)
+        .into_iter()
+        .flat_map(|(_, lines)| lines)
+        .collect()
+}
+
 #[test]
 fn report_lines_name_each_note_without_backticks() {
-    let report = report_of(&shop_with_oauth());
-    let lines = import_report::lines(&report);
-    assert_eq!(lines.len(), report.notes.len());
+    let lines = all_lines(&report_of(&shop_with_oauth()));
     assert!(
-        lines.iter().any(
-            |l| l.starts_with("Get user") && l.contains("hawk authentication is not supported")
-        ),
+        lines
+            .iter()
+            .any(|l| l.starts_with("Hawk authentication is not supported")),
         "{lines:?}"
     );
     assert!(lines.iter().all(|l| !l.contains('`')), "{lines:?}");
@@ -220,6 +226,28 @@ fn report_lines_name_each_note_without_backticks() {
         lines.iter().all(|l| !l.to_lowercase().contains("bruno")),
         "{lines:?}"
     );
+}
+
+#[test]
+fn each_kind_of_note_is_one_line_with_its_places_and_files_under_it() {
+    let report = report_of(&shop_with_oauth_requests(2));
+    let hawk: Vec<_> = report
+        .notes
+        .iter()
+        .filter(|n| n.detail.starts_with("`hawk`"))
+        .collect();
+    assert_eq!(hawk.len(), 2, "{:?}", report.notes);
+    let place = |n: &apinata_core::import::ImportNote| {
+        format!("{}, in {}", n.source, n.file.as_deref().unwrap())
+    };
+    let expected = format!(
+        "Hawk authentication is not supported; set to none\n{}\n{}",
+        place(hawk[0]),
+        place(hawk[1])
+    );
+    let lines = all_lines(&report);
+    assert!(lines.contains(&expected), "{lines:?}");
+    assert!(lines.iter().all(|l| !l.contains(" (")), "{lines:?}");
 }
 
 #[gpui_kit::test]
@@ -242,11 +270,11 @@ fn a_script_note_reads_as_its_owner_and_script() {
     let text = format!(
         r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"event":[{{"listen":"prerequest","script":{{"exec":["pm.environment.set('a', 1);"]}}}}],"item":[{{"name":"Get user","request":{{"method":"GET","url":"https://x.test/users/1"}}}}]}}"#
     );
-    let lines = import_report::lines(&report_of(&text));
+    let lines = all_lines(&report_of(&text));
     assert!(
-        lines
-            .iter()
-            .any(|l| l.starts_with("Collection pre-request script: 1 Postman call translated")),
+        lines.iter().any(|l| l.starts_with(
+            "1 Postman call translated; it asks before it first runs\nCollection pre-request script, in "
+        )),
         "{lines:?}"
     );
     assert!(
@@ -289,8 +317,13 @@ fn notes_group_under_plain_headings() {
     let groups = import_report::groups(&report);
     assert_eq!(groups[0].0, "Changed");
     assert!(groups.iter().all(|(_, lines)| !lines.is_empty()));
-    let total: usize = groups.iter().map(|(_, l)| l.len()).sum();
-    assert_eq!(total, report.notes.len());
+    // Each note is one place row under its kind's line.
+    let places: usize = groups
+        .iter()
+        .flat_map(|(_, l)| l)
+        .map(|l| l.lines().count() - 1)
+        .sum();
+    assert_eq!(places, report.notes.len());
 }
 
 #[gpui_kit::test]
