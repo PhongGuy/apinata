@@ -1860,6 +1860,9 @@ pub struct Reveal {
     settling: Rc<Cell<Option<Pixels>>>,
     // Set while a scroll was held back to keep the chosen item under the pointer.
     held: Rc<Cell<bool>>,
+    // A click on the item is waiting for the request it causes, and that request came from one.
+    clicked: Rc<Cell<bool>>,
+    by_click: Rc<Cell<bool>>,
     snap_left: bool,
 }
 
@@ -1887,6 +1890,12 @@ impl Reveal {
     /// Checks the item again on the next frame, as for a newly chosen one.
     pub fn request(&self) {
         self.seen.set(None);
+        self.by_click.set(self.clicked.take());
+    }
+
+    /// Marks the next request as caused by a click on the item, so the pointer holds it.
+    pub fn clicked(&self) {
+        self.clicked.set(true);
     }
 
     /// Whether a check is owed: requested, not yet run on a laid-out item, or held back
@@ -1912,8 +1921,8 @@ impl Reveal {
         self.watch_strip_under_pointer(scroll, ix, items, false)
     }
 
-    /// As `watch_strip`, told whether the pointer rests on the chosen item, as after a click
-    /// on it. Any scroll then keeps that item under the pointer, so a second click lands on
+    /// As `watch_strip`, told whether the pointer rests on the chosen item. When a click on
+    /// it chose it, any scroll keeps that item under the pointer, so a second click lands on
     /// it again; what that holds back runs once the pointer leaves the item.
     pub fn watch_strip_under_pointer(
         &self,
@@ -1928,6 +1937,7 @@ impl Reveal {
             Rc::clone(&self.held),
             scroll.clone(),
         );
+        let (clicked, by_click) = (Rc::clone(&self.clicked), Rc::clone(&self.by_click));
         let snap_left = self.snap_left;
         canvas(
             move |_, window, _| {
@@ -1940,7 +1950,13 @@ impl Reveal {
                 let x = scroll.offset().x;
                 let p = window.mouse_position().x;
                 let range = (p + px(1.) - item.right(), p - px(1.) - item.left());
-                let keep = (pointer_on_item && range.0 <= x && x <= range.1).then_some(range);
+                // A click that chose nothing new leaves no request to claim it.
+                clicked.set(false);
+                let on_item = pointer_on_item && by_click.get() && range.0 <= x && x <= range.1;
+                let keep = on_item.then_some(range);
+                if keep.is_none() {
+                    by_click.set(false);
+                }
                 if held.get() && keep.is_none() {
                     held.set(false);
                     seen.set(None);

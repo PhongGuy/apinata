@@ -2481,6 +2481,7 @@ impl TabArea {
                             if ui::tail_clear_of_fades(&a.scroll, count, ix, slot, fade) {
                                 a.close(vec![id], window, cx);
                             } else {
+                                a.reveal.clicked();
                                 a.workspace.update(cx, |w, cx| {
                                     w.update_tabs(cx, |t| t.activate_index(ix))
                                 });
@@ -2495,9 +2496,11 @@ impl TabArea {
         let payload = DraggedTab::new(id, entry.root.clone(), name_for_drag);
         let landing = self.drop.filter(|(t, _)| *t == id).map(|(_, side)| side);
         let workspace = self.workspace.clone();
+        let reveal = self.reveal.clone();
         // A click activates through the tab's own element, not `Tab::on_click`: the bar wraps
         // that in its own reveal, which would fight the strip's least-scroll reveal.
         let tab = StatefulInteractiveElement::on_click(Tab::new(), move |_, _, cx| {
+            reveal.clicked();
             workspace.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
         });
         tab.relative()

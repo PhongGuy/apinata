@@ -328,8 +328,14 @@ fn the_tab_strip_fades_sit_between_the_inset_and_the_chevron(cx: &mut TestAppCon
             right.right() <= chevron.left() + px(0.5),
             "{right:?} over {chevron:?}"
         );
-        // The right fade widens to cover a tab cut by that edge, so only heights match.
+        // The right fade widens to cover a tab cut by that edge, so only heights match; it
+        // still ends at the viewport's right edge.
         assert_eq!(left.size.height, right.size.height);
+        let view = w.find("tab-strip-viewport").bounds();
+        assert!(
+            (right.right() - view.right()).abs() < px(0.5),
+            "{right:?} does not end at the viewport {view:?}"
+        );
     })
     .unwrap();
 }
@@ -1508,4 +1514,46 @@ fn a_click_keeps_the_clicked_tab_under_the_pointer_at_640(cx: &mut TestAppContex
 #[gpui_kit::test]
 fn a_click_keeps_the_clicked_tab_under_the_pointer_at_double_zoom_800(cx: &mut TestAppContext) {
     check_click_keeps_pointer(cx, 800., 2.0);
+}
+
+// A tab chosen without a click, as by a key, is revealed at once even with the pointer resting
+// on it: only a click on the tab holds the strip under the pointer.
+#[gpui_kit::test]
+fn a_tab_chosen_without_a_click_under_the_pointer_is_revealed_at_once(cx: &mut TestAppContext) {
+    let count = 9;
+    let (_col, s) = shell_strip(cx, count, 640., 1.0);
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(0)));
+    frames(cx, s.win, 6);
+    // The tab cut by the strip's right edge, hidden under the right fade; fades take no
+    // pointer input, so the pointer rests on that tab.
+    let (ix, at) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let view = w.find("tab-strip-viewport").bounds();
+            (0..count)
+                .find_map(|ix| {
+                    let b = w.within("tab-strip").find(ix).bounds();
+                    (b.right() > view.right() + px(1.) && b.left() < view.right() - px(8.))
+                        .then(|| (ix, point(b.left() + px(4.), b.center().y)))
+                })
+                .expect("a tab is cut by the right edge")
+        })
+        .unwrap();
+    move_pointer(cx, s.win, at);
+    frames(cx, s.win, 2);
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
+    frames(cx, s.win, 6);
+    let (tab, fr) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            (
+                w.within("tab-strip").find(ix).bounds(),
+                w.try_find("tab-strip-fade-right").map(|f| f.bounds()),
+            )
+        })
+        .unwrap();
+    assert!(
+        fr.is_none_or(|f| tab.right() <= f.left() + px(1.)),
+        "tab {ix} {tab:?} still under the right fade {fr:?}"
+    );
 }
