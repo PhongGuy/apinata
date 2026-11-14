@@ -642,6 +642,113 @@ fn save_shows_while_the_settings_are_unsaved_and_saves_them(cx: &mut TestAppCont
     assert!(!present(cx, win, "config-save-button"));
 }
 
+// Unsaved settings offer Discard beside Save, as the environment editors do; it asks first,
+// then returns the settings to their file.
+#[gpui_kit::test]
+fn discard_shows_beside_save_and_returns_the_settings_to_the_file(cx: &mut TestAppContext) {
+    let col = tree();
+    let before = bytes(&col, "users/folder.yml");
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    assert!(!present(cx, win, "config-discard-button"));
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| {
+            e.edit_rows(ConfigSection::Headers, vec![row("X-Trace", "1")], w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let discard = w.find("config-discard-button").bounds();
+        let save = w.find("config-save-button").bounds();
+        assert!(discard.right() <= save.left(), "{discard:?} {save:?}");
+        assert_eq!(discard.center().y, save.center().y);
+    })
+    .unwrap();
+    cx.update_window(win, |_, w, cx| w.click("config-discard-button", cx))
+        .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-discard");
+    frame(cx, win);
+    let dirty = ws.read_with(cx, |w, cx| {
+        w.snapshot(&root, cx)
+            .and_then(|s| s.content.folders.get(&ip("users")).map(|f| f.dirty))
+    });
+    assert_eq!(dirty, Some(false));
+    assert!(!present(cx, win, "config-discard-button"));
+    assert_eq!(bytes(&col, "users/folder.yml"), before);
+}
+
+// The slot a clean page keeps holds both buttons, so Discard and Save appearing never moves
+// the title row's other content.
+#[gpui_kit::test]
+fn the_clean_slot_is_as_wide_as_discard_and_save(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    let slot = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("config-save").bounds().size
+        })
+        .unwrap()
+    };
+    let clean = slot(cx);
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| {
+            e.edit_rows(ConfigSection::Headers, vec![row("X-Trace", "1")], w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, win);
+    assert_eq!(slot(cx), clean);
+}
+
+// A secret typed but not yet committed is part of what Discard drops: its field shows the
+// saved value again and nothing is left to send.
+#[gpui_kit::test]
+fn discard_drops_a_secret_typed_but_not_committed(cx: &mut TestAppContext) {
+    use apinata_app::oauth2_editor::OAuth2Field;
+    let users = format!(
+        "{}request:\n  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: http://id/token\n    credentials:\n      clientId: svc\n      clientSecret: old-plain\n",
+        folder("Users")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("users/folder.yml", &users)]);
+    let before = bytes(&col, "users/folder.yml");
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Auth, cx));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        ed.update(cx, |e, cx| {
+            e.edit_rows(ConfigSection::Headers, vec![row("X-Trace", "1")], w, cx)
+        })
+    })
+    .unwrap();
+    let input = ed.read_with(cx, |e, cx| {
+        let oauth2 = e.auth().read(cx).oauth2().clone();
+        oauth2.read(cx).input(OAuth2Field::ClientSecret).clone()
+    });
+    cx.update_window(win, |_, w, cx| {
+        input.update(cx, |i, cx| i.set_value("typed".to_string(), w, cx))
+    })
+    .unwrap();
+    frame(cx, win);
+    assert!(ed.read_with(cx, |e, cx| e.holds_secret_typing(cx)));
+    cx.update_window(win, |_, w, cx| w.click("config-discard-button", cx))
+        .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-discard");
+    frame(cx, win);
+    assert!(!ed.read_with(cx, |e, cx| e.holds_secret_typing(cx)));
+    assert_eq!(
+        input.read_with(cx, |i, _| i.value().to_string()),
+        "old-plain"
+    );
+    assert_eq!(bytes(&col, "users/folder.yml"), before);
+}
+
 #[gpui_kit::test]
 fn the_folder_tags_note_starts_where_the_tag_input_does(cx: &mut TestAppContext) {
     let col = tree();
@@ -657,6 +764,24 @@ fn the_folder_tags_note_starts_where_the_tag_input_does(cx: &mut TestAppContext)
         assert!(note.top() >= input.bottom());
         let label = w.within("config-row-tags").find("form-label").bounds();
         assert!(label.right() <= input.left(), "{label:?} {input:?}");
+    })
+    .unwrap();
+}
+
+// The folder's Tags field is as wide as the form's other inputs, not the whole row.
+#[gpui_kit::test]
+fn the_folder_tags_field_is_as_wide_as_the_other_inputs(cx: &mut TestAppContext) {
+    let col = tree();
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Tags, cx));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(
+            w.find("tag-input").bounds().size.width,
+            at_zoom(apinata_app::style::FORM_INPUT_WIDTH, 1.0)
+        );
     })
     .unwrap();
 }

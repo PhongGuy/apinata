@@ -559,14 +559,49 @@ fn the_response_size_limit_reads_in_plain_words(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
-    for query in [
-        "Largest response to keep (MB, blank for no limit)",
-        "body cap",
-    ] {
+    for query in ["Largest response to keep", "body cap", "no limit"] {
         replace_input(cx, s.win, None, "prefs-search", query);
         frame(cx, s.win);
         assert!(present(cx, s.win, "pref-body-cap"), "{query}");
         assert!(!present(cx, s.win, "pref-verify-tls"), "{query}");
+    }
+}
+
+// Each limit names its unit beside its field rather than in its label, and the two that can
+// be lifted say so the same way: an empty field reads "No limit".
+#[gpui_kit::test]
+fn limits_name_their_unit_beside_the_field_and_empty_reads_no_limit(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    set(cx, |st| {
+        st.max_body_bytes = None;
+        st.request_timeout_secs = 0;
+    });
+    open_prefs(cx, &s);
+    for (row, field, unit, lifts) in [
+        ("pref-body-cap", "body-cap", "MB", true),
+        ("pref-request-timeout", "request-timeout", "s", true),
+        ("pref-script-timeout", "script-timeout", "s", false),
+    ] {
+        prefs_reveal(cx, &s, row);
+        cx.update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let snapshot = w.find(field);
+            let input = snapshot.bounds();
+            let shown = w
+                .within(row)
+                .find(gpui_kit::SharedString::from(format!("{field}-unit")));
+            assert_eq!(shown.label(), Some(unit), "{row}");
+            let shown = shown.bounds();
+            assert!(shown.left() >= input.right(), "{row}: {shown:?} {input:?}");
+            if lifts {
+                assert_eq!(snapshot.placeholder(), Some("No limit"), "{row}");
+                assert_eq!(snapshot.value().unwrap_or_default(), "", "{row}");
+            } else {
+                assert_ne!(snapshot.placeholder(), Some("No limit"), "{row}");
+            }
+        })
+        .unwrap();
     }
 }
 

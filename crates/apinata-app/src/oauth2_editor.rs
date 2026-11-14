@@ -758,6 +758,17 @@ impl OAuth2Editor {
             || text(OAuth2Field::Password) != self.base.password
     }
 
+    /// Puts the committed client secret and password back in their fields, dropping typing
+    /// not yet committed.
+    pub fn drop_pending_secrets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.replacing.clear();
+        for f in [OAuth2Field::ClientSecret, OAuth2Field::Password] {
+            let (input, text) = (self.input(f).clone(), self.committed(f).to_owned());
+            self.masks.fill(&input, &text, window, cx);
+        }
+        cx.notify();
+    }
+
     /// Takes a client secret or password typed but not yet committed into the base and
     /// returns the spec to send, without emitting; None when nothing was pending.
     pub fn take_pending_secrets(&mut self, cx: &mut Context<Self>) -> Option<OAuth2Spec> {

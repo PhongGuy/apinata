@@ -32,11 +32,14 @@ fn the_default_is_no_limit_also_for_older_settings_files() {
 }
 
 #[test]
-fn the_row_takes_whole_seconds_from_0_to_86400() {
+fn the_row_takes_whole_seconds_up_to_86400_or_nothing() {
     assert_eq!(parse_request_timeout("0"), Ok(0));
     assert_eq!(parse_request_timeout(" 30 "), Ok(30));
     assert_eq!(parse_request_timeout("86400"), Ok(86400));
-    for bad in ["86401", "-1", "x", "", "1.5"] {
+    // An empty field is no limit, as for the largest response to keep.
+    assert_eq!(parse_request_timeout(""), Ok(0));
+    assert_eq!(parse_request_timeout("  "), Ok(0));
+    for bad in ["86401", "-1", "x", "1.5"] {
         let err = parse_request_timeout(bad).unwrap_err();
         assert!(err.contains("from 0 to 86400"), "{bad:?}: {err}");
     }
@@ -48,6 +51,7 @@ fn inherit_names_the_timeout_that_applies() {
     let thirty = Some(Duration::from_secs(30));
     assert_eq!(TimeoutMode::Inherit.label(thirty), "Default (30 s)");
     assert_eq!(TimeoutMode::Custom.label(thirty), "Custom");
+    assert_eq!(TimeoutMode::Unlimited.label(thirty), "No limit");
 }
 
 fn timeout_shown(cx: &mut TestAppContext, view: &Entity<RequestEditor>) -> Option<String> {
@@ -256,10 +260,13 @@ fn a_hand_edited_timeout_past_the_range_is_held_to_a_day() {
 }
 
 // An explicit `timeout: 0` is the request's own "no limit", which the executor sends whatever
-// the Preferences default, so it shows as Custom 0; a trip through Default and back is clean.
+// the Preferences default, so it shows as No limit; a trip through Default and back is clean.
 #[gpui_kit::test]
-fn an_explicit_zero_timeout_shows_as_custom_and_round_trips(cx: &mut TestAppContext) {
-    for timeout in ["0", "2500"] {
+fn an_explicit_zero_timeout_shows_as_no_limit_and_round_trips(cx: &mut TestAppContext) {
+    for (timeout, shown, own) in [
+        ("0", "No limit", TimeoutMode::Unlimited),
+        ("2500", "Custom", TimeoutMode::Custom),
+    ] {
         let file = format!(
             "{}\nsettings:\n  encodeUrl: true\n  timeout: {timeout}\n  followRedirects: true\n",
             request("a", "http://x.test/r")
@@ -272,9 +279,9 @@ fn an_explicit_zero_timeout_shows_as_custom_and_round_trips(cx: &mut TestAppCont
             .shell
             .read_with(cx, |sh, cx| sh.tab_area().read(cx).editor(tab).cloned())
             .expect("an editor");
-        assert_eq!(timeout_shown(cx, &view).as_deref(), Some("Custom"));
+        assert_eq!(timeout_shown(cx, &view).as_deref(), Some(shown));
         let settings = view.read_with(cx, |v, _| v.settings().clone());
-        for mode in [TimeoutMode::Inherit, TimeoutMode::Custom] {
+        for mode in [TimeoutMode::Inherit, own] {
             cx.update_window(s.win, |_, w, cx| {
                 settings.update(cx, |st, cx| st.set_timeout_mode(mode, w, cx))
             })
@@ -283,7 +290,7 @@ fn an_explicit_zero_timeout_shows_as_custom_and_round_trips(cx: &mut TestAppCont
         }
         assert!(
             !view_of(cx, &s.ws, &s.root, "a.yml").dirty,
-            "timeout {timeout}: back to Custom is clean"
+            "timeout {timeout}: back to {shown} is clean"
         );
         assert_eq!(
             std::fs::read_to_string(col.path().join("a.yml")).unwrap(),

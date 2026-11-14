@@ -45,7 +45,7 @@ fn the_sections_show_the_snapshot(cx: &mut TestAppContext) {
     assert_eq!(token.read_with(cx, |i, _| i.value().to_string()), "t");
     assert_eq!(
         ed.read_with(cx, |e, cx| e.settings().read(cx).timeout_mode()),
-        TimeoutMode::Custom
+        TimeoutMode::Unlimited
     );
 }
 

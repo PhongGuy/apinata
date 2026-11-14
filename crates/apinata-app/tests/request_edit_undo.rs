@@ -1823,7 +1823,7 @@ fn watch<T: gpui_kit::EventEmitter<apinata_app::section::SectionEdit>>(
 
 const SETTINGS_FILE: &str = "info:\n  name: h\n  type: http\n  seq: 7\nhttp:\n  method: GET\n  url: http://x\nsettings:\n  maxRedirects: 5\n";
 
-// The user picks a custom timeout; the reload picks the same and changes max redirects.
+// The user picks no timeout limit; the reload picks the same and changes max redirects.
 fn settings_race() -> SectionRace {
     SectionRace {
         text: SETTINGS_FILE,
@@ -1834,7 +1834,7 @@ fn settings_race() -> SectionRace {
             let section = ed.read(cx).settings().clone();
             cx.update_window(win, |_, w, cx| {
                 section.update(cx, |s, cx| {
-                    s.set_timeout_mode(apinata_app::settings_section::TimeoutMode::Custom, w, cx)
+                    s.set_timeout_mode(apinata_app::settings_section::TimeoutMode::Unlimited, w, cx)
                 })
             })
             .unwrap();
