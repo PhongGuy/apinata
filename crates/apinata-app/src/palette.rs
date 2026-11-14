@@ -999,13 +999,18 @@ fn palette_row(ix: usize, entry: &PaletteEntry, target: Option<SharedString>) ->
             .child(label)
             .child(
                 h_flex()
+                    .min_w_0()
                     .gap(style::SPACE_1)
-                    // The request a row command acts on, when that is the tree's row.
+                    // The request a row command acts on, when that is the tree's row; a long
+                    // name is cut as a tab's is, so the label keeps its room.
                     .children(target.clone().map(|name| {
                         div()
                             .id(("palette-target", ix))
                             .aria_label(name.clone())
                             .test_support()
+                            .min_w_0()
+                            .max_w(style::TAB_MAX_WIDTH)
+                            .truncate()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(name)

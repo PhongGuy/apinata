@@ -290,3 +290,49 @@ fn a_row_command_from_the_tree_names_the_request_it_acts_on(cx: &mut TestAppCont
         .unwrap();
     assert_eq!(named.as_deref(), Some("b"));
 }
+
+#[gpui_kit::test]
+fn a_long_target_name_is_cut_and_leaves_the_label_in_view(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let long = "a very long request name ".repeat(12);
+    let col = support::write_tree(&[
+        ("opencollection.yml", support::ROOT),
+        ("a.yml", &support::request("a", "http://x/a")),
+        ("long.yml", &support::request(long.trim(), "http://x/long")),
+    ]);
+    let s = support::started(cx, &col);
+    select_in_tree(cx, &s, support::row("long.yml"));
+    cx.simulate_keystrokes(s.win, &support::key("shift-p"));
+    support::frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input("Copy as curl", cx))
+        .unwrap();
+    support::frame(cx, s.win);
+    let curl = palette_items()
+        .iter()
+        .position(|e| e.label == "Copy as curl")
+        .expect("Copy as curl is a palette entry");
+    cx.update_window(s.win, |_, w, _| {
+        let max = apinata_app::style::resolve(apinata_app::style::TAB_MAX_WIDTH, w);
+        let palette = w.find("command-palette").bounds();
+        let target = w
+            .within("command-palette")
+            .find(("palette-target", curl))
+            .bounds();
+        assert!(
+            target.size.width <= max + gpui_kit::px(1.),
+            "{target:?} is capped at {max:?}"
+        );
+        assert!(
+            target.right() <= palette.right(),
+            "{target:?} stays in {palette:?}"
+        );
+        // The label starts at the row's left edge; with the name capped, the rest of the row
+        // is the label's, far more than "Copy as curl" needs.
+        let room = target.left() - palette.left();
+        assert!(
+            room >= palette.size.width - max * 1.5,
+            "the label keeps {room:?}"
+        );
+    })
+    .unwrap();
+}
