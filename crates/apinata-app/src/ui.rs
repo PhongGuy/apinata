@@ -47,8 +47,8 @@ pub use crate::kv_grid::{KvCell, KvView, kv_view};
 use crate::style::{
     CHECKBOX_SIZE, DIALOG_CLOSE_INSET, DIALOG_FOOTER_GAP, DIALOG_PADDING, DISABLED_OPACITY, DOT,
     FOCUS_RING_ROOM, FORM_LABEL_LINE_HEIGHT, FORM_LABEL_WIDTH, FORM_STACK_WIDTH, INPUT_HEIGHT,
-    METHOD_COLUMN, RADIUS, SELECT_CHEVRON, SELECT_MAX_WIDTH, SPACE_1, SPACE_2, SPACE_3, SPACE_5,
-    STRIP_FADE_WIDTH, TEXT_CONTROL, TEXT_SMALL, TEXT_UI, kit_size, resolve,
+    METHOD_COLUMN, RADIUS, ROW_HEIGHT, SELECT_CHEVRON, SELECT_MAX_WIDTH, SPACE_1, SPACE_2, SPACE_3,
+    SPACE_5, STRIP_FADE_WIDTH, TEXT_CONTROL, TEXT_SMALL, TEXT_UI, kit_size, resolve,
 };
 use crate::theme::{self, SelectedStyle, Status, selected_look};
 use crate::zoom;
@@ -2143,6 +2143,7 @@ struct FadeLayout {
     edges: (bool, bool),
     cover: (Pixels, Pixels),
     cover_right: (Pixels, Pixels),
+    slot: Pixels,
     fade: Pixels,
 }
 
@@ -2158,29 +2159,35 @@ impl StripFades {
     ) -> Vec<AnyElement> {
         let seen = self.0.get();
         let edges = hidden_edges(scroll, items);
-        let cover = left_cover(scroll, items);
+        let cover = left_cover(scroll, items, seen.slot, seen.fade);
         let cover_right = right_cover(scroll, items);
         // The marker measures the wrapper and redraws once when it or the edges changed
         // after this render, so a resize or a reveal is not left a frame behind.
-        let (cell, handle, fade) = (Rc::clone(&self.0), scroll.clone(), seen.fade);
+        let (cell, handle, slot, fade) = (Rc::clone(&self.0), scroll.clone(), seen.slot, seen.fade);
         let view = scroll.bounds();
         let drawn = FadeLayout {
             view,
             edges,
             cover,
             cover_right,
+            slot,
             fade,
             ..seen
         };
         let watch = canvas(
             move |host, window, _| {
+                let (slot, fade) = (
+                    resolve(ROW_HEIGHT, window),
+                    resolve(STRIP_FADE_WIDTH, window),
+                );
                 let now = FadeLayout {
                     host,
                     view: handle.bounds(),
                     edges: hidden_edges(&handle, items),
-                    cover: left_cover(&handle, items),
+                    cover: left_cover(&handle, items, slot, fade),
                     cover_right: right_cover(&handle, items),
-                    fade: resolve(STRIP_FADE_WIDTH, window),
+                    slot,
+                    fade,
                 };
                 cell.set(now);
                 if now != drawn {
@@ -2281,8 +2288,9 @@ fn hidden_edges(scroll: &ScrollHandle, items: usize) -> (bool, bool) {
 
 // How far past the viewport's left edge an item cut there reaches, and the gap before the
 // next item, when the strip is scrolled to its end and so can neither hide that item nor show
-// it whole; zeros otherwise.
-fn left_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
+// it whole; zeros otherwise. It stays covered until its trailing `slot` and a fade width of
+// label both clear the `fade`, so no close button shows beside a name too faded to read.
+fn left_cover(scroll: &ScrollHandle, items: usize, slot: Pixels, fade: Pixels) -> (Pixels, Pixels) {
     if hidden_edges(scroll, items) != (true, false) {
         return (px(0.), px(0.));
     }
@@ -2297,10 +2305,14 @@ fn left_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
         return (px(0.), px(0.));
     };
     let cut = bounds[ix];
+    let shown = cut.right() + x - view.left();
+    if shown >= slot + fade * 2. {
+        return (px(0.), px(0.));
+    }
     let gap = bounds
         .get(ix + 1)
         .map_or(px(0.), |next| (next.left() - cut.right()).max(px(0.)));
-    (cut.right() + x - view.left(), gap)
+    (shown, gap)
 }
 
 // How far before the viewport's right edge an item cut there reaches, and the gap after the
@@ -2335,8 +2347,8 @@ fn cover_extent(cover: (Pixels, Pixels), fade: Pixels) -> (Pixels, Pixels) {
 }
 
 /// Whether the last `tail` of item `ix` of the strip `scroll` tracks lies wholly outside both
-/// of the strip's fades and their covers, as of the last layout. True before any layout, so
-/// nothing is held back that was never measured.
+/// of the strip's fades and their covers, as of the last layout; `tail` is the items' close
+/// slot. True before any layout, so nothing is held back that was never measured.
 pub fn tail_clear_of_fades(
     scroll: &ScrollHandle,
     items: usize,
@@ -2349,7 +2361,7 @@ pub fn tail_clear_of_fades(
     };
     let (hidden_left, hidden_right) = hidden_edges(scroll, items);
     let (view, x) = (scroll.bounds(), scroll.offset().x);
-    let (solid, grade) = cover_extent(left_cover(scroll, items), fade);
+    let (solid, grade) = cover_extent(left_cover(scroll, items, tail, fade), fade);
     let shown = if hidden_left { solid + grade } else { px(0.) };
     let from = view.left() + shown;
     let (solid, grade) = cover_extent(right_cover(scroll, items), fade);

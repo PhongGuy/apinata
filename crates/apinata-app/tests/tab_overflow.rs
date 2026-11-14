@@ -1557,3 +1557,60 @@ fn a_tab_chosen_without_a_click_under_the_pointer_is_revealed_at_once(cx: &mut T
         "tab {ix} {tab:?} still under the right fade {fr:?}"
     );
 }
+
+// From each wheel position that leaves the chosen tab cut at the strip's left edge, a click on
+// what shows of its label reveals it once the pointer leaves, as a click on any other tab does.
+#[gpui_kit::test]
+fn clicking_the_active_tab_after_a_wheel_reveals_it(cx: &mut TestAppContext) {
+    let count = 9;
+    let (_col, s) = shell_strip(cx, count, 640., 1.0);
+    let away = point(px(4.), px(700.));
+    let slot = cx
+        .update_window(s.win, |_, w, _| {
+            apinata_app::style::resolve(apinata_app::style::ROW_HEIGHT, w)
+        })
+        .unwrap();
+    let mut clicks = 0;
+    for k in 1..14 {
+        move_pointer(cx, s.win, away);
+        s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(0)));
+        frames(cx, s.win, 6);
+        wheel_notches(cx, s.win, k);
+        let (view_left, _, b) = view_and_tab(cx, s.win, 0);
+        // The label side of what shows of the tab, short of its close slot.
+        let (lo, hi) = (b.left().max(view_left), b.right() - slot);
+        if b.left() >= view_left - px(1.) || hi - lo < px(8.) {
+            continue;
+        }
+        let strip = cx
+            .update_window(s.win, |_, w, _| w.find("tab-strip").bounds())
+            .unwrap();
+        let at = point((lo + hi) / 2., strip.center().y) - strip.origin;
+        cx.update_window(s.win, |_, w, cx| w.click_at("tab-strip", at, cx))
+            .unwrap();
+        frames(cx, s.win, 6);
+        move_pointer(cx, s.win, away);
+        frames(cx, s.win, 6);
+        clicks += 1;
+        let (tab, fl, fr) = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                (
+                    w.within("tab-strip").find(0usize).bounds(),
+                    w.try_find("tab-strip-fade-left").map(|f| f.bounds()),
+                    w.try_find("tab-strip-fade-right").map(|f| f.bounds()),
+                )
+            })
+            .unwrap();
+        assert!(
+            tab.left() >= view_left - px(1.)
+                && fl.is_none_or(|f| tab.left() >= f.right() - px(1.))
+                && fr.is_none_or(|f| tab.right() <= f.left() + px(1.)),
+            "wheeled {k}: the clicked active tab {tab:?} stays hidden, fades {fl:?} {fr:?}"
+        );
+    }
+    assert!(
+        clicks > 0,
+        "no wheel left the active tab cut at the left edge"
+    );
+}
