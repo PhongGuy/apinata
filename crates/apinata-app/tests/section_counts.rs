@@ -188,3 +188,36 @@ fn the_auth_ring_names_the_auth_that_applies(cx: &mut TestAppContext) {
         Some("Uses API Key")
     );
 }
+
+// The ring is too small to aim at, so hovering anywhere on a marked tab says what it marks.
+#[gpui_kit::test]
+fn hovering_a_marked_tab_says_what_its_ring_means(cx: &mut TestAppContext) {
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", A)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    let tip = |cx: &mut TestAppContext, ix: usize| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.hover(("section", ix), cx);
+        })
+        .unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(2));
+        cx.run_until_parked();
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("section-mode-tooltip")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap()
+    };
+    assert_eq!(
+        tip(cx, Section::Body as usize).as_deref(),
+        Some("Has a body")
+    );
+    assert_eq!(
+        tip(cx, Section::Params as usize),
+        None,
+        "a counted tab has no ring to explain"
+    );
+}
