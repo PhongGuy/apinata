@@ -2401,12 +2401,27 @@ impl ResponsePane {
         save_example::blocked(&view)
     }
 
+    // The kept send on screen: the one picked from history, else the live result once the
+    // store has kept it, else the kept result restored as the latest.
+    fn shown_seq(&self, cx: &App) -> Option<u64> {
+        let send = self.send.read(cx);
+        if let Some(seq) = send.viewing() {
+            return Some(seq);
+        }
+        let shown = |k: &&KeptSend| match (send.kept_as(), send.restored_ref()) {
+            (Some(kept), _) => kept.is(k),
+            (None, Some(restored)) => k.saved_at == restored.saved_at,
+            (None, None) => false,
+        };
+        self.history.iter().find(shown).map(|k| k.seq)
+    }
+
     // The "Previous runs" dropdown of kept sends, newest first, with the shown one checked.
     fn history_button(&self, cx: &Context<Self>) -> Option<AnyElement> {
         if self.history.is_empty() {
             return None;
         }
-        let viewing = self.send.read(cx).viewing();
+        let viewing = self.shown_seq(cx);
         let sends: Rc<Vec<KeptSend>> = Rc::new(self.history.clone());
         let muted = cx.theme().muted_foreground;
         let pane = cx.entity().downgrade();
@@ -2416,11 +2431,13 @@ impl ResponsePane {
             "Previous runs",
             cx,
         )
-        .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, cx| {
+        .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
             // The menu is built once as it opens, so its ages are read then; a closed
             // menu draws no age and keeps no timer armed.
             let now = last_response::wall_now(cx);
-            menu = crate::ui::checks_right(menu.scrollable(true));
+            // The kit's default cap is narrower than a full row, which it would then clip.
+            let width = style::resolve(style::HISTORY_MENU_WIDTH, window);
+            menu = crate::ui::checks_right(menu.scrollable(true).max_w(width));
             for (ix, send) in sends.iter().enumerate() {
                 let (seq, line) = (send.seq, history_row(send, now));
                 let pane = pane.clone();
@@ -2447,6 +2464,8 @@ impl ResponsePane {
                             })
                             .child(
                                 div()
+                                    .id(("history-summary", ix))
+                                    .test_support()
                                     .flex_none()
                                     .text_color(muted)
                                     .child(line.summary.clone()),

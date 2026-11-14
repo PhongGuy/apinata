@@ -576,6 +576,26 @@ pub fn missing_input(
         })
 }
 
+/// A refused field's reason in small danger-coloured text, placed under the field by the
+/// caller; it wraps in its column and reads as its own label.
+pub fn field_error(
+    id: impl Into<ElementId>,
+    text: impl Into<SharedString>,
+    cx: &App,
+) -> AnyElement {
+    let text = text.into();
+    div()
+        .w_full()
+        .whitespace_normal()
+        .id(id)
+        .test_support()
+        .aria_label(text.clone())
+        .text_size(TEXT_SMALL)
+        .text_color(cx.theme().danger)
+        .child(text)
+        .into_any_element()
+}
+
 // The 2px danger-coloured outline laid over an input's frame.
 fn danger_ring(id: ElementId, danger: Hsla) -> impl IntoElement {
     div()
@@ -3469,6 +3489,7 @@ impl RenderOnce for FormRow {
                 div()
                     .id(id)
                     .test_support()
+                    .aria_label(text.clone())
                     .text_size(TEXT_SMALL)
                     .text_color(cx.theme().muted_foreground)
                     .child(text)

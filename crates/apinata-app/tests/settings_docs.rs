@@ -1,7 +1,9 @@
 use crate::support;
 
 use apinata_app::command::Edit;
-use apinata_app::settings_section::{DocsMode, DocsSection, SettingsSection, TimeoutMode};
+use apinata_app::settings_section::{
+    DIGITS_NOTE, DocsMode, DocsSection, SettingsSection, TIMEOUT_ZERO_NOTE, TimeoutMode,
+};
 use apinata_app::style::{FORM_INPUT_WIDTH, at_zoom};
 use apinata_core::{RequestSettings, Timeout};
 use gpui_kit::test::TestWindowExt;
@@ -75,11 +77,11 @@ fn max_redirects_take_digits_only(cx: &mut TestAppContext) {
     type_at_end(cx, win, None, "set-max-redirects", "x");
     cx.run_until_parked();
     assert_eq!(host.read_with(cx, |h, _| h.edits.len()), n);
-    assert!(found(cx, win, "set-invalid"));
+    assert!(found(cx, win, "set-max-redirects-error"));
     replace_input(cx, win, None, "set-max-redirects", "");
     cx.run_until_parked();
     assert_eq!(last(cx, &host).max_redirects, 0);
-    assert!(!found(cx, win, "set-invalid"));
+    assert!(!found(cx, win, "set-max-redirects-error"));
 }
 
 // With following off the limit means nothing, so its field is disabled and says why on
@@ -137,7 +139,7 @@ fn sent(cx: &mut TestAppContext, host: &Entity<SectionHost<SettingsSection>>) ->
     host.read_with(cx, |h, _| h.edits.len())
 }
 
-// No limit is a choice of its own, so Custom always holds a limit above 0: picking Custom
+// Never time out is a choice of its own, so Custom always holds a limit above 0: picking Custom
 // with no number yet sends nothing until one is typed, and a typed 0 is refused.
 #[gpui_kit::test]
 fn timeout_is_default_no_limit_or_custom(cx: &mut TestAppContext) {
@@ -172,7 +174,7 @@ fn timeout_is_default_no_limit_or_custom(cx: &mut TestAppContext) {
     replace_input(cx, win, None, "set-timeout", "0");
     cx.run_until_parked();
     assert_eq!(last(cx, &host).timeout, Timeout::Millis(5000));
-    assert!(found(cx, win, "set-invalid"));
+    assert!(found(cx, win, "set-timeout-error"));
     mode(cx, win, &s, TimeoutMode::Unlimited);
     assert_eq!(last(cx, &host).timeout, Timeout::Unlimited);
     mode(cx, win, &s, TimeoutMode::Custom);
@@ -181,7 +183,84 @@ fn timeout_is_default_no_limit_or_custom(cx: &mut TestAppContext) {
     assert_eq!(last(cx, &host).timeout, Timeout::Inherit);
 }
 
-// A file's `timeout: 0` reads as No limit, not as a custom timeout of 0.
+// A refused number is reported under its own field in the error style Preferences uses: the
+// danger icon and, while focused, the danger ring on the input, then the reason below it.
+fn refused_under_its_field(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    (row, input, note): (&'static str, &'static str, &'static str),
+) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let error = w
+            .within(row)
+            .find(gpui_kit::SharedString::from(format!("{input}-error")));
+        assert_eq!(error.label(), Some(note));
+        let error = error.bounds();
+        w.within(row).find(gpui_kit::SharedString::from(format!(
+            "{input}-invalid-icon"
+        )));
+        w.within(row)
+            .find(gpui_kit::SharedString::from(format!("{input}-danger-ring")));
+        let field = w.find(input).bounds();
+        assert!(error.top() >= field.bottom(), "{error:?} under {field:?}");
+        let tags = w.find("set-row-tags").bounds();
+        assert!(error.bottom() <= tags.top(), "{error:?} above {tags:?}");
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_zero_timeout_is_refused_under_the_timeout_field(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Millis(5000);
+    let (win, _host, _s) = settings(cx, base);
+    replace_input(cx, win, None, "set-timeout", "0");
+    cx.run_until_parked();
+    refused_under_its_field(
+        cx,
+        win,
+        ("set-row-timeout", "set-timeout", TIMEOUT_ZERO_NOTE),
+    );
+    assert!(!found(cx, win, "set-max-redirects-error"));
+}
+
+#[gpui_kit::test]
+fn a_non_digit_max_redirects_is_refused_under_its_field(cx: &mut TestAppContext) {
+    let (win, _host, _s) = settings(cx, RequestSettings::new());
+    type_at_end(cx, win, None, "set-max-redirects", "x");
+    cx.run_until_parked();
+    refused_under_its_field(
+        cx,
+        win,
+        ("set-row-max-redirects", "set-max-redirects", DIGITS_NOTE),
+    );
+    assert!(!found(cx, win, "set-timeout-error"));
+}
+
+// Each timeout choice says under the row where its limit comes from, so Default and Never
+// time out read apart even when the Preferences default is no limit.
+#[gpui_kit::test]
+fn each_timeout_choice_says_where_its_limit_comes_from(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Inherit;
+    let (win, _host, s) = settings(cx, base);
+    for m in [
+        TimeoutMode::Inherit,
+        TimeoutMode::Unlimited,
+        TimeoutMode::Custom,
+    ] {
+        mode(cx, win, &s, m);
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let hint = w.within("set-row-timeout").find("set-timeout-hint");
+            assert_eq!(hint.label(), Some(m.hint()), "{m:?}");
+        })
+        .unwrap();
+    }
+}
+
+// A file's `timeout: 0` reads as Never time out, not as a custom timeout of 0.
 #[gpui_kit::test]
 fn a_zero_timeout_shows_as_no_limit(cx: &mut TestAppContext) {
     let mut base = RequestSettings::new();
@@ -193,7 +272,7 @@ fn a_zero_timeout_shows_as_no_limit(cx: &mut TestAppContext) {
     );
     assert_eq!(
         s.read_with(cx, |s, cx| s.timeout_shown(cx)).as_deref(),
-        Some("No limit")
+        Some("Never time out")
     );
     assert!(!found(cx, win, "set-timeout"));
 }

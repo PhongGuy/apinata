@@ -51,7 +51,11 @@ fn inherit_names_the_timeout_that_applies() {
     let thirty = Some(Duration::from_secs(30));
     assert_eq!(TimeoutMode::Inherit.label(thirty), "Default (30 s)");
     assert_eq!(TimeoutMode::Custom.label(thirty), "Custom");
-    assert_eq!(TimeoutMode::Unlimited.label(thirty), "No limit");
+    assert_eq!(TimeoutMode::Unlimited.label(thirty), "Never time out");
+    assert_ne!(
+        TimeoutMode::Unlimited.label(None),
+        TimeoutMode::Inherit.label(None)
+    );
 }
 
 fn timeout_shown(cx: &mut TestAppContext, view: &Entity<RequestEditor>) -> Option<String> {
@@ -260,11 +264,11 @@ fn a_hand_edited_timeout_past_the_range_is_held_to_a_day() {
 }
 
 // An explicit `timeout: 0` is the request's own "no limit", which the executor sends whatever
-// the Preferences default, so it shows as No limit; a trip through Default and back is clean.
+// the Preferences default, so it shows as Never time out; a trip through Default and back is clean.
 #[gpui_kit::test]
 fn an_explicit_zero_timeout_shows_as_no_limit_and_round_trips(cx: &mut TestAppContext) {
     for (timeout, shown, own) in [
-        ("0", "No limit", TimeoutMode::Unlimited),
+        ("0", "Never time out", TimeoutMode::Unlimited),
         ("2500", "Custom", TimeoutMode::Custom),
     ] {
         let file = format!(

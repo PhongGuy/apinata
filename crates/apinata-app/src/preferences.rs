@@ -665,16 +665,11 @@ impl PreferencesView {
             .gap(SPACE_1)
             .child(control)
             .when_some(self.error_of(field), |el, error| {
-                el.child(
-                    div()
-                        .w_full()
-                        .whitespace_normal()
-                        .id(SharedString::from(format!("{}-error", field.id())))
-                        .test_support()
-                        .text_size(TEXT_SMALL)
-                        .text_color(cx.theme().danger)
-                        .child(error.to_string()),
-                )
+                el.child(ui::field_error(
+                    SharedString::from(format!("{}-error", field.id())),
+                    error.to_string(),
+                    cx,
+                ))
             })
     }
 
