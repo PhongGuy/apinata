@@ -10,7 +10,7 @@ use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
+    App, Div, Entity, EventEmitter, SharedString, Subscription, TestSupportExt, Window, div,
 };
 use std::time::Duration;
 
@@ -19,15 +19,31 @@ use crate::command::Edit;
 use crate::kv_table::set_text;
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::section::SectionEdit;
-use crate::style::{self, FORM_INPUT_WIDTH, SPACE_2};
+use crate::style::{self, FORM_INPUT_WIDTH, SPACE_1, SPACE_2};
 use crate::tag_input::{TagField, TagsChanged};
 use crate::ui;
 
-/// Why a typed custom timeout was refused: the limit is lifted by No limit, never by 0.
-pub const TIMEOUT_ZERO_NOTE: &str = "Enter a number above 0, or choose No limit.";
+/// Why a typed custom timeout was refused: the limit is lifted by Never time out, never by 0.
+pub const TIMEOUT_ZERO_NOTE: &str = "Enter a number above 0, or choose Never time out.";
 
-// Why a typed number was refused for not being digits.
-const DIGITS_NOTE: &str = "Only digits are allowed; the last valid number is kept.";
+/// Why a typed number was refused for not being digits.
+pub const DIGITS_NOTE: &str = "Only digits are allowed; the last valid number is kept.";
+
+// The two number inputs, each refused and marked on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumberField {
+    MaxRedirects,
+    Timeout,
+}
+
+impl NumberField {
+    fn id(self) -> &'static str {
+        match self {
+            NumberField::MaxRedirects => "set-max-redirects",
+            NumberField::Timeout => "set-timeout",
+        }
+    }
+}
 
 /// Whether a request takes the Preferences default timeout, no limit, or a limit of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,8 +67,17 @@ impl TimeoutMode {
         match (self, default) {
             (TimeoutMode::Inherit, None) => "Default (no limit)".into(),
             (TimeoutMode::Inherit, Some(d)) => format!("Default ({} s)", d.as_secs()).into(),
-            (TimeoutMode::Unlimited, _) => "No limit".into(),
+            (TimeoutMode::Unlimited, _) => "Never time out".into(),
             (TimeoutMode::Custom, _) => "Custom".into(),
+        }
+    }
+
+    /// The line under the timeout row saying where this mode's limit comes from.
+    pub fn hint(self) -> &'static str {
+        match self {
+            TimeoutMode::Inherit => "Uses the request timeout set in Preferences.",
+            TimeoutMode::Unlimited => "Ignores the request timeout set in Preferences.",
+            TimeoutMode::Custom => "In milliseconds; Preferences sets its timeout in seconds.",
         }
     }
 
@@ -100,8 +125,8 @@ pub struct SettingsSection {
     default_timeout: Option<Duration>,
     timeout: Entity<InputState>,
     tags: Entity<TagField>,
-    // Why the last typed number was refused, shown under the rows.
-    invalid: Option<&'static str>,
+    // The field whose last typed number was refused, and why; shown under that field.
+    invalid: Option<(NumberField, &'static str)>,
     // Where the form rows report their bounds to the scroll area that holds the section.
     follow: FocusFollow,
     _subs: Vec<Subscription>,
@@ -146,7 +171,8 @@ impl SettingsSection {
                     return;
                 }
                 let text = state.read(cx).value().to_string();
-                this.number(digits::<u32>(&text), |s, n| s.max_redirects = n, cx);
+                let n = digits::<u32>(&text);
+                this.number(NumberField::MaxRedirects, n, |s, n| s.max_redirects = n, cx);
             }),
             cx.subscribe(&timeout, |this, state, event: &InputEvent, cx| {
                 if !matches!(event, InputEvent::Change) {
@@ -155,7 +181,7 @@ impl SettingsSection {
                 let text = state.read(cx).value().to_string();
                 let millis = digits::<u64>(&text);
                 if millis == Some(0) {
-                    this.invalid = Some(TIMEOUT_ZERO_NOTE);
+                    this.invalid = Some((NumberField::Timeout, TIMEOUT_ZERO_NOTE));
                     cx.notify();
                     return;
                 }
@@ -163,7 +189,8 @@ impl SettingsSection {
                     this.custom = millis;
                     this.custom_pending = false;
                 }
-                this.number(millis.map(Timeout::Millis), |s, t| s.timeout = t, cx);
+                let timeout = millis.map(Timeout::Millis);
+                this.number(NumberField::Timeout, timeout, |s, t| s.timeout = t, cx);
             }),
             cx.subscribe_in(
                 &timeout_select,
@@ -312,19 +339,67 @@ impl SettingsSection {
     // A typed number either updates one field and is sent, or is refused and only flagged.
     fn number<T>(
         &mut self,
+        field: NumberField,
         value: Option<T>,
         apply: impl FnOnce(&mut RequestSettings, T),
         cx: &mut Context<Self>,
     ) {
         match value {
             Some(v) => {
-                self.invalid = None;
+                self.invalid = self.invalid.filter(|(f, _)| *f != field);
                 apply(&mut self.base, v);
                 self.emit(cx);
             }
-            None => self.invalid = Some(DIGITS_NOTE),
+            None => self.invalid = Some((field, DIGITS_NOTE)),
         }
         cx.notify();
+    }
+
+    // `field`'s input at the form width, marked while its last typed number stands refused.
+    fn number_input(&self, field: NumberField, disabled: bool, window: &Window, cx: &App) -> Div {
+        let id = field.id();
+        ui::invalid_input(
+            Input::new(self.number_state(field))
+                .id(id)
+                .w(FORM_INPUT_WIDTH)
+                .disabled(disabled)
+                .bg(ui::field_fill(disabled, cx)),
+            div().w(FORM_INPUT_WIDTH).flex_none(),
+            self.number_state(field),
+            self.refusal(field).is_some(),
+            (
+                SharedString::from(format!("{id}-danger-ring")).into(),
+                SharedString::from(format!("{id}-invalid-icon")).into(),
+            ),
+            window,
+            cx,
+        )
+    }
+
+    fn number_state(&self, field: NumberField) -> &Entity<InputState> {
+        match field {
+            NumberField::MaxRedirects => &self.max_redirects,
+            NumberField::Timeout => &self.timeout,
+        }
+    }
+
+    fn refusal(&self, field: NumberField) -> Option<&'static str> {
+        self.invalid
+            .filter(|(f, _)| *f == field)
+            .map(|(_, note)| note)
+    }
+
+    // A row's control with `field`'s refusal, when it has one, right under it.
+    fn with_refusal(&self, field: NumberField, control: impl IntoElement, cx: &App) -> Div {
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .gap(SPACE_1)
+            .child(control)
+            .when_some(self.refusal(field), |el, note| {
+                let id = SharedString::from(format!("{}-error", field.id()));
+                el.child(ui::field_error(id, note, cx))
+            })
     }
 
     fn toggle(&mut self, apply: impl FnOnce(&mut RequestSettings), cx: &mut Context<Self>) {
@@ -349,11 +424,12 @@ impl SettingsSection {
 }
 
 impl Render for SettingsSection {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let s = self.base;
+        let mode = self.timeout_mode();
         let follow = self.follow.clone();
         let followed = move |row: ui::FormRow| Followed::new(row.wrapper_id(), &follow, row);
-        let custom = self.timeout_mode() == TimeoutMode::Custom;
+        let custom = mode == TimeoutMode::Custom;
         // Checkboxes carry no label of their own: the form row's label names them, so every
         // label sits in one column at one size.
         // Wraps so the input drops under the select in a narrow side-by-side column.
@@ -368,13 +444,7 @@ impl Render for SettingsSection {
             )
             .when(custom, |r| {
                 r.child(ui::with_unit(
-                    ui::padded_input(
-                        Input::new(&self.timeout)
-                            .id("set-timeout")
-                            .w(FORM_INPUT_WIDTH)
-                            .bg(ui::field_fill(false, cx)),
-                        &self.timeout,
-                    ),
+                    self.number_input(NumberField::Timeout, false, window, cx),
                     "set-timeout-unit",
                     "ms",
                     cx,
@@ -409,36 +479,38 @@ impl Render for SettingsSection {
                 "set-row-max-redirects",
                 "Max redirects",
                 // Unfollowed redirects make the limit moot, so the field is disabled but keeps its number.
-                div()
-                    .id("set-max-redirects-wrap")
-                    .when(!s.follow_redirects, |d| {
-                        d.tooltip(ui::text_tooltip(
-                            "set-max-redirects-tooltip",
-                            MAX_REDIRECTS_OFF_TIP,
-                        ))
-                    })
-                    .child(ui::padded_input(
-                        Input::new(&self.max_redirects)
-                            .id("set-max-redirects")
-                            .w(FORM_INPUT_WIDTH)
-                            .disabled(!s.follow_redirects)
-                            .bg(ui::field_fill(!s.follow_redirects, cx)),
-                        &self.max_redirects,
-                    )),
+                self.with_refusal(
+                    NumberField::MaxRedirects,
+                    div()
+                        .id("set-max-redirects-wrap")
+                        .when(!s.follow_redirects, |d| {
+                            d.tooltip(ui::text_tooltip(
+                                "set-max-redirects-tooltip",
+                                MAX_REDIRECTS_OFF_TIP,
+                            ))
+                        })
+                        .child(self.number_input(
+                            NumberField::MaxRedirects,
+                            !s.follow_redirects,
+                            window,
+                            cx,
+                        )),
+                    cx,
+                ),
             )))
-            .child(followed(ui::form_row(
-                "set-row-timeout",
-                "Timeout",
-                timeout,
-            )))
+            .child(followed(
+                ui::form_row(
+                    "set-row-timeout",
+                    "Timeout",
+                    self.with_refusal(NumberField::Timeout, timeout, cx),
+                )
+                .hint("set-timeout-hint", mode.hint()),
+            ))
             .child(followed(ui::form_row(
                 "set-row-tags",
                 "Tags",
                 self.tags.clone(),
             )))
-            .when_some(self.invalid, |v, note| {
-                v.child(ui::form_note("set-invalid", note))
-            })
     }
 }
 
