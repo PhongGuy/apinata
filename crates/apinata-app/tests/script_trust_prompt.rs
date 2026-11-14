@@ -564,7 +564,8 @@ fn settings_options_label_the_stored_block_never() {
 }
 
 // Texts that are only assertion or variable expressions name what runs and show it, while the
-// choices, default and what Run stores stay those of the script question.
+// choice ids, default and what each answer stores stay those of the script question; the
+// labels say that Run trusts the collection and what Never blocks.
 #[test]
 fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
     let right = ScriptTextKind::AssertionRight;
@@ -574,15 +575,37 @@ fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
     assert!(detail.contains("`${1+1}`"), "{detail}");
     assert!(detail.contains("secrets"), "{detail}");
     let plain = trust_question();
-    let parts = |q: &apinata_app::confirm::Ask| {
-        let c: Vec<(&str, String)> = q
-            .choices
-            .iter()
-            .map(|c| (c.id, c.label.to_string()))
-            .collect();
+    let ids = |q: &apinata_app::confirm::Ask| {
+        let c: Vec<&str> = q.choices.iter().map(|c| c.id).collect();
         (c, q.default, q.cancel)
     };
-    assert_eq!(parts(&q), parts(&plain));
+    let labels = |q: &apinata_app::confirm::Ask| {
+        q.choices
+            .iter()
+            .map(|c| c.label.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&q), ids(&plain));
+    assert_eq!(
+        ids(&q),
+        (
+            vec![
+                "script-trust-run",
+                "script-trust-never",
+                "script-trust-skip"
+            ],
+            2,
+            2
+        )
+    );
+    assert_eq!(
+        labels(&q),
+        [
+            "Run and trust this collection",
+            "Never run this collection's JavaScript",
+            "Don't run"
+        ]
+    );
     let var = ScriptTextKind::Variable { name: "n".into() };
     let q = trust_question_about(false, [(&var, "1 + 1")]);
     assert_eq!(q.title.as_ref(), "This variable runs JavaScript");
@@ -594,8 +617,21 @@ fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
         q.title.as_ref(),
         "These assertions and variables run JavaScript"
     );
+    assert_eq!(
+        labels(&q),
+        labels(&trust_question_about(false, [(&right, "x")]))
+    );
     let scratch = trust_question_about(true, [(&right, "`${1+1}`")]);
     assert!(!scratch.detail.as_deref().unwrap().contains("collection"));
+    assert_eq!(ids(&scratch), ids(&plain));
+    assert_eq!(
+        labels(&scratch),
+        [
+            "Run and trust the scratch pad",
+            "Never run the scratch pad's JavaScript",
+            "Don't run"
+        ]
+    );
     // Any script among the texts keeps the script question.
     let script = ScriptTextKind::Script {
         phase: ScriptPhase::PreRequest,
@@ -604,6 +640,8 @@ fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
     let q = trust_question_about(false, [(&right, "`${1+1}`"), (&script, CODE)]);
     assert_eq!(q.title.as_ref(), plain.title.as_ref());
     assert_eq!(q.detail, plain.detail);
+    assert_eq!(labels(&q), labels(&plain));
+    assert_eq!(ids(&q), ids(&plain));
 }
 
 #[gpui_kit::test]
@@ -667,6 +705,10 @@ fn run_on_the_assertion_question_allows_and_approves_it(cx: &mut TestAppContext)
     let s = started(cx, &col);
     let model = start_send(cx, &s);
     wait_real(cx, |cx| asked(cx, &s));
+    assert_eq!(
+        label(cx, s.win, "script-trust-run").as_deref(),
+        Some("Run and trust this collection")
+    );
     click(cx, &s, "script-trust-run");
     finished(cx, &model);
     let store = trust(&s);
@@ -681,6 +723,10 @@ fn never_on_the_assertion_question_blocks_the_collection(cx: &mut TestAppContext
     let s = started(cx, &col);
     let model = start_send(cx, &s);
     wait_real(cx, |cx| asked(cx, &s));
+    assert_eq!(
+        label(cx, s.win, "script-trust-never").as_deref(),
+        Some("Never run this collection's JavaScript")
+    );
     click(cx, &s, "script-trust-never");
     finished(cx, &model);
     assert_eq!(trust(&s).decision(&s.root), Some(ScriptDecision::Blocked));

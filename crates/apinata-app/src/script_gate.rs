@@ -130,8 +130,8 @@ pub fn trust_question_for(scratch: bool) -> Ask {
 }
 
 /// The trust question for `texts` (each kind with its shown text): when only assertions or
-/// variables need JavaScript, it names them and shows what runs; choices and default are
-/// those of [`trust_question_for`], as is what each answer stores.
+/// variables need JavaScript, it names them, shows what runs and words Run and Never to match;
+/// choice ids, default and what each answer stores are those of [`trust_question_for`].
 pub fn trust_question_about<'a>(
     scratch: bool,
     texts: impl IntoIterator<Item = (&'a ScriptTextKind, &'a str)>,
@@ -165,13 +165,25 @@ pub fn trust_question_about<'a>(
     } else {
         ("run", "them")
     };
-    let (vars, scripts) = if scratch {
-        ("your variables", "the scratch pad's scripts")
+    let (vars, scripts, run, never) = if scratch {
+        (
+            "your variables",
+            "the scratch pad's scripts",
+            "Run and trust the scratch pad",
+            "Never run the scratch pad's JavaScript",
+        )
     } else {
-        ("this collection's variables", "this collection's scripts")
+        (
+            "this collection's variables",
+            "this collection's scripts",
+            "Run and trust this collection",
+            "Never run this collection's JavaScript",
+        )
     };
-    // Run stores a decision for every script, so the detail says so rather than implying
-    // only these expressions are approved.
+    // Run stores a decision for every script, so the detail and the Run label say so rather
+    // than implying only these expressions are approved. Ids and order stay the script ones.
+    ask.choices[RUN].label = run.into();
+    ask.choices[NEVER].label = never.into();
     ask.title = title.into();
     ask.detail = Some(
         format!(
