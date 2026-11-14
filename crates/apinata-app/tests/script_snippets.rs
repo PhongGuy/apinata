@@ -578,3 +578,21 @@ fn a_snippet_follow_does_not_outlive_leaving_the_section(cx: &mut TestAppContext
         .unwrap();
     assert_eq!(before, after, "the body jumped on coming back");
 }
+
+// Snippet buttons are drawn like the app's other secondary buttons: the button fill, not the
+// field fill an outlined button takes.
+#[gpui_kit::test]
+fn snippet_buttons_take_the_secondary_button_fill(cx: &mut TestAppContext) {
+    use gpui_kit::component::ActiveTheme as _;
+    for theme in ["Apinata Dark", "Apinata High Contrast Dark"] {
+        let r = rig(cx);
+        use_theme(cx, theme);
+        show_section(&r, cx, Section::Tests);
+        frame(cx, r.win);
+        let button = cx.update(|cx| cx.theme().button);
+        assert!(
+            filled(cx, r.win, "snippet-status-200", button),
+            "{theme}: the snippet is not filled like a secondary button"
+        );
+    }
+}

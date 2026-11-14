@@ -1968,7 +1968,8 @@ impl TabArea {
 
     // Each tab's muted hint, by the shared rule over every open tab's label and place. A tab
     // that stands for a whole collection also names its folder whenever that collection's
-    // name is shared, since its title alone cannot say which one it is.
+    // name is shared, since its title alone cannot say which one it is; a folder's settings
+    // tab, whose title names no collection, always names its collection.
     fn details(&self, entries: &[TabEntry], labels: &[String], cx: &App) -> Vec<Option<String>> {
         let ws = self.workspace.read(cx);
         let tags = ws.collection_tags(cx);
@@ -1985,6 +1986,7 @@ impl TabArea {
                 let whole = match &e.kind {
                     TabKind::Collection | TabKind::Environments => true,
                     TabKind::Runner(path) => path.is_root(),
+                    TabKind::Folder(_) => return detail.or_else(|| tags.get(&e.root).cloned()),
                     _ => false,
                 };
                 detail.or_else(|| whole.then(|| hints.get(&e.root).cloned()).flatten())
@@ -2002,8 +2004,8 @@ impl TabArea {
         }
     }
 
-    /// The title `entry`'s tab shows: a request's name, "<name> Settings" for a folder or the
-    /// collection, "<name> Environments", "Run <name>" for a runner, or an example's name.
+    /// The title `entry`'s tab shows: a request's name, "<name> settings" for a folder or the
+    /// collection, "<name> environments", "Run <name>" for a runner, or an example's name.
     pub fn tab_label(&self, entry: &TabEntry, cx: &App) -> String {
         let snapshot = self.workspace.read(cx).snapshot(&entry.root, cx);
         let content = snapshot.as_ref().map(|s| &s.content);
@@ -2017,16 +2019,16 @@ impl TabArea {
                     .and_then(|c| c.folders.get(path))
                     .and_then(|v| v.name.clone())
                     .unwrap_or_else(|| path.file_name().to_owned());
-                format!("{name} Settings")
+                format!("{name} settings")
             }
             TabKind::Collection => {
                 let name = content.and_then(|c| c.collection.name.as_deref());
-                format!("{} Settings", label_or_dir(name, &entry.root))
+                format!("{} settings", label_or_dir(name, &entry.root))
             }
             // The tab stays on the collection it opened for, so it names it like Settings does.
             TabKind::Environments => {
                 let name = content.and_then(|c| c.collection.name.as_deref());
-                format!("{} Environments", label_or_dir(name, &entry.root))
+                format!("{} environments", label_or_dir(name, &entry.root))
             }
             TabKind::Runner(path) if path.is_root() => {
                 let name = content.and_then(|c| c.collection.name.as_deref());

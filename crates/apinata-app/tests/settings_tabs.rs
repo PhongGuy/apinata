@@ -343,7 +343,7 @@ fn the_collection_settings_tab_names_its_collection(cx: &mut TestAppContext) {
             .expect("a tab");
     assert_eq!(
         a.view.read_with(cx, |v, cx| v.tab_label(&entry, cx)),
-        "c Settings"
+        "c settings"
     );
 }
 
@@ -360,6 +360,33 @@ fn the_environments_tab_names_its_collection(cx: &mut TestAppContext) {
             .expect("a tab");
     assert_eq!(
         a.view.read_with(cx, |v, cx| v.tab_label(&entry, cx)),
-        "c Environments"
+        "c environments"
     );
+}
+
+// A folder's settings tab says which collection the folder is in, as the collection's own
+// tabs do, and its title follows the page heading's sentence case.
+#[gpui_kit::test]
+fn a_folder_settings_tab_names_its_collection(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let a = open_area_of(cx, tree());
+    open(cx, &a.ws, &a.root, TabKind::Folder(ip("users")));
+    cx.run_until_parked();
+    let entry =
+        a.ws.read_with(cx, |w, _| w.tabs().active().cloned())
+            .expect("a tab");
+    assert_eq!(
+        a.view.read_with(cx, |v, cx| v.tab_label(&entry, cx)),
+        "Users settings"
+    );
+    let detail = cx
+        .update_window(a.win, |_, w, cx| {
+            w.render_frame(cx);
+            (gpui_kit::base::test_support::texts(w).iter())
+                .filter(|t| t.path().contains(&("tab-detail", 0usize).into()))
+                .map(|t| t.text().to_owned())
+                .collect::<String>()
+        })
+        .unwrap();
+    assert_eq!(detail, "c");
 }

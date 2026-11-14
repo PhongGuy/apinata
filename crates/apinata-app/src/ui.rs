@@ -1332,29 +1332,23 @@ pub fn git_letter(id: ElementId, change: &GitChange, cx: &App) -> impl IntoEleme
 }
 
 /// A request mode marker: a hollow circle the size of [`dirty_dot`], so a chosen mode never
-/// reads as unsaved changes. `words` names it and is its hover text.
+/// reads as unsaved changes. `words` names it; the tab it sits in shows them on hover.
 pub fn mode_ring(id: impl Into<ElementId>, words: impl Into<SharedString>) -> Stateful<Div> {
     // Painted like `dirty_dot`, since the builder has no `App` to read the theme from.
     let words = words.into();
-    div()
-        .id(id)
-        .size(DOT)
-        .flex_none()
-        .aria_label(words.clone())
-        .tooltip(move |window, cx| Tooltip::new(words.clone()).build(window, cx))
-        .child(
-            canvas(
-                |_, _, _| {},
-                |bounds, _, window, cx| {
-                    let color = cx.theme().muted_foreground;
-                    window.paint_quad(
-                        outline(bounds, color, BorderStyle::Solid)
-                            .corner_radii(Corners::all(resolve(DOT, window) / 2.)),
-                    );
-                },
-            )
-            .size_full(),
+    div().id(id).size(DOT).flex_none().aria_label(words).child(
+        canvas(
+            |_, _, _| {},
+            |bounds, _, window, cx| {
+                let color = cx.theme().muted_foreground;
+                window.paint_quad(
+                    outline(bounds, color, BorderStyle::Solid)
+                        .corner_radii(Corners::all(resolve(DOT, window) / 2.)),
+                );
+            },
         )
+        .size_full(),
+    )
 }
 
 /// The key context an [`icon_button`]'s tooltip finds its action's shortcut in. Each such
