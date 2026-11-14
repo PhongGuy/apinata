@@ -45,7 +45,7 @@ fn examples_nest_under_their_request_collapsed_by_default() {
     let dir = write_tree(&refs);
     let content = SnapshotCache::new().build(&Collection::open(dir.path()).unwrap());
     let collections = [(dir.path(), "c", Some(&content))];
-    let nodes = build(&collections, &[], &Expanded::new(), "");
+    let nodes = build(&collections, &[], &Expanded::new(), "", None);
     let users = find(&nodes, &node_id(0, &ip("users.yml")));
     assert_eq!(users.kind, NodeKind::Request);
     assert!(!users.expanded, "collapsed by default");
@@ -79,7 +79,7 @@ fn examples_nest_under_their_request_collapsed_by_default() {
     let open = Expanded::from([(dir.path().to_path_buf(), HashSet::from([ip("users.yml")]))]);
     assert!(
         find(
-            &build(&collections, &[], &open, ""),
+            &build(&collections, &[], &open, "", None),
             &node_id(0, &ip("users.yml"))
         )
         .expanded

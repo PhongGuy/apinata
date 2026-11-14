@@ -229,6 +229,25 @@ fn same_named_examples_of_two_requests_name_their_requests() {
     );
 }
 
+// A draft sits in no folder, whatever folder it was started from, so its hint names its
+// collection while a saved twin names its folder.
+#[test]
+fn a_drafts_hint_names_its_collection_not_a_folder() {
+    let entries = [
+        entry(1, req("posts/untitled-1.draft")),
+        entry(2, req("posts/untitled-request.yml")),
+    ];
+    let places: Vec<Vec<String>> = (entries.iter())
+        .map(|e| tab_place(e, "Demo", None))
+        .collect();
+    assert_eq!(places, [vec!["Demo"], vec!["Demo", "posts"]]);
+    let labels = vec!["Untitled request".to_string(); 2];
+    assert_eq!(
+        tab_details(&entries, &labels, &places),
+        vec![Some("Demo".to_string()), Some("posts".to_string())]
+    );
+}
+
 #[test]
 fn no_tabs_no_details() {
     assert!(tab_details(&[], &[], &[]).is_empty());
