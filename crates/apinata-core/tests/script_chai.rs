@@ -114,7 +114,13 @@ async fn a_top_level_assertion_failure_takes_the_scripts_line_not_chais() {
         ),
     ]);
     let result = send(dir.path(), "r.yml", on()).await;
-    assert_eq!(console(&result), ["log:undefined"]);
+    assert_eq!(
+        console(&result),
+        [
+            "log:undefined",
+            "error:this request's tests, line 2: AssertionError: expected 1 to equal 2"
+        ]
+    );
     assert_eq!(
         tests(&result),
         [
