@@ -279,3 +279,133 @@ fn a_failed_send_keeps_the_history_dropdown(cx: &mut TestAppContext) {
     wait_real(cx, |cx| model.read_with(cx, |m, _| m.viewing()) == Some(0));
     assert_eq!(shown(cx, &model), Some(201));
 }
+
+// Whether each "Previous runs" row of a freshly opened menu is checked, newest first.
+fn row_checks(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, rows: usize) -> Vec<bool> {
+    cx.update_window(win, |_, w, cx| w.click("response-history", cx))
+        .unwrap();
+    frame(cx, win);
+    let checks = cx
+        .update_window(win, |_, w, _| {
+            let menu = w.within("popup-menu");
+            (0..rows)
+                .map(|ix| menu.find(ix).checked() == Some(true))
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    cx.update_window(win, |_, w, cx| w.press("escape", cx))
+        .unwrap();
+    frame(cx, win);
+    checks
+}
+
+#[gpui_kit::test]
+fn the_run_on_screen_carries_the_check(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    for (i, status) in [201u16, 202, 203].into_iter().enumerate() {
+        store
+            .save(&root, &ip("a.yml"), &kept(status), at(1_000 + i as u64))
+            .unwrap();
+    }
+    cx.update(|cx| install(store.clone(), cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, _| p.history().len() == 3) && shown(cx, &model) == Some(203)
+    });
+    frame(cx, win);
+    // The newest kept run is restored on open, so the first row is the one shown.
+    assert_eq!(row_checks(cx, win, 3), [true, false, false]);
+    pane.update(cx, |p, cx| p.show_history(0, cx));
+    wait_real(cx, |cx| model.read_with(cx, |m, _| m.viewing()) == Some(0));
+    frame(cx, win);
+    assert_eq!(row_checks(cx, win, 3), [false, false, true]);
+}
+
+#[gpui_kit::test]
+fn a_live_send_checks_its_own_row(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = mock_server(cx, ResponseTemplate::new(200).set_body_string("live"));
+    let col = collection_for(&server.uri(), "");
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    store.save(&root, &ip("a.yml"), &kept(201), at(1)).unwrap();
+    cx.update(|cx| install(store.clone(), cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    wait_real(cx, |cx| pane.read_with(cx, |p, _| p.history().len() == 1));
+    let r = root.clone();
+    assert!(model.update(cx, |m, cx| m.send(&r, ip("a.yml"), cx)));
+    finished(cx, &model);
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, _| p.history().len() == 2)
+            && model.read_with(cx, |m, _| m.kept_as().is_some())
+    });
+    frame(cx, win);
+    assert_eq!(row_checks(cx, win, 2), [true, false]);
+}
+
+#[gpui_kit::test]
+fn a_failed_send_on_screen_checks_no_row(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = collection_for("http://127.0.0.1:1", "");
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    store.save(&root, &ip("a.yml"), &kept(201), at(1)).unwrap();
+    cx.update(|cx| install(store, cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    wait_real(cx, |cx| pane.read_with(cx, |p, _| p.history().len() == 1));
+    let r = root.clone();
+    assert!(model.update(cx, |m, cx| m.send(&r, ip("a.yml"), cx)));
+    wait_real(cx, |cx| model.read_with(cx, |m, _| !m.is_sending()));
+    frame(cx, win);
+    assert_eq!(row_checks(cx, win, 1), [false]);
+}
+
+#[gpui_kit::test]
+fn a_long_target_gives_way_to_the_whole_summary(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    let url = format!("https://api.example.com/{}", "segment/".repeat(40));
+    let long = RequestResult::from_parts(
+        ip("a.yml"),
+        "a",
+        Outcome::Passed,
+        Some(Response::new(200).with_text_body("k").with_url(url)),
+        Vec::new(),
+    );
+    store.save(&root, &ip("a.yml"), &long, at(1)).unwrap();
+    cx.update(|cx| install(store.clone(), cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    wait_real(cx, |cx| pane.read_with(cx, |p, _| p.history().len() == 1));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("response-history", cx))
+        .unwrap();
+    frame(cx, win);
+    let (item, row, summary) = cx
+        .update_window(win, |_, w, _| {
+            let menu = w.within("popup-menu");
+            (
+                menu.find(0usize).bounds(),
+                menu.find(("history-row", 0usize)).bounds(),
+                menu.find(("history-summary", 0usize)).bounds(),
+            )
+        })
+        .unwrap();
+    assert!(
+        row.right() <= item.right(),
+        "row {row:?} past item {item:?}"
+    );
+    assert!(
+        summary.right() <= row.right() && summary.left() >= row.left(),
+        "summary {summary:?} outside row {row:?}"
+    );
+}

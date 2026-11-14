@@ -95,6 +95,8 @@ pub const SET_COOKIE_TABLE_MIN_WIDTH: Rems = ui(832.);
 pub const SEND_SLOT_WIDTH: Rems = ui(96.);
 /// Widest a History dropdown row grows before its target truncates.
 pub const HISTORY_ROW_WIDTH: Rems = ui(480.);
+/// The "Previous runs" menu's widest: a full row plus the menu's padding and check column.
+pub const HISTORY_MENU_WIDTH: Rems = ui(528.);
 /// The History palette's status and age column: room for "404 · 11 months ago".
 pub const HISTORY_DETAIL_WIDTH: Rems = ui(144.);
 /// The History palette's tag column: room for the widest origin tag.
