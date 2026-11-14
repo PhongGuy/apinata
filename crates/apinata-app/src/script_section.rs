@@ -81,15 +81,14 @@ fn snippets_for(phase: ScriptPhase) -> impl Iterator<Item = &'static Snippet> {
         .filter(move |s| s.phases.contains(&slot))
 }
 
-/// The one button every snippet row builds; a press emits [`SnippetChosen`], and the button
-/// is a tab stop like any ghost button, so Enter and Space press it.
+/// The one button every snippet row builds, styled as the app's other secondary buttons; a
+/// press emits [`SnippetChosen`], and Enter and Space press it as a tab stop.
 fn snippet_button(
     snippet: &'static Snippet,
     phase: ScriptPhase,
     this: Entity<ScriptSection>,
 ) -> Button {
     Button::new(SharedString::from(format!("snippet-{}", snippet.id)))
-        .outline()
         .small()
         .label(snippet.label)
         .tooltip(snippet_tooltip(snippet))

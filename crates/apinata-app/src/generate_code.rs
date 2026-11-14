@@ -99,10 +99,17 @@ fn show(request: ResolvedRequest, window: &mut Window, cx: &mut App) {
     let view = cx.new(|cx| GenerateCodeView::new(request, target, window, cx));
     cx.set_global(OpenView(view.downgrade()));
     window.open_dialog(cx, move |d, window, _| {
-        ui::with_close(crate::dialog_frame::place(d, window), "Generate code")
-            // Enter on the target picker must not close the dialog.
-            .on_ok(|_, _, _| false)
-            .child(view.clone())
+        // Code reads best unbroken, so the dialog is wider than the default, within the window.
+        let width = (style::resolve(style::CODE_DIALOG_WIDTH, window)
+            + style::DIALOG_SIDE_PADDINGS)
+            .min(window.viewport_size().width * 0.9);
+        ui::with_close(
+            crate::dialog_frame::place(d, window).width(width),
+            "Generate code",
+        )
+        // Enter on the target picker must not close the dialog.
+        .on_ok(|_, _, _| false)
+        .child(view.clone())
     });
 }
 
@@ -129,7 +136,12 @@ impl GenerateCodeView {
             .collect();
         let at = Target::ALL.iter().position(|t| *t == target).unwrap_or(0);
         let select = cx.new(|cx| SelectState::new(labels, Some(IndexPath::new(at)), window, cx));
-        let editor = cx.new(|cx| EditorState::new(window, cx).searchable(false));
+        // Code scrolls sideways rather than breaking a URL or string literal mid-token.
+        let editor = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .searchable(false)
+                .soft_wrap(false)
+        });
         let picked = cx.subscribe_in(
             &select,
             window,
@@ -161,6 +173,11 @@ impl GenerateCodeView {
     /// The shown snippet: `generate(&request, target)`.
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// The read-only editor showing the snippet.
+    pub fn editor(&self) -> &Entity<EditorState> {
+        &self.editor
     }
 
     /// Shows `target`'s snippet with its highlighter and remembers it for the next dialog.
