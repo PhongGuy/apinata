@@ -3346,8 +3346,6 @@ impl RequestEditor {
         Some(banner.into_any_element())
     }
 
-    // A file whose URL query and params block disagree gets one muted line over the table,
-    // with a button to settle it for either side; the URL is what a send uses meanwhile.
     // A hand-set header the auth writes over when sending is named above the table, so the
     // value shown is never mistaken for the one sent.
     fn headers_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -3375,6 +3373,8 @@ impl RequestEditor {
         )
     }
 
+    // A file whose URL query and params block disagree gets one muted line over the table,
+    // with a button to settle it for either side; the URL is what a send uses meanwhile.
     fn params_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let names = self.view(cx)?.query_mismatch.clone()?.names;
         let text = format!(

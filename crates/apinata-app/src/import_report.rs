@@ -54,10 +54,11 @@ pub struct KindNote<'a> {
     pub file: Option<&'a str>,
 }
 
-/// One line per kind of note, in note order, without backticks: its words capitalised, then
-/// every place it applies to on a row of its own. Words after a detail's first ": " outside
-/// backticks belong to its one place, so notes that differ only there share a kind; a name in
-/// backticks never splits. A place with a file reads "<place>, in <file>".
+/// One line per kind of note, in note order, without backticks: its words capitalised unless
+/// they open on a name in backticks, then every place it applies to on a row of its own. Words
+/// after a detail's first ": " outside backticks belong to its one place, so notes that differ
+/// only there share a kind; a name in backticks never splits. A place with a file reads
+/// "<place>, in <file>".
 pub fn kind_lines<'a>(notes: impl IntoIterator<Item = KindNote<'a>>) -> Vec<String> {
     let mut kinds: Vec<(&str, Vec<String>)> = Vec::new();
     for note in notes {
@@ -76,9 +77,9 @@ pub fn kind_lines<'a>(notes: impl IntoIterator<Item = KindNote<'a>>) -> Vec<Stri
     kinds
         .into_iter()
         .map(|(words, places)| {
-            // Backticks go before capitalising, so a detail opening on a name still starts with
-            // a capital.
-            let mut line = failure_text(&words.replace('`', ""));
+            // Capitalised before the backticks go, so a detail opening on a name in backticks
+            // keeps that name's case as written.
+            let mut line = failure_text(words).replace('`', "");
             for place in places {
                 line.push('\n');
                 line.push_str(&place.replace('`', ""));

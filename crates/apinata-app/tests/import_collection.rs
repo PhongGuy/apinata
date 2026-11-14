@@ -217,7 +217,7 @@ fn report_lines_name_each_note_without_backticks() {
     assert!(
         lines
             .iter()
-            .any(|l| l.starts_with("Hawk authentication is not supported")),
+            .any(|l| l.starts_with("hawk authentication is not supported")),
         "{lines:?}"
     );
     assert!(lines.iter().all(|l| !l.contains('`')), "{lines:?}");
@@ -241,13 +241,33 @@ fn each_kind_of_note_is_one_line_with_its_places_and_files_under_it() {
         format!("{}, in {}", n.source, n.file.as_deref().unwrap())
     };
     let expected = format!(
-        "Hawk authentication is not supported; set to none\n{}\n{}",
+        "hawk authentication is not supported; set to none\n{}\n{}",
         place(hawk[0]),
         place(hawk[1])
     );
     let lines = all_lines(&report);
     assert!(lines.contains(&expected), "{lines:?}");
     assert!(lines.iter().all(|l| !l.contains(" (")), "{lines:?}");
+}
+
+#[test]
+fn a_name_in_backticks_keeps_its_case_and_only_outside_words_are_capitalised() {
+    use import_report::{KindNote, kind_lines};
+    let note = |detail| KindNote {
+        detail,
+        place: "p".to_owned(),
+        file: None,
+    };
+    assert_eq!(
+        kind_lines([
+            note("`api_key` is not a defined security scheme"),
+            note("no `Server` given"),
+        ]),
+        [
+            "api_key is not a defined security scheme\np",
+            "No Server given\np"
+        ]
+    );
 }
 
 #[gpui_kit::test]
