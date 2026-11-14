@@ -597,6 +597,7 @@ mod tab_run_selection;
 mod tab_run_selection_extra;
 mod tab_strip;
 mod tab_strip_left_edge;
+mod tab_strip_right_edge;
 mod tabs;
 mod tag_chips;
 mod tags_edit;

@@ -1858,6 +1858,8 @@ pub struct Reveal {
     seen: Rc<Cell<Option<RevealKey>>>,
     // The offset of the frame before while a check waits for the strip to hold still.
     settling: Rc<Cell<Option<Pixels>>>,
+    // Set while a scroll was held back to keep the chosen item under the pointer.
+    held: Rc<Cell<bool>>,
     snap_left: bool,
 }
 
@@ -1887,9 +1889,10 @@ impl Reveal {
         self.seen.set(None);
     }
 
-    /// Whether a check is owed: requested, or not yet run on a laid-out item.
+    /// Whether a check is owed: requested, not yet run on a laid-out item, or held back
+    /// until the pointer leaves the chosen item.
     pub fn pending(&self) -> bool {
-        self.seen.get().is_none()
+        self.seen.get().is_none() || self.held.get()
     }
 
     /// The marker that keeps item `ix` of the strip `scroll` tracks in view; draw it after
@@ -1906,9 +1909,23 @@ impl Reveal {
         ix: usize,
         items: usize,
     ) -> impl IntoElement + use<> {
-        let (seen, settling, scroll) = (
+        self.watch_strip_under_pointer(scroll, ix, items, false)
+    }
+
+    /// As `watch_strip`, told whether the pointer rests on the chosen item, as after a click
+    /// on it. Any scroll then keeps that item under the pointer, so a second click lands on
+    /// it again; what that holds back runs once the pointer leaves the item.
+    pub fn watch_strip_under_pointer(
+        &self,
+        scroll: &ScrollHandle,
+        ix: usize,
+        items: usize,
+        pointer_on_item: bool,
+    ) -> impl IntoElement + use<> {
+        let (seen, settling, held, scroll) = (
             Rc::clone(&self.seen),
             Rc::clone(&self.settling),
+            Rc::clone(&self.held),
             scroll.clone(),
         );
         let snap_left = self.snap_left;
@@ -1919,6 +1936,16 @@ impl Reveal {
                     return;
                 };
                 let fade = resolve(STRIP_FADE_WIDTH, window);
+                // The offsets that keep the chosen item under the pointer, while it rests there.
+                let x = scroll.offset().x;
+                let p = window.mouse_position().x;
+                let range = (p + px(1.) - item.right(), p - px(1.) - item.left());
+                let keep = (pointer_on_item && range.0 <= x && x <= range.1).then_some(range);
+                if held.get() && keep.is_none() {
+                    held.set(false);
+                    seen.set(None);
+                }
+                let kept = |want: Pixels| keep.map_or(want, |(lo, hi)| want.max(lo).min(hi));
                 let key = RevealKey {
                     item: ix,
                     viewport: viewport.size.width,
@@ -1938,6 +1965,11 @@ impl Reveal {
                     }
                     settling.set(None);
                     if let Some(want) = left_edge_snap(&scroll, ix, items, fade) {
+                        // Part of a snap would still leave a sliver, so a held one waits whole.
+                        if (kept(want) - want).abs() >= px(1.) {
+                            held.set(true);
+                            return;
+                        }
                         scroll.set_offset(gpui_kit::point(want, scroll.offset().y));
                         window.request_animation_frame();
                     }
@@ -1953,13 +1985,13 @@ impl Reveal {
                 // now shown, unless the item cannot fit between them: it then keeps the raw
                 // viewport test, so the two edges never trade places. A pixel of slack absorbs
                 // layout rounding.
-                let x = scroll.offset().x;
                 let (left, right) = (item.left() + x, item.right() + x);
                 let (vl, vr) = (viewport.left(), viewport.right());
                 let fits = item.size.width <= viewport.size.width - fade * 2.;
                 let shown_left = if fits && x < -px(1.) { fade } else { px(0.) };
                 let shown_right = if fits && x > -scroll.max_offset().x + px(1.) {
-                    fade
+                    let (solid, grade) = cover_extent(right_cover(&scroll, items), fade);
+                    solid + grade
                 } else {
                     px(0.)
                 };
@@ -1972,6 +2004,10 @@ impl Reveal {
                     return;
                 };
                 let want = want.clamp(-scroll.max_offset().x, px(0.));
+                if (kept(want) - want).abs() >= px(1.) {
+                    held.set(true);
+                }
+                let want = kept(want);
                 if (want - x).abs() >= px(1.) {
                     scroll.set_offset(gpui_kit::point(want, scroll.offset().y));
                     window.request_animation_frame();
@@ -2069,13 +2105,14 @@ pub fn strip_gap(scroll: &ScrollHandle, items: usize) -> Pixels {
 pub struct StripFades(Rc<Cell<FadeLayout>>);
 
 // What the last frame laid out: the wrapper's and viewport's bounds, which edges had items
-// beyond them, and how far the left fade must reach to cover a cut item.
+// beyond them, and how far each fade must reach to cover a cut item.
 #[derive(Clone, Copy, Default, PartialEq)]
 struct FadeLayout {
     host: Bounds<Pixels>,
     view: Bounds<Pixels>,
     edges: (bool, bool),
     cover: (Pixels, Pixels),
+    cover_right: (Pixels, Pixels),
     fade: Pixels,
 }
 
@@ -2092,6 +2129,7 @@ impl StripFades {
         let seen = self.0.get();
         let edges = hidden_edges(scroll, items);
         let cover = left_cover(scroll, items);
+        let cover_right = right_cover(scroll, items);
         // The marker measures the wrapper and redraws once when it or the edges changed
         // after this render, so a resize or a reveal is not left a frame behind.
         let (cell, handle, fade) = (Rc::clone(&self.0), scroll.clone(), seen.fade);
@@ -2100,6 +2138,7 @@ impl StripFades {
             view,
             edges,
             cover,
+            cover_right,
             fade,
             ..seen
         };
@@ -2110,6 +2149,7 @@ impl StripFades {
                     view: handle.bounds(),
                     edges: hidden_edges(&handle, items),
                     cover: left_cover(&handle, items),
+                    cover_right: right_cover(&handle, items),
                     fade: resolve(STRIP_FADE_WIDTH, window),
                 };
                 cell.set(now);
@@ -2170,13 +2210,20 @@ impl StripFades {
             );
         }
         if edges.1 {
+            // The right fade mirrors the left one's cover, over any item cut at that edge.
+            let (mut right, mut solid) = (fade("right"), 0.);
+            let (cover_px, grade) = cover_extent(cover_right, seen.fade);
+            if seen.fade > px(0.) && cover_px > px(0.) {
+                right = right.w(cover_px + grade);
+                solid = cover_px / (cover_px + grade);
+            }
             out.push(
-                fade("right")
+                right
                     .right(host.right() - view.right())
                     .bg(linear_gradient(
                         90.,
                         linear_color_stop(background.opacity(0.), 0.),
-                        linear_color_stop(background, 1.),
+                        linear_color_stop(background, 1. - solid),
                     ))
                     .into_any_element(),
             );
@@ -2226,8 +2273,30 @@ fn left_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
     (cut.right() + x - view.left(), gap)
 }
 
-// The left fade's solid part and the width it grades over after it: solid across a covered
-// item and grading only within the gap before the next, so a whole item is never faded.
+// How far before the viewport's right edge an item cut there reaches, and the gap after the
+// item before it, while items lie beyond that edge; zeros otherwise.
+fn right_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
+    if !hidden_edges(scroll, items).1 {
+        return (px(0.), px(0.));
+    }
+    let (view, x) = (scroll.bounds(), scroll.offset().x);
+    let bounds: Vec<_> = (0..items)
+        .map_while(|ix| scroll.bounds_for_item(ix))
+        .collect();
+    let Some(ix) = bounds.iter().position(|b| {
+        b.left() + x < view.right() - px(1.) && b.right() + x > view.right() + px(1.)
+    }) else {
+        return (px(0.), px(0.));
+    };
+    let cut = bounds[ix];
+    let gap = ix.checked_sub(1).map_or(px(0.), |prev| {
+        (cut.left() - bounds[prev].right()).max(px(0.))
+    });
+    (view.right() - (cut.left() + x), gap)
+}
+
+// A fade's solid part and the width it grades over beside it: solid across a covered item
+// and grading only within the gap toward its neighbour, so a whole item is never faded.
 fn cover_extent(cover: (Pixels, Pixels), fade: Pixels) -> (Pixels, Pixels) {
     match cover {
         (solid, _) if solid <= px(0.) => (px(0.), fade),
@@ -2236,8 +2305,8 @@ fn cover_extent(cover: (Pixels, Pixels), fade: Pixels) -> (Pixels, Pixels) {
 }
 
 /// Whether the last `tail` of item `ix` of the strip `scroll` tracks lies wholly outside both
-/// of the strip's fades, as of the last layout. True before any layout, so nothing is held
-/// back that was never measured.
+/// of the strip's fades and their covers, as of the last layout. True before any layout, so
+/// nothing is held back that was never measured.
 pub fn tail_clear_of_fades(
     scroll: &ScrollHandle,
     items: usize,
@@ -2253,7 +2322,8 @@ pub fn tail_clear_of_fades(
     let (solid, grade) = cover_extent(left_cover(scroll, items), fade);
     let shown = if hidden_left { solid + grade } else { px(0.) };
     let from = view.left() + shown;
-    let to = view.right() - if hidden_right { fade } else { px(0.) };
+    let (solid, grade) = cover_extent(right_cover(scroll, items), fade);
+    let to = view.right() - if hidden_right { solid + grade } else { px(0.) };
     let end = item.right() + x;
     end - tail >= from - px(1.) && end <= to + px(1.)
 }

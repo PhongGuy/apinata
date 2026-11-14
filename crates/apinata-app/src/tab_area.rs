@@ -2832,10 +2832,12 @@ impl TabArea {
             .on_scroll(ui::wheel_sideways(&self.scroll))
             .child(bar)
             .children(fades)
-            .child(
-                self.reveal
-                    .watch_strip(&self.scroll, selected, entries.len()),
-            )
+            .child(self.reveal.watch_strip_under_pointer(
+                &self.scroll,
+                selected,
+                entries.len(),
+                self.hovered == Some(active),
+            ))
             .into_any_element()
     }
 }
