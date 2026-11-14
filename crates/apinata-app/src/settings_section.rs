@@ -23,19 +23,27 @@ use crate::style::{self, FORM_INPUT_WIDTH, SPACE_2};
 use crate::tag_input::{TagField, TagsChanged};
 use crate::ui;
 
-/// The hint beside a custom timeout: its unit, as the file stores it, and that 0 lifts the limit.
-pub const TIMEOUT_HINT: &str = "Milliseconds, 0 means no limit";
+/// Why a typed custom timeout was refused: the limit is lifted by No limit, never by 0.
+pub const TIMEOUT_ZERO_NOTE: &str = "Enter a number above 0, or choose No limit.";
 
-/// Whether a request takes the Preferences default timeout or its own.
+// Why a typed number was refused for not being digits.
+const DIGITS_NOTE: &str = "Only digits are allowed; the last valid number is kept.";
+
+/// Whether a request takes the Preferences default timeout, no limit, or a limit of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum TimeoutMode {
     Inherit,
+    Unlimited,
     Custom,
 }
 
 impl TimeoutMode {
-    const ALL: [TimeoutMode; 2] = [TimeoutMode::Inherit, TimeoutMode::Custom];
+    const ALL: [TimeoutMode; 3] = [
+        TimeoutMode::Inherit,
+        TimeoutMode::Unlimited,
+        TimeoutMode::Custom,
+    ];
 
     /// The text the timeout select shows for this mode; Inherit names `default`, the
     /// Preferences timeout, in the whole seconds Preferences takes.
@@ -43,6 +51,7 @@ impl TimeoutMode {
         match (self, default) {
             (TimeoutMode::Inherit, None) => "Default (no limit)".into(),
             (TimeoutMode::Inherit, Some(d)) => format!("Default ({} s)", d.as_secs()).into(),
+            (TimeoutMode::Unlimited, _) => "No limit".into(),
             (TimeoutMode::Custom, _) => "Custom".into(),
         }
     }
@@ -52,6 +61,7 @@ impl TimeoutMode {
     pub fn key(self) -> &'static str {
         match self {
             TimeoutMode::Inherit => "inherit",
+            TimeoutMode::Unlimited => "unlimited",
             TimeoutMode::Custom => "custom",
         }
     }
@@ -66,6 +76,7 @@ impl TimeoutMode {
     fn of(timeout: Timeout) -> TimeoutMode {
         match timeout {
             Timeout::Inherit => TimeoutMode::Inherit,
+            Timeout::Unlimited => TimeoutMode::Unlimited,
             _ => TimeoutMode::Custom,
         }
     }
@@ -74,19 +85,23 @@ impl TimeoutMode {
 /// Bruno's settings pane: three toggles, max redirects and the timeout.
 ///
 /// Each change sends the last sent or loaded settings with one field changed, so changes
-/// compose before their echo arrives. Number inputs take digits only; empty means 0.
+/// compose before their echo arrives. Number inputs take digits only; an empty Max redirects
+/// means 0, while a custom timeout must be above 0.
 pub struct SettingsSection {
     // The settings last sent or loaded; the base each change builds on.
     base: RequestSettings,
     max_redirects: Entity<InputState>,
     timeout_select: Entity<ui::IdSelect>,
-    // The request's own timeout last loaded or typed, which Custom brings back after Default.
-    custom: Timeout,
+    // The request's own limit in ms, last loaded or typed, which Custom brings back.
+    custom: Option<u64>,
+    // Custom is picked but holds no limit yet; the file keeps its timeout until one is typed.
+    custom_pending: bool,
     // The Preferences timeout the Inherit label names.
     default_timeout: Option<Duration>,
     timeout: Entity<InputState>,
     tags: Entity<TagField>,
-    invalid: bool,
+    // Why the last typed number was refused, shown under the rows.
+    invalid: Option<&'static str>,
     // Where the form rows report their bounds to the scroll area that holds the section.
     follow: FocusFollow,
     _subs: Vec<Subscription>,
@@ -138,14 +153,17 @@ impl SettingsSection {
                     return;
                 }
                 let text = state.read(cx).value().to_string();
-                let timeout = digits::<u64>(&text).map(|n| match n {
-                    0 => Timeout::Unlimited,
-                    n => Timeout::Millis(n),
-                });
-                if let Some(t) = timeout {
-                    this.custom = t;
+                let millis = digits::<u64>(&text);
+                if millis == Some(0) {
+                    this.invalid = Some(TIMEOUT_ZERO_NOTE);
+                    cx.notify();
+                    return;
                 }
-                this.number(timeout, |s, t| s.timeout = t, cx);
+                if millis.is_some() {
+                    this.custom = millis;
+                    this.custom_pending = false;
+                }
+                this.number(millis.map(Timeout::Millis), |s, t| s.timeout = t, cx);
             }),
             cx.subscribe_in(
                 &timeout_select,
@@ -178,11 +196,12 @@ impl SettingsSection {
             base,
             max_redirects,
             timeout_select,
-            custom: Timeout::Unlimited,
+            custom: None,
+            custom_pending: false,
             default_timeout,
             timeout,
             tags,
-            invalid: false,
+            invalid: None,
             _subs: subs,
         }
     }
@@ -194,11 +213,13 @@ impl SettingsSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A pending Custom outlives the echo of another field's edit, which keeps the timeout.
+        self.custom_pending &= settings.timeout == self.base.timeout;
         self.base = *settings;
-        if settings.timeout != Timeout::Inherit {
-            self.custom = settings.timeout;
+        if let Timeout::Millis(n) = settings.timeout {
+            self.custom = Some(n);
         }
-        self.invalid = false;
+        self.invalid = None;
         set_text(
             &self.max_redirects,
             &settings.max_redirects.to_string(),
@@ -225,6 +246,11 @@ impl SettingsSection {
         &self.max_redirects
     }
 
+    /// The custom timeout field.
+    pub fn timeout_input(&self) -> &Entity<InputState> {
+        &self.timeout
+    }
+
     /// The tag chip input.
     pub fn tags(&self) -> &Entity<TagField> {
         &self.tags
@@ -235,13 +261,16 @@ impl SettingsSection {
         self.timeout_select.read(cx).selected_value().cloned()
     }
 
-    /// Whether the timeout is inherited or the request's own.
+    /// Whether the timeout is inherited, lifted, or the request's own.
     pub fn timeout_mode(&self) -> TimeoutMode {
+        if self.custom_pending {
+            return TimeoutMode::Custom;
+        }
         TimeoutMode::of(self.base.timeout)
     }
 
-    /// Switches the timeout mode and sends it; Custom brings back the request's own timeout,
-    /// or no limit if it never had one.
+    /// Switches the timeout mode and sends it; Custom brings back the request's own limit, or
+    /// shows an empty field and sends nothing until a limit is typed.
     pub fn set_timeout_mode(
         &mut self,
         mode: TimeoutMode,
@@ -251,25 +280,31 @@ impl SettingsSection {
         if self.timeout_mode() == mode {
             return;
         }
-        self.base.timeout = match mode {
-            TimeoutMode::Inherit => Timeout::Inherit,
-            TimeoutMode::Custom => self.custom,
+        let timeout = match mode {
+            TimeoutMode::Inherit => Some(Timeout::Inherit),
+            TimeoutMode::Unlimited => Some(Timeout::Unlimited),
+            TimeoutMode::Custom => self.custom.map(Timeout::Millis),
         };
+        self.custom_pending = timeout.is_none();
+        self.invalid = None;
+        // Leaving a pending Custom for the mode the file already holds changes nothing.
+        let changed = timeout.filter(|t| *t != self.base.timeout);
+        if let Some(timeout) = changed {
+            self.base.timeout = timeout;
+        }
         self.show_timeout(window, cx);
-        self.emit(cx);
+        if changed.is_some() {
+            self.emit(cx);
+        }
     }
 
     fn show_timeout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let label = self.timeout_mode().label(self.default_timeout);
         self.timeout_select
             .update(cx, |s, cx| s.set_selected_value(&label, window, cx));
-        let millis = match self.base.timeout {
-            Timeout::Millis(n) => Some(n),
-            Timeout::Unlimited => Some(0),
-            _ => None,
-        };
-        if let Some(n) = millis {
-            set_text(&self.timeout, &n.to_string(), window, cx);
+        if self.timeout_mode() == TimeoutMode::Custom {
+            let text = self.custom.map(|n| n.to_string()).unwrap_or_default();
+            set_text(&self.timeout, &text, window, cx);
         }
         cx.notify();
     }
@@ -283,11 +318,11 @@ impl SettingsSection {
     ) {
         match value {
             Some(v) => {
-                self.invalid = false;
+                self.invalid = None;
                 apply(&mut self.base, v);
                 self.emit(cx);
             }
-            None => self.invalid = true,
+            None => self.invalid = Some(DIGITS_NOTE),
         }
         cx.notify();
     }
@@ -332,12 +367,17 @@ impl Render for SettingsSection {
                     .child(Select::new(&self.timeout_select).id("set-timeout-mode")),
             )
             .when(custom, |r| {
-                r.child(ui::padded_input(
-                    Input::new(&self.timeout)
-                        .id("set-timeout")
-                        .w(FORM_INPUT_WIDTH)
-                        .bg(ui::field_fill(false, cx)),
-                    &self.timeout,
+                r.child(ui::with_unit(
+                    ui::padded_input(
+                        Input::new(&self.timeout)
+                            .id("set-timeout")
+                            .w(FORM_INPUT_WIDTH)
+                            .bg(ui::field_fill(false, cx)),
+                        &self.timeout,
+                    ),
+                    "set-timeout-unit",
+                    "ms",
+                    cx,
                 ))
             });
         v_flex()
@@ -386,20 +426,18 @@ impl Render for SettingsSection {
                         &self.max_redirects,
                     )),
             )))
-            .child(followed(
-                ui::form_row("set-row-timeout", "Timeout", timeout)
-                    .when(custom, |r| r.hint("set-timeout-hint", TIMEOUT_HINT)),
-            ))
+            .child(followed(ui::form_row(
+                "set-row-timeout",
+                "Timeout",
+                timeout,
+            )))
             .child(followed(ui::form_row(
                 "set-row-tags",
                 "Tags",
                 self.tags.clone(),
             )))
-            .when(self.invalid, |v| {
-                v.child(ui::form_note(
-                    "set-invalid",
-                    "Only digits are allowed; the last valid number is kept.",
-                ))
+            .when_some(self.invalid, |v, note| {
+                v.child(ui::form_note("set-invalid", note))
             })
     }
 }

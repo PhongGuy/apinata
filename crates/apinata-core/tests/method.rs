@@ -46,6 +46,17 @@ fn non_tokens_are_refused_with_a_message() {
     }
 }
 
+// The refusal is read in the app, the CLI and the MCP server alike, so it names the rule in
+// plain words rather than listing the token characters.
+#[test]
+fn the_refusal_reads_in_plain_words() {
+    let err = normalize_method("GE T").expect_err("a space is refused");
+    assert_eq!(
+        err.to_string(),
+        "`GE T` is not a valid HTTP method: use letters, digits, - or _, with no spaces"
+    );
+}
+
 #[test]
 fn the_validator_agrees_with_the_sender() {
     let server = tokio::runtime::Runtime::new().expect("rt");

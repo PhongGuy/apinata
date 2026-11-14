@@ -3430,6 +3430,25 @@ impl RenderOnce for FormHeading {
     }
 }
 
+/// A field with its `unit` ("ms", "s", "MB") in muted text right beside it; the unit is
+/// found by `id` and reads as its label.
+pub fn with_unit(
+    field: impl IntoElement,
+    id: impl Into<ElementId>,
+    unit: &'static str,
+    cx: &App,
+) -> Div {
+    h_flex().items_center().gap(SPACE_1).child(field).child(
+        div()
+            .id(id)
+            .test_support()
+            .aria_label(unit)
+            .flex_none()
+            .text_color(cx.theme().muted_foreground)
+            .child(unit),
+    )
+}
+
 /// Muted helper text under a form; see [`form_note`].
 #[derive(IntoElement)]
 pub struct FormNote {

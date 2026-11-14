@@ -120,8 +120,27 @@ fn max_redirects_wait_while_following_is_off(cx: &mut TestAppContext) {
     assert_eq!(last(cx, &host).max_redirects, 7);
 }
 
+fn mode(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    s: &Entity<SettingsSection>,
+    mode: TimeoutMode,
+) {
+    cx.update_window(win, |_, w, cx| {
+        s.update(cx, |s, cx| s.set_timeout_mode(mode, w, cx))
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+fn sent(cx: &mut TestAppContext, host: &Entity<SectionHost<SettingsSection>>) -> usize {
+    host.read_with(cx, |h, _| h.edits.len())
+}
+
+// No limit is a choice of its own, so Custom always holds a limit above 0: picking Custom
+// with no number yet sends nothing until one is typed, and a typed 0 is refused.
 #[gpui_kit::test]
-fn timeout_is_inherited_or_custom(cx: &mut TestAppContext) {
+fn timeout_is_default_no_limit_or_custom(cx: &mut TestAppContext) {
     let mut base = RequestSettings::new();
     base.timeout = Timeout::Inherit;
     let (win, host, s) = settings(cx, base);
@@ -130,25 +149,53 @@ fn timeout_is_inherited_or_custom(cx: &mut TestAppContext) {
         TimeoutMode::Inherit
     );
     assert!(!found(cx, win, "set-timeout"));
-    cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.set_timeout_mode(TimeoutMode::Custom, w, cx))
-    })
-    .unwrap();
-    cx.run_until_parked();
+    mode(cx, win, &s, TimeoutMode::Unlimited);
     assert_eq!(last(cx, &host).timeout, Timeout::Unlimited);
+    assert!(!found(cx, win, "set-timeout"));
+    let before = sent(cx, &host);
+    mode(cx, win, &s, TimeoutMode::Custom);
+    assert_eq!(
+        sent(cx, &host),
+        before,
+        "Custom with no number sends nothing"
+    );
+    assert_eq!(
+        s.read_with(cx, |s, _| s.timeout_mode()),
+        TimeoutMode::Custom
+    );
     assert!(found(cx, win, "set-timeout"));
+    let shown = s.read_with(cx, |s, cx| s.timeout_input().read(cx).value().to_string());
+    assert_eq!(shown, "");
     replace_input(cx, win, None, "set-timeout", "5000");
     cx.run_until_parked();
     assert_eq!(last(cx, &host).timeout, Timeout::Millis(5000));
     replace_input(cx, win, None, "set-timeout", "0");
     cx.run_until_parked();
+    assert_eq!(last(cx, &host).timeout, Timeout::Millis(5000));
+    assert!(found(cx, win, "set-invalid"));
+    mode(cx, win, &s, TimeoutMode::Unlimited);
     assert_eq!(last(cx, &host).timeout, Timeout::Unlimited);
-    cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.set_timeout_mode(TimeoutMode::Inherit, w, cx))
-    })
-    .unwrap();
-    cx.run_until_parked();
+    mode(cx, win, &s, TimeoutMode::Custom);
+    assert_eq!(last(cx, &host).timeout, Timeout::Millis(5000));
+    mode(cx, win, &s, TimeoutMode::Inherit);
     assert_eq!(last(cx, &host).timeout, Timeout::Inherit);
+}
+
+// A file's `timeout: 0` reads as No limit, not as a custom timeout of 0.
+#[gpui_kit::test]
+fn a_zero_timeout_shows_as_no_limit(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Unlimited;
+    let (win, _host, s) = settings(cx, base);
+    assert_eq!(
+        s.read_with(cx, |s, _| s.timeout_mode()),
+        TimeoutMode::Unlimited
+    );
+    assert_eq!(
+        s.read_with(cx, |s, cx| s.timeout_shown(cx)).as_deref(),
+        Some("No limit")
+    );
+    assert!(!found(cx, win, "set-timeout"));
 }
 
 #[gpui_kit::test]
@@ -225,6 +272,10 @@ fn the_settings_form_shares_two_columns(cx: &mut TestAppContext) {
             w.find("set-timeout").bounds().size.width,
             at_zoom(FORM_INPUT_WIDTH, 1.0)
         );
+        assert_eq!(
+            w.find("tag-input").bounds().size.width,
+            at_zoom(FORM_INPUT_WIDTH, 1.0)
+        );
     })
     .unwrap();
 }
@@ -255,22 +306,22 @@ fn the_docs_editor_fills_its_slot(cx: &mut TestAppContext) {
     .unwrap();
 }
 
+// The custom timeout names its unit right beside the field.
 #[gpui_kit::test]
-fn a_custom_timeout_says_zero_means_no_limit(cx: &mut TestAppContext) {
+fn a_custom_timeout_names_its_unit_beside_the_field(cx: &mut TestAppContext) {
     let mut base = RequestSettings::new();
-    base.timeout = Timeout::Inherit;
-    let (win, _host, s) = settings(cx, base);
-    assert!(!found(cx, win, "set-timeout-hint"));
+    base.timeout = Timeout::Millis(5000);
+    let (win, _host, _s) = settings(cx, base);
     cx.update_window(win, |_, w, cx| {
-        s.update(cx, |s, cx| s.set_timeout_mode(TimeoutMode::Custom, w, cx))
+        w.render_frame(cx);
+        let input = w.find("set-timeout").bounds();
+        let unit = w.within("set-row-timeout").find("set-timeout-unit");
+        assert_eq!(unit.label(), Some("ms"));
+        let unit = unit.bounds();
+        assert!(unit.left() >= input.right(), "{unit:?} after {input:?}");
+        assert!(unit.top() >= input.top() && unit.bottom() <= input.bottom());
     })
     .unwrap();
-    cx.run_until_parked();
-    assert!(found(cx, win, "set-timeout-hint"));
-    assert_eq!(
-        apinata_app::settings_section::TIMEOUT_HINT,
-        "Milliseconds, 0 means no limit"
-    );
 }
 
 fn docs(
@@ -423,25 +474,6 @@ fn the_settings_form_stacks_at_the_minimum_window(cx: &mut TestAppContext) {
             );
             assert_eq!(label.left(), control.left(), "{r}");
         }
-    })
-    .unwrap();
-}
-
-#[gpui_kit::test]
-fn the_timeout_hint_sits_under_its_input(cx: &mut TestAppContext) {
-    let mut base = RequestSettings::new();
-    base.timeout = Timeout::Millis(5000);
-    let (win, _host, _s) = settings(cx, base);
-    cx.update_window(win, |_, w, cx| {
-        w.render_frame(cx);
-        let input = w.find("set-timeout").bounds();
-        let hint = w
-            .within("set-row-timeout")
-            .find("set-timeout-hint")
-            .bounds();
-        let control = w.within("set-row-timeout").find("form-control").bounds();
-        assert!(hint.top() >= input.bottom(), "{hint:?} under {input:?}");
-        assert_eq!(hint.left(), control.left());
     })
     .unwrap();
 }

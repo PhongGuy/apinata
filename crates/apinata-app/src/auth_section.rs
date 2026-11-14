@@ -707,6 +707,12 @@ impl AuthSection {
         Some(Edit::Auth(auth))
     }
 
+    /// Drops an OAuth 2.0 secret typed but not yet committed, as a discard does.
+    pub fn drop_pending(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.oauth2
+            .update(cx, |e, cx| e.drop_pending_secrets(window, cx));
+    }
+
     /// Shows `notice` in the OAuth 2.0 editor, the only mode whose edits warn or refuse.
     pub fn set_notice(&mut self, notice: Option<String>, cx: &mut Context<Self>) {
         self.oauth2.update(cx, |e, cx| e.set_notice(notice, cx));

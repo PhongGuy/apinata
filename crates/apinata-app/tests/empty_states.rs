@@ -192,6 +192,36 @@ fn a_recent_entry_is_labelled_by_the_collection_name_with_its_path(cx: &mut Test
     assert_eq!(name1.as_deref(), Some(base));
 }
 
+// The Recent list lines up with the centred actions above it: the heading and each entry's
+// name and path shrink to their text and sit centred on the title's axis.
+#[gpui_kit::test]
+fn the_recent_list_is_centred_under_the_actions(cx: &mut TestAppContext) {
+    let named = write_tree(&[(
+        "opencollection.yml",
+        "opencollection: 1.0.0\ninfo:\n  name: Pretty Name\n",
+    )]);
+    let win = shell_with_recents(cx, vec![named.path().to_path_buf()]);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let welcome = w.within("no-collection");
+        let axis = welcome.find("empty-title").bounds().center().x;
+        let row = welcome.find(("recent", 0usize)).bounds();
+        for id in [
+            gpui_kit::ElementId::from("recent-heading"),
+            ("recent-name", 0usize).into(),
+            ("recent-path", 0usize).into(),
+        ] {
+            let b = welcome.find(id.clone()).bounds();
+            assert!(b.size.width < row.size.width, "{id:?} {b:?} fills {row:?}");
+            assert!(
+                (b.center().x - axis).abs() < px(1.),
+                "{id:?} {b:?} off {axis:?}"
+            );
+        }
+    })
+    .unwrap();
+}
+
 #[gpui_kit::test]
 fn the_recent_heading_is_absent_without_recents(cx: &mut TestAppContext) {
     let win = shell_with_recents(cx, Vec::new());
