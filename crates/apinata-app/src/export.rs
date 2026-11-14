@@ -124,8 +124,9 @@ pub fn report_summary(file: &Path, notes: &[ExportNote]) -> String {
 
 /// The report's sections, "Left out" then "Changed", each only when it has notes, without
 /// backticks. Each kind of note is one line: its words capitalised, then every place it
-/// applies to on a line of its own, in note order. Words after a detail's first ": " belong
-/// to its one place, so notes that differ only there share a kind.
+/// applies to on a line of its own, in note order. Words after a detail's first ": " outside
+/// backticks belong to its one place, so notes that differ only there share a kind; a name
+/// in backticks never splits.
 pub fn report_groups(notes: &[ExportNote]) -> Vec<(Option<&'static str>, Vec<String>)> {
     [
         ("Left out", ExportNoteKind::Lost),
@@ -135,7 +136,7 @@ pub fn report_groups(notes: &[ExportNote]) -> Vec<(Option<&'static str>, Vec<Str
     .filter_map(|(heading, kind)| {
         let mut groups: Vec<(&str, Vec<String>)> = Vec::new();
         for note in notes.iter().filter(|n| n.kind == kind) {
-            let (words, place) = match note.detail.split_once(": ") {
+            let (words, place) = match split_place(&note.detail) {
                 Some((words, own)) => (words, format!("{}: {own}", note.source)),
                 None => (note.detail.as_str(), note.source.clone()),
             };
@@ -158,6 +159,21 @@ pub fn report_groups(notes: &[ExportNote]) -> Vec<(Option<&'static str>, Vec<Str
         (!lines.is_empty()).then_some((Some(heading), lines))
     })
     .collect()
+}
+
+// `detail` split at its first ": " outside backticks, where core quotes user-written names.
+fn split_place(detail: &str) -> Option<(&str, &str)> {
+    let mut quoted = false;
+    for (at, c) in detail.char_indices() {
+        match c {
+            '`' => quoted = !quoted,
+            ':' if !quoted && detail[at + 1..].starts_with(' ') => {
+                return Some((&detail[..at], &detail[at + 2..]));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 // The file's own name; the folder is one click away in the toast.

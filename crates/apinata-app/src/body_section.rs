@@ -21,7 +21,7 @@ use gpui_kit::{
     Subscription, TestSupportExt, Window, div,
 };
 
-use crate::body_text::{beautify_json, beautify_xml, format_size, minify_json, minify_xml};
+use crate::body_text::{beautify_json, beautify_xml, minify_json, minify_xml};
 use crate::command::Edit;
 use crate::kv_table::{
     KvColumns, KvEvent, KvRow, KvTable, PickFiles, file_rows, files_from, header_rows,
@@ -661,12 +661,7 @@ impl BodySection {
             let name = Path::new(p).file_name().map(|n| n.to_string_lossy());
             name.map_or(p.clone(), |n| n.into_owned())
         });
-        // The size is read where the request would read the file; a path with a variable in
-        // it, or a file that is gone, shows no size.
-        let size = path
-            .and_then(|p| std::fs::metadata(self.root.join(p)).ok())
-            .filter(|m| m.is_file())
-            .map(|m| format_size(m.len()));
+        let size = path.and_then(|p| self.table.read(cx).file_size(p));
         let content_type = self.table.read(cx).content_type_input(0).cloned();
         let choose = if path.is_some() {
             "Change\u{2026}"

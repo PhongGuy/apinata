@@ -1,7 +1,8 @@
 //! One editable name and value table for params, headers, vars and form bodies.
 
 use std::any::Any;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -333,6 +334,9 @@ struct Row {
     // Not a tab stop; it sees focus anywhere in the row, the delete button included.
     within: FocusHandle,
     meta: Meta,
+    // The text width and size this row's files cell last had. Each row keeps its own, so rows
+    // of different widths never redraw each other.
+    files_room: Rc<Cell<Option<(Pixels, Pixels)>>>,
     _subs: [Subscription; 4],
 }
 
@@ -390,10 +394,11 @@ pub struct KvTable {
     /// The control that held focus when the pending checkbox or Remove focus was left; the
     /// pending focus is the user's only while it still does.
     pending_origin: Option<FocusHandle>,
-    /// The text width and size a files cell last had, which every files cell shares.
-    files_room: Rc<Cell<Option<(Pixels, Pixels)>>>,
     /// The folder a file body's relative paths are read from, for their sizes.
     file_root: Option<PathBuf>,
+    /// File sizes by path as first read, so a draw does not read the disk; a load or a pick
+    /// reads them again.
+    file_sizes: RefCell<HashMap<String, Option<String>>>,
 }
 
 impl EventEmitter<KvEvent> for KvTable {}
@@ -432,8 +437,8 @@ impl KvTable {
             check_focus: Cell::new(None),
             remove_focus: Cell::new(None),
             pending_origin: None,
-            files_room: Rc::default(),
             file_root: None,
+            file_sizes: RefCell::default(),
             typed: None,
             drop: None,
         }
@@ -546,6 +551,7 @@ impl KvTable {
         }
         if let Some(row) = self.rows.get_mut(ix) {
             row.meta.files = files;
+            self.file_sizes.get_mut().clear();
             self.typed = None;
             self.changed(cx);
         }
@@ -594,6 +600,7 @@ impl KvTable {
     /// text already says is an echo of the user's typing: it keeps the text and the base's text
     /// rows, and takes the rows left out of the text from the load. Any other load replaces both.
     pub fn load(&mut self, rows: Vec<KvRow>, window: &mut Window, cx: &mut Context<Self>) {
+        self.file_sizes.get_mut().clear();
         // A Remove or checkbox focus an earlier load left for a draw that has not come yet is
         // where focus belongs; the window's focus still names the old row's control. The flag
         // says whether it is the checkbox.
@@ -869,6 +876,7 @@ impl KvTable {
             check: cx.focus_handle(),
             within: cx.focus_handle(),
             meta,
+            files_room: Rc::default(),
             _subs: subs,
         }
     }
@@ -1096,23 +1104,30 @@ impl KvTable {
         }
     }
 
-    /// The size of a file body row's file, read where the request would read it; none for a
-    /// path with a variable in it or a file that is gone.
-    fn file_size(&self, files: &[String]) -> Option<String> {
-        let path = files.first().filter(|p| !p.is_empty())?;
-        let full = match &self.file_root {
-            Some(root) => root.join(path),
-            None => PathBuf::from(path),
-        };
-        let meta = std::fs::metadata(full).ok().filter(|m| m.is_file())?;
-        Some(crate::body_text::format_size(meta.len()))
+    /// The size of the file at `path`, read where the request would read it and kept until the
+    /// next load or pick; none for an empty path, one with a variable in it, or a file that is
+    /// gone.
+    pub fn file_size(&self, path: &str) -> Option<String> {
+        if path.is_empty() {
+            return None;
+        }
+        let mut sizes = self.file_sizes.borrow_mut();
+        let size = sizes.entry(path.to_owned()).or_insert_with(|| {
+            let full = match &self.file_root {
+                Some(root) => root.join(path),
+                None => PathBuf::from(path),
+            };
+            let meta = std::fs::metadata(full).ok().filter(|m| m.is_file())?;
+            Some(crate::body_text::format_size(meta.len()))
+        });
+        size.clone()
     }
 
     /// A files cell's text as shown and in full. Short of room, the paths share it evenly and
     /// each gives up its leading folders first, so the file names stay readable.
-    fn files_text(&self, files: &[String], window: &Window) -> (String, String) {
+    fn files_text(row: &Row, files: &[String], window: &Window) -> (String, String) {
         let full = files.join(", ");
-        let Some((room, size)) = self.files_room.get() else {
+        let Some((room, size)) = row.files_room.get() else {
             return (full.clone(), full);
         };
         let measure = path_display::measurer(window, size);
@@ -1237,7 +1252,7 @@ impl KvTable {
             .map(|(_, s)| s);
         // A changed files room redraws the table once the frame is done, so paths refit.
         let files_measure = {
-            let (cell, me) = (Rc::clone(&self.files_room), cx.entity().downgrade());
+            let (cell, me) = (Rc::clone(&row.files_room), cx.entity().downgrade());
             canvas(
                 move |bounds, window, cx| {
                     let size = window.text_style().font_size.to_pixels(window.rem_size());
@@ -1339,12 +1354,12 @@ impl KvTable {
                     let (shown, full) = if file_body {
                         (file_names(files), files.join(", "))
                     } else {
-                        self.files_text(files, win)
+                        Self::files_text(row, files, win)
                     };
                     let cut = shown != full;
-                    let size = file_body
-                        .then(|| self.file_size(files))
-                        .flatten()
+                    let size = (files.first())
+                        .filter(|_| file_body)
+                        .and_then(|path| self.file_size(path))
                         .map(|size| {
                             div()
                                 .id(("kv-file-size", ix))
@@ -1370,7 +1385,9 @@ impl KvTable {
                                     .px(Size::Small.input_px())
                                     .border_1()
                                     .border_color(transparent_black())
-                                    .when(cut, |d| {
+                                    // A file body's tip says where its file is, which also
+                                    // shows a name cut short by a narrow table.
+                                    .when(cut || file_body, |d| {
                                         d.tooltip(ui::text_tooltip(
                                             "kv-files-tooltip",
                                             files.join("\n"),
@@ -1381,9 +1398,8 @@ impl KvTable {
                                             .relative()
                                             .w_full()
                                             .truncate()
-                                            // A file body names files in full, so it needs no
-                                            // room; its rows differ in width by their sizes, and
-                                            // a shared room would flip between them every frame.
+                                            // A file body names its file whole, so it needs no
+                                            // room measured.
                                             .when(!file_body, |d| d.child(files_measure))
                                             .child(shown),
                                     ),

@@ -32,13 +32,14 @@ fn strip(cx: &mut TestAppContext, count: usize, width: f32) -> Narrow {
 
 // `count` request files, the first `open` of them opened as tabs, in a window `width` px wide.
 fn strip_opening(cx: &mut TestAppContext, count: usize, open: usize, width: f32) -> Narrow {
-    let files: Vec<(String, String)> = (0..count)
-        .map(|i| {
-            (
-                format!("r{i}.yml"),
-                request(&format!("Request number {i}"), "http://x/"),
-            )
-        })
+    let names: Vec<String> = (0..count).map(|i| format!("Request number {i}")).collect();
+    strip_named(cx, &names, open, width)
+}
+
+// A request file per name, the first `open` of them opened as tabs, in a window `width` px wide.
+fn strip_named(cx: &mut TestAppContext, names: &[String], open: usize, width: f32) -> Narrow {
+    let files: Vec<(String, String)> = (names.iter().enumerate())
+        .map(|(i, name)| (format!("r{i}.yml"), request(name, "http://x/")))
         .collect();
     let mut refs: Vec<(&str, &str)> = vec![("opencollection.yml", ROOT)];
     refs.extend(files.iter().map(|(p, t)| (p.as_str(), t.as_str())));
@@ -1358,6 +1359,29 @@ fn the_overflow_menu_shows_each_requests_method(cx: &mut TestAppContext) {
             let item = w.find(("tab-menu-item", ix));
             assert!(tag.bounds().right() <= item.bounds().right(), "row {ix}");
         }
+    })
+    .unwrap();
+}
+
+// A row drawn as an element fills the menu's width, so the check after it lines up with the
+// other rows' checks at the right edge whatever the tab's name.
+#[gpui_kit::test]
+fn the_overflow_menu_rows_end_at_one_edge(cx: &mut TestAppContext) {
+    let names = ["A", "A much longer request name", "Mid name"].map(str::to_owned);
+    let n = strip_named(cx, &names, 3, 360.);
+    cx.update_window(n.win, |_, w, cx| w.click("tab-overflow", cx))
+        .unwrap();
+    frame(cx, n.win);
+    // The active tab, the last opened, is the checked row: it ends where its check begins, the
+    // others run to the edge, whatever their names' lengths.
+    cx.update_window(n.win, |_, w, _| {
+        let right = |ix: usize| w.find(("tab-menu-item", ix)).bounds().right();
+        assert_eq!(right(1), right(0), "unchecked rows end at the edge");
+        let room = right(0) - right(2);
+        assert!(
+            room > gpui_kit::px(8.) && room < gpui_kit::px(32.),
+            "the checked row leaves only its check's room: {room:?}"
+        );
     })
     .unwrap();
 }

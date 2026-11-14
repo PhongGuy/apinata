@@ -2437,6 +2437,8 @@ impl ResponsePane {
                             .test_support()
                             .accessibility_id(format!("history-row-{ix}"))
                             .aria_label(label)
+                            // Filling the menu's width puts every row's check at one edge.
+                            .flex_1()
                             .max_w(style::HISTORY_ROW_WIDTH)
                             .min_w_0()
                             .gap(style::SPACE_2)

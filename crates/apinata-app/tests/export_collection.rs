@@ -152,6 +152,21 @@ fn the_report_lists_each_kind_once_with_its_places_under_it() {
         report_groups(&[lost("collection / headers", "h")]),
         vec![(Some("Left out"), vec!["H\ncollection / headers".to_owned()])]
     );
+    // A name in backticks may hold ": " itself; it never splits the kind from its place.
+    let broken = "environment `a: b` extends `c`, which does not exist";
+    assert_eq!(
+        report_groups(&[
+            lost("collection / a: b", broken),
+            lost("global / a: b", broken)
+        ]),
+        vec![(
+            Some("Left out"),
+            vec![
+                "Environment a: b extends c, which does not exist\ncollection / a: b\nglobal / a: b"
+                    .to_owned()
+            ]
+        )]
+    );
 }
 
 #[test]

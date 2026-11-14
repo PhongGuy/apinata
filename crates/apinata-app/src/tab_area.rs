@@ -2647,9 +2647,13 @@ fn menu_tab_item(
             Some(detail) => format!("{label} {detail}"),
             None => label.to_string(),
         };
+        // The row fills the menu's width, so the check after it sits at the right edge as a
+        // plain row's does.
         h_flex()
             .id(("tab-menu-item", ix))
             .test_support()
+            .flex_1()
+            .min_w_0()
             .gap(style::SPACE_2)
             .items_center()
             .aria_label(name)

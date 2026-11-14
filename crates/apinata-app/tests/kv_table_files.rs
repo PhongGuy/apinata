@@ -486,3 +486,84 @@ fn two_selected_files_show_as_one(cx: &mut TestAppContext) {
     let (win, _view) = host(cx, KvColumns::FILE_BODY, rows);
     assert_eq!(picked(&marks(cx, win, 2)), [true, false]);
 }
+
+// A multipart row shares the room left for paths: short of it, a long path gives up its
+// leading folders for "…" and keeps its file name, and the hover shows it whole.
+#[gpui_kit::test]
+fn a_cut_multipart_path_keeps_its_file_name_and_tips_the_full_path(cx: &mut TestAppContext) {
+    let path = format!(
+        "/srv/{}reports/final-report.pdf",
+        "a-rather-long-folder-name/".repeat(12)
+    );
+    let file = KvRow {
+        files: Some(vec![path.clone()]),
+        ..row("f", "")
+    };
+    let (win, _view) = host(cx, KvColumns::MULTIPART, vec![file]);
+    for _ in 0..3 {
+        cx.run_until_parked();
+        cx.update_window(win, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+    }
+    let (shown, full) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let e = w.find(("kv-files", 0usize));
+            (e.value().map(str::to_owned), e.label().map(str::to_owned))
+        })
+        .unwrap();
+    let shown = shown.expect("the shown path");
+    assert!(shown.contains('…'), "{shown}");
+    assert!(shown.ends_with("reports/final-report.pdf"), "{shown}");
+    assert_eq!(full.as_deref(), Some(path.as_str()));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.hover(("kv-files", 0usize), cx)
+    })
+    .unwrap();
+    cx.executor()
+        .advance_clock(std::time::Duration::from_millis(800));
+    cx.run_until_parked();
+    let tip = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            w.try_find("kv-files-tooltip")
+                .map(|t| t.label().unwrap_or_default().to_owned())
+        })
+        .unwrap();
+    assert_eq!(tip, Some(path));
+}
+
+// Multipart files cells of different widths share one measured room without redrawing each
+// other forever: the table settles within a few frames.
+#[gpui_kit::test]
+fn files_cells_of_different_widths_settle(cx: &mut TestAppContext) {
+    let long = format!("/srv/{}x.pdf", "folder/".repeat(30));
+    let rows = vec![
+        KvRow {
+            files: Some(vec![long]),
+            ..row("a", "")
+        },
+        KvRow {
+            files: Some(vec![s("b.png"), s("c.png")]),
+            ..row("a much longer field name that takes room", "")
+        },
+    ];
+    let (win, view) = host(cx, KvColumns::MULTIPART, rows);
+    let table = view.read_with(cx, |h, _| h.table.clone());
+    let draws = std::rc::Rc::new(std::cell::Cell::new(0usize));
+    let seen = draws.clone();
+    let _sub = cx.update(|cx| cx.observe(&table, move |_, _| seen.set(seen.get() + 1)));
+    for _ in 0..20 {
+        cx.run_until_parked();
+        cx.update_window(win, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+    }
+    let settled = draws.get();
+    for _ in 0..5 {
+        cx.run_until_parked();
+        cx.update_window(win, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+    }
+    assert_eq!(draws.get(), settled, "the table kept asking to redraw");
+}
