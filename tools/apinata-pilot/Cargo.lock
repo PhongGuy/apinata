@@ -298,6 +298,7 @@ dependencies = [
  "aws-sigv4",
  "base64 0.23.1",
  "chrono",
+ "cookie",
  "cookie_store",
  "dirs 7.0.0",
  "encoding_rs",
