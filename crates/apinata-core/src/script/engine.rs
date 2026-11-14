@@ -455,7 +455,7 @@ pub(crate) fn wrap(segments: &[Segment]) -> (String, Vec<u32>) {
 impl Segment {
     /// How errors name it: `<level> tests` for a tests script, else `<level> script`. The
     /// request's own level reads "this request's", so it is never taken for the pre-request phase.
-    fn name(&self) -> String {
+    pub(crate) fn name(&self) -> String {
         let noun = match self.phase {
             ScriptPhase::Tests => "tests",
             _ => "script",

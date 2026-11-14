@@ -142,7 +142,7 @@ impl fmt::Debug for ConsoleEntry {
 pub struct TestOutcome {
     /// The phase it ran in.
     pub phase: ScriptPhase,
-    /// The test's name, or the entry's label such as `request tests`.
+    /// The test's name, or the entry's label such as `this request's tests`.
     pub name: String,
     /// How it ended.
     pub verdict: Verdict,
@@ -334,8 +334,8 @@ impl Record {
         if let Some(denied) = segments.iter().find(|s| !opts.allows(&s.code)) {
             if phase == ScriptPhase::PreRequest {
                 return PhaseEnd::Failed(format!(
-                    "{} script is not approved; approve it in the Apinata app",
-                    denied.level
+                    "{} is not approved; approve it in the Apinata app",
+                    denied.name()
                 ));
             }
             let entry = TestOutcome::skipped(phase, label.to_owned(), "the script is not approved");

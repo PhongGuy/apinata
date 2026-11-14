@@ -86,7 +86,7 @@ async fn no_scripts_skips_tests_and_exits_0() {
     assert_eq!(code, 0);
     assert_eq!(
         report["results"][0]["tests"],
-        json!([{"phase": "tests", "name": "request tests", "status": "skipped", "message": "scripts are off"}])
+        json!([{"phase": "tests", "name": "this request's tests", "status": "skipped", "message": "scripts are off"}])
     );
     assert_eq!(report["results"][0]["console"], json!([]));
     assert_eq!(report["summary"]["skipped_tests"], 1);

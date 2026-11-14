@@ -87,7 +87,7 @@ async fn json_report_shape_is_stable() {
           "tests": [
             {
               "phase": "tests",
-              "name": "request tests",
+              "name": "this request's tests",
               "status": "skipped",
               "message": "scripts are off"
             }
