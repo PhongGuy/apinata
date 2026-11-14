@@ -389,19 +389,24 @@ fn deleting_a_later_example_keeps_a_rename_of_an_earlier_one(cx: &mut TestAppCon
     assert!(shown(cx, h.win, marker_id("rename", &ex(0))));
 }
 
-// Shift+Tab from any control inside a row returns to the tree, not past it to History; the
-// examples chevron is a row control that no collection-level handle tracks.
+// The examples chevron is a mouse shortcut: Right and Left on the row open and close the
+// examples, so Tab goes from the tree straight on without stopping on it.
 #[gpui_kit::test]
-fn shift_tab_from_the_examples_chevron_lands_on_the_tree(cx: &mut TestAppContext) {
+fn tab_skips_the_examples_chevron(cx: &mut TestAppContext) {
     let h = open_sidebar_with(cx, files());
     cx.update_window(h.win, |_, w, _| w.activate_window())
         .unwrap();
     focus_tree(cx, &h);
-    frame(cx, h.win);
-    let tree_handle = cx.update_window(h.win, |_, w, cx| w.focused(cx)).unwrap();
-    tab_to(cx, h.win, marker_id("examples-toggle", &row("users.yml")));
-    cx.simulate_keystrokes(h.win, "shift-tab");
-    frame(cx, h.win);
-    let now = cx.update_window(h.win, |_, w, cx| w.focused(cx)).unwrap();
-    assert_eq!(now, tree_handle, "shift+tab returns to the tree");
+    let chevron = marker_id("examples-toggle", &row("users.yml"));
+    for _ in 0..12 {
+        frame(cx, h.win);
+        let on = cx
+            .update_window(h.win, |_, w, _| {
+                w.try_find(chevron.clone()).and_then(|e| e.focused())
+            })
+            .unwrap();
+        assert_ne!(on, Some(true), "Tab never lands on the examples chevron");
+        cx.simulate_keystrokes(h.win, "tab");
+        cx.run_until_parked();
+    }
 }

@@ -150,6 +150,8 @@ pub enum SidebarEvent {
         path: ItemPath,
         /// Whether the tab stays open rather than previewing.
         permanent: bool,
+        /// Whether the keyboard moves on to the opened request's URL, as Enter on a row does.
+        focus_url: bool,
     },
     /// Open the settings tab of a folder, or of the collection when `folder` is `None`.
     OpenSettings {
@@ -626,10 +628,13 @@ impl Sidebar {
         })
     }
 
-    /// Escape in the filter: empties typed text and keeps focus there; an empty filter hands
-    /// focus to the tree.
+    /// Escape in the sidebar: empties typed text and keeps focus where it is; an empty filter
+    /// hands focus to the tree, or passes the key on when the tree already has it.
     pub fn clear_filter(&mut self, _: &ClearFilter, window: &mut Window, cx: &mut Context<Self>) {
         if self.filter.read(cx).value().is_empty() {
+            if self.tree_focus.contains_focused(window, cx) {
+                return cx.propagate();
+            }
             window.focus(&self.tree_focus, cx);
             return;
         }
@@ -2270,6 +2275,7 @@ impl Sidebar {
                 root: f.root.clone(),
                 path: f.path.clone(),
                 permanent: false,
+                focus_url: false,
             });
         }
         // Only a new folder renames on arrival, so its rename is a fresh one.
@@ -2322,6 +2328,7 @@ impl Sidebar {
             root,
             path,
             permanent: true,
+            focus_url: false,
         });
     }
 
@@ -2345,6 +2352,7 @@ impl Sidebar {
     }
 
     // Enter does what a double click does: keeps a request, toggles a folder or collection.
+    // A kept request also takes the keyboard to its URL; Space previews and stays in the tree.
     fn open_selected(&mut self, _: &OpenSelected, window: &mut Window, cx: &mut Context<Self>) {
         if self.multi.is_active() {
             return;
@@ -2358,6 +2366,7 @@ impl Sidebar {
                     root: n.root.clone(),
                     path: n.path.clone(),
                     permanent: true,
+                    focus_url: true,
                 };
                 cx.emit(event);
             }
@@ -2450,6 +2459,7 @@ impl Sidebar {
                     root: n.root.clone(),
                     path: n.path.clone(),
                     permanent: false,
+                    focus_url: false,
                 };
                 cx.emit(event);
             }
@@ -2885,10 +2895,12 @@ impl Render for Sidebar {
                                 NodeKind::Collection => {
                                     // The buttons create in this collection, not the workspace's
                                     // current one, and swallow the mouse-down so the tree does not
-                                    // toggle it.
+                                    // toggle it. Off the Tab order: the keyboard selects the row,
+                                    // which makes it current, then uses New request or New folder.
                                     let create = |id: &'static str, icon, tip, entry| {
                                         let (view, node) = (view.clone(), n.clone());
                                         ui::icon_button((id, n.collection), icon, tip, None)
+                                            .tab_stop(false)
                                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                                 cx.stop_propagation()
                                             })
@@ -3059,6 +3071,7 @@ impl Render for Sidebar {
                                                 root: root.clone(),
                                                 path: path.clone(),
                                                 permanent: e.click_count() >= 2,
+                                                focus_url: false,
                                             };
                                             view.update(cx, |s, cx| {
                                                 s.plain_click(cx);
@@ -3136,6 +3149,7 @@ impl Render for Sidebar {
                                                 root: root.clone(),
                                                 path: path.clone(),
                                                 permanent: true,
+                                                focus_url: false,
                                             };
                                             view.update(cx, |s, cx| {
                                                 s.focus_row(&id, window, cx);
@@ -3609,6 +3623,8 @@ fn examples_toggle(n: &Node, view: &WeakEntity<Sidebar>) -> impl IntoElement + u
         None,
     )
     .xsmall()
+    // Off the Tab order; Right and Left on the row open and close its examples.
+    .tab_stop(false)
     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     .on_click(move |_, window, cx| {
         cx.stop_propagation();

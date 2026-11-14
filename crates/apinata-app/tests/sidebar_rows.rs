@@ -61,6 +61,7 @@ fn clicking_a_request_opens_it_and_a_double_click_keeps_it(cx: &mut TestAppConte
         root: h.root.clone(),
         path: ip(rel),
         permanent,
+        focus_url: false,
     };
     assert_eq!(events.borrow().as_slice(), [open("health.yml", false)]);
     cx.executor()

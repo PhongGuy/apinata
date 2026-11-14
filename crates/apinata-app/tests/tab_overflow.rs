@@ -5,6 +5,7 @@ use crate::support;
 
 use apinata_app::tab_area::TabArea;
 use apinata_app::workspace::Workspace;
+use gpui_kit::InputEvent as _;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Bounds, Entity, TestAppContext, WindowBounds, WindowOptions,
@@ -327,7 +328,14 @@ fn the_tab_strip_fades_sit_between_the_inset_and_the_chevron(cx: &mut TestAppCon
             right.right() <= chevron.left() + px(0.5),
             "{right:?} over {chevron:?}"
         );
-        assert_eq!(left.size, right.size);
+        // The right fade widens to cover a tab cut by that edge, so only heights match; it
+        // still ends at the viewport's right edge.
+        assert_eq!(left.size.height, right.size.height);
+        let view = w.find("tab-strip-viewport").bounds();
+        assert!(
+            (right.right() - view.right()).abs() < px(0.5),
+            "{right:?} does not end at the viewport {view:?}"
+        );
     })
     .unwrap();
 }
@@ -1384,4 +1392,168 @@ fn the_overflow_menu_rows_end_at_one_edge(cx: &mut TestAppContext) {
         );
     })
     .unwrap();
+}
+
+// Moves the pointer to window point `at` without pressing, so hover follows it.
+fn move_pointer(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    at: gpui_kit::Point<gpui_kit::Pixels>,
+) {
+    cx.update_window(win, |_, w, cx| {
+        w.dispatch_event(
+            gpui_kit::MouseMoveEvent {
+                position: at,
+                pressed_button: None,
+                modifiers: Default::default(),
+            }
+            .to_platform_input(),
+            cx,
+        );
+    })
+    .unwrap();
+}
+
+// The tab whose bounds hold window x `x`, if any.
+fn tab_at(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    count: usize,
+    x: gpui_kit::Pixels,
+) -> Option<usize> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        (0..count).find(|&ix| {
+            let b = w.within("tab-strip").find(ix).bounds();
+            b.left() <= x && x < b.right()
+        })
+    })
+    .unwrap()
+}
+
+// From each wheel position, clicks along the strip's viewport. The tab clicked stays under
+// the pointer however the strip moves, so a second click never lands on another tab. Once
+// the pointer leaves the strip the clicked tab is scrolled clear of the fades.
+fn check_click_keeps_pointer(cx: &mut TestAppContext, width: f32, zoom: f32) {
+    let count = 9;
+    let (_col, s) = shell_strip(cx, count, width, zoom);
+    let away = point(px(4.), px(700.));
+    for k in 0..14 {
+        let (view_left, view_right, _) = view_and_tab(cx, s.win, 0);
+        let mut x = view_left + px(2.);
+        while x < view_right - px(2.) {
+            move_pointer(cx, s.win, away);
+            s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(0)));
+            frames(cx, s.win, 6);
+            wheel_notches(cx, s.win, k);
+            let probe = x;
+            x += px(24.);
+            let Some(ix) = tab_at(cx, s.win, count, probe) else {
+                continue;
+            };
+            let strip = cx
+                .update_window(s.win, |_, w, _| w.find("tab-strip").bounds())
+                .unwrap();
+            // A tab's close slot closes or selects it; probe the label side, which only selects.
+            let slot = cx
+                .update_window(s.win, |_, w, _| {
+                    apinata_app::style::resolve(apinata_app::style::ROW_HEIGHT, w)
+                })
+                .unwrap();
+            let (_, _, b) = view_and_tab(cx, s.win, ix);
+            if probe >= b.right() - slot {
+                continue;
+            }
+            cx.update_window(s.win, |_, w, cx| {
+                w.click_at(
+                    "tab-strip",
+                    point(probe, strip.center().y) - strip.origin,
+                    cx,
+                )
+            })
+            .unwrap();
+            frames(cx, s.win, 6);
+            let why =
+                format!("{width} px, zoom {zoom}, wheeled {k}, click at {probe:?} on tab {ix}");
+            assert_eq!(
+                tab_at(cx, s.win, count, probe),
+                Some(ix),
+                "{why}: the strip moved another tab under the pointer"
+            );
+            // Clicking the tab already chosen, tab 0, chooses nothing new and so reveals nothing.
+            if ix == 0 {
+                continue;
+            }
+            move_pointer(cx, s.win, away);
+            frames(cx, s.win, 6);
+            // Clear of the fades as drawn, the right one widened over any tab cut there.
+            let (tab, fl, fr) = cx
+                .update_window(s.win, |_, w, cx| {
+                    w.render_frame(cx);
+                    (
+                        w.within("tab-strip").find(ix).bounds(),
+                        w.try_find("tab-strip-fade-left").map(|f| f.bounds()),
+                        w.try_find("tab-strip-fade-right").map(|f| f.bounds()),
+                    )
+                })
+                .unwrap();
+            assert!(
+                fl.is_none_or(|f| tab.left() >= f.right() - px(1.))
+                    && fr.is_none_or(|f| tab.right() <= f.left() + px(1.)),
+                "{why}: the tab {tab:?} was not revealed once the pointer left, fades {fl:?} {fr:?}"
+            );
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn a_click_keeps_the_clicked_tab_under_the_pointer_at_640(cx: &mut TestAppContext) {
+    check_click_keeps_pointer(cx, 640., 1.0);
+}
+
+#[gpui_kit::test]
+fn a_click_keeps_the_clicked_tab_under_the_pointer_at_double_zoom_800(cx: &mut TestAppContext) {
+    check_click_keeps_pointer(cx, 800., 2.0);
+}
+
+// A tab chosen without a click, as by a key, is revealed at once even with the pointer resting
+// on it: only a click on the tab holds the strip under the pointer.
+#[gpui_kit::test]
+fn a_tab_chosen_without_a_click_under_the_pointer_is_revealed_at_once(cx: &mut TestAppContext) {
+    let count = 9;
+    let (_col, s) = shell_strip(cx, count, 640., 1.0);
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(0)));
+    frames(cx, s.win, 6);
+    // The tab cut by the strip's right edge, hidden under the right fade; fades take no
+    // pointer input, so the pointer rests on that tab.
+    let (ix, at) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            let view = w.find("tab-strip-viewport").bounds();
+            (0..count)
+                .find_map(|ix| {
+                    let b = w.within("tab-strip").find(ix).bounds();
+                    (b.right() > view.right() + px(1.) && b.left() < view.right() - px(8.))
+                        .then(|| (ix, point(b.left() + px(4.), b.center().y)))
+                })
+                .expect("a tab is cut by the right edge")
+        })
+        .unwrap();
+    move_pointer(cx, s.win, at);
+    frames(cx, s.win, 2);
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.activate_index(ix)));
+    frames(cx, s.win, 6);
+    let (tab, fr) = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            (
+                w.within("tab-strip").find(ix).bounds(),
+                w.try_find("tab-strip-fade-right").map(|f| f.bounds()),
+            )
+        })
+        .unwrap();
+    assert!(
+        fr.is_none_or(|f| tab.right() <= f.left() + px(1.)),
+        "tab {ix} {tab:?} still under the right fade {fr:?}"
+    );
 }

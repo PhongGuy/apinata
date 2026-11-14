@@ -100,6 +100,32 @@ fn enter_in_the_filter_opens_the_first_match_and_moves_to_the_tree(cx: &mut Test
     );
 }
 
+// Escape on a sidebar button empties the filter first; the next Escape hands the keys to
+// the tree, where Space previews the selected row.
+#[gpui_kit::test]
+fn escape_on_a_sidebar_button_clears_the_filter_then_returns_to_the_tree(cx: &mut TestAppContext) {
+    let h = open_sidebar(cx);
+    // The tree's stand-in hands focus on only in an active window, as the app's is.
+    cx.update_window(h.win, |_, w, _| w.activate_window())
+        .unwrap();
+    let seen = sidebar_events(cx, &h.view);
+    type_filter(cx, &h, "stat");
+    let tree = h.view.read_with(cx, |s, _| s.tree().clone());
+    tree.update(cx, |t, cx| {
+        let ix = t.index_of(&row("status.yml"));
+        t.set_selected_index(ix, cx)
+    });
+    tab_to(cx, h.win, "sidebar-history");
+    press(cx, &h, "escape");
+    let filter = h.view.read_with(cx, |s, _| s.filter().clone());
+    assert_eq!(filter.read_with(cx, |i, _| i.value().to_string()), "");
+    assert!(holds_focus(cx, h.win, "sidebar-history"), "focus stays");
+    press(cx, &h, "escape");
+    assert!(!holds_focus(cx, h.win, "sidebar-history"));
+    press(cx, &h, "space");
+    assert_eq!(opened(&seen.borrow()), [("status.yml".to_owned(), false)]);
+}
+
 #[gpui_kit::test]
 fn space_while_renaming_types_a_space(cx: &mut TestAppContext) {
     let h = open_sidebar(cx);
