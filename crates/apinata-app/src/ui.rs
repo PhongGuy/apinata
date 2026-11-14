@@ -1499,6 +1499,12 @@ pub fn kind_toast(kind: ToastKind, message: impl Into<SharedString>) -> Notifica
     toast.content(move |_, _, _| div().id(marker).test_support().into_any_element())
 }
 
+/// `menu` with its check marks at the right end of their rows, where the kit's selects draw
+/// theirs, so every list that marks a choice marks it on the same side.
+pub fn checks_right(menu: PopupMenu) -> PopupMenu {
+    menu.check_side(gpui_kit::base::Side::Right)
+}
+
 /// A compact ghost chevron (id `id`) whose dropdown lists `labels` in order with `selected`
 /// checked; choosing one calls `on_pick` with its index. For a strip whose tabs overflow.
 pub fn strip_overflow(
@@ -1517,6 +1523,7 @@ pub fn strip_overflow(
             .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, window, cx| {
                 let height = window.window_bounds().get_bounds().size.height;
                 menu = menu.scrollable(menu_may_overflow(labels.len(), height, window.rem_size()));
+                menu = checks_right(menu);
                 start_on(&menu, selected, window, cx);
                 for (ix, label) in labels.iter().enumerate() {
                     let on_pick = Rc::clone(&on_pick);
@@ -1600,7 +1607,7 @@ pub fn select(
                 ),
         )
         .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, window, cx| {
-            menu = menu.scrollable(true);
+            menu = checks_right(menu.scrollable(true));
             start_on(&menu, selected, window, cx);
             for (ix, label) in labels.iter().enumerate() {
                 let on_pick = Rc::clone(&on_pick);

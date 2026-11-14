@@ -82,43 +82,44 @@ fn changed(source: &str, detail: &str) -> ExportNote {
 
 #[test]
 fn the_message_counts_only_what_was_not_carried_over() {
-    let file = Path::new("/tmp/c.json");
+    let file = Path::new("/tmp/exports/c.json");
     let translated = changed("a / pre-request script", "script translated");
-    assert_eq!(exported_message(file, &[]), "Exported to /tmp/c.json");
+    assert_eq!(exported_message(file, &[]), "Exported to c.json");
     assert_eq!(
         exported_message(file, &[lost("a / tags", "t"), translated.clone()]),
-        "Exported to /tmp/c.json (1 item not carried over)"
+        "Exported to c.json (1 item not carried over)"
     );
     assert_eq!(
         exported_message(file, &[lost("a", "x"), lost("b", "x"), lost("c", "x")]),
-        "Exported to /tmp/c.json (3 items not carried over)"
+        "Exported to c.json (3 items not carried over)"
     );
     assert_eq!(
         exported_message(file, &[translated.clone(), translated.clone()]),
-        "Exported to /tmp/c.json (2 items changed to fit)"
+        "Exported to c.json (2 items changed to fit)"
     );
     assert_eq!(
         report_summary(file, &[lost("a / tags", "t"), translated.clone()]),
-        "1 item was not carried over to /tmp/c.json."
+        "1 item was not carried over to c.json."
     );
     assert_eq!(
         report_summary(file, &[translated]),
-        "Everything was carried over to /tmp/c.json; 1 item was changed to fit."
+        "Everything was carried over to c.json; 1 item was changed to fit."
     );
 }
 
 #[test]
-fn the_report_groups_repeats_and_keeps_changes_apart() {
+fn the_report_lists_each_kind_once_with_its_places_under_it() {
     let asserts = "assertions have no place";
     let notes = [
         lost("Posts / List posts / assertions", asserts),
-        lost("Posts / List posts / tags", "tags were left out"),
+        lost("Posts / List posts / tags", "tags were left out: smoke"),
         changed(
             "Users / List users / pre-request script",
             "script `translated`",
         ),
         lost("Posts / Get post / assertions", asserts),
         lost("Users / Get user / assertions", asserts),
+        lost("Users / Get user / tags", "tags were left out: smoke, data"),
         lost("Users / Get user / timeout", "the 5 ms timeout"),
     ];
     assert_eq!(
@@ -127,14 +128,14 @@ fn the_report_groups_repeats_and_keeps_changes_apart() {
             (
                 Some("Left out"),
                 vec![
-                    "assertions have no place, in 3 places: Posts / List posts / assertions; Posts / Get post / assertions; Users / Get user / assertions".to_owned(),
-                    "Posts / List posts / tags: tags were left out".to_owned(),
-                    "Users / Get user / timeout: the 5 ms timeout".to_owned(),
+                    "Assertions have no place\nPosts / List posts / assertions\nPosts / Get post / assertions\nUsers / Get user / assertions".to_owned(),
+                    "Tags were left out\nPosts / List posts / tags: smoke\nUsers / Get user / tags: smoke, data".to_owned(),
+                    "The 5 ms timeout\nUsers / Get user / timeout".to_owned(),
                 ]
             ),
             (
                 Some("Changed"),
-                vec!["Users / List users / pre-request script: script translated".to_owned()]
+                vec!["Script translated\nUsers / List users / pre-request script".to_owned()]
             ),
         ]
     );
@@ -144,12 +145,27 @@ fn the_report_groups_repeats_and_keeps_changes_apart() {
         report_groups(&[lost("f / g", skipped), lost("h / g", skipped)]),
         vec![(
             Some("Left out"),
-            vec![format!("{skipped}, in 2 places: f / g; h / g")]
+            vec!["Only HTTP requests are exported\nf / g\nh / g".to_owned()]
         )]
     );
     assert_eq!(
         report_groups(&[lost("collection / headers", "h")]),
-        vec![(Some("Left out"), vec!["collection / headers: h".to_owned()])]
+        vec![(Some("Left out"), vec!["H\ncollection / headers".to_owned()])]
+    );
+    // A name in backticks may hold ": " itself; it never splits the kind from its place.
+    let broken = "environment `a: b` extends `c`, which does not exist";
+    assert_eq!(
+        report_groups(&[
+            lost("collection / a: b", broken),
+            lost("global / a: b", broken)
+        ]),
+        vec![(
+            Some("Left out"),
+            vec![
+                "Environment a: b extends c, which does not exist\ncollection / a: b\nglobal / a: b"
+                    .to_owned()
+            ]
+        )]
     );
 }
 
@@ -443,13 +459,13 @@ fn with_grpc_items(n: usize) -> tempfile::TempDir {
     write_tree(&files)
 }
 
-// `n` HTTP requests, each with its own tag, so the report has `n` lines that do not group.
-fn with_tagged_requests(n: usize) -> tempfile::TempDir {
+// `n` HTTP requests, each with its own timeout, so the report has `n` lines that do not group.
+fn with_timed_requests(n: usize) -> tempfile::TempDir {
     let mut files = vec![("opencollection.yml".to_owned(), ROOT.to_owned())];
     for i in 1..=n {
         let text = request(&format!("r{i:02}"), "http://x/a").replacen(
             "  seq: 1\n",
-            &format!("  seq: {i}\n  tags: [t{i}]\n"),
+            &format!("  seq: {i}\nsettings:\n  timeout: {i}\n"),
             1,
         );
         files.push((format!("r{i:02}.yml"), text));
@@ -503,7 +519,7 @@ fn show_details_gathers_the_items_the_export_left_out(cx: &mut TestAppContext) {
     let col = with_grpc_items(2);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
-    let file = export_postman(cx, &s, &out);
+    export_postman(cx, &s, &out);
     assert!(
         present(cx, s.win, "export-details"),
         "the toast offers details"
@@ -517,11 +533,11 @@ fn show_details_gathers_the_items_the_export_left_out(cx: &mut TestAppContext) {
     assert!(dialog_open(cx, &s));
     assert_eq!(
         shown(cx, &s, "export-summary"),
-        format!("2 items were not carried over to {}.", file.display())
+        "2 items were not carried over to c.postman_collection.json."
     );
     assert_eq!(
         shown(cx, &s, ("export-note", 0usize)),
-        "only HTTP requests are exported; this gRPC item was left out, in 2 places: g1; g2"
+        "Only HTTP requests are exported; this gRPC item was left out\ng1\ng2"
     );
     assert!(!present(cx, s.win, ("export-note", 1usize)));
     cx.update_window(s.win, |_, w, cx| {
@@ -543,11 +559,68 @@ fn a_clean_export_offers_no_details(cx: &mut TestAppContext) {
     assert!(!present(cx, s.win, "export-details"));
 }
 
+// The toast's action opens the folder that holds the exported file.
+#[gpui_kit::test]
+fn the_export_toast_shows_the_file_in_its_folder(cx: &mut TestAppContext) {
+    use apinata_app::open_external::{self, FileOpener};
+    use std::sync::{Arc, Mutex};
+    let opened: Arc<Mutex<Vec<PathBuf>>> = Arc::default();
+    let log = opened.clone();
+    let opener: FileOpener = Arc::new(move |p, _| log.lock().unwrap().push(p.to_path_buf()));
+    let base = tempfile::tempdir().unwrap();
+    let b = base.path().to_path_buf();
+    cx.update(|cx| open_external::install(opener, b, cx));
+    let col = two_requests();
+    let s = started(cx, &col);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    cx.update_window(s.win, |_, w, cx| {
+        use gpui_kit::test::TestWindowExt as _;
+        w.click("export-show-folder", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(*opened.lock().unwrap(), vec![out.path().to_path_buf()]);
+}
+
+// A kind's places sit on their own lines under it, indented past its first letter.
+#[gpui_kit::test]
+fn the_report_lists_the_places_under_their_kind(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let col = with_grpc_items(2);
+    let s = started(cx, &col);
+    let out = tempfile::tempdir().unwrap();
+    export_postman(cx, &s, &out);
+    cx.update_window(s.win, |_, w, cx| w.click("export-details", cx))
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let note = w.find(("export-note", 0usize)).bounds();
+        let within = w.within(("export-note", 0usize));
+        let kind = within.find("report-kind");
+        assert_eq!(
+            kind.label(),
+            Some("Only HTTP requests are exported; this gRPC item was left out")
+        );
+        let places: Vec<_> = (0..2usize)
+            .map(|i| within.find(("report-place", i)))
+            .collect();
+        assert_eq!(places[0].label(), Some("g1"));
+        assert_eq!(places[1].label(), Some("g2"));
+        let (kind, g1, g2) = (kind.bounds(), places[0].bounds(), places[1].bounds());
+        assert!(note.contains(&g2.center()), "{g2:?} in {note:?}");
+        assert!(g1.top() >= kind.bottom() && g2.top() >= g1.bottom());
+        assert!(g1.left() > kind.left(), "{g1:?} indented under {kind:?}");
+    })
+    .unwrap();
+}
+
 #[gpui_kit::test]
 fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{InputEvent as _, ScrollDelta, ScrollEvent, point};
-    let col = with_tagged_requests(60);
+    let col = with_timed_requests(60);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
     export_postman(cx, &s, &out);
@@ -591,7 +664,7 @@ fn a_long_export_report_scrolls_to_its_last_item(cx: &mut TestAppContext) {
 fn the_export_report_keeps_its_lines_clear_of_the_scrollbar(cx: &mut TestAppContext) {
     use apinata_app::style::SCROLLBAR_GUTTER;
     use gpui_kit::test::TestWindowExt as _;
-    let col = with_tagged_requests(60);
+    let col = with_timed_requests(60);
     let s = started(cx, &col);
     let out = tempfile::tempdir().unwrap();
     export_postman(cx, &s, &out);

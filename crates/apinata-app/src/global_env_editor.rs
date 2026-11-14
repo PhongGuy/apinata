@@ -1410,6 +1410,10 @@ impl Render for GlobalEnvEditor {
                 .children(fileless.map(|f| div().w_full().child(f)))
                 .into_any_element()
         };
+        // With nothing listed and no name being typed the list would be an empty strip, so the
+        // empty pane takes the whole dialog and its message is centred in it.
+        let list = (!self.names(cx).is_empty() || self.naming.is_some())
+            .then(|| self.render_list(window, cx));
         v_flex()
             .id("global-env-editor")
             .test_support()
@@ -1432,7 +1436,7 @@ impl Render for GlobalEnvEditor {
                     .gap_2()
                     .items_stretch()
                     .min_h(style::GLOBAL_ENV_BODY_MIN)
-                    .child(self.render_list(window, cx))
+                    .children(list)
                     .child(body),
             )
     }

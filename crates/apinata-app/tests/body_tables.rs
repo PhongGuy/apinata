@@ -578,3 +578,42 @@ fn a_missing_file_under_a_symlinked_collection_falls_back_to_the_given_path() {
         missing.to_string_lossy()
     );
 }
+
+// Several files show the parts the lone file shows: each file's name and size, Change… and
+// Remove, under a line saying only the chosen file is sent.
+#[gpui_kit::test]
+fn each_of_several_files_shows_the_lone_files_parts(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.bin");
+    std::fs::write(&a, vec![0u8; 1536]).unwrap();
+    let (win, _) = body(
+        cx,
+        BodySpec::File(vec![
+            typed(&a.to_string_lossy(), "", true),
+            sel("gone/b.bin", false),
+        ]),
+    );
+    assert_eq!(file_view(cx, win), FileView::Table);
+    let seen = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let label = |id: (&'static str, usize)| {
+                w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+            };
+            let shown = |id: (&'static str, usize)| {
+                w.try_find(id).and_then(|e| e.value().map(str::to_owned))
+            };
+            (
+                [shown(("kv-files", 0)), shown(("kv-files", 1))],
+                [label(("kv-file-size", 0)), label(("kv-file-size", 1))],
+                [label(("kv-pick", 0)), label(("kv-delete", 1))],
+                w.try_find("body-file-choice-note")
+                    .and_then(|e| e.label().map(str::to_owned)),
+            )
+        })
+        .unwrap();
+    assert_eq!(seen.0, [some("a.bin"), some("b.bin")]);
+    assert_eq!(seen.1, [some("1.5 KB"), None]);
+    assert_eq!(seen.2, [some("Change\u{2026}"), some("Remove")]);
+    assert_eq!(seen.3.as_deref(), Some("Only the selected file is sent."));
+}

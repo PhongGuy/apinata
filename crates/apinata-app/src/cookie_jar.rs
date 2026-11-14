@@ -149,10 +149,11 @@ pub fn domain_matches(domain: &str, query: &str) -> bool {
     domain.to_lowercase().contains(&query.to_lowercase())
 }
 
-/// When a cookie expires, relative to `now`: "No expiry", "Expired", or "N min|h|d left".
+/// When a cookie expires, relative to `now`: "Session" for one that ends with the session,
+/// "Expired", or "N min|h|d left".
 pub fn expiry_label(expires: Option<SystemTime>, now: SystemTime) -> String {
     let Some(at) = expires else {
-        return "No expiry".into();
+        return "Session".into();
     };
     let secs = match at.duration_since(now) {
         Ok(left) if !left.is_zero() => left.as_secs(),

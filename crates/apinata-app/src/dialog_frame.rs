@@ -67,6 +67,14 @@ pub fn place(dialog: Dialog, window: &Window) -> Dialog {
         .width(resolve(DIALOG_BODY_WIDTH, window) + DIALOG_SIDE_PADDINGS)
 }
 
+/// [`place`] for a dialog opened over another: lower by the one beneath's title and a gap
+/// on each side, so that title stays in view above it.
+pub fn place_nested(dialog: Dialog, window: &Window) -> Dialog {
+    let rem = window.rem_size();
+    let lower = at_rem(TITLE_CHROME, rem) + at_rem(SPACE_4, rem) * 2.;
+    place(dialog, window).margin_top(top(window_view_height(window), rem) + lower)
+}
+
 fn window_view_height(window: &Window) -> Pixels {
     view_height(window.viewport_size().height, window_paddings(window))
 }

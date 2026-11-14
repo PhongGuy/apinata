@@ -45,9 +45,14 @@ pub fn ask(spec: Ask, window: &mut Window, cx: &mut App) -> async_channel::Recei
     // A one-slot channel and try_send: whichever answer lands first wins, later ones drop.
     let (tx, rx) = async_channel::bounded(1);
     window.defer(cx, move |window, cx| {
+        let nested = window.has_active_dialog(cx);
         // The builder runs every frame, so each handler clones what it captures.
         window.open_dialog(cx, move |dialog, window, _| {
-            let dialog = crate::dialog_frame::place(dialog, window);
+            let dialog = if nested {
+                crate::dialog_frame::place_nested(dialog, window)
+            } else {
+                crate::dialog_frame::place(dialog, window)
+            };
             let key = |ix: usize| {
                 let tx = tx.clone();
                 move |_: &_, _: &mut Window, _: &mut App| {

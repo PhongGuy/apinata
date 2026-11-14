@@ -26,7 +26,7 @@ use crate::row_move::{
 };
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::section::SectionEdit;
-use crate::style::{OPERATOR_MENU_WIDTH, OPERATOR_SELECT_WIDTH, ROW_HEIGHT};
+use crate::style::{OPERATOR_MENU_WIDTH, OPERATOR_SELECT_WIDTH, ROW_HEIGHT, VALUE_GROW};
 use crate::tabs::Side;
 use crate::ui;
 
@@ -882,14 +882,14 @@ impl AssertionsSection {
 }
 
 /// The assertion table's columns: Expression (`as-head-expr`, `as-expr`, flex), Operator
-/// (`as-head-op`, `as-op`, `OPERATOR_SELECT_WIDTH`), Value (`as-head-value`, `as-value`, flex);
-/// headings are `HEADINGS`.
+/// (`as-head-op`, `as-op`, `OPERATOR_SELECT_WIDTH`), Value (`as-head-value`, `as-value`,
+/// `VALUE_GROW` parts of the free width to the expression's one); headings are `HEADINGS`.
 pub fn columns() -> Vec<KvColumn> {
     let [expr, op, value] = HEADINGS;
     vec![
         KvColumn::flex("as-head-expr", "as-expr", expr),
         KvColumn::fixed("as-head-op", "as-op", op, OPERATOR_SELECT_WIDTH),
-        KvColumn::flex("as-head-value", "as-value", value),
+        KvColumn::grow("as-head-value", "as-value", value, VALUE_GROW),
     ]
 }
 

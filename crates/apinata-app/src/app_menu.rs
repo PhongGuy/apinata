@@ -34,6 +34,7 @@ const MENU_GROUPS: [&[&str]; 5] = [
     ],
     &[
         "collection.new_request",
+        "collection.new_graphql_request",
         "request.save",
         "request.save_all",
         "request.generate_code",
