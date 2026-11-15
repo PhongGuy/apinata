@@ -54,6 +54,15 @@ pub async fn sign_in(
         return Err(secrets_error(e));
     }
     if let Err(e) = TeamStore::update(team_file, |t| t.put_account(account.clone())) {
+        // The file still names the old session, so the key must hold its token again (same
+        // user) or nothing (a new user), never the token about to be revoked.
+        let same_user = previous
+            .as_ref()
+            .is_some_and(|a| a.username == account.username);
+        let _ = match previous_token.as_ref().filter(|_| same_user) {
+            Some(old) => secrets.set(&key, old.expose()),
+            None => secrets.delete(&key),
+        };
         let _ = api.revoke(&signed.token, &signed.token_id).await;
         return Err(e);
     }
@@ -115,7 +124,12 @@ pub async fn current(
         other => other?,
     };
     TeamStore::update(team_file, |t| {
-        if let Some(found) = t.account(api.server()).cloned() {
+        // Only the account this call read; a sign-in meanwhile may have replaced it.
+        if let Some(found) = t
+            .account(api.server())
+            .filter(|a| a.username == account.username)
+            .cloned()
+        {
             t.put_account(Account {
                 display_name: me.user.display_name.clone(),
                 server_admin: me.user.server_admin,

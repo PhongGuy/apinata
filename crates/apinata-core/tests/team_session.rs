@@ -465,3 +465,70 @@ fn a_corrupt_team_file_is_a_store_error_and_is_not_overwritten() {
     ));
     assert_eq!(std::fs::read_to_string(file(&dir)).unwrap(), "{not json");
 }
+
+/// A session answer for `name` with a token unlike `tok()`, so the keychain shows which one it holds.
+fn other_session(name: &str, id: &str) -> (String, ResponseTemplate) {
+    let fresh = format!("plk_{}", "B".repeat(43));
+    let body = serde_json::json!({"token": fresh, "token_meta": token_meta(id), "user": user(name, false)});
+    (fresh, ResponseTemplate::new(201).set_body_json(body))
+}
+
+/// Rejoins as `name` while the team file's folder refuses writes, and checks ada's session survives.
+async fn rejoin_with_an_unwritable_team_file(name: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let (s, dir, secrets) = (
+        MockServer::start().await,
+        TempDir::new().unwrap(),
+        MemoryStore::new(),
+    );
+    joined(&s, &secrets, &file(&dir)).await;
+    s.reset().await;
+    let (fresh, response) = other_session(name, "tok-8");
+    answer(&s, "GET", "/api/v1/server", info(true)).await;
+    answer(&s, "POST", "/api/v1/session", response).await;
+    answer(
+        &s,
+        "DELETE",
+        "/api/v1/tokens/tok-8",
+        ResponseTemplate::new(204),
+    )
+    .await;
+    let parent = file(&dir).parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let e = team::sign_in(&client(&s), &secrets, &file(&dir), name, "pw")
+        .await
+        .unwrap_err();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(matches!(e, TeamError::Store(_)), "{e:?}");
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-8").await, 1);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 0);
+    assert_eq!(
+        secrets.get(&token_key(&url(&s), "ada")).unwrap(),
+        Some(tok())
+    );
+    if name != "ada" {
+        assert_eq!(secrets.get(&token_key(&url(&s), name)).unwrap(), None);
+    }
+    assert_ne!(
+        secrets.get(&token_key(&url(&s), name)).unwrap(),
+        Some(fresh)
+    );
+    assert_eq!(
+        TeamStore::load(&file(&dir))
+            .unwrap()
+            .account(&url(&s))
+            .unwrap()
+            .token_id,
+        "tok-7"
+    );
+}
+
+#[tokio::test]
+async fn a_failed_save_on_rejoining_restores_the_previous_token() {
+    rejoin_with_an_unwritable_team_file("ada").await;
+}
+
+#[tokio::test]
+async fn a_failed_save_on_joining_as_another_user_leaves_no_dead_token() {
+    rejoin_with_an_unwritable_team_file("bob").await;
+}
