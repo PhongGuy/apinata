@@ -8,8 +8,8 @@ use std::time::SystemTime;
 
 use apinata_core::import::ImportedRequest;
 use apinata_core::team::{
-    Block, ConflictCopies, EventsConfig, EventsEnd, Role, TeamAuth, TeamConfig, TeamNotice,
-    TeamState, TeamStatus, TeamSync, follow_events,
+    Block, ConflictCopies, EventsConfig, EventsEnd, Identity, Role, TeamAuth, TeamConfig,
+    TeamNotice, TeamState, TeamStatus, TeamSync, follow_events,
 };
 use apinata_core::{
     CommitError, ConflictKind, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
@@ -2656,19 +2656,20 @@ impl Workspace {
     }
 
     /// Hands the running team sync loop at `root` a fresh sign-in: later git calls carry `auth`,
-    /// and the events stream restarts on `events` (or stops when `None`). The loop keeps its
-    /// state; nothing when it has no loop.
+    /// later commits `identity`, and the events stream restarts on `events` (or stops when
+    /// `None`). The loop keeps its state; nothing when it has no loop.
     pub fn renew_team(
         &mut self,
         root: &Path,
         auth: TeamAuth,
+        identity: Identity,
         events: Option<EventsConfig>,
         cx: &mut Context<Self>,
     ) {
         let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
             return;
         };
-        team.sync.signed_in(auth);
+        team.sync.signed_in(auth, identity);
         // Dropping the old stream aborts it before it can report its revoked token.
         team._events = events.map(|config| follow_team(&team.sync, &team.connected, config, cx));
     }
