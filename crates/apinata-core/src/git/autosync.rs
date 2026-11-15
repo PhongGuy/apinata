@@ -166,7 +166,9 @@ pub fn discard_changes(root: &Path, opts: &GitOptions) -> Result<(), GitError> {
 /// Whether `status --porcelain` lists any change; ignored files do not count.
 pub fn is_dirty(root: &Path, opts: &GitOptions) -> Result<bool, GitError> {
     check_root(root)?;
-    let args = ["status", "--porcelain"];
+    // Untracked files are named explicitly so a user's `status.showUntrackedFiles=no` cannot hide
+    // files that the commit's `add -A` would still pick up.
+    let args = ["status", "--porcelain", "--untracked-files=normal"];
     let out = run::git(&args, root, opts)?;
     if !out.status.success() {
         return Err(out.failed(&args));

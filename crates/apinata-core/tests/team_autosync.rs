@@ -153,3 +153,12 @@ fn discard_changes_drops_edits_and_new_files_but_keeps_ignored_ones() {
     assert!(col.join(".env").is_file());
     assert!(clean(&sb, &col));
 }
+
+#[test]
+fn is_dirty_counts_an_untracked_file_when_status_hides_untracked_files() {
+    let sb = Sandbox::new();
+    let col = cloned(&sb);
+    sb.git(&col, &["config", "status.showUntrackedFiles", "no"]);
+    write(&col, "new.txt", "n\n");
+    assert!(is_dirty(&col, &sb.options()).unwrap());
+}
