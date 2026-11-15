@@ -383,7 +383,14 @@ impl Driver {
                 self.deadline = None;
                 None
             }
-            TeamAction::Commit => Some(self.commit().unwrap_or(TeamEvent::Committed)),
+            // A commit that found nothing, with nothing unpushed either, has nothing to push.
+            TeamAction::Commit => Some(match self.commit() {
+                Err(refused) => refused,
+                Ok(false) if unpushed(&root, &self.opts).is_ok_and(|n| n == 0) => {
+                    TeamEvent::NothingCommitted
+                }
+                Ok(_) => TeamEvent::Committed,
+            }),
             TeamAction::Push => Some(match push(&root, None, &self.cancel, &self.opts) {
                 Ok(_) => TeamEvent::PushAccepted,
                 Err(e) => TeamEvent::PushFailed(classify(&e)),
@@ -400,12 +407,12 @@ impl Driver {
         }
     }
 
-    /// Commits the whole tree; `Some(CommitRefused)` when git refused.
-    fn commit(&self) -> Option<TeamEvent> {
+    /// Commits the whole tree: whether a commit was made, or `CommitRefused` when git refused.
+    fn commit(&self) -> Result<bool, TeamEvent> {
         match commit_all(&self.config.root, COMMIT_MESSAGE, &self.opts) {
-            Ok(_) => None,
-            Err(CommitError::Failed { output }) => Some(TeamEvent::CommitRefused { output }),
-            Err(e) => Some(TeamEvent::CommitRefused {
+            Ok(made) => Ok(made.is_some()),
+            Err(CommitError::Failed { output }) => Err(TeamEvent::CommitRefused { output }),
+            Err(e) => Err(TeamEvent::CommitRefused {
                 output: e.to_string(),
             }),
         }
@@ -419,7 +426,7 @@ impl Driver {
         let (root, copies) = (&self.config.root, &self.config.copies);
         let mut tries = 0;
         loop {
-            if writes && let Some(refused) = self.commit() {
+            if writes && let Err(refused) = self.commit() {
                 return refused;
             }
             let result = if rebase {

@@ -341,3 +341,23 @@ fn git_calls_never_overlap_under_a_burst_of_inputs() {
         ""
     );
 }
+
+#[test]
+fn a_change_with_nothing_to_commit_does_not_push() {
+    let sb = Sandbox::new();
+    let a = cloned(&sb);
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = std::sync::Arc::clone(&seen);
+    let sync = TeamSync::start(
+        config(&sb, &a, Role::Write),
+        Box::new(move |s| sink.lock().unwrap().push(s.state.clone())),
+    );
+    wait("the start pull", || settled(&sync));
+    seen.lock().unwrap().clear();
+    sync.changed();
+    wait("the commit to settle", || {
+        seen.lock().unwrap().contains(&TeamState::Committing) && settled(&sync)
+    });
+    let states = seen.lock().unwrap().clone();
+    assert!(!states.contains(&TeamState::Pushing), "{states:?}");
+}

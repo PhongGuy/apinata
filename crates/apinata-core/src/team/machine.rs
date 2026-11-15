@@ -80,6 +80,8 @@ pub enum TeamEvent {
     RemoteMoved,
     /// The commit landed.
     Committed,
+    /// The tree held nothing to commit and nothing waits to be pushed.
+    NothingCommitted,
     /// A local hook refused the commit.
     CommitRefused {
         /// The hook's output.
@@ -242,6 +244,12 @@ impl TeamMachine {
             {
                 self.state = S::Pushing;
                 vec![A::Push]
+            }
+            E::NothingCommitted
+                if writes
+                    && matches!(self.state, S::Committing | S::Blocked(Block::Hook { .. })) =>
+            {
+                self.settle()
             }
             E::PushAccepted if self.state == S::Pushing => {
                 self.rejections = 0;
