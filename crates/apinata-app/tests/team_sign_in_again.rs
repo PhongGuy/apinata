@@ -236,3 +236,56 @@ fn a_sign_in_leaves_a_healthy_loop_and_its_unsettled_clash_alone(cx: &mut TestAp
     );
     assert_eq!(clashes(cx).len(), 1, "the clash is still unsettled");
 }
+
+#[gpui_kit::test]
+fn a_sign_in_starts_over_a_loop_the_server_had_dropped(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let server = potluck_server(cx);
+    serve_workspace(cx, &server, "write");
+    mount(
+        cx,
+        &server,
+        Mock::given(method("GET"))
+            .and(path("/api/v1/server"))
+            .respond_with(info(true)),
+    );
+    mount(
+        cx,
+        &server,
+        Mock::given(method("POST"))
+            .and(path("/api/v1/session"))
+            .respond_with(session("tok-8", false)),
+    );
+    let root = col.path().to_path_buf();
+    let s = team_started(cx, &sb, &col, |paths, secrets| {
+        signed_in(paths, secrets, &server, false);
+        bind(paths, &root, &server.uri(), Role::Write);
+    })
+    .0;
+    wait_for(cx, "in sync", |cx| state(cx, &s) == Some(TeamState::Idle));
+    let before = s.ws.read_with(cx, |w, _| w.team_sync(&s.root)).unwrap();
+    before.gone();
+    wait_for(cx, "gone", |cx| {
+        state(cx, &s) == Some(TeamState::Blocked(Block::Gone))
+    });
+    let ws = s.ws.clone();
+    let join = cx
+        .update_window(s.win, |_, w, cx| {
+            apinata_app::team_join::open_for(&ws, &server.uri(), "ada", w, cx)
+        })
+        .unwrap();
+    cx.update_window(s.win, |_, w, cx| {
+        join.update(cx, |j, cx| {
+            j.set_password("hunter2", w, cx);
+            j.submit(w, cx);
+        })
+    })
+    .unwrap();
+    wait_for(cx, "in sync again", |cx| {
+        state(cx, &s) == Some(TeamState::Idle)
+    });
+    let after = s.ws.read_with(cx, |w, _| w.team_sync(&s.root)).unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&before, &after), "a new loop runs");
+}

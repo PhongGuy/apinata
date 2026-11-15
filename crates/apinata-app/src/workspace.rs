@@ -4060,7 +4060,6 @@ impl Workspace {
     }
 }
 
-/// Whether `content` has what a tab of `kind` shows; collection-wide kinds always have it.
 // Follows a team's events stream on the tokio runtime and passes what it hears to `sync`.
 fn follow_team(
     sync: &Arc<TeamSync>,
@@ -4088,6 +4087,7 @@ fn follow_team(
     })
 }
 
+/// Whether `content` has what a tab of `kind` shows; collection-wide kinds always have it.
 fn shows(content: &Content, kind: &TabKind) -> bool {
     match kind {
         TabKind::Request(item) => content.requests.contains_key(item),

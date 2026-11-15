@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use apinata_core::SecretStore;
 use apinata_core::team::{
-    self, Binding, EventsConfig, HttpTeamClient, Resumed, ServerUrl, Standing, TeamConfig,
-    TeamError, TeamStore,
+    self, Binding, Block, EventsConfig, HttpTeamClient, Resumed, ServerUrl, Standing, TeamConfig,
+    TeamError, TeamState, TeamStore,
 };
 use gpui_kit::prelude::*;
 use gpui_kit::{App, AppContext, AsyncApp, Entity, Task, WeakEntity};
@@ -45,8 +45,8 @@ pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
             w.team_resumes().remove(&root);
             match result {
                 // A running loop keeps its state, such as unsettled clashes, and takes the
-                // new token in place.
-                Ok(resumed) if w.team_sync(&root).is_some() => renew(w, &root, resumed, cx),
+                // new token in place; one the server had dropped starts over.
+                Ok(resumed) if renewable(w, &root) => renew(w, &root, resumed, cx),
                 Ok(resumed) => start(w, &root, &binding, &conflicts, resumed, source, cx),
                 Err(e) => notice(&root, "did not start", &e, cx),
             }
@@ -161,6 +161,12 @@ fn start(
         }
     });
     w.keep_team_watch(root, watch);
+}
+
+// Whether `root` has a loop a resume can hand a new token to, rather than one to replace.
+fn renewable(w: &Workspace, root: &Path) -> bool {
+    w.team_status(root)
+        .is_some_and(|t| t.state != TeamState::Blocked(Block::Gone))
 }
 
 // Gives the running loop at `root` the token and events stream of a fresh resume, and its role;
