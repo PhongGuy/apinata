@@ -129,6 +129,7 @@ fn lock(shared: &SharedState) -> MutexGuard<'_, Shared> {
 
 /// A running team sync loop. Dropping it stops the thread and cancels its git call in flight
 /// without waiting for it.
+#[non_exhaustive]
 pub struct TeamSync {
     tx: Sender<Input>,
     shared: SharedState,

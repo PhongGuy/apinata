@@ -146,6 +146,7 @@ const MAX_REJECTIONS: u8 = 3;
 
 /// The team sync loop's state, fed one event at a time.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TeamMachine {
     state: TeamState,
     role: Role,
