@@ -6,12 +6,12 @@ use std::path::Path;
 use super::{Account, Me, TeamApi, TeamError, TeamStore, TeamToken, token_key};
 use crate::{SecretError, SecretStore};
 
-fn secrets_error(e: SecretError) -> TeamError {
+pub(super) fn secrets_error(e: SecretError) -> TeamError {
     TeamError::Secrets(e.to_string())
 }
 
 /// The token kept for `account`. A value that is not a token reads as none.
-fn kept_token(
+pub(super) fn kept_token(
     api: &dyn TeamApi,
     secrets: &dyn SecretStore,
     account: &Account,
@@ -102,9 +102,9 @@ pub async fn sign_out(
     TeamStore::update(team_file, |t| t.remove_account(api.server()))
 }
 
-/// The signed-in user on this server, refreshing the account's name and admin flag. Without an
-/// account or token it is `Unauthenticated` with no request; a refused token is deleted while
-/// the account stays, so the list can show the server as signed out.
+/// The signed-in user on this server, refreshing the account's name, admin flag and identity.
+/// Without an account or token it is `Unauthenticated` with no request; a refused token is
+/// deleted while the account stays, so the list can show the server as signed out.
 pub async fn current(
     api: &dyn TeamApi,
     secrets: &dyn SecretStore,
@@ -118,7 +118,15 @@ pub async fn current(
     };
     let me = match api.me(&token).await {
         Err(TeamError::Unauthenticated) => {
-            let _ = secrets.delete(&token_key(api.server(), &account.username));
+            // A sign-in meanwhile kept a new session under the same key; only the refused one goes.
+            let same_session = (TeamStore::load(team_file).ok())
+                .and_then(|t| t.account(api.server()).cloned())
+                .is_some_and(|a| a.username == account.username && a.token_id == account.token_id);
+            let same_token = (kept_token(api, secrets, &account).ok().flatten())
+                .is_some_and(|kept| kept.expose() == token.expose());
+            if same_session && same_token {
+                let _ = secrets.delete(&token_key(api.server(), &account.username));
+            }
             return Err(TeamError::Unauthenticated);
         }
         other => other?,
@@ -133,6 +141,7 @@ pub async fn current(
             t.put_account(Account {
                 display_name: me.user.display_name.clone(),
                 server_admin: me.user.server_admin,
+                identity: Some(me.identity.clone()),
                 ..found
             });
         }

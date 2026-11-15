@@ -10,6 +10,7 @@ use apinata_core::import::{
     CollectionOptions, EnvironmentFormat, FormatError, ImportBundle, ImportReport, ImportedRequest,
     parse_collections, write_collection,
 };
+use apinata_core::team::TeamState;
 use apinata_core::{DraftSnapshot, ItemPath};
 
 use gpui_kit::assets::IconName;
@@ -75,6 +76,8 @@ use crate::stand_in::StandIn;
 use crate::style;
 use crate::tab_area::TabArea;
 use crate::tabs::{TabId, TabKind};
+use crate::team_sync_dialog;
+use crate::team_text::{self, SyncKind};
 use crate::ui::{self, LockButton as _, icon_button, no_window_move};
 use crate::update_install;
 use crate::updates::{CheckForUpdates, Report, Updates, UpdatesEvent, report_text};
@@ -1521,6 +1524,17 @@ impl Shell {
             | WorkspaceEvent::Reverted { .. }
             | WorkspaceEvent::TeamStatus { .. }
             | WorkspaceEvent::Delivered { .. } => {}
+            WorkspaceEvent::TeamProblem { root } => {
+                let status = self.workspace.read(cx).team_status(root);
+                if let Some(TeamState::Blocked(block)) = status.map(|s| s.state) {
+                    let text = team_text::problem_toast(&display_name(root), &block);
+                    window.push_notification(Notification::warning(text), cx);
+                }
+            }
+            WorkspaceEvent::TeamReadOnly { root } => {
+                let text = team_text::read_only_toast(&display_name(root));
+                window.push_notification(ui::info_toast(text), cx);
+            }
             WorkspaceEvent::RevealFolder { root, folder } => {
                 self.sidebar_auto_hidden = false;
                 if !self.sidebar_visible {
@@ -2384,9 +2398,10 @@ impl Shell {
     }
 
     // The window's foot: a marker and a manual reload for each collection no longer watched,
-    // and the current collection's mock toggle.
+    // each team collection's sync status, and the current collection's mock toggle.
     fn status_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mock = self.mock_controls(cx);
+        let team = self.team_statuses(cx);
         let workspace = self.workspace.read(cx);
         let unwatched: Vec<_> = workspace
             .listed_collections(cx)
@@ -2414,6 +2429,22 @@ impl Shell {
                                 .update(cx, |w, cx| w.send(&root, Command::ReloadAll, cx));
                         })),
                 )
+        });
+        // A click on a collection's sync status opens the dialog that explains and fixes it.
+        let problem_color = cx.theme().warning;
+        let statuses = team.into_iter().map(|(ix, root, kind, text)| {
+            let label = format!("{}: {text}", display_name(&root));
+            div()
+                .id(("team-status", ix))
+                .test_support()
+                .aria_label(label.clone())
+                .cursor_pointer()
+                .when(kind == SyncKind::Problem, |d| d.text_color(problem_color))
+                .child(label)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    let ws = this.workspace.clone();
+                    team_sync_dialog::open(&ws, root.clone(), window, cx);
+                }))
         });
         // The button names the layout a click switches to. Too narrow for side by side, it
         // shows the stacked view on screen and is off, saying why.
@@ -2448,6 +2479,7 @@ impl Shell {
                         cx,
                     ))
                     .children(markers)
+                    .children(statuses)
                     .when_some(mock, |bar, mock| bar.right(mock))
                     .right(ui::solid_ring(
                         icon_button(
@@ -2527,7 +2559,7 @@ impl Shell {
     }
 
     // What the status bar reads: the unwatched collections, the response layout, whether side
-    // by side fits and the current collection's mock server.
+    // by side fits, the current collection's mock server and each team collection's status.
     fn status_inputs(&self, window: &Window, cx: &App) -> StatusInputs {
         let workspace = self.workspace.read(cx);
         let unwatched = (workspace.listed_collections(cx).into_iter())
@@ -2541,7 +2573,25 @@ impl Shell {
         let current = self.current_mock(cx);
         let examples = (current.as_ref()).and_then(|(root, _)| workspace.mock_examples(root));
         let narrow = self.too_narrow_for_side_by_side(window, cx);
-        StatusInputs(unwatched, (orientation, narrow), current, examples)
+        let team = self.team_statuses(cx);
+        StatusInputs(unwatched, (orientation, narrow), current, examples, team)
+    }
+
+    // Each listed collection with a team sync loop, by its listed index, with what its status
+    // item shows.
+    fn team_statuses(&self, cx: &App) -> Vec<(usize, PathBuf, SyncKind, String)> {
+        let workspace = self.workspace.read(cx);
+        (workspace.listed_collections(cx).into_iter())
+            .enumerate()
+            .filter_map(|(ix, c)| {
+                let root = c.root();
+                let status = workspace.team_status(root)?;
+                let read_only = workspace.is_team_read_only(root);
+                let clashes = workspace.team_clashes(root).len();
+                let (kind, text) = team_text::sync_status(&status, read_only, clashes);
+                Some((ix, root.to_path_buf(), kind, text))
+            })
+            .collect()
     }
 
     // The current user collection and where its mock server stands; the scratch has none.
@@ -2789,6 +2839,7 @@ struct StatusInputs(
     (Option<Orientation>, bool),
     Option<(PathBuf, MockState)>,
     Option<usize>,
+    Vec<(usize, PathBuf, SyncKind, String)>,
 );
 
 impl Render for Shell {

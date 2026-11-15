@@ -8,14 +8,14 @@ use std::time::SystemTime;
 
 use apinata_core::import::ImportedRequest;
 use apinata_core::team::{
-    ConflictCopies, EventsConfig, EventsEnd, TeamConfig, TeamNotice, TeamState, TeamStatus,
-    TeamSync, follow_events,
+    Block, ConflictCopies, EventsConfig, EventsEnd, Role, TeamConfig, TeamNotice, TeamState,
+    TeamStatus, TeamSync, follow_events,
 };
 use apinata_core::{
-    CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError, GitOptions,
-    GitState, GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase,
-    SecretStore, StageState, WorkspaceFile, collection_status_with, commit, is_workspace_dir,
-    stage, unstage,
+    CommitError, ConflictKind, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
+    GitOptions, GitState, GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars,
+    ScriptPhase, SecretStore, StageState, WorkspaceFile, collection_status_with, commit,
+    is_workspace_dir, stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -121,6 +121,16 @@ pub enum WorkspaceEvent {
     },
     /// The team sync loop of the collection at `root` reported a new status.
     TeamStatus {
+        /// The collection's root.
+        root: PathBuf,
+    },
+    /// The team sync loop of the collection at `root` became blocked, or blocked differently.
+    TeamProblem {
+        /// The collection's root.
+        root: PathBuf,
+    },
+    /// The read-only team collection at `root` refused its first edit or write of this loop.
+    TeamReadOnly {
         /// The collection's root.
         root: PathBuf,
     },
@@ -356,16 +366,62 @@ pub struct CollectionEntry {
     _observer: Subscription,
 }
 
+/// What kind of team clash the editor cannot settle on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClashKind {
+    /// A conflict copy of a file the editor cannot open as a request draft.
+    Copy,
+    /// A file deleted here and changed by a teammate; their file came back.
+    DeletedLocally,
+}
+
+/// One clash of a team collection, at `rel` under its root.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Clash {
+    /// The `/`-separated path under the collection root.
+    pub rel: String,
+    /// What clashed.
+    pub kind: ClashKind,
+}
+
+/// How the user settles a [`Clash`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClashAnswer {
+    /// Put the local side in place.
+    UseMine,
+    /// Keep the teammate's file and drop the local side.
+    KeepTheirs,
+    /// Delete the file again.
+    DeleteAgain,
+}
+
 /// A collection's team sync loop, the status it last reported, and the tasks that feed it.
 struct Team {
     sync: Arc<TeamSync>,
     copies: ConflictCopies,
     status: TeamStatus,
+    role: Role,
+    // A pending `()` after an events connect, for whoever re-reads the role then.
+    connects: async_channel::Receiver<()>,
+    // A caller's task that lives exactly as long as this loop.
+    watch: Option<Task<()>>,
+    // Copies the actor could not open as drafts, and DeletedLocally paths the user settled.
+    unplaced: BTreeSet<String>,
+    dismissed: BTreeSet<String>,
+    // Whether a refused edit already raised the read-only notice for this loop.
+    told_read_only: bool,
+    // The block last announced, kept through the retries that pass back into it.
+    problem: Option<Block>,
     _pump: Task<()>,
     _events: Option<Task<Result<(), crate::tokio_bridge::JoinError>>>,
 }
 
 impl CollectionEntry {
+    // Whether its first snapshot has landed, so it counts as open.
+    pub(crate) fn opened(&self) -> bool {
+        self.opened
+    }
+
     /// The collection's absolute root.
     pub fn root(&self) -> &Path {
         &self.root
@@ -495,6 +551,11 @@ pub struct Workspace {
     open_faults: Faults,
     // The collection the user just opened, which the shell reveals once its first snapshot lands.
     reveal_pending: Option<PathBuf>,
+    // Bound folders whose team resume is asking the server, so a second trigger starts no
+    // second loop.
+    team_resumes: HashSet<PathBuf>,
+    // In-flight resumes a sign-in overtook; each resumes again once it lands.
+    team_reruns: HashSet<PathBuf>,
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
@@ -600,6 +661,8 @@ impl Workspace {
             trash: Arc::new(NoTrash),
             open_faults: Faults::default(),
             reveal_pending: None,
+            team_resumes: HashSet::new(),
+            team_reruns: HashSet::new(),
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
@@ -1171,6 +1234,11 @@ impl Workspace {
                 | Command::Overwrite(_)
                 | Command::Revert(_)
                 | Command::DiscardStale(_)
+                | Command::Replace { .. }
+                | Command::ConvertKind { .. }
+                | Command::UndoConvert { .. }
+                | Command::ImportEnvironment { .. }
+                | Command::ApplyUpdate { .. }
         ) || match &command {
             // A draft restored as unsaved only adds in-memory work and writes no file, so it
             // may land mid-switch; every other tree change writes files and waits.
@@ -1179,6 +1247,22 @@ impl Workspace {
             _ => false,
         };
         if held && self.is_switching(root) {
+            return None;
+        }
+        // Dropping drafts writes nothing, so a read-only folder still allows it.
+        let drops = matches!(
+            command,
+            Command::Revert(_)
+                | Command::DiscardStale(_)
+                | Command::Tree(TreeOp::DiscardDraft { .. })
+        );
+        if held && !drops && self.is_team_read_only(root) {
+            let team = self.entry_mut(root).and_then(|e| e.team.as_mut())?;
+            if !std::mem::replace(&mut team.told_read_only, true) {
+                cx.emit(WorkspaceEvent::TeamReadOnly {
+                    root: root.to_path_buf(),
+                });
+            }
             return None;
         }
         let model = self.entry(root)?.model.clone();
@@ -2163,6 +2247,7 @@ impl Workspace {
         self.git_options = options;
         if on {
             self.refresh_all_git(cx);
+            self.resume_teams(cx);
         } else {
             for entry in &mut self.collections {
                 entry.git = None;
@@ -2496,6 +2581,9 @@ impl Workspace {
         entry.team = None;
         let key = entry.root.clone();
         let copies = ConflictCopies::new(config.copies().to_path_buf());
+        let role = config.role();
+        // Room for one signal: connects nobody has read yet coalesce instead of queueing.
+        let (connected, connects) = async_channel::bounded(1);
         // The driver reports from its own thread and may outlive this entry by one status,
         // so a closed channel is ignored there.
         let (out, statuses) = async_channel::unbounded();
@@ -2516,7 +2604,10 @@ impl Workspace {
             let notices = Arc::clone(&sync);
             crate::tokio_bridge::spawn(cx, async move {
                 let end = follow_events(config, |notice| match notice {
-                    TeamNotice::Connected => notices.reachable(),
+                    TeamNotice::Connected => {
+                        notices.reachable();
+                        connected.try_send(()).ok();
+                    }
                     TeamNotice::Ref { sha } => notices.remote_moved(Some(sha)),
                     TeamNotice::Poll => notices.poll(),
                     _ => {}
@@ -2533,6 +2624,13 @@ impl Workspace {
             status: sync.status(),
             sync,
             copies,
+            role,
+            connects,
+            watch: None,
+            unplaced: BTreeSet::new(),
+            dismissed: BTreeSet::new(),
+            told_read_only: false,
+            problem: None,
             _pump: pump,
             _events: events,
         });
@@ -2550,6 +2648,68 @@ impl Workspace {
     /// `None` when it has no loop or is not open.
     pub fn team_copies(&self, root: &Path) -> Option<&Path> {
         Some(self.entry(root)?.team.as_ref()?.copies.dir())
+    }
+
+    /// The role the team sync loop of the collection at `root` runs with; `None` when it has
+    /// no loop or is not open.
+    pub fn team_role(&self, root: &Path) -> Option<Role> {
+        Some(self.entry(root)?.team.as_ref()?.role)
+    }
+
+    /// Gives the team sync loop of the collection at `root` a new role and announces the
+    /// change as a team status; nothing when it has no loop.
+    pub fn set_team_role(&mut self, root: &Path, role: Role, cx: &mut Context<Self>) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        team.role = role;
+        team.told_read_only &= role == Role::Read;
+        team.sync.set_role(role);
+        cx.emit(WorkspaceEvent::TeamStatus {
+            root: root.to_path_buf(),
+        });
+        cx.notify();
+    }
+
+    /// The running team sync loop of the collection at `root`; `None` when it has none.
+    pub fn team_sync(&self, root: &Path) -> Option<Arc<TeamSync>> {
+        Some(Arc::clone(&self.entry(root)?.team.as_ref()?.sync))
+    }
+
+    /// A receiver of a `()` after events connects of the team sync loop at `root`; connects
+    /// nobody has read yet coalesce into one. It has one consumer, since a clone splits the
+    /// signals. `None` when it has no loop.
+    pub fn team_connects(&self, root: &Path) -> Option<async_channel::Receiver<()>> {
+        Some(self.entry(root)?.team.as_ref()?.connects.clone())
+    }
+
+    /// Keeps `task` alive until the team sync loop at `root` stops or is replaced; dropped at
+    /// once when it has no loop.
+    pub fn keep_team_watch(&mut self, root: &Path, task: Task<()>) {
+        if let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) {
+            team.watch = Some(task);
+        }
+    }
+
+    /// The bound folders whose team resume is in flight.
+    pub(crate) fn team_resumes(&mut self) -> &mut HashSet<PathBuf> {
+        &mut self.team_resumes
+    }
+
+    /// The in-flight resumes to run again once they land.
+    pub(crate) fn team_reruns(&mut self) -> &mut HashSet<PathBuf> {
+        &mut self.team_reruns
+    }
+
+    // Git just came on: every open collection without a loop resumes, if bound.
+    fn resume_teams(&mut self, cx: &mut Context<Self>) {
+        let idle: Vec<PathBuf> = (self.collections.iter())
+            .filter(|c| c.opened && c.team.is_none())
+            .map(|c| c.root.clone())
+            .collect();
+        for root in idle {
+            crate::team_mode::resume(self, &root, cx);
+        }
     }
 
     /// Whether any open collection runs a team sync loop.
@@ -2584,6 +2744,22 @@ impl Workspace {
         let pulled = matches!(team.status.state, TeamState::Pulling | TeamState::Squashing)
             || team.status.conflicts != status.conflicts;
         let adopt = pulled && !status.conflicts.is_empty();
+        if team.status.conflicts != status.conflicts {
+            team.dismissed.clear();
+        }
+        // A hook block passes through Committing on every retry, so the last block announced is
+        // remembered until the loop settles rather than compared with the previous state.
+        let problem = match &status.state {
+            TeamState::Blocked(block) if team.problem.as_ref() != Some(block) => {
+                team.problem = Some(block.clone());
+                true
+            }
+            TeamState::Idle | TeamState::ReadOnly { .. } | TeamState::Offline => {
+                team.problem = None;
+                false
+            }
+            _ => false,
+        };
         team.status = status;
         if adopt {
             self.adopt_copies(root, cx);
@@ -2591,25 +2767,153 @@ impl Workspace {
         cx.emit(WorkspaceEvent::TeamStatus {
             root: root.to_path_buf(),
         });
+        if problem {
+            cx.emit(WorkspaceEvent::TeamProblem {
+                root: root.to_path_buf(),
+            });
+        }
         cx.notify();
     }
 
-    // Sends every conflict copy of `root`'s team to its request; the actor keeps the ones it
-    // cannot open in place.
-    fn adopt_copies(&mut self, root: &Path, cx: &mut Context<Self>) {
+    /// Whether the team collection at `root` refuses edits and writes: its role is Read or its
+    /// loop is read-only.
+    pub fn is_team_read_only(&self, root: &Path) -> bool {
+        self.entry(root)
+            .and_then(|e| e.team.as_ref())
+            .is_some_and(|t| {
+                t.role == Role::Read || matches!(t.status.state, TeamState::ReadOnly { .. })
+            })
+    }
+
+    /// The clashes of the team collection at `root` the editor cannot open: unplaced conflict
+    /// copies, sorted, then the unsettled DeletedLocally paths of the latest pull.
+    pub fn team_clashes(&self, root: &Path) -> Vec<Clash> {
         let Some(team) = self.entry(root).and_then(|e| e.team.as_ref()) else {
+            return Vec::new();
+        };
+        let copies = (team.unplaced.iter())
+            .filter(|rel| team.copies.dir().join(rel).exists())
+            .map(|rel| Clash {
+                rel: rel.clone(),
+                kind: ClashKind::Copy,
+            });
+        let deleted = (team.status.conflicts.iter())
+            .filter(|c| c.kind == ConflictKind::DeletedLocally && !team.dismissed.contains(&c.path))
+            .map(|c| Clash {
+                rel: c.path.clone(),
+                kind: ClashKind::DeletedLocally,
+            });
+        copies.chain(deleted).collect()
+    }
+
+    /// Settles the clash at `rel` of the team collection at `root`. UseMine puts a copy's bytes
+    /// in place; KeepTheirs drops the copy or keeps their file; DeleteAgain (and UseMine of a
+    /// local delete) removes the file. The loop then commits the change. NotFound when `rel`
+    /// is not one of [`team_clashes`](Self::team_clashes).
+    pub fn settle_clash(
+        &mut self,
+        root: &Path,
+        rel: &str,
+        answer: ClashAnswer,
+        cx: &mut Context<Self>,
+    ) -> std::io::Result<()> {
+        // Only paths the loop itself listed are touched, so `rel` never leaves the root.
+        let clash = (self.team_clashes(root).into_iter())
+            .find(|c| c.rel == rel)
+            .ok_or(std::io::ErrorKind::NotFound)?;
+        if answer != ClashAnswer::KeepTheirs && self.is_team_read_only(root) {
+            return Err(std::io::ErrorKind::PermissionDenied.into());
+        }
+        let entry = self.entry_mut(root).ok_or(std::io::ErrorKind::NotFound)?;
+        let file = entry.root.join(rel);
+        let team = entry.team.as_mut().ok_or(std::io::ErrorKind::NotFound)?;
+        let delete = answer == ClashAnswer::DeleteAgain
+            || (clash.kind == ClashKind::DeletedLocally && answer == ClashAnswer::UseMine);
+        if answer != ClashAnswer::KeepTheirs {
+            refuse_symlinks(&entry.root, rel)?;
+        }
+        if delete {
+            match std::fs::remove_file(&file) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+                _ => {}
+            }
+        } else if clash.kind == ClashKind::Copy && answer == ClashAnswer::UseMine {
+            let bytes = team.copies.read(rel)?;
+            if let Some(parent) = file.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&file, bytes)?;
+        }
+        match clash.kind {
+            ClashKind::Copy => {
+                team.copies.remove(rel)?;
+                team.unplaced.remove(rel);
+            }
+            ClashKind::DeletedLocally => {
+                team.dismissed.insert(rel.to_owned());
+            }
+        }
+        team.sync.changed();
+        cx.emit(WorkspaceEvent::TeamStatus {
+            root: root.to_path_buf(),
+        });
+        cx.notify();
+        Ok(())
+    }
+
+    // Sends every conflict copy of `root`'s team to its request; a copy with no request path,
+    // or one the actor answers it could not open, is listed as a clash instead.
+    fn adopt_copies(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
             return;
         };
-        let copies = &team.copies;
-        let commands: Vec<Command> = (copies.list().unwrap_or_default().into_iter())
-            .filter_map(|rel| {
-                let item = ItemPath::new(&rel)?;
-                let copies = copies.clone();
-                Some(Command::AdoptCopy { item, copies, rel })
-            })
-            .collect();
-        for command in commands {
+        let copies = team.copies.clone();
+        let mut sends = Vec::new();
+        for rel in copies.list().unwrap_or_default() {
+            match ItemPath::new(&rel) {
+                Some(item) => sends.push((item, rel)),
+                None => drop(team.unplaced.insert(rel)),
+            }
+        }
+        let key = absolute(root);
+        for (item, rel) in sends {
+            let (reply, adopted) = async_channel::bounded(1);
+            let copies = copies.clone();
+            let command = Command::AdoptCopy {
+                item,
+                copies,
+                rel: rel.clone(),
+                reply,
+            };
             self.send(root, command, cx);
+            let key = key.clone();
+            // A dropped sender means the actor is gone, so the list stays as it was.
+            cx.spawn(async move |this, cx| {
+                let Ok(adopted) = adopted.recv().await else {
+                    return;
+                };
+                this.update(cx, |w, cx| w.placed(&key, rel, adopted, cx))
+                    .ok();
+            })
+            .detach();
+        }
+    }
+
+    // Records the actor's answer for the copy at `rel`; a change of the clash list is a status.
+    fn placed(&mut self, root: &Path, rel: String, adopted: bool, cx: &mut Context<Self>) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        let changed = if adopted {
+            team.unplaced.remove(&rel)
+        } else {
+            team.unplaced.insert(rel)
+        };
+        if changed {
+            cx.emit(WorkspaceEvent::TeamStatus {
+                root: root.to_path_buf(),
+            });
+            cx.notify();
         }
     }
 
@@ -2689,6 +2993,9 @@ impl Workspace {
             // After the environment, so the actor builds the routes in the restored one.
             if self.remembered_mock(root, cx) {
                 self.set_mock(root, true, cx);
+            }
+            if self.entry(root).is_some_and(|e| e.team.is_none()) {
+                crate::team_mode::resume(self, root, cx);
             }
         }
         // Refresh git on the first snapshot and once the reply covering our own write lands.
@@ -3857,6 +4164,27 @@ fn trashed_path(kind: &TabKind) -> Option<&ItemPath> {
         | TabKind::Example { item: p, .. } => Some(p),
         _ => None,
     }
+}
+
+// Refuses when `rel` or a folder on the way to it under `root` is a symlink, so a clash's
+// write or delete never lands outside the collection.
+pub(crate) fn refuse_symlinks(root: &Path, rel: &str) -> std::io::Result<()> {
+    let mut path = root.to_path_buf();
+    for part in rel.split('/') {
+        path.push(part);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("{} is a symbolic link", path.display()),
+                ));
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// `root` made absolute, so roots given relative match the absolute ones `open` stores.

@@ -535,3 +535,97 @@ async fn a_failed_save_on_rejoining_restores_the_previous_token() {
 async fn a_failed_save_on_joining_as_another_user_leaves_no_dead_token() {
     rejoin_with_an_unwritable_team_file("bob").await;
 }
+
+/// A server whose `/me` refuses the session after `during` has run, as a sign-in that lands
+/// while the check is in flight would leave things.
+struct RacedMe {
+    server: ServerUrl,
+    during: Box<dyn Fn() + Send + Sync>,
+}
+
+impl team::TeamApi for RacedMe {
+    fn server(&self) -> &ServerUrl {
+        &self.server
+    }
+    fn server_info(&self) -> team::TeamFuture<'_, team::ServerInfo> {
+        unreachable!()
+    }
+    fn sign_in<'a>(&'a self, _: &'a str, _: &'a str) -> team::TeamFuture<'a, team::SignIn> {
+        unreachable!()
+    }
+    fn me<'a>(&'a self, _: &'a team::TeamToken) -> team::TeamFuture<'a, team::Me> {
+        (self.during)();
+        Box::pin(async { Err(TeamError::Unauthenticated) })
+    }
+    fn teams<'a>(&'a self, _: &'a team::TeamToken) -> team::TeamFuture<'a, Vec<team::Team>> {
+        unreachable!()
+    }
+    fn create_workspace<'a>(
+        &'a self,
+        _: &'a team::TeamToken,
+        _: &'a team::NewWorkspace,
+    ) -> team::TeamFuture<'a, team::Workspace> {
+        unreachable!()
+    }
+    fn revoke<'a>(&'a self, _: &'a team::TeamToken, _: &'a str) -> team::TeamFuture<'a, ()> {
+        unreachable!()
+    }
+}
+
+// Ada signed in on a stub server with token id `tok-7` and the shared test token.
+fn raced(dir: &TempDir, secrets: &MemoryStore) -> ServerUrl {
+    let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();
+    TeamStore::update(&file(dir), |t| {
+        t.put_account(Account::new(&server, "ada", "Ada Lovelace", "tok-7", false))
+    })
+    .unwrap();
+    secrets.set(&token_key(&server, "ada"), &tok()).unwrap();
+    server
+}
+
+#[tokio::test]
+async fn a_token_kept_while_the_check_was_refused_survives() {
+    let (dir, secrets) = (
+        TempDir::new().unwrap(),
+        std::sync::Arc::new(MemoryStore::new()),
+    );
+    let server = raced(&dir, &secrets);
+    let fresh = format!("plk_{}", "B".repeat(43));
+    let (store, key, text) = (secrets.clone(), token_key(&server, "ada"), fresh.clone());
+    let api = RacedMe {
+        server,
+        during: Box::new(move || store.set(&key, &text).unwrap()),
+    };
+    let e = team::current(&api, &*secrets, &file(&dir))
+        .await
+        .unwrap_err();
+    assert_eq!(e, TeamError::Unauthenticated);
+    assert_eq!(
+        secrets.get(&token_key(&api.server, "ada")).unwrap(),
+        Some(fresh)
+    );
+}
+
+#[tokio::test]
+async fn a_session_replaced_while_the_check_was_refused_keeps_its_token() {
+    let (dir, secrets) = (TempDir::new().unwrap(), MemoryStore::new());
+    let server = raced(&dir, &secrets);
+    let (team_file, at) = (file(&dir), server.clone());
+    let api = RacedMe {
+        server,
+        during: Box::new(move || {
+            TeamStore::update(&team_file, |t| {
+                t.put_account(Account::new(&at, "ada", "Ada Lovelace", "tok-8", false))
+            })
+            .unwrap()
+        }),
+    };
+    let e = team::current(&api, &secrets, &file(&dir))
+        .await
+        .unwrap_err();
+    assert_eq!(e, TeamError::Unauthenticated);
+    assert_eq!(
+        secrets.get(&token_key(&api.server, "ada")).unwrap(),
+        Some(tok())
+    );
+}

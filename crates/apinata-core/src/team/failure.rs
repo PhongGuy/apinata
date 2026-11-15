@@ -49,6 +49,23 @@ pub struct Finding {
     pub rule: String,
 }
 
+impl Finding {
+    /// A finding of secret `code` in `path` on `git_ref`, matched by `rule`.
+    pub fn new(
+        code: impl Into<String>,
+        git_ref: impl Into<String>,
+        path: impl Into<String>,
+        rule: impl Into<String>,
+    ) -> Finding {
+        Finding {
+            code: code.into(),
+            git_ref: git_ref.into(),
+            path: path.into(),
+            rule: rule.into(),
+        }
+    }
+}
+
 /// The failure `err` stands for. Git's text is matched against what git prints for each HTTP
 /// refusal and for an unreachable host, before a push rejection's reason is read; every message
 /// kept has URL userinfo and tokens masked.

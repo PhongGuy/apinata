@@ -92,6 +92,11 @@ impl TeamConfig {
     pub fn copies(&self) -> &Path {
         &self.copies
     }
+
+    /// The user's role on the workspace.
+    pub fn role(&self) -> Role {
+        self.role
+    }
 }
 
 /// What the app shows of the sync loop.
@@ -104,6 +109,17 @@ pub struct TeamStatus {
     pub unpushed: usize,
     /// The paths the latest pull conflicted on.
     pub conflicts: Vec<ConflictPath>,
+}
+
+impl TeamStatus {
+    /// A status of `state` with `unpushed` local commits and the latest pull's `conflicts`.
+    pub fn new(state: TeamState, unpushed: usize, conflicts: Vec<ConflictPath>) -> TeamStatus {
+        TeamStatus {
+            state,
+            unpushed,
+            conflicts,
+        }
+    }
 }
 
 enum Input {

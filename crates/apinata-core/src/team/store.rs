@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Role, ServerUrl, TeamError};
+use super::{Identity, Role, ServerUrl, TeamError};
 use crate::SecretKey;
 
 /// Serializes every `TeamStore::update` in this process, so no two read-change-write cycles
@@ -33,6 +33,9 @@ pub struct Account {
     pub token_id: String,
     /// Whether the user administers the whole server.
     pub server_admin: bool,
+    /// The commit identity the server gave last, used while it cannot be reached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<Identity>,
 }
 
 impl Account {
@@ -50,6 +53,7 @@ impl Account {
             display_name: display_name.to_owned(),
             token_id: token_id.to_owned(),
             server_admin,
+            identity: None,
         }
     }
 }
@@ -70,6 +74,9 @@ pub struct Binding {
     pub username: String,
     /// The user's role on the workspace when it was opened.
     pub role: Role,
+    /// The branch the workspace syncs, as the server last said; empty when not known.
+    #[serde(default)]
+    pub branch: String,
 }
 
 impl Binding {
@@ -88,6 +95,7 @@ impl Binding {
             workspace: workspace.to_owned(),
             username: account.username.clone(),
             role,
+            branch: String::new(),
         }
     }
 }

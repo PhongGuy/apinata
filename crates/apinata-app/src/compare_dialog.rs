@@ -1,5 +1,6 @@
 //! The Compare dialog on a changed-on-disk banner: the file as the disk holds it against the
-//! draft as the writer would save it, read-only until Reload or Overwrite.
+//! draft as the writer would save it, read-only until Reload or Overwrite. The same dialog over
+//! two fixed texts settles a team clash: the file now against the saved local side.
 
 use std::ops::Range;
 use std::path::PathBuf;
@@ -21,7 +22,7 @@ use crate::command::{Command, Target};
 use crate::diff_doc::{DiffHunk, DiffRow, rows};
 use crate::diff_rows::{DiffPalette, diff_row};
 use crate::ui::dialog_footer;
-use crate::workspace::Workspace;
+use crate::workspace::{ClashAnswer, Workspace};
 
 /// Answers the banner as the editor does; the dialog sends no command itself.
 pub type Answer = Rc<dyn Fn(Choice, &mut Window, &mut App)>;
@@ -30,7 +31,9 @@ pub type Answer = Rc<dyn Fn(Choice, &mut Window, &mut App)>;
 pub struct CompareDialog {
     workspace: Entity<Workspace>,
     root: PathBuf,
-    target: Target,
+    // None when the dialog shows fixed texts, which it never asks the actor for again.
+    target: Option<Target>,
+    note: &'static str,
     disk: String,
     draft: String,
     rows: Vec<DiffRow>,
@@ -80,7 +83,8 @@ impl CompareDialog {
         let mut this = Self {
             workspace,
             root,
-            target,
+            target: Some(target),
+            note: "Lines starting with - are on disk, lines starting with + are in your draft.",
             disk: String::new(),
             draft: String::new(),
             rows: Vec::new(),
@@ -95,13 +99,34 @@ impl CompareDialog {
         this
     }
 
+    fn fixed(workspace: Entity<Workspace>, root: PathBuf, disk: String, mine: String) -> Self {
+        Self {
+            workspace,
+            root,
+            target: None,
+            note: "Lines starting with - are on disk, lines starting with + are your saved side.",
+            rows: diff_rows(&disk, &mine),
+            disk,
+            draft: mine,
+            open: true,
+            seen: 0,
+            asked: 0,
+            scroll: UniformListScrollHandle::new(),
+            task: None,
+            _watch: Subscription::new(|| {}),
+        }
+    }
+
     // The address of the target's current view, which changes whenever the actor rebuilds it.
     fn view_key(&self, cx: &App) -> usize {
         let Some(snapshot) = self.workspace.read(cx).snapshot(&self.root, cx) else {
             return 0;
         };
         let content = &snapshot.content;
-        match &self.target {
+        let Some(target) = &self.target else {
+            return 0;
+        };
+        match target {
             Target::Request(p) => content.requests.get(p).map(Arc::as_ptr).map(|p| p as usize),
             Target::Folder(p) => content.folders.get(p).map(Arc::as_ptr).map(|p| p as usize),
             Target::Collection => Some(Arc::as_ptr(&content.collection) as usize),
@@ -116,12 +141,12 @@ impl CompareDialog {
 
     // Asks the actor for both texts; only the newest answer is kept.
     fn refresh(&mut self, cx: &mut Context<Self>) {
+        let Some(target) = self.target.clone() else {
+            return;
+        };
         self.seen = self.view_key(cx);
         let (reply, answer) = async_channel::bounded(1);
-        let command = Command::FileTexts {
-            target: self.target.clone(),
-            reply,
-        };
+        let command = Command::FileTexts { target, reply };
         let root = self.root.clone();
         if self
             .workspace
@@ -172,7 +197,7 @@ impl Render for CompareDialog {
         let muted = cx.theme().muted_foreground;
         let border = cx.theme().input;
         let radius = cx.theme().radius;
-        let note = "Lines starting with - are on disk, lines starting with + are in your draft.";
+        let note = self.note;
         let body = if self.rows.is_empty() {
             div()
                 .id("compare-same")
@@ -236,9 +261,89 @@ pub fn open(
     cx: &mut App,
 ) -> Entity<CompareDialog> {
     let dialog = cx.new(|cx| CompareDialog::new(workspace, root, target, cx));
+    let answering = move |id: &'static str, label: &'static str, choice: Choice| {
+        let answer = Rc::clone(&answer);
+        (
+            id,
+            label,
+            Rc::new(move |window: &mut Window, cx: &mut App| answer(choice, window, cx)) as Act,
+        )
+    };
+    let (reload, overwrite) = (
+        answering("compare-reload", "Reload", Choice::Primary),
+        answering("compare-overwrite", "Overwrite", Choice::Secondary),
+    );
+    present(
+        &dialog,
+        "Compare with the file on disk",
+        move |_| (vec![reload.clone()], overwrite.clone()),
+        window,
+        cx,
+    );
+    dialog
+}
+
+/// Opens the dialog over `window` for the team clash at `rel`: `disk` (the file now) against
+/// `mine` (the saved local side). Keep theirs and Use mine settle the clash and close it; Use
+/// mine is not offered while the collection is read-only.
+pub fn open_copy(
+    workspace: Entity<Workspace>,
+    root: PathBuf,
+    rel: String,
+    disk: String,
+    mine: String,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<CompareDialog> {
+    let dialog = cx.new(|_| CompareDialog::fixed(workspace.clone(), root.clone(), disk, mine));
+    let settling = move |id: &'static str, label: &'static str, answer: ClashAnswer| {
+        let (workspace, root, rel) = (workspace.clone(), root.clone(), rel.clone());
+        let act: Act = Rc::new(move |window: &mut Window, cx: &mut App| {
+            crate::team_sync_dialog::settle(&workspace, &root, &rel, answer, window, cx)
+        });
+        (id, label, act)
+    };
+    let keep = settling(
+        "compare-keep-theirs",
+        "Keep theirs",
+        ClashAnswer::KeepTheirs,
+    );
+    let mine = settling("compare-use-mine", "Use mine", ClashAnswer::UseMine);
     let state = dialog.clone();
+    present(
+        &dialog,
+        "Compare with your saved side",
+        move |cx| {
+            let d = state.read(cx);
+            if d.workspace.read(cx).is_team_read_only(&d.root) {
+                (Vec::new(), keep.clone())
+            } else {
+                (vec![keep.clone()], mine.clone())
+            }
+        },
+        window,
+        cx,
+    );
+    dialog
+}
+
+// A footer button's id, label and action; the button marks the dialog closed around it.
+type Act = Rc<dyn Fn(&mut Window, &mut App)>;
+type Action = (&'static str, &'static str, Act);
+
+// Shows `dialog` titled `title`, with Close and the buttons `buttons` picks on each render:
+// the others, then the primary one.
+fn present(
+    dialog: &Entity<CompareDialog>,
+    title: &'static str,
+    buttons: impl Fn(&App) -> (Vec<Action>, Action) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let state = dialog.clone();
+    let buttons = Rc::new(buttons);
     window.defer(cx, move |window, cx| {
-        window.open_dialog(cx, move |frame, window, _| {
+        window.open_dialog(cx, move |frame, window, cx| {
             let frame = crate::dialog_frame::place(frame, window);
             let close = {
                 let state = state.clone();
@@ -247,11 +352,11 @@ pub fn open(
                     window.close_dialog(cx);
                 }
             };
-            let answering = |id: &'static str, label: &'static str, choice: Choice| {
-                let (state, answer) = (state.clone(), Rc::clone(&answer));
+            let button = |(id, label, act): Action| {
+                let state = state.clone();
                 Button::new(id).label(label).on_click(move |_, window, cx| {
                     state.update(cx, |d, _| d.open = false);
-                    answer(choice, window, cx);
+                    act(window, cx);
                     window.close_dialog(cx);
                 })
             };
@@ -262,17 +367,17 @@ pub fn open(
                     true
                 }
             };
+            let (others, primary) = buttons(cx);
             frame
-                .title("Compare with the file on disk")
+                .title(title)
                 .close_button(false)
                 .on_ok(dismissed.clone())
                 .on_cancel(dismissed)
                 .child(v_flex().gap_2().child(state.clone()).child(dialog_footer(
                     Some(Button::new("compare-close").label("Close").on_click(close)),
-                    [answering("compare-reload", "Reload", Choice::Primary)],
-                    answering("compare-overwrite", "Overwrite", Choice::Secondary),
+                    others.into_iter().map(button),
+                    button(primary),
                 )))
         });
     });
-    dialog
 }
