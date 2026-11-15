@@ -11,6 +11,7 @@ use apinata_core::import::{
     ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, UpdateOptions,
     UpdateSummary, add_environment, apply_update, plan_update, store_request_secrets,
 };
+use apinata_core::team::ConflictCopies;
 use apinata_core::{
     AuthSpec, Change, ChangeKind, Collection, DiskState, DropTarget, EnvOverlay, EnvWarning,
     IgnorePolicy, ItemKind, ItemPath, OpenError, OpenOptions, RuntimeVars, SaveError, SecretKey,
@@ -213,7 +214,7 @@ struct Actor {
     /// What the last Network notice showed, recorded as is by Acknowledge.
     network_shown: Option<apinata_core::ShownNetwork>,
     /// Team conflict copies opened as edits, by their request, until that request settles.
-    copies: HashMap<Target, PathBuf>,
+    copies: HashMap<Target, (ConflictCopies, String)>,
 }
 
 /// Apply a configuration edit to a `FolderFile` or `CollectionFile`, which share their
@@ -407,8 +408,8 @@ impl Actor {
                 self.discard_stale(&target);
                 Ok(())
             }
-            Command::AdoptCopy { item, copy } => {
-                self.adopt_copy(item, copy);
+            Command::AdoptCopy { item, copies, rel } => {
+                self.adopt_copy(item, copies, rel);
                 Ok(())
             }
             Command::Network(op) => {
@@ -628,14 +629,14 @@ impl Actor {
 
     /// Open a team conflict copy as its request's edits, under the banner a changed or removed
     /// file gets. A copy that cannot be read or adopted stays where it is, unopened.
-    fn adopt_copy(&mut self, item: ItemPath, copy: PathBuf) {
-        let Ok(bytes) = std::fs::read(&copy) else {
+    fn adopt_copy(&mut self, item: ItemPath, copies: ConflictCopies, rel: String) {
+        let Ok(bytes) = copies.read(&rel) else {
             return;
         };
         let names = self.environment_names();
         if let Ok(change) = self.collection.adopt_conflict_copy(&item, &bytes) {
             self.absorb(&[change], &names);
-            self.copies.insert(Target::Request(item), copy);
+            self.copies.insert(Target::Request(item), (copies, rel));
         }
     }
 
@@ -643,7 +644,7 @@ impl Actor {
     /// changed on disk: the user has settled the conflict.
     fn settle_copies(&mut self) {
         let (collection, changed) = (&self.collection, &self.changed);
-        self.copies.retain(|target, copy| {
+        self.copies.retain(|target, (copies, rel)| {
             let Target::Request(item) = target else {
                 return true;
             };
@@ -651,8 +652,9 @@ impl Actor {
             if dirty || changed.contains(target) {
                 return true;
             }
-            // A copy that cannot be deleted opens again when team mode next starts.
-            let _ = std::fs::remove_file(copy);
+            // The store also drops the folders the copy leaves empty; a copy that cannot be
+            // deleted opens again when team mode next starts.
+            let _ = copies.remove(rel);
             false
         });
     }

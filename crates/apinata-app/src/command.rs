@@ -6,6 +6,7 @@ use std::sync::Arc;
 use apinata_core::import::{
     ImportBundle, ImportNote, ImportReport, ImportedEnvironment, ImportedRequest, UpdateSummary,
 };
+use apinata_core::team::ConflictCopies;
 use apinata_core::{
     Assertion, AuthSpec, BodySpec, ClientCertificate, CollectionProxy, DropTarget, EnvVariable,
     GlobalEnvironments, ItemPath, KeyValue, Param, PostResponseVar, RequestKind, RequestSettings,
@@ -351,13 +352,15 @@ pub enum Command {
     Overwrite(Target),
     /// Forget the edits held back as stale for a target.
     DiscardStale(Target),
-    /// Open the team conflict copy at `copy` as the unsaved edits of the request `item`, and
-    /// delete the copy once that request is settled.
+    /// Open the team conflict copy at `rel` in `copies` as the unsaved edits of the request
+    /// `item`, and delete the copy once that request is settled.
     AdoptCopy {
         /// The request the copy belongs to.
         item: ItemPath,
-        /// The copy's file.
-        copy: PathBuf,
+        /// The store the copy lives in.
+        copies: ConflictCopies,
+        /// The copy's path inside the store.
+        rel: String,
     },
     /// Change the tree.
     Tree(TreeOp),

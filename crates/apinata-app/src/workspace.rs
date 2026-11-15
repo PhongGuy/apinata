@@ -2598,8 +2598,8 @@ impl Workspace {
         let commands: Vec<Command> = (copies.list().unwrap_or_default().into_iter())
             .filter_map(|rel| {
                 let item = ItemPath::new(&rel)?;
-                let copy = copies.dir().join(&rel);
-                Some(Command::AdoptCopy { item, copy })
+                let copies = copies.clone();
+                Some(Command::AdoptCopy { item, copies, rel })
             })
             .collect();
         for command in commands {

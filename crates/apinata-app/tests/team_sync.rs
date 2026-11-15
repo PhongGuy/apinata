@@ -161,6 +161,38 @@ fn copies_left_from_an_earlier_run_open_when_team_mode_starts(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
+fn a_settled_copy_in_a_folder_leaves_no_empty_folder_behind(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("f/a.yml", &request("a", "http://x/0")),
+    ]);
+    shared(&sb, &col);
+    let s = app(cx, &sb, &col);
+    let root = s.root.clone();
+    std::fs::create_dir_all(copies_dir(&s).join("f")).unwrap();
+    std::fs::write(
+        copies_dir(&s).join("f").join("a.yml"),
+        request("a", "http://x/mine"),
+    )
+    .unwrap();
+    start_team(cx, &sb, &s, Duration::from_millis(50));
+    s.ws.update(cx, |w, cx| {
+        w.open_item(&root, ip("f/a.yml"), false, cx);
+    });
+    wait_for(cx, "the banner", |cx| {
+        frame(cx, s.win);
+        shown(cx, s.win, "banner-changed")
+    });
+    cx.update_window(s.win, |_, w, cx| w.click("banner-overwrite", cx))
+        .unwrap();
+    wait_for(cx, "the copy settled", |_| {
+        !copies_dir(&s).join("f").join("a.yml").exists()
+    });
+    assert!(!copies_dir(&s).join("f").exists());
+}
+
+#[gpui_kit::test]
 fn closing_the_window_pushes_before_it_closes(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     let col = collection();
