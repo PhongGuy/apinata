@@ -8,8 +8,8 @@ use std::time::SystemTime;
 
 use apinata_core::import::ImportedRequest;
 use apinata_core::team::{
-    Block, ConflictCopies, EventsConfig, EventsEnd, Role, TeamConfig, TeamNotice, TeamState,
-    TeamStatus, TeamSync, follow_events,
+    Block, ConflictCopies, EventsConfig, EventsEnd, Role, TeamAuth, TeamConfig, TeamNotice,
+    TeamState, TeamStatus, TeamSync, follow_events,
 };
 use apinata_core::{
     CommitError, ConflictKind, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
@@ -401,8 +401,10 @@ struct Team {
     copies: ConflictCopies,
     status: TeamStatus,
     role: Role,
-    // A pending `()` after an events connect, for whoever re-reads the role then.
+    // A pending `()` after an events connect, for whoever re-reads the role then; the sender
+    // stays here so a renewed events stream signals the same receiver.
     connects: async_channel::Receiver<()>,
+    connected: async_channel::Sender<()>,
     // A caller's task that lives exactly as long as this loop.
     watch: Option<Task<()>>,
     // Copies the actor could not open as drafts, and DeletedLocally paths the user settled.
@@ -2600,32 +2602,14 @@ impl Workspace {
                 }
             }
         });
-        let events = events.map(|config| {
-            let notices = Arc::clone(&sync);
-            crate::tokio_bridge::spawn(cx, async move {
-                let end = follow_events(config, |notice| match notice {
-                    TeamNotice::Connected => {
-                        notices.reachable();
-                        connected.try_send(()).ok();
-                    }
-                    TeamNotice::Ref { sha } => notices.remote_moved(Some(sha)),
-                    TeamNotice::Poll => notices.poll(),
-                    _ => {}
-                })
-                .await;
-                match end {
-                    EventsEnd::SignedOut => notices.signed_out(),
-                    EventsEnd::Gone => notices.gone(),
-                    _ => {}
-                }
-            })
-        });
+        let events = events.map(|config| follow_team(&sync, &connected, config, cx));
         entry.team = Some(Team {
             status: sync.status(),
             sync,
             copies,
             role,
             connects,
+            connected,
             watch: None,
             unplaced: BTreeSet::new(),
             dismissed: BTreeSet::new(),
@@ -2669,6 +2653,24 @@ impl Workspace {
             root: root.to_path_buf(),
         });
         cx.notify();
+    }
+
+    /// Hands the running team sync loop at `root` a fresh sign-in: later git calls carry `auth`,
+    /// and the events stream restarts on `events` (or stops when `None`). The loop keeps its
+    /// state; nothing when it has no loop.
+    pub fn renew_team(
+        &mut self,
+        root: &Path,
+        auth: TeamAuth,
+        events: Option<EventsConfig>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        team.sync.signed_in(auth);
+        // Dropping the old stream aborts it before it can report its revoked token.
+        team._events = events.map(|config| follow_team(&team.sync, &team.connected, config, cx));
     }
 
     /// The running team sync loop of the collection at `root`; `None` when it has none.
@@ -4059,6 +4061,33 @@ impl Workspace {
 }
 
 /// Whether `content` has what a tab of `kind` shows; collection-wide kinds always have it.
+// Follows a team's events stream on the tokio runtime and passes what it hears to `sync`.
+fn follow_team(
+    sync: &Arc<TeamSync>,
+    connected: &async_channel::Sender<()>,
+    config: EventsConfig,
+    cx: &App,
+) -> Task<Result<(), crate::tokio_bridge::JoinError>> {
+    let (notices, connected) = (Arc::clone(sync), connected.clone());
+    crate::tokio_bridge::spawn(cx, async move {
+        let end = follow_events(config, |notice| match notice {
+            TeamNotice::Connected => {
+                notices.reachable();
+                connected.try_send(()).ok();
+            }
+            TeamNotice::Ref { sha } => notices.remote_moved(Some(sha)),
+            TeamNotice::Poll => notices.poll(),
+            _ => {}
+        })
+        .await;
+        match end {
+            EventsEnd::SignedOut => notices.signed_out(),
+            EventsEnd::Gone => notices.gone(),
+            _ => {}
+        }
+    })
+}
+
 fn shows(content: &Content, kind: &TabKind) -> bool {
     match kind {
         TabKind::Request(item) => content.requests.contains_key(item),

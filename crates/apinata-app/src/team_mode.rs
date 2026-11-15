@@ -18,8 +18,9 @@ use crate::team_workspaces::copies_dir;
 use crate::tokio_bridge;
 use crate::workspace::{Workspace, WorkspaceEvent};
 
-/// Starts (or restarts) the loop of the open collection at `root` when the team file binds it;
-/// nothing when git is off, it is unbound, or a resume for it is already running.
+/// Starts the loop of the open collection at `root` when the team file binds it, or hands a
+/// loop already running there the current sign-in; nothing when git is off, it is unbound,
+/// or a resume for it is already running.
 pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
     if w.git_options().is_none() || w.team_resumes().contains(root) {
         return;
@@ -43,6 +44,9 @@ pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
         let _ = this.update(cx, |w, cx| {
             w.team_resumes().remove(&root);
             match result {
+                // A running loop keeps its state, such as unsettled clashes, and takes the
+                // new token in place.
+                Ok(resumed) if w.team_sync(&root).is_some() => renew(w, &root, resumed, cx),
                 Ok(resumed) => start(w, &root, &binding, &conflicts, resumed, source, cx),
                 Err(e) => notice(&root, "did not start", &e, cx),
             }
@@ -55,8 +59,8 @@ pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
     .detach();
 }
 
-/// Restarts the loop of every open collection the team file binds to `server`, so a fresh
-/// sign-in replaces loops that started without a valid token.
+/// Resumes every open collection the team file binds to `server`, so a fresh sign-in reaches
+/// loops that started without a valid token and those still holding the one it replaced.
 pub fn resume_server(workspace: &Entity<Workspace>, server: &ServerUrl, cx: &mut App) {
     let Some(file) = cx.try_global::<AppState>().map(|s| s.team.clone()) else {
         return;
@@ -157,6 +161,20 @@ fn start(
         }
     });
     w.keep_team_watch(root, watch);
+}
+
+// Gives the running loop at `root` the token and events stream of a fresh resume, and its role;
+// a standing without a token only blocks the loop.
+fn renew(w: &mut Workspace, root: &Path, resumed: Resumed, cx: &mut Context<Workspace>) {
+    if matches!(resumed.standing, Standing::Ready | Standing::Offline) {
+        let events = (resumed.events_url.clone())
+            .map(|url| EventsConfig::new(url, resumed.auth.clone(), resumed.branch.clone()));
+        w.renew_team(root, resumed.auth.clone(), events, cx);
+    }
+    if resumed.standing == Standing::Ready {
+        w.set_team_role(root, resumed.role, cx);
+    }
+    apply_blocks(w, root, resumed.standing);
 }
 
 // One connect: resume against the current binding and apply the answer to the running loop.
