@@ -1,9 +1,13 @@
-//! An environment's colour as drawn outside its editor, and the contrast rule for text on it.
+//! An environment's colour as drawn outside its editor, the contrast rule for text on it, and
+//! the pieces the title bar's environment pickers share.
 
-use gpui_kit::component::h_flex;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::select::{SelectDelegate, SelectItem};
+use gpui_kit::component::{ActiveTheme as _, Icon, IndexPath, Sizable as _, h_flex};
 use gpui_kit::{
-    AnyElement, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, Styled as _, TestSupportExt as _, div, hsla,
+    AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
+    SharedString, StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, div,
+    hsla, rems,
 };
 
 use crate::style::{self, SPACE_1};
@@ -50,12 +54,24 @@ pub fn dot_or_space(id: impl Into<ElementId>, fill: Option<Hsla>) -> AnyElement 
     }
 }
 
-/// `name` led by a dot of `fill` (`dot_id`), kept on one line so a long name still ellipsizes.
-pub fn dotted(dot_id: &'static str, fill: Hsla, name: SharedString) -> impl IntoElement {
+/// A picker trigger's title: its scope `icon` (`icon_id`) in the text colour, then `name`, led
+/// by a dot (`dot_id`) when it has a `fill`; kept on one line so a long name still ellipsizes.
+pub fn scoped(
+    (icon_id, icon): (&'static str, IconName),
+    (dot_id, fill): (&'static str, Option<Hsla>),
+    name: SharedString,
+) -> impl IntoElement {
     h_flex()
         .min_w_0()
         .gap(SPACE_1)
-        .child(dot(dot_id, fill))
+        .child(
+            div()
+                .id(icon_id)
+                .test_support()
+                .flex_none()
+                .child(Icon::new(icon).xsmall()),
+        )
+        .children(fill.map(|fill| dot(dot_id, fill)))
         .child(div().min_w_0().truncate().child(name))
 }
 
@@ -68,12 +84,92 @@ pub fn picker_row(
     name: SharedString,
 ) -> impl IntoElement {
     let dot = (fill.is_some() || any).then(|| dot_or_space(dot_id, fill));
-    h_flex().min_w_0().gap(SPACE_1).children(dot).child(
-        div()
-            .id(name_id)
+    // The end padding keeps a cut name's ellipsis off the kit's check mark.
+    h_flex()
+        .min_w_0()
+        .gap(SPACE_1)
+        .pr(SPACE_1)
+        .children(dot)
+        .child(
+            div()
+                .id(name_id)
+                .test_support()
+                .min_w_0()
+                .truncate()
+                .child(name),
+        )
+}
+
+/// A picker's rows in titled groups. A group's header (`(id, group index)`) reads as a label
+/// rather than a row: smaller muted text, and a rule above every group after the first.
+#[derive(Clone)]
+pub struct PickerGroups<I> {
+    id: &'static str,
+    groups: Vec<(SharedString, Vec<I>)>,
+}
+
+impl<I> PickerGroups<I> {
+    /// `groups` as (header, rows) pairs, in order; `id` names the headers.
+    pub fn new(id: &'static str, groups: Vec<(SharedString, Vec<I>)>) -> Self {
+        PickerGroups { id, groups }
+    }
+}
+
+impl<I: SelectItem + 'static> SelectDelegate for PickerGroups<I> {
+    type Item = I;
+
+    fn sections_count(&self, _: &App) -> usize {
+        self.groups.len()
+    }
+
+    fn items_count(&self, section: usize) -> usize {
+        self.groups.get(section).map_or(0, |(_, rows)| rows.len())
+    }
+
+    fn item(&self, ix: IndexPath) -> Option<&I> {
+        self.groups.get(ix.section)?.1.get(ix.row)
+    }
+
+    fn position<V>(&self, value: &V) -> Option<IndexPath>
+    where
+        I: SelectItem<Value = V>,
+        V: PartialEq,
+    {
+        self.groups
+            .iter()
+            .enumerate()
+            .find_map(|(section, (_, rows))| {
+                let row = rows.iter().position(|r| r.value() == value)?;
+                Some(IndexPath::default().section(section).row(row))
+            })
+    }
+
+    // The list sizes every header alike, so the first keeps a clear rule of the same width.
+    fn render_section_header(
+        &self,
+        section: usize,
+        _: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        let (title, _) = self.groups.get(section)?;
+        let theme = cx.theme();
+        let rule = if section == 0 {
+            theme.transparent
+        } else {
+            theme.border
+        };
+        let header = div()
+            .id((self.id, section))
             .test_support()
-            .min_w_0()
-            .truncate()
-            .child(name),
-    )
+            .aria_label(title.clone())
+            .border_t_1()
+            .border_color(rule)
+            .pt_0p5()
+            .px_2()
+            .text_xs()
+            .line_height(rems(1.))
+            .text_color(theme.muted_foreground)
+            .child(title.clone());
+        Some(header.into_any_element())
+    }
 }
