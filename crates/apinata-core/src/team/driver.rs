@@ -92,6 +92,11 @@ impl TeamConfig {
     pub fn copies(&self) -> &Path {
         &self.copies
     }
+
+    /// The user's role on the workspace.
+    pub fn role(&self) -> Role {
+        self.role
+    }
 }
 
 /// What the app shows of the sync loop.

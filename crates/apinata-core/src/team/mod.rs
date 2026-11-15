@@ -15,6 +15,7 @@ mod failure;
 mod git;
 mod machine;
 mod model;
+mod resume;
 mod session;
 mod store;
 
@@ -30,6 +31,7 @@ pub use machine::{Block, Role, TeamAction, TeamEvent, TeamMachine, TeamState};
 pub use model::{
     Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamToken, User, Workspace,
 };
+pub use resume::{Resumed, Standing, resume};
 pub use session::{current, sign_in, sign_out};
 pub use store::{Account, Binding, TeamStore, token_key};
 

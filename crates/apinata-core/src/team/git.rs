@@ -33,16 +33,16 @@ pub fn clone_request(
 /// `{server}/api/v1/workspaces/{team}/{slug}/events` since the token is sent there; any other
 /// address is `TeamError::Protocol`.
 pub fn events_url(server: &ServerUrl, ws: &Workspace) -> Result<String, TeamError> {
-    let expected = format!(
-        "{}/api/v1/workspaces/{}/{}/events",
-        server.as_str(),
-        ws.team,
-        ws.slug
-    );
+    let expected = workspace_events(server.as_str(), &ws.team, &ws.slug);
     if ws.events_url != expected {
         return Err(TeamError::Protocol(
             "the workspace's events address is not on this server".into(),
         ));
     }
     Ok(expected)
+}
+
+/// The one spelling of a workspace's events address on `server`.
+pub(super) fn workspace_events(server: &str, team: &str, slug: &str) -> String {
+    format!("{server}/api/v1/workspaces/{team}/{slug}/events")
 }

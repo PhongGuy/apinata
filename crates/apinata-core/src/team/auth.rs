@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::GitOptions;
 
 /// What every team token starts with; the rest is base64url.
@@ -47,7 +49,7 @@ impl fmt::Debug for TeamAuth {
 }
 
 /// The name and email team commits are authored and committed under.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Identity {
     name: String,
