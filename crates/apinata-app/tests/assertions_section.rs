@@ -812,6 +812,44 @@ fn the_expression_shows_an_example(cx: &mut TestAppContext) {
     for ix in [0usize, 1] {
         let input = s.read_with(cx, |s, _| s.expression_input(ix).cloned().unwrap());
         let hint = input.read_with(cx, |i, _| i.presentation().placeholder().to_string());
-        assert_eq!(hint, "res.status", "row {ix}");
+        assert_eq!(hint, "Expression, e.g. res.status", "row {ix}");
     }
+}
+
+// The text of row `ix`'s note under its expression, if one shows.
+fn note_of(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> Option<String> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(("as-expr-error", ix))
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+// A value without an expression is skipped on Send, so the row says so first: the cell is
+// marked and a note sits under it; an expression, or no value, clears both.
+#[gpui_kit::test]
+fn a_value_without_an_expression_is_marked_before_send(cx: &mut TestAppContext) {
+    let (win, _host, _s) = section(
+        cx,
+        vec![
+            new("", "eq", Some("201"), true),
+            new("res.status", "eq", Some("200"), true),
+            new(" ", "eq", Some(""), true),
+        ],
+    );
+    let note = "Add an expression, or this check is skipped";
+    assert_eq!(note_of(cx, win, 0).as_deref(), Some(note));
+    assert!(present(cx, win, ("as-expr-invalid-icon", 0usize)));
+    for ix in [1usize, 2, 3] {
+        assert!(!present(cx, win, ("as-expr-error", ix)), "row {ix}");
+        assert!(!present(cx, win, ("as-expr-invalid-icon", ix)), "row {ix}");
+    }
+    type_at_end(cx, win, None, ("as-expr", 0usize), "res.status");
+    cx.run_until_parked();
+    assert!(!present(cx, win, ("as-expr-error", 0usize)));
+    assert!(!present(cx, win, ("as-expr-invalid-icon", 0usize)));
+    type_at_end(cx, win, None, ("as-value", 3usize), "7");
+    cx.run_until_parked();
+    assert_eq!(note_of(cx, win, 3).as_deref(), Some(note));
 }

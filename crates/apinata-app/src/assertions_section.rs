@@ -26,7 +26,10 @@ use crate::row_move::{
 };
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::section::SectionEdit;
-use crate::style::{OPERATOR_MENU_WIDTH, OPERATOR_SELECT_WIDTH, ROW_HEIGHT, VALUE_GROW};
+use crate::style::{
+    KV_ACTION_WIDTH, KV_CHECK_WIDTH, KV_GRIP_WIDTH, OPERATOR_MENU_WIDTH, OPERATOR_SELECT_WIDTH,
+    ROW_HEIGHT, SPACE_2, VALUE_GROW,
+};
 use crate::tabs::Side;
 use crate::ui;
 
@@ -484,7 +487,7 @@ impl AssertionsSection {
                     .default_value(text.to_owned())
             })
         };
-        let expression = input(&row.expression, "res.status", cx);
+        let expression = input(&row.expression, "Expression, e.g. res.status", cx);
         let value = input(&row.value, "Value", cx);
         let operator = cx.new(|cx| {
             SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true)
@@ -769,6 +772,27 @@ impl AssertionsSection {
             let field = ui::table_input(input, false, window, cx).id((id, ix));
             kv_grid::kv_cell((edge, ix), field, input, focused(input, cx), cx)
         };
+        // A value with no expression is skipped on Send, so the row says so before then.
+        let no_expression = !blank
+            && !is_unary(&row.op)
+            && row.expression.read(cx).value().trim().is_empty()
+            && !row.value.read(cx).value().is_empty();
+        let expression_cell = if no_expression {
+            let field = ui::table_input(&row.expression, false, window, cx).id(("as-expr", ix));
+            let ids = (
+                ("as-expr-danger-edge", ix).into(),
+                ("as-expr-invalid-icon", ix).into(),
+            );
+            kv_grid::kv_cell_marked(
+                ids,
+                field,
+                &row.expression,
+                focused(&row.expression, cx),
+                cx,
+            )
+        } else {
+            cell(&row.expression, "as-expr", "as-expr-edge", cx)
+        };
         let remove_id = (if blank { "as-slot-delete" } else { "as-delete" }, ix);
         // The remove control shows on the hovered row and stays while the row is typed in.
         let show = if blank {
@@ -789,7 +813,7 @@ impl AssertionsSection {
             .drop
             .filter(|&(at, _)| at == ix && !blank)
             .map(|(_, s)| s);
-        kv_row(("as-row", ix))
+        let line = kv_row(("as-row", ix))
             .track_focus(&row.within)
             .h(ROW_HEIGHT)
             .relative()
@@ -845,7 +869,7 @@ impl AssertionsSection {
                         )),
                     ),
             ))
-            .child(expr_col.size(cell(&row.expression, "as-expr", "as-expr-edge", cx)))
+            .child(expr_col.size(expression_cell))
             .child(
                 op_col.size(
                     div().child(
@@ -877,7 +901,24 @@ impl AssertionsSection {
                         !blank && self.take_control_focus(ix, Control::Remove),
                     )),
                 show,
-            ))
+            ));
+        // The note sits in the expression column, past the grip and check slots.
+        let note = no_expression.then(|| {
+            h_flex()
+                .w_full()
+                .gap(SPACE_2)
+                .child(div().flex_none().w(KV_GRIP_WIDTH))
+                .child(div().flex_none().w(KV_CHECK_WIDTH))
+                .child(expr_col.size(div()).child(ui::field_error(
+                    ("as-expr-error", ix),
+                    "Add an expression, or this check is skipped",
+                    cx,
+                )))
+                .child(op_col.size(div()))
+                .child(value_col.size(div()))
+                .child(div().flex_none().w(KV_ACTION_WIDTH))
+        });
+        v_flex().w_full().child(line).children(note)
     }
 }
 

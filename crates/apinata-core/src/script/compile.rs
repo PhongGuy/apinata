@@ -58,6 +58,22 @@ fn parses_sloppy(ctx: &Ctx<'_>, code: &str) -> bool {
         .is_ok()
 }
 
+/// Whether `text` parses as the body of a template literal, the code an assertion's right
+/// side runs as. The function is built and dropped, never called; an engine that cannot start
+/// counts as parsing, so the caller still asks before anything runs.
+pub(crate) fn parses_as_template(text: &str) -> bool {
+    let Ok(rt) = Runtime::new() else { return true };
+    let Ok(ctx) = Context::full(&rt) else {
+        return true;
+    };
+    ctx.with(|ctx| {
+        ctx.globals()
+            .get::<_, Function>("Function")
+            .and_then(|constructor| constructor.call::<_, Function>((format!("`{text}`"),)))
+            .is_ok()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::engine::wrap;

@@ -261,11 +261,13 @@ pub enum Verdict {
         /// Why the comparison could not run, such as an undefined right-side variable.
         detail: Option<String>,
     },
-    /// The assertion needs a JavaScript runtime, or reads a body truncated at the size limit,
-    /// so it counts as neither a pass nor a fail.
+    /// The assertion has no expression, needs a JavaScript runtime, expects a value that is not
+    /// valid JavaScript, or reads a body truncated at the size limit, so it counts as neither a
+    /// pass nor a fail.
     #[non_exhaustive]
     Skipped {
-        /// Which side needs JavaScript and its text, or the truncated `res.body` expression.
+        /// Why: which side needs JavaScript and its text, the truncated `res.body` expression,
+        /// `no expression`, or that the expected value is not valid JavaScript.
         reason: String,
     },
 }
@@ -378,6 +380,10 @@ fn verdict(
 ) -> Verdict {
     let (op, text) = rhs::split(assertion.bruno_value());
     let expression = js::js_trim(assertion.expression());
+    if expression.is_empty() {
+        let reason = "no expression".to_owned();
+        return Verdict::Skipped { reason };
+    }
     let lhs = match lhs::evaluate_expression(expression, res) {
         Ok(lhs) => lhs,
         // A `res` chain that falls back to JavaScript needs no approval.
@@ -412,6 +418,9 @@ fn verdict(
     match rhs::operand(op, &text, vars, scripted) {
         Err(RhsError::NeedsJs) => Verdict::Skipped {
             reason: format!("right side `{text}` needs a JavaScript runtime"),
+        },
+        Err(RhsError::NotJs) => Verdict::Skipped {
+            reason: "the expected value is not valid JavaScript".to_owned(),
         },
         Err(RhsError::Script(ExprError::Failed(error))) => fail(lhs.as_ref(), Some(error)),
         Err(RhsError::Script(ExprError::Unsupported(reason))) => Verdict::Skipped { reason },
@@ -774,6 +783,52 @@ mod tests {
         assert_eq!(
             run("res.body", "isArray", None, &res, json!({})),
             fail("{\"big\":12345678901234567000,\"z\":0}")
+        );
+    }
+
+    #[test]
+    fn an_empty_expression_is_skipped_whatever_the_value() {
+        let skipped = Verdict::Skipped {
+            reason: "no expression".to_owned(),
+        };
+        let res = Response::new(201);
+        for (expression, op, value) in [
+            ("", "eq", Some("201")),
+            ("  \t", "eq", Some("201")),
+            ("", "isDefined", None),
+            ("", "eq", Some("{{nope}}")),
+        ] {
+            assert_eq!(
+                run(expression, op, value, &res, json!({})),
+                skipped,
+                "{expression:?} {op} {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_value_that_is_not_valid_javascript_is_skipped() {
+        let res = Response::new(200);
+        let skipped = Verdict::Skipped {
+            reason: "the expected value is not valid JavaScript".to_owned(),
+        };
+        for (op, value) in [
+            ("eq", "{{`${1+0}`}}"),
+            ("eq", "`${2"),
+            ("eq", "`"),
+            ("in", "200, `${2"),
+        ] {
+            assert_eq!(
+                run("res.status", op, Some(value), &res, json!({})),
+                skipped,
+                "{op} {value}"
+            );
+        }
+        // A template that parses still needs the JavaScript runtime, as before.
+        let parses = run("res.status", "eq", Some("${200}"), &res, json!({}));
+        assert!(
+            matches!(&parses, Verdict::Skipped { reason } if reason.ends_with("needs a JavaScript runtime")),
+            "{parses:?}"
         );
     }
 

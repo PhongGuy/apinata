@@ -49,8 +49,8 @@ pub struct ScriptText {
 
 /// Every text a send of `req` with scripts on could evaluate and that needs approval:
 /// segments of the three phases in run order, then post-response variable expressions
-/// that are not `res` chains, then per enabled assertion its left side (not a `res` chain)
-/// and its raw right side when it would run JavaScript. Deduplicated by hash, first kept.
+/// that are not `res` chains, then per enabled assertion with an expression its left side
+/// (not a `res` chain) and its raw right side when it would run JavaScript. Deduplicated by hash, first kept.
 pub fn script_texts(req: &RequestFile, ctx: &VarContext) -> Vec<ScriptText> {
     texts_masking(req, ctx, &sensitive_strings(req, ctx))
 }
@@ -82,6 +82,10 @@ fn texts_masking(req: &RequestFile, ctx: &VarContext, secrets: &[String]) -> Vec
     }
     for assertion in req.assertions().iter().filter(|a| a.enabled()) {
         let expression = js::js_trim(assertion.expression());
+        // A check without an expression is skipped, so neither of its sides runs.
+        if expression.is_empty() {
+            continue;
+        }
         if !lhs::supported_shape(expression) {
             found.push((ScriptTextKind::AssertionLeft, expression.to_owned()));
         }

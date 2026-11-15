@@ -20,7 +20,7 @@ const TESTS: &str = "test('ok', () => expect(res.status).to.equal(200))";
 /// and assertions with a `res` chain, a JavaScript left side and a template right side.
 fn request_text(url: &str) -> String {
     format!(
-        "info:\n  name: R\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{url}/ok\"\nruntime:\n  scripts:\n{}{}  actions:\n    - type: set-variable\n      phase: after-response\n      selector:\n        expression: \"res.body.id\"\n        method: jsonq\n      variable:\n        name: id\n        scope: runtime\n    - type: set-variable\n      phase: after-response\n      selector:\n        expression: \"res.status * 2\"\n        method: jsonq\n      variable:\n        name: twice\n        scope: runtime\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n    - expression: \"res.status + 1\"\n      operator: eq\n      value: \"201\"\n    - expression: res.status\n      operator: eq\n      value: \"`${{200}}`\"\n",
+        "info:\n  name: R\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{url}/ok\"\nruntime:\n  scripts:\n{}{}  actions:\n    - type: set-variable\n      phase: after-response\n      selector:\n        expression: \"res.body.id\"\n        method: jsonq\n      variable:\n        name: id\n        scope: runtime\n    - type: set-variable\n      phase: after-response\n      selector:\n        expression: \"res.status * 2\"\n        method: jsonq\n      variable:\n        name: twice\n        scope: runtime\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"200\"\n    - expression: \"res.status + 1\"\n      operator: eq\n      value: \"201\"\n    - expression: res.status\n      operator: eq\n      value: \"${{200}}\"\n",
         script("before-request", PRE),
         script("tests", TESTS),
     )
@@ -74,7 +74,7 @@ fn texts_list_segments_and_javascript_expressions_with_their_hashes() {
         ("tests request", TESTS),
         ("variable twice", "res.status * 2"),
         ("assertion left", "res.status + 1"),
-        ("assertion right", "`${200}`"),
+        ("assertion right", "${200}"),
     ]
     .into_iter()
     .map(|(k, t)| (k.to_owned(), t.to_owned()))
@@ -330,4 +330,60 @@ fn texts_across_contexts_mask_the_sensitive_values_of_each() {
     assert_eq!(texts[0].1.text, code);
     assert_eq!(texts[0].1.shown, "const t = '<secret>' + '<secret>'");
     assert!(plan_script_texts_across(&plan, &[]).is_empty());
+}
+
+/// A request at `url` whose one assertion checks the status against `value`, from `expression`.
+fn assertion_request(url: &str, expression: &str, value: &str) -> String {
+    format!(
+        "info:\n  name: R\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"{url}/ok\"\nruntime:\n  assertions:\n    - expression: {}\n      operator: eq\n      value: {}\n",
+        serde_json::to_string(expression).unwrap(),
+        serde_json::to_string(value).unwrap()
+    )
+}
+
+// Code that cannot parse never runs, so nothing asks for approval, and even with scripts on
+// the check is skipped rather than failed; a template that parses is still listed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unparsable_template_value_needs_no_approval_and_is_skipped() {
+    let s = server().await;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        (
+            "bad.yml",
+            &assertion_request(&s.uri(), "res.status", "{{`${1+0}`}}"),
+        ),
+        (
+            "good.yml",
+            &assertion_request(&s.uri(), "res.status", "${200}"),
+        ),
+    ]);
+    assert_eq!(texts_with(dir.path(), "bad.yml", ContextOptions::new()), []);
+    let good = texts_with(dir.path(), "good.yml", ContextOptions::new());
+    let listed: Vec<_> = good.iter().map(|t| (kind(t), t.text.as_str())).collect();
+    assert_eq!(listed, [("assertion right".to_owned(), "${200}")]);
+    let on = RunOptions::new().scripts(ScriptOptions::new().enabled(true));
+    let result = send(dir.path(), "bad.yml", on).await;
+    let verdict = result.assertions[0].verdict();
+    assert!(
+        matches!(verdict, Verdict::Skipped { reason, .. } if reason == "the expected value is not valid JavaScript"),
+        "{verdict:?}"
+    );
+}
+
+// An assertion with no expression is skipped, so neither of its sides asks for approval.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_empty_expression_needs_no_approval_and_is_skipped() {
+    let s = server().await;
+    let dir = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("r.yml", &assertion_request(&s.uri(), " ", "${201}")),
+    ]);
+    assert_eq!(texts_with(dir.path(), "r.yml", ContextOptions::new()), []);
+    let on = RunOptions::new().scripts(ScriptOptions::new().enabled(true));
+    let result = send(dir.path(), "r.yml", on).await;
+    let verdict = result.assertions[0].verdict();
+    assert!(
+        matches!(verdict, Verdict::Skipped { reason, .. } if reason == "no expression"),
+        "{verdict:?}"
+    );
 }

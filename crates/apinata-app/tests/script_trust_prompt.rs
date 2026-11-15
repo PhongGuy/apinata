@@ -648,7 +648,7 @@ fn the_question_names_an_assertion_or_variable_when_no_script_needs_running() {
 fn an_assertion_value_that_runs_javascript_is_named_in_the_question(cx: &mut TestAppContext) {
     http_ready(cx);
     let a = format!(
-        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"`${{1+1}}`\"\n",
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"${{1+1}}\"\n",
         request("a", "http://127.0.0.1:9/ok")
     );
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
@@ -660,7 +660,7 @@ fn an_assertion_value_that_runs_javascript_is_named_in_the_question(cx: &mut Tes
         Some("This assertion runs JavaScript")
     );
     let detail = label(cx, s.win, "confirm-detail").unwrap_or_default();
-    assert!(detail.contains("`${1+1}`"), "{detail}");
+    assert!(detail.contains("${1+1}"), "{detail}");
     cx.simulate_keystrokes(s.win, "enter");
     finished(cx, &model);
     assert_eq!(trust(&s).decision(&s.root), None);
@@ -690,9 +690,26 @@ fn the_shown_expression_cannot_disguise_the_question() {
     assert!(long.contains("(241 more characters)"), "{long:?}");
 }
 
+// A template value that cannot parse never runs, so the send goes ahead without the question
+// and leaves the collection undecided; one that parses still asks, as above.
+#[gpui_kit::test]
+fn an_assertion_value_that_cannot_parse_does_not_ask(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let a = format!(
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"{{{{`${{1+0}}`}}}}\"\n",
+        request("a", "http://127.0.0.1:9/ok")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)]);
+    let s = started(cx, &col);
+    let model = start_send(cx, &s);
+    finished(cx, &model);
+    assert!(!asked(cx, &s));
+    assert_eq!(trust(&s).decision(&s.root), None);
+}
+
 fn assertion_only() -> tempfile::TempDir {
     let a = format!(
-        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"`${{1+1}}`\"\n",
+        "{}runtime:\n  assertions:\n    - expression: res.status\n      operator: eq\n      value: \"${{1+1}}\"\n",
         request("a", "http://127.0.0.1:9/ok")
     );
     write_tree(&[("opencollection.yml", ROOT), ("a.yml", &a)])
@@ -713,7 +730,7 @@ fn run_on_the_assertion_question_allows_and_approves_it(cx: &mut TestAppContext)
     finished(cx, &model);
     let store = trust(&s);
     assert_eq!(store.decision(&s.root), Some(ScriptDecision::Allowed));
-    assert!(store.is_approved(&s.root, &script_hash("`${1+1}`")));
+    assert!(store.is_approved(&s.root, &script_hash("${1+1}")));
 }
 
 #[gpui_kit::test]
