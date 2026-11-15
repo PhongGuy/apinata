@@ -25,7 +25,7 @@ pub use driver::{TeamConfig, TeamStatus, TeamSync};
 pub use error::TeamError;
 pub use events::{EventsConfig, EventsEnd, TeamNotice, follow_events, reconnect_delay};
 pub use failure::{Finding, SyncFailure, classify};
-pub use git::clone_request;
+pub use git::{clone_request, events_url};
 pub use machine::{Block, Role, TeamAction, TeamEvent, TeamMachine, TeamState};
 pub use model::{
     Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamToken, User, Workspace,

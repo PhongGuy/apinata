@@ -368,6 +368,38 @@ fn a_workspace_name_that_is_not_a_folder_name_is_refused_and_creates_nothing(
 }
 
 #[gpui_kit::test]
+fn an_events_address_on_another_host_is_refused_before_cloning(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = potluck_server(cx);
+    let mut w = workspace(&server.uri(), "core", "api", "apinata", "write");
+    w["events_url"] = "https://elsewhere.example/api/v1/workspaces/core/api/events".into();
+    answer_me(cx, &server, me(false, vec![w]));
+    let dest = tempfile::tempdir().unwrap();
+    let parent = dest.path().join("clones");
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &server, false);
+        parent_at(paths, &parent);
+    });
+    let view = open_list(cx, &s);
+    settle(cx, &view);
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| {
+            v.open_row_with(0, 0, |_, _, _| panic!("must not clone"), w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert_eq!(
+        section_error(cx, &view).as_deref(),
+        Some(
+            "This workspace cannot be opened: the workspace's events address is not on this server."
+        ),
+    );
+    assert!(!parent.exists());
+}
+
+#[gpui_kit::test]
 fn an_already_bound_workspace_opens_its_folder_without_cloning(cx: &mut TestAppContext) {
     http_ready(cx);
     let server = potluck_server(cx);

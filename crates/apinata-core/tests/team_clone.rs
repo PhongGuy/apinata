@@ -103,6 +103,33 @@ async fn a_git_address_on_another_host_is_refused() {
     assert!(matches!(e, TeamError::Protocol(_)), "{e:?}");
 }
 
+#[tokio::test]
+async fn an_events_address_on_another_host_is_refused() {
+    let s = MockServer::start().await;
+    let mut w = workspace(&s.uri(), "core", "api", "apinata", "write");
+    w["events_url"] = json!("https://elsewhere.example/api/v1/workspaces/core/api/events");
+    answer(&s, "GET", "/api/v1/me", me(false, vec![w])).await;
+    let got = client(&s).me(&token()).await.unwrap();
+    let server = ServerUrl::parse(&s.uri()).unwrap();
+    let e = team::clone_request(&server, &got.workspaces[0], Path::new("/tmp")).unwrap_err();
+    assert!(matches!(e, TeamError::Protocol(_)), "{e:?}");
+    let e = team::events_url(&server, &got.workspaces[0]).unwrap_err();
+    assert!(matches!(e, TeamError::Protocol(_)), "{e:?}");
+}
+
+#[tokio::test]
+async fn the_events_address_is_the_workspace_stream_on_this_server() {
+    let s = MockServer::start().await;
+    let w = workspace(&s.uri(), "core", "api", "apinata", "write");
+    answer(&s, "GET", "/api/v1/me", me(false, vec![w])).await;
+    let got = client(&s).me(&token()).await.unwrap();
+    let server = ServerUrl::parse(&s.uri()).unwrap();
+    assert_eq!(
+        team::events_url(&server, &got.workspaces[0]).unwrap(),
+        format!("{}/api/v1/workspaces/core/api/events", s.uri())
+    );
+}
+
 #[test]
 fn a_workspace_name_that_is_not_a_folder_name_is_refused() {
     let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();

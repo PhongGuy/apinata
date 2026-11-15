@@ -383,6 +383,10 @@ impl WorkspacesView {
             }
             Err(e) => return self.set_error(section, Some(error_text(&e)), cx),
         };
+        // clone_request has already accepted this address, so the fallback never applies.
+        let Ok(events_url) = team::events_url(&s.server, ws) else {
+            return;
+        };
         let text = match clone_form::check(&req.url, Some(&parent), &req.name) {
             Ok(_) => None,
             Err(FormError::Exists) => Some(format!(
@@ -404,6 +408,7 @@ impl WorkspacesView {
             account: s.account.clone(),
             workspace: ws.clone(),
             me,
+            events_url,
             base,
             file,
             conflicts,
@@ -502,7 +507,7 @@ impl WorkspacesView {
         let copies = copies_dir(&open.conflicts, &binding);
         let config = TeamConfig::new(root.clone(), copies, auth.clone(), identity, ws.role)
             .base_options(open.base);
-        let events = EventsConfig::new(ws.events_url.clone(), auth, ws.default_branch.clone());
+        let events = EventsConfig::new(open.events_url.clone(), auth, ws.default_branch.clone());
         self.workspace.update(cx, |w, cx| {
             w.open_revealed(root.clone(), cx);
             w.start_team(&root, config, Some(events), cx);
@@ -672,6 +677,8 @@ struct Opening {
     account: Account,
     workspace: team::Workspace,
     me: Me,
+    // The workspace's change stream, checked to be on this server.
+    events_url: String,
     base: GitOptions,
     file: PathBuf,
     conflicts: PathBuf,
