@@ -316,3 +316,103 @@ fn unfinished_certificate_and_host_rows_are_dropped(cx: &mut TestAppContext) {
         assert_eq!(c.leaks("draft-secret"), Vec::<String>::new(), "{way:?}");
     }
 }
+
+// Everything a received request carried that could hold a secret: its URL, headers with any
+// Basic pair decoded, and its body.
+fn carried(r: &wiremock::Request) -> String {
+    use base64::Engine as _;
+    let mut text = format!("{}\n{}\n", r.url, String::from_utf8_lossy(&r.body));
+    for (name, value) in &r.headers {
+        let value = value.to_str().unwrap_or_default();
+        text.push_str(&format!("{name}: {value}\n"));
+        if let Some(pair) = value.strip_prefix("Basic ")
+            && let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(pair)
+        {
+            text.push_str(&String::from_utf8_lossy(&bytes));
+            text.push('\n');
+        }
+    }
+    text
+}
+
+// A token endpoint and the request it guards, both on 127.0.0.1.
+fn provider(cx: &mut TestAppContext) -> wiremock::MockServer {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+    let server = handle.block_on(MockServer::builder().start());
+    let body = r#"{"access_token":"tok-1","token_type":"Bearer","expires_in":3600}"#;
+    handle.block_on(
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server),
+    );
+    handle.block_on(
+        Mock::given(method("GET"))
+            .and(path("/r"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server),
+    );
+    server
+}
+
+// Send after a discard carries the saved client secret to the token endpoint, never the
+// typing the discard dropped; the saved one arriving proves the send happened.
+#[gpui_kit::test]
+fn send_after_a_discard_carries_only_the_saved_secret(cx: &mut TestAppContext) {
+    http_ready(cx);
+    for way in WAYS {
+        let server = provider(cx);
+        let uri = server.uri();
+        let file = format!(
+            "{}  auth:\n    type: oauth2\n    flow: client_credentials\n    accessTokenUrl: \"{uri}/token\"\n    credentials:\n      clientId: app\n      clientSecret: saved-secret\n    tokenConfig:\n      placement:\n        header: Bearer\n",
+            request("a", &format!("{uri}/r"))
+        );
+        let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &file)]);
+        let s = started(cx, &col);
+        let tab = open_tab(cx, &s.ws, &s.root, "a.yml");
+        frame(cx, s.win);
+        let ed = editor_of(cx, &s, tab);
+        let secret = ed.read_with(cx, |e, cx| {
+            let oauth2 = e.auth().read(cx).oauth2().clone();
+            oauth2.read(cx).input(OAuth2Field::ClientSecret).clone()
+        });
+        let dirty = edit_url("a.yml", &format!("{uri}/elsewhere"));
+        s.ws.update(cx, |w, cx| w.send(&s.root, dirty, cx));
+        cx.run_until_parked();
+        type_uncommitted(cx, &s, &secret, "typed-secret");
+        discard(cx, &s, Target::Request(ip("a.yml")), way);
+        cx.update_window(s.win, |_, w, cx| {
+            ed.update(cx, |e, cx| {
+                e.send(&apinata_app::request_editor::SendRequest, w, cx)
+            })
+        })
+        .unwrap();
+        let handle = cx.update(|cx| apinata_app::tokio_bridge::handle(cx));
+        let received = |cx: &mut TestAppContext| {
+            let _ = cx;
+            handle
+                .block_on(server.received_requests())
+                .unwrap_or_default()
+        };
+        wait_real(cx, |cx| received(cx).iter().any(|r| r.url.path() == "/r"));
+        let all = received(cx);
+        let token = all
+            .iter()
+            .find(|r| r.url.path() == "/token")
+            .expect("a token request");
+        assert!(
+            carried(token).contains("saved-secret"),
+            "{way:?}: {}",
+            carried(token)
+        );
+        for r in &all {
+            assert!(
+                !carried(r).contains("typed-secret"),
+                "{way:?}: {}",
+                carried(r)
+            );
+        }
+    }
+}
