@@ -441,6 +441,7 @@ mod stream_types;
 mod system_trash;
 mod team_auth;
 mod team_autosync;
+mod team_machine;
 mod team_rebase;
 mod trash_restore;
 mod tree_clone_folder;
