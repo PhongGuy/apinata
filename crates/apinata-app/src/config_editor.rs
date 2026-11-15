@@ -258,13 +258,20 @@ impl ConfigEditor {
             cx.observe_in(&workspace, window, |this, _, window, cx| {
                 this.refresh(window, cx)
             }),
-            cx.subscribe_in(&workspace, window, |this, _, event, _, cx| match event {
-                WorkspaceEvent::Notices { root, notices, .. } => {
-                    this.mark_refused(root, notices, cx)
-                }
-                WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked),
-                _ => {}
-            }),
+            cx.subscribe_in(
+                &workspace,
+                window,
+                |this, _, event, window, cx| match event {
+                    WorkspaceEvent::Notices { root, notices, .. } => {
+                        this.mark_refused(root, notices, cx)
+                    }
+                    WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked),
+                    WorkspaceEvent::Reverted { root, target } => {
+                        this.reverted(root, target, window, cx)
+                    }
+                    _ => {}
+                },
+            ),
         ];
         for (table, section) in [
             (&headers, ConfigSection::Headers),
@@ -968,6 +975,22 @@ impl ConfigEditor {
             }));
         let buttons = h_flex().gap_2().child(discard).child(button);
         Some(slot.child(buttons).into_any_element())
+    }
+
+    // A Revert of these settings, sent from anywhere, drops the proxy shown but never sent.
+    fn reverted(
+        &mut self,
+        root: &Path,
+        target: &Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if *root == crate::workspace::absolute(&self.root)
+            && *target == self.target.target()
+            && let Some(network) = self.network.clone()
+        {
+            network.update(cx, |n, cx| n.discard_unsent(window, cx));
+        }
     }
 
     /// Asks, then returns the settings to their saved file, as the environment editors'

@@ -283,6 +283,18 @@ impl NetworkSection {
         cx.notify();
     }
 
+    /// Drops a custom proxy still waiting for its host, as a discard does, so the section
+    /// shows the proxy the file holds.
+    pub fn discard_unsent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.held_back(cx) {
+            self.choice = self.filed;
+            let proxy = self.loaded_proxy.clone();
+            set_text(&self.host, &proxy.hostname, window, cx);
+            self.show_fields(&proxy, window, cx);
+            cx.notify();
+        }
+    }
+
     fn show_fields(&mut self, proxy: &ProxyConfig, window: &mut Window, cx: &mut Context<Self>) {
         // A snapshot echoing the last loaded host leaves a cleared, unsent host blank; any
         // other host replaces it.
