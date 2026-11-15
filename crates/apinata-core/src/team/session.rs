@@ -119,10 +119,12 @@ pub async fn current(
     let me = match api.me(&token).await {
         Err(TeamError::Unauthenticated) => {
             // A sign-in meanwhile kept a new session under the same key; only the refused one goes.
-            let refused = (TeamStore::load(team_file).ok())
+            let same_session = (TeamStore::load(team_file).ok())
                 .and_then(|t| t.account(api.server()).cloned())
                 .is_some_and(|a| a.username == account.username && a.token_id == account.token_id);
-            if refused {
+            let same_token = (kept_token(api, secrets, &account).ok().flatten())
+                .is_some_and(|kept| kept.expose() == token.expose());
+            if same_session && same_token {
                 let _ = secrets.delete(&token_key(api.server(), &account.username));
             }
             return Err(TeamError::Unauthenticated);
