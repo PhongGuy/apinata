@@ -1,7 +1,9 @@
 //! What the team dialogs say for each failure.
 
-use apinata_app::team_text::{error_text, server_warning, sign_in_error_text};
-use apinata_core::team::{ServerUrl, TeamError};
+use apinata_app::team_text::{
+    error_text, finding_line, problem_lines, server_warning, sign_in_error_text,
+};
+use apinata_core::team::{Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus};
 
 fn all() -> Vec<TeamError> {
     vec![
@@ -100,4 +102,72 @@ fn only_plain_http_to_another_host_warns() {
     assert!(warn("http://team.example.com").is_some());
     assert!(warn("https://team.example.com").is_none());
     assert!(warn("http://127.0.0.1:8080").is_none());
+}
+
+#[test]
+fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
+    let found = Finding::new(
+        "secret_value",
+        "refs/heads/main",
+        "environments/dev.yml",
+        "secret_value",
+    );
+    let status = TeamStatus::new(
+        TeamState::Blocked(Block::Secret {
+            findings: vec![found.clone()],
+            more: 3,
+        }),
+        2,
+        vec![],
+    );
+    assert_eq!(
+        finding_line(&found),
+        "environments/dev.yml: secret_value (secret_value on refs/heads/main)"
+    );
+    assert_eq!(
+        problem_lines(&status),
+        [
+            "The server refused the push because it found secrets:",
+            "environments/dev.yml: secret_value (secret_value on refs/heads/main)",
+            "and 3 more",
+            "Remove them, save, then Retry.",
+            "2 local commits are not on the server yet.",
+        ]
+    );
+}
+
+#[test]
+fn a_paused_read_only_folder_explains_discard_and_counts_one_commit() {
+    let status = TeamStatus::new(TeamState::ReadOnly { paused: true }, 1, vec![]);
+    assert_eq!(
+        problem_lines(&status),
+        [
+            "You can only read this workspace, so changes are not saved.",
+            "Files changed here outside the app hold back updates. Discard them to keep pulling.",
+            "1 local commit is not on the server yet.",
+        ]
+    );
+}
+
+#[test]
+fn quiet_states_say_so_in_one_line() {
+    assert_eq!(
+        problem_lines(&TeamStatus::new(TeamState::Idle, 0, vec![])),
+        ["In sync."]
+    );
+    assert_eq!(
+        problem_lines(&TeamStatus::new(TeamState::Pushing, 4, vec![])),
+        ["Syncing."]
+    );
+    let hook = TeamStatus::new(
+        TeamState::Blocked(Block::Hook {
+            output: "nope\n".into(),
+        }),
+        0,
+        vec![],
+    );
+    assert_eq!(
+        problem_lines(&hook),
+        ["A commit hook refused the commit:", "nope"]
+    );
 }

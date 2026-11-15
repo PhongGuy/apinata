@@ -1,6 +1,7 @@
-//! What the team dialogs say when a server call fails, and when an address is unsafe.
+//! What the team dialogs say when a server call fails, when an address is unsafe, and what
+//! stands in the way of a team collection's sync.
 
-use apinata_core::team::{ServerUrl, TeamError};
+use apinata_core::team::{Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus};
 
 /// The user text for `e` anywhere outside sign-in.
 pub fn error_text(e: &TeamError) -> String {
@@ -59,4 +60,80 @@ pub fn server_warning(server: &ServerUrl) -> Option<&'static str> {
     server.is_unencrypted().then_some(
         "This address is not encrypted, so your password and token cross the network in clear.",
     )
+}
+
+/// One secret the server refused, as `{path}: {rule} ({code} on {git_ref})`.
+pub fn finding_line(f: &Finding) -> String {
+    format!("{}: {} ({} on {})", f.path, f.rule, f.code, f.git_ref)
+}
+
+/// What the sync dialog says about `status`, one line each. Offline, read-only and blocked
+/// folders end with how many local commits wait for the server.
+pub fn problem_lines(status: &TeamStatus) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let waits = match &status.state {
+        TeamState::Idle => {
+            lines.push("In sync.".into());
+            false
+        }
+        TeamState::Offline => {
+            lines.push(
+                "The server cannot be reached. Changes are committed here and pushed once it is back."
+                    .into(),
+            );
+            true
+        }
+        TeamState::ReadOnly { paused } => {
+            lines.push("You can only read this workspace, so changes are not saved.".into());
+            if *paused {
+                lines.push(
+                    "Files changed here outside the app hold back updates. Discard them to keep pulling."
+                        .into(),
+                );
+            }
+            true
+        }
+        TeamState::Blocked(block) => {
+            block_lines(block, &mut lines);
+            true
+        }
+        _ => {
+            lines.push("Syncing.".into());
+            false
+        }
+    };
+    if waits && status.unpushed > 0 {
+        lines.push(match status.unpushed {
+            1 => "1 local commit is not on the server yet.".into(),
+            n => format!("{n} local commits are not on the server yet."),
+        });
+    }
+    lines
+}
+
+fn block_lines(block: &Block, lines: &mut Vec<String>) {
+    match block {
+        Block::Secret { findings, more } => {
+            lines.push("The server refused the push because it found secrets:".into());
+            lines.extend(findings.iter().map(finding_line));
+            if *more > 0 {
+                lines.push(format!("and {more} more"));
+            }
+            lines.push("Remove them, save, then Retry.".into());
+        }
+        Block::SignedOut => lines.push(
+            "You are signed out of this team server. Changes are committed here until you sign in again."
+                .into(),
+        ),
+        Block::Gone => lines.push("This workspace is no longer on the server.".into()),
+        Block::Hook { output } => {
+            lines.push("A commit hook refused the commit:".into());
+            lines.push(output.trim().into());
+        }
+        Block::Failed { message } => {
+            lines.push("Sync failed:".into());
+            lines.push(message.trim().into());
+        }
+        _ => lines.push("Sync stopped.".into()),
+    }
 }

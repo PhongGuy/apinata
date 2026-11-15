@@ -111,6 +111,17 @@ pub struct TeamStatus {
     pub conflicts: Vec<ConflictPath>,
 }
 
+impl TeamStatus {
+    /// A status of `state` with `unpushed` local commits and the latest pull's `conflicts`.
+    pub fn new(state: TeamState, unpushed: usize, conflicts: Vec<ConflictPath>) -> TeamStatus {
+        TeamStatus {
+            state,
+            unpushed,
+            conflicts,
+        }
+    }
+}
+
 enum Input {
     Event(TeamEvent),
     RemoteMoved(Option<String>),
