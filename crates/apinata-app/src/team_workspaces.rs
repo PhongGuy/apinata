@@ -318,6 +318,13 @@ impl WorkspacesView {
         cx.notify();
     }
 
+    // `set_error` on the section for `server`, wherever a sign out has moved it.
+    fn set_error_on(&mut self, server: &ServerUrl, text: Option<String>, cx: &mut Context<Self>) {
+        if let Some(index) = self.position(server) {
+            self.set_error(index, text, cx);
+        }
+    }
+
     /// Opens a row: its bound folder when it has one, else a team clone of it.
     pub fn open_row(
         &mut self,
@@ -341,7 +348,7 @@ impl WorkspacesView {
         if self.cloning {
             return;
         }
-        let Some(s) = self.sections.get(section) else {
+        let Some(s) = self.sections.get(section).filter(|s| !s.signing_out) else {
             return;
         };
         let (Some(found), Some(ws), Some(me)) =
@@ -393,7 +400,6 @@ impl WorkspacesView {
         }
         let base = (self.workspace.read(cx).git_options().cloned()).unwrap_or_default();
         let open = Opening {
-            section,
             server: s.server.clone(),
             account: s.account.clone(),
             workspace: ws.clone(),
@@ -413,19 +419,19 @@ impl WorkspacesView {
                 Ok(Ok(Some(token))) => this.clone_with(open, token, req, make, window, cx),
                 Ok(Ok(None)) => {
                     this.cloning = false;
-                    if let Some(s) = this.sections.get_mut(open.section) {
-                        s.state = SectionState::SignedOut;
+                    if let Some(i) = this.position(&open.server) {
+                        this.sections[i].state = SectionState::SignedOut;
                     }
                     cx.notify();
                 }
                 Ok(Err(e)) => {
                     this.cloning = false;
                     let text = error_text(&TeamError::Secrets(e.to_string()));
-                    this.set_error(open.section, Some(text), cx);
+                    this.set_error_on(&open.server, Some(text), cx);
                 }
                 Err(_) => {
                     this.cloning = false;
-                    this.set_error(open.section, Some(error_text(&TeamError::Unavailable)), cx);
+                    this.set_error_on(&open.server, Some(error_text(&TeamError::Unavailable)), cx);
                 }
             });
         })
@@ -461,7 +467,7 @@ impl WorkspacesView {
                 this.job = None;
                 this.cloning = false;
                 let text = "The clone stopped unexpectedly. Try again.".to_owned();
-                this.set_error(open.section, Some(text), cx);
+                this.set_error_on(&open.server, Some(text), cx);
             });
         })
         .detach();
@@ -480,12 +486,12 @@ impl WorkspacesView {
         self.cloning = false;
         let root = match result {
             Ok(root) => root,
-            Err(e) => return self.set_error(open.section, clone_form::clone_error_text(&e), cx),
+            Err(e) => return self.set_error_on(&open.server, clone_form::clone_error_text(&e), cx),
         };
         let ws = &open.workspace;
         let binding = Binding::new(root.clone(), &open.account, &ws.team, &ws.slug, ws.role);
         if let Err(e) = TeamStore::update(&open.file, |t| t.put_binding(binding.clone())) {
-            return self.set_error(open.section, Some(error_text(&e)), cx);
+            return self.set_error_on(&open.server, Some(error_text(&e)), cx);
         }
         window.close_dialog(cx);
         if let Opened::NoCollection(root) = clone_form::classify(&root) {
@@ -547,7 +553,7 @@ impl WorkspacesView {
         let Some(s) = self.sections.get(section) else {
             return;
         };
-        if s.creating || !s.admin {
+        if s.creating || s.signing_out || !s.admin {
             return;
         }
         let field = |input: &Entity<InputState>| input.read(cx).value().to_string();
@@ -662,7 +668,6 @@ impl WorkspacesView {
 
 // What an Open captured when it started, so the binding uses that account and workspace.
 struct Opening {
-    section: usize,
     server: ServerUrl,
     account: Account,
     workspace: team::Workspace,

@@ -217,3 +217,190 @@ fn a_failed_sign_out_keeps_the_token_and_says_why(cx: &mut TestAppContext) {
             .is_some()
     );
 }
+
+/// Settings whose clone parent is `dest`, so no test clones under the real home.
+fn parent_at(paths: &apinata_app::persist::Paths, dest: &std::path::Path) {
+    let mut settings = test_settings();
+    settings.clone_parent = Some(dest.to_path_buf());
+    apinata_app::persist::save_json(&paths.settings, &settings).unwrap();
+}
+
+fn section_of(
+    cx: &mut TestAppContext,
+    view: &Entity<WorkspacesView>,
+    server: &MockServer,
+) -> usize {
+    let uri = server.uri();
+    view.read_with(cx, |v, _| {
+        v.sections()
+            .iter()
+            .position(|s| s.server() == uri)
+            .expect("a section")
+    })
+}
+
+#[gpui_kit::test]
+fn a_failed_open_reports_on_its_own_server_after_another_signs_out(cx: &mut TestAppContext) {
+    use apinata_app::clone_job::CloneJob;
+    use apinata_core::CloneRequest;
+    let sb = crate::git_support::Sandbox::new();
+    let dest = sb.path().join("dest");
+    http_ready(cx);
+    // The section signed out sorts first, so removing it shifts the one that stays.
+    let (mut one, mut two) = (potluck_server(cx), potluck_server(cx));
+    if two.uri() < one.uri() {
+        std::mem::swap(&mut one, &mut two);
+    }
+    for server in [&one, &two] {
+        let listed = vec![workspace(&server.uri(), "core", "api", "apinata", "write")];
+        answer(cx, server, "GET", "/api/v1/me", me(false, listed));
+        answer(
+            cx,
+            server,
+            "DELETE",
+            "/api/v1/tokens/tok-7",
+            ResponseTemplate::new(204),
+        );
+    }
+    // The clone of the server that stays fails only once the other sign out is done.
+    let slow = ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(1500));
+    answer(cx, &two, "GET", "/slow/repo.git/info/refs", slow);
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &one, false);
+        signed_in(paths, secrets, &two, false);
+        parent_at(paths, &dest);
+    });
+    s.ws.update(cx, |w, cx| w.set_git(Some(sb.options()), cx));
+    let view = ready(cx, &s);
+    wait_for(cx, "both lists", |cx| {
+        view.read_with(cx, |v, _| {
+            v.sections()
+                .iter()
+                .all(|s| *s.state() == SectionState::Ready)
+        })
+    });
+    let (gone, kept) = (section_of(cx, &view, &one), section_of(cx, &view, &two));
+    assert_eq!((gone, kept), (0, 1));
+    let url = format!("{}/slow/repo.git", two.uri());
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| {
+            v.sign_out(gone, w, cx);
+            v.open_row_with(
+                kept,
+                0,
+                move |req, opts, cx| {
+                    CloneJob::start(CloneRequest::new(url, req.parent, req.name), opts, cx)
+                },
+                w,
+                cx,
+            );
+        })
+    })
+    .unwrap();
+    wait_for(cx, "the sign out", |cx| {
+        view.read_with(cx, |v, _| v.sections().len() == 1)
+    });
+    wait_for(cx, "the clone error on the kept server", |cx| {
+        section_error(cx, &view).is_some()
+    });
+    assert_eq!(
+        view.read_with(cx, |v, _| v.sections()[0].server().to_owned()),
+        two.uri()
+    );
+}
+
+#[gpui_kit::test]
+fn a_section_that_is_signing_out_neither_opens_nor_creates(cx: &mut TestAppContext) {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    http_ready(cx);
+    let server = potluck_server(cx);
+    let listed = vec![workspace(&server.uri(), "core", "api", "apinata", "write")];
+    answer(cx, &server, "GET", "/api/v1/me", me(true, listed));
+    answer(cx, &server, "GET", "/api/v1/teams", teams());
+    answer(
+        cx,
+        &server,
+        "DELETE",
+        "/api/v1/tokens/tok-7",
+        ResponseTemplate::new(204),
+    );
+    let dest = tempfile::tempdir().unwrap();
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &server, true);
+        parent_at(paths, dest.path());
+    });
+    let view = ready(cx, &s);
+    let cloned = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&cloned);
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        v.update(cx, |v, cx| {
+            v.sign_out(0, w, cx);
+            v.open_row_with(
+                0,
+                0,
+                move |req, opts, cx| {
+                    flag.store(true, Ordering::SeqCst);
+                    apinata_app::clone_job::CloneJob::start(req, opts, cx)
+                },
+                w,
+                cx,
+            );
+            v.set_new_workspace(0, "core", "api-tests", "API tests", w, cx);
+            v.create_workspace(0, w, cx);
+        })
+    })
+    .unwrap();
+    wait_for(cx, "the sign out", |cx| {
+        view.read_with(cx, |v, _| v.sections().is_empty())
+    });
+    assert!(
+        !cloned.load(Ordering::SeqCst),
+        "an Open started while signing out"
+    );
+    assert_eq!(
+        hits_on(cx, &server, "POST", "/api/v1/teams/core/workspaces"),
+        0
+    );
+}
+
+#[gpui_kit::test]
+fn signing_out_of_a_signed_out_server_sends_nothing(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = potluck_server(cx);
+    answer(
+        cx,
+        &server,
+        "GET",
+        "/api/v1/me",
+        ResponseTemplate::new(401).set_body_json(error("unauthenticated", "No.", None)),
+    );
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &server, false)
+    });
+    let ws = s.ws.clone();
+    let view = cx
+        .update_window(s.win, |_, w, cx| team_workspaces::open(&ws, w, cx))
+        .unwrap()
+        .expect("signed in");
+    wait_for(cx, "signed out", |cx| {
+        view.read_with(cx, |v, _| {
+            *v.sections()[0].state() == SectionState::SignedOut
+        })
+    });
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| v.update(cx, |v, cx| v.sign_out(0, w, cx)))
+        .unwrap();
+    wait_for(cx, "the section to go", |cx| {
+        view.read_with(cx, |v, _| v.sections().is_empty())
+    });
+    assert!(
+        TeamStore::load(&team_file(&s))
+            .unwrap()
+            .accounts()
+            .is_empty()
+    );
+    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/tok-7"), 0);
+}
