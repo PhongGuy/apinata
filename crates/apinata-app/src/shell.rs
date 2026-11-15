@@ -2978,6 +2978,9 @@ impl Render for Shell {
             .on_action(|_: &OpenCookies, window, cx| {
                 open_cookie_jar(window, cx);
             })
+            .on_action(|_: &crate::about::OpenAbout, window, cx| {
+                crate::about::open(window, cx);
+            })
             .on_action(cx.listener(|this, _: &OpenVariablesOverview, window, cx| {
                 this.open_variables_overview(window, cx);
             }))

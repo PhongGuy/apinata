@@ -654,6 +654,49 @@ fn the_dialog_footer_puts_the_primary_at_the_right_edge(cx: &mut TestAppContext)
     .unwrap();
 }
 
+#[gpui_kit::test]
+fn a_dialog_footer_too_narrow_for_its_buttons_wraps_them_inside_its_edges(cx: &mut TestAppContext) {
+    use gpui_kit::component::button::Button;
+    let (win, _) = host(cx, || {
+        div()
+            .id("f-box")
+            .test_support()
+            .w(px(320.))
+            .child(
+                dialog_footer(
+                    Some(Button::new("f-cancel").label("Keep every change I made so far")),
+                    [Button::new("f-other").label("Throw away the changes in this folder")],
+                    Button::new("f-ok").label("Save all"),
+                )
+                .hint(div().id("f-hint").test_support().child("Esc: dismiss")),
+            )
+            .into_any_element()
+    });
+    cx.update_window(win, |_, w, _| {
+        let footer = w.find("dialog-footer").bounds();
+        let edge = w.find("f-box").bounds();
+        assert!(footer.right() <= edge.right(), "{footer:?} past {edge:?}");
+        let [hint, cancel, other, ok] =
+            ["f-hint", "f-cancel", "f-other", "f-ok"].map(|id| w.find(id).bounds());
+        for (id, b) in [
+            ("hint", hint),
+            ("cancel", cancel),
+            ("other", other),
+            ("ok", ok),
+        ] {
+            assert!(
+                b.left() >= footer.left() && b.right() <= footer.right(),
+                "{id} {b:?} outside {footer:?}"
+            );
+            assert!(b.bottom() <= footer.bottom(), "{id} {b:?} below {footer:?}");
+        }
+        // The primary stays last in reading order and at the right edge.
+        assert!(ok.top() >= cancel.top() && ok.top() >= other.top());
+        assert_eq!(ok.right(), footer.right());
+    })
+    .unwrap();
+}
+
 #[test]
 fn no_info_toast_carries_an_icon() {
     let mut hits = src_hits("Notification::info(");

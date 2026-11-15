@@ -731,3 +731,54 @@ fn never_on_the_assertion_question_blocks_the_collection(cx: &mut TestAppContext
     finished(cx, &model);
     assert_eq!(trust(&s).decision(&s.root), Some(ScriptDecision::Blocked));
 }
+
+#[gpui_kit::test]
+fn the_assertion_question_keeps_its_buttons_inside_a_narrow_dialog_at_150_percent(
+    cx: &mut TestAppContext,
+) {
+    use apinata_app::confirm::ask;
+    use apinata_app::session::{WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH};
+    use gpui_kit::{VisualTestContext, px, size};
+    let col = scripted();
+    let s = started(cx, &col);
+    cx.update(|cx| {
+        let settings = cx.global::<AppState>().settings.clone();
+        settings.update(cx, |p, cx| p.update(cx, |p| p.zoom = 1.5));
+    });
+    // The smallest window clamps the dialog to its narrowest.
+    VisualTestContext::from_window(s.win, cx)
+        .simulate_resize(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT)));
+    let right = ScriptTextKind::AssertionRight;
+    for scratch in [false, true] {
+        let q = trust_question_about(scratch, [(&right, "`${1+1}`")]);
+        let skip = q.choices.iter().position(|c| c.id == "script-trust-skip");
+        assert_eq!(skip, Some(q.default), "Don't run stays the default");
+        let rx = cx.update_window(s.win, |_, w, cx| ask(q, w, cx)).unwrap();
+        frame(cx, s.win);
+        cx.update_window(s.win, |_, w, _| {
+            let dialog = w.find("confirm-dialog").bounds();
+            for id in [
+                "script-trust-run",
+                "script-trust-never",
+                "script-trust-skip",
+            ] {
+                let b = w.find(id).bounds();
+                assert!(
+                    b.left() >= dialog.left()
+                        && b.right() <= dialog.right()
+                        && b.top() >= dialog.top()
+                        && b.bottom() <= dialog.bottom(),
+                    "scratch {scratch}: {id} {b:?} outside {dialog:?}"
+                );
+            }
+        })
+        .unwrap();
+        cx.simulate_keystrokes(s.win, "enter");
+        cx.run_until_parked();
+        assert_eq!(
+            rx.try_recv().ok(),
+            skip,
+            "scratch {scratch}: Enter means Don't run"
+        );
+    }
+}

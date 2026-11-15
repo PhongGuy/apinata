@@ -195,7 +195,12 @@ fn the_menu_is_five_groups_named_by_the_registry() {
                 "Edit variables set by requests",
                 "History",
             ],
-            vec!["Preferences", "Check for updates", "Command palette"],
+            vec![
+                "Preferences",
+                "Check for updates",
+                "Command palette",
+                "About Apinata",
+            ],
         ]
     );
     let names: Vec<&str> = app_menu_items().iter().map(|(_, a)| a.name()).collect();
