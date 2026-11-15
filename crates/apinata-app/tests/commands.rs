@@ -123,6 +123,7 @@ const IDS: &[&str] = &[
     "view.history",
     "view.search_collection",
     "view.check_for_updates",
+    "view.about",
     "view.command_palette",
     "view.go_to_request",
     "environment.open",
@@ -520,7 +521,7 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("request.delete_in_sidebar");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
-    assert_eq!(menu.len(), 28);
+    assert_eq!(menu.len(), 29);
     for (label, action) in menu {
         let c = cmds.iter().find(|c| c.label == label).expect(label);
         assert!(action.partial_eq(c.targets[0].action.as_ref()), "{label}");

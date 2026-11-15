@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod about;
 pub mod actor;
 pub mod app;
 pub mod app_menu;
