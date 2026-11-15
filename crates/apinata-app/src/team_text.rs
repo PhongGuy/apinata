@@ -63,8 +63,16 @@ pub fn server_warning(server: &ServerUrl) -> Option<&'static str> {
 }
 
 /// One secret the server refused, as `{path}: {rule} ({code} on {git_ref})`.
+///
+/// The server reports a finding outside any file (a commit or tag message, or a
+/// tag's target) with the path `/`, which no repository file can have.
 pub fn finding_line(f: &Finding) -> String {
-    format!("{}: {} ({} on {})", f.path, f.rule, f.code, f.git_ref)
+    let place = if f.path == "/" {
+        "not in a file (a commit or tag message, or a tag's target)"
+    } else {
+        &f.path
+    };
+    format!("{place}: {} ({} on {})", f.rule, f.code, f.git_ref)
 }
 
 /// What the sync dialog says about `status`, one line each. Offline, read-only and blocked

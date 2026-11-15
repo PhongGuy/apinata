@@ -261,3 +261,26 @@ fn toasts_name_the_collection_and_the_reason() {
         "You can only read api, so your changes are not saved."
     );
 }
+
+#[test]
+fn a_finding_outside_any_file_is_named_instead_of_showing_a_slash() {
+    let file = Finding::new("secret_value", "refs/heads/main", "a.yml", "secret_value");
+    let bare = Finding::new("secret_value", "refs/tags/v1", "/", "secret_value");
+    let status = TeamStatus::new(
+        TeamState::Blocked(Block::Secret {
+            findings: vec![file, bare],
+            more: 0,
+        }),
+        0,
+        vec![],
+    );
+    let lines = problem_lines(&status);
+    assert_eq!(
+        lines[1],
+        "a.yml: secret_value (secret_value on refs/heads/main)"
+    );
+    assert_eq!(
+        lines[2],
+        "not in a file (a commit or tag message, or a tag's target): secret_value (secret_value on refs/tags/v1)"
+    );
+}
