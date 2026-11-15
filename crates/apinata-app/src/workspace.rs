@@ -8,7 +8,7 @@ use std::time::SystemTime;
 
 use apinata_core::import::ImportedRequest;
 use apinata_core::team::{
-    ConflictCopies, EventsConfig, EventsEnd, TeamConfig, TeamNotice, TeamState, TeamStatus,
+    ConflictCopies, EventsConfig, EventsEnd, Role, TeamConfig, TeamNotice, TeamState, TeamStatus,
     TeamSync, follow_events,
 };
 use apinata_core::{
@@ -361,6 +361,11 @@ struct Team {
     sync: Arc<TeamSync>,
     copies: ConflictCopies,
     status: TeamStatus,
+    role: Role,
+    // One `()` per events connect, for whoever re-reads the role then.
+    connects: async_channel::Receiver<()>,
+    // A caller's task that lives exactly as long as this loop.
+    watch: Option<Task<()>>,
     _pump: Task<()>,
     _events: Option<Task<Result<(), crate::tokio_bridge::JoinError>>>,
 }
@@ -2496,6 +2501,8 @@ impl Workspace {
         entry.team = None;
         let key = entry.root.clone();
         let copies = ConflictCopies::new(config.copies().to_path_buf());
+        let role = config.role();
+        let (connected, connects) = async_channel::unbounded();
         // The driver reports from its own thread and may outlive this entry by one status,
         // so a closed channel is ignored there.
         let (out, statuses) = async_channel::unbounded();
@@ -2516,7 +2523,10 @@ impl Workspace {
             let notices = Arc::clone(&sync);
             crate::tokio_bridge::spawn(cx, async move {
                 let end = follow_events(config, |notice| match notice {
-                    TeamNotice::Connected => notices.reachable(),
+                    TeamNotice::Connected => {
+                        notices.reachable();
+                        connected.try_send(()).ok();
+                    }
                     TeamNotice::Ref { sha } => notices.remote_moved(Some(sha)),
                     TeamNotice::Poll => notices.poll(),
                     _ => {}
@@ -2533,6 +2543,9 @@ impl Workspace {
             status: sync.status(),
             sync,
             copies,
+            role,
+            connects,
+            watch: None,
             _pump: pump,
             _events: events,
         });
@@ -2550,6 +2563,45 @@ impl Workspace {
     /// `None` when it has no loop or is not open.
     pub fn team_copies(&self, root: &Path) -> Option<&Path> {
         Some(self.entry(root)?.team.as_ref()?.copies.dir())
+    }
+
+    /// The role the team sync loop of the collection at `root` runs with; `None` when it has
+    /// no loop or is not open.
+    pub fn team_role(&self, root: &Path) -> Option<Role> {
+        Some(self.entry(root)?.team.as_ref()?.role)
+    }
+
+    /// Gives the team sync loop of the collection at `root` a new role and announces the
+    /// change as a team status; nothing when it has no loop.
+    pub fn set_team_role(&mut self, root: &Path, role: Role, cx: &mut Context<Self>) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        team.role = role;
+        team.sync.set_role(role);
+        cx.emit(WorkspaceEvent::TeamStatus {
+            root: root.to_path_buf(),
+        });
+        cx.notify();
+    }
+
+    /// The running team sync loop of the collection at `root`; `None` when it has none.
+    pub fn team_sync(&self, root: &Path) -> Option<Arc<TeamSync>> {
+        Some(Arc::clone(&self.entry(root)?.team.as_ref()?.sync))
+    }
+
+    /// A receiver of one `()` per events connect of the team sync loop at `root`; `None` when
+    /// it has no loop.
+    pub fn team_connects(&self, root: &Path) -> Option<async_channel::Receiver<()>> {
+        Some(self.entry(root)?.team.as_ref()?.connects.clone())
+    }
+
+    /// Keeps `task` alive until the team sync loop at `root` stops or is replaced; dropped at
+    /// once when it has no loop.
+    pub fn keep_team_watch(&mut self, root: &Path, task: Task<()>) {
+        if let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) {
+            team.watch = Some(task);
+        }
     }
 
     /// Whether any open collection runs a team sync loop.
