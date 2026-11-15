@@ -51,6 +51,7 @@ const MENU_GROUPS: [&[&str]; 5] = [
         "view.preferences",
         "view.check_for_updates",
         "view.command_palette",
+        "view.about",
     ],
 ];
 
