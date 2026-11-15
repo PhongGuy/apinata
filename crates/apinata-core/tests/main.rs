@@ -445,6 +445,7 @@ mod team_autosync;
 mod team_driver;
 mod team_events;
 mod team_machine;
+mod team_model;
 mod team_rebase;
 mod trash_restore;
 mod tree_clone_folder;
