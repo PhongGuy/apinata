@@ -108,6 +108,62 @@ fn potluck_findings_are_parsed_from_the_remote_lines() {
     assert_eq!(more, 3);
 }
 
+/// The (ref, path) pairs the findings of a refusal carry, for the lines given.
+fn refused(lines: &[&str]) -> Vec<(String, String)> {
+    let stderr = lines
+        .iter()
+        .map(|l| format!("remote: {l}        \n"))
+        .collect::<String>()
+        + "error: failed to push some refs";
+    match classify(&rejected("pre-receive hook declined", &stderr)) {
+        SyncFailure::Secret { findings, .. } => {
+            findings.into_iter().map(|f| (f.git_ref, f.path)).collect()
+        }
+        SyncFailure::Other { .. } => Vec::new(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn encoded_spaces_and_percents_in_a_path_are_decoded() {
+    let got = refused(&["potluck-reject secret_value refs/heads/a%20b my%20dir/50%25.yml rule"]);
+    assert_eq!(
+        got,
+        [("refs/heads/a b".to_owned(), "my dir/50%.yml".to_owned())]
+    );
+}
+
+#[test]
+fn encoded_control_bytes_and_lower_case_hex_are_decoded() {
+    let got = refused(&["potluck-reject c r a%0Ab%7fc%0a rule"]);
+    assert_eq!(got, [("r".to_owned(), "a\nb\u{7f}c\n".to_owned())]);
+}
+
+#[test]
+fn an_encoded_invalid_utf8_byte_is_shown_lossily() {
+    let got = refused(&["potluck-reject c r bad%FFname rule"]);
+    assert_eq!(got, [("r".to_owned(), "bad\u{fffd}name".to_owned())]);
+}
+
+#[test]
+fn a_line_with_another_field_count_is_ignored() {
+    assert!(refused(&["potluck-reject c r a b rule"]).is_empty());
+    assert!(refused(&["potluck-reject c r rule"]).is_empty());
+}
+
+#[test]
+fn a_line_with_a_malformed_escape_is_ignored() {
+    for path in ["50%", "a%2", "a%zz", "%G1", "a%+1"] {
+        let line = format!("potluck-reject c r {path} rule");
+        assert!(refused(&[&line]).is_empty(), "{path}");
+    }
+    let got = refused(&[
+        "potluck-reject c r bad%zz rule",
+        "potluck-reject c r ok rule",
+    ]);
+    assert_eq!(got, [("r".to_owned(), "ok".to_owned())]);
+}
+
 #[test]
 fn a_hook_refusal_without_findings_is_another_failure() {
     let got = classify(&rejected(
