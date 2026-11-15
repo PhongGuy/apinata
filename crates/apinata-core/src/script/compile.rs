@@ -1,8 +1,12 @@
 //! Compile-only syntax check of script segments.
 
-use rquickjs::{CatchResultExt, CaughtError, Context, Ctx, Function, Module, Runtime};
+use std::time::{Duration, Instant};
 
-use super::engine::{SCRIPT_FILE, Segment, attribute, error_line, wrap};
+use rquickjs::context::EvalOptions;
+use rquickjs::{CatchResultExt, CaughtError, Context, Ctx, Module, Runtime};
+
+use super::engine::{SCRIPT_FILE, Segment, attribute, bounded_runtime, error_line, wrap};
+use crate::ScriptOptions;
 
 /// One compile problem of one segment. `sloppy_only` is true when the code is valid for the
 /// engine (sloppy mode) and fails only a stricter parse, so the caller reports a Warning.
@@ -16,9 +20,20 @@ pub(crate) struct Problem {
 /// Compile-only check of every segment; never evaluates, never calls. Fails only when the
 /// engine cannot start, so the caller can say the scripts went unchecked.
 pub(crate) fn syntax_problems(segments: &[Segment]) -> Result<Vec<Problem>, rquickjs::Error> {
-    let rt = Runtime::new()?;
+    let rt = check_runtime()?;
     let ctx = Context::full(&rt)?;
     Ok(ctx.with(|ctx| syntax_problems_in(&ctx, segments)))
+}
+
+/// How long a check's runtime may run bytecode; a parse runs none of the checked code.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// A runtime for compile-only checks of untrusted text: the memory limit of a trusted run and
+/// a short deadline, so a check that went wrong can neither hang nor exhaust memory. The
+/// deadline bounds running bytecode only, not parse time; only the memory limit bounds a parse.
+pub(crate) fn check_runtime() -> Result<Runtime, rquickjs::Error> {
+    let memory = ScriptOptions::default().limits(0).memory;
+    bounded_runtime(Instant::now().checked_add(CHECK_TIMEOUT), memory).map(|(rt, _)| rt)
 }
 
 /// The same on a caller-supplied context (a fresh one in `syntax_problems`), so a test can
@@ -31,11 +46,11 @@ pub(crate) fn syntax_problems_in(ctx: &Ctx<'_>, segments: &[Segment]) -> Vec<Pro
 }
 
 /// Declares one wrapped segment as a module, which parses it without running anything. Module
-/// code is strict, so a failure that the sloppy `AsyncFunction` parse accepts is `sloppy_only`.
+/// code is strict, so a failure that the engine's sloppy parse accepts is `sloppy_only`.
 fn problem(ctx: &Ctx<'_>, segment: &Segment) -> Option<Problem> {
     let one = std::slice::from_ref(segment);
     let (source, starts) = wrap(one);
-    let CaughtError::Exception(e) = Module::declare(ctx.clone(), SCRIPT_FILE, source)
+    let CaughtError::Exception(e) = Module::declare(ctx.clone(), SCRIPT_FILE, source.clone())
         .catch(ctx)
         .err()?
     else {
@@ -46,17 +61,35 @@ fn problem(ctx: &Ctx<'_>, segment: &Segment) -> Option<Problem> {
     Some(Problem {
         level: segment.level.clone(),
         message,
-        sloppy_only: parses_sloppy(ctx, &segment.code),
+        sloppy_only: parses_sloppy(ctx, &source),
     })
 }
 
-/// Whether the engine's own sloppy parse accepts the text as a function body. The function
-/// is built and dropped, never called.
-fn parses_sloppy(ctx: &Ctx<'_>, code: &str) -> bool {
-    ctx.eval::<Function, _>("Object.getPrototypeOf(async function () {}).constructor")
-        .and_then(|constructor| constructor.call::<_, Function>((code,)))
-        .is_ok()
+/// Whether `source` parses as a sloppy-mode script, as the engine evaluates scripts, without
+/// running any of it. Untrusted text must be checked through this, in a `check_runtime` context.
+///
+/// The script is prefixed with a throw of a marker, so evaluation stops before the first
+/// token of `source` whatever brackets it closes; the marker coming back means it parsed.
+/// Top-level declarations a breakout makes are still bound, hence the check-only context.
+pub(crate) fn parses_sloppy(ctx: &Ctx<'_>, source: &str) -> bool {
+    let mut options = EvalOptions::default();
+    options.strict = false;
+    options.filename = Some(SCRIPT_FILE.to_owned());
+    let guarded = format!("throw {PARSED:?};\n{source}");
+    match ctx.eval_with_options::<(), _>(guarded, options).catch(ctx) {
+        Err(CaughtError::Value(thrown)) => {
+            thrown
+                .as_string()
+                .and_then(|s| s.to_string().ok())
+                .as_deref()
+                == Some(PARSED)
+        }
+        _ => false,
+    }
 }
+
+/// The marker `parses_sloppy` throws ahead of the checked text.
+const PARSED: &str = "apinata: parsed";
 
 #[cfg(test)]
 mod tests {
@@ -130,6 +163,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn strict_only_failures_are_sloppy_only_and_real_errors_are_not() {
+        let classify = |code: &str| -> Vec<bool> {
+            let problems = syntax_problems(&[seg("request", code)]).expect("engine starts");
+            problems.into_iter().map(|p| p.sloppy_only).collect()
+        };
+        for code in [
+            "var static = 1;",
+            "x = 010;",
+            "with (a) {}",
+            "<!-- old comment",
+        ] {
+            assert_eq!(classify(code), [true], "{code}");
+        }
+        for code in ["let a = ;", "with (a) {}\nlet a = ;", "}{", "("] {
+            assert_eq!(classify(code), [false], "{code}");
+        }
+    }
+
     /// A segment that closes the wrapper and runs code of its own.
     const BREAKOUT: &str = "})(); globalThis.__ran = true; (function(){";
 
@@ -172,5 +224,45 @@ mod tests {
         });
         drain(&rt);
         assert!(!ran(&ctx), "checking must not run the segment");
+    }
+
+    #[test]
+    fn the_check_runtime_has_the_trusted_memory_limit_and_a_deadline() {
+        // The loop runs on its own thread so a missing interrupt fails the test, never hangs it.
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = check_runtime().expect("engine starts");
+            let limit = rt.memory_usage().malloc_limit;
+            let ctx = Context::full(&rt).expect("context starts");
+            let looped = ctx.with(|c| c.eval::<(), _>("for (;;) {}").is_err());
+            let _ = tx.send((limit, looped));
+        });
+        let (limit, stopped) = rx
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("the interrupt stops an endless loop");
+        let trusted = crate::ScriptOptions::default().limits(0).memory;
+        assert_eq!(usize::try_from(limit).ok(), Some(trusted), "memory limit");
+        assert!(stopped, "the loop ends in an error");
+    }
+
+    /// Segments that fail the strict module parse (`with`) and close a sloppy wrapper early: the
+    /// first closes one function, the second both of the engine's wrapper functions.
+    const SLOPPY_BREAKOUTS: [&str; 2] = [
+        "}); globalThis.__ran = true; for (;;) {} with (Math) {} (function () {",
+        "})(); })(); globalThis.__ran = true; for (;;) {} with (Math) {} (async () => { (async () => {",
+    ];
+
+    #[test]
+    fn a_sloppy_breakout_is_never_executed() {
+        for code in SLOPPY_BREAKOUTS {
+            // The bounded check runtime ends the loop should the breakout ever run.
+            let rt = check_runtime().unwrap();
+            let ctx = probe_context(&rt);
+            let problems = ctx.with(|c| syntax_problems_in(&c, &[seg("request", code)]));
+            drain(&rt);
+            assert_eq!(problems.len(), 1, "the strict parse rejects {code}");
+            assert!(problems[0].sloppy_only, "the sloppy parse accepts {code}");
+            assert!(!ran(&ctx), "checking must not run {code}");
+        }
     }
 }

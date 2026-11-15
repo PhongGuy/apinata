@@ -345,6 +345,26 @@ fn out_of_memory(text: &str, used: i64, limit: usize) -> bool {
     text == "InternalError: out of memory" || used + (1 << 20) >= limit as i64
 }
 
+/// A fresh synchronous runtime that may allocate `memory` bytes and stops running bytecode
+/// at `deadline`; the flag turns true when the deadline stopped it.
+pub(crate) fn bounded_runtime(
+    deadline: Option<Instant>,
+    memory: usize,
+) -> rquickjs::Result<(Runtime, Arc<AtomicBool>)> {
+    let rt = Runtime::new()?;
+    rt.set_memory_limit(memory);
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&timed_out);
+    rt.set_interrupt_handler(Some(Box::new(move || {
+        let hit = deadline.is_some_and(|d| Instant::now() >= d);
+        if hit {
+            flag.store(true, Relaxed);
+        }
+        hit
+    })));
+    Ok((rt, timed_out))
+}
+
 /// Evaluates `code` as one expression in a fresh synchronous runtime under `limits`, with each
 /// of `vars` a global and `installers` run over them. `Ok(None)` is `undefined` or a value
 /// without JSON form; a throw reads as `String(error)`, without level or line.
@@ -355,17 +375,8 @@ pub(crate) fn eval_expression(
     limits: &Limits,
 ) -> Result<Option<serde_json::Value>, Failure> {
     let deadline = Instant::now().checked_add(limits.timeout);
-    let rt = Runtime::new().map_err(|_| thrown("the script host could not start"))?;
-    rt.set_memory_limit(limits.memory);
-    let timed_out = Arc::new(AtomicBool::new(false));
-    let flag = Arc::clone(&timed_out);
-    rt.set_interrupt_handler(Some(Box::new(move || {
-        let hit = deadline.is_some_and(|d| Instant::now() >= d);
-        if hit {
-            flag.store(true, Relaxed);
-        }
-        hit
-    })));
+    let (rt, timed_out) = bounded_runtime(deadline, limits.memory)
+        .map_err(|_| thrown("the script host could not start"))?;
     let context = Context::full(&rt).map_err(|_| thrown("the script host could not start"))?;
     // Console output from an expression has nowhere to go, so the sink keeps none of it.
     let sink = Arc::new(Mutex::new(Capture {
