@@ -1,8 +1,8 @@
 //! A raw TCP server that answers with a chunked body written in timed steps.
 #![allow(dead_code)]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -90,6 +90,7 @@ type Routes = (Vec<(String, Arc<Script>)>, Arc<Script>);
 pub struct SlowServer {
     port: u16,
     requests: Arc<AtomicUsize>,
+    heads: Arc<Mutex<Vec<String>>>,
 }
 
 impl SlowServer {
@@ -101,6 +102,10 @@ impl SlowServer {
     }
     pub fn requests(&self) -> usize {
         self.requests.load(Ordering::SeqCst)
+    }
+    /// Each connection's request head, in the order they arrived.
+    pub fn heads(&self) -> Vec<String> {
+        self.heads.lock().expect("heads lock").clone()
     }
 }
 
@@ -122,12 +127,23 @@ pub async fn routed_sse_server(routes: Vec<(&str, Script)>, fallback: Script) ->
     let port = listener.local_addr().expect("addr").port();
     let requests = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&requests);
+    let heads = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&heads);
     tokio::spawn(async move {
         while let Ok((sock, _)) = listener.accept().await {
-            tokio::spawn(serve(sock, Arc::clone(&routes), Arc::clone(&count)));
+            tokio::spawn(serve(
+                sock,
+                Arc::clone(&routes),
+                Arc::clone(&count),
+                Arc::clone(&seen),
+            ));
         }
     });
-    SlowServer { port, requests }
+    SlowServer {
+        port,
+        requests,
+        heads,
+    }
 }
 
 /// The QA server: `/large` streams [`LARGE_BYTES`] of events, `/fast` streams [`FAST_COUNT`]
@@ -143,7 +159,12 @@ pub async fn qa_sse_server() -> SlowServer {
     .await
 }
 
-async fn serve(mut sock: TcpStream, routes: Arc<Routes>, count: Arc<AtomicUsize>) {
+async fn serve(
+    mut sock: TcpStream,
+    routes: Arc<Routes>,
+    count: Arc<AtomicUsize>,
+    heads: Arc<Mutex<Vec<String>>>,
+) {
     let mut head = [0u8; 4096];
     let read = sock.read(&mut head).await.unwrap_or(0);
     if read == 0 {
@@ -151,6 +172,7 @@ async fn serve(mut sock: TcpStream, routes: Arc<Routes>, count: Arc<AtomicUsize>
     }
     // The request line is `GET <path> HTTP/1.1`; the first matching prefix picks the script.
     let request = String::from_utf8_lossy(&head[..read]);
+    heads.lock().expect("heads lock").push(request.to_string());
     let path = request.split_whitespace().nth(1).unwrap_or("/");
     let (table, fallback) = &*routes;
     let script = table

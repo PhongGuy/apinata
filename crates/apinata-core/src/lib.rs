@@ -115,6 +115,7 @@ mod stream;
 mod subscription;
 mod system_trash;
 mod tags;
+pub mod team;
 mod timing;
 mod trash;
 mod trash_log;

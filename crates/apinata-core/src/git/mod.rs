@@ -38,6 +38,7 @@ mod write;
 
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -300,13 +301,35 @@ fn busy_text(lock: &Path, os: Os) -> String {
 
 /// How git is run: extra child environment, the time limit of each call, and whether a status
 /// looks for the surviving copies of gone rows.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct GitOptions {
     env: Vec<(OsString, OsString)>,
     timeout: Duration,
     check_kept: bool,
     file_cap: usize,
+}
+
+// The env may carry a team token in its auth header, so the debug form masks tokens in values.
+impl fmt::Debug for GitOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let env: Vec<(&OsStr, String)> = self
+            .env
+            .iter()
+            .map(|(key, value)| {
+                (
+                    key.as_os_str(),
+                    crate::team::redact_token(&value.to_string_lossy()),
+                )
+            })
+            .collect();
+        f.debug_struct("GitOptions")
+            .field("env", &env)
+            .field("timeout", &self.timeout)
+            .field("check_kept", &self.check_kept)
+            .field("file_cap", &self.file_cap)
+            .finish()
+    }
 }
 
 impl Default for GitOptions {
