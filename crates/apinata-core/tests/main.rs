@@ -443,6 +443,7 @@ mod team_adopt;
 mod team_auth;
 mod team_autosync;
 mod team_client;
+mod team_clone;
 mod team_driver;
 mod team_events;
 mod team_machine;

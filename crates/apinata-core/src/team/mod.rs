@@ -2,7 +2,8 @@
 //! on its own. This module holds the git env that carries the server token, the reading of git's
 //! output as a sync failure, the state machine that decides what the loop runs next, the
 //! driver thread that runs it, the folder that keeps conflict copies, the server's contract
-//! types, the client for its JSON API, and the team file with the sign-in and sign-out flows.
+//! types, the client for its JSON API, the team file with the sign-in and sign-out flows, and
+//! the clone request for a server workspace.
 
 mod auth;
 mod client;
@@ -11,6 +12,7 @@ mod driver;
 mod error;
 mod events;
 mod failure;
+mod git;
 mod machine;
 mod model;
 mod session;
@@ -23,6 +25,7 @@ pub use driver::{TeamConfig, TeamStatus, TeamSync};
 pub use error::TeamError;
 pub use events::{EventsConfig, EventsEnd, TeamNotice, follow_events, reconnect_delay};
 pub use failure::{Finding, SyncFailure, classify};
+pub use git::clone_request;
 pub use machine::{Block, Role, TeamAction, TeamEvent, TeamMachine, TeamState};
 pub use model::{
     Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamToken, User, Workspace,
