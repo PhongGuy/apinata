@@ -30,6 +30,7 @@ pub enum JoinPhase {
 
 /// The dialog's body and state.
 pub struct JoinView {
+    workspace: Entity<Workspace>,
     server: Entity<InputState>,
     username: Entity<InputState>,
     password: Entity<InputState>,
@@ -47,14 +48,15 @@ pub fn current(cx: &App) -> Option<Entity<JoinView>> {
     cx.try_global::<OpenView>().and_then(|v| v.0.upgrade())
 }
 
-/// Opens the join dialog over `window` with empty fields.
+/// Opens the join dialog over `window` with empty fields; a finished join opens the
+/// workspace list.
 pub fn open(workspace: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> Entity<JoinView> {
     open_for(workspace, "", "", window, cx)
 }
 
 /// `open` with the server and username filled in, for signing in again.
 pub fn open_for(
-    _workspace: &Entity<Workspace>,
+    workspace: &Entity<Workspace>,
     server: &str,
     username: &str,
     window: &mut Window,
@@ -90,6 +92,7 @@ pub fn open_for(
             cx.subscribe_in(&password, window, typed),
         ];
         JoinView {
+            workspace: workspace.clone(),
             server: server_input,
             username: username_input,
             password,
@@ -211,6 +214,7 @@ impl JoinView {
                     window.close_dialog(cx);
                     let text = format!("Signed in to {shown} as {}.", account.username);
                     window.push_notification(ui::info_toast(text), cx);
+                    crate::team_workspaces::open(&this.workspace, window, cx);
                 }
                 Ok(Err(e)) => this.fail(sign_in_error_text(&e), cx),
                 Err(_) => this.fail(sign_in_error_text(&TeamError::Unavailable), cx),

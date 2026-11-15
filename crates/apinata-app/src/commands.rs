@@ -34,7 +34,8 @@ use crate::shell::{
     ExportCollectionOpenApi, ExportCollectionPostmanKeepScripts, ExportEnvironment,
     ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, JoinTeamServer,
     NewCollection, OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments,
-    OpenRuntimeVariables, OpenVariablesOverview, ShowChanges, SwitchBranch, ToggleMockServer,
+    OpenRuntimeVariables, OpenVariablesOverview, ShowChanges, SwitchBranch, TeamWorkspaces,
+    ToggleMockServer,
 };
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, CollapseAll, CopySelected, CutSelected, DeleteSelected,
@@ -368,6 +369,16 @@ pub fn registry() -> Vec<Command> {
                 "Join team server…",
                 Collection,
                 shell(JoinTeamServer),
+                &[],
+            ),
+        ),
+        found_by(
+            &["team", "workspace", "potluck"],
+            command(
+                "collection.team_workspaces",
+                "Team workspaces…",
+                Collection,
+                shell(TeamWorkspaces),
                 &[],
             ),
         ),

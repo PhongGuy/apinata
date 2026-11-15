@@ -615,6 +615,7 @@ mod team_join;
 mod team_paths;
 mod team_sync;
 mod team_text;
+mod team_workspaces;
 mod theme_contrast;
 mod theme_install;
 mod theme_json;
