@@ -129,7 +129,8 @@ pub fn serve_workspace(cx: &mut TestAppContext, server: &MockServer, role: &str)
 }
 
 /// The started app over `col` with `prepare` run on its paths first, then git from `sb` and
-/// the real watcher turned on. Call `http_ready` before this.
+/// the real watcher turned on, returned once its first gap reload has landed. Call
+/// `http_ready` before this.
 pub fn team_started(
     cx: &mut TestAppContext,
     sb: &Sandbox,
@@ -139,9 +140,15 @@ pub fn team_started(
     let secrets = Arc::new(MemoryStore::new());
     let store: Arc<dyn SecretStore> = secrets.clone();
     let s = super::started_on(cx, col, |paths| prepare(paths, &secrets), store);
+    let before = super::ws_snap(cx, &s.ws, &s.root).seq;
     s.ws.update(cx, |w, cx| {
         w.set_git(Some(sb.options()), cx);
         w.set_watch_factory(Some(notify_factory()), cx);
+    });
+    // The watcher's first placement reports every file as a possible change. Letting that
+    // gap reload land now keeps it from reaching a team loop started later as a stray commit.
+    super::wait_for(cx, "watching to start", |cx| {
+        super::ws_snap(cx, &s.ws, &s.root).seq > before
     });
     (s, secrets)
 }
