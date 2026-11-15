@@ -467,6 +467,7 @@ fn a_corrupt_team_file_is_a_store_error_and_is_not_overwritten() {
 }
 
 /// A session answer for `name` with a token unlike `tok()`, so the keychain shows which one it holds.
+#[cfg(unix)]
 fn other_session(name: &str, id: &str) -> (String, ResponseTemplate) {
     let fresh = format!("plk_{}", "B".repeat(43));
     let body = serde_json::json!({"token": fresh, "token_meta": token_meta(id), "user": user(name, false)});
@@ -474,8 +475,8 @@ fn other_session(name: &str, id: &str) -> (String, ResponseTemplate) {
 }
 
 /// Rejoins as `name` while the team file's folder refuses writes, and checks ada's session survives.
+#[cfg(unix)]
 async fn rejoin_with_an_unwritable_team_file(name: &str) {
-    use std::os::unix::fs::PermissionsExt;
     let (s, dir, secrets) = (
         MockServer::start().await,
         TempDir::new().unwrap(),
@@ -494,11 +495,11 @@ async fn rejoin_with_an_unwritable_team_file(name: &str) {
     )
     .await;
     let parent = file(&dir).parent().unwrap().to_path_buf();
-    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let guard = crate::common::ModeGuard::set(&parent, 0o555);
     let e = team::sign_in(&client(&s), &secrets, &file(&dir), name, "pw")
         .await
         .unwrap_err();
-    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    drop(guard);
     assert!(matches!(e, TeamError::Store(_)), "{e:?}");
     assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-8").await, 1);
     assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 0);
@@ -523,11 +524,13 @@ async fn rejoin_with_an_unwritable_team_file(name: &str) {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_failed_save_on_rejoining_restores_the_previous_token() {
     rejoin_with_an_unwritable_team_file("ada").await;
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_failed_save_on_joining_as_another_user_leaves_no_dead_token() {
     rejoin_with_an_unwritable_team_file("bob").await;
