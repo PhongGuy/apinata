@@ -104,8 +104,9 @@ pub fn classify(err: &SyncError) -> SyncFailure {
 }
 
 /// The hook's `remote: potluck-reject <code> <ref> <path> <rule>` lines and the count from its
-/// `potluck-reject-more <n>` line. Git pads remote lines with spaces, so each is trimmed first; a
-/// path holding spaces is everything between the ref and the rule.
+/// `potluck-reject-more <n>` line. Git pads remote lines with spaces, so each is trimmed first. The
+/// ref and path arrive percent-encoded, so a line is exactly five space-separated fields; any
+/// other field count or a malformed escape drops the line.
 fn findings(stderr: &str) -> (Vec<Finding>, usize) {
     let mut found = Vec::new();
     let mut more = 0;
@@ -117,19 +118,42 @@ fn findings(stderr: &str) -> (Vec<Finding>, usize) {
         let line = line.trim();
         if let Some(count) = line.strip_prefix("potluck-reject-more ") {
             more = count.trim().parse().unwrap_or(more);
-        } else if let Some(fields) = line.strip_prefix("potluck-reject ") {
-            let parts: Vec<&str> = fields.split(' ').collect();
-            if let [code, git_ref, path @ .., rule] = parts.as_slice()
-                && !path.is_empty()
+        } else if line.starts_with("potluck-reject ") {
+            let parts: Vec<&str> = line.split(' ').collect();
+            if let [_, code, git_ref, path, rule] = parts.as_slice()
+                && let (Some(git_ref), Some(path)) = (percent_decode(git_ref), percent_decode(path))
             {
                 found.push(Finding {
                     code: (*code).to_owned(),
-                    git_ref: (*git_ref).to_owned(),
-                    path: path.join(" "),
+                    git_ref,
+                    path,
                     rule: (*rule).to_owned(),
                 });
             }
         }
     }
     (found, more)
+}
+
+/// `text` with each `%XX` (either hex case) turned into its byte, read as UTF-8 with invalid
+/// bytes shown as U+FFFD. A `%` not followed by two hex digits yields `None`.
+fn percent_decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = bytes.get(i + 1..i + 3)?;
+            // from_str_radix accepts a leading `+`, which is not a hex digit.
+            if !hex.iter().all(u8::is_ascii_hexdigit) {
+                return None;
+            }
+            out.push(u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    Some(String::from_utf8_lossy(&out).into_owned())
 }

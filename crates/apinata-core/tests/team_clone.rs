@@ -151,7 +151,6 @@ fn a_workspace_name_that_is_not_a_folder_name_is_refused() {
 const SEED: &str = "tests/fixtures/potluck/kinds/apinata/seed/opencollection.yml";
 
 #[test]
-#[ignore = "waits on Potluck's seed fixture commit: vendor kinds/apinata/seed/opencollection.yml with a NOTICE.md, then remove this ignore"]
 fn the_writer_reproduces_the_potluck_seed_byte_for_byte() {
     let want = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(SEED)).expect("vendored seed");
     let dir = tempfile::tempdir().unwrap();
