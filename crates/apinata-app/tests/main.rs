@@ -242,6 +242,7 @@ mod env_fileless;
 mod env_move;
 mod env_naming;
 mod env_orphans;
+mod env_picker_look;
 mod env_rename;
 mod env_table;
 mod environment_selection;
