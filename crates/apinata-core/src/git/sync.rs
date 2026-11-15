@@ -160,20 +160,32 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
             });
         }
     }
+    fast_forward(root, &branch, &upstream, &oid, opts)?;
+    Ok(pulled(oid))
+}
+
+/// Fast-forward the checked-out `branch` to `oid`, the tip of `upstream`.
+pub(super) fn fast_forward(
+    root: &Path,
+    branch: &str,
+    upstream: &str,
+    oid: &str,
+    opts: &GitOptions,
+) -> Result<(), SyncError> {
     // The fetch may have run while another git process took a lock; refuse before touching it.
-    if let Some(lock) = held_lock(root, &branch, opts) {
+    if let Some(lock) = held_lock(root, branch, opts) {
         return Err(SyncError::Busy { lock });
     }
     // A fresh flag: stopping a checkout halfway would leave the tree half moved.
     match git_stream(
-        &["merge", "--ff-only", "--no-autostash", &oid],
+        &["merge", "--ff-only", "--no-autostash", oid],
         root,
         opts,
         &CancelFlag::new(),
         &mut |_| {},
     ) {
-        Ok(done) if done.success => Ok(pulled(oid)),
-        Ok(done) => Err(merge_failed(root, &upstream, &done.stderr, opts)),
+        Ok(done) if done.success => Ok(()),
+        Ok(done) => Err(merge_failed(root, upstream, &done.stderr, opts)),
         Err(StreamError::Io(e)) => Err(SyncError::Io(e)),
         Err(StreamError::Cancelled { .. }) => Err(failed("merge cancelled".to_owned())),
     }
@@ -380,7 +392,7 @@ fn merge_failed(root: &Path, upstream: &str, stderr: &str, opts: &GitOptions) ->
 }
 
 /// The branch HEAD is on; exit 1 from `symbolic-ref -q` means HEAD is detached.
-fn current_branch(root: &Path, opts: &GitOptions) -> Result<String, SyncError> {
+pub(super) fn current_branch(root: &Path, opts: &GitOptions) -> Result<String, SyncError> {
     let args = ["symbolic-ref", "-q", "HEAD"];
     let out = run::git(&args, root, opts).map_err(from_git)?;
     if out.status.code() == Some(1) {
@@ -397,7 +409,11 @@ fn current_branch(root: &Path, opts: &GitOptions) -> Result<String, SyncError> {
 }
 
 /// The full id `name` resolves to, `None` when it does not.
-fn verify(root: &Path, name: &str, opts: &GitOptions) -> Result<Option<String>, SyncError> {
+pub(super) fn verify(
+    root: &Path,
+    name: &str,
+    opts: &GitOptions,
+) -> Result<Option<String>, SyncError> {
     let out = run::git(&["rev-parse", "--verify", "-q", name], root, opts).map_err(from_git)?;
     Ok(out
         .status
@@ -406,21 +422,25 @@ fn verify(root: &Path, name: &str, opts: &GitOptions) -> Result<Option<String>, 
 }
 
 /// A branch's upstream as git configures it.
-struct UpstreamRef {
-    remote: String,
+pub(super) struct UpstreamRef {
+    pub(super) remote: String,
     /// The remote-tracking ref, such as `refs/remotes/origin/main`.
-    tracking: String,
+    pub(super) tracking: String,
     /// The branch on the remote, such as `refs/heads/main`.
-    remote_ref: String,
+    pub(super) remote_ref: String,
     /// `<remote>/<branch>`, such as `origin/main`.
-    name: String,
+    pub(super) name: String,
     /// Whether the remote-tracking ref no longer exists.
-    gone: bool,
+    pub(super) gone: bool,
 }
 
 /// The upstream of `branch`. A branch with no upstream, or one that tracks a local branch, has
 /// none.
-fn upstream_of(root: &Path, branch: &str, opts: &GitOptions) -> Result<UpstreamRef, SyncError> {
+pub(super) fn upstream_of(
+    root: &Path,
+    branch: &str,
+    opts: &GitOptions,
+) -> Result<UpstreamRef, SyncError> {
     let full = format!("refs/heads/{branch}");
     let format = "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00\
                   %(upstream:remoteref)%00%(upstream:track)";
@@ -450,7 +470,7 @@ fn upstream_of(root: &Path, branch: &str, opts: &GitOptions) -> Result<UpstreamR
 }
 
 /// Commits only on `full` (ahead) and only on `oid` (behind).
-fn counts(
+pub(super) fn counts(
     root: &Path,
     full: &str,
     oid: &str,
@@ -469,13 +489,13 @@ fn counts(
     }
 }
 
-fn failed(stderr: String) -> SyncError {
+pub(super) fn failed(stderr: String) -> SyncError {
     SyncError::Failed { stderr }
 }
 
 /// A [`GitError`] as a sync error: I/O and a held lock keep their kind, everything else carries
 /// its text.
-fn from_git(e: GitError) -> SyncError {
+pub(super) fn from_git(e: GitError) -> SyncError {
     match e {
         GitError::Io(e) => SyncError::Io(e),
         GitError::Busy { lock } => SyncError::Busy { lock },
@@ -483,7 +503,7 @@ fn from_git(e: GitError) -> SyncError {
     }
 }
 
-fn from_switch(e: SwitchError) -> SyncError {
+pub(super) fn from_switch(e: SwitchError) -> SyncError {
     match e {
         SwitchError::Dirty => SyncError::Dirty,
         SwitchError::Busy { lock } => SyncError::Busy { lock },
@@ -492,7 +512,7 @@ fn from_switch(e: SwitchError) -> SyncError {
     }
 }
 
-fn from_fetch(e: FetchError) -> SyncError {
+pub(super) fn from_fetch(e: FetchError) -> SyncError {
     match e {
         FetchError::Cancelled => SyncError::Cancelled,
         FetchError::Busy { lock } => SyncError::Busy { lock },

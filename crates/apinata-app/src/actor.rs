@@ -11,6 +11,7 @@ use apinata_core::import::{
     ImportBundle, ImportReport, ImportedEnvironment, ImportedRequest, PrunedRequest, UpdateOptions,
     UpdateSummary, add_environment, apply_update, plan_update, store_request_secrets,
 };
+use apinata_core::team::ConflictCopies;
 use apinata_core::{
     AuthSpec, Change, ChangeKind, Collection, DiskState, DropTarget, EnvOverlay, EnvWarning,
     IgnorePolicy, ItemKind, ItemPath, OpenError, OpenOptions, RuntimeVars, SaveError, SecretKey,
@@ -212,6 +213,8 @@ struct Actor {
     network_ack: Option<PathBuf>,
     /// What the last Network notice showed, recorded as is by Acknowledge.
     network_shown: Option<apinata_core::ShownNetwork>,
+    /// Team conflict copies opened as edits, by their request, until that request settles.
+    copies: HashMap<Target, (ConflictCopies, String)>,
 }
 
 /// Apply a configuration edit to a `FolderFile` or `CollectionFile`, which share their
@@ -267,6 +270,7 @@ impl Actor {
             prune_ticket: u64::MAX,
             network_ack: None,
             network_shown: None,
+            copies: HashMap::new(),
         }
     }
 
@@ -402,6 +406,10 @@ impl Actor {
             }
             Command::DiscardStale(target) => {
                 self.discard_stale(&target);
+                Ok(())
+            }
+            Command::AdoptCopy { item, copies, rel } => {
+                self.adopt_copy(item, copies, rel);
                 Ok(())
             }
             Command::Network(op) => {
@@ -614,8 +622,41 @@ impl Actor {
         if let Err(kind) = outcome {
             self.notices.push(Notice { command: id, kind });
         }
+        self.settle_copies();
         // Commands arrive with non-decreasing `seen`, so no later one can need older moves.
         self.ledger.prune(seen);
+    }
+
+    /// Open a team conflict copy as its request's edits, under the banner a changed or removed
+    /// file gets. A copy that cannot be read or adopted stays where it is, unopened.
+    fn adopt_copy(&mut self, item: ItemPath, copies: ConflictCopies, rel: String) {
+        let Ok(bytes) = copies.read(&rel) else {
+            return;
+        };
+        let names = self.environment_names();
+        if let Ok(change) = self.collection.adopt_conflict_copy(&item, &bytes) {
+            self.absorb(&[change], &names);
+            self.copies.insert(Target::Request(item), (copies, rel));
+        }
+    }
+
+    /// Delete each adopted copy whose request is saved, reverted or gone and no longer marked
+    /// changed on disk: the user has settled the conflict.
+    fn settle_copies(&mut self) {
+        let (collection, changed) = (&self.collection, &self.changed);
+        self.copies.retain(|target, (copies, rel)| {
+            let Target::Request(item) = target else {
+                return true;
+            };
+            let dirty = collection.request(item).is_some_and(|r| r.is_dirty());
+            if dirty || changed.contains(target) {
+                return true;
+            }
+            // The store also drops the folders the copy leaves empty; a copy that cannot be
+            // deleted opens again when team mode next starts.
+            let _ = copies.remove(rel);
+            false
+        });
     }
 
     /// A run plan for `item` from the current drafts, with the cached variable context.

@@ -1502,6 +1502,7 @@ impl Shell {
             | WorkspaceEvent::SelectionChanged(_)
             | WorkspaceEvent::SplitRatio
             | WorkspaceEvent::Reverted { .. }
+            | WorkspaceEvent::TeamStatus { .. }
             | WorkspaceEvent::Delivered { .. } => {}
             WorkspaceEvent::RevealFolder { root, folder } => {
                 self.sidebar_auto_hidden = false;

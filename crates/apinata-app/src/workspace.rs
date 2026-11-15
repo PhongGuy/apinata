@@ -7,10 +7,15 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use apinata_core::import::ImportedRequest;
+use apinata_core::team::{
+    ConflictCopies, EventsConfig, EventsEnd, TeamConfig, TeamNotice, TeamState, TeamStatus,
+    TeamSync, follow_events,
+};
 use apinata_core::{
-    CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GitError, GitOptions, GitState,
-    GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase, SecretStore,
-    StageState, WorkspaceFile, collection_status_with, commit, is_workspace_dir, stage, unstage,
+    CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError, GitOptions,
+    GitState, GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase,
+    SecretStore, StageState, WorkspaceFile, collection_status_with, commit, is_workspace_dir,
+    stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -113,6 +118,11 @@ pub enum WorkspaceEvent {
         root: PathBuf,
         /// Why, for display.
         message: String,
+    },
+    /// The team sync loop of the collection at `root` reported a new status.
+    TeamStatus {
+        /// The collection's root.
+        root: PathBuf,
     },
     /// Watching the collection at `root`, or the global directory, stopped; changes on disk
     /// need a manual reload.
@@ -342,7 +352,17 @@ pub struct CollectionEntry {
     git_write: Option<u64>,
     // Unique per open in the session, so it tells this entry from a reopened one.
     generation: u64,
+    team: Option<Team>,
     _observer: Subscription,
+}
+
+/// A collection's team sync loop, the status it last reported, and the tasks that feed it.
+struct Team {
+    sync: Arc<TeamSync>,
+    copies: ConflictCopies,
+    status: TeamStatus,
+    _pump: Task<()>,
+    _events: Option<Task<Result<(), crate::tokio_bridge::JoinError>>>,
 }
 
 impl CollectionEntry {
@@ -922,6 +942,7 @@ impl Workspace {
             git_runs: 0,
             git_write: None,
             generation,
+            team: None,
             _observer: observer,
         });
         self.generations += 1;
@@ -2459,6 +2480,133 @@ impl Workspace {
         }
     }
 
+    /// Keeps the open collection at `root` in sync with its team server through `config`,
+    /// following `events` for remote changes when given, and opens the conflict copies an
+    /// earlier run left. Replaces a loop already running there; nothing when `root` is not open.
+    pub fn start_team(
+        &mut self,
+        root: &Path,
+        config: TeamConfig,
+        events: Option<EventsConfig>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(entry) = self.entry_mut(root) else {
+            return;
+        };
+        entry.team = None;
+        let key = entry.root.clone();
+        let copies = ConflictCopies::new(config.copies().to_path_buf());
+        // The driver reports from its own thread and may outlive this entry by one status,
+        // so a closed channel is ignored there.
+        let (out, statuses) = async_channel::unbounded();
+        let on_status = Box::new(move |status: &TeamStatus| drop(out.try_send(status.clone())));
+        let sync = Arc::new(TeamSync::start(config, on_status));
+        let pump_key = key.clone();
+        let pump = cx.spawn(async move |this, cx| {
+            while let Ok(status) = statuses.recv().await {
+                if this
+                    .update(cx, |w, cx| w.on_team_status(&pump_key, status, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        let events = events.map(|config| {
+            let notices = Arc::clone(&sync);
+            crate::tokio_bridge::spawn(cx, async move {
+                let end = follow_events(config, |notice| match notice {
+                    TeamNotice::Connected => notices.reachable(),
+                    TeamNotice::Ref { sha } => notices.remote_moved(Some(sha)),
+                    TeamNotice::Poll => notices.poll(),
+                    _ => {}
+                })
+                .await;
+                match end {
+                    EventsEnd::SignedOut => notices.signed_out(),
+                    EventsEnd::Gone => notices.gone(),
+                    _ => {}
+                }
+            })
+        });
+        entry.team = Some(Team {
+            status: sync.status(),
+            sync,
+            copies,
+            _pump: pump,
+            _events: events,
+        });
+        self.adopt_copies(&key, cx);
+        cx.notify();
+    }
+
+    /// The latest status of the team sync loop of the collection at `root`; `None` when it has
+    /// none or is not open.
+    pub fn team_status(&self, root: &Path) -> Option<TeamStatus> {
+        Some(self.entry(root)?.team.as_ref()?.status.clone())
+    }
+
+    /// Whether any open collection runs a team sync loop.
+    pub fn has_teams(&self) -> bool {
+        self.collections.iter().any(|c| c.team.is_some())
+    }
+
+    /// Every team collection's `TeamSync::flush(GIT_TIMEOUT)`, off the main thread.
+    pub fn flush_teams(&self, cx: &mut Context<Self>) -> Task<()> {
+        let syncs: Vec<Arc<TeamSync>> = (self.collections.iter())
+            .filter_map(|c| Some(Arc::clone(&c.team.as_ref()?.sync)))
+            .collect();
+        cx.background_spawn(async move {
+            for sync in syncs {
+                sync.flush(GIT_TIMEOUT);
+            }
+        })
+    }
+
+    // A watched change starts the team loop's debounce toward a commit.
+    fn team_changed(&self, root: &Path) {
+        if let Some(team) = self.entry(root).and_then(|e| e.team.as_ref()) {
+            team.sync.changed();
+        }
+    }
+
+    // Stores a driver status; a pull that just left new conflicts opens their copies.
+    fn on_team_status(&mut self, root: &Path, status: TeamStatus, cx: &mut Context<Self>) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        let pulled = matches!(team.status.state, TeamState::Pulling | TeamState::Squashing)
+            || team.status.conflicts != status.conflicts;
+        let adopt = pulled && !status.conflicts.is_empty();
+        team.status = status;
+        if adopt {
+            self.adopt_copies(root, cx);
+        }
+        cx.emit(WorkspaceEvent::TeamStatus {
+            root: root.to_path_buf(),
+        });
+        cx.notify();
+    }
+
+    // Sends every conflict copy of `root`'s team to its request; the actor keeps the ones it
+    // cannot open in place.
+    fn adopt_copies(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(team) = self.entry(root).and_then(|e| e.team.as_ref()) else {
+            return;
+        };
+        let copies = &team.copies;
+        let commands: Vec<Command> = (copies.list().unwrap_or_default().into_iter())
+            .filter_map(|rel| {
+                let item = ItemPath::new(&rel)?;
+                let copies = copies.clone();
+                Some(Command::AdoptCopy { item, copies, rel })
+            })
+            .collect();
+        for command in commands {
+            self.send(root, command, cx);
+        }
+    }
+
     fn entry(&self, root: &Path) -> Option<&CollectionEntry> {
         let root = absolute(root);
         self.collections.iter().find(|c| c.root == root)
@@ -2621,11 +2769,13 @@ impl Workspace {
             WatchMsg::Paths(paths) => {
                 self.send(root, Command::Reload(paths), cx);
                 self.refresh_git(root, cx);
+                self.team_changed(root);
             }
             WatchMsg::Git => self.refresh_git(root, cx),
             WatchMsg::Rescan => {
                 self.send(root, Command::ReloadAll, cx);
                 self.refresh_git(root, cx);
+                self.team_changed(root);
             }
             WatchMsg::Failed(message) => {
                 let Some(entry) = self.collections.iter_mut().find(|c| c.root == root) else {

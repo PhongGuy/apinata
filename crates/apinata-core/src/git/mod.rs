@@ -3,12 +3,18 @@
 //! and commit stay local; clone and fetch use the network. Git's global config is read for
 //! `core.sshCommand`, and no call writes config.
 
+mod autosync;
+pub use autosync::{
+    commit_all, discard_changes, is_dirty, remote_tip, squash_unpushed, tracking_tip, unpushed,
+};
 mod branch;
 mod clone;
 mod diff;
 pub(crate) use diff::hunks_within;
 pub use diff::text_hunks;
 mod porcelain;
+mod rebase;
+pub use rebase::{ConflictKind, ConflictPath, RebasePulled, rebase_pull};
 mod run;
 mod stream;
 pub use branch::{
@@ -32,6 +38,7 @@ mod write;
 
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -294,13 +301,41 @@ fn busy_text(lock: &Path, os: Os) -> String {
 
 /// How git is run: extra child environment, the time limit of each call, and whether a status
 /// looks for the surviving copies of gone rows.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct GitOptions {
     env: Vec<(OsString, OsString)>,
     timeout: Duration,
     check_kept: bool,
     file_cap: usize,
+}
+
+// The env may carry a team token of any shape in an injected config value, so the debug form
+// hides every config value and anything naming an auth header, and masks known tokens elsewhere.
+impl fmt::Debug for GitOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let env: Vec<(&OsStr, String)> = self
+            .env
+            .iter()
+            .map(|(key, value)| {
+                let value = value.to_string_lossy();
+                let hidden = key.to_string_lossy().starts_with("GIT_CONFIG_VALUE_")
+                    || value.to_ascii_lowercase().contains("authorization");
+                let shown = if hidden {
+                    "<redacted>".to_owned()
+                } else {
+                    crate::team::redact_token(&value)
+                };
+                (key.as_os_str(), shown)
+            })
+            .collect();
+        f.debug_struct("GitOptions")
+            .field("env", &env)
+            .field("timeout", &self.timeout)
+            .field("check_kept", &self.check_kept)
+            .field("file_cap", &self.file_cap)
+            .finish()
+    }
 }
 
 impl Default for GitOptions {

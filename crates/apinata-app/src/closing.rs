@@ -118,7 +118,11 @@ fn request_window_close(workspace: &Entity<Workspace>, window: &mut Window, cx: 
     }
     if unsaved_in(workspace, &CloseScope::Window, window, cx).is_empty() {
         if runs_in_flight(window, cx).is_empty() {
-            return true;
+            if !workspace.read(cx).has_teams() {
+                return true;
+            }
+            remove_window(workspace, window, cx);
+            return false;
         }
         proceed(workspace, &CloseScope::Window, window, cx, &Kept::default());
         return false;
@@ -220,8 +224,24 @@ fn release_queued(window: &mut Window, cx: &mut App) {
         return;
     };
     if request_window_close(&workspace, window, cx) {
-        window.remove_window();
+        remove_window(&workspace, window, cx);
     }
+}
+
+// Every window removal: once each team collection has pushed what it holds, or at once
+// without one.
+fn remove_window(workspace: &Entity<Workspace>, window: &mut Window, cx: &mut App) {
+    if !workspace.read(cx).has_teams() {
+        window.remove_window();
+        return;
+    }
+    let flushed = workspace.update(cx, |w, cx| w.flush_teams(cx));
+    window
+        .spawn(cx, async move |cx| {
+            flushed.await;
+            cx.update(|window, _| window.remove_window()).ok();
+        })
+        .detach();
 }
 
 // A `kept` callback shared by every step of one close flow, called at most once.
@@ -558,9 +578,9 @@ fn proceed(
         CloseScope::Window => {
             let runs = runs_in_flight(window, cx);
             if runs.is_empty() {
-                window.remove_window();
+                remove_window(workspace, window, cx);
             } else {
-                ask_to_stop_runs(runs, Rc::clone(kept), window, cx);
+                ask_to_stop_runs(workspace.clone(), runs, Rc::clone(kept), window, cx);
             }
         }
         CloseScope::Collection(root) => workspace.update(cx, |w, cx| w.close(root, cx)),
@@ -612,7 +632,13 @@ struct TabAreas(std::collections::HashMap<WindowId, WeakEntity<TabArea>>);
 impl Global for TabAreas {}
 
 // Last step of a window close: stop the runs and close, or keep the window as it is.
-fn ask_to_stop_runs(runs: Vec<Entity<RunnerModel>>, kept: Kept, window: &mut Window, cx: &mut App) {
+fn ask_to_stop_runs(
+    workspace: Entity<Workspace>,
+    runs: Vec<Entity<RunnerModel>>,
+    kept: Kept,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let id = window.window_handle().window_id();
     cx.default_global::<Prompting>().0.insert(id);
     let answer = confirm::ask(confirm::stop_run_ask(), window, cx);
@@ -625,7 +651,7 @@ fn ask_to_stop_runs(runs: Vec<Entity<RunnerModel>>, kept: Kept, window: &mut Win
                     for run in &runs {
                         run.update(cx, |m, cx| m.cancel(cx));
                     }
-                    window.remove_window();
+                    remove_window(&workspace, window, cx);
                 } else {
                     call_kept(&kept, cx);
                 }

@@ -176,6 +176,11 @@ impl Document {
     /// Read and parse `path`, rejecting anything that is not a tag-free mapping.
     pub(crate) fn load(path: &Path) -> Result<Document, FileError> {
         let bytes = read_regular(path).map_err(|e| FileError::new(path, e.to_string()))?;
+        Document::parse(path, bytes)
+    }
+
+    /// Parse `bytes` as the content of `path`, under the same rules as [`Document::load`].
+    pub(crate) fn parse(path: &Path, bytes: Vec<u8>) -> Result<Document, FileError> {
         let loaded_hash = hash_bytes(&bytes);
         let text = String::from_utf8(bytes)
             .map_err(|_| FileError::new(path, "file is not valid UTF-8"))?;
@@ -307,6 +312,11 @@ impl Document {
     /// Keep the document dirty until it is saved, whatever its tree holds.
     pub(crate) fn mark_unsaved(&mut self) {
         self.unsaved = true;
+    }
+
+    /// Let the tree alone decide dirtiness again, as after a save.
+    pub(crate) fn clear_unsaved(&mut self) {
+        self.unsaved = false;
     }
 
     /// Set the value at `keys`, creating missing mappings on the way. A new key is placed by

@@ -115,6 +115,7 @@ mod stream;
 mod subscription;
 mod system_trash;
 mod tags;
+pub mod team;
 mod timing;
 mod trash;
 mod trash_log;
@@ -142,9 +143,9 @@ pub use check::{
 };
 pub use codegen::{Target, UnknownTarget, generate};
 pub use collection::{
-    Change, ChangeKind, Collection, DotenvBackup, DraftSnapshot, DropTarget, Environment,
-    FileTexts, Folder, IgnorePolicy, ItemKind, OpenOptions, PasteSource, SeqRecord, Sibling,
-    SnapshotError, Trashed, collection_name, dotenv_quotable,
+    AdoptError, Change, ChangeKind, Collection, DotenvBackup, DraftSnapshot, DropTarget,
+    Environment, FileTexts, Folder, IgnorePolicy, ItemKind, OpenOptions, PasteSource, SeqRecord,
+    Sibling, SnapshotError, Trashed, collection_name, dotenv_quotable,
 };
 pub use compare::{
     BodyComparison, BodyState, COMPARE_BODY_LIMIT, Comparison, HeaderChange, HeaderChangeKind,
@@ -193,12 +194,14 @@ pub use example::{
 pub use execute::{ConnectCause, ExecError, ExecOptions, Executor, NtlmCause};
 pub use git::{
     Branch, CancelFlag, CloneError, CloneProgress, CloneRequest, CloneUrlKind, CommitError,
-    CommitOutcome, DiffLine, FetchError, FileDiff, FileStatus, GIT_FILE_CAP, GIT_TIMEOUT, GitError,
-    GitOptions, GitState, Hunk, LineKind, Pulled, Pushed, RemoteBranch, RepoStatus, Section,
-    StageState, SwitchError, Switched, SyncError, Upstream, branches, clone_repo,
-    collection_status, collection_status_with, commit, default_folder_name, fetch, file_diff,
-    file_diff_with, pull, push, redact_url, redact_url_userinfo, remote_branches, remotes, stage,
-    switch_branch, switch_to_remote, text_hunks, unstage, validate_clone_url, validate_folder_name,
+    CommitOutcome, ConflictKind, ConflictPath, DiffLine, FetchError, FileDiff, FileStatus,
+    GIT_FILE_CAP, GIT_TIMEOUT, GitError, GitOptions, GitState, Hunk, LineKind, Pulled, Pushed,
+    RebasePulled, RemoteBranch, RepoStatus, Section, StageState, SwitchError, Switched, SyncError,
+    Upstream, branches, clone_repo, collection_status, collection_status_with, commit, commit_all,
+    default_folder_name, discard_changes, fetch, file_diff, file_diff_with, is_dirty, pull, push,
+    rebase_pull, redact_url, redact_url_userinfo, remote_branches, remote_tip, remotes,
+    squash_unpushed, stage, switch_branch, switch_to_remote, text_hunks, tracking_tip, unpushed,
+    unstage, validate_clone_url, validate_folder_name,
 };
 pub use global_env::GlobalEnvironments;
 pub use graphql_query::{

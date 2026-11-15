@@ -42,6 +42,8 @@ pub struct Paths {
     pub themes: PathBuf,
     /// The directory of GraphQL schemas kept between runs; the app's alone.
     pub schemas: PathBuf,
+    /// The directory of team conflict copies, kept outside every repository.
+    pub conflicts: PathBuf,
 }
 
 impl Paths {
@@ -66,6 +68,7 @@ impl Paths {
             global_environments: dirs::config_dir()?.join("apinata/global-environments"),
             themes: dirs::config_dir()?.join("apinata/themes"),
             schemas: dirs::data_local_dir()?.join("apinata/graphql-schemas"),
+            conflicts: dirs::data_local_dir()?.join("apinata/conflicts"),
         })
     }
 
@@ -96,6 +99,7 @@ impl Paths {
             global_environments: dir.join("global-environments"),
             themes: dir.join("themes"),
             schemas: dir.join("graphql-schemas"),
+            conflicts: dir.join("conflicts"),
         }
     }
 }

@@ -31,7 +31,13 @@ impl RequestFile {
     /// needs a `graphql` mapping, and any other type is refused by name.
     pub fn load(path: impl AsRef<Path>) -> Result<RequestFile, FileError> {
         let path = path.as_ref();
-        let mut doc = Document::load(path)?;
+        RequestFile::checked(Document::load(path)?)
+    }
+
+    /// Accept a parsed document as a request under the rules of [`RequestFile::load`].
+    pub(crate) fn checked(mut doc: Document) -> Result<RequestFile, FileError> {
+        let path = doc.path().to_path_buf();
+        let path = path.as_path();
         let key = match doc.get(&["info", "type"]) {
             None => "http",
             Some(kind) => match kind.as_str() {
