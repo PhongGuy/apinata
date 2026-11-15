@@ -977,7 +977,8 @@ impl ConfigEditor {
         Some(slot.child(buttons).into_any_element())
     }
 
-    // A Revert of these settings, sent from anywhere, drops the proxy shown but never sent.
+    // A Revert of these settings, sent from anywhere, drops what they show but never sent,
+    // typed secrets included, before a blur or save could commit it.
     fn reverted(
         &mut self,
         root: &Path,
@@ -985,10 +986,11 @@ impl ConfigEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if *root == crate::workspace::absolute(&self.root)
-            && *target == self.target.target()
-            && let Some(network) = self.network.clone()
-        {
+        if *root != crate::workspace::absolute(&self.root) || *target != self.target.target() {
+            return;
+        }
+        self.auth.update(cx, |a, cx| a.drop_pending(window, cx));
+        if let Some(network) = self.network.clone() {
             network.update(cx, |n, cx| n.discard_unsent(window, cx));
         }
     }
@@ -1003,13 +1005,10 @@ impl ConfigEditor {
             self.root.clone(),
             self.target.target(),
         );
-        cx.spawn_in(window, async move |this, cx| {
+        cx.spawn_in(window, async move |_, cx| {
             if answer.recv().await != Ok(1) {
                 return;
             }
-            let _ = this.update_in(cx, |e, window, cx| {
-                e.auth.update(cx, |a, cx| a.drop_pending(window, cx));
-            });
             workspace.update(cx, |w, cx| {
                 w.send(&root, Command::Revert(target), cx);
             });

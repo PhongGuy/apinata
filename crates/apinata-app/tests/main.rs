@@ -211,6 +211,7 @@ mod diff_doc;
 mod diff_tint_contrast;
 mod disabled_cue;
 mod discard_changes;
+mod discard_drops_typing;
 mod discard_shows_saved;
 mod download_model;
 mod download_ui;

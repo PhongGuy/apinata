@@ -14,7 +14,7 @@ use gpui_kit::{AppContext as _, Focusable as _, TestAppContext};
 use support::*;
 
 #[derive(Clone, Copy, Debug)]
-enum Way {
+pub(crate) enum Way {
     // The tab's right-click menu.
     TabMenu,
     // The Discard changes command on the active tab.
@@ -23,9 +23,9 @@ enum Way {
     Banner,
 }
 
-const WAYS: [Way; 3] = [Way::TabMenu, Way::Command, Way::Banner];
+pub(crate) const WAYS: [Way; 3] = [Way::TabMenu, Way::Command, Way::Banner];
 
-fn discard(cx: &mut TestAppContext, s: &Started, target: Target, way: Way) {
+pub(crate) fn discard(cx: &mut TestAppContext, s: &Started, target: Target, way: Way) {
     match way {
         Way::TabMenu => {
             cx.update_window(s.win, |_, w, cx| w.right_click(("tab", 0usize), cx))

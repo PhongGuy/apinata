@@ -283,16 +283,29 @@ impl NetworkSection {
         cx.notify();
     }
 
-    /// Drops a custom proxy still waiting for its host, as a discard does, so the section
-    /// shows the proxy the file holds.
+    /// Drops everything shown but never sent, as a discard does: a custom proxy still waiting
+    /// for its host, a refused port, an uncommitted password or passphrase, unfinished rows.
     pub fn discard_unsent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.held_back(cx) {
             self.choice = self.filed;
-            let proxy = self.loaded_proxy.clone();
-            set_text(&self.host, &proxy.hostname, window, cx);
-            self.show_fields(&proxy, window, cx);
-            cx.notify();
         }
+        let proxy = self.loaded_proxy.clone();
+        set_text(&self.host, &proxy.hostname, window, cx);
+        self.port_error = None;
+        self.show_fields(&proxy, window, cx);
+        self.password_replacing = false;
+        let password = self.password_committed.clone();
+        set_text(&self.password, &password, window, cx);
+        self.certs.retain(|row| !row.draft);
+        for row in &mut self.certs {
+            row.replacing = false;
+            if let Some(inputs) = &row.inputs {
+                let pass = &inputs.0[CertField::Passphrase as usize];
+                set_text(pass, &row.cert.passphrase, window, cx);
+            }
+        }
+        self.hosts.retain(|slot| !slot.draft);
+        cx.notify();
     }
 
     fn show_fields(&mut self, proxy: &ProxyConfig, window: &mut Window, cx: &mut Context<Self>) {

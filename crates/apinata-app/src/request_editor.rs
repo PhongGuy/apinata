@@ -1515,8 +1515,8 @@ impl RequestEditor {
         self.unit.edit(side, false);
     }
 
-    // A Revert of this request, sent from anywhere, drops what the pane shows but never sent;
-    // the reload that follows changes nothing it holds back.
+    // A Revert of this request, sent from anywhere, drops what the pane shows but never sent,
+    // typed secrets included, before a blur, save or send could commit it.
     fn reverted(
         &mut self,
         root: &Path,
@@ -1529,6 +1529,7 @@ impl RequestEditor {
         });
         if ours {
             (self.settings).update(cx, |s, cx| s.discard_unsent(window, cx));
+            self.auth.update(cx, |a, cx| a.drop_pending(window, cx));
         }
     }
 
