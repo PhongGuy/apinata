@@ -454,6 +454,12 @@ impl Document {
         Ok(())
     }
 
+    /// Remove `keys` from the saved snapshot and write it, then from the draft, as
+    /// `write_through` sets them.
+    pub(crate) fn remove_through(&mut self, keys: &[&str]) -> Result<(), SaveError> {
+        self.write_through_list(keys, Vec::new(), &[])
+    }
+
     /// `Conflict` when the file no longer holds the bytes last read or written; for a document
     /// never on disk, when anything has appeared at its path. A pipe, socket or device over the
     /// file is `Conflict`, unopened. `Io` when the file cannot be read.

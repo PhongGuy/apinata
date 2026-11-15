@@ -689,6 +689,12 @@ pub enum TreeError {
         /// The path both the file and the trashed item want.
         path: PathBuf,
     },
+    /// Putting an item back would overwrite what is at its old path now, so nothing moved.
+    #[error("{} already exists", path.display())]
+    Taken {
+        /// The path the item would go back to.
+        path: PathBuf,
+    },
     /// A delete succeeded, but a sibling's sequence number could not be rewritten afterwards.
     #[error("deleted, but could not renumber the siblings: {source}")]
     DeletedRenumber {

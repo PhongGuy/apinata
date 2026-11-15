@@ -180,6 +180,14 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
             NoAction,
             Some("Sidebar > Tree > Input"),
         ),
+        // Redo's extra chord stays with the filter and rename fields, so it never redoes a
+        // tree step from there.
+        KeyBinding::new(
+            "ctrl-y",
+            NoAction,
+            Some(format!("{FILTER_CONTEXT} > Input").as_str()),
+        ),
+        KeyBinding::new("ctrl-y", NoAction, Some("Sidebar > Tree > Input")),
         // Down in the filter walks on into the tree, as in most filter-a-list fields.
         KeyBinding::new(
             "down",

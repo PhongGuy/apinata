@@ -30,7 +30,7 @@ pub use paste::PasteSource;
 pub use reload::{Change, ChangeKind, ItemKind};
 pub use snapshot::{DraftSnapshot, SnapshotError};
 pub(crate) use tree::new_request_root;
-pub use tree::{DropTarget, Trashed};
+pub use tree::{DropTarget, SeqRecord, Trashed};
 
 pub(crate) const ROOT_FILE: &str = "opencollection.yml";
 /// A workspace folder's file; at a collection root it belongs to the workspace, not the tree.

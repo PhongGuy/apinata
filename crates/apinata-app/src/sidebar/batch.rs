@@ -152,6 +152,17 @@ impl Batch {
         })
     }
 
+    /// The items of a restore that came back, which a redo can delete again.
+    pub fn restored(&self) -> Vec<ItemPath> {
+        if self.verb != Verb::Restore {
+            return Vec::new();
+        }
+        (self.items.iter())
+            .filter(|(id, _)| matches!(self.outcomes.get(id), Some(Ok(()))))
+            .map(|(_, item)| item.clone())
+            .collect()
+    }
+
     /// The collection the batch was sent to.
     pub fn root(&self) -> &Path {
         &self.root

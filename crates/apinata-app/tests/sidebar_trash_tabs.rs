@@ -161,7 +161,7 @@ fn with_the_sidebar_hidden_the_palettes_undo_delete_restores_after_the_toast(
     hide_sidebar(cx, &h);
     palette_delete(cx, &h);
     expire_toasts_hidden(cx, &h);
-    palette_run(cx, &h, "Undo delete");
+    palette_run(cx, &h, "Undo in sidebar");
     frame(cx, h.win);
     assert_restored(cx, &h, "a.yml", &bin);
     let (order, active) = strip(cx, &h);
@@ -173,13 +173,17 @@ fn with_the_sidebar_hidden_the_palettes_undo_delete_restores_after_the_toast(
 fn the_palette_lists_undo_delete_only_with_a_delete_to_undo(cx: &mut TestAppContext) {
     let (h, _bin) = shell_with_trash(cx);
     open_tabs(cx, &h, &["c.yml"], "c.yml");
-    assert_eq!(palette_rows(cx, &h, "Undo delete"), 0, "nothing to undo");
+    assert_eq!(
+        palette_rows(cx, &h, "Undo in sidebar"),
+        0,
+        "nothing to undo"
+    );
     select_and_delete(cx, &h, "a.yml");
-    assert_eq!(palette_rows(cx, &h, "Undo delete"), 1);
+    assert_eq!(palette_rows(cx, &h, "Undo in sidebar"), 1);
     click_undo(cx, &h);
     frame(cx, h.win);
     assert_eq!(
-        palette_rows(cx, &h, "Undo delete"),
+        palette_rows(cx, &h, "Undo in sidebar"),
         0,
         "the delete was undone"
     );
