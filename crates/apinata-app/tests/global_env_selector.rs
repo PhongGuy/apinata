@@ -107,8 +107,8 @@ fn the_picker_sits_in_the_title_bar(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn the_empty_global_row_reads_no_globals() {
-    assert_eq!(NO_GLOBAL_ENVIRONMENT, "No globals");
+fn the_empty_global_row_reads_no_global_environment() {
+    assert_eq!(NO_GLOBAL_ENVIRONMENT, "No global environment");
     assert_eq!(
         apinata_app::global_env_selector::manage_global_environments(),
         "Manage globals…"

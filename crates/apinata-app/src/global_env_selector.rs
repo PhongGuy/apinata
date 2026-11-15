@@ -1,9 +1,7 @@
 //! The title bar's global environment picker, which follows the workspace rather than a
 //! collection and selects the one global environment every collection's sends use.
 
-use gpui_kit::component::select::{
-    SearchableVec, Select, SelectEvent, SelectGroup, SelectItem, SelectState,
-};
+use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -13,8 +11,8 @@ use gpui_kit::{
 };
 
 use crate::commands::label;
-use crate::env_color::{env_fill, picker_row, scoped};
-use crate::env_selector::ACTIONS_GROUP;
+use crate::env_color::{PickerGroups, env_fill, picker_row, scoped};
+use crate::env_selector::{ACTIONS_GROUP, scope_tip};
 use crate::global_env_editor::open_global_env_editor;
 use crate::shell::GLOBAL_ENV_ICON;
 use crate::style::ENV_CONTROL_WIDTH;
@@ -27,8 +25,10 @@ pub const GLOBAL_ENV_SELECT_TIP: &str = "Global environment";
 /// The header of the picker group that lists the global environments.
 pub const GLOBALS_GROUP: &str = "Global environments";
 
-/// The picker item that selects no global environment.
-pub const NO_GLOBAL_ENVIRONMENT: &str = "No globals";
+/// The picker item that selects no global environment. It names the choice as the
+/// collection picker's does, whether or not any globals exist, so it never reads as "none
+/// exist" while some do.
+pub const NO_GLOBAL_ENVIRONMENT: &str = "No global environment";
 
 /// The last picker item, which opens the global environment editor instead of selecting.
 pub fn manage_global_environments() -> &'static str {
@@ -87,7 +87,7 @@ impl SelectItem for GlobalEnvItem {
 }
 
 /// The picker's rows: the global environments, then the manage row in a group of its own.
-pub type GlobalEnvRows = SearchableVec<SelectGroup<GlobalEnvItem>>;
+pub type GlobalEnvRows = PickerGroups<GlobalEnvItem>;
 
 /// A select over the workspace's global environments that picks the active one.
 pub struct GlobalEnvSelector {
@@ -103,7 +103,7 @@ pub struct GlobalEnvSelector {
 impl GlobalEnvSelector {
     /// Builds the picker over `workspace`, following its global environments.
     pub fn new(workspace: Entity<Workspace>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let rows = GlobalEnvRows::new(Vec::new());
+        let rows = GlobalEnvRows::new("global-env-group", Vec::new());
         let select = cx.new(|cx| SelectState::new(rows, None, window, cx));
         let subscriptions = vec![
             cx.observe_in(&workspace, window, |this, _, window, cx| {
@@ -213,10 +213,11 @@ impl GlobalEnvSelector {
                 .collect();
             // `items()` always ends with the manage row.
             let manage = globals.split_off(globals.len().saturating_sub(1));
-            let rows = GlobalEnvRows::new(vec![
-                SelectGroup::new(GLOBALS_GROUP).items(globals),
-                SelectGroup::new(ACTIONS_GROUP).items(manage),
-            ]);
+            let groups = vec![
+                (GLOBALS_GROUP.into(), globals),
+                (ACTIONS_GROUP.into(), manage),
+            ];
+            let rows = GlobalEnvRows::new("global-env-group", groups);
             self.listed = items;
             self.dots = dots;
             self.select
@@ -269,7 +270,7 @@ impl Render for GlobalEnvSelector {
             .rounded(cx.theme().radius)
             .tooltip(crate::ui::text_tooltip(
                 "global-env-selector-tooltip",
-                GLOBAL_ENV_SELECT_TIP,
+                scope_tip(GLOBAL_ENV_SELECT_TIP, self.shown.as_ref().filter(|_| !none)),
             ))
             .hover({
                 let fill = crate::ui::ghost_hover_fill(cx);

@@ -9,9 +9,7 @@ use apinata_core::import::{ImportReport, ImportedEnvironment, parse_environments
 use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::SelectDown;
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::select::{
-    SearchableVec, Select, SelectEvent, SelectGroup, SelectItem, SelectState,
-};
+use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -22,7 +20,7 @@ use gpui_kit::{
 };
 
 use crate::command::Command;
-use crate::env_color::{picker_row, scoped};
+use crate::env_color::{PickerGroups, picker_row, scoped};
 use crate::shell::NO_COLLECTION_ENV_TIP;
 use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, resolve};
 use crate::tabs::TabKind;
@@ -100,7 +98,7 @@ impl SelectItem for EnvItem {
 }
 
 /// The dropdown's rows: the environments, then the actions in a group of their own.
-pub type EnvRows = SearchableVec<SelectGroup<EnvItem>>;
+pub type EnvRows = PickerGroups<EnvItem>;
 
 /// A select over the current collection's environments that picks its selected one.
 pub struct EnvSelector {
@@ -122,7 +120,8 @@ pub struct EnvSelector {
 impl EnvSelector {
     /// Builds the selector over `workspace`, following its current collection.
     pub fn new(workspace: Entity<Workspace>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let select = cx.new(|cx| SelectState::new(EnvRows::new(Vec::new()), None, window, cx));
+        let rows = EnvRows::new("env-group", Vec::new());
+        let select = cx.new(|cx| SelectState::new(rows, None, window, cx));
         let subscriptions = vec![
             cx.observe_in(&workspace, window, |this, _, window, cx| {
                 this.sync(window, cx)
@@ -336,10 +335,11 @@ impl EnvSelector {
                 .map(|(name, dot)| EnvItem(name, dot, any))
                 .collect();
             let actions = envs.split_off(actions_from);
-            let mut rows = EnvRows::new(vec![SelectGroup::new(ENVIRONMENTS_GROUP).items(envs)]);
+            let mut groups = vec![(ENVIRONMENTS_GROUP.into(), envs)];
             if !actions.is_empty() {
-                rows.push(SelectGroup::new(ACTIONS_GROUP).items(actions));
+                groups.push((ACTIONS_GROUP.into(), actions));
             }
+            let rows = EnvRows::new("env-group", groups);
             self.actions_from = actions_from;
             self.listed = items;
             self.dots = dots;
@@ -417,9 +417,9 @@ impl Render for EnvSelector {
             .tooltip(crate::ui::text_tooltip(
                 "env-control-tooltip",
                 if locked {
-                    NO_COLLECTION_ENV_TIP
+                    NO_COLLECTION_ENV_TIP.into()
                 } else {
-                    ENV_SELECT_TIP
+                    scope_tip(ENV_SELECT_TIP, self.shown.as_ref().filter(|_| !none))
                 },
             ))
             .when(!locked && !squeezed, |d| {
@@ -447,6 +447,15 @@ impl Render for EnvSelector {
             )
             .child(measure)
             .when(focused, |d| d.child(ring_overlay("env-select-ring", cx)))
+    }
+}
+
+/// The tip of a picker for `scope`: the scope, then the `picked` name in full, since the
+/// trigger may cut it short.
+pub fn scope_tip(scope: &str, picked: Option<&SharedString>) -> SharedString {
+    match picked {
+        Some(name) => format!("{scope}: {name}").into(),
+        None => scope.to_owned().into(),
     }
 }
 
