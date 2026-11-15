@@ -351,6 +351,14 @@ pub enum Command {
     Overwrite(Target),
     /// Forget the edits held back as stale for a target.
     DiscardStale(Target),
+    /// Open the team conflict copy at `copy` as the unsaved edits of the request `item`, and
+    /// delete the copy once that request is settled.
+    AdoptCopy {
+        /// The request the copy belongs to.
+        item: ItemPath,
+        /// The copy's file.
+        copy: PathBuf,
+    },
     /// Change the tree.
     Tree(TreeOp),
     /// Change the environments.

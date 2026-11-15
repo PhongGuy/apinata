@@ -212,6 +212,8 @@ struct Actor {
     network_ack: Option<PathBuf>,
     /// What the last Network notice showed, recorded as is by Acknowledge.
     network_shown: Option<apinata_core::ShownNetwork>,
+    /// Team conflict copies opened as edits, by their request, until that request settles.
+    copies: HashMap<Target, PathBuf>,
 }
 
 /// Apply a configuration edit to a `FolderFile` or `CollectionFile`, which share their
@@ -267,6 +269,7 @@ impl Actor {
             prune_ticket: u64::MAX,
             network_ack: None,
             network_shown: None,
+            copies: HashMap::new(),
         }
     }
 
@@ -402,6 +405,10 @@ impl Actor {
             }
             Command::DiscardStale(target) => {
                 self.discard_stale(&target);
+                Ok(())
+            }
+            Command::AdoptCopy { item, copy } => {
+                self.adopt_copy(item, copy);
                 Ok(())
             }
             Command::Network(op) => {
@@ -614,8 +621,40 @@ impl Actor {
         if let Err(kind) = outcome {
             self.notices.push(Notice { command: id, kind });
         }
+        self.settle_copies();
         // Commands arrive with non-decreasing `seen`, so no later one can need older moves.
         self.ledger.prune(seen);
+    }
+
+    /// Open a team conflict copy as its request's edits, under the banner a changed or removed
+    /// file gets. A copy that cannot be read or adopted stays where it is, unopened.
+    fn adopt_copy(&mut self, item: ItemPath, copy: PathBuf) {
+        let Ok(bytes) = std::fs::read(&copy) else {
+            return;
+        };
+        let names = self.environment_names();
+        if let Ok(change) = self.collection.adopt_conflict_copy(&item, &bytes) {
+            self.absorb(&[change], &names);
+            self.copies.insert(Target::Request(item), copy);
+        }
+    }
+
+    /// Delete each adopted copy whose request is saved, reverted or gone and no longer marked
+    /// changed on disk: the user has settled the conflict.
+    fn settle_copies(&mut self) {
+        let (collection, changed) = (&self.collection, &self.changed);
+        self.copies.retain(|target, copy| {
+            let Target::Request(item) = target else {
+                return true;
+            };
+            let dirty = collection.request(item).is_some_and(|r| r.is_dirty());
+            if dirty || changed.contains(target) {
+                return true;
+            }
+            // A copy that cannot be deleted opens again when team mode next starts.
+            let _ = std::fs::remove_file(copy);
+            false
+        });
     }
 
     /// A run plan for `item` from the current drafts, with the cached variable context.

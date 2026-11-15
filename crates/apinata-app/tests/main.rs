@@ -611,6 +611,7 @@ mod tabs;
 mod tag_chips;
 mod tags_edit;
 mod tags_section;
+mod team_sync;
 mod theme_contrast;
 mod theme_install;
 mod theme_json;

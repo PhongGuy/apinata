@@ -185,6 +185,10 @@ pub fn start_with_trash(
     // A quit must wait for every final write: a dropped flush task is a cancelled write.
     let late_settings = settings.clone();
     let (quit_settings, quit_session) = (settings, session.clone());
+    // The window's workspace exists only below, so the quit finds it through this slot.
+    let quit_workspace: std::rc::Rc<std::cell::RefCell<Option<gpui_kit::WeakEntity<Workspace>>>> =
+        std::rc::Rc::default();
+    let team_slot = std::rc::Rc::clone(&quit_workspace);
     cx.on_app_quit(move |cx| {
         let mut writes: Vec<Task<()>> = vec![
             quit_settings.update(cx, |p, cx| p.flush(cx)),
@@ -198,6 +202,10 @@ pub fn start_with_trash(
             jar.load();
             crate::executor::save_cookies(&jar);
         }));
+        let workspace = team_slot.borrow().as_ref().and_then(|w| w.upgrade());
+        if let Some(workspace) = workspace {
+            writes.push(workspace.update(cx, |w, cx| w.flush_teams(cx)));
+        }
         async move {
             for write in writes {
                 write.await;
@@ -249,6 +257,7 @@ pub fn start_with_trash(
     // Restoring after the shell exists lets it hear the notices restore emits; the window's
     // notifications need the open window's root.
     let workspace = shell.read(cx).workspace().clone();
+    *quit_workspace.borrow_mut() = Some(workspace.downgrade());
     window.update(cx, |_, _, cx| workspace.update(cx, |w, cx| w.restore(cx)))?;
     crate::oauth2_signin::install(window, cx);
     crate::script_gate::install(window, cx);
