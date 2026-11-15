@@ -137,3 +137,63 @@ fn block_lines(block: &Block, lines: &mut Vec<String>) {
         _ => lines.push("Sync stopped.".into()),
     }
 }
+
+/// How a team collection's sync stands, for the status bar's tone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncKind {
+    /// Up to date with the server.
+    Synced,
+    /// Pulling, committing or pushing.
+    Syncing,
+    /// The server cannot be reached; commits wait locally.
+    Offline,
+    /// Something needs the user before sync goes on.
+    Problem,
+}
+
+/// The status-bar kind and text for a team collection. A block wins, then a paused
+/// read-only folder, then unsettled clashes, then the loop's state.
+pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (SyncKind, String) {
+    let problem = |text: &str| (SyncKind::Problem, format!("problem: {text}"));
+    match &status.state {
+        TeamState::Blocked(block) => problem(match block {
+            Block::Secret { .. } => "secrets found",
+            Block::SignedOut => "signed out",
+            Block::Gone => "workspace gone",
+            Block::Hook { .. } => "commit hook refused",
+            Block::Failed { .. } => "sync failed",
+            _ => "sync stopped",
+        }),
+        TeamState::ReadOnly { paused: true } => problem("outside edits"),
+        _ if clashes == 1 => problem("1 clash to settle"),
+        _ if clashes > 1 => problem(&format!("{clashes} clashes to settle")),
+        TeamState::Offline if status.unpushed > 0 => (
+            SyncKind::Offline,
+            format!("offline, {} unpushed", status.unpushed),
+        ),
+        TeamState::Offline => (SyncKind::Offline, "offline".into()),
+        TeamState::Idle | TeamState::ReadOnly { .. } if read_only => {
+            (SyncKind::Synced, "synced, read only".into())
+        }
+        TeamState::Idle | TeamState::ReadOnly { .. } => (SyncKind::Synced, "synced".into()),
+        _ => (SyncKind::Syncing, "syncing".into()),
+    }
+}
+
+/// The toast that announces `block` on the collection called `name`.
+pub fn problem_toast(name: &str, block: &Block) -> String {
+    let reason = match block {
+        Block::Secret { .. } => "the server found secrets",
+        Block::SignedOut => "you are signed out",
+        Block::Gone => "the workspace is gone from the server",
+        Block::Hook { .. } => "a commit hook refused the commit",
+        Block::Failed { .. } => "git failed",
+        _ => "it needs you",
+    };
+    format!("Sync of {name} stopped: {reason}.")
+}
+
+/// The toast for the first refused edit in the read-only collection called `name`.
+pub fn read_only_toast(name: &str) -> String {
+    format!("You can only read {name}, so your changes are not saved.")
+}

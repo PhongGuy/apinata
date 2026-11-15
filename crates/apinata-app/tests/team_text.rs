@@ -1,7 +1,8 @@
 //! What the team dialogs say for each failure.
 
 use apinata_app::team_text::{
-    error_text, finding_line, problem_lines, server_warning, sign_in_error_text,
+    SyncKind, error_text, finding_line, problem_lines, problem_toast, read_only_toast,
+    server_warning, sign_in_error_text, sync_status,
 };
 use apinata_core::team::{Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus};
 
@@ -197,4 +198,66 @@ fn every_other_state_has_its_own_line() {
     );
     assert_eq!(line(TeamState::Committing), ["Syncing."]);
     assert_eq!(line(TeamState::Squashing), ["Syncing."]);
+}
+
+#[test]
+fn each_state_has_one_status() {
+    let at = |state, unpushed| TeamStatus::new(state, unpushed, vec![]);
+    let cases = [
+        (
+            sync_status(&at(TeamState::Idle, 0), false, 0),
+            (SyncKind::Synced, "synced"),
+        ),
+        (
+            sync_status(&at(TeamState::ReadOnly { paused: false }, 0), true, 0),
+            (SyncKind::Synced, "synced, read only"),
+        ),
+        (
+            sync_status(&at(TeamState::Pulling, 0), false, 0),
+            (SyncKind::Syncing, "syncing"),
+        ),
+        (
+            sync_status(&at(TeamState::Offline, 0), false, 0),
+            (SyncKind::Offline, "offline"),
+        ),
+        (
+            sync_status(&at(TeamState::Offline, 3), false, 0),
+            (SyncKind::Offline, "offline, 3 unpushed"),
+        ),
+        (
+            sync_status(&at(TeamState::Blocked(Block::SignedOut), 0), false, 2),
+            (SyncKind::Problem, "problem: signed out"),
+        ),
+        (
+            sync_status(&at(TeamState::ReadOnly { paused: true }, 0), true, 0),
+            (SyncKind::Problem, "problem: outside edits"),
+        ),
+        (
+            sync_status(&at(TeamState::Idle, 0), false, 1),
+            (SyncKind::Problem, "problem: 1 clash to settle"),
+        ),
+        (
+            sync_status(&at(TeamState::Idle, 0), false, 2),
+            (SyncKind::Problem, "problem: 2 clashes to settle"),
+        ),
+    ];
+    for ((kind, text), (want_kind, want_text)) in cases {
+        assert_eq!((kind, text.as_str()), (want_kind, want_text));
+    }
+}
+
+#[test]
+fn toasts_name_the_collection_and_the_reason() {
+    let secret = Block::Secret {
+        findings: vec![],
+        more: 1,
+    };
+    assert_eq!(
+        problem_toast("api", &secret),
+        "Sync of api stopped: the server found secrets."
+    );
+    assert_eq!(
+        read_only_toast("api"),
+        "You can only read api, so your changes are not saved."
+    );
 }

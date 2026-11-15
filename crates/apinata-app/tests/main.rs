@@ -617,6 +617,7 @@ mod team_join;
 mod team_paths;
 mod team_resume;
 mod team_state;
+mod team_status_bar;
 mod team_sync;
 mod team_sync_dialog;
 mod team_text;
