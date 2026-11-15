@@ -328,9 +328,8 @@ fn the_tab_strip_fades_sit_between_the_inset_and_the_chevron(cx: &mut TestAppCon
             right.right() <= chevron.left() + px(0.5),
             "{right:?} over {chevron:?}"
         );
-        // The right fade widens to cover a tab cut by that edge, so only heights match; it
-        // still ends at the viewport's right edge.
-        assert_eq!(left.size.height, right.size.height);
+        // Both fades are plain and alike, and the right one ends at the viewport's right edge.
+        assert_eq!(left.size, right.size);
         let view = w.find("tab-strip-viewport").bounds();
         assert!(
             (right.right() - view.right()).abs() < px(0.5),
@@ -1156,8 +1155,9 @@ enum Under {
 }
 
 // For each wheel position, clicks a tab that lies under a shown fade on `kind`'s side (or
-// wholly between the fades), then checks the tab is clear of both shown fades, or has not
-// moved when it already was. Returns how many clicks were made. Each width is its own test
+// wholly between the fades), checks the strip holds still while the pointer rests on it, then
+// that once the pointer leaves the tab is clear of both shown fades, or has not moved when it
+// already was. Returns how many clicks were made. Each width is its own test
 // to keep tests short; the 440 px strip always has such a tab, so it asserts a click.
 fn check_click_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32, kind: Under) -> usize {
     let count = 9;
@@ -1224,6 +1224,14 @@ fn check_click_under_fade(cx: &mut TestAppContext, width: f32, zoom: f32, kind: 
         frames(cx, s.win, 6);
         clicked += 1;
         let why = format!("{width} px, zoom {zoom}, wheeled {k}, tab {ix}");
+        // The strip holds still while the pointer rests on it and reveals once it leaves.
+        assert_eq!(
+            tab(cx, ix),
+            before,
+            "{why}: the strip moved under the pointer"
+        );
+        move_pointer(cx, s.win, point(px(4.), px(700.)));
+        frames(cx, s.win, 6);
         let (_, fl, fr) = edges(cx);
         let after = tab(cx, ix);
         // A whole tab stays put unless the wheel left another cut at the left edge, which the
