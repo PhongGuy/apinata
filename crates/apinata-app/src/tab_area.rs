@@ -10,7 +10,7 @@ use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -344,6 +344,8 @@ pub struct TabArea {
     reveal: ui::Reveal,
     revealed: Option<TabId>,
     fades: ui::StripFades,
+    // Where each tab's name lay, so a close button waits for its name rather than its folder.
+    names: ui::PartSpans,
     focus: FocusHandle,
     // Where focus goes once no tab is open: the sidebar's tree, set by the shell.
     empty_focus: Option<Entity<gpui_kit::component::tree::TreeState>>,
@@ -377,6 +379,7 @@ impl TabArea {
             reveal: ui::Reveal::whole_at_left(),
             revealed: None,
             fades: ui::StripFades::default(),
+            names: ui::PartSpans::default(),
             focus: cx.focus_handle(),
             empty_focus: None,
             strip: Slot::new(cx.weak_entity(), (), false, cx),
@@ -2214,14 +2217,19 @@ impl TabArea {
     }
 
     // Which tabs may show their close button, from the strip's last layout: its slot clear
-    // of the fades and enough of the tab shown to read.
+    // of the fades and enough of the tab's name shown to read.
     fn closable(&self, count: usize, window: &Window) -> Vec<bool> {
+        (0..count)
+            .map(|ix| self.may_close(count, ix, window))
+            .collect()
+    }
+
+    fn may_close(&self, count: usize, ix: usize, window: &Window) -> bool {
         let slot = style::resolve(ROW_HEIGHT, window);
         let fade = style::resolve(style::STRIP_FADE_WIDTH, window);
         let readable = style::resolve(style::TAB_READABLE_WIDTH, window);
-        (0..count)
-            .map(|ix| ui::tail_clear_of_fades(&self.scroll, count, ix, slot, fade, readable))
-            .collect()
+        let name = self.names.get(ix);
+        ui::tail_clear_of_fades(&self.scroll, count, ix, slot, fade, readable, name)
     }
 
     /// Records which tab the pointer is over. Leaving a tab clears the record only when it
@@ -2329,9 +2337,11 @@ impl TabArea {
         let name = div()
             .id(("tab-name", ix))
             .test_support()
+            .relative()
             .min_w_0()
             .truncate()
-            .child(name);
+            .child(name)
+            .child(self.names.marker(&self.scroll, ix));
         let label = h_flex()
             .id(("tab", ix))
             .test_support()
@@ -2468,10 +2478,22 @@ impl TabArea {
             .flex_none()
             .justify_center()
             .map(|slot| {
-                // A slot under a fade, or beside too little of the name to read, stays empty:
-                // a press there falls through to the tab and selects it.
+                // A slot under a fade, or beside too little of the name to read, offers no close
+                // button; a pin or dot still shows, inert, and a press selects the tab.
                 if !closable {
-                    return slot;
+                    let muted = cx.theme().muted_foreground;
+                    return slot
+                        .when(dirty && !active, |slot| {
+                            slot.child(ui::dirty_dot(("dirty", ix)).test_support())
+                        })
+                        .when(pinned && !(dirty && !active), |slot| {
+                            slot.child(
+                                div()
+                                    .id(("tab-pin", ix))
+                                    .test_support()
+                                    .child(Icon::new(IconName::Pin).text_color(muted)),
+                            )
+                        });
                 }
                 if dirty && !active && !hovered {
                     return slot.child(ui::dirty_dot(("dirty", ix)).test_support());
@@ -2498,11 +2520,8 @@ impl TabArea {
                         // A button cut by the strip's edge or under a fade selects its tab:
                         // the user cannot see what a press there would close.
                         close_view.update(cx, |a, cx| {
-                            let slot = style::resolve(ROW_HEIGHT, window);
-                            let fade = style::resolve(style::STRIP_FADE_WIDTH, window);
-                            let readable = style::resolve(style::TAB_READABLE_WIDTH, window);
                             let count = a.workspace.read(cx).tabs().entries().len();
-                            if ui::tail_clear_of_fades(&a.scroll, count, ix, slot, fade, readable) {
+                            if a.may_close(count, ix, window) {
                                 a.close(vec![id], window, cx);
                             } else {
                                 a.reveal.clicked();

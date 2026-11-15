@@ -2124,6 +2124,37 @@ pub fn strip_gap(scroll: &ScrollHandle, items: usize) -> Pixels {
     (last.left() - prev.right()).max(px(0.))
 }
 
+/// Where one part of each strip item, such as a tab's name, lay along the strip as of the
+/// last frame, unscrolled, by item index.
+#[derive(Clone, Default)]
+pub struct PartSpans(Rc<RefCell<HashMap<usize, (Pixels, Pixels)>>>);
+
+impl PartSpans {
+    /// A marker that records the span of the part it fills, for item `ix` of the strip
+    /// `scroll` tracks; put it in that part, which must be `relative()`.
+    pub fn marker(&self, scroll: &ScrollHandle, ix: usize) -> impl IntoElement + use<> {
+        let (spans, scroll) = (Rc::clone(&self.0), scroll.clone());
+        canvas(
+            move |bounds, window, _| {
+                let x = scroll.offset().x;
+                let span = (bounds.left() - x, bounds.right() - x);
+                // A part that moved within its item redraws once, so what reads it is current.
+                if spans.borrow_mut().insert(ix, span) != Some(span) {
+                    window.request_animation_frame();
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+    }
+
+    /// The recorded span of item `ix`'s part, if it has been drawn.
+    pub fn get(&self, ix: usize) -> Option<(Pixels, Pixels)> {
+        self.0.borrow().get(&ix).copied()
+    }
+}
+
 /// Fades over a sideways strip's edges while items lie beyond them. The fades sit over the
 /// strip's scroll viewport only, placed from the previous frame's layout like the overflow
 /// chevron; they take no mouse input, so clicks reach the items beneath.
@@ -2205,7 +2236,7 @@ impl StripFades {
                 .test_support()
                 .absolute()
                 .top_0()
-                .bottom_0()
+                .bottom(STRIP_BORDER)
                 .w(STRIP_FADE_WIDTH)
         };
         if edges.0 {
@@ -2236,6 +2267,9 @@ impl StripFades {
     }
 }
 
+// The kit tab bar's bottom border; the fades stop above it so it runs unbroken.
+const STRIP_BORDER: Pixels = px(1.);
+
 // Whether the first item starts left of the viewport and the last ends right of it. The
 // item bounds are unscrolled, so the offset is added; a pixel of slack absorbs rounding.
 // The kit's trailing filler is not an item, so a strip scrolled to its end shows no fade.
@@ -2255,8 +2289,9 @@ fn hidden_edges(scroll: &ScrollHandle, items: usize) -> (bool, bool) {
 
 /// Whether item `ix` of the strip `scroll` tracks may offer the button in its last `tail`, as
 /// of the last layout: that tail lies wholly outside both shown fades, and the item shows
-/// whole or at least `readable` of itself, so the button never sits beside an unread name.
-/// True before any layout, so nothing is held back that was never measured.
+/// whole or at least `readable` of its `name`, an unscrolled span (the whole item when
+/// unknown), so the button never sits beside an unread name. True before any layout, so
+/// nothing is held back that was never measured.
 pub fn tail_clear_of_fades(
     scroll: &ScrollHandle,
     items: usize,
@@ -2264,6 +2299,7 @@ pub fn tail_clear_of_fades(
     tail: Pixels,
     fade: Pixels,
     readable: Pixels,
+    name: Option<(Pixels, Pixels)>,
 ) -> bool {
     let Some(item) = scroll.bounds_for_item(ix) else {
         return true;
@@ -2274,7 +2310,8 @@ pub fn tail_clear_of_fades(
     let to = view.right() - if hidden_right { fade } else { px(0.) };
     let (start, end) = (item.left() + x, item.right() + x);
     let whole = start >= view.left() - px(1.) && end <= view.right() + px(1.);
-    let shown = end.min(view.right()) - start.max(view.left());
+    let (left, right) = name.map_or((start, end), |(l, r)| (l + x, r + x));
+    let shown = right.min(view.right()) - left.max(view.left());
     end - tail >= from - px(1.) && end <= to + px(1.) && (whole || shown >= readable)
 }
 

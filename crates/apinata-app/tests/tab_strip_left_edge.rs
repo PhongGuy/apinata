@@ -20,7 +20,7 @@ fn settle_motion(cx: &mut TestAppContext, win: AnyWindowHandle) {
 // Opens `count` request tabs and, for each window width, activates each tab in turn and checks
 // no tab is cut by the strip's left edge. Scrolled to its end the strip may have no room to
 // hide a cut tab nor show it without cutting the chosen one; such a sliver then shows no
-// glyph in its slot until the readable width of it shows. Returns how many checks found the
+// glyph in its slot until a readable run of its name shows. Returns how many checks found the
 // strip scrolled.
 fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item = u32>) -> usize {
     let files: Vec<(String, String)> = (0..count)
@@ -52,7 +52,7 @@ fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item =
                     let at_end = w.try_find("tab-strip-fade-right").is_none();
                     let fade = w.try_find("tab-strip-fade-left").map(|f| f.bounds());
                     // Only at the strip's end may a tab stay cut, and then its slot is empty
-                    // unless the readable width of it shows.
+                    // unless a readable run of its name shows.
                     let readable =
                         apinata_app::style::resolve(apinata_app::style::TAB_READABLE_WIDTH, w);
                     let cut: Vec<String> = (0..count)
@@ -64,7 +64,8 @@ fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item =
                                 || w.try_find(("dirty", ix)).is_some()
                                 || w.try_find(("tab-pin", ix)).is_some();
                             let quiet = at_end && !glyph;
-                            let shows = b.right() - view.left() >= readable - px(1.);
+                            let name = w.find(("tab-name", ix)).bounds();
+                            let shows = name.right() - view.left() >= readable - px(1.);
                             (cut && !quiet && !shows).then(|| format!("tab {ix} {b:?}"))
                         })
                         .collect();
@@ -158,7 +159,7 @@ struct LeftCut {
 }
 
 // Six tabs at `zoom` with the last chosen: for each window width that leaves a tab cut at the
-// left edge, how much of it shows, the left fade and that tab's close button.
+// left edge, how much of its name shows, the left fade and that tab's close button.
 fn left_cuts(
     cx: &mut TestAppContext,
     zoom: f32,
@@ -203,7 +204,7 @@ fn left_cuts(
                 let fade = w.try_find("tab-strip-fade-left")?.bounds();
                 Some(LeftCut {
                     width,
-                    shown: w.within("tab-strip").find(ix).bounds().right() - view.left(),
+                    shown: w.find(("tab-name", ix)).bounds().right() - view.left(),
                     fade,
                     close: w.try_find(("tab-close", ix)).map(|c| c.bounds()),
                 })
@@ -215,7 +216,7 @@ fn left_cuts(
     cuts
 }
 
-// A cut tab shows no close button until `readable` px of it shows; past that its button
+// A cut tab shows no close button until `readable` px of its name shows; past that its button
 // shows clear of the fade. The fade is a plain `fade` px either way. Cuts within 3 px either
 // side of the boundary must be met.
 fn closes_only_once_readable(cuts: &[LeftCut], readable: f32, fade: f32) {
@@ -256,7 +257,7 @@ fn closes_only_once_readable(cuts: &[LeftCut], readable: f32, fade: f32) {
     );
 }
 
-// The readable width of a cut tab, from the same constant the strip uses.
+// The readable run of a cut tab's name, from the same constant the strip uses.
 fn readable_at(zoom: f32) -> f32 {
     f32::from(apinata_app::style::at_zoom(
         apinata_app::style::TAB_READABLE_WIDTH,
@@ -264,21 +265,21 @@ fn readable_at(zoom: f32) -> f32 {
     ))
 }
 
-// At 100% a cut tab's 28 px close slot and two 24 px fades make 76 px: showing less, it shows
-// no close button, so none sits beside a faded glyph it would close unread.
+// At 100% two 24 px fades make 48 px: with less of its name showing, a cut tab shows no close
+// button, so none sits beside a faded glyph it would close unread.
 #[gpui_kit::test]
 fn a_cut_tab_shows_only_once_its_name_can_be_read(cx: &mut TestAppContext) {
     let readable = readable_at(1.0);
-    assert_eq!(readable, 76.);
+    assert_eq!(readable, 48.);
     let cuts = left_cuts(cx, 1.0, 640..=800);
     closes_only_once_readable(&cuts, readable, 24.);
 }
 
-// At 125% the close slot is 35 px and a fade 30 px, so a cut tab's button shows from 95 px.
+// At 125% a fade is 30 px, so a cut tab's button shows from 60 px of its name.
 #[gpui_kit::test]
 fn at_a_larger_zoom_a_cut_tab_shows_only_once_its_name_can_be_read(cx: &mut TestAppContext) {
     let readable = readable_at(1.25);
-    assert_eq!(readable, 95.);
+    assert_eq!(readable, 60.);
     let cuts = left_cuts(cx, 1.25, 640..=760);
     closes_only_once_readable(&cuts, readable, 30.);
 }
