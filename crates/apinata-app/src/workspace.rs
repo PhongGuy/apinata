@@ -2546,6 +2546,12 @@ impl Workspace {
         Some(self.entry(root)?.team.as_ref()?.status.clone())
     }
 
+    /// The folder the team sync loop of the collection at `root` keeps its conflict copies in;
+    /// `None` when it has no loop or is not open.
+    pub fn team_copies(&self, root: &Path) -> Option<&Path> {
+        Some(self.entry(root)?.team.as_ref()?.copies.dir())
+    }
+
     /// Whether any open collection runs a team sync loop.
     pub fn has_teams(&self) -> bool {
         self.collections.iter().any(|c| c.team.is_some())

@@ -1,9 +1,12 @@
 //! The team sync loop as a sans-IO state machine: events in, the git work to run out.
 
+use serde::{Deserialize, Deserializer, Serialize};
+
 use super::{Finding, SyncFailure};
 
-/// What the signed-in user may do on the team server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What the signed-in user may do on the team server, ordered from least to most.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Role {
     /// Fetch only.
@@ -12,6 +15,38 @@ pub enum Role {
     Write,
     /// Fetch, push and manage the team.
     Admin,
+}
+
+impl Role {
+    /// The server's role text; anything unknown reads as `Read`, the least privilege.
+    pub fn parse(text: &str) -> Role {
+        match text {
+            "write" => Role::Write,
+            "admin" => Role::Admin,
+            _ => Role::Read,
+        }
+    }
+
+    /// The role's name for people.
+    pub fn label(self) -> &'static str {
+        match self {
+            Role::Read => "Read",
+            Role::Write => "Write",
+            Role::Admin => "Admin",
+        }
+    }
+
+    /// Whether the role may push.
+    pub fn can_write(self) -> bool {
+        self >= Role::Write
+    }
+}
+
+// By hand, since `#[serde(other)]` cannot make an unknown role fall back to the first variant.
+impl<'de> Deserialize<'de> for Role {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Role, D::Error> {
+        Ok(Role::parse(&String::deserialize(deserializer)?))
+    }
 }
 
 /// Why syncing stopped until the user acts.

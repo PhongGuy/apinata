@@ -35,6 +35,8 @@ const IDS: &[&str] = &[
     "collection.export_html",
     "collection.new",
     "collection.clone",
+    "collection.join_team_server",
+    "collection.team_workspaces",
     "collection.open_demo",
     "collection.switch_branch",
     "collection.show_changes",

@@ -907,6 +907,11 @@ pub fn mock_server(
     server
 }
 
+#[path = "../../../apinata-core/tests/common/potluck.rs"]
+pub mod potluck;
+
+pub mod team;
+
 #[path = "../../../apinata-core/tests/common/sse_server.rs"]
 pub mod sse_server;
 

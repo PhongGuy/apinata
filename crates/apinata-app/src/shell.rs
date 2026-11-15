@@ -93,6 +93,10 @@ actions!(
         ImportCurl,
         /// Opens the dialog that clones a repository and opens it as a collection.
         CloneRepository,
+        /// Opens the dialog that signs in to a team server with a password.
+        JoinTeamServer,
+        /// Opens the list of team workspaces on the servers the user has joined.
+        TeamWorkspaces,
         /// Prompts for a folder, copies the bundled demo collection into it and opens it.
         OpenDemoCollection,
         /// Opens the remote branch picker for the current collection.
@@ -1113,6 +1117,19 @@ impl Shell {
         crate::clone_dialog::open(&self.workspace, window, cx);
     }
 
+    fn join_team_server(
+        &mut self,
+        _: &JoinTeamServer,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::team_join::open(&self.workspace, window, cx);
+    }
+
+    fn team_workspaces(&mut self, _: &TeamWorkspaces, window: &mut Window, cx: &mut Context<Self>) {
+        crate::team_workspaces::open(&self.workspace, window, cx);
+    }
+
     // Copies the bundled demo into a folder the user picks, then opens it. Cancelling does
     // nothing; a failed copy raises an alert.
     fn open_demo(&mut self, _: &OpenDemoCollection, window: &mut Window, cx: &mut Context<Self>) {
@@ -1644,6 +1661,7 @@ impl Shell {
         if offer_demo {
             actions.push(("Open the demo collection…", &OpenDemoCollection));
         }
+        actions.push(("Join team server…", &JoinTeamServer));
         let demo = (actions.iter()).position(|(_, a)| a.partial_eq(&OpenDemoCollection));
         div()
             .id("no-collection")
@@ -2887,6 +2905,8 @@ impl Render for Shell {
             )
             .on_action(cx.listener(Self::import_curl))
             .on_action(cx.listener(Self::clone_repository))
+            .on_action(cx.listener(Self::join_team_server))
+            .on_action(cx.listener(Self::team_workspaces))
             .on_action(cx.listener(Self::open_demo))
             .on_action(
                 cx.listener(|this, _: &SwitchBranch, window, cx| {

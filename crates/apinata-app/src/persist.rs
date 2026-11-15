@@ -44,6 +44,8 @@ pub struct Paths {
     pub schemas: PathBuf,
     /// The directory of team conflict copies, kept outside every repository.
     pub conflicts: PathBuf,
+    /// The team server accounts and the folders bound to their workspaces; never a token.
+    pub team: PathBuf,
 }
 
 impl Paths {
@@ -69,6 +71,7 @@ impl Paths {
             themes: dirs::config_dir()?.join("apinata/themes"),
             schemas: dirs::data_local_dir()?.join("apinata/graphql-schemas"),
             conflicts: dirs::data_local_dir()?.join("apinata/conflicts"),
+            team: dirs::data_local_dir()?.join("apinata/team.json"),
         })
     }
 
@@ -100,6 +103,7 @@ impl Paths {
             themes: dir.join("themes"),
             schemas: dir.join("graphql-schemas"),
             conflicts: dir.join("conflicts"),
+            team: dir.join("team.json"),
         }
     }
 }

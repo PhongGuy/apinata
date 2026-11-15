@@ -129,14 +129,18 @@ fn a_recent_collection_hides_the_demo_offer(cx: &mut TestAppContext) {
     };
     let (win, _view, _state) = welcome(cx, start);
     assert!(!present(cx, win, "demo-hint"));
-    let has = cx
+    // Without the demo, joining a team server follows the other actions directly.
+    let (fifth, sixth) = cx
         .update_window(win, |_, w, _| {
-            w.within("no-collection-actions")
+            let scope = w.within("no-collection-actions");
+            let fifth = scope
                 .try_find(("empty-action", 5usize))
-                .is_some()
+                .and_then(|a| a.label().map(str::to_owned));
+            (fifth, scope.try_find(("empty-action", 6usize)).is_some())
         })
         .unwrap();
-    assert!(!has);
+    assert_eq!(fifth.as_deref(), Some("Join team server…"));
+    assert!(!sixth);
 }
 
 #[gpui_kit::test]
