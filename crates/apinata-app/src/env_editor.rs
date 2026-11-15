@@ -238,9 +238,10 @@ impl EnvEditor {
                     WorkspaceEvent::Notices { root, notices, .. } => {
                         this.notices(root, notices, window, cx)
                     }
-                    WorkspaceEvent::EnvReverted { root, name } => {
-                        this.reverted(root, name, window, cx)
-                    }
+                    WorkspaceEvent::Reverted {
+                        root,
+                        target: Target::Environment(name),
+                    } => this.reverted(root, name, window, cx),
                     WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked),
                     _ => {}
                 },

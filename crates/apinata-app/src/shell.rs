@@ -1501,7 +1501,7 @@ impl Shell {
             WorkspaceEvent::DraftOpened(_)
             | WorkspaceEvent::SelectionChanged(_)
             | WorkspaceEvent::SplitRatio
-            | WorkspaceEvent::EnvReverted { .. }
+            | WorkspaceEvent::Reverted { .. }
             | WorkspaceEvent::Delivered { .. } => {}
             WorkspaceEvent::RevealFolder { root, folder } => {
                 self.sidebar_auto_hidden = false;

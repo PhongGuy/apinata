@@ -257,6 +257,14 @@ impl SettingsSection {
         cx.notify();
     }
 
+    /// Drops a Custom picked but never sent, as a discard does, so the select shows the
+    /// timeout the settings hold.
+    pub fn discard_unsent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.custom_pending) {
+            self.show_timeout(window, cx);
+        }
+    }
+
     /// Shows the request's `tags` from a snapshot without emitting an edit.
     pub fn load_tags(&mut self, tags: &[String], cx: &mut Context<Self>) {
         self.tags.update(cx, |t, cx| t.load(tags, cx));
