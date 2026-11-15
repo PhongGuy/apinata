@@ -310,17 +310,23 @@ pub struct GitOptions {
     file_cap: usize,
 }
 
-// The env may carry a team token in its auth header, so the debug form masks tokens in values.
+// The env may carry a team token of any shape in an injected config value, so the debug form
+// hides every config value and anything naming an auth header, and masks known tokens elsewhere.
 impl fmt::Debug for GitOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let env: Vec<(&OsStr, String)> = self
             .env
             .iter()
             .map(|(key, value)| {
-                (
-                    key.as_os_str(),
-                    crate::team::redact_token(&value.to_string_lossy()),
-                )
+                let value = value.to_string_lossy();
+                let hidden = key.to_string_lossy().starts_with("GIT_CONFIG_VALUE_")
+                    || value.to_ascii_lowercase().contains("authorization");
+                let shown = if hidden {
+                    "<redacted>".to_owned()
+                } else {
+                    crate::team::redact_token(&value)
+                };
+                (key.as_os_str(), shown)
             })
             .collect();
         f.debug_struct("GitOptions")

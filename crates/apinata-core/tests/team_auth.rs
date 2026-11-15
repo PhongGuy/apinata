@@ -224,3 +224,18 @@ fn the_team_options_debug_form_hides_the_token() {
         "{shown}"
     );
 }
+
+#[test]
+fn the_team_options_debug_form_hides_a_token_without_the_usual_prefix() {
+    let token = "unprefixed-s3cret-value";
+    let opts = team_options(
+        Sandbox::new().options(),
+        &TeamAuth::new("http://127.0.0.1:9", token),
+        &Identity::new("Ada", "ada@example.com"),
+    );
+    let shown = format!("{opts:?}");
+    assert!(
+        !shown.contains(token) && shown.contains("GIT_CONFIG_VALUE_0"),
+        "{shown}"
+    );
+}
