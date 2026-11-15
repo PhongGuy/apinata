@@ -34,6 +34,7 @@ impl Collection {
         };
         // A clean document is exactly what the reload handlers already settle against the disk.
         doc.discard_draft();
+        doc.clear_unsaved();
         self.reload_path(path);
         if let Some(dir) = self.item_path(path).and_then(|rel| rel.parent()) {
             self.prune_removed(dir);

@@ -439,6 +439,7 @@ mod sparql_body;
 mod sse;
 mod stream_types;
 mod system_trash;
+mod team_adopt;
 mod team_auth;
 mod team_autosync;
 mod team_driver;

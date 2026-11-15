@@ -13,6 +13,8 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 
+mod adopt;
+pub use adopt::AdoptError;
 mod conflict;
 pub use conflict::FileTexts;
 mod create;
