@@ -569,8 +569,9 @@ fn ci_audits_the_workflows_with_a_pinned_zizmor() {
 }
 
 #[test]
-fn the_toolchain_action_is_pinned_to_its_master_branch() {
-    // The stable branch is rewritten and orphans old pins; master only gains commits.
+fn the_toolchain_action_is_pinned_to_a_master_commit_named_by_its_tag() {
+    // The stable branch is rewritten and orphans old pins; master only gains commits. The
+    // comment names the v1 tag on that master commit, since zizmor wants a ref that still points at it.
     for name in workflow_files() {
         let text = std::fs::read_to_string(workflow_path(&name)).unwrap();
         for line in text
@@ -579,7 +580,7 @@ fn the_toolchain_action_is_pinned_to_its_master_branch() {
         {
             assert!(
                 line.trim_end().ends_with(
-                    "dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master"
+                    "dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1"
                 ),
                 "{name}: {line}"
             );
