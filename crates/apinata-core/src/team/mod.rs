@@ -5,10 +5,12 @@
 
 mod auth;
 mod driver;
+mod events;
 mod failure;
 mod machine;
 
 pub use auth::{Identity, TeamAuth, redact_token, team_options};
 pub use driver::{TeamConfig, TeamStatus, TeamSync};
+pub use events::{EventsConfig, EventsEnd, TeamNotice, follow_events, reconnect_delay};
 pub use failure::{Finding, SyncFailure, classify};
 pub use machine::{Block, Role, TeamAction, TeamEvent, TeamMachine, TeamState};
