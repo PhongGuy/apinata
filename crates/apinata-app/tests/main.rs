@@ -613,6 +613,7 @@ mod tags_edit;
 mod tags_section;
 mod team_admin;
 mod team_api;
+mod team_clash_dialog;
 mod team_join;
 mod team_paths;
 mod team_resume;

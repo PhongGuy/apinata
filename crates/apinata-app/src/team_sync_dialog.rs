@@ -1,20 +1,23 @@
 //! The team sync dialog: what stands in the way of a team collection's sync, line by line, with
-//! the action that clears it. It keeps no state of its own; it renders the workspace's live
-//! status and redraws whenever the workspace notifies.
+//! the action that clears it, then one row per clash with its answers. It keeps no state of its
+//! own; it renders the workspace's live status and redraws whenever the workspace notifies.
 
 use std::path::{Path, PathBuf};
 
-use apinata_core::team::{Block, TeamState, TeamStore, TeamSync};
+use apinata_core::team::{Block, ConflictCopies, TeamState, TeamStore, TeamSync};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
+use gpui_kit::component::notification::Notification;
+use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
-use gpui_kit::{App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div};
+use gpui_kit::{
+    AnyElement, App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div,
+};
 
 use crate::app::AppState;
 use crate::style::{SPACE_2, TEXT_SMALL};
 use crate::team_text::problem_lines;
 use crate::ui::dialog_footer;
-use crate::workspace::Workspace;
+use crate::workspace::{Clash, ClashAnswer, ClashKind, Workspace};
 
 /// The open dialog for one team collection.
 pub struct SyncView {
@@ -26,6 +29,23 @@ pub struct SyncView {
 // The most recently opened dialog; it lapses once the dialog lets go of it.
 struct OpenView(WeakEntity<SyncView>);
 impl Global for OpenView {}
+
+/// Settles the clash at `rel` of the team collection at `root`, toasting why when it cannot.
+pub(crate) fn settle(
+    workspace: &Entity<Workspace>,
+    root: &Path,
+    rel: &str,
+    answer: ClashAnswer,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if let Err(e) = workspace.update(cx, |w, cx| w.settle_clash(root, rel, answer, cx)) {
+        window.push_notification(
+            Notification::error(format!("Could not settle {rel}: {e}")),
+            cx,
+        );
+    }
+}
 
 /// The open sync dialog, for tests and the pilot; None when none is open.
 pub fn current(cx: &App) -> Option<Entity<SyncView>> {
@@ -90,6 +110,71 @@ impl SyncView {
         );
     }
 
+    // Opens Compare for a clashing copy: the file now (empty when missing) against the copy.
+    fn compare(&self, rel: &str, window: &mut Window, cx: &mut App) {
+        let Some(dir) = self.workspace.read(cx).team_copies(&self.root) else {
+            return;
+        };
+        let lossy = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned();
+        let disk = std::fs::read(self.root.join(rel))
+            .map(lossy)
+            .unwrap_or_default();
+        let mine = match ConflictCopies::new(dir.to_path_buf()).read(rel) {
+            Ok(bytes) => lossy(bytes),
+            Err(e) => {
+                let note = format!("Could not read your saved side of {rel}: {e}");
+                return window.push_notification(Notification::error(note), cx);
+            }
+        };
+        let (workspace, root) = (self.workspace.clone(), self.root.clone());
+        crate::compare_dialog::open_copy(workspace, root, rel.to_owned(), disk, mine, window, cx);
+    }
+
+    // One clash row: its path, then its answers. A read-only folder only keeps theirs, since
+    // settling any other way writes.
+    fn clash_row(
+        &self,
+        ix: usize,
+        clash: Clash,
+        read_only: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let answer = |id: &'static str, label: &'static str, answer: ClashAnswer| {
+            let rel = clash.rel.clone();
+            Button::new((id, ix))
+                .label(label)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    settle(&this.workspace, &this.root, &rel, answer, window, cx)
+                }))
+        };
+        let writes = match clash.kind {
+            ClashKind::Copy => ("team-use-mine", "Use mine", ClashAnswer::UseMine),
+            ClashKind::DeletedLocally => (
+                "team-delete-again",
+                "Delete again",
+                ClashAnswer::DeleteAgain,
+            ),
+        };
+        let writing = (!read_only).then(|| answer(writes.0, writes.1, writes.2));
+        let keep = answer("team-keep-theirs", "Keep theirs", ClashAnswer::KeepTheirs);
+        let compare = (clash.kind == ClashKind::Copy).then(|| {
+            let rel = clash.rel.clone();
+            Button::new(("team-compare", ix))
+                .label("Compare")
+                .on_click(cx.listener(move |this, _, window, cx| this.compare(&rel, window, cx)))
+        });
+        h_flex()
+            .id(("team-clash", ix))
+            .test_support()
+            .aria_label(clash.rel.clone())
+            .gap(SPACE_2)
+            .child(div().flex_1().child(clash.rel.clone()))
+            .children(compare)
+            .children(writing)
+            .child(keep)
+            .into_any_element()
+    }
+
     // Runs `act` on the collection's sync loop, if it still has one.
     fn with_sync(&self, cx: &App, act: impl FnOnce(&TeamSync)) {
         if let Some(sync) = self.workspace.read(cx).team_sync(&self.root) {
@@ -143,6 +228,13 @@ impl Render for SyncView {
                 })
                 .child(line)
         });
+        let (clashes, read_only) = {
+            let w = self.workspace.read(cx);
+            (w.team_clashes(&self.root), w.is_team_read_only(&self.root))
+        };
+        let clashes: Vec<_> = (clashes.into_iter().enumerate())
+            .map(|(ix, clash)| self.clash_row(ix, clash, read_only, cx))
+            .collect();
         // Long output scrolls inside the lines, so the footer with its fix stays in the window.
         let cap = crate::dialog_frame::titled_body_room(window) * 0.6;
         let close = Button::new("team-sync-close")
@@ -165,6 +257,7 @@ impl Render for SyncView {
                     .overflow_y_scroll()
                     .children(lines),
             )
+            .children(clashes)
             .child(footer)
     }
 }
