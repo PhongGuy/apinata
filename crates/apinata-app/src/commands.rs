@@ -32,9 +32,9 @@ use crate::search_dialog::OpenCollectionSearch;
 use crate::shell::{
     CloneRepository, CloseCollection, ExportCollection, ExportCollectionHtml,
     ExportCollectionOpenApi, ExportCollectionPostmanKeepScripts, ExportEnvironment,
-    ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, NewCollection,
-    OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments, OpenRuntimeVariables,
-    OpenVariablesOverview, ShowChanges, SwitchBranch, ToggleMockServer,
+    ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, JoinTeamServer,
+    NewCollection, OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments,
+    OpenRuntimeVariables, OpenVariablesOverview, ShowChanges, SwitchBranch, ToggleMockServer,
 };
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, CollapseAll, CopySelected, CutSelected, DeleteSelected,
@@ -358,6 +358,16 @@ pub fn registry() -> Vec<Command> {
                 "Clone repository…",
                 Collection,
                 shell(CloneRepository),
+                &[],
+            ),
+        ),
+        found_by(
+            &["team", "server", "potluck"],
+            command(
+                "collection.join_team_server",
+                "Join team server…",
+                Collection,
+                shell(JoinTeamServer),
                 &[],
             ),
         ),
