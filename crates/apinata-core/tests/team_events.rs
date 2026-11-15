@@ -211,3 +211,30 @@ fn a_roll_that_is_not_a_number_takes_the_full_delay() {
     let (s, m) = (Duration::from_secs(1), Duration::from_secs(60));
     assert_eq!(reconnect_delay(0, s, m, f64::NAN), Duration::from_secs(1));
 }
+
+#[tokio::test]
+async fn a_server_that_accepts_and_never_answers_reads_as_disconnected() {
+    // The listener keeps every accepted socket open and writes nothing, so no response head comes.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let held = tokio::spawn(async move {
+        let mut open = Vec::new();
+        while let Ok((socket, _)) = listener.accept().await {
+            open.push(socket);
+        }
+    });
+    let config = EventsConfig::new(
+        format!("{base}{PATH}"),
+        TeamAuth::new(format!("{base}/"), TOKEN),
+        "main",
+    )
+    .timings(
+        Duration::from_millis(20),
+        Duration::from_millis(80),
+        Duration::from_secs(5),
+        Duration::from_millis(100),
+    );
+    let got = notices_within(config, 600).await;
+    held.abort();
+    assert_eq!(got.first(), Some(&TeamNotice::Disconnected), "{got:?}");
+}

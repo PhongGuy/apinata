@@ -156,14 +156,19 @@ async fn connect(client: Option<&Client>, config: &EventsConfig) -> Attempt {
     let Some(client) = client else {
         return Attempt::Failed;
     };
-    let sent = client
-        .get(&config.url)
-        .bearer_auth(config.auth.token())
-        .header(reqwest::header::ACCEPT, "text/event-stream")
-        .send()
-        .await;
+    // A server that accepts but never sends a head is as dead as a silent stream, so the head
+    // gets the same idle limit and its expiry is a failed attempt that backs off.
+    let sent = tokio::time::timeout(
+        config.idle_limit,
+        client
+            .get(&config.url)
+            .bearer_auth(config.auth.token())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .send(),
+    )
+    .await;
     // Transport errors are dropped unread: their text could carry the request's header.
-    let Ok(res) = sent else {
+    let Ok(Ok(res)) = sent else {
         return Attempt::Failed;
     };
     match res.status() {
