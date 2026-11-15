@@ -1,6 +1,7 @@
 //! Startup: loading the settings, keymap, session and update state files, opening the main window
 //! over them, and flushing the files on quit.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -39,6 +40,10 @@ pub struct AppState {
     pub updates: Entity<Updates>,
     /// The secret store `start` was given, which holds the global proxy password.
     pub secrets: Arc<dyn SecretStore>,
+    /// The team file of server accounts and workspace bindings.
+    pub team: PathBuf,
+    /// The directory of team conflict copies, outside every repository.
+    pub conflicts: PathBuf,
 }
 
 impl Global for AppState {}
@@ -180,6 +185,8 @@ pub fn start_with_trash(
         approvals,
         updates,
         secrets: Arc::clone(&store),
+        team: paths.team.clone(),
+        conflicts: paths.conflicts.clone(),
     });
 
     // A quit must wait for every final write: a dropped flush task is a cancelled write.
