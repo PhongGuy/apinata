@@ -103,6 +103,23 @@ async fn a_git_address_on_another_host_is_refused() {
     assert!(matches!(e, TeamError::Protocol(_)), "{e:?}");
 }
 
+#[test]
+fn a_workspace_name_that_is_not_a_folder_name_is_refused() {
+    let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();
+    for (t, slug) in [
+        ("core", ".."),
+        ("core", "a/b"),
+        ("..", "api"),
+        ("a/b", "api"),
+        ("core", ""),
+    ] {
+        let w = workspace(server.as_str(), t, slug, "apinata", "write");
+        let ws: team::Workspace = serde_json::from_value(w).unwrap();
+        let e = team::clone_request(&server, &ws, Path::new("/tmp")).unwrap_err();
+        assert!(matches!(e, TeamError::Protocol(_)), "{t}/{slug}: {e:?}");
+    }
+}
+
 // Potluck's fixed seed for kind apinata, vendored from PhongGuy/potluck at the commit its NOTICE.md names.
 const SEED: &str = "tests/fixtures/potluck/kinds/apinata/seed/opencollection.yml";
 
