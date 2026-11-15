@@ -10,7 +10,7 @@ use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::tab::{Tab, TabBar};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::prelude::*;
 use gpui_kit::{
@@ -332,6 +332,9 @@ pub struct TabArea {
     // Tabs whose close waits for an actor, so a repeated close asks nothing a second time.
     settling: HashSet<TabId>,
     hovered: Option<TabId>,
+    // Whether the pointer rests on the tab strip, which after a click holds still until it
+    // leaves.
+    on_strip: bool,
     // Where a dragged tab would land: the tab under the pointer and the side of it.
     drop: Option<(TabId, Side)>,
     // What held focus when a tab's right press began, for the menu it opens to give back.
@@ -341,6 +344,8 @@ pub struct TabArea {
     reveal: ui::Reveal,
     revealed: Option<TabId>,
     fades: ui::StripFades,
+    // Where each tab's name lay, so a close button waits for its name rather than its folder.
+    names: ui::PartSpans,
     focus: FocusHandle,
     // Where focus goes once no tab is open: the sidebar's tree, set by the shell.
     empty_focus: Option<Entity<gpui_kit::component::tree::TreeState>>,
@@ -367,12 +372,14 @@ impl TabArea {
             pending: Vec::new(),
             settling: HashSet::new(),
             hovered: None,
+            on_strip: false,
             drop: None,
             before_menu: None,
             scroll: ScrollHandle::new(),
             reveal: ui::Reveal::whole_at_left(),
             revealed: None,
             fades: ui::StripFades::default(),
+            names: ui::PartSpans::default(),
             focus: cx.focus_handle(),
             empty_focus: None,
             strip: Slot::new(cx.weak_entity(), (), false, cx),
@@ -2209,6 +2216,22 @@ impl TabArea {
         self.close_saved(cx);
     }
 
+    // Which tabs may show their close button, from the strip's last layout: its slot clear
+    // of the fades and enough of the tab's name shown to read.
+    fn closable(&self, count: usize, window: &Window) -> Vec<bool> {
+        (0..count)
+            .map(|ix| self.may_close(count, ix, window))
+            .collect()
+    }
+
+    fn may_close(&self, count: usize, ix: usize, window: &Window) -> bool {
+        let slot = style::resolve(ROW_HEIGHT, window);
+        let fade = style::resolve(style::STRIP_FADE_WIDTH, window);
+        let readable = style::resolve(style::TAB_READABLE_WIDTH, window);
+        let name = self.names.get(ix);
+        ui::tail_clear_of_fades(&self.scroll, count, ix, slot, fade, readable, name)
+    }
+
     /// Records which tab the pointer is over. Leaving a tab clears the record only when it
     /// is still that tab, since entering the next one may be reported first.
     fn hover_tab(&mut self, id: TabId, hovered: bool, cx: &mut Context<Self>) {
@@ -2279,6 +2302,7 @@ impl TabArea {
         entry: &TabEntry,
         detail: Option<String>,
         active: bool,
+        closable: bool,
         cx: &mut Context<Self>,
     ) -> Tab {
         let view = cx.entity();
@@ -2313,9 +2337,11 @@ impl TabArea {
         let name = div()
             .id(("tab-name", ix))
             .test_support()
+            .relative()
             .min_w_0()
             .truncate()
-            .child(name);
+            .child(name)
+            .child(self.names.marker(&self.scroll, ix));
         let label = h_flex()
             .id(("tab", ix))
             .test_support()
@@ -2452,6 +2478,23 @@ impl TabArea {
             .flex_none()
             .justify_center()
             .map(|slot| {
+                // A slot under a fade, or beside too little of the name to read, offers no close
+                // button; a pin or dot still shows, inert, and a press selects the tab.
+                if !closable {
+                    let muted = cx.theme().muted_foreground;
+                    return slot
+                        .when(dirty && !active, |slot| {
+                            slot.child(ui::dirty_dot(("dirty", ix)).test_support())
+                        })
+                        .when(pinned && !(dirty && !active), |slot| {
+                            slot.child(
+                                div()
+                                    .id(("tab-pin", ix))
+                                    .test_support()
+                                    .child(Icon::new(IconName::Pin).text_color(muted)),
+                            )
+                        });
+                }
                 if dirty && !active && !hovered {
                     return slot.child(ui::dirty_dot(("dirty", ix)).test_support());
                 }
@@ -2477,10 +2520,8 @@ impl TabArea {
                         // A button cut by the strip's edge or under a fade selects its tab:
                         // the user cannot see what a press there would close.
                         close_view.update(cx, |a, cx| {
-                            let slot = style::resolve(ROW_HEIGHT, window);
-                            let fade = style::resolve(style::STRIP_FADE_WIDTH, window);
                             let count = a.workspace.read(cx).tabs().entries().len();
-                            if ui::tail_clear_of_fades(&a.scroll, count, ix, slot, fade) {
+                            if a.may_close(count, ix, window) {
                                 a.close(vec![id], window, cx);
                             } else {
                                 a.reveal.clicked();
@@ -2757,9 +2798,16 @@ impl TabArea {
     }
 
     // Everything the strip reads that does not notify it: each tab as shown, the pointer's
-    // hover and drag marks, the strip's gap and the zoom. Theme, focus and key bindings
-    // refresh the window; the strip's own scroll, fades and menus notify its view.
-    fn strip_inputs(&self, entries: &[TabEntry], active: TabId, cx: &App) -> StripInputs {
+    // hover and drag marks, which close buttons may show, the strip's gap and the zoom.
+    // Theme, focus and key bindings refresh the window; the strip's own scroll, fades and
+    // menus notify its view.
+    fn strip_inputs(
+        &self,
+        entries: &[TabEntry],
+        active: TabId,
+        window: &Window,
+        cx: &App,
+    ) -> StripInputs {
         let ws = self.workspace.read(cx);
         let labels: Vec<String> = entries.iter().map(|e| self.tab_label(e, cx)).collect();
         let details = self.details(entries, &labels, cx);
@@ -2785,6 +2833,8 @@ impl TabArea {
             tabs,
             active,
             hovered: self.hovered,
+            on_strip: self.on_strip,
+            closable: self.closable(entries.len(), window),
             drop: self.drop,
             gap: ui::strip_gap(&self.scroll, entries.len()),
             zoom: zoom::current(cx),
@@ -2804,11 +2854,12 @@ impl TabArea {
         let details = self.details(&entries, &labels, cx);
         let dirty: Vec<bool> = entries.iter().map(|e| self.is_dirty(e, cx)).collect();
         let methods: Vec<Option<String>> = entries.iter().map(|e| self.method_of(e, cx)).collect();
+        let closable = self.closable(entries.len(), window);
         let tabs: Vec<Tab> = entries
             .iter()
             .zip(details.iter().cloned())
             .enumerate()
-            .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, cx))
+            .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, closable[ix], cx))
             .collect();
         let overflow = self.overflow_menu(labels, methods, details, dirty, selected);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
@@ -2842,13 +2893,19 @@ impl TabArea {
             .test_support()
             .relative()
             .on_scroll(ui::wheel_sideways(&self.scroll))
+            .on_hover(cx.listener(|a, on: &bool, _, cx| {
+                if a.on_strip != *on {
+                    a.on_strip = *on;
+                    cx.notify();
+                }
+            }))
             .child(bar)
             .children(fades)
             .child(self.reveal.watch_strip_under_pointer(
                 &self.scroll,
                 selected,
                 entries.len(),
-                self.hovered == Some(active),
+                self.on_strip,
             ))
             .into_any_element()
     }
@@ -2867,6 +2924,8 @@ struct StripInputs {
     tabs: Vec<TabShown>,
     active: TabId,
     hovered: Option<TabId>,
+    on_strip: bool,
+    closable: Vec<bool>,
     drop: Option<(TabId, Side)>,
     gap: Pixels,
     zoom: f32,
@@ -2937,7 +2996,7 @@ impl Render for TabArea {
         if self.reveal.pending() {
             self.strip.invalidate();
         }
-        let inputs = self.strip_inputs(&entries, active, cx);
+        let inputs = self.strip_inputs(&entries, active, window, cx);
         let style = StyleRefinement::default().w_full().flex_none();
         let strip = self.strip.element(inputs, style, window, cx);
         // Editors are made the first time their tab shows, and kept while it stays open.

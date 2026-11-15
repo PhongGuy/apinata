@@ -356,14 +356,15 @@ fn an_environment_created_for_the_variable_is_selected(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
-fn a_plain_create_leaves_the_selection_alone(cx: &mut TestAppContext) {
+// With nothing chosen yet, a plain create makes the new environment the active one.
+fn a_plain_create_with_none_chosen_becomes_active(cx: &mut TestAppContext) {
     let col = with_envs();
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, ed) = env_editor(cx, &ws, &root);
     cx.run_until_parked();
     ed.update(cx, |e, cx| e.create("qa", cx));
     cx.run_until_parked();
-    assert_eq!(selected(cx, &ws, &root), None);
+    assert_eq!(selected(cx, &ws, &root).as_deref(), Some("qa"));
 }
 
 #[gpui_kit::test]
