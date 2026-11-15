@@ -361,6 +361,9 @@ pub enum Command {
         copies: ConflictCopies,
         /// The copy's path inside the store.
         rel: String,
+        /// Told once: true when the copy became the request's draft, false when it could not
+        /// be read or adopted.
+        reply: async_channel::Sender<bool>,
     },
     /// Change the tree.
     Tree(TreeOp),

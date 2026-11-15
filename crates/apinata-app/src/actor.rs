@@ -408,8 +408,14 @@ impl Actor {
                 self.discard_stale(&target);
                 Ok(())
             }
-            Command::AdoptCopy { item, copies, rel } => {
-                self.adopt_copy(item, copies, rel);
+            Command::AdoptCopy {
+                item,
+                copies,
+                rel,
+                reply,
+            } => {
+                let adopted = self.adopt_copy(item, copies, rel);
+                reply.try_send(adopted).ok();
                 Ok(())
             }
             Command::Network(op) => {
@@ -628,16 +634,19 @@ impl Actor {
     }
 
     /// Open a team conflict copy as its request's edits, under the banner a changed or removed
-    /// file gets. A copy that cannot be read or adopted stays where it is, unopened.
-    fn adopt_copy(&mut self, item: ItemPath, copies: ConflictCopies, rel: String) {
+    /// file gets, and whether it did. A copy that cannot be read or adopted stays where it
+    /// is, unopened.
+    fn adopt_copy(&mut self, item: ItemPath, copies: ConflictCopies, rel: String) -> bool {
         let Ok(bytes) = copies.read(&rel) else {
-            return;
+            return false;
         };
         let names = self.environment_names();
-        if let Ok(change) = self.collection.adopt_conflict_copy(&item, &bytes) {
-            self.absorb(&[change], &names);
-            self.copies.insert(Target::Request(item), (copies, rel));
-        }
+        let Ok(change) = self.collection.adopt_conflict_copy(&item, &bytes) else {
+            return false;
+        };
+        self.absorb(&[change], &names);
+        self.copies.insert(Target::Request(item), (copies, rel));
+        true
     }
 
     /// Delete each adopted copy whose request is saved, reverted or gone and no longer marked

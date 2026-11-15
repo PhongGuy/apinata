@@ -1520,6 +1520,8 @@ impl Shell {
             | WorkspaceEvent::SplitRatio
             | WorkspaceEvent::Reverted { .. }
             | WorkspaceEvent::TeamStatus { .. }
+            | WorkspaceEvent::TeamProblem { .. }
+            | WorkspaceEvent::TeamReadOnly { .. }
             | WorkspaceEvent::Delivered { .. } => {}
             WorkspaceEvent::RevealFolder { root, folder } => {
                 self.sidebar_auto_hidden = false;
