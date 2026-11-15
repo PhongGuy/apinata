@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 use apinata_core::team::{Block, TeamState, TeamSync};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{WindowExt as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div};
 
-use crate::style::SPACE_2;
+use crate::style::{SPACE_2, TEXT_SMALL};
 use crate::team_text::problem_lines;
 use crate::ui::dialog_footer;
 use crate::workspace::Workspace;
@@ -77,7 +77,7 @@ impl SyncView {
 }
 
 impl Render for SyncView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = (self.workspace.read(cx).team_status(&self.root)).map(|s| s.state);
         // Retry is the fix for a refusal the user can correct here; Discard unblocks pulls in a
         // read-only folder held back by outside edits.
@@ -97,13 +97,27 @@ impl Render for SyncView {
                 .label("Discard")
                 .on_click(cx.listener(|this, _, _, cx| this.with_sync(cx, TeamSync::discard)))
         });
+        // A hook's output or git's message follows its heading line in a mono font.
+        let output_at = matches!(
+            state,
+            Some(TeamState::Blocked(
+                Block::Hook { .. } | Block::Failed { .. }
+            ))
+        )
+        .then_some(1);
+        let mono = cx.theme().mono_font_family.clone();
         let lines = self.lines(cx).into_iter().enumerate().map(|(ix, line)| {
             div()
                 .id(("team-line", ix))
                 .test_support()
                 .aria_label(line.clone())
+                .when(output_at == Some(ix), |el| {
+                    el.font_family(mono.clone()).text_size(TEXT_SMALL)
+                })
                 .child(line)
         });
+        // Long output scrolls inside the lines, so the footer with its fix stays in the window.
+        let cap = crate::dialog_frame::titled_body_room(window) * 0.6;
         let close = Button::new("team-sync-close")
             .label("Close")
             .on_click(|_, window, cx| window.close_dialog(cx));
@@ -116,7 +130,14 @@ impl Render for SyncView {
             .id("team-sync-dialog")
             .test_support()
             .gap(SPACE_2)
-            .children(lines)
+            .child(
+                v_flex()
+                    .id("team-lines")
+                    .gap(SPACE_2)
+                    .max_h(cap)
+                    .overflow_y_scroll()
+                    .children(lines),
+            )
             .child(footer)
     }
 }

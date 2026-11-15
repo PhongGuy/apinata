@@ -171,3 +171,30 @@ fn quiet_states_say_so_in_one_line() {
         ["A commit hook refused the commit:", "nope"]
     );
 }
+
+#[test]
+fn every_other_state_has_its_own_line() {
+    let line = |state: TeamState| problem_lines(&TeamStatus::new(state, 0, vec![]));
+    assert_eq!(
+        line(TeamState::Offline),
+        ["The server cannot be reached. Changes are committed here and pushed once it is back."]
+    );
+    assert_eq!(
+        line(TeamState::Blocked(Block::SignedOut)),
+        [
+            "You are signed out of this team server. Changes are committed here until you sign in again."
+        ]
+    );
+    assert_eq!(
+        line(TeamState::Blocked(Block::Gone)),
+        ["This workspace is no longer on the server."]
+    );
+    assert_eq!(
+        line(TeamState::Blocked(Block::Failed {
+            message: " boom\n".into()
+        })),
+        ["Sync failed:", "boom"]
+    );
+    assert_eq!(line(TeamState::Committing), ["Syncing."]);
+    assert_eq!(line(TeamState::Squashing), ["Syncing."]);
+}

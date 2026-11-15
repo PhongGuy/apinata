@@ -135,3 +135,36 @@ fn an_idle_folder_offers_no_action(cx: &mut TestAppContext) {
     assert!(!shown(cx, s.win, "team-discard"));
     assert!(cx.update(|cx| team_sync_dialog::current(cx)).is_some());
 }
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn long_hook_output_scrolls_and_keeps_retry_in_the_window(cx: &mut TestAppContext) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let hook = col.path().join(".git/hooks/pre-commit");
+    std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    let script = "#!/bin/sh\ni=0\nwhile [ $i -lt 200 ]; do echo \"refused line $i\" >&2; i=$((i+1)); done\nexit 1\n";
+    std::fs::write(&hook, script).unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
+    wait_for(cx, "the hook block", |cx| {
+        matches!(state(cx, &s), Some(TeamState::Blocked(Block::Hook { .. })))
+    });
+    open(cx, &s);
+    let (retry, window) = cx
+        .update_window(s.win, |_, w, _| {
+            (
+                w.try_find("team-retry").map(|e| e.bounds()),
+                w.viewport_size(),
+            )
+        })
+        .unwrap();
+    let retry = retry.expect("Retry is shown");
+    assert!(
+        retry.bottom() <= window.height,
+        "{retry:?} outside {window:?}"
+    );
+}
