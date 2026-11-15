@@ -3360,6 +3360,8 @@ impl DialogFooter {
 impl RenderOnce for DialogFooter {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         // The flexible hint cell pushes the buttons to the right edge whether or not it holds text.
+        // Buttons that do not fit wrap onto rows below, still right-aligned, so the primary ends
+        // the last row at the right edge.
         h_flex()
             .id("dialog-footer")
             .key_context(DIALOG_FOOTER_CONTEXT)
@@ -3370,6 +3372,8 @@ impl RenderOnce for DialogFooter {
             .ring_room(RingSides::BOTTOM)
             .gap(SPACE_2)
             .items_center()
+            .flex_wrap()
+            .justify_end()
             .child(div().flex_1().children(self.hint))
             .children(self.buttons)
     }
