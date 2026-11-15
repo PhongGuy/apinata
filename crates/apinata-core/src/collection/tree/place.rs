@@ -72,7 +72,8 @@ impl Collection {
             return Err(TreeError::NotFound { item: dir });
         }
         let new = to.to_path(&self.root);
-        if to != item && fs::symlink_metadata(&new).is_ok() {
+        let old = item.to_path(&self.root);
+        if to != item && fs::symlink_metadata(&new).is_ok() && !same_file(&old, &new) {
             return Err(TreeError::Taken { path: new });
         }
         // Each recorded item by where it is now: the placed item is still at `item`.
@@ -90,13 +91,10 @@ impl Collection {
             checked.push((item.clone(), 0));
         }
         self.check_targets(&checked)?;
-        if let Some(name) = &name {
-            self.write_name(item, name)?;
-        }
+        // The rename goes first, so a refused one leaves every file as it was.
         let placed = if to == item {
             item.clone()
         } else {
-            let old = item.to_path(&self.root);
             fs::rename(&old, &new).map_err(|e| io_error(&old, e))?;
             let node = self
                 .detach(item)
@@ -104,14 +102,15 @@ impl Collection {
             self.attach(&dir, node, &old, &new);
             child(&dir, &new)?
         };
-        for (path, seq) in &seqs {
-            if let Err(source) = self.write_stored(path, *seq) {
-                self.reload();
-                return Err(TreeError::Renumber {
-                    moved: placed,
-                    source: Box::new(source),
-                });
-            }
+        let named = name.map_or(Ok(()), |name| self.write_name(&placed, &name));
+        let written = named
+            .and_then(|()| (seqs.iter()).try_for_each(|(path, seq)| self.write_stored(path, *seq)));
+        if let Err(source) = written {
+            self.reload();
+            return Err(TreeError::Renumber {
+                moved: placed,
+                source: Box::new(source),
+            });
         }
         for (path, _) in &seqs {
             if let Some(folder) = path.parent().and_then(|p| self.folder_mut(&p)) {
@@ -168,4 +167,17 @@ impl Collection {
             None => Ok(()),
         }
     }
+}
+
+// Whether `a` and `b` name one file, as a path differing only in letter case does on a
+// case-insensitive file system.
+fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if let (Ok(x), Ok(y)) = (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+            return x.dev() == y.dev() && x.ino() == y.ino();
+        }
+    }
+    matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }

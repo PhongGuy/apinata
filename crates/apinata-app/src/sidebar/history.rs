@@ -98,6 +98,11 @@ impl Gesture {
     }
 }
 
+/// The commands whose records put `items` back.
+pub(super) fn commands(items: &[Placed]) -> Vec<u64> {
+    items.iter().map(|p| p.command).collect()
+}
+
 fn bare(item: &ItemPath) -> &str {
     let name = item.file_name();
     name.strip_suffix(".yml").unwrap_or(name)
@@ -114,7 +119,7 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) -> Vec<(u64, ItemPath)> {
         if step == Step::Forward {
-            self.redo.clear();
+            self.clear_redo(cx);
         }
         let mut sent = BTreeMap::new();
         let ids: Vec<(u64, ItemPath)> = self.workspace.update(cx, |w, cx| {
@@ -196,6 +201,11 @@ impl Sidebar {
             .partition(Gesture::finished);
         self.gestures = open;
         for g in done {
+            let failed: Vec<u64> = (g.sent.iter())
+                .filter(|(_, s)| s.outcome == Some(None))
+                .map(|(id, _)| *id)
+                .collect();
+            self.forget_records(&g.root, g.generation, failed, cx);
             let items: Vec<Placed> = (g.sent.into_iter())
                 .filter_map(|(command, s)| {
                     Some(Placed {
@@ -225,8 +235,17 @@ impl Sidebar {
     pub(super) fn push_history(&mut self, step: TreeStep, cx: &mut Context<Self>) {
         self.history.push(step);
         while self.history.len() > UNDO_DELETE_CAP {
-            let TreeStep::Delete(old) = self.history.remove(0) else {
-                continue;
+            let old = match self.history.remove(0) {
+                TreeStep::Delete(old) => old,
+                TreeStep::Placed {
+                    root,
+                    generation,
+                    items,
+                } => {
+                    self.forget_records(&root, generation, commands(&items), cx);
+                    continue;
+                }
+                TreeStep::Retrash { .. } => continue,
             };
             if self.generation(&old.root, cx) == Some(old.generation) {
                 self.workspace.update(cx, |w, cx| {
@@ -237,6 +256,37 @@ impl Sidebar {
                 });
             }
         }
+    }
+
+    /// Ends the redo stack, as a new action does, letting its records go.
+    pub(super) fn clear_redo(&mut self, cx: &mut Context<Self>) {
+        for step in std::mem::take(&mut self.redo) {
+            if let TreeStep::Placed {
+                root,
+                generation,
+                items,
+            } = step
+            {
+                self.forget_records(&root, generation, commands(&items), cx);
+            }
+        }
+    }
+
+    // Tells the instance `generation` of `root` that no step needs these commands' records;
+    // a closed instance took them with it.
+    pub(super) fn forget_records(
+        &mut self,
+        root: &Path,
+        generation: u64,
+        commands: Vec<u64>,
+        cx: &mut Context<Self>,
+    ) {
+        if commands.is_empty() || self.generation(root, cx) != Some(generation) {
+            return;
+        }
+        let op = TreeOp::ForgetRecords { commands };
+        self.workspace
+            .update(cx, |w, cx| w.send(root, Command::Tree(op), cx));
     }
 
     // Drops the steps of collection instances no longer open.
@@ -273,7 +323,11 @@ impl Sidebar {
                 root,
                 generation,
                 items,
-            }) => self.put_back(&root, generation, items, Step::Redo, window, cx),
+            }) => {
+                let done = commands(&items);
+                self.put_back(&root, generation, items, Step::Redo, window, cx);
+                self.forget_records(&root, generation, done, cx);
+            }
             Some(TreeStep::Retrash { root, items, .. }) => {
                 self.send_deletes(&root, items, true, window, cx);
             }

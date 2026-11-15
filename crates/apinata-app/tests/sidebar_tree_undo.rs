@@ -474,3 +474,93 @@ fn the_palette_offers_undo_and_redo_in_sidebar_while_each_has_a_step(cx: &mut Te
         "and can be redone"
     );
 }
+
+// Folders A and B, with `n` requests the app wrote in B.
+fn many(cx: &mut TestAppContext, n: usize) -> (tempfile::TempDir, Started) {
+    use apinata_app::command::{Command, TreeOp};
+    let col = write_tree(&[("opencollection.yml", ROOT)]);
+    let s = started(cx, &col);
+    for name in ["A", "B"] {
+        let op = TreeOp::CreateFolder {
+            parent: apinata_core::ItemPath::root(),
+            name: name.into(),
+        };
+        send_tree(cx, &s, op);
+    }
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        for i in 0..n {
+            let op = TreeOp::CreateRequest {
+                parent: ip("B"),
+                name: format!("r{i:03}"),
+            };
+            w.send(&root, Command::Tree(op), cx);
+        }
+    });
+    frame(cx, s.win);
+    expand(cx, &s, "B");
+    (col, s)
+}
+
+// Cuts every request of `from` with a multi-selection and pastes them into `to`.
+fn move_all(cx: &mut TestAppContext, s: &Started, from: &str, to: &str) {
+    let view = sidebar(cx, s);
+    let snap = ws_snap(cx, &s.ws, &s.root);
+    let paths: Vec<String> = (snap.content.rows.iter())
+        .filter(|r| r.path.parent().is_some_and(|p| p.as_str() == from))
+        .map(|r| r.path.as_str().to_owned())
+        .collect();
+    // A plain click first, so the folder row is not the anchor of the selection.
+    cx.update_window(s.win, |_, w, cx| w.click(row(&paths[0]), cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        view.update(cx, |v, cx| {
+            for p in &paths[1..] {
+                v.modified_click(&row(p), true, w, cx);
+            }
+            v.cut_selection(w, cx);
+            v.paste(&s.root, ip(to), w, cx);
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert!(children(cx, s, from).is_empty(), "every item left {from}");
+}
+
+#[gpui_kit::test]
+fn a_selection_move_of_more_than_256_items_undoes_byte_identically(cx: &mut TestAppContext) {
+    let (_col, s) = many(cx, 260);
+    let before = all_bytes(&s.root);
+    move_all(cx, &s, "B", "A");
+    assert_eq!(
+        children(cx, &s, "A").len(),
+        260,
+        "each request moved on its own"
+    );
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert_eq!(all_bytes(&s.root), before);
+}
+
+#[gpui_kit::test]
+fn the_oldest_of_ten_stacked_steps_undoes_byte_identically(cx: &mut TestAppContext) {
+    let (_col, s) = many(cx, 26);
+    let before = all_bytes(&s.root);
+    for step in 0..10 {
+        let (from, to) = if step % 2 == 0 {
+            ("B", "A")
+        } else {
+            ("A", "B")
+        };
+        move_all(cx, &s, from, to);
+        if step == 0 {
+            expand(cx, &s, "A");
+        }
+    }
+    focus_tree(cx, &s);
+    for _ in 0..10 {
+        press(cx, &s, &secondary("z"));
+    }
+    assert_eq!(all_bytes(&s.root), before);
+}

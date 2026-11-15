@@ -32,9 +32,6 @@ use crate::snapshot::{CollectionSnapshot, SnapshotCache};
 use crate::stale::{Reloaded, StaleLedger, is_within, moved};
 
 /// The notice for an import sent before a reload of its request.
-/// How many moves, renames and put-backs keep what they changed, for an exact undo.
-const SEQ_RECORD_CAP: usize = 256;
-
 const RELOADED_MESSAGE: &str = "the request was reloaded from disk; import it again";
 
 /// What the actor tells its model.
@@ -204,9 +201,8 @@ struct Actor {
     trash: Arc<dyn Trash>,
     /// Items trashed and not yet forgotten, by the id of the command that trashed them.
     trashed: HashMap<u64, Trashed>,
-    /// What each recent move, rename or put-back changed, by its command id, oldest first.
+    /// What each move, rename or put-back changed, by its command id, until forgotten.
     seq_records: HashMap<u64, apinata_core::SeqRecord>,
-    seq_order: std::collections::VecDeque<u64>,
     /// Requests a spec update removed and not yet forgotten, by a ticket from `prune_ticket`.
     pruned: HashMap<u64, PrunedRequest>,
     /// The next ticket for an item a spec update removed. They count down from the top, so they
@@ -267,7 +263,6 @@ impl Actor {
             trash: Arc::new(crate::workspace::NoTrash),
             trashed: HashMap::new(),
             seq_records: HashMap::new(),
-            seq_order: std::collections::VecDeque::new(),
             pruned: HashMap::new(),
             prune_ticket: u64::MAX,
             network_ack: None,
@@ -729,7 +724,9 @@ impl Actor {
                 TreeOp::Delete { item } => TreeOp::Delete { item: p(item) },
                 TreeOp::DeleteEmptyFolder { item } => TreeOp::DeleteEmptyFolder { item: p(item) },
                 TreeOp::Trash { item } => TreeOp::Trash { item: p(item) },
-                other @ (TreeOp::Restore { .. } | TreeOp::ForgetTrash { .. }) => other,
+                other @ (TreeOp::Restore { .. }
+                | TreeOp::ForgetTrash { .. }
+                | TreeOp::ForgetRecords { .. }) => other,
                 TreeOp::Paste { target, source } => TreeOp::Paste {
                     target: p(target),
                     source,
@@ -995,6 +992,12 @@ impl Actor {
                 self.pruned.remove(&ticket);
                 Ok(None)
             }
+            TreeOp::ForgetRecords { commands } => {
+                for id in commands {
+                    self.seq_records.remove(&id);
+                }
+                Ok(None)
+            }
             TreeOp::CreateDraft { parent, kind } => created(c.create_draft_of_kind(&parent, kind)),
             TreeOp::CreateDraftFromPresets { parent } => {
                 created(c.create_draft_from_presets(&parent))
@@ -1058,9 +1061,8 @@ impl Actor {
         }
     }
 
-    /// The target kind of a tree item, decided before the operation changes it.
     // Keeps the names and seqs a move, rename or put-back is about to change, so a later
-    // `Place` can restore them exactly; the oldest go past a cap.
+    // `Place` can restore them exactly; each stays until `ForgetRecords` names it.
     fn record_seqs(&mut self, id: u64, op: &TreeOp) {
         let parent = |p: &ItemPath| p.parent().unwrap_or_else(ItemPath::root);
         let dirs = match op {
@@ -1078,14 +1080,9 @@ impl Actor {
         };
         let record = self.collection.seq_record(&dirs);
         self.seq_records.insert(id, record);
-        self.seq_order.push_back(id);
-        while self.seq_order.len() > SEQ_RECORD_CAP {
-            if let Some(old) = self.seq_order.pop_front() {
-                self.seq_records.remove(&old);
-            }
-        }
     }
 
+    /// The target kind of a tree item, decided before the operation changes it.
     fn item_target(&self, item: &ItemPath) -> Target {
         match self.collection.folder(item) {
             Some(_) => Target::Folder(item.clone()),

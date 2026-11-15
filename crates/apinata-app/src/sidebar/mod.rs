@@ -2015,7 +2015,11 @@ impl Sidebar {
                 root,
                 generation,
                 items,
-            }) => self.put_back(&root, generation, items, Step::Undo, window, cx),
+            }) => {
+                let done = history::commands(&items);
+                self.put_back(&root, generation, items, Step::Undo, window, cx);
+                self.forget_records(&root, generation, done, cx);
+            }
             Some(TreeStep::Retrash { .. }) | None => {}
         }
     }
@@ -2114,7 +2118,7 @@ impl Sidebar {
         // The trash makes a prompt needless unless unsaved edits, or rows nobody selected inside
         // a selected folder, would go with the items.
         if trash && !dirty && unpicked.is_empty() {
-            self.redo.clear();
+            self.clear_redo(cx);
             self.send_deletes(&root, paths, true, window, cx);
             return;
         }
@@ -2127,7 +2131,7 @@ impl Sidebar {
         cx.spawn_in(window, async move |this, cx| {
             if answer.recv().await == Ok(1) {
                 this.update_in(cx, |s, window, cx| {
-                    s.redo.clear();
+                    s.clear_redo(cx);
                     s.send_deletes(&root, paths, trash, window, cx)
                 })
                 .ok();
@@ -2195,7 +2199,7 @@ impl Sidebar {
         let folder = node.kind == NodeKind::Folder;
         let trash = example.is_none() && self.workspace.read(cx).trash_available();
         if trash && !self.dirty_within(&root, std::iter::once(&item)) {
-            self.redo.clear();
+            self.clear_redo(cx);
             self.send_deletes(&root, vec![item], true, window, cx);
             return;
         }
@@ -2211,7 +2215,7 @@ impl Sidebar {
                         w.delete_example(&root, item, index, cx);
                     }),
                     None if trash => {
-                        s.redo.clear();
+                        s.clear_redo(cx);
                         s.send_deletes(&root, vec![item], true, window, cx);
                     }
                     None => {
