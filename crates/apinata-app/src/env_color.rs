@@ -1,6 +1,7 @@
 //! An environment's colour as drawn outside its editor, and the contrast rule for text on it.
 
-use gpui_kit::component::h_flex;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::{Icon, Sizable as _, h_flex};
 use gpui_kit::{
     AnyElement, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
     SharedString, Styled as _, TestSupportExt as _, div, hsla,
@@ -50,12 +51,24 @@ pub fn dot_or_space(id: impl Into<ElementId>, fill: Option<Hsla>) -> AnyElement 
     }
 }
 
-/// `name` led by a dot of `fill` (`dot_id`), kept on one line so a long name still ellipsizes.
-pub fn dotted(dot_id: &'static str, fill: Hsla, name: SharedString) -> impl IntoElement {
+/// A picker trigger's title: its scope `icon` (`icon_id`) in the text colour, then `name`, led
+/// by a dot (`dot_id`) when it has a `fill`; kept on one line so a long name still ellipsizes.
+pub fn scoped(
+    (icon_id, icon): (&'static str, IconName),
+    (dot_id, fill): (&'static str, Option<Hsla>),
+    name: SharedString,
+) -> impl IntoElement {
     h_flex()
         .min_w_0()
         .gap(SPACE_1)
-        .child(dot(dot_id, fill))
+        .child(
+            div()
+                .id(icon_id)
+                .test_support()
+                .flex_none()
+                .child(Icon::new(icon).xsmall()),
+        )
+        .children(fill.map(|fill| dot(dot_id, fill)))
         .child(div().min_w_0().truncate().child(name))
 }
 

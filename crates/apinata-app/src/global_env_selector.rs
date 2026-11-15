@@ -1,21 +1,31 @@
 //! The title bar's global environment picker, which follows the workspace rather than a
 //! collection and selects the one global environment every collection's sends use.
 
-use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
+use gpui_kit::component::select::{
+    SearchableVec, Select, SelectEvent, SelectGroup, SelectItem, SelectState,
+};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render, SharedString,
-    Styled as _, Subscription, TestSupportExt as _, Window, div,
+    StatefulInteractiveElement as _, Styled as _, Subscription, TestSupportExt as _, Window, div,
 };
 
 use crate::commands::label;
-use crate::env_color::{dotted, env_fill, picker_row};
+use crate::env_color::{env_fill, picker_row, scoped};
+use crate::env_selector::ACTIONS_GROUP;
 use crate::global_env_editor::open_global_env_editor;
+use crate::shell::GLOBAL_ENV_ICON;
 use crate::style::ENV_CONTROL_WIDTH;
 use crate::ui::ring_overlay;
 use crate::workspace::Workspace;
+
+/// The tooltip and accessible name of the global environment select.
+pub const GLOBAL_ENV_SELECT_TIP: &str = "Global environment";
+
+/// The header of the picker group that lists the global environments.
+pub const GLOBALS_GROUP: &str = "Global environments";
 
 /// The picker item that selects no global environment.
 pub const NO_GLOBAL_ENVIRONMENT: &str = "No globals";
@@ -58,8 +68,9 @@ impl SelectItem for GlobalEnvItem {
     }
 
     fn display_title(&self) -> Option<AnyElement> {
-        let fill = self.1?;
-        Some(dotted("global-env-trigger-dot", fill, self.0.clone()).into_any_element())
+        let icon = ("global-env-scope-icon", GLOBAL_ENV_ICON);
+        let title = scoped(icon, ("global-env-trigger-dot", self.1), self.0.clone());
+        Some(title.into_any_element())
     }
 
     fn value(&self) -> &SharedString {
@@ -75,10 +86,13 @@ impl SelectItem for GlobalEnvItem {
     }
 }
 
+/// The picker's rows: the global environments, then the manage row in a group of its own.
+pub type GlobalEnvRows = SearchableVec<SelectGroup<GlobalEnvItem>>;
+
 /// A select over the workspace's global environments that picks the active one.
 pub struct GlobalEnvSelector {
     workspace: Entity<Workspace>,
-    select: Entity<SelectState<Vec<GlobalEnvItem>>>,
+    select: Entity<SelectState<GlobalEnvRows>>,
     listed: Vec<SharedString>,
     // The dot colour of each `listed` entry.
     dots: Vec<Option<Hsla>>,
@@ -89,7 +103,8 @@ pub struct GlobalEnvSelector {
 impl GlobalEnvSelector {
     /// Builds the picker over `workspace`, following its global environments.
     pub fn new(workspace: Entity<Workspace>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let select = cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
+        let rows = GlobalEnvRows::new(Vec::new());
+        let select = cx.new(|cx| SelectState::new(rows, None, window, cx));
         let subscriptions = vec![
             cx.observe_in(&workspace, window, |this, _, window, cx| {
                 this.sync(window, cx)
@@ -97,7 +112,7 @@ impl GlobalEnvSelector {
             cx.subscribe_in(
                 &select,
                 window,
-                |this, _, event: &SelectEvent<Vec<GlobalEnvItem>>, window, cx| {
+                |this, _, event: &SelectEvent<GlobalEnvRows>, window, cx| {
                     if let SelectEvent::Confirm(Some(item)) = event {
                         let item = item.clone();
                         this.choose(&item, window, cx);
@@ -127,8 +142,18 @@ impl GlobalEnvSelector {
             .collect()
     }
 
+    /// `items()` as the picker groups it: [`GLOBALS_GROUP`], then [`ACTIONS_GROUP`] holding
+    /// [`manage_global_environments`].
+    pub fn groups(&self) -> Vec<(SharedString, Vec<SharedString>)> {
+        let (globals, actions) = self.listed.split_at(self.listed.len().saturating_sub(1));
+        vec![
+            (GLOBALS_GROUP.into(), globals.to_vec()),
+            (ACTIONS_GROUP.into(), actions.to_vec()),
+        ]
+    }
+
     /// The select itself, for its focus handle.
-    pub fn select(&self) -> &Entity<SelectState<Vec<GlobalEnvItem>>> {
+    pub fn select(&self) -> &Entity<SelectState<GlobalEnvRows>> {
         &self.select
     }
 
@@ -182,10 +207,16 @@ impl GlobalEnvSelector {
         };
         if items != self.listed || dots != self.dots {
             let any = dots.iter().any(Option::is_some);
-            let rows = (items.iter().cloned())
+            let mut globals: Vec<GlobalEnvItem> = (items.iter().cloned())
                 .zip(dots.iter().copied())
                 .map(|(name, dot)| GlobalEnvItem(name, dot, any))
                 .collect();
+            // `items()` always ends with the manage row.
+            let manage = globals.split_off(globals.len().saturating_sub(1));
+            let rows = GlobalEnvRows::new(vec![
+                SelectGroup::new(GLOBALS_GROUP).items(globals),
+                SelectGroup::new(ACTIONS_GROUP).items(manage),
+            ]);
             self.listed = items;
             self.dots = dots;
             self.select
@@ -219,7 +250,7 @@ impl GlobalEnvSelector {
 
 impl Render for GlobalEnvSelector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // A borderless select like the collection picker that fills the host's slot;
+        // A light, borderless select like the collection picker that fills the host's slot;
         // none reads as a placeholder, and the app draws the ring the select lacks.
         let muted = cx.theme().muted_foreground;
         let none = self
@@ -235,6 +266,15 @@ impl Render for GlobalEnvSelector {
             .w_full()
             .max_w(ENV_CONTROL_WIDTH)
             .overflow_hidden()
+            .rounded(cx.theme().radius)
+            .tooltip(crate::ui::text_tooltip(
+                "global-env-selector-tooltip",
+                GLOBAL_ENV_SELECT_TIP,
+            ))
+            .hover({
+                let fill = crate::ui::ghost_hover_fill(cx);
+                move |s| s.bg(fill)
+            })
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| this.refresh(cx)),
@@ -242,6 +282,7 @@ impl Render for GlobalEnvSelector {
             .child(
                 Select::new(&self.select)
                     .id("global-env-select")
+                    .accessibility_label(GLOBAL_ENV_SELECT_TIP)
                     .appearance(false)
                     .small()
                     .when(none, |s| s.text_color(muted)),

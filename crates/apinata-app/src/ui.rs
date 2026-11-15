@@ -1021,6 +1021,17 @@ pub trait RingRoom: gpui_kit::Styled + Sized {
 
 impl<T: gpui_kit::Styled> RingRoom for T {}
 
+/// The fill the kit gives a hovered ghost button, for a control that should hover as the
+/// title bar's buttons do.
+pub fn ghost_hover_fill(cx: &App) -> Hsla {
+    let accent = cx.theme().accent;
+    if cx.theme().mode.is_dark() {
+        accent.opacity(0.5)
+    } else {
+        accent
+    }
+}
+
 /// A ring in the theme's ring colour over its `relative` parent, for a borderless kit
 /// control that draws no focus ring of its own; tests find it by `id`.
 pub fn ring_overlay(id: &'static str, cx: &App) -> impl IntoElement + use<> {
