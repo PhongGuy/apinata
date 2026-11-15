@@ -362,7 +362,7 @@ struct Team {
     copies: ConflictCopies,
     status: TeamStatus,
     role: Role,
-    // One `()` per events connect, for whoever re-reads the role then.
+    // A pending `()` after an events connect, for whoever re-reads the role then.
     connects: async_channel::Receiver<()>,
     // A caller's task that lives exactly as long as this loop.
     watch: Option<Task<()>>,
@@ -2502,7 +2502,8 @@ impl Workspace {
         let key = entry.root.clone();
         let copies = ConflictCopies::new(config.copies().to_path_buf());
         let role = config.role();
-        let (connected, connects) = async_channel::unbounded();
+        // Room for one signal: connects nobody has read yet coalesce instead of queueing.
+        let (connected, connects) = async_channel::bounded(1);
         // The driver reports from its own thread and may outlive this entry by one status,
         // so a closed channel is ignored there.
         let (out, statuses) = async_channel::unbounded();
@@ -2590,8 +2591,9 @@ impl Workspace {
         Some(Arc::clone(&self.entry(root)?.team.as_ref()?.sync))
     }
 
-    /// A receiver of one `()` per events connect of the team sync loop at `root`; `None` when
-    /// it has no loop.
+    /// A receiver of a `()` after events connects of the team sync loop at `root`; connects
+    /// nobody has read yet coalesce into one. It has one consumer, since a clone splits the
+    /// signals. `None` when it has no loop.
     pub fn team_connects(&self, root: &Path) -> Option<async_channel::Receiver<()>> {
         Some(self.entry(root)?.team.as_ref()?.connects.clone())
     }

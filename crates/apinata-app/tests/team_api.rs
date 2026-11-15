@@ -113,3 +113,63 @@ fn a_kept_watch_ends_when_the_loop_is_replaced(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert!(dropped.load(Ordering::SeqCst));
 }
+
+#[gpui_kit::test]
+fn connects_nobody_read_coalesce_into_one(cx: &mut TestAppContext) {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, ResponseTemplate};
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    let server = potluck_server(cx);
+    let at = "/api/v1/workspaces/core/api/events";
+    // Three short streams that each count as a connect, then a 404 that ends the follow.
+    let stream = ResponseTemplate::new(200)
+        .insert_header("content-type", "text/event-stream")
+        .set_body_string(": ok\n\n");
+    mount(
+        cx,
+        &server,
+        Mock::given(method("GET"))
+            .and(path(at))
+            .respond_with(stream)
+            .up_to_n_times(3),
+    );
+    mount(
+        cx,
+        &server,
+        Mock::given(method("GET"))
+            .and(path(at))
+            .respond_with(ResponseTemplate::new(404)),
+    );
+    let auth = TeamAuth::new(server.uri(), "plk_test");
+    let config = TeamConfig::new(
+        s.root.clone(),
+        copies_of(&s),
+        auth.clone(),
+        Identity::new("Ada", "ada@example.com"),
+        Role::Write,
+    )
+    .base_options(sb.options())
+    .debounce_unclamped(FAST);
+    let ms = Duration::from_millis(10);
+    let events = EventsConfig::new(format!("{}{at}", server.uri()), auth, "main").timings(
+        ms,
+        ms,
+        Duration::from_secs(60),
+        Duration::from_secs(5),
+    );
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.start_team(&root, config, Some(events), cx));
+    let connects =
+        s.ws.read_with(cx, |w, _| w.team_connects(&root))
+            .expect("a loop");
+    wait_for(cx, "the follow to end", |cx| {
+        hits_on(cx, &server, "GET", at) >= 4
+    });
+    let mut pending = 0;
+    while connects.try_recv().is_ok() {
+        pending += 1;
+    }
+    assert_eq!(pending, 1);
+}
