@@ -238,9 +238,10 @@ impl EnvEditor {
                     WorkspaceEvent::Notices { root, notices, .. } => {
                         this.notices(root, notices, window, cx)
                     }
-                    WorkspaceEvent::EnvReverted { root, name } => {
-                        this.reverted(root, name, window, cx)
-                    }
+                    WorkspaceEvent::Reverted {
+                        root,
+                        target: Target::Environment(name),
+                    } => this.reverted(root, name, window, cx),
                     WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked),
                     _ => {}
                 },
@@ -1341,16 +1342,20 @@ impl EnvEditor {
                     // Not `choose`: a failure delivered alongside this one must keep its line.
                     self.select(name, window, cx);
                     self.list_orphans(cx);
+                    // With no active environment the new one becomes active, unless the user
+                    // picked No environment; one made for an undefined variable still does, so
+                    // the next send finds the variable.
+                    let for_send = pending.is_some();
                     if let Some(var) = pending {
                         self.table.update(cx, |t, cx| t.add_row(&var, window, cx));
-                        // Made for an undefined variable: with no active environment, it
-                        // becomes the active one so the next send finds the variable.
-                        self.workspace.update(cx, |w, cx| {
-                            if w.selected_environment(root, cx).is_none() {
-                                w.select_environment(root, Some(name.clone()), cx);
-                            }
-                        });
                     }
+                    self.workspace.update(cx, |w, cx| {
+                        if w.selected_environment(root, cx).is_none()
+                            && (for_send || !w.chose_no_environment(root, cx))
+                        {
+                            w.select_environment(root, Some(name.clone()), cx);
+                        }
+                    });
                 }
                 (NoticeKind::Failed { message, .. }, sent) => {
                     if matches!(sent, Sent::Create) {
@@ -1814,7 +1819,23 @@ impl EnvEditor {
         let this = cx.entity();
         let followed = |id: &'static str, button: Button| Followed::new(id, &self.follow, button);
         let more = more_button("env-more", move |menu| env_menu(menu, this.clone(), locked));
+        // Only an environment other than the one requests are sent with can be made active.
+        let in_use = self.workspace.read(cx).selected_environment(&self.root, cx);
+        let offer = (!name.is_empty() && in_use.as_deref() != Some(name.as_str())).then(|| {
+            let (root, name) = (self.root.clone(), name.clone());
+            followed(
+                "env-use-follow",
+                Button::new("env-use")
+                    .label("Use this environment")
+                    .on_click(cx.listener(move |e, _, _, cx| {
+                        e.workspace.update(cx, |w, cx| {
+                            w.select_environment(&root, Some(name.clone()), cx)
+                        });
+                    })),
+            )
+        });
         pane_header("env-title", name)
+            .children(offer)
             .child(Followed::new("env-more-follow", &self.follow, more))
             .child(followed(
                 "env-duplicate-follow",
@@ -2076,6 +2097,7 @@ impl Render for EnvEditor {
                 .collect()
         };
         let dotted = fills.iter().any(Option::is_some);
+        let in_use = self.workspace.read(cx).selected_environment(&self.root, cx);
         let mut items = Vec::with_capacity(names.len() + 1);
         for (ix, (name, fill)) in names.iter().zip(fills).enumerate() {
             let chosen = self.selected.as_deref() == Some(name.as_str());
@@ -2107,6 +2129,18 @@ impl Render for EnvEditor {
                 .read(cx)
                 .clone();
             let focused = focus.is_focused(window);
+            // The environment requests are sent with is tagged, apart from the edited row's fill.
+            let tag = (in_use.as_deref() == Some(name.as_str())).then(|| {
+                div()
+                    .id(("env-item-active", ix))
+                    .test_support()
+                    .aria_label("Active")
+                    .flex_shrink_0()
+                    .pr(style::SPACE_2)
+                    .text_size(style::TEXT_SMALL)
+                    .text_color(active_tag_color(cx))
+                    .child("Active")
+            });
             let name = name.clone();
             let item = h_flex()
                 .id(("env-item", ix))
@@ -2136,6 +2170,7 @@ impl Render for EnvEditor {
                                 .child(name.clone()),
                         ),
                 )
+                .children(tag)
                 .on_click(cx.listener(move |e, _, window, cx| e.choose(&name, window, cx)));
             items.push(
                 Followed::new(("env-item-follow", ix), &self.follow, item).into_any_element(),
@@ -2153,13 +2188,16 @@ impl Render for EnvEditor {
             .flex_shrink(1.)
             .gap_1()
             .children(items)
-            .child(Followed::new(
-                "env-create-follow",
-                &self.follow,
-                Button::new("env-create").label("New").on_click(
-                    cx.listener(|e, _, window, cx| e.start_naming(Naming::Create, window, cx)),
-                ),
-            ));
+            // The name field is the create control while it is open, so New steps aside.
+            .when(self.naming != Some(Naming::Create), |list| {
+                list.child(Followed::new(
+                    "env-create-follow",
+                    &self.follow,
+                    Button::new("env-create").label("New").on_click(
+                        cx.listener(|e, _, window, cx| e.start_naming(Naming::Create, window, cx)),
+                    ),
+                ))
+            });
         // The editor scrolls as one page, list included, so a short or narrow window still
         // reaches the variable table.
         let root = h_flex()
@@ -2330,6 +2368,12 @@ impl Render for EnvEditor {
             .child(self.follow.watch(&self.scroll)),
         )
     }
+}
+
+/// The text colour of the Active tag on the environment requests are sent with: muted, and
+/// still 4.5:1 on a plain, hovered or selected row in every theme.
+pub fn active_tag_color(cx: &App) -> Hsla {
+    cx.theme().muted_foreground
 }
 
 /// Why a new or renamed environment cannot be called `name`: one of `names` already has it.

@@ -97,13 +97,13 @@ pub enum WorkspaceEvent {
     },
     /// The shared request split ratio changed, so every open editor should lay out again.
     SplitRatio,
-    /// A Revert of environment `name` of `root` was just sent, from anywhere; editors drop
-    /// secret typing for it before any later input can store it.
-    EnvReverted {
+    /// A Revert of `target` of `root` was just sent, from anywhere; editors drop typing and
+    /// choices shown but never sent for it before any later input can store them.
+    Reverted {
         /// The collection's root.
         root: PathBuf,
-        /// The environment reverted.
-        name: String,
+        /// The file reverted.
+        target: Target,
     },
     /// Opening a folder as a reference workspace failed or skipped something; the text says what.
     FolderNotice(String),
@@ -1170,8 +1170,8 @@ impl Workspace {
             command,
             Command::Save(_) | Command::Overwrite(_) | Command::Tree(_)
         );
-        let reverts_env = match &command {
-            Command::Revert(Target::Environment(name)) => Some(name.clone()),
+        let reverts = match &command {
+            Command::Revert(target) => Some(target.clone()),
             _ => None,
         };
         let ticket_op = match &command {
@@ -1197,9 +1197,9 @@ impl Workspace {
             self.edit_generation += 1;
             cx.notify();
         }
-        if let Some(name) = reverts_env {
+        if let Some(target) = reverts {
             let root = absolute(root);
-            cx.emit(WorkspaceEvent::EnvReverted { root, name });
+            cx.emit(WorkspaceEvent::Reverted { root, target });
         }
         if changes_env && let Some(entry) = self.entry_mut(root) {
             entry.env_sent = id;
@@ -2887,8 +2887,8 @@ impl Workspace {
         self.save_environment(root, selected, chosen, cx);
     }
 
-    // Whether the session records the user picking No environment for `root`.
-    fn chose_no_environment(&self, root: &Path, cx: &App) -> bool {
+    /// Whether the session records the user picking No environment for `root`.
+    pub fn chose_no_environment(&self, root: &Path, cx: &App) -> bool {
         let session = self.session.read(cx).get();
         session
             .collections

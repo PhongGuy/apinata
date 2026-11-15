@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use apinata_core::import::{ImportReport, ImportedEnvironment, parse_environments};
+use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::SelectDown;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
@@ -19,12 +20,22 @@ use gpui_kit::{
 };
 
 use crate::command::Command;
-use crate::env_color::{dotted, picker_row};
+use crate::env_color::{PickerGroups, picker_row, scoped};
 use crate::shell::NO_COLLECTION_ENV_TIP;
 use crate::style::{ENV_CONTROL_SHOWN_FROM, ENV_CONTROL_WIDTH, resolve};
 use crate::tabs::TabKind;
 use crate::ui::ring_overlay;
 use crate::workspace::Workspace;
+
+/// The tooltip and accessible name of the collection's environment select.
+pub const ENV_SELECT_TIP: &str = "Collection environment";
+
+/// The header of the dropdown group that lists the environments.
+pub const ENVIRONMENTS_GROUP: &str = "Environments";
+
+/// The header of the dropdown group that holds the entries acting instead of selecting; the
+/// global picker shares it.
+pub const ACTIONS_GROUP: &str = "Actions";
 
 /// The selector item that selects no environment.
 pub const NO_ENVIRONMENT: &str = "No environment";
@@ -68,8 +79,9 @@ impl SelectItem for EnvItem {
     }
 
     fn display_title(&self) -> Option<AnyElement> {
-        let fill = self.1?;
-        Some(dotted("env-trigger-dot", fill, self.0.clone()).into_any_element())
+        let icon = ("env-scope-icon", IconName::Folder);
+        let title = scoped(icon, ("env-trigger-dot", self.1), self.0.clone());
+        Some(title.into_any_element())
     }
 
     fn value(&self) -> &SharedString {
@@ -85,12 +97,17 @@ impl SelectItem for EnvItem {
     }
 }
 
+/// The dropdown's rows: the environments, then the actions in a group of their own.
+pub type EnvRows = PickerGroups<EnvItem>;
+
 /// A select over the current collection's environments that picks its selected one.
 pub struct EnvSelector {
     workspace: Entity<Workspace>,
-    select: Entity<SelectState<Vec<EnvItem>>>,
+    select: Entity<SelectState<EnvRows>>,
     root: Option<PathBuf>,
     listed: Vec<SharedString>,
+    // Where the actions start in `listed`.
+    actions_from: usize,
     // The dot colour of each `listed` entry.
     dots: Vec<Option<Hsla>>,
     shown: Option<SharedString>,
@@ -103,7 +120,8 @@ pub struct EnvSelector {
 impl EnvSelector {
     /// Builds the selector over `workspace`, following its current collection.
     pub fn new(workspace: Entity<Workspace>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let select = cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
+        let rows = EnvRows::new("env-group", Vec::new());
+        let select = cx.new(|cx| SelectState::new(rows, None, window, cx));
         let subscriptions = vec![
             cx.observe_in(&workspace, window, |this, _, window, cx| {
                 this.sync(window, cx)
@@ -111,7 +129,7 @@ impl EnvSelector {
             cx.subscribe_in(
                 &select,
                 window,
-                |this, _, event: &SelectEvent<Vec<EnvItem>>, window, cx| {
+                |this, _, event: &SelectEvent<EnvRows>, window, cx| {
                     if let SelectEvent::Confirm(Some(item)) = event {
                         let item = item.clone();
                         this.choose(&item, window, cx);
@@ -124,6 +142,7 @@ impl EnvSelector {
             select,
             root: None,
             listed: Vec::new(),
+            actions_from: 0,
             dots: Vec::new(),
             shown: None,
             last_import: None,
@@ -152,8 +171,19 @@ impl EnvSelector {
         &self.listed
     }
 
+    /// `listed()` as the dropdown groups it: [`ENVIRONMENTS_GROUP`], then [`ACTIONS_GROUP`]
+    /// while it has entries.
+    pub fn groups(&self) -> Vec<(SharedString, Vec<SharedString>)> {
+        let (envs, actions) = self.listed.split_at(self.actions_from);
+        [(ENVIRONMENTS_GROUP, envs), (ACTIONS_GROUP, actions)]
+            .into_iter()
+            .filter(|(_, items)| !items.is_empty())
+            .map(|(title, items)| (title.into(), items.to_vec()))
+            .collect()
+    }
+
     /// The kit select state behind `#env-select`.
-    pub fn select(&self) -> &Entity<SelectState<Vec<EnvItem>>> {
+    pub fn select(&self) -> &Entity<SelectState<EnvRows>> {
         &self.select
     }
 
@@ -278,6 +308,7 @@ impl EnvSelector {
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let root = self.workspace.read(cx).current_root();
         let mut items = self.items(cx);
+        let actions_from = items.len();
         if root.is_some() {
             items.push(MANAGE_ENVIRONMENTS.into());
             items.push(IMPORT_ENVIRONMENT.into());
@@ -299,10 +330,17 @@ impl EnvSelector {
         if root != self.root || items != self.listed || dots != self.dots {
             self.root = root.clone();
             let any = dots.iter().any(Option::is_some);
-            let rows = (items.iter().cloned())
+            let mut envs: Vec<EnvItem> = (items.iter().cloned())
                 .zip(dots.iter().copied())
                 .map(|(name, dot)| EnvItem(name, dot, any))
                 .collect();
+            let actions = envs.split_off(actions_from);
+            let mut groups = vec![(ENVIRONMENTS_GROUP.into(), envs)];
+            if !actions.is_empty() {
+                groups.push((ACTIONS_GROUP.into(), actions));
+            }
+            let rows = EnvRows::new("env-group", groups);
+            self.actions_from = actions_from;
             self.listed = items;
             self.dots = dots;
             self.select
@@ -342,7 +380,8 @@ impl EnvSelector {
 
 impl Render for EnvSelector {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // A borderless select that fills the host's slot; "no environment" reads as a
+        // A borderless select that fills the host's slot, kept light: its scope icon, caret,
+        // tip and ghost-button hover say it is a control; "no environment" reads as a
         // placeholder, and the app draws the ring the borderless select lacks.
         let muted = cx.theme().muted_foreground;
         let none = self.shown.as_deref().is_none_or(|s| s == NO_ENVIRONMENT);
@@ -374,11 +413,18 @@ impl Render for EnvSelector {
             .w_full()
             .max_w(ENV_CONTROL_WIDTH)
             .overflow_hidden()
-            .when(locked, |d| {
-                d.tooltip(crate::ui::text_tooltip(
-                    "env-control-tooltip",
-                    NO_COLLECTION_ENV_TIP,
-                ))
+            .rounded(cx.theme().radius)
+            .tooltip(crate::ui::text_tooltip(
+                "env-control-tooltip",
+                if locked {
+                    NO_COLLECTION_ENV_TIP.into()
+                } else {
+                    scope_tip(ENV_SELECT_TIP, self.shown.as_ref().filter(|_| !none))
+                },
+            ))
+            .when(!locked && !squeezed, |d| {
+                let fill = crate::ui::ghost_hover_fill(cx);
+                d.hover(move |s| s.bg(fill))
             })
             // The select fills its parent's full width, so a shrinking wrapper sizes it to the
             // control's room and its own ellipsis shows instead of the control clipping.
@@ -391,6 +437,7 @@ impl Render for EnvSelector {
                     .child(
                         Select::new(&self.select)
                             .id("env-select")
+                            .accessibility_label(ENV_SELECT_TIP)
                             .appearance(false)
                             .small()
                             // A disabled select tracks no focus, so Tab passes it.
@@ -400,6 +447,15 @@ impl Render for EnvSelector {
             )
             .child(measure)
             .when(focused, |d| d.child(ring_overlay("env-select-ring", cx)))
+    }
+}
+
+/// The tip of a picker for `scope`: the scope, then the `picked` name in full, since the
+/// trigger may cut it short.
+pub fn scope_tip(scope: &str, picked: Option<&SharedString>) -> SharedString {
+    match picked {
+        Some(name) => format!("{scope}: {name}").into(),
+        None => scope.to_owned().into(),
     }
 }
 

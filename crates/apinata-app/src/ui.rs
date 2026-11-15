@@ -47,8 +47,8 @@ pub use crate::kv_grid::{KvCell, KvView, kv_view};
 use crate::style::{
     CHECKBOX_SIZE, DIALOG_CLOSE_INSET, DIALOG_FOOTER_GAP, DIALOG_PADDING, DISABLED_OPACITY, DOT,
     FOCUS_RING_ROOM, FORM_LABEL_LINE_HEIGHT, FORM_LABEL_WIDTH, FORM_STACK_WIDTH, INPUT_HEIGHT,
-    METHOD_COLUMN, RADIUS, ROW_HEIGHT, SELECT_CHEVRON, SELECT_MAX_WIDTH, SPACE_1, SPACE_2, SPACE_3,
-    SPACE_5, STRIP_FADE_WIDTH, TEXT_CONTROL, TEXT_SMALL, TEXT_UI, kit_size, resolve,
+    METHOD_COLUMN, RADIUS, SELECT_CHEVRON, SELECT_MAX_WIDTH, SPACE_1, SPACE_2, SPACE_3, SPACE_5,
+    STRIP_FADE_WIDTH, TEXT_CONTROL, TEXT_SMALL, TEXT_UI, kit_size, resolve,
 };
 use crate::theme::{self, SelectedStyle, Status, selected_look};
 use crate::zoom;
@@ -1021,6 +1021,17 @@ pub trait RingRoom: gpui_kit::Styled + Sized {
 
 impl<T: gpui_kit::Styled> RingRoom for T {}
 
+/// The fill the kit gives a hovered ghost button, for a control that should hover as the
+/// title bar's buttons do.
+pub fn ghost_hover_fill(cx: &App) -> Hsla {
+    let accent = cx.theme().accent;
+    if cx.theme().mode.is_dark() {
+        accent.opacity(0.5)
+    } else {
+        accent
+    }
+}
+
 /// A ring in the theme's ring colour over its `relative` parent, for a borderless kit
 /// control that draws no focus ring of its own; tests find it by `id`.
 pub fn ring_overlay(id: &'static str, cx: &App) -> impl IntoElement + use<> {
@@ -1872,7 +1883,7 @@ pub struct Reveal {
     seen: Rc<Cell<Option<RevealKey>>>,
     // The offset of the frame before while a check waits for the strip to hold still.
     settling: Rc<Cell<Option<Pixels>>>,
-    // Set while a scroll was held back to keep the chosen item under the pointer.
+    // Set while a scroll was held back because the pointer rests on the strip after a click.
     held: Rc<Cell<bool>>,
     // A click on the item is waiting for the request it causes, and that request came from one.
     clicked: Rc<Cell<bool>>,
@@ -1935,15 +1946,15 @@ impl Reveal {
         self.watch_strip_under_pointer(scroll, ix, items, false)
     }
 
-    /// As `watch_strip`, told whether the pointer rests on the chosen item. When a click on
-    /// it chose it, any scroll keeps that item under the pointer, so a second click lands on
-    /// it again; what that holds back runs once the pointer leaves the item.
+    /// As `watch_strip`, told whether the pointer rests on the strip. When a click on an item
+    /// chose it, the strip holds still while the pointer stays on it, so nothing moves under
+    /// the pointer, not even a close button; what that holds back runs once the pointer leaves.
     pub fn watch_strip_under_pointer(
         &self,
         scroll: &ScrollHandle,
         ix: usize,
         items: usize,
-        pointer_on_item: bool,
+        pointer_on_strip: bool,
     ) -> impl IntoElement + use<> {
         let (seen, settling, held, scroll) = (
             Rc::clone(&self.seen),
@@ -1960,14 +1971,11 @@ impl Reveal {
                     return;
                 };
                 let fade = resolve(STRIP_FADE_WIDTH, window);
-                // The offsets that keep the chosen item under the pointer, while it rests there.
+                // After a click the strip keeps its offset while the pointer rests on it.
                 let x = scroll.offset().x;
-                let p = window.mouse_position().x;
-                let range = (p + px(1.) - item.right(), p - px(1.) - item.left());
                 // A click that chose nothing new leaves no request to claim it.
                 clicked.set(false);
-                let on_item = pointer_on_item && by_click.get() && range.0 <= x && x <= range.1;
-                let keep = on_item.then_some(range);
+                let keep = (pointer_on_strip && by_click.get()).then_some((x, x));
                 if keep.is_none() {
                     by_click.set(false);
                 }
@@ -2020,8 +2028,7 @@ impl Reveal {
                 let fits = item.size.width <= viewport.size.width - fade * 2.;
                 let shown_left = if fits && x < -px(1.) { fade } else { px(0.) };
                 let shown_right = if fits && x > -scroll.max_offset().x + px(1.) {
-                    let (solid, grade) = cover_extent(right_cover(&scroll, items), fade);
-                    solid + grade
+                    fade
                 } else {
                     px(0.)
                 };
@@ -2128,6 +2135,37 @@ pub fn strip_gap(scroll: &ScrollHandle, items: usize) -> Pixels {
     (last.left() - prev.right()).max(px(0.))
 }
 
+/// Where one part of each strip item, such as a tab's name, lay along the strip as of the
+/// last frame, unscrolled, by item index.
+#[derive(Clone, Default)]
+pub struct PartSpans(Rc<RefCell<HashMap<usize, (Pixels, Pixels)>>>);
+
+impl PartSpans {
+    /// A marker that records the span of the part it fills, for item `ix` of the strip
+    /// `scroll` tracks; put it in that part, which must be `relative()`.
+    pub fn marker(&self, scroll: &ScrollHandle, ix: usize) -> impl IntoElement + use<> {
+        let (spans, scroll) = (Rc::clone(&self.0), scroll.clone());
+        canvas(
+            move |bounds, window, _| {
+                let x = scroll.offset().x;
+                let span = (bounds.left() - x, bounds.right() - x);
+                // A part that moved within its item redraws once, so what reads it is current.
+                if spans.borrow_mut().insert(ix, span) != Some(span) {
+                    window.request_animation_frame();
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+    }
+
+    /// The recorded span of item `ix`'s part, if it has been drawn.
+    pub fn get(&self, ix: usize) -> Option<(Pixels, Pixels)> {
+        self.0.borrow().get(&ix).copied()
+    }
+}
+
 /// Fades over a sideways strip's edges while items lie beyond them. The fades sit over the
 /// strip's scroll viewport only, placed from the previous frame's layout like the overflow
 /// chevron; they take no mouse input, so clicks reach the items beneath.
@@ -2135,16 +2173,13 @@ pub fn strip_gap(scroll: &ScrollHandle, items: usize) -> Pixels {
 pub struct StripFades(Rc<Cell<FadeLayout>>);
 
 // What the last frame laid out: the wrapper's and viewport's bounds, which edges had items
-// beyond them, and how far each fade must reach to cover a cut item.
+// beyond them, and the scroll offset, which decides which items may show a close button.
 #[derive(Clone, Copy, Default, PartialEq)]
 struct FadeLayout {
     host: Bounds<Pixels>,
     view: Bounds<Pixels>,
     edges: (bool, bool),
-    cover: (Pixels, Pixels),
-    cover_right: (Pixels, Pixels),
-    slot: Pixels,
-    fade: Pixels,
+    offset: Pixels,
 }
 
 impl StripFades {
@@ -2159,35 +2194,23 @@ impl StripFades {
     ) -> Vec<AnyElement> {
         let seen = self.0.get();
         let edges = hidden_edges(scroll, items);
-        let cover = left_cover(scroll, items, seen.slot, seen.fade);
-        let cover_right = right_cover(scroll, items);
-        // The marker measures the wrapper and redraws once when it or the edges changed
-        // after this render, so a resize or a reveal is not left a frame behind.
-        let (cell, handle, slot, fade) = (Rc::clone(&self.0), scroll.clone(), seen.slot, seen.fade);
+        // The marker measures the wrapper and redraws once when it, the edges or the offset
+        // changed after this render, so a resize or a reveal is not left a frame behind.
+        let (cell, handle) = (Rc::clone(&self.0), scroll.clone());
         let view = scroll.bounds();
         let drawn = FadeLayout {
             view,
             edges,
-            cover,
-            cover_right,
-            slot,
-            fade,
+            offset: scroll.offset().x,
             ..seen
         };
         let watch = canvas(
             move |host, window, _| {
-                let (slot, fade) = (
-                    resolve(ROW_HEIGHT, window),
-                    resolve(STRIP_FADE_WIDTH, window),
-                );
                 let now = FadeLayout {
                     host,
                     view: handle.bounds(),
                     edges: hidden_edges(&handle, items),
-                    cover: left_cover(&handle, items, slot, fade),
-                    cover_right: right_cover(&handle, items),
-                    slot,
-                    fade,
+                    offset: handle.offset().x,
                 };
                 cell.set(now);
                 if now != drawn {
@@ -2224,43 +2247,29 @@ impl StripFades {
                 .test_support()
                 .absolute()
                 .top_0()
-                .bottom_0()
+                .bottom(STRIP_BORDER)
                 .w(STRIP_FADE_WIDTH)
         };
         if edges.0 {
-            // Over an item the strip cannot scroll whole or out of view, the fade is solid
-            // across the whole item and grades only after it.
-            let (mut left, mut solid) = (fade("left"), 0.);
-            let (cover_px, grade) = cover_extent(cover, seen.fade);
-            if seen.fade > px(0.) && cover_px > px(0.) {
-                left = left.w(cover_px + grade);
-                solid = cover_px / (cover_px + grade);
-            }
             out.push(
-                left.left(view.left() - host.left())
+                fade("left")
+                    .left(view.left() - host.left())
                     .bg(linear_gradient(
                         90.,
-                        linear_color_stop(background, solid),
+                        linear_color_stop(background, 0.),
                         linear_color_stop(background.opacity(0.), 1.),
                     ))
                     .into_any_element(),
             );
         }
         if edges.1 {
-            // The right fade mirrors the left one's cover, over any item cut at that edge.
-            let (mut right, mut solid) = (fade("right"), 0.);
-            let (cover_px, grade) = cover_extent(cover_right, seen.fade);
-            if seen.fade > px(0.) && cover_px > px(0.) {
-                right = right.w(cover_px + grade);
-                solid = cover_px / (cover_px + grade);
-            }
             out.push(
-                right
+                fade("right")
                     .right(host.right() - view.right())
                     .bg(linear_gradient(
                         90.,
                         linear_color_stop(background.opacity(0.), 0.),
-                        linear_color_stop(background, 1. - solid),
+                        linear_color_stop(background, 1.),
                     ))
                     .into_any_element(),
             );
@@ -2268,6 +2277,9 @@ impl StripFades {
         out
     }
 }
+
+// The kit tab bar's bottom border; the fades stop above it so it runs unbroken.
+const STRIP_BORDER: Pixels = px(1.);
 
 // Whether the first item starts left of the viewport and the last ends right of it. The
 // item bounds are unscrolled, so the offset is added; a pixel of slack absorbs rounding.
@@ -2286,88 +2298,32 @@ fn hidden_edges(scroll: &ScrollHandle, items: usize) -> (bool, bool) {
     (left, right)
 }
 
-// How far past the viewport's left edge an item cut there reaches, and the gap before the
-// next item, when the strip is scrolled to its end and so can neither hide that item nor show
-// it whole; zeros otherwise. It stays covered until its trailing `slot` and a fade width of
-// label both clear the `fade`, so no close button shows beside a name too faded to read.
-fn left_cover(scroll: &ScrollHandle, items: usize, slot: Pixels, fade: Pixels) -> (Pixels, Pixels) {
-    if hidden_edges(scroll, items) != (true, false) {
-        return (px(0.), px(0.));
-    }
-    let (view, x) = (scroll.bounds(), scroll.offset().x);
-    let bounds: Vec<_> = (0..items)
-        .map_while(|ix| scroll.bounds_for_item(ix))
-        .collect();
-    let Some(ix) = bounds
-        .iter()
-        .position(|b| b.left() + x < view.left() - px(1.) && b.right() + x > view.left() + px(1.))
-    else {
-        return (px(0.), px(0.));
-    };
-    let cut = bounds[ix];
-    let shown = cut.right() + x - view.left();
-    if shown >= slot + fade * 2. {
-        return (px(0.), px(0.));
-    }
-    let gap = bounds
-        .get(ix + 1)
-        .map_or(px(0.), |next| (next.left() - cut.right()).max(px(0.)));
-    (shown, gap)
-}
-
-// How far before the viewport's right edge an item cut there reaches, and the gap after the
-// item before it, while items lie beyond that edge; zeros otherwise.
-fn right_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
-    if !hidden_edges(scroll, items).1 {
-        return (px(0.), px(0.));
-    }
-    let (view, x) = (scroll.bounds(), scroll.offset().x);
-    let bounds: Vec<_> = (0..items)
-        .map_while(|ix| scroll.bounds_for_item(ix))
-        .collect();
-    let Some(ix) = bounds.iter().position(|b| {
-        b.left() + x < view.right() - px(1.) && b.right() + x > view.right() + px(1.)
-    }) else {
-        return (px(0.), px(0.));
-    };
-    let cut = bounds[ix];
-    let gap = ix.checked_sub(1).map_or(px(0.), |prev| {
-        (cut.left() - bounds[prev].right()).max(px(0.))
-    });
-    (view.right() - (cut.left() + x), gap)
-}
-
-// A fade's solid part and the width it grades over beside it: solid across a covered item
-// and grading only within the gap toward its neighbour, so a whole item is never faded.
-fn cover_extent(cover: (Pixels, Pixels), fade: Pixels) -> (Pixels, Pixels) {
-    match cover {
-        (solid, _) if solid <= px(0.) => (px(0.), fade),
-        (solid, gap) => (solid, gap.min(fade)),
-    }
-}
-
-/// Whether the last `tail` of item `ix` of the strip `scroll` tracks lies wholly outside both
-/// of the strip's fades and their covers, as of the last layout; `tail` is the items' close
-/// slot. True before any layout, so nothing is held back that was never measured.
+/// Whether item `ix` of the strip `scroll` tracks may offer the button in its last `tail`, as
+/// of the last layout: that tail lies wholly outside both shown fades, and the item shows
+/// whole or at least `readable` of its `name`, an unscrolled span (the whole item when
+/// unknown), so the button never sits beside an unread name. True before any layout, so
+/// nothing is held back that was never measured.
 pub fn tail_clear_of_fades(
     scroll: &ScrollHandle,
     items: usize,
     ix: usize,
     tail: Pixels,
     fade: Pixels,
+    readable: Pixels,
+    name: Option<(Pixels, Pixels)>,
 ) -> bool {
     let Some(item) = scroll.bounds_for_item(ix) else {
         return true;
     };
     let (hidden_left, hidden_right) = hidden_edges(scroll, items);
     let (view, x) = (scroll.bounds(), scroll.offset().x);
-    let (solid, grade) = cover_extent(left_cover(scroll, items, tail, fade), fade);
-    let shown = if hidden_left { solid + grade } else { px(0.) };
-    let from = view.left() + shown;
-    let (solid, grade) = cover_extent(right_cover(scroll, items), fade);
-    let to = view.right() - if hidden_right { solid + grade } else { px(0.) };
-    let end = item.right() + x;
-    end - tail >= from - px(1.) && end <= to + px(1.)
+    let from = view.left() + if hidden_left { fade } else { px(0.) };
+    let to = view.right() - if hidden_right { fade } else { px(0.) };
+    let (start, end) = (item.left() + x, item.right() + x);
+    let whole = start >= view.left() - px(1.) && end <= view.right() + px(1.);
+    let (left, right) = name.map_or((start, end), |(l, r)| (l + x, r + x));
+    let shown = right.min(view.right()) - left.max(view.left());
+    end - tail >= from - px(1.) && end <= to + px(1.) && (whole || shown >= readable)
 }
 
 /// The key context of a [`Segmented`] track, where its keys bind.

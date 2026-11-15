@@ -258,13 +258,20 @@ impl ConfigEditor {
             cx.observe_in(&workspace, window, |this, _, window, cx| {
                 this.refresh(window, cx)
             }),
-            cx.subscribe_in(&workspace, window, |this, _, event, _, cx| match event {
-                WorkspaceEvent::Notices { root, notices, .. } => {
-                    this.mark_refused(root, notices, cx)
-                }
-                WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked),
-                _ => {}
-            }),
+            cx.subscribe_in(
+                &workspace,
+                window,
+                |this, _, event, window, cx| match event {
+                    WorkspaceEvent::Notices { root, notices, .. } => {
+                        this.mark_refused(root, notices, cx)
+                    }
+                    WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked),
+                    WorkspaceEvent::Reverted { root, target } => {
+                        this.reverted(root, target, window, cx)
+                    }
+                    _ => {}
+                },
+            ),
         ];
         for (table, section) in [
             (&headers, ConfigSection::Headers),
@@ -970,6 +977,24 @@ impl ConfigEditor {
         Some(slot.child(buttons).into_any_element())
     }
 
+    // A Revert of these settings, sent from anywhere, drops what they show but never sent,
+    // typed secrets included, before a blur or save could commit it.
+    fn reverted(
+        &mut self,
+        root: &Path,
+        target: &Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if *root != crate::workspace::absolute(&self.root) || *target != self.target.target() {
+            return;
+        }
+        self.auth.update(cx, |a, cx| a.drop_pending(window, cx));
+        if let Some(network) = self.network.clone() {
+            network.update(cx, |n, cx| n.discard_unsent(window, cx));
+        }
+    }
+
     /// Asks, then returns the settings to their saved file, as the environment editors'
     /// Discard changes does; a secret typed but not yet committed goes too.
     pub fn discard_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -980,13 +1005,10 @@ impl ConfigEditor {
             self.root.clone(),
             self.target.target(),
         );
-        cx.spawn_in(window, async move |this, cx| {
+        cx.spawn_in(window, async move |_, cx| {
             if answer.recv().await != Ok(1) {
                 return;
             }
-            let _ = this.update_in(cx, |e, window, cx| {
-                e.auth.update(cx, |a, cx| a.drop_pending(window, cx));
-            });
             workspace.update(cx, |w, cx| {
                 w.send(&root, Command::Revert(target), cx);
             });

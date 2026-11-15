@@ -494,14 +494,23 @@ impl RequestEditor {
                     }
                 },
             ),
-            cx.subscribe_in(&workspace, window, |this, _, event, _, cx| match event {
-                WorkspaceEvent::Notices { root, notices, .. } => {
-                    this.mark_refused(root, notices, cx)
-                }
-                WorkspaceEvent::Delivered { root, acked, .. } => this.delivered(root, *acked, cx),
-                WorkspaceEvent::SplitRatio => cx.notify(),
-                _ => {}
-            }),
+            cx.subscribe_in(
+                &workspace,
+                window,
+                |this, _, event, window, cx| match event {
+                    WorkspaceEvent::Notices { root, notices, .. } => {
+                        this.mark_refused(root, notices, cx)
+                    }
+                    WorkspaceEvent::Delivered { root, acked, .. } => {
+                        this.delivered(root, *acked, cx)
+                    }
+                    WorkspaceEvent::SplitRatio => cx.notify(),
+                    WorkspaceEvent::Reverted { root, target } => {
+                        this.reverted(root, target, window, cx)
+                    }
+                    _ => {}
+                },
+            ),
             cx.subscribe_in(
                 &custom_method,
                 window,
@@ -1504,6 +1513,24 @@ impl RequestEditor {
     #[doc(hidden)]
     pub fn set_sender_silently(&mut self, side: Side) {
         self.unit.edit(side, false);
+    }
+
+    // A Revert of this request, sent from anywhere, drops what the pane shows but never sent,
+    // typed secrets included, before a blur, save or send could commit it.
+    fn reverted(
+        &mut self,
+        root: &Path,
+        target: &Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ours = self.target(cx).is_some_and(|(r, item)| {
+            crate::workspace::absolute(&r) == root && *target == Target::Request(item)
+        });
+        if ours {
+            (self.settings).update(cx, |s, cx| s.discard_unsent(window, cx));
+            self.auth.update(cx, |a, cx| a.drop_pending(window, cx));
+        }
     }
 
     fn target(&self, cx: &App) -> Option<(PathBuf, ItemPath)> {
