@@ -554,6 +554,8 @@ pub struct Workspace {
     // Bound folders whose team resume is asking the server, so a second trigger starts no
     // second loop.
     team_resumes: HashSet<PathBuf>,
+    // In-flight resumes a sign-in overtook; each resumes again once it lands.
+    team_reruns: HashSet<PathBuf>,
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
@@ -660,6 +662,7 @@ impl Workspace {
             open_faults: Faults::default(),
             reveal_pending: None,
             team_resumes: HashSet::new(),
+            team_reruns: HashSet::new(),
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
@@ -2691,6 +2694,11 @@ impl Workspace {
     /// The bound folders whose team resume is in flight.
     pub(crate) fn team_resumes(&mut self) -> &mut HashSet<PathBuf> {
         &mut self.team_resumes
+    }
+
+    /// The in-flight resumes to run again once they land.
+    pub(crate) fn team_reruns(&mut self) -> &mut HashSet<PathBuf> {
+        &mut self.team_reruns
     }
 
     // Git just came on: every open collection without a loop resumes, if bound.

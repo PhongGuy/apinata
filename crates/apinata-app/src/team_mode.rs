@@ -46,6 +46,10 @@ pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
                 Ok(resumed) => start(w, &root, &binding, &conflicts, resumed, source, cx),
                 Err(e) => notice(&root, &e, cx),
             }
+            // A sign-in landed while this one asked with the old token: ask again with the new.
+            if w.team_reruns().remove(&root) {
+                resume(w, &root, cx);
+            }
         });
     })
     .detach();
@@ -72,8 +76,13 @@ pub fn resume_server(workspace: &Entity<Workspace>, server: &ServerUrl, cx: &mut
                     .any(|c| c.opened() && c.root() == root)
             })
             .collect();
+        // One still asking may have read the old token, so it runs again when it lands.
         for root in open {
-            resume(w, &root, cx);
+            if w.team_resumes().contains(&root) {
+                w.team_reruns().insert(root);
+            } else {
+                resume(w, &root, cx);
+            }
         }
     });
 }
