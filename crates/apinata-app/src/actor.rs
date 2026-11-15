@@ -32,6 +32,9 @@ use crate::snapshot::{CollectionSnapshot, SnapshotCache};
 use crate::stale::{Reloaded, StaleLedger, is_within, moved};
 
 /// The notice for an import sent before a reload of its request.
+/// How many moves, renames and put-backs keep what they changed, for an exact undo.
+const SEQ_RECORD_CAP: usize = 256;
+
 const RELOADED_MESSAGE: &str = "the request was reloaded from disk; import it again";
 
 /// What the actor tells its model.
@@ -201,6 +204,9 @@ struct Actor {
     trash: Arc<dyn Trash>,
     /// Items trashed and not yet forgotten, by the id of the command that trashed them.
     trashed: HashMap<u64, Trashed>,
+    /// What each recent move, rename or put-back changed, by its command id, oldest first.
+    seq_records: HashMap<u64, apinata_core::SeqRecord>,
+    seq_order: std::collections::VecDeque<u64>,
     /// Requests a spec update removed and not yet forgotten, by a ticket from `prune_ticket`.
     pruned: HashMap<u64, PrunedRequest>,
     /// The next ticket for an item a spec update removed. They count down from the top, so they
@@ -260,6 +266,8 @@ impl Actor {
             refuse_draft_from: None,
             trash: Arc::new(crate::workspace::NoTrash),
             trashed: HashMap::new(),
+            seq_records: HashMap::new(),
+            seq_order: std::collections::VecDeque::new(),
             pruned: HashMap::new(),
             prune_ticket: u64::MAX,
             network_ack: None,
@@ -735,6 +743,11 @@ impl Actor {
                         other => other,
                     },
                 },
+                TreeOp::Place { item, to, before } => TreeOp::Place {
+                    item: p(item),
+                    to: p(to),
+                    before,
+                },
                 TreeOp::SortByName { folder } => TreeOp::SortByName { folder: p(folder) },
                 TreeOp::CreateDraft { parent, kind } => TreeOp::CreateDraft {
                     parent: p(parent),
@@ -900,6 +913,7 @@ impl Actor {
     /// Apply a tree operation; the notice it reports on success, if any.
     fn tree(&mut self, id: u64, op: TreeOp) -> Result<Option<NoticeKind>, NoticeKind> {
         self.cache.touch_all();
+        self.record_seqs(id, &op);
         let c = &mut self.collection;
         let created = |r: Result<ItemPath, TreeError>| match r {
             Ok(path) => Ok(Some(NoticeKind::Created(path))),
@@ -932,6 +946,18 @@ impl Actor {
             TreeOp::Move { item, to } => {
                 let from = self.item_target(&item);
                 let to = self.collection.move_item(&item, to);
+                self.moved_or_renumber_failed(id, from, to)
+            }
+            TreeOp::Place { item, to, before } => {
+                let from = self.item_target(&item);
+                let Some(record) = self.seq_records.get(&before).cloned() else {
+                    return Err(NoticeKind::Failed {
+                        target: Some(from),
+                        message: "it can no longer be put back".to_owned(),
+                        row: None,
+                    });
+                };
+                let to = self.collection.place(&item, &to, &record);
                 self.moved_or_renumber_failed(id, from, to)
             }
             TreeOp::SortByName { folder } => match c.sort_by_name(&folder) {
@@ -1033,6 +1059,33 @@ impl Actor {
     }
 
     /// The target kind of a tree item, decided before the operation changes it.
+    // Keeps the names and seqs a move, rename or put-back is about to change, so a later
+    // `Place` can restore them exactly; the oldest go past a cap.
+    fn record_seqs(&mut self, id: u64, op: &TreeOp) {
+        let parent = |p: &ItemPath| p.parent().unwrap_or_else(ItemPath::root);
+        let dirs = match op {
+            TreeOp::Move { item, to } => {
+                let target = match to {
+                    DropTarget::Inside(t) => t.clone(),
+                    DropTarget::Before(t) | DropTarget::After(t) => parent(t),
+                    _ => return,
+                };
+                vec![parent(item), target]
+            }
+            TreeOp::Rename { item, .. } => vec![parent(item)],
+            TreeOp::Place { item, to, .. } => vec![parent(item), parent(to)],
+            _ => return,
+        };
+        let record = self.collection.seq_record(&dirs);
+        self.seq_records.insert(id, record);
+        self.seq_order.push_back(id);
+        while self.seq_order.len() > SEQ_RECORD_CAP {
+            if let Some(old) = self.seq_order.pop_front() {
+                self.seq_records.remove(&old);
+            }
+        }
+    }
+
     fn item_target(&self, item: &ItemPath) -> Target {
         match self.collection.folder(item) {
             Some(_) => Target::Folder(item.clone()),

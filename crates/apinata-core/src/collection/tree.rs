@@ -24,6 +24,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 use yaml_serde::{Mapping, Value};
 
+mod place;
+pub use place::SeqRecord;
+
 /// Where a dragged item is dropped: into a folder, or above or below a sibling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]

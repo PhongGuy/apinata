@@ -429,8 +429,8 @@ fn escape_closes_the_palette_with_a_query_typed(cx: &mut TestAppContext) {
     assert!(!present(cx, s.win, "command-palette"));
 }
 
-// The palette names the one area a pane command works in, beside its key. Undo delete is
-// listed only once a delete into the trash can be undone.
+// The palette names the one area a pane command works in, beside its key. Undo in sidebar
+// is listed only once the tree has a step to undo.
 #[gpui_kit::test]
 fn a_pane_command_row_names_its_area(cx: &mut TestAppContext) {
     let (h, bin) = crate::sidebar_trash::shell_with_trash(cx);

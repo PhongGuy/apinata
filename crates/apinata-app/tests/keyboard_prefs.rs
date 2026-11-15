@@ -54,7 +54,7 @@ fn the_keyboard_section_lists_undo_delete(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     open_prefs(cx, &s);
-    search(cx, &s, "undo delete");
+    search(cx, &s, "undo in sidebar");
     assert!(shown(cx, &s, "key-request.undo_delete"));
     assert!(!shown(cx, &s, "key-request.undo"));
     assert_eq!(

@@ -25,7 +25,7 @@ fn listed(a: Availability, id: &str) -> bool {
 
 // One row per flag: how to clear it in an Availability, and the commands it governs.
 type Clear = fn(&mut Availability);
-const FLAGS: [(&str, Clear, &[&str]); 28] = [
+const FLAGS: [(&str, Clear, &[&str]); 29] = [
     (
         "close_others",
         |a| a.close_others = false,
@@ -134,6 +134,11 @@ const FLAGS: [(&str, Clear, &[&str]); 28] = [
         "undo_delete",
         |a| a.undo_delete = false,
         &["request.undo_delete"],
+    ),
+    (
+        "redo_in_sidebar",
+        |a| a.redo_in_sidebar = false,
+        &["request.redo_in_sidebar"],
     ),
     (
         "collection_open",

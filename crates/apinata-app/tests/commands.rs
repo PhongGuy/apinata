@@ -356,6 +356,8 @@ fn today() -> Vec<Triple> {
         ("end".into(), "apinata::RowLast", "ResponseBody"),
         ("ctrl-end".into(), "apinata::RowLast", "ResponseBody"),
         (secondary("enter"), "zed::NoAction", "SidebarFilter > Input"),
+        ("ctrl-y".into(), "zed::NoAction", "SidebarFilter > Input"),
+        ("ctrl-y".into(), "zed::NoAction", "Sidebar > Tree > Input"),
         (
             secondary("enter"),
             "zed::NoAction",
@@ -523,7 +525,6 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.focus_previous_control");
     expected.insert("request.rename_in_sidebar");
     expected.insert("request.delete_in_sidebar");
-    expected.insert("request.redo_in_sidebar");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
     assert_eq!(menu.len(), 29);
@@ -556,7 +557,7 @@ fn undo_delete_is_a_sidebar_pane_command_on_secondary_z() {
         .find(|c| c.id == "request.undo_delete")
         .expect("registered");
     assert_eq!(c.scope, Scope::Pane("Sidebar"));
-    assert_eq!(c.label, "Undo delete");
+    assert_eq!(c.label, "Undo in sidebar");
     assert_eq!(c.default_chords, ["secondary-z"]);
     assert!(c.in_palette);
     let contexts: Vec<&str> = c.targets.iter().map(|t| t.context).collect();

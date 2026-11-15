@@ -56,7 +56,6 @@ const NOT_LISTED: &[&str] = &[
     "sidebar::ClearSelection",
     "sidebar::ExtendUp",
     "sidebar::ExtendDown",
-    "sidebar::RedoInTree",
     "apinata::RowUp",
     "apinata::RowDown",
     "apinata::RowPageUp",

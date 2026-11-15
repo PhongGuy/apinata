@@ -56,7 +56,7 @@ use crate::{style, ui};
 use batch::{Batch, Verb, bulk_delete_ask, permanent_delete_ask, single_delete_ask};
 use drop::{DragPreview, DraggedRow, DropZone, drop_target, drop_zone, multi_drop};
 pub use history::RedoInTree;
-use history::{Back, Step, TreeStep};
+use history::{Step, TreeStep};
 use menu::{BulkEntry, MenuEntry, NEW_FOLDER_NAME, bulk_entries, clone_name, menu_entries};
 use model::{Expanded, Node, NodeKind, OpenDraft};
 use multi::{Multi, SelKey, Tally, row_keys, selectable, visible_keys};
@@ -1262,16 +1262,11 @@ impl Sidebar {
         }
         if let Some(to) = drop_target(&dragged.path, &target.path, target.kind, zone) {
             let item = dragged.path.clone();
-            let backs = self.move_backs(&target.root, std::slice::from_ref(&item), cx);
-            let ops = (backs.into_iter())
-                .map(|back| {
-                    let op = TreeOp::Move {
-                        item: item.clone(),
-                        to: to.clone(),
-                    };
-                    (item.clone(), op, back)
-                })
-                .collect();
+            let op = TreeOp::Move {
+                item: item.clone(),
+                to,
+            };
+            let ops = vec![(item, op)];
             self.send_placing(&target.root, ops, Step::Forward, cx);
         }
     }
@@ -1304,14 +1299,13 @@ impl Sidebar {
         } else {
             target.path.clone()
         };
-        let backs = self.move_backs(&root, &moving, cx);
-        let ops = (moving.into_iter().zip(backs))
-            .map(|(item, back)| {
+        let ops = (moving.into_iter())
+            .map(|item| {
                 let op = TreeOp::Move {
                     item: item.clone(),
                     to: DropTarget::Inside(dir.clone()),
                 };
-                (item, op, back)
+                (item, op)
             })
             .collect();
         let sent = self.send_placing(&root, ops, Step::Forward, cx);
@@ -1451,7 +1445,7 @@ impl Sidebar {
                     name,
                     rename_file: true,
                 };
-                let ops = vec![(r.path, op, Back::Rename(r.old))];
+                let ops = vec![(r.path, op)];
                 self.send_placing(&r.root, ops, Step::Forward, cx);
                 return;
             }
@@ -1992,18 +1986,6 @@ impl Sidebar {
         {
             self.send_restores(&d.root, d.generation, d.trashed, cx);
         }
-    }
-
-    /// Whether `UndoDelete` has a delete to undo: one still landing into the trash, or a
-    /// finished one of a collection instance still open.
-    pub fn can_undo_delete(&self, cx: &App) -> bool {
-        let ws = self.workspace.read(cx);
-        let open = |root: &Path, generation: u64| {
-            (ws.collections().iter()).any(|c| c.root() == root && c.generation() == generation)
-        };
-        self.batches.iter().any(|b| b.awaits_undo())
-            || (self.history.iter())
-                .any(|s| matches!(s, TreeStep::Delete(d) if open(&d.root, d.generation)))
     }
 
     /// Ctrl+Z outside any editor or input undoes the newest tree action; with none left the

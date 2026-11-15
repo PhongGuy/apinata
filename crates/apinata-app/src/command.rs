@@ -183,6 +183,13 @@ pub enum TreeOp {
         item: ItemPath,
         to: DropTarget,
     },
+    /// Put `item` back at the exact path `to`, with the names and seqs recorded just before
+    /// the command `before` ran; answers `Moved`, nothing when it stays put, or `Failed`.
+    Place {
+        item: ItemPath,
+        to: ItemPath,
+        before: u64,
+    },
     /// Renumber the items of `folder` by name; answers with no notice, or `Failed`.
     SortByName {
         folder: ItemPath,

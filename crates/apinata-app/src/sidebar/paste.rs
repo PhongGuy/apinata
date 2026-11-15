@@ -263,14 +263,13 @@ impl Sidebar {
             .filter(|i| i.parent().as_ref() != Some(&folder))
             .cloned()
             .collect();
-        let backs = self.move_backs(root, &moving, cx);
-        let ops = (moving.into_iter().zip(backs))
-            .map(|(item, back)| {
+        let ops = (moving.into_iter())
+            .map(|item| {
                 let op = TreeOp::Move {
                     item: item.clone(),
                     to: DropTarget::Inside(folder.clone()),
                 };
-                (item, op, back)
+                (item, op)
             })
             .collect();
         let sent = self.send_placing(root, ops, super::history::Step::Forward, cx);

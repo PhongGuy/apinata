@@ -1,17 +1,17 @@
-//! The tree's undo and redo: deletes into the trash, moves and renames, newest first. Each
-//! step is put back through the same tree commands the action itself sent.
+//! The tree's undo and redo: deletes into the trash, moves and renames, newest first. A move
+//! or rename is put back exactly, file names and seqs alike, so an undo leaves no diff.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use apinata_core::{DropTarget, ItemPath};
+use apinata_core::ItemPath;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::{App, Context, Window, actions};
 
 use super::batch::{Batch, Verb};
 use super::{Sidebar, UNDO_DELETE_CAP, UndoEntry, ui};
 use crate::command::{Command, Notice, NoticeKind, TreeOp};
-use crate::snapshot::{DiskState, Row};
+use crate::snapshot::DiskState;
 use crate::ui::ToastKind;
 
 actions!(
@@ -22,15 +22,6 @@ actions!(
     ]
 );
 
-/// How a move or rename is put back.
-#[derive(Clone, Debug)]
-pub(super) enum Back {
-    /// Move the item to this spot.
-    Move(DropTarget),
-    /// Rename the item, and its file, to this name.
-    Rename(String),
-}
-
 /// Which stack a finished gesture lands on: an action and a redo go on the undo stack, an
 /// undo on the redo stack.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,12 +31,13 @@ pub(super) enum Step {
     Redo,
 }
 
-/// One item a gesture moved or renamed: where it is now, where it was, and how to put it back.
+/// One item a command moved or renamed: where it is now, where it was, and the command, whose
+/// record of names and seqs puts it back.
 #[derive(Clone, Debug)]
 pub(super) struct Placed {
-    at: ItemPath,
-    was: ItemPath,
-    back: Back,
+    now: ItemPath,
+    then: ItemPath,
+    command: u64,
 }
 
 /// One entry of the undo or redo stack.
@@ -80,11 +72,10 @@ impl TreeStep {
     }
 }
 
-// One sent command of a gesture: its item, how to put it back, and where it ended once
-// answered (`None` inside when it failed).
+// One sent command of a gesture: its item, and where it ended once answered (`None` inside
+// when it failed).
 struct Sent {
     item: ItemPath,
-    back: Back,
     outcome: Option<Option<ItemPath>>,
 }
 
@@ -107,63 +98,18 @@ impl Gesture {
     }
 }
 
-// Where to drop each of `items` to put it back where it is now, when they are put back one by
-// one in this order: after the sibling above it that is already in place, else before the
-// first sibling below that never moved, else into its folder.
-fn back_targets(rows: &[Row], items: &[ItemPath]) -> Vec<Back> {
-    items
-        .iter()
-        .enumerate()
-        .map(|(ix, item)| {
-            let parent = item.parent().unwrap_or_else(ItemPath::root);
-            let siblings: Vec<&ItemPath> = (rows.iter())
-                .map(|r| &r.path)
-                .filter(|p| p.parent().as_ref() == Some(&parent))
-                .collect();
-            let placed = |p: &ItemPath| !items.contains(p) || items[..ix].contains(p);
-            let at = siblings.iter().position(|p| *p == item).unwrap_or(0);
-            let above = siblings[..at].iter().rev().find(|p| placed(p));
-            let below = (siblings.iter().skip(at + 1)).find(|p| !items.contains(p));
-            Back::Move(match (above, below) {
-                (Some(p), _) => DropTarget::After((*p).clone()),
-                (None, Some(p)) => DropTarget::Before((*p).clone()),
-                (None, None) => DropTarget::Inside(parent),
-            })
-        })
-        .collect()
-}
-
 fn bare(item: &ItemPath) -> &str {
     let name = item.file_name();
     name.strip_suffix(".yml").unwrap_or(name)
 }
 
 impl Sidebar {
-    /// Where each of `items` of `root` would be put back to, as a move, read before it moves.
-    pub(super) fn move_backs(
-        &self,
-        root: &Path,
-        items: &[ItemPath],
-        cx: &Context<Self>,
-    ) -> Vec<Back> {
-        match self.workspace.read(cx).snapshot(root, cx) {
-            Some(snap) => back_targets(&snap.content.rows, items),
-            None => (items.iter())
-                .map(|i| {
-                    Back::Move(DropTarget::Inside(
-                        i.parent().unwrap_or_else(ItemPath::root),
-                    ))
-                })
-                .collect(),
-        }
-    }
-
-    /// Sends each op of `ops` (its item, the move or rename, and how to put it back) to `root`
-    /// as one gesture; returns the ids sent with their items. A new action ends the redo stack.
+    /// Sends each op of `ops` (its item and the move or rename) to `root` as one gesture;
+    /// returns the ids sent with their items. A new action ends the redo stack.
     pub(super) fn send_placing(
         &mut self,
         root: &Path,
-        ops: Vec<(ItemPath, TreeOp, Back)>,
+        ops: Vec<(ItemPath, TreeOp)>,
         step: Step,
         cx: &mut Context<Self>,
     ) -> Vec<(u64, ItemPath)> {
@@ -173,14 +119,14 @@ impl Sidebar {
         let mut sent = BTreeMap::new();
         let ids: Vec<(u64, ItemPath)> = self.workspace.update(cx, |w, cx| {
             (ops.into_iter())
-                .filter_map(|(item, op, back)| {
+                .filter_map(|(item, op)| {
                     let id = w.send(root, Command::Tree(op), cx)?;
+                    let outcome = None;
                     sent.insert(
                         id,
                         Sent {
                             item: item.clone(),
-                            back,
-                            outcome: None,
+                            outcome,
                         },
                     );
                     Some((id, item))
@@ -250,12 +196,12 @@ impl Sidebar {
             .partition(Gesture::finished);
         self.gestures = open;
         for g in done {
-            let items: Vec<Placed> = (g.sent.into_values())
-                .filter_map(|s| {
+            let items: Vec<Placed> = (g.sent.into_iter())
+                .filter_map(|(command, s)| {
                     Some(Placed {
-                        at: s.outcome??,
-                        was: s.item,
-                        back: s.back,
+                        now: s.outcome??,
+                        then: s.item,
+                        command,
                     })
                 })
                 .collect();
@@ -335,9 +281,9 @@ impl Sidebar {
         }
     }
 
-    // Puts each item back as its step says, in the order they were sent, or, when one of them
-    // is gone, changed on disk, or would land on a path a file now holds, says so and sends
-    // nothing.
+    // Puts each item back where it was, last sent first, so each command's record of names and
+    // seqs meets the tree as that command found it. When one item is gone, changed on disk, or
+    // would land on a path a file now holds, it says so and sends nothing.
     pub(super) fn put_back(
         &mut self,
         root: &Path,
@@ -353,46 +299,30 @@ impl Sidebar {
         let Some(snap) = self.workspace.read(cx).snapshot(root, cx) else {
             return;
         };
-        let rows = &snap.content.rows;
-        let verb = if step == Step::Undo { "undo" } else { "redo" };
-        let row = |p: &ItemPath| rows.iter().find(|r| r.path == *p);
-        let blocked = items.iter().find_map(|p| match row(&p.at) {
-            _ if !p.at.to_path(root).exists() => {
-                Some(format!("\"{}\" is no longer there", bare(&p.at)))
+        let row = |p: &ItemPath| snap.content.rows.iter().find(|r| r.path == *p);
+        let blocked = items.iter().find_map(|p| match row(&p.now) {
+            _ if !p.now.to_path(root).exists() => {
+                Some(format!("\"{}\" is no longer there", bare(&p.now)))
             }
-            Some(r) if r.disk == DiskState::Present => (p.was != p.at
-                && p.was.to_path(root).exists())
-            .then(|| format!("\"{}\" already exists", bare(&p.was))),
-            _ => Some(format!("\"{}\" changed on disk", bare(&p.at))),
+            Some(r) if r.disk == DiskState::Present => (p.then != p.now
+                && p.then.to_path(root).exists())
+            .then(|| format!("\"{}\" already exists", bare(&p.then))),
+            _ => Some(format!("\"{}\" changed on disk", bare(&p.now))),
         });
         if let Some(why) = blocked {
+            let verb = if step == Step::Undo { "undo" } else { "redo" };
             let text = format!("Could not {verb}: {why}.");
             window.push_notification(ui::kind_toast(ToastKind::Error, text), cx);
             return;
         }
-        let ats: Vec<ItemPath> = items.iter().map(|p| p.at.clone()).collect();
-        let moves = back_targets(rows, &ats);
-        let ops: Vec<(ItemPath, TreeOp, Back)> = (items.into_iter().zip(moves))
-            .map(|(p, again)| {
-                let (op, again) = match p.back {
-                    Back::Move(to) => (
-                        TreeOp::Move {
-                            item: p.at.clone(),
-                            to,
-                        },
-                        again,
-                    ),
-                    Back::Rename(name) => {
-                        let now = row(&p.at).map_or_else(String::new, |r| r.name.clone());
-                        let op = TreeOp::Rename {
-                            item: p.at.clone(),
-                            name,
-                            rename_file: true,
-                        };
-                        (op, Back::Rename(now))
-                    }
+        let ops: Vec<(ItemPath, TreeOp)> = (items.into_iter().rev())
+            .map(|p| {
+                let op = TreeOp::Place {
+                    item: p.now.clone(),
+                    to: p.then,
+                    before: p.command,
                 };
-                (p.at, op, again)
+                (p.now, op)
             })
             .collect();
         let sent = self.send_placing(root, ops, step, cx);
@@ -402,5 +332,25 @@ impl Sidebar {
             self.workspace.update(cx, |w, _| w.track_batch(root, &ids));
             (self.batches).push(Batch::new(Verb::Move, root.to_path_buf(), generation, sent));
         }
+    }
+
+    /// Whether the tree has a step to undo: a delete still landing, or a finished step of a
+    /// collection instance still open.
+    pub fn can_undo_in_tree(&self, cx: &App) -> bool {
+        let ws = self.workspace.read(cx);
+        let open = |(root, generation): (&Path, u64)| {
+            (ws.collections().iter()).any(|c| c.root() == root && c.generation() == generation)
+        };
+        self.batches.iter().any(|b| b.awaits_undo())
+            || self.history.iter().any(|s| open(s.instance()))
+    }
+
+    /// Whether the tree has a step Ctrl+Z took back that a redo can apply again.
+    pub fn can_redo_in_tree(&self, cx: &App) -> bool {
+        let ws = self.workspace.read(cx);
+        let open = |(root, generation): (&Path, u64)| {
+            (ws.collections().iter()).any(|c| c.root() == root && c.generation() == generation)
+        };
+        self.redo.iter().any(|s| open(s.instance()))
     }
 }

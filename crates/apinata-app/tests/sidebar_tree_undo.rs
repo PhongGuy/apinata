@@ -21,10 +21,7 @@ fn files() -> Vec<(&'static str, String)> {
             request("List todos", "http://x/todos/1"),
         ),
         ("users/folder.yml", folder("Users")),
-        (
-            "users/Get user.yml",
-            request("Get user", "http://x/users/1"),
-        ),
+        ("users/get.yml", request("Get user", "http://x/users/1")),
     ]
 }
 
@@ -237,5 +234,243 @@ fn an_undo_onto_a_taken_path_shows_an_error_and_changes_nothing(cx: &mut TestApp
     assert_eq!(
         std::fs::read_to_string(s.root.join("users/Add todo.yml")).unwrap(),
         moved
+    );
+}
+
+// Every file under `root` with its bytes.
+fn all_bytes(root: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else {
+                let rel = path.strip_prefix(root).unwrap().to_path_buf();
+                out.insert(rel, std::fs::read(&path).unwrap());
+            }
+        }
+    }
+    out
+}
+
+fn send_tree(cx: &mut TestAppContext, s: &Started, op: apinata_app::command::TreeOp) {
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, apinata_app::command::Command::Tree(op), cx)
+    });
+    frame(cx, s.win);
+}
+
+// A collection the app wrote itself: two folders with numbered requests, as saved files are.
+fn written(cx: &mut TestAppContext) -> (tempfile::TempDir, Started) {
+    use apinata_app::command::TreeOp;
+    let col = write_tree(&[("opencollection.yml", ROOT)]);
+    let s = started(cx, &col);
+    for name in ["Todos", "Users"] {
+        let op = TreeOp::CreateFolder {
+            parent: apinata_core::ItemPath::root(),
+            name: name.into(),
+        };
+        send_tree(cx, &s, op);
+    }
+    for (dir, name) in [
+        ("Todos", "One"),
+        ("Todos", "Two"),
+        ("Todos", "Three"),
+        ("Users", "Four"),
+        ("Users", "Five"),
+    ] {
+        let op = TreeOp::CreateRequest {
+            parent: ip(dir),
+            name: name.into(),
+        };
+        send_tree(cx, &s, op);
+    }
+    expand(cx, &s, "Todos");
+    expand(cx, &s, "Users");
+    (col, s)
+}
+
+#[gpui_kit::test]
+fn undoing_a_rename_restores_the_exact_file_name_and_redo_its_new_one(cx: &mut TestAppContext) {
+    let (_col, s) = start(cx);
+    expand(cx, &s, "users");
+    rename(cx, &s, "users/get.yml", "Fetch user");
+    assert!(exists(&s, "users/Fetch user.yml"));
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert!(exists(&s, "users/get.yml"), "the old file name is back");
+    assert!(!exists(&s, "users/Get user.yml") && !exists(&s, "users/Fetch user.yml"));
+    let text = std::fs::read_to_string(s.root.join("users/get.yml")).unwrap();
+    assert!(text.contains("name: Get user"));
+    press(cx, &s, &secondary("shift-z"));
+    assert!(
+        exists(&s, "users/Fetch user.yml"),
+        "redo gives the new name again"
+    );
+    assert!(!exists(&s, "users/get.yml"));
+}
+
+#[gpui_kit::test]
+fn undoing_a_folder_rename_restores_its_exact_directory_name(cx: &mut TestAppContext) {
+    let (_col, s) = start(cx);
+    rename(cx, &s, "users", "People");
+    assert!(exists(&s, "People/folder.yml"), "renamed");
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert!(
+        exists(&s, "users/folder.yml"),
+        "the old directory name is back"
+    );
+    assert!(!exists(&s, "People"));
+    assert!(exists(&s, "users/get.yml"));
+    press(cx, &s, &secondary("shift-z"));
+    assert!(exists(&s, "People/get.yml"), "redo renames it again");
+    assert!(!exists(&s, "users"));
+}
+
+// A move and its undo leave every file as it was, numbers and all.
+#[gpui_kit::test]
+fn a_move_and_its_undo_leave_every_file_byte_identical(cx: &mut TestAppContext) {
+    let (_col, s) = written(cx);
+    let before = all_bytes(&s.root);
+    drag_into(cx, &s, "Todos/Two.yml", "Users");
+    assert!(exists(&s, "Users/Two.yml"), "moved");
+    let moved = all_bytes(&s.root);
+    assert_ne!(moved, before);
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert_eq!(all_bytes(&s.root), before, "the undo put every byte back");
+    press(cx, &s, &secondary("shift-z"));
+    assert_eq!(all_bytes(&s.root), moved, "the redo is the move again");
+}
+
+#[gpui_kit::test]
+fn a_multi_selection_move_and_its_undo_leave_every_file_byte_identical(cx: &mut TestAppContext) {
+    let (_col, s) = written(cx);
+    let before = all_bytes(&s.root);
+    cx.update_window(s.win, |_, w, cx| w.click(row("Todos/One.yml"), cx))
+        .unwrap();
+    secondary_click(cx, s.win, row("Todos/Three.yml"));
+    drag_into(cx, &s, "Todos/Three.yml", "Users");
+    assert!(exists(&s, "Users/One.yml") && exists(&s, "Users/Three.yml"));
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert_eq!(all_bytes(&s.root), before);
+}
+
+// A reorder inside one folder is undone as exactly.
+#[gpui_kit::test]
+fn a_reorder_and_its_undo_leave_every_file_byte_identical(cx: &mut TestAppContext) {
+    let (_col, s) = written(cx);
+    let before = all_bytes(&s.root);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let start = w.find(row("Todos/Three.yml")).bounds().center();
+        let b = w.find(row("Todos/One.yml")).bounds();
+        w.drag(
+            start,
+            point(b.center().x, b.origin.y + b.size.height * 0.1),
+            cx,
+        );
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert_ne!(all_bytes(&s.root), before, "reordered");
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert_eq!(all_bytes(&s.root), before);
+}
+
+// Redo's keys in a text field are the field's: they never redo a tree step.
+fn undone_rename(cx: &mut TestAppContext) -> (tempfile::TempDir, Started) {
+    let (col, s) = start(cx);
+    expand(cx, &s, "users");
+    rename(cx, &s, "users/get.yml", "Fetch user");
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert!(exists(&s, "users/get.yml"));
+    (col, s)
+}
+
+fn redo_keys(cx: &mut TestAppContext, s: &Started) {
+    let mut keys = vec![secondary("shift-z")];
+    if !cfg!(target_os = "macos") {
+        keys.push("ctrl-y".into());
+    }
+    for key in keys {
+        press(cx, s, &key);
+        assert!(exists(s, "users/get.yml"), "{key} left the tree alone");
+    }
+}
+
+#[gpui_kit::test]
+fn redo_keys_in_the_filter_field_leave_the_tree_alone(cx: &mut TestAppContext) {
+    let (_col, s) = undone_rename(cx);
+    press(cx, &s, &secondary("f"));
+    cx.update_window(s.win, |_, w, cx| w.input("get", cx))
+        .unwrap();
+    frame(cx, s.win);
+    redo_keys(cx, &s);
+}
+
+#[gpui_kit::test]
+fn redo_keys_in_the_rename_field_leave_the_tree_alone(cx: &mut TestAppContext) {
+    let (_col, s) = undone_rename(cx);
+    let view = sidebar(cx, &s);
+    let root = s.root.clone();
+    cx.update_window(s.win, |_, w, cx| {
+        view.update(cx, |v, cx| {
+            v.start_rename(&root, &ip("users/get.yml"), w, cx)
+        })
+    })
+    .unwrap();
+    frame(cx, s.win);
+    redo_keys(cx, &s);
+    assert!(
+        view.read_with(cx, |v, _| v.renaming()).is_some(),
+        "still renaming"
+    );
+}
+
+fn palette_lists(cx: &mut TestAppContext, s: &Started, label: &str) -> bool {
+    cx.simulate_keystrokes(s.win, &secondary("shift-p"));
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.input(label, cx))
+        .unwrap();
+    frame(cx, s.win);
+    let found = cx
+        .update_window(s.win, |_, w, _| {
+            gpui_kit::base::test_support::snapshots(w)
+                .iter()
+                .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
+                .any(|n| n.label().is_some_and(|l| l.starts_with(label)))
+        })
+        .unwrap();
+    cx.simulate_keystrokes(s.win, "escape");
+    frame(cx, s.win);
+    found
+}
+
+#[gpui_kit::test]
+fn the_palette_offers_undo_and_redo_in_sidebar_while_each_has_a_step(cx: &mut TestAppContext) {
+    let (_col, s) = start(cx);
+    assert!(!palette_lists(cx, &s, "Undo in sidebar"), "nothing to undo");
+    assert!(!palette_lists(cx, &s, "Redo in sidebar"), "nothing to redo");
+    expand(cx, &s, "users");
+    rename(cx, &s, "users/get.yml", "Fetch user");
+    assert!(palette_lists(cx, &s, "Undo in sidebar"), "a rename to undo");
+    assert!(!palette_lists(cx, &s, "Redo in sidebar"));
+    focus_tree(cx, &s);
+    press(cx, &s, &secondary("z"));
+    assert!(
+        !palette_lists(cx, &s, "Undo in sidebar"),
+        "the rename was undone"
+    );
+    assert!(
+        palette_lists(cx, &s, "Redo in sidebar"),
+        "and can be redone"
     );
 }

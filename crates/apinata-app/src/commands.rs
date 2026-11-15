@@ -616,7 +616,7 @@ pub fn registry() -> Vec<Command> {
             // hidden too.
             let mut c = command(
                 "request.undo_delete",
-                "Undo delete",
+                "Undo in sidebar",
                 Request,
                 vec![at(UndoDelete, SIDEBAR)],
                 &["secondary-z"],
@@ -639,7 +639,6 @@ pub fn registry() -> Vec<Command> {
                 },
             );
             c.scope = Scope::Pane(SIDEBAR);
-            c.in_palette = false;
             c
         },
         // Bound while focus is in a table row's cells or checkbox; the palette cannot say which row.
