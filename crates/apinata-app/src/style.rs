@@ -184,6 +184,9 @@ pub const SCROLLBAR_GUTTER: Pixels = px(16.);
 pub const SCROLL_FADE_HEIGHT: Rems = ui(32.);
 /// Width of the fade over a sideways strip's edge while items lie beyond it.
 pub const STRIP_FADE_WIDTH: Rems = ui(24.);
+/// The least of a tab cut by a strip's edge that shows before its close button does: the
+/// button's row-height slot and a fade width of name, both clear of the fade.
+pub const TAB_READABLE_WIDTH: Rems = ui(28. + 24. * 2.);
 /// What a tab strip's overflow menu button takes beside the tabs while they overflow.
 pub const TAB_OVERFLOW_WIDTH: Rems = ui(32.);
 /// The widest a comparison's source menu grows before its label truncates.
