@@ -148,6 +148,7 @@ pub struct TeamMachine {
     state: TeamState,
     role: Role,
     pending_change: bool,
+    pending_flush: bool,
     pending_pull: bool,
     rejections: u8,
 }
@@ -164,6 +165,7 @@ impl TeamMachine {
             state,
             role,
             pending_change: false,
+            pending_flush: false,
             pending_pull: false,
             rejections: 0,
         }
@@ -188,10 +190,23 @@ impl TeamMachine {
         match event {
             E::Gone => self.stop(S::Blocked(Block::Gone)),
             E::SignedOut => self.stop(S::Blocked(Block::SignedOut)),
-            E::CommitRefused { output } => self.stop(S::Blocked(Block::Hook { output })),
+            // The read role never commits, so a refusal arriving after the role dropped is stale.
+            E::CommitRefused { .. } if !writes => Vec::new(),
+            // A refused flush inside a pull or squash keeps that pull owed until a commit lands.
+            E::CommitRefused { output } => {
+                let pull_owed =
+                    self.pending_pull || matches!(self.state, S::Pulling | S::Squashing);
+                let actions = self.stop(S::Blocked(Block::Hook { output }));
+                self.pending_pull = pull_owed;
+                actions
+            }
             E::RoleChanged(role) => self.role_changed(role),
             // A busy step owns the tree, so work arriving meanwhile waits for it to settle.
-            E::Changed | E::Flush | E::DebounceElapsed if self.busy() => {
+            E::Flush if self.busy() => {
+                self.pending_flush = writes;
+                Vec::new()
+            }
+            E::Changed | E::DebounceElapsed if self.busy() => {
                 self.pending_change = true;
                 Vec::new()
             }
@@ -281,13 +296,16 @@ impl TeamMachine {
         )
     }
 
+    /// Starts a pull, which under a write role commits the tree first and so covers a flush.
     fn pull(&mut self) -> Vec<TeamAction> {
         self.state = TeamState::Pulling;
         self.pending_pull = false;
+        self.pending_flush = false;
         vec![TeamAction::Pull]
     }
 
-    /// Back at rest: a pull that waited runs first, else a change that waited is picked up.
+    /// Back at rest: a pull that waited runs first, then a flush that waited commits at once,
+    /// else a change that waited is picked up.
     fn settle(&mut self) -> Vec<TeamAction> {
         let writes = self.role != Role::Read;
         self.state = if writes {
@@ -297,6 +315,11 @@ impl TeamMachine {
         };
         if self.pending_pull {
             return self.pull();
+        }
+        if std::mem::take(&mut self.pending_flush) && writes {
+            self.pending_change = false;
+            self.state = TeamState::Committing;
+            return vec![TeamAction::CancelDebounce, TeamAction::Commit];
         }
         if std::mem::take(&mut self.pending_change) {
             return vec![if writes {
@@ -309,11 +332,16 @@ impl TeamMachine {
     }
 
     /// Enters a state that waits on the user or the network. A pending pull is moot there, but a
-    /// pending change still debounces into a local commit.
+    /// pending flush still commits locally at once and a pending change still debounces.
     fn stop(&mut self, state: TeamState) -> Vec<TeamAction> {
         self.state = state;
         self.pending_pull = false;
-        if std::mem::take(&mut self.pending_change) && self.role != Role::Read {
+        let writes = self.role != Role::Read;
+        if std::mem::take(&mut self.pending_flush) && writes {
+            self.pending_change = false;
+            return vec![TeamAction::CancelDebounce, TeamAction::Commit];
+        }
+        if std::mem::take(&mut self.pending_change) && writes {
             return vec![TeamAction::StartDebounce];
         }
         Vec::new()
@@ -354,14 +382,17 @@ impl TeamMachine {
         }
     }
 
-    /// A lowered role at rest turns read-only; a raised one leaves read-only by pulling, so the
-    /// commits kept while read-only push.
+    /// A lowered role turns read-only from rest, a commit or a block only a write could clear;
+    /// a raised one leaves read-only by pulling, so the commits kept while read-only push.
     fn role_changed(&mut self, role: Role) -> Vec<TeamAction> {
         self.role = role;
         match self.state {
-            TeamState::Idle if role == Role::Read => {
-                self.state = TeamState::ReadOnly { paused: false };
-                Vec::new()
+            TeamState::Idle
+            | TeamState::Committing
+            | TeamState::Blocked(Block::Hook { .. } | Block::Secret { .. })
+                if role == Role::Read =>
+            {
+                self.settle()
             }
             TeamState::ReadOnly { .. } if role != Role::Read => self.pull(),
             _ => Vec::new(),

@@ -329,3 +329,70 @@ fn any_other_failure_blocks_and_retry_pulls() {
     );
     assert_eq!(m.handle(E::Retry), [A::Pull]);
 }
+
+#[test]
+fn a_role_lowered_mid_commit_settles_read_only_and_ignores_the_late_result() {
+    let lowered = E::RoleChanged(Role::Read);
+    let (mut m, _) = run(Role::Write, vec![E::Changed, E::DebounceElapsed, lowered]);
+    assert_eq!(m.state(), &S::ReadOnly { paused: false });
+    assert_eq!(m.handle(E::Committed), Vec::<A>::new());
+    assert_eq!(m.state(), &S::ReadOnly { paused: false });
+    assert_eq!(
+        m.handle(E::CommitRefused {
+            output: "nope".into()
+        }),
+        Vec::<A>::new()
+    );
+    assert_eq!(m.state(), &S::ReadOnly { paused: false });
+}
+
+#[test]
+fn a_role_lowered_while_a_hook_blocks_settles_read_only() {
+    let refused = E::CommitRefused {
+        output: "nope".into(),
+    };
+    let events = vec![
+        E::Changed,
+        E::DebounceElapsed,
+        refused,
+        E::RoleChanged(Role::Read),
+    ];
+    let (m, _) = run(Role::Write, events);
+    assert_eq!(m.state(), &S::ReadOnly { paused: false });
+}
+
+#[test]
+fn a_role_lowered_while_a_secret_blocks_settles_read_only() {
+    let mut events = pushing();
+    events.extend([E::PushFailed(secret()), E::RoleChanged(Role::Read)]);
+    let (m, _) = run(Role::Write, events);
+    assert_eq!(m.state(), &S::ReadOnly { paused: false });
+}
+
+#[test]
+fn a_hook_refusing_the_flush_inside_a_pull_pulls_once_the_commit_lands() {
+    let (mut m, _) = run(
+        Role::Write,
+        vec![
+            E::RemoteMoved,
+            E::CommitRefused {
+                output: "nope".into(),
+            },
+        ],
+    );
+    assert_eq!(m.handle(E::Retry), [A::Commit]);
+    assert_eq!(m.handle(E::Committed), [A::Push]);
+    assert_eq!(m.handle(E::PushAccepted), [A::Pull]);
+}
+
+#[test]
+fn a_flush_while_busy_commits_as_soon_as_the_step_settles() {
+    let mut events = pushing();
+    events.push(E::Flush);
+    let (mut m, last) = run(Role::Write, events);
+    assert_eq!((m.state(), last), (&S::Pushing, vec![]));
+    assert_eq!(m.handle(E::PushAccepted), [A::CancelDebounce, A::Commit]);
+    assert_eq!(m.state(), &S::Committing);
+    let (mut m, _) = run(Role::Write, vec![E::RemoteMoved, E::Flush]);
+    assert_eq!(m.handle(pulled(0)), [A::CancelDebounce, A::Commit]);
+}
