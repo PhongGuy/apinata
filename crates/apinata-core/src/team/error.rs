@@ -65,3 +65,52 @@ pub enum TeamError {
     #[error("The team file could not be used: {0}")]
     Store(String),
 }
+
+/// The server's error envelope: `{"error": {"code", "message", "field"}}`.
+#[derive(serde::Deserialize)]
+struct ErrorBody {
+    error: ErrorDetail,
+}
+
+#[derive(serde::Deserialize)]
+struct ErrorDetail {
+    code: String,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
+    field: Option<String>,
+}
+
+impl TeamError {
+    /// Maps a non-2xx answer by its `error.code`; a body that is not the error envelope keeps
+    /// only the status. Server messages pass through `redact_token`, so no token rides along.
+    pub(crate) fn from_response(status: u16, retry_after: Option<u64>, body: &[u8]) -> TeamError {
+        let Ok(ErrorBody { error }) = serde_json::from_slice::<ErrorBody>(body) else {
+            return TeamError::Server {
+                status,
+                code: String::new(),
+                message: String::new(),
+            };
+        };
+        let message = super::redact_token(&error.message);
+        match error.code.as_str() {
+            "unauthenticated" => TeamError::Unauthenticated,
+            "forbidden" => TeamError::Forbidden(message),
+            "not_found" => TeamError::NotFound(message),
+            "conflict" => TeamError::Conflict(message),
+            "invalid_request" => TeamError::Invalid {
+                field: error.field,
+                message,
+            },
+            "rate_limited" => TeamError::RateLimited {
+                retry_after_secs: retry_after,
+            },
+            "unavailable" => TeamError::Unavailable,
+            _ => TeamError::Server {
+                status,
+                code: super::redact_token(&error.code),
+                message,
+            },
+        }
+    }
+}

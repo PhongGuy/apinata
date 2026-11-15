@@ -1,10 +1,11 @@
 //! Team mode: a collection kept in sync with a team server by committing, pushing and pulling
 //! on its own. This module holds the git env that carries the server token, the reading of git's
 //! output as a sync failure, the state machine that decides what the loop runs next, the
-//! driver thread that runs it, the folder that keeps conflict copies, and the server's contract
-//! types.
+//! driver thread that runs it, the folder that keeps conflict copies, the server's contract
+//! types and the client for its JSON API.
 
 mod auth;
+mod client;
 mod copies;
 mod driver;
 mod error;
@@ -14,6 +15,7 @@ mod machine;
 mod model;
 
 pub use auth::{Identity, TeamAuth, redact_token, team_options};
+pub use client::{HttpTeamClient, TOKEN_NAME, TeamApi, TeamFuture};
 pub use copies::ConflictCopies;
 pub use driver::{TeamConfig, TeamStatus, TeamSync};
 pub use error::TeamError;
