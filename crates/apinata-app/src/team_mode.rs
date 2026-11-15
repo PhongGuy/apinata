@@ -44,7 +44,7 @@ pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
             w.team_resumes().remove(&root);
             match result {
                 Ok(resumed) => start(w, &root, &binding, &conflicts, resumed, source, cx),
-                Err(e) => notice(&root, &e, cx),
+                Err(e) => notice(&root, "did not start", &e, cx),
             }
             // A sign-in landed while this one asked with the old token: ask again with the new.
             if w.team_reruns().remove(&root) {
@@ -179,7 +179,7 @@ async fn reread(
             }
             apply_blocks(w, root, resumed.standing);
         }
-        Err(e) => notice(root, &e, cx),
+        Err(e) => notice(root, "could not refresh", &e, cx),
     })
     .is_ok()
 }
@@ -196,14 +196,9 @@ fn apply_blocks(w: &Workspace, root: &Path, standing: Standing) {
     }
 }
 
-fn notice(root: &Path, e: &TeamError, cx: &mut Context<Workspace>) {
-    let name = root.file_name().map_or_else(
-        || root.display().to_string(),
-        |n| n.to_string_lossy().into_owned(),
-    );
-    let text = format!(
-        "Team sync of {name} did not start: {}",
-        team_text::error_text(e)
-    );
+// `what` says which step failed: the start path and the re-read of a running loop differ.
+fn notice(root: &Path, what: &str, e: &TeamError, cx: &mut Context<Workspace>) {
+    let name = crate::workspace::display_name(root);
+    let text = format!("Team sync of {name} {what}: {}", team_text::error_text(e));
     cx.emit(WorkspaceEvent::FolderNotice(text));
 }

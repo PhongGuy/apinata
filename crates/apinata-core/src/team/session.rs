@@ -102,9 +102,9 @@ pub async fn sign_out(
     TeamStore::update(team_file, |t| t.remove_account(api.server()))
 }
 
-/// The signed-in user on this server, refreshing the account's name, admin flag and identity. Without an
-/// account or token it is `Unauthenticated` with no request; a refused token is deleted while
-/// the account stays, so the list can show the server as signed out.
+/// The signed-in user on this server, refreshing the account's name, admin flag and identity.
+/// Without an account or token it is `Unauthenticated` with no request; a refused token is
+/// deleted while the account stays, so the list can show the server as signed out.
 pub async fn current(
     api: &dyn TeamApi,
     secrets: &dyn SecretStore,

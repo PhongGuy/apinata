@@ -240,7 +240,8 @@ impl Render for SyncView {
         let clashes: Vec<_> = (clashes.into_iter().enumerate())
             .map(|(ix, clash)| self.clash_row(ix, clash, read_only, cx))
             .collect();
-        // Long output and many clashes scroll inside the lines, so the footer with its fix stays in the window.
+        // Long output and many clashes scroll inside the lines, so the footer with its fix stays
+        // in the window.
         let cap = crate::dialog_frame::titled_body_room(window) * 0.6;
         let close = Button::new("team-sync-close")
             .label("Close")
