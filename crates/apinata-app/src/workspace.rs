@@ -4166,10 +4166,9 @@ fn trashed_path(kind: &TabKind) -> Option<&ItemPath> {
     }
 }
 
-/// `root` made absolute, so roots given relative match the absolute ones `open` stores.
 // Refuses when `rel` or a folder on the way to it under `root` is a symlink, so a clash's
 // write or delete never lands outside the collection.
-fn refuse_symlinks(root: &Path, rel: &str) -> std::io::Result<()> {
+pub(crate) fn refuse_symlinks(root: &Path, rel: &str) -> std::io::Result<()> {
     let mut path = root.to_path_buf();
     for part in rel.split('/') {
         path.push(part);
@@ -4188,6 +4187,7 @@ fn refuse_symlinks(root: &Path, rel: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// `root` made absolute, so roots given relative match the absolute ones `open` stores.
 pub(crate) fn absolute(root: &Path) -> PathBuf {
     std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf())
 }

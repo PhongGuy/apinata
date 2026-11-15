@@ -84,7 +84,7 @@ pub async fn resume(
             let Some(ws) = listed else {
                 return Ok(kept(Standing::Gone, me.identity, String::new(), None));
             };
-            // A sign-out between reading the token and the answer leaves nothing to sign in with.
+            // No token was kept when the check began; a sign-in landing meanwhile is not used.
             let Some(token) = token else {
                 return Ok(kept(Standing::SignedOut, me.identity, String::new(), None));
             };

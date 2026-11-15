@@ -110,13 +110,18 @@ impl SyncView {
         );
     }
 
-    // Opens Compare for a clashing copy: the file now (empty when missing) against the copy.
+    // Opens Compare for a clashing copy: the file now against the copy. The file reads as empty
+    // when missing or when it is not a regular file reached without a symlink, so a teammate's
+    // link to a device or a huge file is never followed.
     fn compare(&self, rel: &str, window: &mut Window, cx: &mut App) {
         let Some(dir) = self.workspace.read(cx).team_copies(&self.root) else {
             return;
         };
         let lossy = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned();
-        let disk = std::fs::read(self.root.join(rel))
+        let file = self.root.join(rel);
+        let regular = crate::workspace::refuse_symlinks(&self.root, rel).is_ok()
+            && std::fs::symlink_metadata(&file).is_ok_and(|m| m.is_file());
+        let disk = (regular.then(|| std::fs::read(&file).ok()).flatten())
             .map(lossy)
             .unwrap_or_default();
         let mine = match ConflictCopies::new(dir.to_path_buf()).read(rel) {
@@ -235,7 +240,7 @@ impl Render for SyncView {
         let clashes: Vec<_> = (clashes.into_iter().enumerate())
             .map(|(ix, clash)| self.clash_row(ix, clash, read_only, cx))
             .collect();
-        // Long output scrolls inside the lines, so the footer with its fix stays in the window.
+        // Long output and many clashes scroll inside the lines, so the footer with its fix stays in the window.
         let cap = crate::dialog_frame::titled_body_room(window) * 0.6;
         let close = Button::new("team-sync-close")
             .label("Close")
@@ -255,9 +260,9 @@ impl Render for SyncView {
                     .gap(SPACE_2)
                     .max_h(cap)
                     .overflow_y_scroll()
-                    .children(lines),
+                    .children(lines)
+                    .children(clashes),
             )
-            .children(clashes)
             .child(footer)
     }
 }

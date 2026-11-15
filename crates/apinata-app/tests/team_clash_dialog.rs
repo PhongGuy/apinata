@@ -158,3 +158,55 @@ fn delete_again_removes_the_file_teammates_changed(cx: &mut TestAppContext) {
         !origin_has(&sb, &bare, "a.yml", "http")
     });
 }
+
+#[gpui_kit::test]
+fn many_clashes_scroll_and_keep_close_in_the_window(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let (sb, col) = (Sandbox::new(), with_notes());
+    shared_origin(&sb, col.path());
+    let s = team_started(cx, &sb, &col, |_, _| {}).0;
+    std::fs::create_dir_all(copies_of(&s)).unwrap();
+    for i in 0..80 {
+        std::fs::write(copies_of(&s).join(format!("n{i}.txt")), "mine\n").unwrap();
+    }
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    wait_for(cx, "the clashes", |cx| {
+        s.ws.read_with(cx, |w, _| w.team_clashes(&s.root).len() == 80)
+    });
+    open_sync(cx, &s);
+    let (close, window) = cx
+        .update_window(s.win, |_, w, _| {
+            (
+                w.try_find("team-sync-close").map(|e| e.bounds()),
+                w.viewport_size(),
+            )
+        })
+        .unwrap();
+    let close = close.expect("Close is shown");
+    assert!(
+        close.bottom() <= window.height,
+        "{close:?} outside {window:?}"
+    );
+}
+
+// A symlink at the clash path, to a file holding the saved side's text: reading through it
+// would show the two sides as the same.
+#[cfg(unix)]
+#[gpui_kit::test]
+fn compare_never_reads_through_a_symlink(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), with_notes());
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("target.txt"), "mine\n").unwrap();
+    std::fs::remove_file(col.path().join("notes.txt")).unwrap();
+    std::os::unix::fs::symlink(
+        outside.path().join("target.txt"),
+        col.path().join("notes.txt"),
+    )
+    .unwrap();
+    shared_origin(&sb, col.path());
+    let s = app_with_copy(cx, &sb, &col);
+    open_sync(cx, &s);
+    click(cx, &s, ("team-compare", 0usize));
+    assert!(shown(cx, s.win, "compare-diff"));
+    assert!(!shown(cx, s.win, "compare-same"));
+}
