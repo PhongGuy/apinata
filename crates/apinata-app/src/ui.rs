@@ -2018,9 +2018,16 @@ impl Reveal {
                 let (left, right) = (item.left() + x, item.right() + x);
                 let (vl, vr) = (viewport.left(), viewport.right());
                 let fits = item.size.width <= viewport.size.width - fade * 2.;
-                let shown_left = if fits && x < -px(1.) { fade } else { px(0.) };
+                let slot = resolve(ROW_HEIGHT, window);
+                let shown_left = if fits && x < -px(1.) {
+                    let (solid, grade) = cover_extent(left_cover(&scroll, items, slot, fade), fade);
+                    solid + grade
+                } else {
+                    px(0.)
+                };
                 let shown_right = if fits && x > -scroll.max_offset().x + px(1.) {
-                    let (solid, grade) = cover_extent(right_cover(&scroll, items), fade);
+                    let (solid, grade) =
+                        cover_extent(right_cover(&scroll, items, slot, fade), fade);
                     solid + grade
                 } else {
                     px(0.)
@@ -2160,7 +2167,7 @@ impl StripFades {
         let seen = self.0.get();
         let edges = hidden_edges(scroll, items);
         let cover = left_cover(scroll, items, seen.slot, seen.fade);
-        let cover_right = right_cover(scroll, items);
+        let cover_right = right_cover(scroll, items, seen.slot, seen.fade);
         // The marker measures the wrapper and redraws once when it or the edges changed
         // after this render, so a resize or a reveal is not left a frame behind.
         let (cell, handle, slot, fade) = (Rc::clone(&self.0), scroll.clone(), seen.slot, seen.fade);
@@ -2185,7 +2192,7 @@ impl StripFades {
                     view: handle.bounds(),
                     edges: hidden_edges(&handle, items),
                     cover: left_cover(&handle, items, slot, fade),
-                    cover_right: right_cover(&handle, items),
+                    cover_right: right_cover(&handle, items, slot, fade),
                     slot,
                     fade,
                 };
@@ -2286,12 +2293,18 @@ fn hidden_edges(scroll: &ScrollHandle, items: usize) -> (bool, bool) {
     (left, right)
 }
 
+// Whether `shown` px of a cut item is enough to read it: its `slot` and a `fade` width of
+// label clear the edge's fade. Less than that is covered whole, so no close button shows
+// beside a name too faded to read, and no fade blanks more.
+fn readable(shown: Pixels, slot: Pixels, fade: Pixels) -> bool {
+    shown >= slot + fade * 2.
+}
+
 // How far past the viewport's left edge an item cut there reaches, and the gap before the
-// next item, when the strip is scrolled to its end and so can neither hide that item nor show
-// it whole; zeros otherwise. It stays covered until its trailing `slot` and a fade width of
-// label both clear the `fade`, so no close button shows beside a name too faded to read.
+// next item, while items lie beyond that edge and too little of it shows to read; zeros
+// otherwise. A wheel can stop at any offset, so this holds wherever the strip rests.
 fn left_cover(scroll: &ScrollHandle, items: usize, slot: Pixels, fade: Pixels) -> (Pixels, Pixels) {
-    if hidden_edges(scroll, items) != (true, false) {
+    if !hidden_edges(scroll, items).0 {
         return (px(0.), px(0.));
     }
     let (view, x) = (scroll.bounds(), scroll.offset().x);
@@ -2306,7 +2319,7 @@ fn left_cover(scroll: &ScrollHandle, items: usize, slot: Pixels, fade: Pixels) -
     };
     let cut = bounds[ix];
     let shown = cut.right() + x - view.left();
-    if shown >= slot + fade * 2. {
+    if readable(shown, slot, fade) {
         return (px(0.), px(0.));
     }
     let gap = bounds
@@ -2316,8 +2329,14 @@ fn left_cover(scroll: &ScrollHandle, items: usize, slot: Pixels, fade: Pixels) -
 }
 
 // How far before the viewport's right edge an item cut there reaches, and the gap after the
-// item before it, while items lie beyond that edge; zeros otherwise.
-fn right_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
+// item before it, while items lie beyond that edge and too little of it shows to read; zeros
+// otherwise.
+fn right_cover(
+    scroll: &ScrollHandle,
+    items: usize,
+    slot: Pixels,
+    fade: Pixels,
+) -> (Pixels, Pixels) {
     if !hidden_edges(scroll, items).1 {
         return (px(0.), px(0.));
     }
@@ -2331,10 +2350,14 @@ fn right_cover(scroll: &ScrollHandle, items: usize) -> (Pixels, Pixels) {
         return (px(0.), px(0.));
     };
     let cut = bounds[ix];
+    let shown = view.right() - (cut.left() + x);
+    if readable(shown, slot, fade) {
+        return (px(0.), px(0.));
+    }
     let gap = ix.checked_sub(1).map_or(px(0.), |prev| {
         (cut.left() - bounds[prev].right()).max(px(0.))
     });
-    (view.right() - (cut.left() + x), gap)
+    (shown, gap)
 }
 
 // A fade's solid part and the width it grades over beside it: solid across a covered item
@@ -2364,7 +2387,7 @@ pub fn tail_clear_of_fades(
     let (solid, grade) = cover_extent(left_cover(scroll, items, tail, fade), fade);
     let shown = if hidden_left { solid + grade } else { px(0.) };
     let from = view.left() + shown;
-    let (solid, grade) = cover_extent(right_cover(scroll, items), fade);
+    let (solid, grade) = cover_extent(right_cover(scroll, items, tail, fade), fade);
     let to = view.right() - if hidden_right { solid + grade } else { px(0.) };
     let end = item.right() + x;
     end - tail >= from - px(1.) && end <= to + px(1.)

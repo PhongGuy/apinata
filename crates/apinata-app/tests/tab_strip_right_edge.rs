@@ -1,5 +1,5 @@
-//! The main tab strip never shows part of a tab at its right edge: a tab cut there lies
-//! wholly under the right fade's solid part, so no label is cut mid-word.
+//! The main tab strip never shows a sliver of a tab at its right edge: a tab cut there lies
+//! wholly under the right fade's solid part until enough of its name shows to read.
 
 use crate::support;
 
@@ -9,8 +9,8 @@ use support::*;
 
 // Opens `count` request tabs and, for each window width, activates each tab in turn and then
 // wheels the strip a notch at a time, checking after each step that any tab cut by the
-// strip's right edge lies wholly under the right fade's solid part. Returns how many checks
-// found a tab cut there.
+// strip's right edge lies wholly under the right fade's solid part, unless its close slot and
+// a fade width of label show. Returns how many checks found a tab cut there.
 fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item = u32>) -> usize {
     let files: Vec<(String, String)> = (0..count)
         .map(|i| {
@@ -50,6 +50,9 @@ fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item =
                     };
                     let grade = gap.min(fade_w);
                     let hidden = fade.is_some_and(|f| b.left() >= f.left() + grade - px(0.5));
+                    let slot = apinata_app::style::resolve(apinata_app::style::ROW_HEIGHT, w);
+                    let readable = view.right() - b.left() >= slot + fade_w * 2. - px(0.5);
+                    let hidden = hidden || readable;
                     Some((
                         ix,
                         hidden,
@@ -98,8 +101,8 @@ fn frames(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, n: usize) {
     .unwrap();
 }
 
-// Seven long-named tabs at 1280, 800 and 640 px: a tab at the right edge is whole or wholly
-// behind the fade, whether a tab was chosen or the strip wheeled.
+// Seven long-named tabs at 1280, 800 and 640 px: a tab at the right edge is whole, readable or
+// wholly behind the fade, whether a tab was chosen or the strip wheeled.
 #[gpui_kit::test]
 fn no_tab_shows_cut_at_the_right_edge(cx: &mut TestAppContext) {
     let covered = never_cut(cx, 7, [1280, 800, 640].into_iter());

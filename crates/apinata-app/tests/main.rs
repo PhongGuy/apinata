@@ -600,6 +600,7 @@ mod tab_run_selection_extra;
 mod tab_strip;
 mod tab_strip_left_edge;
 mod tab_strip_right_edge;
+mod tab_strip_wheel_edges;
 mod tabs;
 mod tag_chips;
 mod tags_edit;
