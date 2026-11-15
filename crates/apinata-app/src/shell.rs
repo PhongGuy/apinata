@@ -3106,6 +3106,7 @@ impl Render for Shell {
                         .update(cx, |t, cx| t.undo_active(a, window, cx));
                 }
             }))
+            .on_action(cx.listener(to_sidebar(Sidebar::redo_in_tree)))
             .on_action(cx.listener(to_tabs(TabArea::redo_active)))
             .on_action(cx.listener(to_tabs(TabArea::stop_active)))
             .on_action(cx.listener(to_tabs(TabArea::copy_active_as_curl)))

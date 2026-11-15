@@ -39,8 +39,8 @@ use crate::shell::{
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, CollapseAll, CopySelected, CutSelected, DeleteSelected,
     ExpandAll, FocusFilter, FolderSettings, KEY_CONTEXT as SIDEBAR, NewFolder, OpenInTerminal,
-    PasteSelected, RenameSelected, RunSelected, SaveSelectedDraft, ShowInFileManager, SortByName,
-    UndoDelete,
+    PasteSelected, RedoInTree, RenameSelected, RunSelected, SaveSelectedDraft, ShowInFileManager,
+    SortByName, UndoDelete,
 };
 use crate::tab_area::{
     ActivateLastTab, ActivateNextTab, ActivatePrevTab, ActivateTab, BeautifyBody, BeautifyQuery,
@@ -622,6 +622,24 @@ pub fn registry() -> Vec<Command> {
                 &["secondary-z"],
             );
             c.scope = Scope::Pane(SIDEBAR);
+            c
+        },
+        {
+            // The tree's redo, on the shell's Redo edit chords; the sidebar's inputs keep their
+            // own redo.
+            let mut c = command(
+                "request.redo_in_sidebar",
+                "Redo in sidebar",
+                Request,
+                vec![at(RedoInTree, SIDEBAR)],
+                if cfg!(target_os = "macos") {
+                    &["secondary-shift-z"]
+                } else {
+                    &["ctrl-y", "secondary-shift-z"]
+                },
+            );
+            c.scope = Scope::Pane(SIDEBAR);
+            c.in_palette = false;
             c
         },
         // Bound while focus is in a table row's cells or checkbox; the palette cannot say which row.

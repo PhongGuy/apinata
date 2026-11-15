@@ -65,6 +65,7 @@ const IDS: &[&str] = &[
     "request.undo",
     "request.redo",
     "request.undo_delete",
+    "request.redo_in_sidebar",
     "request.move_row_up",
     "request.move_row_down",
     "request.rename",
@@ -416,6 +417,9 @@ fn today() -> Vec<Triple> {
         e.push((secondary(k), a, "Sidebar"));
     }
     e.push((secondary("z"), "sidebar::UndoDelete", "Sidebar"));
+    e.push((secondary("shift-z"), "sidebar::RedoInTree", "Sidebar"));
+    #[cfg(not(target_os = "macos"))]
+    e.push(("ctrl-y".into(), "sidebar::RedoInTree", "Sidebar"));
     // The kit's Redo gets Ctrl+Shift+Z off macOS, where it already has Cmd+Shift+Z.
     #[cfg(not(target_os = "macos"))]
     e.push(("ctrl-shift-z".into(), "input::Redo", "Input"));
@@ -519,6 +523,7 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     expected.insert("view.focus_previous_control");
     expected.insert("request.rename_in_sidebar");
     expected.insert("request.delete_in_sidebar");
+    expected.insert("request.redo_in_sidebar");
     assert_eq!(hidden, expected);
     let menu = app_menu_items();
     assert_eq!(menu.len(), 29);

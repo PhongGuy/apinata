@@ -245,9 +245,9 @@ fn ctrl_z_dismisses_the_toast_and_its_undo_then_does_nothing(cx: &mut TestAppCon
     assert_eq!(bin.len(), 0);
 }
 
-// Without a delete to undo the chord is the shell's again: the active tab's last edit.
+// With nothing to undo in the tree the chord does nothing; it never reaches the active tab.
 #[gpui_kit::test]
-fn ctrl_z_in_the_sidebar_with_nothing_deleted_undoes_the_active_tab(cx: &mut TestAppContext) {
+fn ctrl_z_in_the_sidebar_with_nothing_deleted_leaves_the_active_tab(cx: &mut TestAppContext) {
     use apinata_app::request_editor::Section;
     let file = "info:\n  name: j\n  type: http\n  seq: 2\nhttp:\n  method: GET\n  url: \"http://x/1\"\n  headers:\n    - name: H1\n      value: one\n";
     let col = write_tree(&[("opencollection.yml", ROOT), ("j.yml", file)]);
@@ -273,7 +273,7 @@ fn ctrl_z_in_the_sidebar_with_nothing_deleted_undoes_the_active_tab(cx: &mut Tes
         .unwrap();
     cx.simulate_keystrokes(s.win, &secondary("z"));
     cx.run_until_parked();
-    assert!(enabled(cx), "the header toggle was undone");
+    assert!(!enabled(cx), "the header toggle stays");
 }
 
 #[gpui_kit::test]
@@ -570,9 +570,9 @@ fn deleting_open_requests_shows_only_the_delete_toast(cx: &mut TestAppContext) {
 }
 
 // A reopened collection is a new instance, so a delete made before it closed is not undone;
-// the chord goes on to the active tab's undo instead.
+// the chord does nothing, and the active tab's edit stays.
 #[gpui_kit::test]
-fn ctrl_z_after_a_reopen_restores_nothing_and_undoes_the_active_tab(cx: &mut TestAppContext) {
+fn ctrl_z_after_a_reopen_restores_nothing_and_leaves_the_active_tab(cx: &mut TestAppContext) {
     use apinata_app::request_editor::Section;
     let j = "info:\n  name: j\n  type: http\n  seq: 2\nhttp:\n  method: GET\n  url: \"http://x/1\"\n  headers:\n    - name: H1\n      value: one\n";
     let mut files = multi_files();
@@ -600,7 +600,7 @@ fn ctrl_z_after_a_reopen_restores_nothing_and_undoes_the_active_tab(cx: &mut Tes
     assert!(!enabled(cx));
     focus_tree(cx, &h);
     ctrl_z(cx, &h);
-    assert!(enabled(cx), "the header toggle was undone");
+    assert!(!enabled(cx), "the header toggle stays");
     assert!(!h.root.join("a.yml").exists());
     let snap = h.ws.read_with(cx, |w, cx| w.snapshot(&h.root, cx)).unwrap();
     assert!(!snap.content.requests.contains_key(&ip("a.yml")));
