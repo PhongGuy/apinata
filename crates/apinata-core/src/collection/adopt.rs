@@ -17,6 +17,9 @@ pub enum AdoptError {
     /// The path names no request: a folder file, an environment or another item type.
     #[error("only a request's copy opens as its edits")]
     NotARequest,
+    /// The collection ignores the file, so it reads as gone and the copy has no place.
+    #[error("the collection ignores this file")]
+    Ignored,
     /// The copy does not parse as a request.
     #[error("the copy does not load: {message}")]
     Unreadable {
@@ -47,8 +50,12 @@ impl Collection {
         {
             return Err(AdoptError::NotARequest);
         }
-        // Parse before touching the tree, so a copy that does not load changes nothing.
+        // An ignored file reads as gone, so its copy would come back as a request it never was.
         let full = item.to_path(&self.root);
+        if self.is_ignored(&full) {
+            return Err(AdoptError::Ignored);
+        }
+        // Parse before touching the tree, so a copy that does not load changes nothing.
         let unreadable = |e: crate::error::FileError| AdoptError::Unreadable {
             message: e.message().to_owned(),
         };
@@ -67,9 +74,13 @@ impl Collection {
             return Err(AdoptError::NotARequest);
         }
         match self.request_mut(item) {
+            // A request still dirty after the reload holds edits newer than the copy, which was
+            // its last save, so they stay and only the unsaved mark is added.
             Some(request) => {
                 let doc = request.document_mut();
-                doc.set_mapping(copy.mapping().clone());
+                if !doc.is_dirty() {
+                    doc.set_mapping(copy.mapping().clone());
+                }
                 doc.mark_unsaved();
             }
             // The reload dropped a clean request whose file is gone or broken: bring it back
@@ -99,31 +110,27 @@ impl Collection {
     fn restore_folders(&mut self, dir: &ItemPath) -> &mut Folder {
         let mut folder = &mut self.tree;
         for name in dir.segments() {
-            let i = match folder.folders.iter().position(|f| f.dir_name == name) {
-                Some(i) => i,
-                None => {
-                    let path = folder.path.join(name);
-                    folder.folders.push(Folder {
-                        dir_name: dir_name_of(&path),
-                        removed: !path.is_dir(),
-                        path,
-                        is_root: false,
-                        file: None,
-                        file_broken: false,
-                        folders: Vec::new(),
-                        requests: Vec::new(),
-                        opaque: Vec::new(),
-                    });
-                    // Just pushed, so the lookup after sorting always finds it.
-                    sort_lists(folder);
-                    folder
-                        .folders
-                        .iter()
-                        .position(|f| f.dir_name == name)
-                        .unwrap_or_default()
-                }
-            };
-            folder = &mut folder.folders[i];
+            if !folder.folders.iter().any(|f| f.dir_name == name) {
+                let path = folder.path.join(name);
+                folder.folders.push(Folder {
+                    dir_name: dir_name_of(&path),
+                    removed: !path.is_dir(),
+                    path,
+                    is_root: false,
+                    file: None,
+                    file_broken: false,
+                    folders: Vec::new(),
+                    requests: Vec::new(),
+                    opaque: Vec::new(),
+                });
+                sort_lists(folder);
+            }
+            // Present or just pushed, so the walk always finds the next folder down.
+            let parent = folder;
+            match parent.folders.iter_mut().find(|f| f.dir_name == name) {
+                Some(next) => folder = next,
+                None => unreachable!("the folder `{name}` was just made sure of"),
+            }
         }
         folder
     }

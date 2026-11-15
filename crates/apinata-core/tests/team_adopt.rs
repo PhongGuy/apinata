@@ -151,3 +151,40 @@ fn the_copy_folder_lists_reads_and_prunes() {
     copies.remove("f/r.yml").unwrap();
     assert_eq!(copies.list().unwrap(), ["a.yml"]);
 }
+
+#[test]
+fn a_dirty_request_keeps_its_newer_edits_when_its_copy_is_adopted() {
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("a.yml", &request("a", 1))]);
+    c.request_mut(&ip("a.yml"))
+        .unwrap()
+        .set_url("https://x.test/newer");
+    write(&dir, "a.yml", &changed_url("a", 1));
+    c.adopt_conflict_copy(&ip("a.yml"), mine("a").as_bytes())
+        .unwrap();
+    let a = c.request(&ip("a.yml")).unwrap();
+    assert_eq!((a.url(), a.is_dirty()), ("https://x.test/newer", true));
+    c.request_mut(&ip("a.yml"))
+        .unwrap()
+        .set_url("https://x.test/changed");
+    assert!(
+        c.request(&ip("a.yml")).unwrap().is_dirty(),
+        "marked unsaved, not only edited"
+    );
+}
+
+#[test]
+fn a_copy_of_an_ignored_file_is_refused() {
+    let root = format!("{ROOT}extensions:\n  bruno:\n    ignore:\n      - 'skip'\n");
+    let (dir, _) = open(&[
+        ("opencollection.yml", &root),
+        ("skip/a.yml", &request("a", 1)),
+    ]);
+    let mut c = apinata_core::Collection::open_with(
+        dir.path(),
+        &apinata_core::OpenOptions::new().ignore(apinata_core::IgnorePolicy::BrunoApp),
+    )
+    .unwrap();
+    let got = c.adopt_conflict_copy(&ip("skip/a.yml"), mine("a").as_bytes());
+    assert!(matches!(got, Err(AdoptError::Ignored)), "{got:?}");
+    assert!(c.request(&ip("skip/a.yml")).is_none());
+}
