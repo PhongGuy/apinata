@@ -88,6 +88,22 @@ pub(crate) fn parses_sloppy(ctx: &Ctx<'_>, source: &str) -> bool {
     }
 }
 
+/// Whether `text` parses as the body of a template literal, the code an assertion's right
+/// side runs as, checked without running it. An engine that cannot start counts as parsing,
+/// so the caller still asks before anything runs.
+pub(crate) fn parses_as_template(text: &str) -> bool {
+    let Ok(rt) = check_runtime() else { return true };
+    let Ok(ctx) = Context::full(&rt) else {
+        return true;
+    };
+    ctx.with(|ctx| parses_as_template_in(&ctx, text))
+}
+
+/// The same on a caller-supplied check context, so a test can inject a probe global.
+pub(crate) fn parses_as_template_in(ctx: &Ctx<'_>, text: &str) -> bool {
+    parses_sloppy(ctx, &format!("`{text}`"))
+}
+
 /// The marker `parses_sloppy` throws ahead of the checked text.
 const PARSED: &str = "apinata: parsed";
 
@@ -263,6 +279,36 @@ mod tests {
             assert_eq!(problems.len(), 1, "the strict parse rejects {code}");
             assert!(problems[0].sloppy_only, "the sloppy parse accepts {code}");
             assert!(!ran(&ctx), "checking must not run {code}");
+        }
+    }
+
+    /// Right sides that close the template literal and a function wrapper early, then set the
+    /// probe flag and loop forever.
+    const TEMPLATE_BREAKOUTS: [&str; 2] = [
+        "` }); globalThis.__ran = true; for (;;) {} (function () { `",
+        "` })(); globalThis.__ran = true; for (;;) {} (async () => { `",
+    ];
+
+    #[test]
+    fn a_template_breakout_is_never_executed() {
+        // Each check runs on its own thread, so a breakout that ran fails the test, never hangs it.
+        for code in TEMPLATE_BREAKOUTS {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let rt = check_runtime().expect("engine starts");
+                let ctx = probe_context(&rt);
+                let parsed = ctx.with(|c| parses_as_template_in(&c, code));
+                drain(&rt);
+                let _ = tx.send((parsed, ran(&ctx), parses_as_template(code)));
+            });
+            let (parsed, ran, public) = rx
+                .recv_timeout(std::time::Duration::from_secs(30))
+                .unwrap_or_else(|_| panic!("checking {code} must not run it"));
+            assert!(!ran, "checking must not run {code}");
+            assert!(
+                !parsed && !public,
+                "{code} does not parse as one template literal"
+            );
         }
     }
 }

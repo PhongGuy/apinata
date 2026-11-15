@@ -131,7 +131,9 @@ mod xml_filter;
 mod yaml;
 
 pub use approval::{Approval, ApprovalInbox, DISPLAY_MAX_CHARS, Filing, ScriptApproval};
-pub use assertion::{Assertion, AssertionOutcome, Verdict, assertion_sensitive_values, evaluate};
+pub use assertion::{
+    Assertion, AssertionOutcome, Verdict, assertion_sensitive_values, evaluate, lacks_expression,
+};
 pub use aws_profile::AwsSharedFiles;
 pub use body_filter::{BodyFilterError, filter_body, validate_filter};
 pub use cancel::CancelHandle;

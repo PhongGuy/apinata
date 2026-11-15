@@ -256,6 +256,8 @@ pub(crate) enum Rhs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RhsError {
     NeedsJs,
+    /// An item would run as a template literal but does not parse, so it can never run.
+    NotJs,
     /// The JavaScript template of a right-side item threw or was unsupported.
     Script(ExprError),
     Variable(ResolveError),
@@ -290,6 +292,8 @@ pub(crate) fn operand(
     // changed it (and could have injected code) is skipped rather than run.
     let scalar = |raw: &str, value: String| -> Result<Scalar, RhsError> {
         match (literal(&value), scripted) {
+            // Text that cannot parse never runs, so it is refused before any approval check.
+            (Err(NeedsJs), _) if !runs_as_template(&value) => Err(RhsError::NotJs),
             (Err(NeedsJs), Some(scripted))
                 if !scripted.allows(text) || (scripted.restricted() && value != raw) =>
             {
@@ -334,9 +338,9 @@ pub(crate) fn operand(
 }
 
 /// Whether [`operand`] would run JavaScript for the raw `text` before any interpolation,
-/// judging each item as it splits them.
+/// judging each item as it splits them; an item that does not parse never runs.
 pub(crate) fn needs_script(op: Operator, text: &str) -> bool {
-    let needs_js = |raw: &str| literal(js::js_trim(raw)).is_err();
+    let needs_js = |raw: &str| literal(js::js_trim(raw)).is_err() && runs_as_template(raw);
     match op {
         _ if op.is_unary() => false,
         Operator::In | Operator::NotIn => strip_pair(text, '[', ']').split(',').any(needs_js),
@@ -344,6 +348,12 @@ pub(crate) fn needs_script(op: Operator, text: &str) -> bool {
         Operator::Matches | Operator::NotMatches => false,
         _ => needs_js(text),
     }
+}
+
+/// Whether an item outside the literal subset parses as the template literal [`operand`]
+/// would run it as.
+fn runs_as_template(item: &str) -> bool {
+    crate::script::compile::parses_as_template(remove_quotes(js::js_trim(item)))
 }
 
 /// Strips an outer `open`…`close` pair; a single character is kept, as JavaScript's
@@ -640,11 +650,25 @@ mod tests {
     #[test]
     fn only_items_that_run_javascript_need_a_script() {
         assert!(!needs_script(Operator::In, "[1, 'a']"));
-        assert!(needs_script(Operator::In, "[1, `${2}`]"));
-        assert!(needs_script(Operator::Between, "1, `${2}`"));
+        assert!(needs_script(Operator::In, "[1, ${2}]"));
+        assert!(needs_script(Operator::Between, "1, ${2}"));
         assert!(!needs_script(Operator::Matches, "`${x}`"));
         assert!(!needs_script(Operator::IsNull, "`${x}`"));
-        assert!(needs_script(Operator::Eq, "`${200}`"));
+        assert!(needs_script(Operator::Eq, "${200}"));
         assert!(!needs_script(Operator::Eq, "{{x}}"));
+    }
+
+    #[test]
+    fn a_template_that_does_not_parse_needs_no_script_and_is_refused() {
+        let v = Vars::new();
+        for (op, text) in [
+            (Operator::Eq, "{{`${1+0}`}}"),
+            (Operator::Eq, "`${2"),
+            (Operator::In, "[1, `${2]"),
+            (Operator::Between, "1, `"),
+        ] {
+            assert!(!needs_script(op, text), "{text}");
+            assert_eq!(operand(op, text, &v, None), Err(RhsError::NotJs), "{text}");
+        }
     }
 }
