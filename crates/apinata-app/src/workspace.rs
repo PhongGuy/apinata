@@ -2887,8 +2887,8 @@ impl Workspace {
         self.save_environment(root, selected, chosen, cx);
     }
 
-    // Whether the session records the user picking No environment for `root`.
-    fn chose_no_environment(&self, root: &Path, cx: &App) -> bool {
+    /// Whether the session records the user picking No environment for `root`.
+    pub fn chose_no_environment(&self, root: &Path, cx: &App) -> bool {
         let session = self.session.read(cx).get();
         session
             .collections
