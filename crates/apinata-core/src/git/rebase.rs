@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-use super::branch::{self, lines};
+use super::branch::{self, SwitchError, lines};
 use super::stream::{CancelFlag, StreamError, git_stream};
 use super::sync::{
     UpstreamRef, counts, current_branch, failed, fast_forward, from_fetch, from_git, from_switch,
@@ -100,6 +100,9 @@ pub fn rebase_pull(
     if cancel.is_cancelled() {
         return Err(SyncError::Cancelled);
     }
+    // A save can land while the fetch runs; it reads as a dirty tree the caller retries, not a
+    // failure git's own refusal would report.
+    branch::ready(root, opts).map_err(from_switch)?;
     let Some(tip) = verify(root, &format!("{tracking}^{{commit}}"), opts)? else {
         return Err(SyncError::NoUpstream {
             branch,
@@ -157,6 +160,10 @@ pub(super) fn replay_onto(
     let stopped = run::git_paths(root, opts, &["rebase-merge", "rebase-apply"])
         .is_some_and(|paths| paths.iter().any(|p| p.exists()));
     if !stopped {
+        // A save after the last check makes git refuse over the tree; that is still a dirty tree.
+        if let Err(SwitchError::Dirty) = branch::ready(root, opts) {
+            return Err(SyncError::Dirty);
+        }
         return Err(match run::refused_lock(&done.stderr, root) {
             Some(lock) => SyncError::Busy { lock },
             None => failed(redact_url(done.stderr.trim())),

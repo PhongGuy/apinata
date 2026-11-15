@@ -213,3 +213,23 @@ fn a_rebase_that_never_starts_is_reported_and_resets_nothing() {
     assert!(!copies.exists());
     assert!(no_rebase_left(&col));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_save_during_the_fetch_reads_as_a_dirty_tree() {
+    let sb = Sandbox::new();
+    let col = base_with(&sb, &[]);
+    let copies = sb.path().join("copies");
+    let l = edit(&sb, &col, &[("c.txt", Some("c\n"))]);
+    teammate(&sb, &[("x.txt", Some("x\n"))]);
+    // The fetch's update of the tracking ref stands in for a save landing mid-sync.
+    let hook = format!(
+        "#!/bin/sh\n[ \"$1\" = committed ] && grep -q refs/remotes/ && echo saved >> '{}'\nexit 0\n",
+        col.join("a.txt").display()
+    );
+    sb.fake_tool("dest/col/.git/hooks", "reference-transaction", &hook);
+    let got = pull(&sb, &col, &copies);
+    assert!(matches!(got, Err(SyncError::Dirty)), "{got:?}");
+    assert_eq!(rev(&sb, &col, "HEAD"), l);
+    assert!(no_rebase_left(&col));
+}
