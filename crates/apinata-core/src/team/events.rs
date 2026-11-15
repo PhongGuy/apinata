@@ -8,6 +8,7 @@ use rand::{Rng, SeedableRng};
 use reqwest::redirect::Policy;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
+use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at};
 
 use super::auth::TeamAuth;
 use crate::sse::SseParser;
@@ -110,34 +111,44 @@ pub async fn follow_events(
     mut on_notice: impl FnMut(TeamNotice) + Send,
 ) -> EventsEnd {
     // A client that cannot be built fails every attempt, so the loop falls back to polling.
+    // Each attempt opens a fresh connection: one a failed attempt left idle may never answer.
     let client = Client::builder()
         .redirect(Policy::none())
+        .pool_max_idle_per_host(0)
         .connect_timeout(Duration::from_secs(10))
         .build()
         .ok();
     let mut rng = StdRng::from_os_rng();
     let wanted = format!("refs/heads/{}", config.branch);
     let mut attempt: u32 = 0;
-    let mut down = false;
+    // Set while down: the poll period runs across every wait until a stream delivers again.
+    let mut polls: Option<Interval> = None;
     loop {
-        match connect(client.as_ref(), &config).await {
+        let tried = polling(
+            connect(client.as_ref(), &config),
+            polls.as_mut(),
+            &mut on_notice,
+        );
+        match tried.await {
             Attempt::End(end) => return end,
+            // Only a stream that delivered counts as a connect, so an empty 200 keeps backing off.
             Attempt::Open(res) => {
-                attempt = 0;
-                down = false;
-                on_notice(TeamNotice::Connected);
-                read_stream(res, &config, &wanted, &mut on_notice).await;
+                if read_stream(res, &config, &wanted, &mut on_notice).await {
+                    attempt = 0;
+                    polls = None;
+                }
             }
             Attempt::Failed => {}
         }
-        // One Disconnected covers a whole run of failed attempts, until the next connect.
-        if !down {
+        let polls = polls.get_or_insert_with(|| {
             on_notice(TeamNotice::Disconnected);
-            down = true;
-        }
+            let mut every = interval_at(Instant::now() + config.poll_every, config.poll_every);
+            every.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            every
+        });
         let delay = reconnect_delay(attempt, config.first, config.max, rng.random::<f64>());
         attempt = attempt.saturating_add(1);
-        wait_polling(delay, config.poll_every, &mut on_notice).await;
+        polling(tokio::time::sleep(delay), Some(polls), &mut on_notice).await;
     }
 }
 
@@ -163,16 +174,22 @@ async fn connect(client: Option<&Client>, config: &EventsConfig) -> Attempt {
     }
 }
 
-/// Reports the branch's ref events until the stream ends, fails, or stays silent past the
-/// idle limit. The server's `retry:` field is ignored; the backoff is fixed.
+/// Reports Connected on the first chunk, then the branch's ref events, until the stream ends,
+/// fails, or stays silent past the idle limit; true when any chunk came. The server's `retry:`
+/// field is ignored; the backoff is fixed.
 async fn read_stream(
     mut res: Response,
     config: &EventsConfig,
     wanted: &str,
     on_notice: &mut impl FnMut(TeamNotice),
-) {
+) -> bool {
     let mut parser = SseParser::new();
+    let mut delivered = false;
     while let Ok(Ok(Some(chunk))) = tokio::time::timeout(config.idle_limit, res.chunk()).await {
+        if !delivered {
+            delivered = true;
+            on_notice(TeamNotice::Connected);
+        }
         for event in parser.push(&chunk) {
             if event.event.as_deref() != Some("ref") {
                 continue;
@@ -184,21 +201,22 @@ async fn read_stream(
             }
         }
     }
+    delivered
 }
 
-/// Sleeps `delay`, emitting a Poll every `poll_every` meanwhile.
-async fn wait_polling(
-    delay: Duration,
-    poll_every: Duration,
+/// Runs `work` to its end, emitting a Poll on each tick of `polls` meanwhile.
+async fn polling<T>(
+    work: impl Future<Output = T>,
+    polls: Option<&mut Interval>,
     on_notice: &mut impl FnMut(TeamNotice),
-) {
-    let sleep = tokio::time::sleep(delay);
-    tokio::pin!(sleep);
-    let start = tokio::time::Instant::now() + poll_every;
-    let mut polls = tokio::time::interval_at(start, poll_every);
+) -> T {
+    let Some(polls) = polls else {
+        return work.await;
+    };
+    tokio::pin!(work);
     loop {
         tokio::select! {
-            () = &mut sleep => return,
+            out = &mut work => return out,
             _ = polls.tick() => on_notice(TeamNotice::Poll),
         }
     }
@@ -211,5 +229,11 @@ pub fn reconnect_delay(attempt: u32, first: Duration, max: Duration, roll: f64) 
         .checked_pow(attempt)
         .and_then(|factor| first.checked_mul(factor))
         .map_or(max, |d| d.min(max));
-    base.mul_f64(0.5 + roll.clamp(0.0, 1.0) / 2.0)
+    // A roll that is not a number would panic the scaling; it takes the full delay.
+    let roll = if roll.is_nan() {
+        1.0
+    } else {
+        roll.clamp(0.0, 1.0)
+    };
+    base.mul_f64(0.5 + roll / 2.0)
 }

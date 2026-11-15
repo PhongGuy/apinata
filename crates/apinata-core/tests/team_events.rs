@@ -168,3 +168,46 @@ fn the_reconnect_delay_doubles_to_its_cap_with_jitter() {
         Duration::from_secs(30)
     );
 }
+
+#[tokio::test]
+async fn polls_keep_their_period_across_reconnect_waits() {
+    // Every backoff wait is shorter than the poll period, so only a period kept across waits fires.
+    let server = slow_sse_server(status("503 Service Unavailable")).await;
+    let got = notices_within(config(&server, 25, 150, 5000), 700).await;
+    assert!(
+        got.iter().filter(|n| **n == TeamNotice::Poll).count() >= 3,
+        "{got:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_stream_that_closes_before_any_event_backs_off() {
+    let server = slow_sse_server(Script::sse(vec![Step::Finish])).await;
+    let config = EventsConfig::new(
+        server.url(PATH),
+        TeamAuth::new(server.url(""), TOKEN),
+        "main",
+    )
+    .timings(
+        Duration::from_millis(20),
+        Duration::from_secs(1),
+        Duration::from_secs(1),
+        Duration::from_secs(5),
+    );
+    let got = notices_within(config, 500).await;
+    assert!(server.requests() <= 8, "{}", server.requests());
+    assert!(!got.contains(&TeamNotice::Connected), "{got:?}");
+    assert!(
+        got.iter()
+            .filter(|n| **n == TeamNotice::Disconnected)
+            .count()
+            <= 1,
+        "{got:?}"
+    );
+}
+
+#[test]
+fn a_roll_that_is_not_a_number_takes_the_full_delay() {
+    let (s, m) = (Duration::from_secs(1), Duration::from_secs(60));
+    assert_eq!(reconnect_delay(0, s, m, f64::NAN), Duration::from_secs(1));
+}
