@@ -4,6 +4,7 @@
 
 use gpui_kit::Action;
 
+use crate::about::OpenAbout;
 use crate::body_find::{
     FindInResponse, FindNextInResponse, FindPreviousInResponse, KEY_CONTEXT as RESPONSE_BODY,
     ToggleFindRegex, ToggleFindWholeWord,
@@ -1080,6 +1081,7 @@ pub fn registry() -> Vec<Command> {
             shell(CheckForUpdates),
             &[],
         ),
+        command("view.about", "About Apinata", View, shell(OpenAbout), &[]),
         hidden(command(
             "view.command_palette",
             "Command palette",
