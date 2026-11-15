@@ -29,7 +29,8 @@ pub(crate) fn syntax_problems(segments: &[Segment]) -> Result<Vec<Problem>, rqui
 const CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// A runtime for compile-only checks of untrusted text: the memory limit of a trusted run and
-/// a short deadline, so a check that went wrong can neither hang nor exhaust memory.
+/// a short deadline, so a check that went wrong can neither hang nor exhaust memory. The
+/// deadline bounds running bytecode only, not parse time; only the memory limit bounds a parse.
 pub(crate) fn check_runtime() -> Result<Runtime, rquickjs::Error> {
     let memory = ScriptOptions::default().limits(0).memory;
     bounded_runtime(Instant::now().checked_add(CHECK_TIMEOUT), memory).map(|(rt, _)| rt)
@@ -260,6 +261,7 @@ mod tests {
             let problems = ctx.with(|c| syntax_problems_in(&c, &[seg("request", code)]));
             drain(&rt);
             assert_eq!(problems.len(), 1, "the strict parse rejects {code}");
+            assert!(problems[0].sloppy_only, "the sloppy parse accepts {code}");
             assert!(!ran(&ctx), "checking must not run {code}");
         }
     }
