@@ -233,6 +233,7 @@ mod editor_wrap;
 mod empty_details;
 mod empty_editors;
 mod empty_states;
+mod env_active;
 mod env_color;
 mod env_duplicates;
 mod env_edit_undo;

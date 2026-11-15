@@ -420,12 +420,11 @@ fn the_new_environment_field_is_a_new_row_in_the_list(cx: &mut TestAppContext) {
     frame(cx, win);
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        let (list, field, label, last, new, title) = (
+        let (list, field, label, last, title) = (
             w.find("env-list").bounds(),
             w.find("env-name-input").bounds(),
             w.find("env-name-label").bounds(),
             w.find(("env-item", 1usize)).bounds(),
-            w.find("env-create").bounds(),
             w.find("env-title").bounds(),
         );
         for b in [field, label] {
@@ -435,7 +434,10 @@ fn the_new_environment_field_is_a_new_row_in_the_list(cx: &mut TestAppContext) {
             );
         }
         assert!(label.top() >= last.bottom(), "after the last environment");
-        assert!(field.bottom() <= new.top(), "before New");
+        assert!(
+            w.try_find("env-create").is_none(),
+            "New steps aside for the field"
+        );
         assert!(
             field.left() < title.left(),
             "not in the open environment's pane"
