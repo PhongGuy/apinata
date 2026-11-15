@@ -65,6 +65,7 @@ const IDS: &[&str] = &[
     "request.undo",
     "request.redo",
     "request.undo_delete",
+    "request.redo_in_sidebar",
     "request.move_row_up",
     "request.move_row_down",
     "request.rename",
@@ -355,6 +356,8 @@ fn today() -> Vec<Triple> {
         ("end".into(), "apinata::RowLast", "ResponseBody"),
         ("ctrl-end".into(), "apinata::RowLast", "ResponseBody"),
         (secondary("enter"), "zed::NoAction", "SidebarFilter > Input"),
+        ("ctrl-y".into(), "zed::NoAction", "SidebarFilter > Input"),
+        ("ctrl-y".into(), "zed::NoAction", "Sidebar > Tree > Input"),
         (
             secondary("enter"),
             "zed::NoAction",
@@ -416,6 +419,9 @@ fn today() -> Vec<Triple> {
         e.push((secondary(k), a, "Sidebar"));
     }
     e.push((secondary("z"), "sidebar::UndoDelete", "Sidebar"));
+    e.push((secondary("shift-z"), "sidebar::RedoInTree", "Sidebar"));
+    #[cfg(not(target_os = "macos"))]
+    e.push(("ctrl-y".into(), "sidebar::RedoInTree", "Sidebar"));
     // The kit's Redo gets Ctrl+Shift+Z off macOS, where it already has Cmd+Shift+Z.
     #[cfg(not(target_os = "macos"))]
     e.push(("ctrl-shift-z".into(), "input::Redo", "Input"));
@@ -551,7 +557,7 @@ fn undo_delete_is_a_sidebar_pane_command_on_secondary_z() {
         .find(|c| c.id == "request.undo_delete")
         .expect("registered");
     assert_eq!(c.scope, Scope::Pane("Sidebar"));
-    assert_eq!(c.label, "Undo delete");
+    assert_eq!(c.label, "Undo in sidebar");
     assert_eq!(c.default_chords, ["secondary-z"]);
     assert!(c.in_palette);
     let contexts: Vec<&str> = c.targets.iter().map(|t| t.context).collect();

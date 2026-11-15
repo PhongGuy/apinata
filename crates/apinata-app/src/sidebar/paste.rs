@@ -259,19 +259,20 @@ impl Sidebar {
         folder: ItemPath,
         cx: &mut Context<Self>,
     ) {
-        let sent: Vec<(u64, ItemPath)> = self.workspace.update(cx, |w, cx| {
-            items
-                .iter()
-                .filter(|i| i.parent().as_ref() != Some(&folder))
-                .filter_map(|item| {
-                    let op = TreeOp::Move {
-                        item: item.clone(),
-                        to: DropTarget::Inside(folder.clone()),
-                    };
-                    Some((w.send(root, Command::Tree(op), cx)?, item.clone()))
-                })
-                .collect()
-        });
+        let moving: Vec<ItemPath> = (items.iter())
+            .filter(|i| i.parent().as_ref() != Some(&folder))
+            .cloned()
+            .collect();
+        let ops = (moving.into_iter())
+            .map(|item| {
+                let op = TreeOp::Move {
+                    item: item.clone(),
+                    to: DropTarget::Inside(folder.clone()),
+                };
+                (item, op)
+            })
+            .collect();
+        let sent = self.send_placing(root, ops, super::history::Step::Forward, cx);
         if let Some(generation) = self.generation(root, cx) {
             for (id, item) in &sent {
                 (self.moves).insert((root.to_path_buf(), generation, *id), item.clone());

@@ -141,8 +141,8 @@ pub use check::{
 pub use codegen::{Target, UnknownTarget, generate};
 pub use collection::{
     Change, ChangeKind, Collection, DotenvBackup, DraftSnapshot, DropTarget, Environment,
-    FileTexts, Folder, IgnorePolicy, ItemKind, OpenOptions, PasteSource, Sibling, SnapshotError,
-    Trashed, collection_name, dotenv_quotable,
+    FileTexts, Folder, IgnorePolicy, ItemKind, OpenOptions, PasteSource, SeqRecord, Sibling,
+    SnapshotError, Trashed, collection_name, dotenv_quotable,
 };
 pub use compare::{
     BodyComparison, BodyState, COMPARE_BODY_LIMIT, Comparison, HeaderChange, HeaderChangeKind,

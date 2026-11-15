@@ -2,6 +2,7 @@
 
 pub mod batch;
 pub mod drop;
+pub mod history;
 pub mod menu;
 pub mod model;
 pub mod multi;
@@ -54,6 +55,8 @@ use crate::workspace::{Workspace, WorkspaceEvent};
 use crate::{style, ui};
 use batch::{Batch, Verb, bulk_delete_ask, permanent_delete_ask, single_delete_ask};
 use drop::{DragPreview, DraggedRow, DropZone, drop_target, drop_zone, multi_drop};
+pub use history::RedoInTree;
+use history::{Step, TreeStep};
 use menu::{BulkEntry, MenuEntry, NEW_FOLDER_NAME, bulk_entries, clone_name, menu_entries};
 use model::{Expanded, Node, NodeKind, OpenDraft};
 use multi::{Multi, SelKey, Tally, row_keys, selectable, visible_keys};
@@ -62,7 +65,7 @@ use paste::{ClipMode, paste_target};
 /// The key context the sidebar's bindings live in.
 pub const KEY_CONTEXT: &str = "Sidebar";
 
-/// How many finished deletes stay undoable with Ctrl+Z; an older one's trash is let go.
+/// How many tree actions stay undoable with Ctrl+Z; an older delete's trash is let go.
 pub const UNDO_DELETE_CAP: usize = 10;
 
 /// The key context around the filter input, so window keys can be masked there alone.
@@ -130,7 +133,7 @@ actions!(
         CollapseAll,
         /// Opens every folder of every open collection.
         ExpandAll,
-        /// Restores the newest delete still undoable, or passes the key on when there is none.
+        /// Undoes the newest tree action still undoable; with none it does nothing.
         UndoDelete,
         /// Opens the selected row's context menu at the row, as a right click on it would.
         OpenRowMenu,
@@ -272,8 +275,11 @@ pub struct Sidebar {
     multi: Multi,
     // Multi-item commands in flight, each summarised by one toast when finished.
     batches: Vec<Batch>,
-    // Finished deletes into the trash, oldest first, that Ctrl+Z or their toast can undo.
-    deletes: Vec<UndoEntry>,
+    // Finished tree actions, oldest first, that Ctrl+Z (or a delete's toast) can undo, the
+    // steps Ctrl+Shift+Z can redo, and the moves and renames still waiting for their answers.
+    history: Vec<TreeStep>,
+    redo: Vec<TreeStep>,
+    gestures: Vec<history::Gesture>,
     next_delete: u64,
     // Whether the shell draws the tree now; only a drawn tree can take focus.
     drawn: bool,
@@ -389,7 +395,9 @@ impl Sidebar {
             restored: HashSet::new(),
             filter,
             filter_text: String::new(),
-            deletes: Vec::new(),
+            history: Vec::new(),
+            redo: Vec::new(),
+            gestures: Vec::new(),
             next_delete: 0,
             drawn: true,
             nodes: Vec::new(),
@@ -1253,12 +1261,13 @@ impl Sidebar {
             return;
         }
         if let Some(to) = drop_target(&dragged.path, &target.path, target.kind, zone) {
+            let item = dragged.path.clone();
             let op = TreeOp::Move {
-                item: dragged.path.clone(),
+                item: item.clone(),
                 to,
             };
-            self.workspace
-                .update(cx, |w, cx| w.send(&target.root, Command::Tree(op), cx));
+            let ops = vec![(item, op)];
+            self.send_placing(&target.root, ops, Step::Forward, cx);
         }
     }
 
@@ -1290,18 +1299,16 @@ impl Sidebar {
         } else {
             target.path.clone()
         };
-        let sent: Vec<(u64, ItemPath)> = self.workspace.update(cx, |w, cx| {
-            moving
-                .into_iter()
-                .filter_map(|item| {
-                    let op = TreeOp::Move {
-                        item: item.clone(),
-                        to: DropTarget::Inside(dir.clone()),
-                    };
-                    Some((w.send(&root, Command::Tree(op), cx)?, item))
-                })
-                .collect()
-        });
+        let ops = (moving.into_iter())
+            .map(|item| {
+                let op = TreeOp::Move {
+                    item: item.clone(),
+                    to: DropTarget::Inside(dir.clone()),
+                };
+                (item, op)
+            })
+            .collect();
+        let sent = self.send_placing(&root, ops, Step::Forward, cx);
         if sent.is_empty() {
             return;
         }
@@ -1432,11 +1439,16 @@ impl Sidebar {
                 index,
                 name,
             },
-            None => TreeOp::Rename {
-                item: r.path,
-                name,
-                rename_file: true,
-            },
+            None => {
+                let op = TreeOp::Rename {
+                    item: r.path.clone(),
+                    name,
+                    rename_file: true,
+                };
+                let ops = vec![(r.path, op)];
+                self.send_placing(&r.root, ops, Step::Forward, cx);
+                return;
+            }
         };
         self.workspace
             .update(cx, |w, cx| w.send(&r.root, Command::Tree(op), cx));
@@ -1493,6 +1505,7 @@ impl Sidebar {
                 // A delivery closes the update a hand-off was made in, so one with no Moved
                 // notice, such as a delete on disk, never gives the selection back.
                 self.handed_off.take_if(|(wanted, _)| wanted.0 == *root);
+                self.settle_gestures(root, *generation, *acked, cx);
                 return self.forget_tracked(|r, g, id| {
                     r == root.as_path() && g == *generation && id <= *acked
                 });
@@ -1500,6 +1513,7 @@ impl Sidebar {
             _ => return,
         };
         self.record_batches(root, generation, notices, window, cx);
+        self.record_gestures(root, generation, notices, cx);
         // A move is reported only once it is on disk, so a closed instance's move still holds
         // for the reopened tree; its example deletes shift rows that tree no longer shows.
         let stale = self.generation(root, cx) != Some(generation);
@@ -1793,7 +1807,8 @@ impl Sidebar {
             .as_ref()
             .filter(|c| c.mode == paste::ClipMode::Cut);
         let idle = self.pending.is_empty() && self.cuts.is_empty() && self.moves.is_empty();
-        if idle && cut.is_none() && self.batches.is_empty() && self.deletes.is_empty() {
+        let steps = self.history.is_empty() && self.redo.is_empty() && self.gestures.is_empty();
+        if idle && cut.is_none() && self.batches.is_empty() && steps {
             return;
         }
         let open: HashSet<(PathBuf, u64)> = (self.workspace.read(cx).collections().iter())
@@ -1805,7 +1820,8 @@ impl Sidebar {
         // Nor can it send the notices its batches wait for.
         (self.batches).retain(|b| open.contains(&(b.root().to_path_buf(), b.generation())));
         // A closed instance took its trash tickets with it, so there is nothing to forget.
-        (self.deletes).retain(|d| open.contains(&(d.root.clone(), d.generation)));
+        self.retain_open_steps(cx);
+        (self.gestures).retain(|g| open.contains(&g.instance()));
         self.forget_tracked(|r, g, _| !open.contains(&(r.to_path_buf(), g)));
     }
 
@@ -1885,6 +1901,9 @@ impl Sidebar {
         for notice in done.iter().filter_map(Batch::restored_message) {
             window.push_notification(ui::info_toast(notice), cx);
         }
+        for batch in &done {
+            self.note_restored(batch);
+        }
         for (kind, summary) in done.iter().filter_map(Batch::summary) {
             window.push_notification(ui::kind_toast(kind, summary), cx);
         }
@@ -1939,8 +1958,7 @@ impl Sidebar {
         }
     }
 
-    // Keeps a finished delete undoable, letting the oldest go past the cap. An evicted
-    // entry's tickets are forgotten only by the instance that issued them.
+    // Keeps a finished delete undoable, as the newest tree action.
     fn push_delete(
         &mut self,
         root: PathBuf,
@@ -1950,72 +1968,60 @@ impl Sidebar {
     ) -> u64 {
         self.next_delete += 1;
         let id = self.next_delete;
-        (self.deletes).push(UndoEntry {
+        let entry = UndoEntry {
             id,
             root,
             generation,
             trashed,
-        });
-        while self.deletes.len() > UNDO_DELETE_CAP {
-            let old = self.deletes.remove(0);
-            if self.generation(&old.root, cx) == Some(old.generation) {
-                self.workspace.update(cx, |w, cx| {
-                    for (ticket, _) in &old.trashed {
-                        let op = TreeOp::ForgetTrash { ticket: *ticket };
-                        w.send(&old.root, Command::Tree(op), cx);
-                    }
-                });
-            }
-        }
+        };
+        self.push_history(TreeStep::Delete(entry), cx);
         id
     }
 
     // The toast's Undo: restores its own entry once; one already undone or evicted is gone.
     fn undo_entry(&mut self, id: u64, cx: &mut Context<Self>) {
-        if let Some(ix) = self.deletes.iter().position(|d| d.id == id) {
-            let d = self.deletes.remove(ix);
+        let ours = |s: &TreeStep| matches!(s, TreeStep::Delete(d) if d.id == id);
+        if let Some(ix) = self.history.iter().position(ours)
+            && let TreeStep::Delete(d) = self.history.remove(ix)
+        {
             self.send_restores(&d.root, d.generation, d.trashed, cx);
         }
     }
 
-    /// Whether `UndoDelete` has a delete to undo: one still landing into the trash, or a
-    /// finished one of a collection instance still open.
-    pub fn can_undo_delete(&self, cx: &App) -> bool {
-        let ws = self.workspace.read(cx);
-        let open = |root: &Path, generation: u64| {
-            (ws.collections().iter()).any(|c| c.root() == root && c.generation() == generation)
-        };
-        self.batches.iter().any(|b| b.awaits_undo())
-            || (self.deletes.iter()).any(|d| open(&d.root, d.generation))
-    }
-
-    /// Ctrl+Z outside any editor or input restores the newest delete; with none left the key
-    /// goes on to the shell's undo of the active tab. A delete still landing is the newest and
-    /// has no undo ticket yet, so the key claims that delete, undone the moment it lands.
+    /// Ctrl+Z outside any editor or input undoes the newest tree action; with none left the
+    /// key does nothing, so it never edits the open request behind the tree. A delete still
+    /// landing is the newest and has no undo ticket yet, so the key claims that delete, undone
+    /// the moment it lands; a move or rename still landing holds the key until it is in.
     pub fn undo_delete(&mut self, _: &UndoDelete, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(batch) = self.batches.iter_mut().rev().find(|b| b.awaits_undo()) {
             batch.owe_undo();
-        } else if !self.undo_newest(window, cx) {
-            cx.propagate();
+        } else if self.gestures.is_empty() {
+            self.undo_newest(window, cx);
         }
     }
 
-    // Restores the newest delete of a still open instance and closes its toast; false when
-    // there is none.
-    fn undo_newest(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let open: HashSet<(PathBuf, u64)> = (self.workspace.read(cx).collections().iter())
-            .map(|c| (c.root().to_path_buf(), c.generation()))
-            .collect();
-        (self.deletes).retain(|d| open.contains(&(d.root.clone(), d.generation)));
-        let Some(d) = self.deletes.pop() else {
-            return false;
-        };
-        window.remove_notification1::<crate::undo_toast::UndoToast>(
-            crate::undo_toast::toast_key(d.id),
-            cx,
-        );
-        self.send_restores(&d.root, d.generation, d.trashed, cx);
-        true
+    // Undoes the newest step of a still open instance, closing a delete's toast.
+    fn undo_newest(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.retain_open_steps(cx);
+        match self.history.pop() {
+            Some(TreeStep::Delete(d)) => {
+                window.remove_notification1::<crate::undo_toast::UndoToast>(
+                    crate::undo_toast::toast_key(d.id),
+                    cx,
+                );
+                self.send_restores(&d.root, d.generation, d.trashed, cx);
+            }
+            Some(TreeStep::Placed {
+                root,
+                generation,
+                items,
+            }) => {
+                let done = history::commands(&items);
+                self.put_back(&root, generation, items, Step::Undo, window, cx);
+                self.forget_records(&root, generation, done, cx);
+            }
+            Some(TreeStep::Retrash { .. }) | None => {}
+        }
     }
 
     // Sends one restore per trashed item and tracks them as a batch, so an undo is reported
@@ -2112,6 +2118,7 @@ impl Sidebar {
         // The trash makes a prompt needless unless unsaved edits, or rows nobody selected inside
         // a selected folder, would go with the items.
         if trash && !dirty && unpicked.is_empty() {
+            self.clear_redo(cx);
             self.send_deletes(&root, paths, true, window, cx);
             return;
         }
@@ -2124,6 +2131,7 @@ impl Sidebar {
         cx.spawn_in(window, async move |this, cx| {
             if answer.recv().await == Ok(1) {
                 this.update_in(cx, |s, window, cx| {
+                    s.clear_redo(cx);
                     s.send_deletes(&root, paths, trash, window, cx)
                 })
                 .ok();
@@ -2191,6 +2199,7 @@ impl Sidebar {
         let folder = node.kind == NodeKind::Folder;
         let trash = example.is_none() && self.workspace.read(cx).trash_available();
         if trash && !self.dirty_within(&root, std::iter::once(&item)) {
+            self.clear_redo(cx);
             self.send_deletes(&root, vec![item], true, window, cx);
             return;
         }
@@ -2205,7 +2214,10 @@ impl Sidebar {
                     Some(index) => s.workspace.update(cx, |w, cx| {
                         w.delete_example(&root, item, index, cx);
                     }),
-                    None if trash => s.send_deletes(&root, vec![item], true, window, cx),
+                    None if trash => {
+                        s.clear_redo(cx);
+                        s.send_deletes(&root, vec![item], true, window, cx);
+                    }
                     None => {
                         s.workspace.update(cx, |w, cx| {
                             w.send(&root, Command::Tree(TreeOp::Delete { item }), cx);

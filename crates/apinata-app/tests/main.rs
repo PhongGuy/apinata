@@ -571,6 +571,7 @@ mod sidebar_run_buttons;
 mod sidebar_sort;
 mod sidebar_trash;
 mod sidebar_trash_tabs;
+mod sidebar_tree_undo;
 mod sidebar_unsupported;
 mod snapshot;
 mod snapshot_cost;

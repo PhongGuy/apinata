@@ -29,7 +29,7 @@ use crate::keymap::{DiscardChanges, RedoActive, SaveActive, ToggleOrientation, U
 use crate::shell::{ShowChanges, SwitchBranch};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
-    CloneSelected, CloseSelectedDraft, FolderSettings, RenameSelected, RunSelected,
+    CloneSelected, CloseSelectedDraft, FolderSettings, RedoInTree, RenameSelected, RunSelected,
     SaveSelectedDraft, ShowInFileManager, Sidebar, UndoDelete,
 };
 use crate::snapshot::{RowKind, Unsupported};
@@ -304,8 +304,10 @@ pub struct Availability {
     pub multi_tab: bool,
     /// "Last tab": the active tab is not already the last one.
     pub not_last: bool,
-    /// "Undo delete": a delete into the trash is still undoable.
+    /// "Undo in sidebar": the tree has a delete, move or rename to undo.
     pub undo_delete: bool,
+    /// "Redo in sidebar": the tree has a step Ctrl+Z took back.
+    pub redo_in_sidebar: bool,
     /// "Switch branch" and "Show changes": the current collection sits in a git repository.
     pub git_repo: bool,
     /// "Check for updates": this build has an update source.
@@ -349,6 +351,7 @@ impl Availability {
             multi_tab: true,
             not_last: true,
             undo_delete: true,
+            redo_in_sidebar: true,
             git_repo: true,
             updates: true,
             side_by_side: true,
@@ -444,6 +447,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.multi_tab, ActivatePrevTab.name()),
         (available.not_last, ActivateLastTab.name()),
         (available.undo_delete, UndoDelete.name()),
+        (available.redo_in_sidebar, RedoInTree.name()),
         (available.git_repo, SwitchBranch.name()),
         (available.git_repo, ShowChanges.name()),
         (available.updates, CheckForUpdates.name()),
@@ -731,7 +735,8 @@ fn availability_now(
         close_saved: tabs.is_none_or(|t| t.close_saved),
         multi_tab: tabs.is_none_or(|t| t.multi_tab),
         not_last: tabs.is_none_or(|t| t.not_last),
-        undo_delete: sidebar.is_none_or(|s| s.read(cx).can_undo_delete(cx)),
+        undo_delete: sidebar.is_none_or(|s| s.read(cx).can_undo_in_tree(cx)),
+        redo_in_sidebar: sidebar.is_none_or(|s| s.read(cx).can_redo_in_tree(cx)),
         collection_open: workspace.is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
         git_repo,
         updates,
