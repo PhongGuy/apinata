@@ -439,6 +439,7 @@ mod sparql_body;
 mod sse;
 mod stream_types;
 mod system_trash;
+mod team_autosync;
 mod team_rebase;
 mod trash_restore;
 mod tree_clone_folder;

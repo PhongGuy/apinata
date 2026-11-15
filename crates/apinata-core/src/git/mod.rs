@@ -3,6 +3,10 @@
 //! and commit stay local; clone and fetch use the network. Git's global config is read for
 //! `core.sshCommand`, and no call writes config.
 
+mod autosync;
+pub use autosync::{
+    commit_all, discard_changes, is_dirty, remote_tip, squash_unpushed, tracking_tip, unpushed,
+};
 mod branch;
 mod clone;
 mod diff;

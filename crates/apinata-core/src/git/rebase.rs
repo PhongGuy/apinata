@@ -16,7 +16,7 @@ use super::sync::{
 use super::{CommitError, GitOptions, SyncError, check_root, commit, redact_url, run};
 
 /// The ref that keeps the branch tip from before the last sync, so nothing local is unreachable.
-const PRE_SYNC: &str = "refs/apinata/pre-sync";
+pub(super) const PRE_SYNC: &str = "refs/apinata/pre-sync";
 
 /// The message of the commit that re-applies the local changes after a conflict.
 const FALLBACK_MESSAGE: &str = "Keep local changes after a sync conflict";
@@ -284,12 +284,12 @@ fn keep_copy(root: &Path, id: &str, dest: &Path, opts: &GitOptions) -> Result<()
 }
 
 /// The full id of HEAD.
-fn head(root: &Path, opts: &GitOptions) -> Result<String, SyncError> {
+pub(super) fn head(root: &Path, opts: &GitOptions) -> Result<String, SyncError> {
     verify(root, "HEAD", opts)?.ok_or_else(|| failed("HEAD does not resolve".to_owned()))
 }
 
 /// One call that changes the repository; a refusal naming a lock is `Busy`.
-fn write_step(args: &[&str], root: &Path, opts: &GitOptions) -> Result<(), SyncError> {
+pub(super) fn write_step(args: &[&str], root: &Path, opts: &GitOptions) -> Result<(), SyncError> {
     let out = run::git_write(args, &[], root, opts).map_err(from_git)?;
     if out.status.success() {
         Ok(())
