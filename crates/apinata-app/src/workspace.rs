@@ -1226,6 +1226,11 @@ impl Workspace {
                 | Command::Overwrite(_)
                 | Command::Revert(_)
                 | Command::DiscardStale(_)
+                | Command::Replace { .. }
+                | Command::ConvertKind { .. }
+                | Command::UndoConvert { .. }
+                | Command::ImportEnvironment { .. }
+                | Command::ApplyUpdate { .. }
         ) || match &command {
             // A draft restored as unsaved only adds in-memory work and writes no file, so it
             // may land mid-switch; every other tree change writes files and waits.
@@ -1236,7 +1241,14 @@ impl Workspace {
         if held && self.is_switching(root) {
             return None;
         }
-        if held && self.is_team_read_only(root) {
+        // Dropping drafts writes nothing, so a read-only folder still allows it.
+        let drops = matches!(
+            command,
+            Command::Revert(_)
+                | Command::DiscardStale(_)
+                | Command::Tree(TreeOp::DiscardDraft { .. })
+        );
+        if held && !drops && self.is_team_read_only(root) {
             let team = self.entry_mut(root).and_then(|e| e.team.as_mut())?;
             if !std::mem::replace(&mut team.told_read_only, true) {
                 cx.emit(WorkspaceEvent::TeamReadOnly {
@@ -2796,11 +2808,17 @@ impl Workspace {
         let clash = (self.team_clashes(root).into_iter())
             .find(|c| c.rel == rel)
             .ok_or(std::io::ErrorKind::NotFound)?;
+        if answer != ClashAnswer::KeepTheirs && self.is_team_read_only(root) {
+            return Err(std::io::ErrorKind::PermissionDenied.into());
+        }
         let entry = self.entry_mut(root).ok_or(std::io::ErrorKind::NotFound)?;
         let file = entry.root.join(rel);
         let team = entry.team.as_mut().ok_or(std::io::ErrorKind::NotFound)?;
         let delete = answer == ClashAnswer::DeleteAgain
             || (clash.kind == ClashKind::DeletedLocally && answer == ClashAnswer::UseMine);
+        if answer != ClashAnswer::KeepTheirs {
+            refuse_symlinks(&entry.root, rel)?;
+        }
         if delete {
             match std::fs::remove_file(&file) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
@@ -4136,6 +4154,27 @@ fn trashed_path(kind: &TabKind) -> Option<&ItemPath> {
 }
 
 /// `root` made absolute, so roots given relative match the absolute ones `open` stores.
+// Refuses when `rel` or a folder on the way to it under `root` is a symlink, so a clash's
+// write or delete never lands outside the collection.
+fn refuse_symlinks(root: &Path, rel: &str) -> std::io::Result<()> {
+    let mut path = root.to_path_buf();
+    for part in rel.split('/') {
+        path.push(part);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("{} is a symbolic link", path.display()),
+                ));
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn absolute(root: &Path) -> PathBuf {
     std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf())
 }
