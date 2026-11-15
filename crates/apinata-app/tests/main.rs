@@ -611,6 +611,7 @@ mod tabs;
 mod tag_chips;
 mod tags_edit;
 mod tags_section;
+mod team_admin;
 mod team_join;
 mod team_paths;
 mod team_sync;

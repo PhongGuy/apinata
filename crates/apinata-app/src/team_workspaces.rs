@@ -1,11 +1,13 @@
 //! The workspace list: one section per joined team server, listing the Apinata workspaces the
 //! user can reach with their role. Opening one clones it with the server token in git's
-//! environment, binds the folder in the team file and starts team mode on it.
+//! environment, binds the folder in the team file and starts team mode on it. A server admin
+//! can create a seeded workspace there, and each server has its own sign out.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, Global, SharedString, TestSupportExt, WeakEntity, Window, div};
@@ -19,10 +21,10 @@ use crate::ui::LockButton as _;
 use crate::workspace::Workspace;
 use crate::{tokio_bridge, ui};
 use apinata_core::team::{
-    self, Account, Binding, EventsConfig, HttpTeamClient, Me, Role, ServerUrl, TeamAuth,
-    TeamConfig, TeamError, TeamStore, token_key,
+    self, Account, Binding, EventsConfig, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl,
+    TeamApi as _, TeamAuth, TeamConfig, TeamError, TeamStore, TeamToken, token_key,
 };
-use apinata_core::{CloneRequest, GitOptions};
+use apinata_core::{CloneRequest, GitOptions, SecretStore};
 
 /// Where a server's section is.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,6 +64,13 @@ pub struct ServerSection {
     workspaces: Vec<team::Workspace>,
     me: Option<Me>,
     error: Option<String>,
+    admin: bool,
+    // The New workspace fields, shown only to a server admin.
+    new_team: Entity<InputState>,
+    new_slug: Entity<InputState>,
+    new_name: Entity<InputState>,
+    creating: bool,
+    signing_out: bool,
 }
 
 impl ServerSection {
@@ -85,10 +94,37 @@ impl ServerSection {
         &self.rows
     }
 
-    /// The message from the last Open, if any.
+    /// The message from the last Open, Create or Sign out, if any.
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
+
+    /// Whether the user may create workspaces here: the account's server admin flag after the
+    /// last load.
+    pub fn can_create(&self) -> bool {
+        self.admin
+    }
+}
+
+fn row_for(w: &team::Workspace, opened: Option<PathBuf>) -> WorkspaceRow {
+    WorkspaceRow {
+        team: w.team.clone(),
+        slug: w.slug.clone(),
+        name: w.name.clone(),
+        role: w.role,
+        opened,
+    }
+}
+
+// The token kept for `username`; none (or not a token) reads as signed out.
+fn kept_token(
+    secrets: &dyn SecretStore,
+    server: &ServerUrl,
+    username: &str,
+) -> Result<TeamToken, TeamError> {
+    let text = (secrets.get(&token_key(server, username)))
+        .map_err(|e| TeamError::Secrets(e.to_string()))?;
+    (text.and_then(|t| TeamToken::parse(&t).ok())).ok_or(TeamError::Unauthenticated)
 }
 
 /// The dialog's body: one section per account in the team file.
@@ -147,14 +183,25 @@ pub fn open(
     accounts.sort_by(|a, b| a.server.cmp(&b.server));
     let sections: Vec<ServerSection> = (accounts.into_iter())
         .filter_map(|account| {
+            let server = ServerUrl::parse(&account.server).ok()?;
+            let mut input = |hint: &str| {
+                let hint = hint.to_owned();
+                cx.new(|cx| InputState::new(window, cx).placeholder(hint))
+            };
             Some(ServerSection {
-                server: ServerUrl::parse(&account.server).ok()?,
+                server,
                 account,
                 state: SectionState::Loading,
                 rows: Vec::new(),
                 workspaces: Vec::new(),
                 me: None,
                 error: None,
+                admin: false,
+                new_team: input("team"),
+                new_slug: input("slug"),
+                new_name: input("Name"),
+                creating: false,
+                signing_out: false,
             })
         })
         .collect();
@@ -186,23 +233,43 @@ impl WorkspacesView {
         &self.sections
     }
 
-    // Asks each server who the user is, off the main thread, and fills its section.
+    // The section for `server` now; a sign out may have shifted or dropped it meanwhile.
+    fn position(&self, server: &ServerUrl) -> Option<usize> {
+        self.sections.iter().position(|s| &s.server == server)
+    }
+
+    // Asks each server who the user is, off the main thread, and fills its section. For a
+    // server admin it also reads the teams, so New workspace starts on the first one; a teams
+    // failure only leaves that field empty.
     fn load(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(state) = cx.try_global::<AppState>() else {
             return;
         };
         let (secrets, file) = (Arc::clone(&state.secrets), state.team.clone());
-        for (index, section) in self.sections.iter().enumerate() {
+        for section in &self.sections {
             let (server, secrets, file) =
                 (section.server.clone(), Arc::clone(&secrets), file.clone());
+            let username = section.account.username.clone();
             let task = tokio_bridge::spawn(cx, async move {
-                let api = HttpTeamClient::new(server)?;
+                let api = HttpTeamClient::new(server.clone())?;
                 let me = team::current(&api, &*secrets, &file).await?;
-                Ok::<_, TeamError>((me, TeamStore::load(&file)?))
+                let store = TeamStore::load(&file)?;
+                let mut first_team = None;
+                if me.user.server_admin {
+                    let user = (store.account(&server)).map_or(username, |a| a.username.clone());
+                    if let Ok(token) = kept_token(&*secrets, &server, &user) {
+                        let teams = api.teams(&token).await.unwrap_or_default();
+                        first_team = teams.into_iter().next().map(|t| t.slug);
+                    }
+                }
+                Ok::<_, TeamError>((me, store, first_team))
             });
+            let server = section.server.clone();
             cx.spawn_in(window, async move |this, cx| {
                 let result = task.await.unwrap_or(Err(TeamError::Unavailable));
-                let _ = this.update(cx, |this, cx| this.loaded(index, result, cx));
+                let _ = this.update_in(cx, |this, window, cx| {
+                    this.loaded(&server, result, window, cx)
+                });
             })
             .detach();
         }
@@ -210,27 +277,31 @@ impl WorkspacesView {
 
     fn loaded(
         &mut self,
-        index: usize,
-        result: Result<(Me, TeamStore), TeamError>,
+        server: &ServerUrl,
+        result: Result<(Me, TeamStore, Option<String>), TeamError>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(section) = self.sections.get_mut(index) else {
+        let Some(section) = self.position(server).map(|i| &mut self.sections[i]) else {
             return;
         };
         match result {
-            Ok((me, store)) => {
+            Ok((me, store, first_team)) => {
                 section.workspaces = me.apinata_workspaces().into_iter().cloned().collect();
                 section.rows = (section.workspaces.iter())
-                    .map(|w| WorkspaceRow {
-                        team: w.team.clone(),
-                        slug: w.slug.clone(),
-                        name: w.name.clone(),
-                        role: w.role,
-                        opened: (store.binding_for(&section.server, &w.team, &w.slug))
+                    .map(|w| {
+                        let opened = (store.binding_for(&section.server, &w.team, &w.slug))
                             .map(|b| b.root.clone())
-                            .filter(|root| root.is_dir()),
+                            .filter(|root| root.is_dir());
+                        row_for(w, opened)
                     })
                     .collect();
+                section.admin = me.user.server_admin;
+                if let Some(slug) = first_team
+                    && section.new_team.read(cx).value().is_empty()
+                {
+                    (section.new_team).update(cx, |i, cx| i.set_value(slug, window, cx));
+                }
                 section.me = Some(me);
                 section.state = SectionState::Ready;
             }
@@ -441,6 +512,152 @@ impl WorkspacesView {
         window.close_dialog(cx);
         crate::team_join::open_for(&self.workspace, &server, &username, window, cx);
     }
+
+    /// Fills the New workspace fields of `section`.
+    pub fn set_new_workspace(
+        &mut self,
+        section: usize,
+        team: &str,
+        slug: &str,
+        name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(s) = self.sections.get(section) else {
+            return;
+        };
+        for (input, text) in [
+            (&s.new_team, team),
+            (&s.new_slug, slug),
+            (&s.new_name, name),
+        ] {
+            input.update(cx, |i, cx| i.set_value(text, window, cx));
+        }
+        cx.notify();
+    }
+
+    /// Creates the workspace the New workspace fields describe. Fields that fail the server's
+    /// rules show why with nothing sent; a created workspace joins the list in sorted place.
+    pub fn create_workspace(
+        &mut self,
+        section: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(s) = self.sections.get(section) else {
+            return;
+        };
+        if s.creating || !s.admin {
+            return;
+        }
+        let field = |input: &Entity<InputState>| input.read(cx).value().to_string();
+        let new = NewWorkspace::new(
+            &field(&s.new_team),
+            &field(&s.new_slug),
+            &field(&s.new_name),
+        );
+        let new = match new {
+            Ok(new) => new,
+            Err(e) => return self.set_error(section, Some(error_text(&e)), cx),
+        };
+        let Some(state) = cx.try_global::<AppState>() else {
+            return;
+        };
+        let secrets = Arc::clone(&state.secrets);
+        let (server, username) = (s.server.clone(), s.account.username.clone());
+        let task = tokio_bridge::spawn(cx, {
+            let server = server.clone();
+            async move {
+                let token = kept_token(&*secrets, &server, &username)?;
+                HttpTeamClient::new(server)?
+                    .create_workspace(&token, &new)
+                    .await
+            }
+        });
+        if let Some(s) = self.sections.get_mut(section) {
+            s.creating = true;
+        }
+        self.set_error(section, None, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let result = task.await.unwrap_or(Err(TeamError::Unavailable));
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.created(&server, result, window, cx)
+            });
+        })
+        .detach();
+    }
+
+    fn created(
+        &mut self,
+        server: &ServerUrl,
+        result: Result<team::Workspace, TeamError>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(index) = self.position(server) else {
+            return;
+        };
+        let s = &mut self.sections[index];
+        s.creating = false;
+        let ws = match result {
+            Ok(ws) => ws,
+            Err(e) => return self.set_error(index, Some(error_text(&e)), cx),
+        };
+        if ws.kind == team::APINATA_KIND {
+            let key = (&ws.team, &ws.slug);
+            let at = (s.workspaces).partition_point(|w| (&w.team, &w.slug) < key);
+            s.rows.insert(at, row_for(&ws, None));
+            s.workspaces.insert(at, ws);
+        }
+        for input in [&s.new_slug, &s.new_name] {
+            input.update(cx, |i, cx| i.set_value("", window, cx));
+        }
+        cx.notify();
+    }
+
+    /// Signs out of `section`'s server: revokes its token and forgets the account, keeping the
+    /// bound folders. A failure keeps the section and says why. Ignored while a clone runs.
+    pub fn sign_out(&mut self, section: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.cloning {
+            return;
+        }
+        let Some(s) = self.sections.get_mut(section) else {
+            return;
+        };
+        if s.signing_out {
+            return;
+        }
+        let Some(state) = cx.try_global::<AppState>() else {
+            return;
+        };
+        let (secrets, file) = (Arc::clone(&state.secrets), state.team.clone());
+        let server = s.server.clone();
+        s.signing_out = true;
+        let task = tokio_bridge::spawn(cx, {
+            let server = server.clone();
+            async move { team::sign_out(&HttpTeamClient::new(server)?, &*secrets, &file).await }
+        });
+        self.set_error(section, None, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let result = task.await.unwrap_or(Err(TeamError::Unavailable));
+            let _ = this.update_in(cx, |this, window, cx| {
+                let Some(index) = this.position(&server) else {
+                    return;
+                };
+                this.sections[index].signing_out = false;
+                match result {
+                    Ok(()) => {
+                        this.sections.remove(index);
+                        let text = format!("Signed out of {server}.");
+                        window.push_notification(ui::info_toast(text), cx);
+                        cx.notify();
+                    }
+                    Err(e) => this.set_error(index, Some(error_text(&e)), cx),
+                }
+            });
+        })
+        .detach();
+    }
 }
 
 // What an Open captured when it started, so the binding uses that account and workspace.
@@ -459,9 +676,26 @@ impl Render for WorkspacesView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
         let sections = self.sections.iter().enumerate().map(|(i, s)| {
-            let header = div()
-                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .child(format!("{} on {}", s.account.username, s.server));
+            let header = h_flex()
+                .gap(SPACE_2)
+                .child(
+                    div()
+                        .flex_1()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .child(format!("{} on {}", s.account.username, s.server)),
+                )
+                .child(
+                    Button::new(("team-sign-out", i))
+                        .label(if s.signing_out {
+                            "Signing out…"
+                        } else {
+                            "Sign out"
+                        })
+                        .lock(s.signing_out || self.cloning, cx)
+                        .on_click(
+                            cx.listener(move |this, _, window, cx| this.sign_out(i, window, cx)),
+                        ),
+                );
             let body = match &s.state {
                 SectionState::Loading => div()
                     .text_color(muted)
@@ -510,6 +744,36 @@ impl Render for WorkspacesView {
                     }))
                     .into_any_element(),
             };
+            let create = (s.admin && s.state == SectionState::Ready).then(|| {
+                let field = |id: &'static str, input: &Entity<InputState>| {
+                    div().flex_1().child(ui::padded_input(
+                        Input::new(input)
+                            .id((id, i))
+                            .w_full()
+                            .disabled(s.creating)
+                            .bg(ui::field_fill(s.creating, cx)),
+                        input,
+                    ))
+                };
+                v_flex()
+                    .gap(SPACE_2)
+                    .child(div().text_color(muted).child("New workspace"))
+                    .child(
+                        h_flex()
+                            .gap(SPACE_2)
+                            .child(field("team-new-team", &s.new_team))
+                            .child(field("team-new-slug", &s.new_slug))
+                            .child(field("team-new-name", &s.new_name))
+                            .child(
+                                Button::new(("team-create", i))
+                                    .label(if s.creating { "Creating…" } else { "Create" })
+                                    .lock(s.creating, cx)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.create_workspace(i, window, cx)
+                                    })),
+                            ),
+                    )
+            });
             let error = s.error.clone().map(|message| {
                 div()
                     .id(("team-section-error", i))
@@ -523,6 +787,7 @@ impl Render for WorkspacesView {
                 .gap(SPACE_2)
                 .child(header)
                 .child(body)
+                .children(create)
                 .children(error)
         });
         v_flex()
