@@ -203,6 +203,7 @@ impl JoinView {
         cx.notify();
         // The password moves into the sign-in future and is dropped with it.
         let shown = server.to_string();
+        let resumed = server.clone();
         let task = tokio_bridge::spawn(cx, async move {
             let api = HttpTeamClient::new(server)?;
             team::sign_in(&api, &*secrets, &file, &username, &password).await
@@ -214,6 +215,7 @@ impl JoinView {
                     window.close_dialog(cx);
                     let text = format!("Signed in to {shown} as {}.", account.username);
                     window.push_notification(ui::info_toast(text), cx);
+                    crate::team_mode::resume_server(&this.workspace, &resumed, cx);
                     crate::team_workspaces::open(&this.workspace, window, cx);
                 }
                 Ok(Err(e)) => this.fail(sign_in_error_text(&e), cx),

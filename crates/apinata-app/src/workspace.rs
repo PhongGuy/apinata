@@ -417,6 +417,11 @@ struct Team {
 }
 
 impl CollectionEntry {
+    // Whether its first snapshot has landed, so it counts as open.
+    pub(crate) fn opened(&self) -> bool {
+        self.opened
+    }
+
     /// The collection's absolute root.
     pub fn root(&self) -> &Path {
         &self.root

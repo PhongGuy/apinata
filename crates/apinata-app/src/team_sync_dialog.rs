@@ -4,12 +4,13 @@
 
 use std::path::{Path, PathBuf};
 
-use apinata_core::team::{Block, TeamState, TeamSync};
+use apinata_core::team::{Block, TeamState, TeamStore, TeamSync};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div};
 
+use crate::app::AppState;
 use crate::style::{SPACE_2, TEXT_SMALL};
 use crate::team_text::problem_lines;
 use crate::ui::dialog_footer;
@@ -68,6 +69,27 @@ impl SyncView {
             .unwrap_or_default()
     }
 
+    // Swaps this dialog for the join dialog, prefilled with the server and user the
+    // collection is bound to; nothing when the binding is gone.
+    fn sign_in_again(&self, window: &mut Window, cx: &mut App) {
+        let Some(file) = cx.try_global::<AppState>().map(|s| s.team.clone()) else {
+            return;
+        };
+        let Some(binding) =
+            (TeamStore::load(&file).ok()).and_then(|store| store.binding_at(&self.root).cloned())
+        else {
+            return;
+        };
+        window.close_dialog(cx);
+        crate::team_join::open_for(
+            &self.workspace,
+            &binding.server,
+            &binding.username,
+            window,
+            cx,
+        );
+    }
+
     // Runs `act` on the collection's sync loop, if it still has one.
     fn with_sync(&self, cx: &App, act: impl FnOnce(&TeamSync)) {
         if let Some(sync) = self.workspace.read(cx).team_sync(&self.root) {
@@ -80,7 +102,7 @@ impl Render for SyncView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = (self.workspace.read(cx).team_status(&self.root)).map(|s| s.state);
         // Retry is the fix for a refusal the user can correct here; Discard unblocks pulls in a
-        // read-only folder held back by outside edits.
+        // read-only folder held back by outside edits; a lapsed session needs a new sign-in.
         let retry = matches!(
             state,
             Some(TeamState::Blocked(
@@ -96,6 +118,11 @@ impl Render for SyncView {
             Button::new("team-discard")
                 .label("Discard")
                 .on_click(cx.listener(|this, _, _, cx| this.with_sync(cx, TeamSync::discard)))
+        });
+        let sign_in = matches!(state, Some(TeamState::Blocked(Block::SignedOut))).then(|| {
+            Button::new("team-sign-in-again")
+                .label("Sign in again")
+                .on_click(cx.listener(|this, _, window, cx| this.sign_in_again(window, cx)))
         });
         // A hook's output or git's message follows its heading line in a mono font.
         let output_at = matches!(
@@ -122,7 +149,7 @@ impl Render for SyncView {
             .label("Close")
             .on_click(|_, window, cx| window.close_dialog(cx));
         // The fix is the primary button when there is one; otherwise Close is.
-        let footer = match retry.or(discard) {
+        let footer = match retry.or(discard).or(sign_in) {
             Some(fix) => dialog_footer(Some(close), [], fix.primary()),
             None => dialog_footer(None, [], close.primary()),
         };

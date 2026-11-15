@@ -10,7 +10,7 @@ use apinata_core::team::{
     TeamError, TeamStore,
 };
 use gpui_kit::prelude::*;
-use gpui_kit::{AppContext, AsyncApp, Task, WeakEntity};
+use gpui_kit::{App, AppContext, AsyncApp, Entity, Task, WeakEntity};
 
 use crate::app::AppState;
 use crate::team_text;
@@ -49,6 +49,33 @@ pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
         });
     })
     .detach();
+}
+
+/// Restarts the loop of every open collection the team file binds to `server`, so a fresh
+/// sign-in replaces loops that started without a valid token.
+pub fn resume_server(workspace: &Entity<Workspace>, server: &ServerUrl, cx: &mut App) {
+    let Some(file) = cx.try_global::<AppState>().map(|s| s.team.clone()) else {
+        return;
+    };
+    let Ok(store) = TeamStore::load(&file) else {
+        return;
+    };
+    let bound: Vec<PathBuf> = (store.bindings().iter())
+        .filter(|b| b.server == server.as_str())
+        .map(|b| b.root.clone())
+        .collect();
+    workspace.update(cx, |w, cx| {
+        let open: Vec<PathBuf> = (bound.into_iter())
+            .filter(|root| {
+                w.collections()
+                    .iter()
+                    .any(|c| c.opened() && c.root() == root)
+            })
+            .collect();
+        for root in open {
+            resume(w, &root, cx);
+        }
+    });
 }
 
 type Asked = Task<Result<Result<Resumed, TeamError>, tokio_bridge::JoinError>>;
