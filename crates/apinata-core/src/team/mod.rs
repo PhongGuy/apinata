@@ -2,7 +2,7 @@
 //! on its own. This module holds the git env that carries the server token, the reading of git's
 //! output as a sync failure, the state machine that decides what the loop runs next, the
 //! driver thread that runs it, the folder that keeps conflict copies, the server's contract
-//! types and the client for its JSON API.
+//! types, the client for its JSON API, and the team file with the sign-in and sign-out flows.
 
 mod auth;
 mod client;
@@ -13,6 +13,8 @@ mod events;
 mod failure;
 mod machine;
 mod model;
+mod session;
+mod store;
 
 pub use auth::{Identity, TeamAuth, redact_token, team_options};
 pub use client::{HttpTeamClient, TOKEN_NAME, TeamApi, TeamFuture};
@@ -25,6 +27,8 @@ pub use machine::{Block, Role, TeamAction, TeamEvent, TeamMachine, TeamState};
 pub use model::{
     Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamToken, User, Workspace,
 };
+pub use session::{current, sign_in, sign_out};
+pub use store::{Account, Binding, TeamStore, token_key};
 
 /// The workspace kind the server keeps for Apinata collections.
 pub const APINATA_KIND: &str = "apinata";
