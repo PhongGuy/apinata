@@ -1,5 +1,5 @@
-//! The main tab strip never shows part of a tab at its right edge: a tab cut there lies
-//! wholly under the right fade's solid part, so no label is cut mid-word.
+//! A tab cut by the main tab strip's right edge never shows its close button, whose place
+//! lies past the edge, and the right fade over it is a plain fade, never a blank band.
 
 use crate::support;
 
@@ -8,9 +8,9 @@ use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext, px, size};
 use support::*;
 
 // Opens `count` request tabs and, for each window width, activates each tab in turn and then
-// wheels the strip a notch at a time, checking after each step that any tab cut by the
-// strip's right edge lies wholly under the right fade's solid part. Returns how many checks
-// found a tab cut there.
+// wheels the strip a notch at a time, checking after each step that a tab cut by the strip's
+// right edge shows no close button and that the right fade is a plain one. Returns how many
+// checks found a tab cut there.
 fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item = u32>) -> usize {
     let files: Vec<(String, String)> = (0..count)
         .map(|i| {
@@ -42,14 +42,8 @@ fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item =
                     if !cut {
                         return None;
                     }
-                    // The fade grades only over the gap before the cut tab, at most a fade wide.
-                    let gap = if ix > 0 {
-                        (b.left() - w.within("tab-strip").find(ix - 1).bounds().right()).max(px(0.))
-                    } else {
-                        px(0.)
-                    };
-                    let grade = gap.min(fade_w);
-                    let hidden = fade.is_some_and(|f| b.left() >= f.left() + grade - px(0.5));
+                    let plain = fade.is_some_and(|f| (f.size.width - fade_w).abs() < px(0.5));
+                    let hidden = plain && w.try_find(("tab-close", ix)).is_none();
                     Some((
                         ix,
                         hidden,
@@ -60,7 +54,7 @@ fn never_cut(cx: &mut TestAppContext, count: usize, widths: impl Iterator<Item =
             .unwrap();
         if let Some((_, hidden, what)) = cut {
             covered += 1;
-            assert!(hidden, "{why}: {what} shows cut at the right edge");
+            assert!(hidden, "{why}: {what} shows a close button or a wide fade");
         }
     };
     for width in widths {
@@ -98,10 +92,10 @@ fn frames(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, n: usize) {
     .unwrap();
 }
 
-// Seven long-named tabs at 1280, 800 and 640 px: a tab at the right edge is whole or wholly
-// behind the fade, whether a tab was chosen or the strip wheeled.
+// Seven long-named tabs at 1280, 800 and 640 px: a tab cut at the right edge offers no close
+// button and sits under a plain fade, whether a tab was chosen or the strip wheeled.
 #[gpui_kit::test]
-fn no_tab_shows_cut_at_the_right_edge(cx: &mut TestAppContext) {
+fn a_tab_cut_at_the_right_edge_offers_no_close_button(cx: &mut TestAppContext) {
     let covered = never_cut(cx, 7, [1280, 800, 640].into_iter());
     assert!(covered > 0, "no tab was ever cut at the right edge");
 }
