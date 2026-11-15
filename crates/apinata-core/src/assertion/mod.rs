@@ -314,6 +314,12 @@ impl AssertionOutcome {
     }
 }
 
+/// Whether an enabled assertion whose left side is `expression` is skipped for having none,
+/// whatever its operator and value.
+pub fn lacks_expression(expression: &str) -> bool {
+    js::js_trim(expression).is_empty()
+}
+
 /// Evaluates a request's enabled assertions against `res`, in file order.
 ///
 /// Right sides interpolate the variables the request sees in `ctx`, folder and request
@@ -380,7 +386,7 @@ fn verdict(
 ) -> Verdict {
     let (op, text) = rhs::split(assertion.bruno_value());
     let expression = js::js_trim(assertion.expression());
-    if expression.is_empty() {
+    if lacks_expression(expression) {
         let reason = "no expression".to_owned();
         return Verdict::Skipped { reason };
     }
@@ -803,6 +809,56 @@ mod tests {
                 skipped,
                 "{expression:?} {op} {value:?}"
             );
+        }
+    }
+
+    #[test]
+    fn lacks_expression_is_the_skip_rule_for_every_operator() {
+        let ops = [
+            "eq",
+            "neq",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "in",
+            "notIn",
+            "contains",
+            "notContains",
+            "length",
+            "matches",
+            "notMatches",
+            "startsWith",
+            "endsWith",
+            "between",
+            "isEmpty",
+            "isNotEmpty",
+            "isNull",
+            "isUndefined",
+            "isDefined",
+            "isTruthy",
+            "isFalsy",
+            "isJson",
+            "isNumber",
+            "isString",
+            "isBoolean",
+            "isArray",
+        ];
+        let res = Response::new(200);
+        for op in ops {
+            for expression in ["", " \t", "\u{feff}", "\u{a0}", "res.status"] {
+                for value in [None, Some(""), Some("200")] {
+                    let skipped = matches!(
+                        run(expression, op, value, &res, json!({})),
+                        Verdict::Skipped { reason } if reason == "no expression"
+                    );
+                    assert_eq!(
+                        lacks_expression(expression),
+                        skipped,
+                        "{expression:?} {op} {value:?}"
+                    );
+                }
+            }
         }
     }
 

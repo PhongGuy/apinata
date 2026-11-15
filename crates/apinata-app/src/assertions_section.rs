@@ -1,6 +1,6 @@
 //! The Assertions section: a table of expression, operator and value rows.
 
-use apinata_core::Assertion;
+use apinata_core::{Assertion, lacks_expression};
 use gpui_kit::InteractiveElement as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
@@ -772,11 +772,9 @@ impl AssertionsSection {
             let field = ui::table_input(input, false, window, cx).id((id, ix));
             kv_grid::kv_cell((edge, ix), field, input, focused(input, cx), cx)
         };
-        // A value with no expression is skipped on Send, so the row says so before then.
-        let no_expression = !blank
-            && !is_unary(&row.op)
-            && row.expression.read(cx).value().trim().is_empty()
-            && !row.value.read(cx).value().is_empty();
+        // An enabled row with no expression is skipped on Send, so the row says so before then.
+        let no_expression =
+            !blank && row.enabled && lacks_expression(&row.expression.read(cx).value());
         let expression_cell = if no_expression {
             let field = ui::table_input(&row.expression, false, window, cx).id(("as-expr", ix));
             let ids = (

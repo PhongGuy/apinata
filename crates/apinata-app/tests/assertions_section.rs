@@ -826,30 +826,38 @@ fn note_of(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> Option<S
     .unwrap()
 }
 
-// A value without an expression is skipped on Send, so the row says so first: the cell is
-// marked and a note sits under it; an expression, or no value, clears both.
+// A row with no expression is skipped on Send whatever its operator and value, so the row says
+// so first: the cell is marked and a note sits under it; an expression clears both.
 #[gpui_kit::test]
-fn a_value_without_an_expression_is_marked_before_send(cx: &mut TestAppContext) {
+fn a_row_without_an_expression_is_marked_before_send(cx: &mut TestAppContext) {
     let (win, _host, _s) = section(
         cx,
         vec![
             new("", "eq", Some("201"), true),
             new("res.status", "eq", Some("200"), true),
             new(" ", "eq", Some(""), true),
+            new("", "isNull", None, true),
+            new("", "isDefined", None, true),
+            new("", "eq", Some("201"), false),
         ],
     );
     let note = "Add an expression, or this check is skipped";
-    assert_eq!(note_of(cx, win, 0).as_deref(), Some(note));
-    assert!(present(cx, win, ("as-expr-invalid-icon", 0usize)));
-    for ix in [1usize, 2, 3] {
+    for ix in [0usize, 2, 3, 4] {
+        assert_eq!(note_of(cx, win, ix).as_deref(), Some(note), "row {ix}");
+        assert!(present(cx, win, ("as-expr-invalid-icon", ix)), "row {ix}");
+    }
+    // A disabled row never runs, and the empty slot is not a row yet.
+    for ix in [1usize, 5, 6] {
         assert!(!present(cx, win, ("as-expr-error", ix)), "row {ix}");
         assert!(!present(cx, win, ("as-expr-invalid-icon", ix)), "row {ix}");
     }
-    type_at_end(cx, win, None, ("as-expr", 0usize), "res.status");
+    for ix in [0usize, 3] {
+        type_at_end(cx, win, None, ("as-expr", ix), "res.status");
+        cx.run_until_parked();
+        assert!(!present(cx, win, ("as-expr-error", ix)), "row {ix}");
+        assert!(!present(cx, win, ("as-expr-invalid-icon", ix)), "row {ix}");
+    }
+    type_at_end(cx, win, None, ("as-value", 6usize), "7");
     cx.run_until_parked();
-    assert!(!present(cx, win, ("as-expr-error", 0usize)));
-    assert!(!present(cx, win, ("as-expr-invalid-icon", 0usize)));
-    type_at_end(cx, win, None, ("as-value", 3usize), "7");
-    cx.run_until_parked();
-    assert_eq!(note_of(cx, win, 3).as_deref(), Some(note));
+    assert_eq!(note_of(cx, win, 6).as_deref(), Some(note));
 }
