@@ -500,6 +500,9 @@ pub struct Workspace {
     open_faults: Faults,
     // The collection the user just opened, which the shell reveals once its first snapshot lands.
     reveal_pending: Option<PathBuf>,
+    // Bound folders whose team resume is asking the server, so a second trigger starts no
+    // second loop.
+    team_resumes: HashSet<PathBuf>,
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
@@ -605,6 +608,7 @@ impl Workspace {
             trash: Arc::new(NoTrash),
             open_faults: Faults::default(),
             reveal_pending: None,
+            team_resumes: HashSet::new(),
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
@@ -2168,6 +2172,7 @@ impl Workspace {
         self.git_options = options;
         if on {
             self.refresh_all_git(cx);
+            self.resume_teams(cx);
         } else {
             for entry in &mut self.collections {
                 entry.git = None;
@@ -2606,6 +2611,22 @@ impl Workspace {
         }
     }
 
+    /// The bound folders whose team resume is in flight.
+    pub(crate) fn team_resumes(&mut self) -> &mut HashSet<PathBuf> {
+        &mut self.team_resumes
+    }
+
+    // Git just came on: every open collection without a loop resumes, if bound.
+    fn resume_teams(&mut self, cx: &mut Context<Self>) {
+        let idle: Vec<PathBuf> = (self.collections.iter())
+            .filter(|c| c.opened && c.team.is_none())
+            .map(|c| c.root.clone())
+            .collect();
+        for root in idle {
+            crate::team_mode::resume(self, &root, cx);
+        }
+    }
+
     /// Whether any open collection runs a team sync loop.
     pub fn has_teams(&self) -> bool {
         self.collections.iter().any(|c| c.team.is_some())
@@ -2743,6 +2764,9 @@ impl Workspace {
             // After the environment, so the actor builds the routes in the restored one.
             if self.remembered_mock(root, cx) {
                 self.set_mock(root, true, cx);
+            }
+            if self.entry(root).is_some_and(|e| e.team.is_none()) {
+                crate::team_mode::resume(self, root, cx);
             }
         }
         // Refresh git on the first snapshot and once the reply covering our own write lands.

@@ -615,6 +615,7 @@ mod team_admin;
 mod team_api;
 mod team_join;
 mod team_paths;
+mod team_resume;
 mod team_sync;
 mod team_text;
 mod team_workspaces;

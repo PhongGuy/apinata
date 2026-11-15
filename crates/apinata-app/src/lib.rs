@@ -160,6 +160,7 @@ pub mod tab_area;
 pub mod tabs;
 pub mod tag_input;
 pub mod team_join;
+pub mod team_mode;
 pub mod team_text;
 pub mod team_workspaces;
 pub mod terminal;

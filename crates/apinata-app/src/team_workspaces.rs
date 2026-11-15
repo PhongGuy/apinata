@@ -21,8 +21,8 @@ use crate::ui::LockButton as _;
 use crate::workspace::Workspace;
 use crate::{tokio_bridge, ui};
 use apinata_core::team::{
-    self, Account, Binding, EventsConfig, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl,
-    TeamApi as _, TeamAuth, TeamConfig, TeamError, TeamStore, TeamToken, token_key,
+    self, Account, Binding, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl, TeamApi as _,
+    TeamAuth, TeamError, TeamStore, TeamToken, token_key,
 };
 use apinata_core::{CloneRequest, GitOptions, SecretStore};
 
@@ -364,11 +364,7 @@ impl WorkspacesView {
         let Some(state) = cx.try_global::<AppState>() else {
             return;
         };
-        let (secrets, file, conflicts) = (
-            Arc::clone(&state.secrets),
-            state.team.clone(),
-            state.conflicts.clone(),
-        );
+        let (secrets, file) = (Arc::clone(&state.secrets), state.team.clone());
         let saved = state.settings.read(cx).get().clone_parent.clone();
         let home = dirs::home_dir();
         let Some(parent) = clone_form::default_parent(saved.as_deref(), home.as_deref()) else {
@@ -382,10 +378,6 @@ impl WorkspacesView {
                 return self.set_error(section, Some(text), cx);
             }
             Err(e) => return self.set_error(section, Some(error_text(&e)), cx),
-        };
-        // clone_request has already accepted this address, so the fallback never applies.
-        let Ok(events_url) = team::events_url(&s.server, ws) else {
-            return;
         };
         let text = match clone_form::check(&req.url, Some(&parent), &req.name) {
             Ok(_) => None,
@@ -408,10 +400,8 @@ impl WorkspacesView {
             account: s.account.clone(),
             workspace: ws.clone(),
             me,
-            events_url,
             base,
             file,
-            conflicts,
         };
         self.cloning = true;
         self.set_error(section, None, cx);
@@ -464,7 +454,7 @@ impl WorkspacesView {
                     continue;
                 };
                 let _ = this.update_in(cx, |this, window, cx| {
-                    this.finished(open, auth, result, window, cx)
+                    this.finished(open, result, window, cx)
                 });
                 return;
             }
@@ -478,11 +468,10 @@ impl WorkspacesView {
         .detach();
     }
 
-    // A finished clone is bound, opened and put in team mode; a failed one shows its error.
+    // A finished clone is bound and opened; a failed one shows its error.
     fn finished(
         &mut self,
         open: Opening,
-        auth: TeamAuth,
         result: Result<PathBuf, apinata_core::CloneError>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -503,15 +492,8 @@ impl WorkspacesView {
             let text = clone_form::no_collection_text(&root);
             return window.push_notification(ui::info_toast(text), cx);
         }
-        let identity = open.me.identity.clone();
-        let copies = copies_dir(&open.conflicts, &binding);
-        let config = TeamConfig::new(root.clone(), copies, auth.clone(), identity, ws.role)
-            .base_options(open.base);
-        let events = EventsConfig::new(open.events_url.clone(), auth, ws.default_branch.clone());
-        self.workspace.update(cx, |w, cx| {
-            w.open_revealed(root.clone(), cx);
-            w.start_team(&root, config, Some(events), cx);
-        });
+        // The open's first snapshot resumes the bound folder, which starts its loop.
+        self.workspace.update(cx, |w, cx| w.open_revealed(root, cx));
     }
 
     /// Closes the list and opens the join dialog for this section's server and user.
@@ -677,11 +659,8 @@ struct Opening {
     account: Account,
     workspace: team::Workspace,
     me: Me,
-    // The workspace's change stream, checked to be on this server.
-    events_url: String,
     base: GitOptions,
     file: PathBuf,
-    conflicts: PathBuf,
 }
 
 impl Render for WorkspacesView {
