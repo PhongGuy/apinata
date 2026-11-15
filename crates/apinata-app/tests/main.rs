@@ -88,6 +88,7 @@ pub fn counting<R>(f: impl FnOnce() -> R) -> (R, Allocated) {
     (out, tally)
 }
 
+mod about;
 mod actor;
 mod actor_context;
 mod actor_drafts;
