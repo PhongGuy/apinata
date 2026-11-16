@@ -4,6 +4,8 @@
 use crate::support;
 
 use apinata_app::sidebar::marker_id;
+use apinata_app::sidebar::menu::MenuEntry;
+use apinata_app::sidebar::model::NodeKind;
 use apinata_app::tabs::TabKind;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, Focusable as _, TestAppContext};
@@ -74,7 +76,7 @@ fn a_click_elsewhere_is_kept_until_the_active_tab_changes(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn a_settings_tab_leaves_the_selection_alone(cx: &mut TestAppContext) {
+fn a_collection_settings_tab_selects_the_root_row(cx: &mut TestAppContext) {
     let h = open_sidebar(cx);
     open_tab(cx, &h.ws, &h.root, "health.yml");
     frame(cx, h.win);
@@ -83,7 +85,36 @@ fn a_settings_tab_leaves_the_selection_alone(cx: &mut TestAppContext) {
     })
     .expect("a settings tab");
     rebuild(cx, &h);
-    assert_eq!(selected(cx, &h).as_deref(), Some("health.yml"));
+    assert_eq!(selected(cx, &h).as_deref(), Some(""));
+}
+
+#[gpui_kit::test]
+fn folder_settings_from_the_row_menu_selects_the_folder(cx: &mut TestAppContext) {
+    let col = write_tree(&[
+        ("opencollection.yml", ROOT),
+        ("users/folder.yml", &folder("Users")),
+        ("users/list.yml", &request("List users", "http://x/users")),
+        ("health.yml", &request("Health", "http://x/health")),
+    ]);
+    let s = started(cx, &col);
+    let selected = |cx: &mut TestAppContext| {
+        cx.read(|cx| s.shell.read(cx).sidebar().read(cx).selected(cx))
+            .map(|(_, p)| p.as_str().to_owned())
+    };
+    // The root row starts selected, as it did when the wrong row showed.
+    let sidebar = cx.read(|cx| s.shell.read(cx).sidebar().clone());
+    cx.update_window(s.win, |_, w, cx| {
+        sidebar.update(cx, |sb, cx| sb.reveal_root(&s.root, w, cx))
+    })
+    .unwrap();
+    frame(cx, s.win);
+    assert_eq!(selected(cx).as_deref(), Some(""));
+    choose_menu(cx, s.win, "users", NodeKind::Folder, MenuEntry::Settings);
+    frame(cx, s.win);
+    let active =
+        s.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone()));
+    assert_eq!(active, Some(TabKind::Folder(ip("users"))));
+    assert_eq!(selected(cx).as_deref(), Some("users"));
 }
 
 #[gpui_kit::test]
