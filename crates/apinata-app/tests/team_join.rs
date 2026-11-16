@@ -69,13 +69,7 @@ fn joining_keeps_the_token_in_the_keychain_and_the_server_in_the_team_file(
     http_ready(cx);
     let server = potluck_server(cx);
     answer(cx, &server, "GET", "/api/v1/server", info(true));
-    answer(
-        cx,
-        &server,
-        "POST",
-        "/api/v1/session",
-        session("tok-7", false),
-    );
+    answer(cx, &server, "POST", "/api/v1/session", session(7, false));
     let (_col, s, secrets) = team_app(cx, |_, _| {});
     let view = open_join(cx, &s);
     fill(cx, &s, &view, &server.uri(), "ada", "hunter2");

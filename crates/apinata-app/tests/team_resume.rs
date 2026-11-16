@@ -74,7 +74,7 @@ fn an_unreachable_server_still_commits_under_the_cached_identity(cx: &mut TestAp
     let root = col.path().to_path_buf();
     let (s, _secrets) = team_started(cx, &sb, &col, |paths, secrets| {
         let url = ServerUrl::parse(&dead).unwrap();
-        let mut account = Account::new(&url, "ada", "Ada Lovelace", "tok-7", false);
+        let mut account = Account::new(&url, "ada", "Ada Lovelace", "7", false);
         account.identity = Some(Identity::new("Ada Cached", "ada@cached.example"));
         TeamStore::update(&paths.team, |t| t.put_account(account)).unwrap();
         secrets.set(&token_key(&url, "ada"), &tok()).unwrap();

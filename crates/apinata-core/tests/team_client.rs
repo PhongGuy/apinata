@@ -36,12 +36,12 @@ async fn sign_in_posts_the_password_and_returns_the_token_and_user() {
         .and(body_json(
             json!({"username": "ada", "password": "hunter2", "token_name": "Apinata"}),
         ))
-        .respond_with(session("tok-7", true))
+        .respond_with(session(7, true))
         .mount(&s)
         .await;
     let signed = client(&s).sign_in("ada", "hunter2").await.unwrap();
     assert_eq!(signed.token.expose(), tok());
-    assert_eq!(signed.token_id, "tok-7");
+    assert_eq!(signed.token_id, "7");
     assert_eq!(
         (signed.user.username.as_str(), signed.user.server_admin),
         ("ada", true)
@@ -52,7 +52,8 @@ async fn sign_in_posts_the_password_and_returns_the_token_and_user() {
 #[tokio::test]
 async fn a_malformed_token_in_the_answer_is_a_protocol_error() {
     let s = MockServer::start().await;
-    let body = json!({"token": "plk_short", "token_meta": token_meta("tok-7"), "user": user("ada", false)});
+    let body =
+        json!({"token": "plk_short", "token_meta": token_meta(7), "user": user("ada", false)});
     answer(
         &s,
         "POST",
@@ -254,13 +255,13 @@ async fn an_oversized_answer_is_refused() {
 async fn revoke_deletes_the_token_by_id() {
     let s = MockServer::start().await;
     Mock::given(method("DELETE"))
-        .and(path("/api/v1/tokens/tok-7"))
+        .and(path("/api/v1/tokens/7"))
         .and(header("authorization", bearer().as_str()))
         .respond_with(ResponseTemplate::new(204))
         .mount(&s)
         .await;
-    client(&s).revoke(&token(), "tok-7").await.unwrap();
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 1);
+    client(&s).revoke(&token(), "7").await.unwrap();
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 1);
 }
 
 #[tokio::test]

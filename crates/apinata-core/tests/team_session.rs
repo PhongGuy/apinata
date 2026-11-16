@@ -45,7 +45,7 @@ fn unauthenticated() -> ResponseTemplate {
 
 async fn joined(s: &MockServer, secrets: &MemoryStore, team_file: &Path) -> Account {
     answer(s, "GET", "/api/v1/server", info(true)).await;
-    answer(s, "POST", "/api/v1/session", session("tok-7", true)).await;
+    answer(s, "POST", "/api/v1/session", session(7, true)).await;
     team::sign_in(&client(s), secrets, team_file, "ada", "hunter2")
         .await
         .unwrap()
@@ -65,7 +65,7 @@ async fn sign_in_keeps_the_token_in_the_keychain_and_the_account_in_the_file() {
             account.token_id.as_str(),
             account.server_admin
         ),
-        ("ada", "tok-7", true)
+        ("ada", "7", true)
     );
     let key = token_key(&url(&s), "ada");
     assert_eq!(
@@ -89,7 +89,7 @@ async fn a_server_without_password_sign_in_is_never_sent_the_password() {
         MemoryStore::new(),
     );
     answer(&s, "GET", "/api/v1/server", info(false)).await;
-    answer(&s, "POST", "/api/v1/session", session("tok-7", false)).await;
+    answer(&s, "POST", "/api/v1/session", session(7, false)).await;
     let e = team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "hunter2")
         .await
         .unwrap_err();
@@ -102,19 +102,13 @@ async fn a_server_without_password_sign_in_is_never_sent_the_password() {
 async fn a_locked_keychain_revokes_the_new_token_and_saves_nothing() {
     let (s, dir) = (MockServer::start().await, TempDir::new().unwrap());
     answer(&s, "GET", "/api/v1/server", info(true)).await;
-    answer(&s, "POST", "/api/v1/session", session("tok-7", false)).await;
-    answer(
-        &s,
-        "DELETE",
-        "/api/v1/tokens/tok-7",
-        ResponseTemplate::new(204),
-    )
-    .await;
+    answer(&s, "POST", "/api/v1/session", session(7, false)).await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
     let e = team::sign_in(&client(&s), &BrokenStore, &file(&dir), "ada", "hunter2")
         .await
         .unwrap_err();
     assert!(matches!(e, TeamError::Secrets(_)), "{e:?}");
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 1);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 1);
     assert!(!file(&dir).exists());
 }
 
@@ -128,22 +122,16 @@ async fn joining_again_revokes_the_previous_token_once_the_new_one_is_kept() {
     joined(&s, &secrets, &file(&dir)).await;
     s.reset().await;
     answer(&s, "GET", "/api/v1/server", info(true)).await;
-    answer(&s, "POST", "/api/v1/session", session("tok-8", true)).await;
-    answer(
-        &s,
-        "DELETE",
-        "/api/v1/tokens/tok-7",
-        ResponseTemplate::new(204),
-    )
-    .await;
+    answer(&s, "POST", "/api/v1/session", session(8, true)).await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
     let again = team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "hunter2")
         .await
         .unwrap();
-    assert_eq!(again.token_id, "tok-8");
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 1);
+    assert_eq!(again.token_id, "8");
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 1);
     let store = TeamStore::load(&file(&dir)).unwrap();
     assert_eq!(store.accounts().len(), 1);
-    assert_eq!(store.account(&url(&s)).unwrap().token_id, "tok-8");
+    assert_eq!(store.account(&url(&s)).unwrap().token_id, "8");
 }
 
 #[tokio::test]
@@ -161,7 +149,7 @@ async fn a_mistyped_password_on_rejoining_keeps_the_working_session() {
         .await
         .unwrap_err();
     assert_eq!(e, TeamError::Unauthenticated);
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 0);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 0);
     assert_eq!(
         secrets.get(&token_key(&url(&s), "ada")).unwrap(),
         Some(tok())
@@ -172,7 +160,7 @@ async fn a_mistyped_password_on_rejoining_keeps_the_working_session() {
             .account(&url(&s))
             .unwrap()
             .token_id,
-        "tok-7"
+        "7"
     );
 }
 
@@ -185,7 +173,7 @@ async fn joining_as_another_user_forgets_the_first_users_keychain_entry() {
     );
     joined(&s, &secrets, &file(&dir)).await;
     s.reset().await;
-    let bob = serde_json::json!({"token": tok(), "token_meta": token_meta("tok-9"), "user": user("bob", false)});
+    let bob = serde_json::json!({"token": tok(), "token_meta": token_meta(9), "user": user("bob", false)});
     answer(&s, "GET", "/api/v1/server", info(true)).await;
     answer(
         &s,
@@ -194,13 +182,7 @@ async fn joining_as_another_user_forgets_the_first_users_keychain_entry() {
         ResponseTemplate::new(201).set_body_json(bob),
     )
     .await;
-    answer(
-        &s,
-        "DELETE",
-        "/api/v1/tokens/tok-7",
-        ResponseTemplate::new(204),
-    )
-    .await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
     team::sign_in(&client(&s), &secrets, &file(&dir), "bob", "pw")
         .await
         .unwrap();
@@ -237,17 +219,11 @@ async fn sign_out_revokes_then_forgets_the_token_and_the_account_but_keeps_bindi
         ))
     })
     .unwrap();
-    answer(
-        &s,
-        "DELETE",
-        "/api/v1/tokens/tok-7",
-        ResponseTemplate::new(204),
-    )
-    .await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
     team::sign_out(&client(&s), &secrets, &file(&dir))
         .await
         .unwrap();
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 1);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 1);
     assert_eq!(secrets.get(&token_key(&url(&s), "ada")).unwrap(), None);
     let reloaded = TeamStore::load(&file(&dir)).unwrap();
     assert!(reloaded.accounts().is_empty());
@@ -262,7 +238,7 @@ async fn sign_out_after_the_server_already_revoked_still_cleans_up() {
         MemoryStore::new(),
     );
     joined(&s, &secrets, &file(&dir)).await;
-    answer(&s, "DELETE", "/api/v1/tokens/tok-7", unauthenticated()).await;
+    answer(&s, "DELETE", "/api/v1/tokens/7", unauthenticated()).await;
     team::sign_out(&client(&s), &secrets, &file(&dir))
         .await
         .unwrap();
@@ -282,7 +258,7 @@ async fn sign_out_without_a_token_forgets_the_account_without_a_request() {
     team::sign_out(&client(&s), &secrets, &file(&dir))
         .await
         .unwrap();
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 0);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 0);
     assert!(TeamStore::load(&file(&dir)).unwrap().accounts().is_empty());
 }
 
@@ -290,20 +266,14 @@ async fn sign_out_without_a_token_forgets_the_account_without_a_request() {
 async fn sign_out_with_a_locked_keychain_changes_nothing() {
     let (s, dir) = (MockServer::start().await, TempDir::new().unwrap());
     TeamStore::update(&file(&dir), |t| {
-        t.put_account(Account::new(
-            &url(&s),
-            "ada",
-            "Ada Lovelace",
-            "tok-7",
-            false,
-        ))
+        t.put_account(Account::new(&url(&s), "ada", "Ada Lovelace", "7", false))
     })
     .unwrap();
     let e = team::sign_out(&client(&s), &BrokenStore, &file(&dir))
         .await
         .unwrap_err();
     assert!(matches!(e, TeamError::Secrets(_)), "{e:?}");
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 0);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 0);
     assert_eq!(TeamStore::load(&file(&dir)).unwrap().accounts().len(), 1);
 }
 
@@ -312,7 +282,7 @@ async fn sign_out_while_offline_keeps_everything_so_it_can_be_retried() {
     let (dir, secrets) = (TempDir::new().unwrap(), MemoryStore::new());
     let server = ServerUrl::parse(&format!("http://127.0.0.1:{}", dead_port())).unwrap();
     TeamStore::update(&file(&dir), |t| {
-        t.put_account(Account::new(&server, "ada", "Ada Lovelace", "tok-7", false))
+        t.put_account(Account::new(&server, "ada", "Ada Lovelace", "7", false))
     })
     .unwrap();
     secrets.set(&token_key(&server, "ada"), &tok()).unwrap();
@@ -378,7 +348,7 @@ async fn a_session_refreshes_the_admin_flag_from_the_server() {
 fn bindings_are_keyed_by_root_and_found_by_workspace() {
     let dir = TempDir::new().unwrap();
     let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();
-    let account = Account::new(&server, "ada", "Ada Lovelace", "tok-7", false);
+    let account = Account::new(&server, "ada", "Ada Lovelace", "7", false);
     TeamStore::update(&file(&dir), |t| {
         t.put_binding(Binding::new(
             PathBuf::from("/w/api"),
@@ -430,7 +400,7 @@ fn concurrent_updates_never_lose_a_write() {
         &ServerUrl::parse("http://127.0.0.1:9").unwrap(),
         "ada",
         "Ada",
-        "tok-7",
+        "7",
         false,
     );
     std::thread::scope(|scope| {
@@ -468,7 +438,7 @@ fn a_corrupt_team_file_is_a_store_error_and_is_not_overwritten() {
 
 /// A session answer for `name` with a token unlike `tok()`, so the keychain shows which one it holds.
 #[cfg(unix)]
-fn other_session(name: &str, id: &str) -> (String, ResponseTemplate) {
+fn other_session(name: &str, id: i64) -> (String, ResponseTemplate) {
     let fresh = format!("plk_{}", "B".repeat(43));
     let body = serde_json::json!({"token": fresh, "token_meta": token_meta(id), "user": user(name, false)});
     (fresh, ResponseTemplate::new(201).set_body_json(body))
@@ -484,16 +454,10 @@ async fn rejoin_with_an_unwritable_team_file(name: &str) {
     );
     joined(&s, &secrets, &file(&dir)).await;
     s.reset().await;
-    let (fresh, response) = other_session(name, "tok-8");
+    let (fresh, response) = other_session(name, 8);
     answer(&s, "GET", "/api/v1/server", info(true)).await;
     answer(&s, "POST", "/api/v1/session", response).await;
-    answer(
-        &s,
-        "DELETE",
-        "/api/v1/tokens/tok-8",
-        ResponseTemplate::new(204),
-    )
-    .await;
+    answer(&s, "DELETE", "/api/v1/tokens/8", ResponseTemplate::new(204)).await;
     let parent = file(&dir).parent().unwrap().to_path_buf();
     let guard = crate::common::ModeGuard::set(&parent, 0o555);
     let e = team::sign_in(&client(&s), &secrets, &file(&dir), name, "pw")
@@ -501,8 +465,8 @@ async fn rejoin_with_an_unwritable_team_file(name: &str) {
         .unwrap_err();
     drop(guard);
     assert!(matches!(e, TeamError::Store(_)), "{e:?}");
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-8").await, 1);
-    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/tok-7").await, 0);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/8").await, 1);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 0);
     assert_eq!(
         secrets.get(&token_key(&url(&s), "ada")).unwrap(),
         Some(tok())
@@ -520,7 +484,7 @@ async fn rejoin_with_an_unwritable_team_file(name: &str) {
             .account(&url(&s))
             .unwrap()
             .token_id,
-        "tok-7"
+        "7"
     );
 }
 
@@ -572,11 +536,11 @@ impl team::TeamApi for RacedMe {
     }
 }
 
-// Ada signed in on a stub server with token id `tok-7` and the shared test token.
+// Ada signed in on a stub server with token id `7` and the shared test token.
 fn raced(dir: &TempDir, secrets: &MemoryStore) -> ServerUrl {
     let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();
     TeamStore::update(&file(dir), |t| {
-        t.put_account(Account::new(&server, "ada", "Ada Lovelace", "tok-7", false))
+        t.put_account(Account::new(&server, "ada", "Ada Lovelace", "7", false))
     })
     .unwrap();
     secrets.set(&token_key(&server, "ada"), &tok()).unwrap();
@@ -615,7 +579,7 @@ async fn a_session_replaced_while_the_check_was_refused_keeps_its_token() {
         server,
         during: Box::new(move || {
             TeamStore::update(&team_file, |t| {
-                t.put_account(Account::new(&at, "ada", "Ada Lovelace", "tok-8", false))
+                t.put_account(Account::new(&at, "ada", "Ada Lovelace", "8", false))
             })
             .unwrap()
         }),

@@ -21,7 +21,7 @@ fn ada(server: &str) -> Account {
         &ServerUrl::parse(server).unwrap(),
         "ada",
         "Ada Lovelace",
-        "tok-7",
+        "7",
         false,
     )
 }
@@ -127,7 +127,7 @@ async fn a_folder_bound_by_another_user_resumes_signed_out_and_keeps_its_binding
         &ServerUrl::parse(&base).unwrap(),
         "grace",
         "Grace",
-        "tok-9",
+        "9",
         false,
     );
     let b = binding(&grace, Role::Read, "main");

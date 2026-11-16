@@ -38,11 +38,11 @@ pub fn team_file(s: &Started) -> PathBuf {
     s.files.path().join("team.json")
 }
 
-/// Writes an account for `ada` (token id `tok-7`) and her token, as a finished join would.
+/// Writes an account for `ada` (token id `7`) and her token, as a finished join would.
 pub fn signed_in(paths: &Paths, secrets: &MemoryStore, server: &MockServer, admin: bool) {
     let url = server_url(server);
     TeamStore::update(&paths.team, |t| {
-        t.put_account(Account::new(&url, "ada", "Ada Lovelace", "tok-7", admin))
+        t.put_account(Account::new(&url, "ada", "Ada Lovelace", "7", admin))
     })
     .unwrap();
     secrets.set(&token_key(&url, "ada"), &tok()).unwrap();
@@ -96,7 +96,7 @@ pub fn bind(paths: &Paths, root: &Path, server: &str, role: Role) {
         &ServerUrl::parse(server).unwrap(),
         "ada",
         "Ada Lovelace",
-        "tok-7",
+        "7",
         false,
     );
     let mut b = Binding::new(root.to_path_buf(), &account, "core", "api", role);
