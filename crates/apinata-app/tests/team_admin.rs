@@ -159,7 +159,7 @@ fn signing_out_revokes_the_token_and_forgets_the_server(cx: &mut TestAppContext)
         cx,
         &server,
         "DELETE",
-        "/api/v1/tokens/tok-7",
+        "/api/v1/tokens/7",
         ResponseTemplate::new(204),
     );
     let (_col, s, secrets) = team_app(cx, |paths, secrets| {
@@ -174,7 +174,7 @@ fn signing_out_revokes_the_token_and_forgets_the_server(cx: &mut TestAppContext)
     wait_for(cx, "the account to go", |_| {
         TeamStore::load(&file).unwrap().accounts().is_empty()
     });
-    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/tok-7"), 1);
+    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/7"), 1);
     assert_eq!(
         secrets
             .get(&token_key(&server_url(&server), "ada"))
@@ -195,7 +195,7 @@ fn a_failed_sign_out_keeps_the_token_and_says_why(cx: &mut TestAppContext) {
         cx,
         &server,
         "DELETE",
-        "/api/v1/tokens/tok-7",
+        "/api/v1/tokens/7",
         ResponseTemplate::new(503).set_body_json(error("unavailable", "Busy.", None)),
     );
     let (_col, s, secrets) = team_app(cx, |paths, secrets| {
@@ -258,7 +258,7 @@ fn a_failed_open_reports_on_its_own_server_after_another_signs_out(cx: &mut Test
             cx,
             server,
             "DELETE",
-            "/api/v1/tokens/tok-7",
+            "/api/v1/tokens/7",
             ResponseTemplate::new(204),
         );
     }
@@ -323,7 +323,7 @@ fn a_section_that_is_signing_out_neither_opens_nor_creates(cx: &mut TestAppConte
         cx,
         &server,
         "DELETE",
-        "/api/v1/tokens/tok-7",
+        "/api/v1/tokens/7",
         ResponseTemplate::new(204),
     );
     let dest = tempfile::tempdir().unwrap();
@@ -402,5 +402,5 @@ fn signing_out_of_a_signed_out_server_sends_nothing(cx: &mut TestAppContext) {
             .accounts()
             .is_empty()
     );
-    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/tok-7"), 0);
+    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/7"), 0);
 }

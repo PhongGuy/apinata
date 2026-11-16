@@ -308,7 +308,7 @@ fn the_copies_folder_differs_by_server_team_and_workspace() {
     let conflicts = Path::new("/c");
     let dir = |server: &str, team: &str, slug: &str| {
         let url = apinata_core::team::ServerUrl::parse(server).unwrap();
-        let account = Account::new(&url, "ada", "Ada", "tok-7", false);
+        let account = Account::new(&url, "ada", "Ada", "7", false);
         let binding = Binding::new(PathBuf::from("/r"), &account, team, slug, Role::Write);
         team_workspaces::copies_dir(conflicts, &binding)
     };
@@ -408,7 +408,7 @@ fn an_already_bound_workspace_opens_its_folder_without_cloning(cx: &mut TestAppC
     let root = existing.path().to_path_buf();
     let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
         signed_in(paths, secrets, &server, false);
-        let account = Account::new(&server_url(&server), "ada", "Ada Lovelace", "tok-7", false);
+        let account = Account::new(&server_url(&server), "ada", "Ada Lovelace", "7", false);
         TeamStore::update(&paths.team, |t| {
             t.put_binding(Binding::new(
                 root.clone(),
@@ -485,7 +485,7 @@ fn a_finished_join_opens_the_list(cx: &mut TestAppContext) {
         &server,
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
-            .respond_with(crate::support::potluck::session("tok-7", false)),
+            .respond_with(crate::support::potluck::session(7, false)),
     );
     answer_me(cx, &server, me(false, listed(&server)));
     let (_col, s, _secrets) = team_app(cx, |_, _| {});

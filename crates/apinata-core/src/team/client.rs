@@ -206,9 +206,10 @@ struct SignInWire {
     user: User,
 }
 
+// The server numbers its tokens; the id only ever goes back into a `/tokens/{id}` path.
 #[derive(Deserialize)]
 struct TokenMetaWire {
-    id: String,
+    id: i64,
 }
 
 impl TeamApi for HttpTeamClient {
@@ -236,7 +237,7 @@ impl TeamApi for HttpTeamClient {
             let wire: SignInWire = Self::call(request).await?;
             Ok(SignIn {
                 token: TeamToken::parse(&wire.token)?,
-                token_id: wire.token_meta.id,
+                token_id: wire.token_meta.id.to_string(),
                 user: wire.user,
             })
         })

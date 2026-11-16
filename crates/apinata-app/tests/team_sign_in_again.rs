@@ -44,7 +44,7 @@ fn a_signed_out_folder_commits_locally_and_pushes_after_signing_in_again(cx: &mu
         &server,
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
-            .respond_with(session("tok-8", false)),
+            .respond_with(session(8, false)),
     );
     let root = col.path().to_path_buf();
     let (s, secrets) = team_started(cx, &sb, &col, |paths, secrets| {
@@ -119,7 +119,7 @@ fn a_sign_in_during_a_resume_resumes_again_once_it_lands(cx: &mut TestAppContext
         &server,
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
-            .respond_with(session("tok-8", false)),
+            .respond_with(session(8, false)),
     );
     let root = col.path().to_path_buf();
     let s = team_started(cx, &sb, &col, |paths, secrets| {
@@ -149,7 +149,7 @@ fn a_sign_in_during_a_resume_resumes_again_once_it_lands(cx: &mut TestAppContext
         TeamStore::load(&file)
             .unwrap()
             .account(&url)
-            .is_some_and(|a| a.token_id == "tok-8")
+            .is_some_and(|a| a.token_id == "8")
     });
     assert_eq!(state(cx, &s), None, "the sign-in landed before the resume");
     wait_for(cx, "in sync", |cx| state(cx, &s) == Some(TeamState::Idle));
@@ -178,7 +178,7 @@ fn a_sign_in_leaves_a_healthy_loop_and_its_unsettled_clash_alone(cx: &mut TestAp
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "token": fresh, "token_meta": token_meta("tok-8"), "user": user("ada", false)
+                "token": fresh, "token_meta": token_meta(8), "user": user("ada", false)
             }))),
     );
     let root = col.path().to_path_buf();
@@ -215,7 +215,7 @@ fn a_sign_in_leaves_a_healthy_loop_and_its_unsettled_clash_alone(cx: &mut TestAp
         TeamStore::load(&file)
             .unwrap()
             .account(&url)
-            .is_some_and(|a| a.token_id == "tok-8")
+            .is_some_and(|a| a.token_id == "8")
     });
     let bearer = format!("Bearer {fresh}");
     wait_for(cx, "the events stream on the new token", |cx| {
@@ -256,7 +256,7 @@ fn a_sign_in_starts_over_a_loop_the_server_had_dropped(cx: &mut TestAppContext) 
         &server,
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
-            .respond_with(session("tok-8", false)),
+            .respond_with(session(8, false)),
     );
     let root = col.path().to_path_buf();
     let s = team_started(cx, &sb, &col, |paths, secrets| {
@@ -355,7 +355,7 @@ fn signing_in_again_commits_under_the_identity_the_server_gives_now(cx: &mut Tes
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "token": fresh, "token_meta": token_meta("tok-8"), "user": user("ada", false)
+                "token": fresh, "token_meta": token_meta(8), "user": user("ada", false)
             }))),
     );
     let root = col.path().to_path_buf();
@@ -413,7 +413,7 @@ fn signing_in_as_someone_else_leaves_a_folder_bound_to_the_first_user_signed_out
         Mock::given(method("POST"))
             .and(path("/api/v1/session"))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "token": theirs, "token_meta": token_meta("tok-9"), "user": user("bob", false)
+                "token": theirs, "token_meta": token_meta(9), "user": user("bob", false)
             }))),
     );
     let root = col.path().to_path_buf();

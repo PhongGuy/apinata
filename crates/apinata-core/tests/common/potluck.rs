@@ -33,7 +33,7 @@ pub fn identity() -> Value {
     json!({"name": "Ada Lovelace", "email": "ada@users.noreply.127.0.0.1"})
 }
 
-pub fn token_meta(id: &str) -> Value {
+pub fn token_meta(id: i64) -> Value {
     json!({"id": id, "name": "Apinata", "prefix": "plk_AAAA",
            "created_at": "2026-11-15T10:00:00Z", "last_used_at": null, "expires_at": null})
 }
@@ -56,7 +56,7 @@ pub fn info(password: bool) -> ResponseTemplate {
     )
 }
 
-pub fn session(id: &str, admin: bool) -> ResponseTemplate {
+pub fn session(id: i64, admin: bool) -> ResponseTemplate {
     ResponseTemplate::new(201).set_body_json(
         json!({"token": tok(), "token_meta": token_meta(id), "user": user("ada", admin)}),
     )
