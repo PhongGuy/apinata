@@ -1,4 +1,4 @@
-# Apinata
+# <img src="assets/icon/apinata-32.svg" alt="" width="40" height="40" align="top"> Apinata
 
 Apinata is a native API client for HTTP, REST and GraphQL, written in Rust. It
 also streams server-sent events. It is local-first: your requests are plain
