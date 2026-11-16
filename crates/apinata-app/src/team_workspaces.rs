@@ -679,7 +679,8 @@ impl WorkspacesView {
     }
 
     /// Signs out of `section`'s server: revokes its token and forgets the account, keeping the
-    /// bound folders. A failure keeps the section and says why. Ignored while a clone runs.
+    /// bound folders. A failure keeps the section and says why. Ignored while a clone runs or
+    /// while this server is creating a workspace, so the created one still reaches the list.
     pub fn sign_out(&mut self, section: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.cloning {
             return;
@@ -687,7 +688,7 @@ impl WorkspacesView {
         let Some(s) = self.sections.get_mut(section) else {
             return;
         };
-        if s.signing_out {
+        if s.signing_out || s.creating {
             return;
         }
         let Some(state) = cx.try_global::<AppState>() else {
@@ -752,7 +753,7 @@ impl Render for WorkspacesView {
                         } else {
                             "Sign out"
                         })
-                        .lock(s.signing_out || self.cloning, cx)
+                        .lock(s.signing_out || s.creating || self.cloning, cx)
                         .on_click(
                             cx.listener(move |this, _, window, cx| this.sign_out(i, window, cx)),
                         ),
