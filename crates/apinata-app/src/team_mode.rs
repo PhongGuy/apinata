@@ -16,7 +16,7 @@ use gpui_kit::{App, AppContext, AsyncApp, Entity, Task, WeakEntity};
 
 use crate::app::AppState;
 use crate::team_text;
-use crate::team_workspaces::copies_dir;
+use crate::team_workspaces::settle_copies;
 use crate::tokio_bridge;
 use crate::workspace::{Workspace, WorkspaceEvent};
 
@@ -139,7 +139,7 @@ fn start(
     let Some(base) = w.git_options().cloned() else {
         return;
     };
-    let copies = copies_dir(conflicts, binding);
+    let copies = settle_copies(conflicts, binding);
     let config = TeamConfig::new(
         root.to_path_buf(),
         copies,
