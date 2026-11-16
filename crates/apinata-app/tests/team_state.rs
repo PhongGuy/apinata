@@ -571,6 +571,44 @@ fn an_open_delete_again_clash_survives_a_restart(cx: &mut TestAppContext) {
     assert_eq!(clashes(cx, &s), []);
 }
 
+// Deletes `a.yml` here while a teammate changes it to `url` there, so the next pull clashes.
+fn delete_here_change_there(sb: &Sandbox, col: &tempfile::TempDir, url: &str) {
+    let mate = sb.path().join("mate");
+    sb.git(&mate, &["pull", "-q"]);
+    write(&mate, "a.yml", &request("a", url));
+    sb.commit_all(&mate, url);
+    sb.git(&mate, &["push", "-q"]);
+    std::fs::remove_file(col.path().join("a.yml")).unwrap();
+}
+
+#[gpui_kit::test]
+fn the_same_delete_clash_shows_again_after_it_was_dismissed(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let deleted = Clash {
+        rel: "a.yml".into(),
+        kind: ClashKind::DeletedLocally,
+    };
+    delete_here_change_there(&sb, &col, "http://x/theirs1");
+    wait_for(cx, "the first clash", |cx| {
+        clashes(cx, &s) == [deleted.clone()]
+    });
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        w.settle_clash(&root, "a.yml", ClashAnswer::KeepTheirs, cx)
+    })
+    .unwrap();
+    assert_eq!(clashes(cx, &s), []);
+    settle(cx);
+    // The second pull conflicts on the very same path, so its conflict list is unchanged.
+    delete_here_change_there(&sb, &col, "http://x/theirs2");
+    wait_for(cx, "the second clash", |cx| {
+        clashes(cx, &s) == [deleted.clone()]
+    });
+}
+
 #[cfg(unix)]
 #[gpui_kit::test]
 fn use_mine_never_writes_through_a_symlink(cx: &mut TestAppContext) {
