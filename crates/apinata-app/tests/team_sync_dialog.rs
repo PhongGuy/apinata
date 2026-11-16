@@ -6,7 +6,7 @@ use crate::support::*;
 use apinata_app::team_sync_dialog::{self, SyncView};
 use apinata_core::team::{Block, Role, TeamState};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, Entity, TestAppContext};
+use gpui_kit::{AppContext as _, Entity, TestAppContext, px};
 use std::time::Duration;
 
 const FAST: Duration = Duration::from_millis(50);
@@ -153,12 +153,16 @@ fn long_hook_output_scrolls_and_keeps_retry_in_the_window(cx: &mut TestAppContex
     wait_for(cx, "the hook block", |cx| {
         matches!(state(cx, &s), Some(TeamState::Blocked(Block::Hook { .. })))
     });
-    open(cx, &s);
-    let (retry, window) = cx
+    let view = open(cx, &s);
+    let last = lines(cx, &view).len() - 1;
+    let (retry, window, list, tail, cap) = cx
         .update_window(s.win, |_, w, _| {
             (
                 w.try_find("team-retry").map(|e| e.bounds()),
                 w.viewport_size(),
+                w.try_find("team-lines").map(|e| e.bounds()),
+                w.try_find(("team-line", last)).map(|e| e.bounds()),
+                apinata_app::dialog_frame::titled_body_room(w) * team_sync_dialog::OUTPUT_SHARE,
             )
         })
         .unwrap();
@@ -167,6 +171,13 @@ fn long_hook_output_scrolls_and_keeps_retry_in_the_window(cx: &mut TestAppContex
         retry.bottom() <= window.height,
         "{retry:?} outside {window:?}"
     );
+    // The list fills its cap exactly and the output runs on below it, so the rest scrolls.
+    let (list, tail) = (list.expect("the lines"), tail.expect("the output"));
+    assert!(
+        (list.size.height - cap).abs() <= px(1.),
+        "{list:?} against a cap of {cap:?}"
+    );
+    assert!(tail.bottom() > list.bottom(), "{tail:?} fits in {list:?}");
 }
 
 // The first problem line as the open dialog last drew it, not as the workspace holds it now.
