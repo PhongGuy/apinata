@@ -141,3 +141,21 @@ fn a_plain_collection_has_no_sync_status(cx: &mut TestAppContext) {
     let s = started(cx, &col);
     assert_eq!(label(cx, &s), None);
 }
+
+// The editor's own line says the folder is read only, so typing there is not the first cue.
+#[gpui_kit::test]
+fn a_read_only_collection_marks_the_request_breadcrumb(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    assert!(!shown(cx, s.win, "breadcrumb-read-only"));
+    start_team_as(cx, &sb, &s, Role::Read, FAST);
+    assert!(shown(cx, s.win, "breadcrumb-read-only"));
+    let mark = cx
+        .update_window(s.win, |_, w, _| {
+            w.find("breadcrumb-read-only").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(mark.as_deref(), Some("Read only"));
+}
