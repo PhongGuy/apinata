@@ -172,6 +172,15 @@ pub fn start_team_as(
     .base_options(sb.options())
     .debounce_unclamped(debounce);
     let root = s.root.clone();
+    // A loop being replaced may still be committing the last change. The app only replaces a
+    // loop at rest, so the old one finishes first and two loops never run git on one tree.
+    cx.run_until_parked();
+    if let Some(old) = s.ws.read_with(cx, |w, _| w.team_sync(&root)) {
+        assert!(
+            old.flush(std::time::Duration::from_secs(10)),
+            "the old loop settled"
+        );
+    }
     s.ws.update(cx, |w, cx| w.start_team(&root, config, None, cx));
     super::wait_for(cx, "the start pull", |cx| {
         s.ws.read_with(cx, |w, _| {

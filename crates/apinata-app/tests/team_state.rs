@@ -239,6 +239,29 @@ fn an_adopted_copy_follows_its_request_through_a_rename(cx: &mut TestAppContext)
     assert!(copies_of(&s).join("b.yml").exists());
 }
 
+// A slow hook keeps the rename's commit running past the settle, so the restart meets the
+// old loop mid-commit.
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_restart_lets_the_old_loop_finish_its_commit(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    let bare = shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let runs = sb.path().join("runs");
+    hook(
+        &col.path().join(".git/hooks"),
+        "pre-commit",
+        &runs,
+        "sleep 2\n",
+    );
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.send(&root, rename_a_to_b(), cx));
+    settle(cx);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    assert!(origin_has(&sb, &bare, "b.yml", "http"));
+}
+
 #[gpui_kit::test]
 fn a_delete_again_clash_follows_its_file_through_a_rename(cx: &mut TestAppContext) {
     let (sb, col) = (Sandbox::new(), collection());
