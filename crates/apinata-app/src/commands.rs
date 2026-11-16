@@ -687,7 +687,7 @@ pub fn registry() -> Vec<Command> {
         },
         command(
             "request.rename",
-            "Rename selected",
+            "Rename",
             Request,
             shell_and(RenameSelected, SIDEBAR),
             &["secondary-r"],

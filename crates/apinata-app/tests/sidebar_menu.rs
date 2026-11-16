@@ -420,7 +420,7 @@ fn tree_entries_take_the_registry_names() {
             "Run collection",
             "Run folder",
             "Collection settings",
-            "Settings"
+            "Folder settings"
         )
     );
     for kind in [

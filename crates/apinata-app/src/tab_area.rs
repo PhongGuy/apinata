@@ -24,7 +24,7 @@ use crate::changes_dialog::open_changes;
 use crate::closing;
 use crate::command::{Command, Target, TreeOp};
 use crate::commands::label;
-use crate::config_editor::{ConfigEditor, ConfigTarget};
+use crate::config_editor::{ConfigEditor, ConfigTarget, target_name};
 use crate::confirm;
 use crate::draft_store;
 use crate::env_editor::EnvEditor;
@@ -2022,15 +2022,12 @@ impl TabArea {
                 .map(|v| v.name.clone())
                 .unwrap_or_else(|| item.as_str().to_owned()),
             TabKind::Folder(path) => {
-                let name = content
-                    .and_then(|c| c.folders.get(path))
-                    .and_then(|v| v.name.clone())
-                    .unwrap_or_else(|| path.file_name().to_owned());
-                format!("{name} settings")
+                let target = ConfigTarget::Folder(path.clone());
+                format!("{} settings", target_name(content, &entry.root, &target))
             }
             TabKind::Collection => {
-                let name = content.and_then(|c| c.collection.name.as_deref());
-                format!("{} settings", label_or_dir(name, &entry.root))
+                let target = ConfigTarget::Collection;
+                format!("{} settings", target_name(content, &entry.root, &target))
             }
             // The tab stays on the collection it opened for, so it names it like Settings does.
             TabKind::Environments => {

@@ -347,19 +347,25 @@ fn collection_max_body_size_refuses_a_non_number(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_folder_page_is_headed_folder_settings(cx: &mut TestAppContext) {
+fn a_folder_page_heading_names_the_folder(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, ed) = editor(cx, &ws, &root, ConfigTarget::Folder(ip("users")));
-    assert_eq!(ed.read_with(cx, |e, cx| e.title(cx)), "Folder settings");
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.title(cx)),
+        "Folder settings: Users"
+    );
 }
 
 #[gpui_kit::test]
-fn the_collection_page_is_headed_collection_settings(cx: &mut TestAppContext) {
+fn the_collection_page_heading_names_the_collection(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (_win, ed) = editor(cx, &ws, &root, ConfigTarget::Collection);
-    assert_eq!(ed.read_with(cx, |e, cx| e.title(cx)), "Collection settings");
+    assert_eq!(
+        ed.read_with(cx, |e, cx| e.title(cx)),
+        "Collection settings: c"
+    );
 }
 
 // Opens `kind`'s settings on `section` with the dock open in a short window, then checks that

@@ -34,7 +34,7 @@ use crate::script_settings::ScriptSettingsView;
 use crate::scroll_follow::FocusFollow;
 use crate::section::SectionEdit;
 use crate::settings_section::DocsSection;
-use crate::snapshot::ConfigView;
+use crate::snapshot::{ConfigView, Content};
 use crate::style;
 use crate::tag_input::{TagField, TagsChanged};
 use crate::token_panel::{Locate, TokenPanel};
@@ -155,6 +155,20 @@ pub struct ConfigEditor {
     section_reveal: ui::Reveal,
     section_fades: ui::StripFades,
     _subs: Vec<Subscription>,
+}
+
+/// The name a settings page and its tab give `target`: the folder's or collection's name,
+/// else its directory's.
+pub(crate) fn target_name(content: Option<&Content>, root: &Path, target: &ConfigTarget) -> String {
+    match target {
+        ConfigTarget::Folder(path) => (content.and_then(|c| c.folders.get(path)))
+            .and_then(|v| v.name.clone())
+            .unwrap_or_else(|| path.file_name().to_owned()),
+        ConfigTarget::Collection => {
+            let name = content.and_then(|c| c.collection.name.as_deref());
+            crate::workspace::label_or_dir(name, root).to_string()
+        }
+    }
 }
 
 impl ConfigEditor {
@@ -927,11 +941,23 @@ impl ConfigEditor {
         });
     }
 
-    /// The page heading: "Collection settings" or "Folder settings".
-    pub fn title(&self, _cx: &App) -> String {
+    /// The page heading, naming its target as the tab does: "Collection settings: <name>" or
+    /// "Folder settings: <name>".
+    pub fn title(&self, cx: &App) -> String {
+        let snapshot = self.workspace.read(cx).snapshot(&self.root, cx);
+        let name = target_name(
+            snapshot.as_ref().map(|s| &s.content),
+            &self.root,
+            &self.target,
+        );
+        format!("{}: {name}", self.kind_label())
+    }
+
+    // What the page edits, without its target's name.
+    fn kind_label(&self) -> &'static str {
         match &self.target {
-            ConfigTarget::Collection => "Collection settings".into(),
-            ConfigTarget::Folder(_) => "Folder settings".into(),
+            ConfigTarget::Collection => "Collection settings",
+            ConfigTarget::Folder(_) => "Folder settings",
         }
     }
 
@@ -998,7 +1024,7 @@ impl ConfigEditor {
     /// Asks, then returns the settings to their saved file, as the environment editors'
     /// Discard changes does; a secret typed but not yet committed goes too.
     pub fn discard_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let title = format!("Discard changes to {}?", self.title(cx).to_lowercase());
+        let title = format!("Discard changes to {}?", self.kind_label().to_lowercase());
         let answer = crate::confirm::ask(crate::confirm::discard_ask(title), window, cx);
         let (workspace, root, target) = (
             self.workspace.clone(),

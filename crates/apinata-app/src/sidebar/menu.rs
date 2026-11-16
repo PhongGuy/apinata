@@ -99,7 +99,7 @@ impl MenuEntry {
             MenuEntry::RunCollection => label("collection.run"),
             MenuEntry::RunFolder => label("collection.run_folder"),
             MenuEntry::CollectionSettings => label("collection.settings"),
-            MenuEntry::Settings => "Settings",
+            MenuEntry::Settings => label("collection.folder_settings"),
             MenuEntry::Rename => "Rename",
             MenuEntry::Delete => "Delete",
             MenuEntry::ExportPostman => label("collection.export"),

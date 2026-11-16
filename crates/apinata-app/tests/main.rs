@@ -394,6 +394,7 @@ mod palette_measure;
 mod palette_menu_actions;
 mod palette_registry;
 mod palette_requests;
+mod palette_row_names;
 mod pane_insets;
 mod path_display;
 mod persisted;
