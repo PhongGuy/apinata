@@ -411,6 +411,8 @@ struct Team {
     // read from the marks beside the copies.
     unplaced: BTreeSet<String>,
     deleted: BTreeSet<String>,
+    // The clashes as last checked against the disk; renders read this, never the files.
+    clashes: Vec<Clash>,
     // Whether a refused edit already raised the read-only notice for this loop.
     told_read_only: bool,
     // The block last announced, kept through the retries that pass back into it.
@@ -2643,6 +2645,7 @@ impl Workspace {
             watch: None,
             unplaced: BTreeSet::new(),
             deleted: BTreeSet::new(),
+            clashes: Vec::new(),
             told_read_only: false,
             problem: None,
             _pump: pump,
@@ -2763,10 +2766,17 @@ impl Workspace {
         })
     }
 
-    // A watched change starts the team loop's debounce toward a commit.
-    fn team_changed(&self, root: &Path) {
+    // A watched change starts the team loop's debounce toward a commit, and re-checks the
+    // clashes, since a local delete's file may have come or gone.
+    fn team_changed(&mut self, root: &Path, cx: &mut Context<Self>) {
         if let Some(team) = self.entry(root).and_then(|e| e.team.as_ref()) {
             team.sync.changed();
+        }
+        if self.refresh_clashes(root) {
+            cx.emit(WorkspaceEvent::TeamStatus {
+                root: root.to_path_buf(),
+            });
+            cx.notify();
         }
     }
 
@@ -2800,6 +2810,7 @@ impl Workspace {
         if adopt {
             self.adopt_copies(root, cx);
         }
+        self.refresh_clashes(root);
         cx.emit(WorkspaceEvent::TeamStatus {
             root: root.to_path_buf(),
         });
@@ -2823,26 +2834,25 @@ impl Workspace {
 
     /// The clashes of the team collection at `root` the editor cannot open: unplaced conflict
     /// copies, sorted, then the unsettled conflicted local deletes whose file is still there.
+    /// Read from memory: the list is re-checked on disk only when the loop reports, the
+    /// watcher reloads, or a clash is settled, moved or placed.
     pub fn team_clashes(&self, root: &Path) -> Vec<Clash> {
-        let Some(entry) = self.entry(root) else {
-            return Vec::new();
+        (self.entry(root).and_then(|e| e.team.as_ref()))
+            .map_or_else(Vec::new, |t| t.clashes.clone())
+    }
+
+    // Re-checks the clash list of `root`'s team against the disk; whether it changed.
+    fn refresh_clashes(&mut self, root: &Path) -> bool {
+        let Some(entry) = self.entry_mut(root) else {
+            return false;
         };
-        let Some(team) = entry.team.as_ref() else {
-            return Vec::new();
+        let Some(team) = entry.team.as_mut() else {
+            return false;
         };
-        let copies = (team.unplaced.iter())
-            .filter(|rel| team.copies.dir().join(rel).exists())
-            .map(|rel| Clash {
-                rel: rel.clone(),
-                kind: ClashKind::Copy,
-            });
-        let deleted = (team.deleted.iter())
-            .filter(|rel| entry.root.join(rel).exists())
-            .map(|rel| Clash {
-                rel: rel.clone(),
-                kind: ClashKind::DeletedLocally,
-            });
-        copies.chain(deleted).collect()
+        let fresh = clashes_on_disk(&entry.root, team);
+        let changed = fresh != team.clashes;
+        team.clashes = fresh;
+        changed
     }
 
     /// Settles the clash at `rel` of the team collection at `root`. UseMine puts a copy's bytes
@@ -2857,6 +2867,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> std::io::Result<()> {
         // Only paths the loop itself listed are touched, so `rel` never leaves the root.
+        self.refresh_clashes(root);
         let clash = (self.team_clashes(root).into_iter())
             .find(|c| c.rel == rel)
             .ok_or(std::io::ErrorKind::NotFound)?;
@@ -2894,6 +2905,7 @@ impl Workspace {
             }
         }
         team.sync.changed();
+        self.refresh_clashes(root);
         cx.emit(WorkspaceEvent::TeamStatus {
             root: root.to_path_buf(),
         });
@@ -2917,6 +2929,7 @@ impl Workspace {
                 None => drop(team.unplaced.insert(rel)),
             }
         }
+        self.refresh_clashes(root);
         let key = absolute(root);
         for (item, rel) in sends {
             let (reply, adopted) = async_channel::bounded(1);
@@ -2958,7 +2971,7 @@ impl Workspace {
             | carry_clashes(&mut team.deleted, from, to, |a, b| {
                 copies.rename_deleted(a, b)
             });
-        if moved {
+        if self.refresh_clashes(root) || moved {
             cx.emit(WorkspaceEvent::TeamStatus {
                 root: root.to_path_buf(),
             });
@@ -2970,12 +2983,12 @@ impl Workspace {
         let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
             return;
         };
-        let changed = if adopted {
-            team.unplaced.remove(&rel)
+        if adopted {
+            team.unplaced.remove(&rel);
         } else {
-            team.unplaced.insert(rel)
-        };
-        if changed {
+            team.unplaced.insert(rel);
+        }
+        if self.refresh_clashes(root) {
             cx.emit(WorkspaceEvent::TeamStatus {
                 root: root.to_path_buf(),
             });
@@ -3148,13 +3161,13 @@ impl Workspace {
             WatchMsg::Paths(paths) => {
                 self.send(root, Command::Reload(paths), cx);
                 self.refresh_git(root, cx);
-                self.team_changed(root);
+                self.team_changed(root, cx);
             }
             WatchMsg::Git => self.refresh_git(root, cx),
             WatchMsg::Rescan => {
                 self.send(root, Command::ReloadAll, cx);
                 self.refresh_git(root, cx);
-                self.team_changed(root);
+                self.team_changed(root, cx);
             }
             WatchMsg::Failed(message) => {
                 let Some(entry) = self.collections.iter_mut().find(|c| c.root == root) else {
@@ -4279,6 +4292,24 @@ pub(crate) fn refuse_symlinks(root: &Path, rel: &str) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+// Unplaced conflict copies, sorted, then the unsettled conflicted local deletes whose file is
+// still there; each one checked on disk.
+fn clashes_on_disk(root: &Path, team: &Team) -> Vec<Clash> {
+    let copies = (team.unplaced.iter())
+        .filter(|rel| team.copies.dir().join(rel).exists())
+        .map(|rel| Clash {
+            rel: rel.clone(),
+            kind: ClashKind::Copy,
+        });
+    let deleted = (team.deleted.iter())
+        .filter(|rel| root.join(rel).exists())
+        .map(|rel| Clash {
+            rel: rel.clone(),
+            kind: ClashKind::DeletedLocally,
+        });
+    copies.chain(deleted).collect()
 }
 
 /// `root` made absolute, so roots given relative match the absolute ones `open` stores.
