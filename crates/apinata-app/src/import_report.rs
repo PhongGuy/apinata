@@ -11,7 +11,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::{
     App, InteractiveElement, ParentElement, ScrollHandle, StatefulInteractiveElement as _, Styled,
-    TestSupportExt, Window, div, px,
+    TestSupportExt, Window, div, px, relative,
 };
 use std::path::Path;
 
@@ -67,7 +67,7 @@ pub fn kind_lines<'a>(notes: impl IntoIterator<Item = KindNote<'a>>) -> Vec<Stri
             None => (note.detail, note.place),
         };
         if let Some(file) = note.file {
-            place.push_str(&format!(", in {file}"));
+            place.push_str(&format!("{FILE_JOIN}{file}"));
         }
         match kinds.iter_mut().find(|(w, _)| *w == words) {
             Some((_, places)) => places.push(place),
@@ -88,6 +88,9 @@ pub fn kind_lines<'a>(notes: impl IntoIterator<Item = KindNote<'a>>) -> Vec<Stri
         })
         .collect()
 }
+
+// What joins a place to its file in a report line.
+const FILE_JOIN: &str = ", in ";
 
 // `detail` split at its first ": " outside backticks, where core quotes user-written names.
 fn split_place(detail: &str) -> Option<(&str, &str)> {
@@ -200,13 +203,34 @@ pub fn open_report(
             let notes = lines.iter().enumerate().map(move |(i, l)| {
                 let mut rows = l.split('\n');
                 let kind = rows.next().unwrap_or_default().to_owned();
+                // A place's file keeps to one line and is the first to give way, cut at its start
+                // so the name that tells files apart stays in view; a long place wraps within
+                // three quarters of the row.
                 let places = rows.enumerate().map(|(p, place)| {
+                    let (at, file) = match place.rsplit_once(FILE_JOIN) {
+                        Some((at, file)) => (format!("{at}{FILE_JOIN}"), Some(file.to_owned())),
+                        None => (place.to_owned(), None),
+                    };
                     div()
                         .id(("report-place", p))
                         .test_support()
                         .aria_label(place.to_owned())
                         .ml(SPACE_3)
-                        .child(place.to_owned())
+                        .flex()
+                        .items_start()
+                        .min_w_0()
+                        .child(div().flex_none().max_w(relative(0.75)).child(at))
+                        .children(file.map(|file| {
+                            div()
+                                .id(("report-file", p))
+                                .test_support()
+                                .aria_label(file.clone())
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis_start()
+                                .child(file)
+                        }))
                 });
                 div()
                     .id((ids.note, start + i))

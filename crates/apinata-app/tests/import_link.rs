@@ -809,3 +809,35 @@ fn hovering_the_create_in_path_shows_it_whole(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(tip, Some(deep.display().to_string()));
 }
+
+// A deep Create in folder gives way before its last folder, never inside it, and what shows
+// fits the room the row gave it.
+#[gpui_kit::test]
+fn a_deep_create_in_path_keeps_its_last_folder_whole(cx: &mut TestAppContext) {
+    let (_files, win, _view) = shell(cx);
+    let dlg = open_with(cx, win, "");
+    let into = tempfile::tempdir().unwrap();
+    let mut deep = into.path().to_path_buf();
+    for i in 0..30 {
+        deep.push(format!("a-rather-long-folder-name-{i}"));
+    }
+    deep.push("target-folder-here");
+    let parent = deep.clone();
+    cx.update(|cx| dlg.update(cx, |d, cx| d.set_parent(parent, cx)));
+    frame(cx, win);
+    frame(cx, win);
+    let (shown, fits) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let e = w.find("import-link-parent");
+            let shown = e.value().map(str::to_owned).unwrap_or_default();
+            let size = w.text_style().font_size.to_pixels(w.rem_size());
+            let measure = apinata_app::path_display::measurer(w, size);
+            let fits = measure(&shown) <= f32::from(e.bounds().size.width);
+            (shown, fits)
+        })
+        .unwrap();
+    assert!(shown.ends_with("/target-folder-here"), "{shown}");
+    assert!(shown.contains('…'), "{shown}");
+    assert!(fits, "{shown}");
+}

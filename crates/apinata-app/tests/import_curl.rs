@@ -145,9 +145,10 @@ fn the_url_placeholder_offers_the_paste(cx: &mut TestAppContext) {
     );
 }
 
-// The empty editor says what to paste, with an example, so the first open is not a blank box.
+// The empty editor says what to paste in words short enough to fit on its one line, since a
+// placeholder that runs past the editor's edge is cut mid-word.
 #[gpui_kit::test]
-fn the_empty_editor_shows_an_example_command(cx: &mut TestAppContext) {
+fn the_empty_editor_says_what_to_paste_in_words_that_fit(cx: &mut TestAppContext) {
     let col = two_requests();
     let s = started(cx, &col);
     import_curl(cx, s.win, &s.shell);
@@ -160,12 +161,7 @@ fn the_empty_editor_shows_an_example_command(cx: &mut TestAppContext) {
                 .find_map(|e| e.placeholder().map(str::to_owned))
         })
         .unwrap();
-    assert_eq!(
-        hint.as_deref(),
-        Some(
-            "Paste a curl command, for example curl https://api.example.com/users -H 'Accept: application/json'"
-        )
-    );
+    assert_eq!(hint.as_deref(), Some("Paste a curl command"));
 }
 
 fn press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {

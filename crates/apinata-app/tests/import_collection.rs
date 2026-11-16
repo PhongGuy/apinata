@@ -562,3 +562,38 @@ fn an_import_with_several_environments_selects_the_first_one_imported(cx: &mut T
 fn an_import_without_environments_selects_none(cx: &mut TestAppContext) {
     assert_eq!(import_selection(&pets(&[]), cx), None);
 }
+
+// A note's file stays on one line however deep it sits, cut to fit rather than wrapped
+// inside its name.
+#[gpui_kit::test]
+fn a_long_file_in_the_report_stays_on_one_line_cut_to_fit(cx: &mut TestAppContext) {
+    let request = r#"{"name":"Get user","request":{"method":"GET","url":"https://x.test/u","auth":{"type":"hawk"}}}"#;
+    let mut item = request.to_owned();
+    for i in 0..8 {
+        item = format!(r#"{{"name":"a-rather-long-folder-name-{i}","item":[{item}]}}"#);
+    }
+    let text = format!(r#"{{"info":{{"name":"Shop","schema":"{V21}"}},"item":[{item}]}}"#);
+    let (files, win, _view) = shell(cx);
+    let into = tempfile::tempdir().unwrap();
+    click_import(cx, win);
+    answer(cx, input(files.path(), &text), into.path().to_path_buf());
+    assert!(dialog(cx, win));
+    let (file, kind, place, name, full) = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let note = w.within(("import-note", 0usize));
+            let file = note.find(("report-file", 0usize));
+            let name = file.label().unwrap_or_default().to_owned();
+            let file = file.bounds();
+            let kind = note.find("report-kind").bounds();
+            let place = note.find(("report-place", 0usize)).bounds();
+            let size = w.text_style().font_size.to_pixels(w.rem_size());
+            let full = apinata_app::path_display::measurer(w, size)(&name);
+            (file, kind, place, name, full)
+        })
+        .unwrap();
+    assert!(name.ends_with("/Get user.yml"), "{name}");
+    assert_eq!(file.size.height, kind.size.height, "{name} takes one line");
+    assert!(file.right() <= place.right(), "{file:?} stays in {place:?}");
+    assert!(full > f32::from(file.size.width), "{name} is cut to fit");
+}
