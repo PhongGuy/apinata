@@ -1,14 +1,16 @@
 //! Team mode for bound folders: starting a folder's sync loop from its binding and what the
-//! server says now, and re-reading the role on every events connect.
+//! server says now, and re-reading the role on every events connect and each quiet minute.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use apinata_core::SecretStore;
 use apinata_core::team::{
     self, Binding, Block, EventsConfig, HttpTeamClient, Resumed, ServerUrl, Standing, TeamConfig,
     TeamError, TeamState, TeamStore,
 };
+use futures_util::future::{self, Either};
 use gpui_kit::prelude::*;
 use gpui_kit::{App, AppContext, AsyncApp, Entity, Task, WeakEntity};
 
@@ -17,6 +19,9 @@ use crate::team_text;
 use crate::team_workspaces::copies_dir;
 use crate::tokio_bridge;
 use crate::workspace::{Workspace, WorkspaceEvent};
+
+/// How long a running loop goes without an events connect before its role is re-read.
+pub const ROLE_CHECK: Duration = Duration::from_secs(60);
 
 /// Starts the loop of the open collection at `root` when the team file binds it, or hands a
 /// loop already running there the current sign-in; nothing when git is off, it is unbound,
@@ -150,11 +155,20 @@ fn start(
     let Some(connects) = w.team_connects(root) else {
         return;
     };
+    // The server announces no grant changes and keeps a stream open across a raised role, so
+    // besides each connect the role is re-read once per quiet `ROLE_CHECK`.
     let watch = cx.spawn({
         let root = root.to_path_buf();
         async move |this: WeakEntity<Workspace>, cx: &mut AsyncApp| {
-            while connects.recv().await.is_ok() {
-                if !reread(&this, &root, &source, cx).await {
+            loop {
+                let tick = cx.background_executor().timer(ROLE_CHECK);
+                let connect = std::pin::pin!(connects.recv());
+                let quiet = match future::select(connect, tick).await {
+                    Either::Left((Err(_), _)) => return,
+                    Either::Left((Ok(()), _)) => false,
+                    Either::Right(_) => true,
+                };
+                if !reread(&this, &root, &source, quiet, cx).await {
                     return;
                 }
             }
@@ -189,12 +203,14 @@ fn renew(w: &mut Workspace, root: &Path, resumed: Resumed, cx: &mut Context<Work
     apply_blocks(w, root, resumed.standing);
 }
 
-// One connect: resume against the current binding and apply the answer to the running loop.
-// False once the workspace or the binding is gone.
+// One connect or periodic check: resume against the current binding and apply the answer to
+// the running loop; a `quiet` check tells no error, so a lasting one is not repeated each
+// period. False once the workspace or the binding is gone.
 async fn reread(
     this: &WeakEntity<Workspace>,
     root: &Path,
     source: &Source,
+    quiet: bool,
     cx: &mut AsyncApp,
 ) -> bool {
     let Some(binding) = source.binding(root) else {
@@ -209,6 +225,7 @@ async fn reread(
             }
             apply_blocks(w, root, resumed.standing);
         }
+        Err(_) if quiet => {}
         Err(e) => notice(root, "could not refresh", &e, cx),
     })
     .is_ok()
