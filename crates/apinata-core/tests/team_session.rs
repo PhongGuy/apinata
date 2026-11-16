@@ -135,6 +135,43 @@ async fn joining_again_revokes_the_previous_token_once_the_new_one_is_kept() {
 }
 
 #[tokio::test]
+async fn rejoining_revokes_the_previous_token_with_the_new_one() {
+    let (s, dir, secrets) = (
+        MockServer::start().await,
+        TempDir::new().unwrap(),
+        MemoryStore::new(),
+    );
+    joined(&s, &secrets, &file(&dir)).await;
+    // The old token is gone from the keychain, as after a quit without one.
+    secrets.delete(&token_key(&url(&s), "ada")).unwrap();
+    s.reset().await;
+    let fresh = format!("plk_{}", "B".repeat(43));
+    let body = serde_json::json!({"token": fresh, "token_meta": token_meta(8), "user": user("ada", false)});
+    answer(&s, "GET", "/api/v1/server", info(true)).await;
+    answer(
+        &s,
+        "POST",
+        "/api/v1/session",
+        ResponseTemplate::new(201).set_body_json(body),
+    )
+    .await;
+    wiremock::Mock::given(wiremock::matchers::method("DELETE"))
+        .and(wiremock::matchers::path("/api/v1/tokens/7"))
+        .and(wiremock::matchers::header(
+            "authorization",
+            format!("Bearer {fresh}").as_str(),
+        ))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&s)
+        .await;
+    team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "hunter2")
+        .await
+        .unwrap();
+    s.verify().await;
+}
+
+#[tokio::test]
 async fn a_mistyped_password_on_rejoining_keeps_the_working_session() {
     let (s, dir, secrets) = (
         MockServer::start().await,

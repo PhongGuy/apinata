@@ -68,8 +68,12 @@ pub async fn sign_in(
     }
 
     // The new session is kept; retire the old one as far as the server and keychain allow.
+    // The same user revokes with the new token, which works even when the old one was refused
+    // or lost from the keychain; another user's token can only revoke itself.
     if let Some(old) = previous {
-        if let Some(token) = previous_token {
+        if old.username == account.username {
+            let _ = api.revoke(&signed.token, &old.token_id).await;
+        } else if let Some(token) = previous_token {
             let _ = api.revoke(&token, &old.token_id).await;
         }
         if old.username != account.username {
