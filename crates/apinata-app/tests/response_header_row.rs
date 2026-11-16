@@ -528,3 +528,97 @@ fn more_actions_is_not_a_second_chevron_beside_history(cx: &mut TestAppContext) 
     );
     assert!(glyph("response-history").is_some(), "{shown:?}");
 }
+
+// The header's actions, which an older run keeps exactly where the latest has them.
+const KEPT_IN_PLACE: [&str; 4] = [
+    "response-save-example",
+    "response-export-har",
+    "response-history",
+    "response-compare",
+];
+
+fn placed(cx: &mut TestAppContext, win: AnyWindowHandle) -> Vec<(&'static str, Bounds<Pixels>)> {
+    let mut shown = Vec::new();
+    for id in KEPT_IN_PLACE {
+        if present(cx, win, id) {
+            shown.push((id, bounds(cx, win, id)));
+        }
+    }
+    shown
+}
+
+// Picking an older run keeps the latest's one-row header: the actions stay where they were,
+// the untimed run keeps the timing bar's slot, and nothing folds into More actions.
+#[gpui_kit::test]
+fn an_older_run_keeps_the_latest_runs_header_in_place(cx: &mut TestAppContext) {
+    let (s, _server) = redirected(cx, 1280.);
+    cx.update_window(s.win, |_, w, cx| w.click("send", cx))
+        .unwrap();
+    wait_real(cx, |cx| {
+        present(cx, s.win, "response-address") && !present(cx, s.win, "response-cancel")
+    });
+    settle(cx, s.win);
+    let latest = placed(cx, s.win);
+    assert_eq!(latest.len(), KEPT_IN_PLACE.len(), "{latest:?}");
+    let timing = bounds(cx, s.win, "response-timing");
+    cx.update_window(s.win, |_, w, cx| w.click("response-history", cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(1usize, cx))
+        .unwrap();
+    wait_real(cx, |cx| present(cx, s.win, "response-saved"));
+    settle(cx, s.win);
+    assert!(!present(cx, s.win, "response-more"), "the older run folded");
+    assert_eq!(placed(cx, s.win), latest);
+    assert!(
+        present(cx, s.win, "response-timing-untimed"),
+        "the timing slot is gone"
+    );
+    let untimed = bounds(cx, s.win, "response-timing-untimed");
+    assert_eq!(
+        (untimed.size, untimed.top()),
+        (timing.size, timing.top()),
+        "the untimed slot {untimed:?} differs from the bar {timing:?}"
+    );
+    assert_one_row(cx, s.win);
+}
+
+// An older run folds into More actions sooner than the latest only by Back to latest and its
+// gap (plus the 8 px search step), as its saved note gives way like the address.
+#[gpui_kit::test]
+fn an_older_run_folds_sooner_only_by_back_to_latest(cx: &mut TestAppContext) {
+    let (s, _server) = redirected(cx, 1280.);
+    viewing_older(cx, &s);
+    let latest = bounds(cx, s.win, "response-latest").size.width;
+    let mut width = 1280.;
+    while !present(cx, s.win, "response-more") {
+        width -= 8.;
+        resize(cx, &s, width);
+    }
+    let older_fold = width;
+    cx.update_window(s.win, |_, w, cx| w.click("response-more", cx))
+        .unwrap();
+    frame(cx, s.win);
+    let back = cx
+        .update_window(s.win, |_, w, _| {
+            (0..8usize)
+                .find(|&ix| w.within("popup-menu").find(ix).label() == Some("Back to latest"))
+        })
+        .unwrap()
+        .expect("Back to latest is listed");
+    cx.update_window(s.win, |_, w, cx| w.within("popup-menu").click(back, cx))
+        .unwrap();
+    wait_real(cx, |cx| !present(cx, s.win, "response-saved"));
+    settle(cx, s.win);
+    resize(cx, &s, 1280.);
+    let mut width = 1280.;
+    while !present(cx, s.win, "response-more") {
+        width -= 8.;
+        resize(cx, &s, width);
+    }
+    let live_fold = width;
+    assert!(
+        px(older_fold - live_fold) <= latest + px(16.),
+        "the older run folds at {older_fold} px, the latest at {live_fold} px"
+    );
+}

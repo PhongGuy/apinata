@@ -2247,6 +2247,8 @@ impl ResponsePane {
                 div()
                     .id("response-saved-date")
                     .test_support()
+                    .min_w_0()
+                    .truncate()
                     .child(format!("From {}", last_response::local_date(kept.saved_at)))
             });
             // Tabular digits make every count of one form as wide as its candidate here.
@@ -2266,6 +2268,9 @@ impl ResponsePane {
             h_flex()
                 .id("response-saved")
                 .test_support()
+                .min_w_0()
+                .flex_shrink(1.)
+                .overflow_hidden()
                 .gap_1()
                 .text_size(style::TEXT_SMALL)
                 .text_color(cx.theme().muted_foreground)
@@ -2292,13 +2297,21 @@ impl ResponsePane {
                 .aria_label(peer.clone())
                 .child(peer)
                 .tooltip(ui::text_tooltip("response-address-tooltip", tip))
+                .into_any_element()
         });
+        // A kept run has no address, so wide, its saved note takes that slot and gives way
+        // first, as the address would; the actions then sit where the latest run has them.
+        let (address, saved) = match (address, saved) {
+            (None, Some(note)) if !compact => (Some(note.into_any_element()), None),
+            (address, saved) => (address, saved),
+        };
         self.min.facts_shown(self.facts_key(result, cx));
         // The actions sit as one tight group, as the request toolbar's adjacent buttons do.
         let actions = h_flex()
             .flex_none()
             .gap(style::SPACE_1)
             .items_center()
+            .when(!compact, |row| row.children(self.latest_button(cx)))
             .children(
                 (self.save_example && !compact)
                     .then(|| save_example_button(r, self.example_blocked(cx), cx)),
@@ -2306,7 +2319,6 @@ impl ResponsePane {
             .children((self.save_example && !compact).then(|| export_har_button(r, cx)))
             .children(self.history_button(cx))
             .children(self.compare_button(cx))
-            .when(!compact, |row| row.children(self.latest_button(cx)))
             .when(compact, |row| row.child(self.more_menu(r, cx)));
         let mut before: Vec<AnyElement> = vec![
             div()
@@ -2321,7 +2333,11 @@ impl ResponsePane {
         if self.elapsed {
             before.push(muted("response-time", format_time(r.response_time())).into_any_element());
         }
-        before.extend(self.timing_bar(r, cx));
+        let kept = self.send.read(cx).restored().is_some();
+        before.extend(
+            self.timing_bar(r, cx)
+                .or_else(|| kept.then(|| untimed_slot(cx))),
+        );
         before.push(muted("response-size", size_text).into_any_element());
         let mut after: Vec<AnyElement> = r
             .stream_end()
@@ -2458,7 +2474,19 @@ impl ResponsePane {
             let now = last_response::wall_now(cx);
             // The kit's default cap is narrower than a full row, which it would then clip.
             let width = style::resolve(style::HISTORY_MENU_WIDTH, window);
-            menu = crate::ui::checks_right(menu.scrollable(true).max_w(width));
+            // Only a list that may not fit scrolls, so a short one draws no scrollbar and is
+            // never scrolled to its check. A scrolling one is widened by the scrollbar's gutter
+            // and its rows stop at their cap, so the checks end clear of the scrollbar.
+            let height = window.window_bounds().get_bounds().size.height;
+            let scrolls = crate::ui::menu_may_overflow(sends.len(), height, window.rem_size());
+            menu = match scrolls {
+                true => {
+                    let wide = width + style::SCROLLBAR_GUTTER;
+                    menu.scrollable(true).min_w(wide).max_w(wide)
+                }
+                false => menu.max_w(width),
+            };
+            menu = crate::ui::checks_right(menu);
             for (ix, send) in sends.iter().enumerate() {
                 let (seq, line) = (send.seq, history_row(send, now));
                 let pane = pane.clone();
@@ -5781,6 +5809,25 @@ fn set_width(cell: &Rc<Cell<Pixels>>, width: Pixels, window: &mut Window) {
         cell.set(width);
         window.request_animation_frame();
     }
+}
+
+// The untimed slot's name and tooltip.
+const UNTIMED_TIP: &str = "Timing is not kept with a saved run";
+
+// A kept run has no timing, so its header shows the bar's empty track in the bar's place and
+// the facts beside it stay where the latest run has them.
+fn untimed_slot(cx: &App) -> AnyElement {
+    div()
+        .id("response-timing-untimed")
+        .test_support()
+        .flex_none()
+        .w(style::TIMING_BAR_WIDTH)
+        .h(style::TIMING_BAR_HEIGHT)
+        .rounded_full()
+        .bg(cx.theme().border)
+        .aria_label(UNTIMED_TIP)
+        .tooltip(ui::text_tooltip("response-timing-tooltip", UNTIMED_TIP))
+        .into_any_element()
 }
 
 // As `width_probe`, storing the width in rems, so it stays true across a zoom change.

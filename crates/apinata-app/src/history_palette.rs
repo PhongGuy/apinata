@@ -16,8 +16,9 @@ use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, App, AppContext as _, FocusHandle, Focusable as _, HighlightStyle,
-    InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
-    Styled as _, StyledText, TestSupportExt as _, Window, actions, div, relative,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
+    StatefulInteractiveElement as _, Styled as _, StyledText, TestSupportExt as _, Window, actions,
+    div, relative, rems,
 };
 
 use crate::last_response::{RecentSend, age_of};
@@ -392,6 +393,7 @@ pub fn open_history(
     // so the query and highlight persist. The search runs once per query change, with the
     // kit's own filter off; Enter asks it for the current query too, since a key can land
     // before the frame that draws the new rows.
+    let columns = Columns::of(&entries, window, cx);
     let search = Rc::new(HistorySearch::new(entries));
     let state = cx.new(|cx| CommandState::new(window, cx));
     let dialog_state = state.clone();
@@ -406,7 +408,7 @@ pub fn open_history(
             let rows = found
                 .iter()
                 .enumerate()
-                .map(|(r, m)| history_row(r, &search.entries()[m.index], m));
+                .map(|(r, m)| history_row(r, &search.entries()[m.index], m, columns));
             let none = search.entries().is_empty();
             Command::new(&dialog_state)
                 .bordered(false)
@@ -449,6 +451,40 @@ pub fn open_history(
     state.read(cx).focus_handle(cx).focus(window, cx);
 }
 
+// The fixed columns, sized once per opening over every listed send so they line up and
+// stay put while a search narrows the list: the detail as wide as the widest detail (at
+// most its cap) and the tag slot only while a send is tagged. The target takes the rest.
+#[derive(Clone, Copy)]
+struct Columns {
+    detail: Pixels,
+    tagged: bool,
+}
+
+impl Columns {
+    fn of(entries: &[HistoryEntry], window: &Window, cx: &App) -> Columns {
+        // The rows draw in the theme's font at the kit's small size.
+        let mut text = window.text_style();
+        text.font_family = cx.theme().font_family.clone();
+        let size = rems(0.875).to_pixels(window.rem_size());
+        let widest = entries
+            .iter()
+            .map(|e| {
+                let run = text.to_run(e.detail.len());
+                let line = e.detail.clone().into();
+                window
+                    .text_system()
+                    .shape_line(line, size, &[run], None)
+                    .width
+            })
+            .fold(Pixels::ZERO, Pixels::max);
+        let cap = style::resolve(style::HISTORY_DETAIL_WIDTH, window);
+        Columns {
+            detail: widest.ceil().min(cap),
+            tagged: entries.iter().any(|e| e.tag.is_some()),
+        }
+    }
+}
+
 /// The empty History palette's message.
 const NO_HISTORY: &str = "No history yet";
 
@@ -483,9 +519,14 @@ fn confirm(e: &HistoryEntry, target: &FocusHandle, window: &mut Window, cx: &mut
 }
 
 // A row shows the sidebar's method tag, the request's name, the send's URL muted and
-// truncated (whole on hover), the status and age in a fixed column, then its tag, explained
+// truncated (whole on hover), the status and age in a shared column, then its tag, explained
 // on hover, in a column of its own. The search's hits are highlighted in each.
-fn history_row(r: usize, entry: &HistoryEntry, found: &HistoryMatch) -> CommandItem {
+fn history_row(
+    r: usize,
+    entry: &HistoryEntry,
+    found: &HistoryMatch,
+    columns: Columns,
+) -> CommandItem {
     let (detail, tag, method) = (entry.detail.clone(), entry.tag, entry.method.clone());
     let mut found = found.clone();
     // The tag column shows the method, so the text that names the send drops it: a draft's
@@ -570,31 +611,34 @@ fn history_row(r: usize, entry: &HistoryEntry, found: &HistoryMatch) -> CommandI
                         .id((detail_id, r))
                         .test_support()
                         .flex_none()
-                        .w(style::HISTORY_DETAIL_WIDTH)
+                        .w(columns.detail)
                         .truncate()
                         .text_color(muted)
                         .child(marked(&detail, &found.detail)),
                 )
-                // Every row keeps the fixed tag slot last, so tags line up whatever the detail.
-                .child(
-                    div()
-                        .id(("history-tag-slot", r))
-                        .test_support()
-                        .flex_none()
-                        .w(style::HISTORY_TAG_WIDTH)
-                        .children(tag.map(|tag| {
-                            div()
-                                .id(("history-tag", r))
-                                .test_support()
-                                .aria_label(tag)
-                                .flex_none()
-                                .text_color(muted)
-                                .child(tag)
-                                .tooltip(crate::ui::text_tooltip(
-                                    "history-tag-tooltip",
-                                    tag_tip(tag),
-                                ))
-                        })),
-                )
+                // Every row keeps the tag slot last while any send is tagged, so tags line up
+                // whatever the detail.
+                .when(columns.tagged, |row| {
+                    row.child(
+                        div()
+                            .id(("history-tag-slot", r))
+                            .test_support()
+                            .flex_none()
+                            .w(style::HISTORY_TAG_WIDTH)
+                            .children(tag.map(|tag| {
+                                div()
+                                    .id(("history-tag", r))
+                                    .test_support()
+                                    .aria_label(tag)
+                                    .flex_none()
+                                    .text_color(muted)
+                                    .child(tag)
+                                    .tooltip(crate::ui::text_tooltip(
+                                        "history-tag-tooltip",
+                                        tag_tip(tag),
+                                    ))
+                            })),
+                    )
+                })
         })
 }

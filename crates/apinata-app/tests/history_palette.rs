@@ -323,3 +323,51 @@ fn a_filter_with_no_match_says_no_matching_sends(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(label.as_deref(), Some("No matching sends"));
 }
+
+// The width `text` takes in the theme's UI font at the palette's small text size.
+fn ui_width(w: &mut gpui_kit::Window, cx: &mut gpui_kit::App, text: &str) -> gpui_kit::Pixels {
+    use gpui_kit::component::ActiveTheme as _;
+    let mut style = w.text_style();
+    style.font_family = cx.theme().font_family.clone();
+    let run = style.to_run(text.len());
+    let size = gpui_kit::rems(0.875).to_pixels(w.rem_size());
+    w.text_system()
+        .shape_line(text.to_owned().into(), size, &[run], None)
+        .width
+}
+
+// A URL with room beside it shows whole: with no tagged send listed and short details, the
+// tag and detail columns leave their unused width to it.
+#[gpui_kit::test]
+fn a_url_that_fits_the_free_width_is_not_cut(cx: &mut TestAppContext) {
+    const URL: &str = "https://api.example.com/v2/items?page=2&sort";
+    let col = two_requests();
+    let root = col.path().to_path_buf();
+    let s = started_with(cx, &col, move |paths| {
+        let response = Response::new(200).with_text_body("k").with_url(URL);
+        let r = RequestResult::from_parts(
+            ip("a.yml"),
+            "x",
+            Outcome::Passed,
+            Some(response),
+            Vec::new(),
+        );
+        ResponseStore::new(paths.responses.clone())
+            .save(&root, &ip("a.yml"), &r, at(1_000))
+            .unwrap();
+    });
+    open_history_palette(cx, &s);
+    cx.update_window(s.win, |_, w, cx| {
+        w.render_frame(cx);
+        let target = w
+            .within("history-palette")
+            .find(("history-target", 0usize))
+            .bounds();
+        let whole = ui_width(w, cx, URL);
+        assert!(
+            target.size.width >= whole,
+            "the URL needs {whole:?} and has {target:?}"
+        );
+    })
+    .unwrap();
+}
