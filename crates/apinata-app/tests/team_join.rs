@@ -206,7 +206,9 @@ fn cancelling_while_signing_in_revokes_the_new_token_and_stores_nothing(cx: &mut
     use gpui_kit::test::TestWindowExt as _;
     http_ready(cx);
     let server = potluck_server(cx);
-    answer(cx, &server, "GET", "/api/v1/server", info(true));
+    // The server check answers late, so a cancel sent too early would never reach the sign-in.
+    let late = info(true).set_delay(std::time::Duration::from_millis(300));
+    answer(cx, &server, "GET", "/api/v1/server", late);
     let slow = session(7, false).set_delay(std::time::Duration::from_millis(500));
     answer(cx, &server, "POST", "/api/v1/session", slow);
     answer(
@@ -221,6 +223,10 @@ fn cancelling_while_signing_in_revokes_the_new_token_and_stores_nothing(cx: &mut
     fill(cx, &s, &view, &server.uri(), "ada", "hunter2");
     submit(cx, &s);
     assert_eq!(view.read_with(cx, |v, _| v.phase()), JoinPhase::Signing);
+    // Cancel while the server holds the sign-in answer, so a token exists to give back.
+    wait_for(cx, "the sign-in request", |cx| {
+        hits_on(cx, &server, "POST", "/api/v1/session") > 0
+    });
     cx.update_window(s.win, |_, w, cx| w.click("team-join-cancel", cx))
         .unwrap();
     frame(cx, s.win);
