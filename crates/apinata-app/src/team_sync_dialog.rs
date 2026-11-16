@@ -19,6 +19,10 @@ use crate::team_text::problem_lines;
 use crate::ui::dialog_footer;
 use crate::workspace::{Clash, ClashAnswer, ClashKind, Workspace};
 
+/// The share of a titled dialog body's room the lines and clashes may take before they scroll,
+/// leaving the rest for the footer.
+pub const OUTPUT_SHARE: f32 = 0.6;
+
 /// The open dialog for one team collection.
 pub struct SyncView {
     workspace: Entity<Workspace>,
@@ -243,7 +247,7 @@ impl Render for SyncView {
             .collect();
         // Long output and many clashes scroll inside the lines, so the footer with its fix stays
         // in the window.
-        let cap = crate::dialog_frame::titled_body_room(window) * 0.6;
+        let cap = crate::dialog_frame::titled_body_room(window) * OUTPUT_SHARE;
         let close = Button::new("team-sync-close")
             .label("Close")
             .on_click(|_, window, cx| window.close_dialog(cx));
@@ -259,6 +263,7 @@ impl Render for SyncView {
             .child(
                 v_flex()
                     .id("team-lines")
+                    .test_support()
                     .gap(SPACE_2)
                     .max_h(cap)
                     .overflow_y_scroll()
