@@ -1046,9 +1046,9 @@ fn a_squeezed_select_hands_focus_back_to_the_body_editor(cx: &mut TestAppContext
     assert!(palette_reachable(cx, &s));
 }
 
-// Being active is session state, not file content, so the box says Save is not needed.
+// The note says what the box does, without setting it against the Save button beside it.
 #[gpui_kit::test]
-fn the_active_box_says_it_applies_without_save(cx: &mut TestAppContext) {
+fn the_active_box_says_what_it_does(cx: &mut TestAppContext) {
     let (_c, _g, _s, win, _ed, _key) = global(cx, GLOBAL_FILE);
     assert!(present(cx, win, ACTIVE));
     let note = cx
@@ -1057,7 +1057,7 @@ fn the_active_box_says_it_applies_without_save(cx: &mut TestAppContext) {
             (w.try_find("global-env-active-note")).and_then(|e| e.label().map(str::to_owned))
         })
         .unwrap();
-    assert_eq!(note.as_deref(), Some("Applies at once, without Save"));
+    assert_eq!(note.as_deref(), Some("Turns this global environment on or off right away"));
 }
 
 // The name field's Cancel and Create are full-size buttons with the header's spacing.
