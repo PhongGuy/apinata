@@ -327,6 +327,92 @@ fn the_copies_folder_differs_by_server_team_and_workspace() {
     }
 }
 
+fn bound(server: &str, team: &str, slug: &str) -> Binding {
+    let url = apinata_core::team::ServerUrl::parse(server).unwrap();
+    let account = Account::new(&url, "ada", "Ada", "7", false);
+    Binding::new(PathBuf::from("/r"), &account, team, slug, Role::Write)
+}
+
+// A name Windows accepts as a folder: no reserved device stem, no trailing dot or space, no
+// forbidden character and at most 255 bytes.
+fn windows_safe(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or("").to_ascii_lowercase();
+    let numbered = stem.len() == 4
+        && (stem.starts_with("com") || stem.starts_with("lpt"))
+        && stem.as_bytes()[3].is_ascii_digit();
+    let reserved = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul") || numbered;
+    !name.is_empty()
+        && name.len() <= 255
+        && !name.ends_with(['.', ' '])
+        && !reserved
+        && (name.bytes()).all(|b| b.is_ascii_graphic() && !br#"<>:"/\|?*"#.contains(&b))
+}
+
+#[test]
+fn every_copies_folder_name_is_one_windows_accepts() {
+    let conflicts = Path::new("/c");
+    let long = format!(
+        "https://{}com",
+        "a".repeat(60).repeat(5).replace("aaaaaaaaaa", "aaaaaaaaa.")
+    );
+    let cases = [
+        bound("https://team.example.com.", "core", "api"),
+        bound(&long, "core", "api"),
+        bound("http://127.0.0.1:1", "con", "nul"),
+        bound("http://127.0.0.1:1", "aux", "com1"),
+        bound("http://127.0.0.1:1", "prn", "lpt9"),
+    ];
+    for binding in &cases {
+        let dir = team_workspaces::copies_dir(conflicts, binding);
+        let rel = dir.strip_prefix(conflicts).unwrap();
+        let mut names: Vec<String> = (rel.iter()).map(|c| c.to_str().unwrap().into()).collect();
+        names.push(format!("{}.deleted", names.last().unwrap()));
+        for name in &names {
+            assert!(windows_safe(name), "{name:?} in {dir:?}");
+        }
+    }
+}
+
+#[test]
+fn long_servers_that_differ_only_at_the_end_keep_their_own_folders() {
+    let conflicts = Path::new("/c");
+    let host = "b".repeat(60).repeat(4).replace("bbbbbbbbbb", "bbbbbbbbb.");
+    let one = team_workspaces::copies_dir(conflicts, &bound(&format!("https://{host}x"), "c", "a"));
+    let two = team_workspaces::copies_dir(conflicts, &bound(&format!("https://{host}y"), "c", "a"));
+    assert_ne!(one, two);
+}
+
+#[test]
+fn ordinary_names_keep_the_folder_they_always_had() {
+    let dir =
+        team_workspaces::copies_dir(Path::new("/c"), &bound("http://127.0.0.1:1", "core", "api"));
+    assert_eq!(dir, Path::new("/c/http_3A_2F_2F127.0.0.1_3A1/core/api"));
+}
+
+#[test]
+fn copies_kept_under_the_former_folder_names_are_moved_to_the_new_ones() {
+    let files = tempfile::tempdir().unwrap();
+    let conflicts = files.path().join("conflicts");
+    let binding = bound("https://team.example.com.", "con", "api");
+    let old = conflicts
+        .join("https_3A_2F_2Fteam.example.com.")
+        .join("con")
+        .join("api");
+    std::fs::create_dir_all(old.join("f")).unwrap();
+    std::fs::write(old.join("f/r.yml"), "theirs").unwrap();
+    let marks = conflicts.join("https_3A_2F_2Fteam.example.com./con/api.deleted");
+    std::fs::create_dir_all(&marks).unwrap();
+    std::fs::write(marks.join("gone.yml"), "").unwrap();
+
+    let dir = team_workspaces::settle_copies(&conflicts, &binding);
+
+    assert_eq!(dir, team_workspaces::copies_dir(&conflicts, &binding));
+    let copies = apinata_core::team::ConflictCopies::new(dir);
+    assert_eq!(copies.read("f/r.yml").unwrap(), b"theirs");
+    assert_eq!(copies.deleted().unwrap(), ["gone.yml"]);
+    assert!(!conflicts.join("https_3A_2F_2Fteam.example.com.").exists());
+}
+
 #[gpui_kit::test]
 fn a_workspace_name_that_is_not_a_folder_name_is_refused_and_creates_nothing(
     cx: &mut TestAppContext,
