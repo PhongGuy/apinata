@@ -246,41 +246,147 @@ fn a_delete_again_clash_follows_its_file_through_a_rename(cx: &mut TestAppContex
     assert_eq!(clashes(cx, &s), [deleted("b.yml")]);
 }
 
+// Installs `body` as the executable hook `name` in `dir`, after a line that counts its runs
+// in `runs`, so the hook can number its output by the run.
+#[cfg(unix)]
+fn hook(dir: &std::path::Path, name: &str, runs: &std::path::Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::create_dir_all(dir).unwrap();
+    let script = format!(
+        "#!/bin/sh\necho run >> '{}'\nn=$(wc -l < '{}')\n{body}",
+        runs.display(),
+        runs.display()
+    );
+    std::fs::write(dir.join(name), script).unwrap();
+    std::fs::set_permissions(dir.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+fn runs_of(runs: &std::path::Path) -> usize {
+    std::fs::read_to_string(runs).map_or(0, |t| t.lines().count())
+}
+
+fn problems(seen: &std::cell::RefCell<Vec<WorkspaceEvent>>) -> usize {
+    (seen.borrow().iter())
+        .filter(|e| matches!(e, WorkspaceEvent::TeamProblem { .. }))
+        .count()
+}
+
+fn blocked(cx: &mut TestAppContext, s: &Started, is: fn(&Block) -> bool) -> bool {
+    s.ws.read_with(cx, |w, _| {
+        matches!(w.team_status(&s.root).map(|t| t.state), Some(TeamState::Blocked(b)) if is(&b))
+    })
+}
+
 #[cfg(unix)]
 #[gpui_kit::test]
 fn a_hook_refusal_is_one_problem_event(cx: &mut TestAppContext) {
-    use std::os::unix::fs::PermissionsExt as _;
     let (sb, col) = (Sandbox::new(), collection());
     shared_origin(&sb, col.path());
-    let hooks = col.path().join(".git/hooks");
-    std::fs::create_dir_all(&hooks).unwrap();
-    std::fs::write(
-        hooks.join("pre-commit"),
-        "#!/bin/sh\necho nope >&2\nexit 1\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(
-        hooks.join("pre-commit"),
-        std::fs::Permissions::from_mode(0o755),
-    )
-    .unwrap();
+    let runs = sb.path().join("runs");
+    hook(
+        &col.path().join(".git/hooks"),
+        "pre-commit",
+        &runs,
+        "echo nope >&2\nexit 1\n",
+    );
     let s = app(cx, &sb, &col);
     start_team_as(cx, &sb, &s, Role::Write, FAST);
     let seen = events(cx, &s.ws);
     std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
     wait_for(cx, "the hook block", |cx| {
-        s.ws.read_with(cx, |w, _| {
-            matches!(
-                w.team_status(&s.root).map(|t| t.state),
-                Some(TeamState::Blocked(Block::Hook { .. }))
-            )
-        })
+        blocked(cx, &s, |b| matches!(b, Block::Hook { .. }))
     });
     settle(cx);
-    let problems = (seen.borrow().iter())
-        .filter(|e| matches!(e, WorkspaceEvent::TeamProblem { .. }))
-        .count();
-    assert_eq!(problems, 1);
+    assert_eq!(problems(&seen), 1);
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_hook_whose_output_changes_on_each_save_is_one_problem_event(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let runs = sb.path().join("runs");
+    hook(
+        &col.path().join(".git/hooks"),
+        "pre-commit",
+        &runs,
+        "echo \"refused, run $n\" >&2\nexit 1\n",
+    );
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let seen = events(cx, &s.ws);
+    for (i, rel) in ["b.yml", "c.yml", "d.yml"].into_iter().enumerate() {
+        std::fs::write(col.path().join(rel), request(rel, "http://x/b")).unwrap();
+        wait_for(cx, "the hook to run again", |_| runs_of(&runs) > i);
+        wait_for(cx, "the hook block", |cx| {
+            blocked(cx, &s, |b| matches!(b, Block::Hook { .. }))
+        });
+    }
+    settle(cx);
+    assert_eq!(problems(&seen), 1);
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_server_refusal_whose_text_changes_on_retry_is_one_problem_event(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    let bare = shared_origin(&sb, col.path());
+    let runs = sb.path().join("runs");
+    hook(
+        &bare.join("hooks"),
+        "pre-receive",
+        &runs,
+        "echo \"refused, run $n\" >&2\nexit 1\n",
+    );
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let seen = events(cx, &s.ws);
+    std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
+    for i in 0..3 {
+        wait_for(cx, "the server hook to run", |_| runs_of(&runs) > i);
+        wait_for(cx, "the failed block", |cx| {
+            blocked(cx, &s, |b| matches!(b, Block::Failed { .. }))
+        });
+        s.ws.read_with(cx, |w, _| w.team_sync(&s.root))
+            .unwrap()
+            .retry();
+    }
+    wait_for(cx, "the last retry", |_| runs_of(&runs) > 3);
+    settle(cx);
+    assert_eq!(problems(&seen), 1);
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_secret_refusal_with_new_findings_is_a_new_problem_event(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    let bare = shared_origin(&sb, col.path());
+    let runs = sb.path().join("runs");
+    // Every run lists a finding under a new rule, beside a line that changes too.
+    hook(
+        &bare.join("hooks"),
+        "pre-receive",
+        &runs,
+        "echo \"checked, run $n\" >&2\n\
+         echo \"potluck-reject secret_env_file refs%2Fheads%2Fmain b.yml rule$n\" >&2\nexit 1\n",
+    );
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let seen = events(cx, &s.ws);
+    std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
+    wait_for(cx, "the secret block", |cx| {
+        blocked(cx, &s, |b| matches!(b, Block::Secret { .. }))
+    });
+    s.ws.read_with(cx, |w, _| w.team_sync(&s.root))
+        .unwrap()
+        .retry();
+    wait_for(cx, "the second refusal", |_| runs_of(&runs) > 1);
+    wait_for(cx, "the secret block", |cx| {
+        blocked(cx, &s, |b| matches!(b, Block::Secret { .. }))
+    });
+    settle(cx);
+    assert_eq!(problems(&seen), 2);
 }
 
 #[gpui_kit::test]
