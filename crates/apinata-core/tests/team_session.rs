@@ -5,7 +5,7 @@ use crate::common::potluck::*;
 use apinata_core::team::{
     self, Account, Binding, HttpTeamClient, Role, ServerUrl, TeamError, TeamStore, token_key,
 };
-use apinata_core::{MemoryStore, SecretError, SecretKey, SecretStore};
+use apinata_core::{CancelFlag, MemoryStore, SecretError, SecretKey, SecretStore};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use wiremock::{MockServer, ResponseTemplate};
@@ -46,9 +46,16 @@ fn unauthenticated() -> ResponseTemplate {
 async fn joined(s: &MockServer, secrets: &MemoryStore, team_file: &Path) -> Account {
     answer(s, "GET", "/api/v1/server", info(true)).await;
     answer(s, "POST", "/api/v1/session", session(7, true)).await;
-    team::sign_in(&client(s), secrets, team_file, "ada", "hunter2")
-        .await
-        .unwrap()
+    team::sign_in(
+        &client(s),
+        secrets,
+        team_file,
+        "ada",
+        "hunter2",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -90,9 +97,16 @@ async fn a_server_without_password_sign_in_is_never_sent_the_password() {
     );
     answer(&s, "GET", "/api/v1/server", info(false)).await;
     answer(&s, "POST", "/api/v1/session", session(7, false)).await;
-    let e = team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "hunter2")
-        .await
-        .unwrap_err();
+    let e = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(e, TeamError::PasswordSignInOff);
     assert_eq!(hits(&s, "POST", "/api/v1/session").await, 0);
     assert!(!file(&dir).exists());
@@ -104,9 +118,16 @@ async fn a_locked_keychain_revokes_the_new_token_and_saves_nothing() {
     answer(&s, "GET", "/api/v1/server", info(true)).await;
     answer(&s, "POST", "/api/v1/session", session(7, false)).await;
     answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
-    let e = team::sign_in(&client(&s), &BrokenStore, &file(&dir), "ada", "hunter2")
-        .await
-        .unwrap_err();
+    let e = team::sign_in(
+        &client(&s),
+        &BrokenStore,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(e, TeamError::Secrets(_)), "{e:?}");
     assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 1);
     assert!(!file(&dir).exists());
@@ -124,9 +145,16 @@ async fn joining_again_revokes_the_previous_token_once_the_new_one_is_kept() {
     answer(&s, "GET", "/api/v1/server", info(true)).await;
     answer(&s, "POST", "/api/v1/session", session(8, true)).await;
     answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
-    let again = team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "hunter2")
-        .await
-        .unwrap();
+    let again = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap();
     assert_eq!(again.token_id, "8");
     assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 1);
     let store = TeamStore::load(&file(&dir)).unwrap();
@@ -165,9 +193,16 @@ async fn rejoining_revokes_the_previous_token_with_the_new_one() {
         .expect(1)
         .mount(&s)
         .await;
-    team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "hunter2")
-        .await
-        .unwrap();
+    team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap();
     s.verify().await;
 }
 
@@ -182,9 +217,16 @@ async fn a_mistyped_password_on_rejoining_keeps_the_working_session() {
     s.reset().await;
     answer(&s, "GET", "/api/v1/server", info(true)).await;
     answer(&s, "POST", "/api/v1/session", unauthenticated()).await;
-    let e = team::sign_in(&client(&s), &secrets, &file(&dir), "ada", "typo")
-        .await
-        .unwrap_err();
+    let e = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "typo",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(e, TeamError::Unauthenticated);
     assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 0);
     assert_eq!(
@@ -199,6 +241,75 @@ async fn a_mistyped_password_on_rejoining_keeps_the_working_session() {
             .token_id,
         "7"
     );
+}
+
+#[tokio::test]
+async fn a_sign_in_cancelled_while_the_server_answers_revokes_its_token_and_keeps_nothing() {
+    let (s, dir, secrets) = (
+        MockServer::start().await,
+        TempDir::new().unwrap(),
+        MemoryStore::new(),
+    );
+    joined(&s, &secrets, &file(&dir)).await;
+    let key = token_key(&url(&s), "ada");
+    let kept = format!("plk_{}", "C".repeat(43));
+    secrets.set(&key, &kept).unwrap();
+    let before = std::fs::read_to_string(file(&dir)).unwrap();
+    s.reset().await;
+    // The user cancels while the server is still issuing the new token.
+    let cancel = CancelFlag::new();
+    let flag = cancel.clone();
+    answer(&s, "GET", "/api/v1/server", info(true)).await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/api/v1/session"))
+        .respond_with(move |_: &wiremock::Request| {
+            flag.cancel();
+            session(8, false)
+        })
+        .mount(&s)
+        .await;
+    answer(&s, "DELETE", "/api/v1/tokens/8", ResponseTemplate::new(204)).await;
+    let e = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &cancel,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e, TeamError::Cancelled);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/8").await, 1);
+    assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/7").await, 0);
+    assert_eq!(secrets.get(&key).unwrap(), Some(kept));
+    assert_eq!(std::fs::read_to_string(file(&dir)).unwrap(), before);
+}
+
+#[tokio::test]
+async fn a_sign_in_cancelled_before_it_starts_never_sends_the_password() {
+    let (s, dir, secrets) = (
+        MockServer::start().await,
+        TempDir::new().unwrap(),
+        MemoryStore::new(),
+    );
+    answer(&s, "GET", "/api/v1/server", info(true)).await;
+    answer(&s, "POST", "/api/v1/session", session(7, false)).await;
+    let cancel = CancelFlag::new();
+    cancel.cancel();
+    let e = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "ada",
+        "hunter2",
+        &cancel,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e, TeamError::Cancelled);
+    assert_eq!(hits(&s, "POST", "/api/v1/session").await, 0);
+    assert!(!file(&dir).exists());
 }
 
 #[tokio::test]
@@ -220,9 +331,16 @@ async fn joining_as_another_user_forgets_the_first_users_keychain_entry() {
     )
     .await;
     answer(&s, "DELETE", "/api/v1/tokens/7", ResponseTemplate::new(204)).await;
-    team::sign_in(&client(&s), &secrets, &file(&dir), "bob", "pw")
-        .await
-        .unwrap();
+    team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        "bob",
+        "pw",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap();
     assert_eq!(secrets.get(&token_key(&url(&s), "ada")).unwrap(), None);
     assert_eq!(
         secrets.get(&token_key(&url(&s), "bob")).unwrap(),
@@ -497,9 +615,16 @@ async fn rejoin_with_an_unwritable_team_file(name: &str) {
     answer(&s, "DELETE", "/api/v1/tokens/8", ResponseTemplate::new(204)).await;
     let parent = file(&dir).parent().unwrap().to_path_buf();
     let guard = crate::common::ModeGuard::set(&parent, 0o555);
-    let e = team::sign_in(&client(&s), &secrets, &file(&dir), name, "pw")
-        .await
-        .unwrap_err();
+    let e = team::sign_in(
+        &client(&s),
+        &secrets,
+        &file(&dir),
+        name,
+        "pw",
+        &CancelFlag::new(),
+    )
+    .await
+    .unwrap_err();
     drop(guard);
     assert!(matches!(e, TeamError::Store(_)), "{e:?}");
     assert_eq!(hits(&s, "DELETE", "/api/v1/tokens/8").await, 1);

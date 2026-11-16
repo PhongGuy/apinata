@@ -200,3 +200,40 @@ fn the_palette_offers_joining_a_team_server() {
         .expect("collection.join_team_server");
     assert_eq!(join.label, "Join team server…");
 }
+
+#[gpui_kit::test]
+fn cancelling_while_signing_in_revokes_the_new_token_and_stores_nothing(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    http_ready(cx);
+    let server = potluck_server(cx);
+    answer(cx, &server, "GET", "/api/v1/server", info(true));
+    let slow = session(7, false).set_delay(std::time::Duration::from_millis(500));
+    answer(cx, &server, "POST", "/api/v1/session", slow);
+    answer(
+        cx,
+        &server,
+        "DELETE",
+        "/api/v1/tokens/7",
+        ResponseTemplate::new(204),
+    );
+    let (_col, s, secrets) = team_app(cx, |_, _| {});
+    let view = open_join(cx, &s);
+    fill(cx, &s, &view, &server.uri(), "ada", "hunter2");
+    submit(cx, &s);
+    assert_eq!(view.read_with(cx, |v, _| v.phase()), JoinPhase::Signing);
+    cx.update_window(s.win, |_, w, cx| w.click("team-join-cancel", cx))
+        .unwrap();
+    frame(cx, s.win);
+    let file = team_file(&s);
+    wait_for(cx, "the sign-in to settle", |cx| {
+        file.exists() || hits_on(cx, &server, "DELETE", "/api/v1/tokens/7") > 0
+    });
+    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/7"), 1);
+    assert_eq!(
+        secrets
+            .get(&token_key(&server_url(&server), "ada"))
+            .unwrap(),
+        None
+    );
+    assert!(!file.exists());
+}

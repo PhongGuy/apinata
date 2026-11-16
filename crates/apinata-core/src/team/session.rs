@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use super::{Account, Me, TeamApi, TeamError, TeamStore, TeamToken, token_key};
-use crate::{SecretError, SecretStore};
+use crate::{CancelFlag, SecretError, SecretStore};
 
 pub(super) fn secrets_error(e: SecretError) -> TeamError {
     TeamError::Secrets(e.to_string())
@@ -22,18 +22,29 @@ pub(super) fn kept_token(
 
 /// Signs `username` in with a password and keeps the session, replacing any earlier account
 /// on this server. The earlier token is revoked only once the new one is kept, so a failure
-/// at any step leaves the working session as it was.
+/// at any step leaves the working session as it was. A `cancel` set before the session is
+/// kept ends it with `Cancelled`, revoking a token the server already issued; once kept, the
+/// sign-in completes.
 pub async fn sign_in(
     api: &dyn TeamApi,
     secrets: &dyn SecretStore,
     team_file: &Path,
     username: &str,
     password: &str,
+    cancel: &CancelFlag,
 ) -> Result<Account, TeamError> {
     if !api.server_info().await?.password_sign_in {
         return Err(TeamError::PasswordSignInOff);
     }
+    if cancel.is_cancelled() {
+        return Err(TeamError::Cancelled);
+    }
     let signed = api.sign_in(username, password).await?;
+    // Nothing is kept yet, so a cancel during the answer only has to give the new token back.
+    if cancel.is_cancelled() {
+        let _ = api.revoke(&signed.token, &signed.token_id).await;
+        return Err(TeamError::Cancelled);
+    }
     let server = api.server();
     let previous = TeamStore::load(team_file)?.account(server).cloned();
     // A keychain error here only means the old token cannot be revoked; sign-in goes on.
