@@ -2781,7 +2781,12 @@ impl Workspace {
         // A hook block passes through Committing on every retry, so the last block announced is
         // remembered until the loop settles rather than compared with the previous state.
         let problem = match &status.state {
-            TeamState::Blocked(block) if team.problem.as_ref() != Some(block) => {
+            TeamState::Blocked(block)
+                if !team
+                    .problem
+                    .as_ref()
+                    .is_some_and(|p| same_problem(p, block)) =>
+            {
                 team.problem = Some(block.clone());
                 true
             }
@@ -4396,4 +4401,14 @@ fn carry_clashes(
         })
         .collect();
     moved
+}
+
+// Whether `next` is the block `last` already announced. A commit hook's output may change on
+// every retry (a timestamp, a counter), so any two hook refusals are one problem; the other
+// blocks compare whole, since a secret refusal's findings are parsed fields, not raw output.
+fn same_problem(last: &Block, next: &Block) -> bool {
+    match (last, next) {
+        (Block::Hook { .. }, Block::Hook { .. }) => true,
+        _ => last == next,
+    }
 }
