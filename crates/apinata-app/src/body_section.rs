@@ -173,6 +173,31 @@ fn code_of(body: &BodySpec) -> Option<(&str, &'static str)> {
     }
 }
 
+/// The note a response shows when `body`, the body it was sent with, is JSON that does not
+/// parse: `The body sent was not valid JSON: line 2, column 6.`
+pub fn sent_json_note(body: &BodySpec) -> Option<String> {
+    let BodySpec::Json(text) = body else {
+        return None;
+    };
+    let e = json_check(text)?;
+    Some(format!(
+        "The body sent was not valid JSON: {}.",
+        json_position(&e)
+    ))
+}
+
+// The syntax error of JSON text within the size bound, so a huge body is never re-parsed.
+fn json_check(text: &str) -> Option<JsonSyntaxError> {
+    (text.len() <= JSON_CHECK_MAX_BYTES)
+        .then(|| json_syntax_error(text))
+        .flatten()
+}
+
+// The position wording the editor's marker and the sent-body note share.
+fn json_position(e: &JsonSyntaxError) -> String {
+    format!("line {}, column {}", e.line, e.column)
+}
+
 // The muted hint the empty code editor shows under each code mode.
 fn hint(mode: BodyMode) -> &'static str {
     match mode {
@@ -423,16 +448,15 @@ impl BodySection {
     /// The JSON marker text (`Line 2, column 6: A value is missing here`) for an invalid body.
     pub fn json_error(&self) -> Option<String> {
         let e = self.json_error.as_ref()?;
-        Some(format!(
-            "Line {}, column {}: {}",
-            e.line, e.column, e.message
-        ))
+        let mut position = json_position(e);
+        position[..1].make_ascii_uppercase();
+        Some(format!("{position}: {}", e.message))
     }
 
-    // Re-parses `text` for the marker; only a JSON body within the size bound is checked.
+    // Re-parses `text` for the marker; only a JSON body is checked.
     fn check_json(&mut self, text: &str) {
-        let checked = self.mode == Some(BodyMode::Json) && text.len() <= JSON_CHECK_MAX_BYTES;
-        self.json_error = checked.then(|| json_syntax_error(text)).flatten();
+        let checked = self.mode == Some(BodyMode::Json);
+        self.json_error = checked.then(|| json_check(text)).flatten();
     }
 
     /// The message of the last refused Beautify, while it still applies.
