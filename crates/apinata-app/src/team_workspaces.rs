@@ -22,8 +22,8 @@ use crate::ui::LockButton as _;
 use crate::workspace::Workspace;
 use crate::{tokio_bridge, ui};
 use apinata_core::team::{
-    self, Account, Binding, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl, TeamApi as _,
-    TeamAuth, TeamError, TeamStore, TeamToken, token_key,
+    self, Account, Binding, ConflictCopies, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl,
+    TeamApi as _, TeamAuth, TeamError, TeamStore, TeamToken, token_key,
 };
 use apinata_core::{CloneRequest, GitOptions, SecretStore};
 use sha2::{Digest as _, Sha256};
@@ -169,6 +169,7 @@ pub fn settle_copies(conflicts: &Path, binding: &Binding) -> PathBuf {
     if old == dir {
         return dir;
     }
+    let marks_of = |copies: &Path| ConflictCopies::new(copies.to_path_buf()).marks_dir();
     for (from, to) in [(old.clone(), dir.clone()), (marks_of(&old), marks_of(&dir))] {
         if from.exists()
             && !to.exists()
@@ -182,13 +183,6 @@ pub fn settle_copies(conflicts: &Path, binding: &Binding) -> PathBuf {
         let _ = fs::remove_dir(parent);
     }
     dir
-}
-
-// The sibling holding a copies folder's delete marks, named as core names it.
-fn marks_of(copies: &Path) -> PathBuf {
-    let mut name = copies.as_os_str().to_owned();
-    name.push(".deleted");
-    PathBuf::from(name)
 }
 
 // One folder name that Windows accepts and no other text shares. Lowercase letters, digits,
