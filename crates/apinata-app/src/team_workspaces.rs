@@ -17,15 +17,15 @@ use crate::app::AppState;
 use crate::clone_form::{self, FormError, Opened};
 use crate::clone_job::{CloneEvent, CloneJob};
 use crate::style::SPACE_2;
-use crate::team_text::error_text;
+use crate::team_text::{clone_stopped_text, error_text, folder_exists_text, unopenable_text};
 use crate::ui::LockButton as _;
 use crate::workspace::Workspace;
 use crate::{tokio_bridge, ui};
 use apinata_core::team::{
     self, Account, Binding, ConflictCopies, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl,
-    TeamApi as _, TeamAuth, TeamError, TeamStore, TeamToken, token_key,
+    TeamApi as _, TeamAuth, TeamError, TeamStore,
 };
-use apinata_core::{CloneRequest, GitOptions, SecretStore};
+use apinata_core::{CloneRequest, GitOptions};
 use sha2::{Digest as _, Sha256};
 
 /// Where a server's section is.
@@ -116,17 +116,6 @@ fn row_for(w: &team::Workspace, opened: Option<PathBuf>) -> WorkspaceRow {
         role: w.role,
         opened,
     }
-}
-
-// The token kept for `username`; none (or not a token) reads as signed out.
-fn kept_token(
-    secrets: &dyn SecretStore,
-    server: &ServerUrl,
-    username: &str,
-) -> Result<TeamToken, TeamError> {
-    let text = (secrets.get(&token_key(server, username)))
-        .map_err(|e| TeamError::Secrets(e.to_string()))?;
-    (text.and_then(|t| TeamToken::parse(&t).ok())).ok_or(TeamError::Unauthenticated)
 }
 
 /// The dialog's body: one section per account in the team file.
@@ -236,15 +225,13 @@ pub fn open(
     cx: &mut App,
 ) -> Option<Entity<WorkspacesView>> {
     let file = cx.try_global::<AppState>()?.team.clone();
-    // Sorted by server, since a session refresh moves its account to the end of the file.
-    let mut accounts = match TeamStore::load(&file) {
+    let accounts = match TeamStore::load(&file) {
         Ok(store) => store.accounts().to_vec(),
         Err(e) => {
             window.push_notification(ui::kind_toast(ui::ToastKind::Error, error_text(&e)), cx);
             return None;
         }
     };
-    accounts.sort_by(|a, b| a.server.cmp(&b.server));
     let sections: Vec<ServerSection> = (accounts.into_iter())
         .filter_map(|account| {
             let server = ServerUrl::parse(&account.server).ok()?;
@@ -292,7 +279,7 @@ pub fn open(
 }
 
 impl WorkspacesView {
-    /// Every server's section, sorted by server address.
+    /// Every server's section, in the team file's order.
     pub fn sections(&self) -> &[ServerSection] {
         &self.sections
     }
@@ -321,7 +308,7 @@ impl WorkspacesView {
                 let mut first_team = None;
                 if me.user.server_admin {
                     let user = (store.account(&server)).map_or(username, |a| a.username.clone());
-                    if let Ok(token) = kept_token(&*secrets, &server, &user) {
+                    if let Ok(Some(token)) = team::kept_token(&server, &*secrets, &user) {
                         let teams = api.teams(&token).await.unwrap_or_default();
                         first_team = teams.into_iter().next().map(|t| t.slug);
                     }
@@ -438,18 +425,13 @@ impl WorkspacesView {
         let req = match team::clone_request(&s.server, ws, &parent) {
             Ok(req) => req,
             Err(TeamError::Protocol(m)) => {
-                let text = format!("This workspace cannot be opened: {m}.");
-                return self.set_error(section, Some(text), cx);
+                return self.set_error(section, Some(unopenable_text(&m)), cx);
             }
             Err(e) => return self.set_error(section, Some(error_text(&e)), cx),
         };
         let text = match clone_form::check(&req.url, Some(&parent), &req.name) {
             Ok(_) => None,
-            Err(FormError::Exists) => Some(format!(
-                "A folder named {} already exists in {}.",
-                req.name,
-                parent.display()
-            )),
+            Err(FormError::Exists) => Some(folder_exists_text(&req.name, &parent)),
             Err(e) => Some(e.message()),
         };
         if let Some(text) = text {
@@ -470,12 +452,17 @@ impl WorkspacesView {
         self.cloning = true;
         self.set_error(section, None, cx);
         // The keychain blocks, so the token is read on the runtime, not here.
-        let key = token_key(&open.server, &open.account.username);
-        let read = tokio_bridge::spawn(cx, async move { secrets.get(&key) });
+        let (server, username) = (open.server.clone(), open.account.username.clone());
+        let read = tokio_bridge::spawn(cx, async move {
+            team::kept_token(&server, &*secrets, &username)
+        });
         cx.spawn_in(window, async move |this, cx| {
             let token = read.await;
             let _ = this.update_in(cx, |this, window, cx| match token {
-                Ok(Ok(Some(token))) => this.clone_with(open, token, req, make, window, cx),
+                Ok(Ok(Some(token))) => {
+                    let token = token.expose().to_owned();
+                    this.clone_with(open, token, req, make, window, cx)
+                }
                 Ok(Ok(None)) => {
                     this.cloning = false;
                     if let Some(i) = this.position(&open.server) {
@@ -485,8 +472,7 @@ impl WorkspacesView {
                 }
                 Ok(Err(e)) => {
                     this.cloning = false;
-                    let text = error_text(&TeamError::Secrets(e.to_string()));
-                    this.set_error_on(&open.server, Some(text), cx);
+                    this.set_error_on(&open.server, Some(error_text(&e)), cx);
                 }
                 Err(_) => {
                     this.cloning = false;
@@ -525,8 +511,7 @@ impl WorkspacesView {
             let _ = this.update(cx, |this, cx| {
                 this.job = None;
                 this.cloning = false;
-                let text = "The clone stopped unexpectedly. Try again.".to_owned();
-                this.set_error_on(&open.server, Some(text), cx);
+                this.set_error_on(&open.server, Some(clone_stopped_text()), cx);
             });
         })
         .detach();
@@ -625,7 +610,8 @@ impl WorkspacesView {
         let task = tokio_bridge::spawn(cx, {
             let server = server.clone();
             async move {
-                let token = kept_token(&*secrets, &server, &username)?;
+                let token = (team::kept_token(&server, &*secrets, &username)?)
+                    .ok_or(TeamError::Unauthenticated)?;
                 HttpTeamClient::new(server)?
                     .create_workspace(&token, &new)
                     .await

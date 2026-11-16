@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use super::git::workspace_events;
-use super::session::{kept_token, secrets_error};
+use super::session::account_token;
 use super::{
     Account, Binding, Identity, Role, TeamApi, TeamAuth, TeamError, TeamStore, current, events_url,
 };
@@ -73,7 +73,7 @@ pub async fn resume(
         .identity
         .clone()
         .unwrap_or_else(|| fallback_identity(binding, Some(&account)));
-    let token = kept_token(api, secrets, &account).map_err(secrets_error)?;
+    let token = account_token(api, secrets, &account)?;
 
     match current(api, secrets, team_file).await {
         // A sign-in as someone else landing mid-check makes `/me` speak for that user, whose

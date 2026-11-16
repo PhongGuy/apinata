@@ -32,7 +32,7 @@ pub use model::{
     Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamToken, User, Workspace,
 };
 pub use resume::{Resumed, Standing, resume};
-pub use session::{current, sign_in, sign_out};
+pub use session::{current, kept_token, sign_in, sign_out};
 pub use store::{Account, Binding, TeamStore, token_key};
 
 /// The workspace kind the server keeps for Apinata collections.

@@ -52,6 +52,9 @@ pub enum TeamError {
     /// The server could not be reached.
     #[error("The server could not be reached: {0}")]
     Offline(String),
+    /// The HTTP client could not be set up on this machine; no call was made.
+    #[error("The HTTP client could not be built: {0}")]
+    Client(String),
     /// The server took too long to answer.
     #[error("The server took too long to answer.")]
     Timeout,
