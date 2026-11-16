@@ -146,6 +146,39 @@ async fn a_folder_bound_by_another_user_resumes_signed_out_and_keeps_its_binding
 }
 
 #[tokio::test]
+async fn a_server_answering_as_another_user_resumes_signed_out_under_the_bound_identity() {
+    let (s, dir, secrets) = fresh().await;
+    let base = s.uri();
+    let listed = workspace(&base, "core", "api", "apinata", "admin");
+    // The account was swapped for grace's while the resume asked, so `/me` speaks for her.
+    let grace = json!({
+        "user": {"username": "grace", "display_name": "Grace", "email": null,
+                 "server_admin": false, "disabled": false, "created_at": "2026-11-15T10:00:00Z"},
+        "identity": {"name": "Grace", "email": "grace@users.noreply.127.0.0.1"},
+        "workspaces": [listed],
+    });
+    answer(
+        &s,
+        "GET",
+        "/api/v1/me",
+        ResponseTemplate::new(200).set_body_json(grace),
+    )
+    .await;
+    let b = binding(&ada(&base), Role::Write, "");
+    kept(&file(&dir), &secrets, ada(&base), &b);
+    let r = team::resume(&client(&s), &secrets, &file(&dir), &b)
+        .await
+        .unwrap();
+    assert_eq!((r.standing, r.role), (Standing::SignedOut, Role::Write));
+    assert_eq!(r.identity.name(), "Ada Lovelace");
+    assert_eq!(r.auth.token(), "");
+    assert_eq!(r.events_url, None);
+    let store = TeamStore::load(&file(&dir)).unwrap();
+    let bound = store.binding_at(Path::new("/work/api")).unwrap();
+    assert_eq!((bound.role, bound.branch.as_str()), (Role::Write, ""));
+}
+
+#[tokio::test]
 async fn a_workspace_missing_from_me_is_gone() {
     let (s, dir, secrets) = fresh().await;
     let base = s.uri();

@@ -126,7 +126,7 @@ enum Input {
     Event(TeamEvent),
     RemoteMoved(Option<String>),
     Poll,
-    SignedIn(TeamAuth),
+    SignedIn(TeamAuth, Identity),
     Stop,
 }
 
@@ -242,9 +242,9 @@ impl TeamSync {
         self.event(TeamEvent::Discard);
     }
 
-    /// The user signed in again with `auth`, which later git calls carry.
-    pub fn signed_in(&self, auth: TeamAuth) {
-        self.send(Input::SignedIn(auth));
+    /// The user signed in again: later git calls carry `auth`, and later commits `identity`.
+    pub fn signed_in(&self, auth: TeamAuth, identity: Identity) {
+        self.send(Input::SignedIn(auth, identity));
     }
 
     /// The user signed out.
@@ -364,9 +364,10 @@ impl Driver {
                 let known = tracking_tip(&self.config.root, &self.opts).ok().flatten();
                 (tip != known).then_some(TeamEvent::RemoteMoved)
             }
-            Input::SignedIn(auth) => {
-                self.opts = team_options(self.config.base.clone(), &auth, &self.config.identity);
+            Input::SignedIn(auth, identity) => {
+                self.opts = team_options(self.config.base.clone(), &auth, &identity);
                 self.config.auth = auth;
+                self.config.identity = identity;
                 Some(TeamEvent::SignedIn)
             }
             Input::Stop => None,

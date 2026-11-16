@@ -169,13 +169,19 @@ fn renewable(w: &Workspace, root: &Path) -> bool {
         .is_some_and(|t| t.state != TeamState::Blocked(Block::Gone))
 }
 
-// Gives the running loop at `root` the token and events stream of a fresh resume, and its role;
-// a standing without a token only blocks the loop.
+// Gives the running loop at `root` the token, commit identity and events stream of a fresh
+// resume, and its role; a standing without a token only blocks the loop.
 fn renew(w: &mut Workspace, root: &Path, resumed: Resumed, cx: &mut Context<Workspace>) {
     if matches!(resumed.standing, Standing::Ready | Standing::Offline) {
         let events = (resumed.events_url.clone())
             .map(|url| EventsConfig::new(url, resumed.auth.clone(), resumed.branch.clone()));
-        w.renew_team(root, resumed.auth.clone(), events, cx);
+        w.renew_team(
+            root,
+            resumed.auth.clone(),
+            resumed.identity.clone(),
+            events,
+            cx,
+        );
     }
     if resumed.standing == Standing::Ready {
         w.set_team_role(root, resumed.role, cx);
