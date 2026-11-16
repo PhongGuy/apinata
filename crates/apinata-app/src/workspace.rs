@@ -559,6 +559,8 @@ pub struct Workspace {
     team_resumes: HashSet<PathBuf>,
     // In-flight resumes a sign-in overtook; each resumes again once it lands.
     team_reruns: HashSet<PathBuf>,
+    // Loops of closed collections still pushing, so a reopen waits for them and a quit too.
+    team_closing: HashMap<PathBuf, Arc<TeamSync>>,
     session: Entity<Persisted<Session>>,
     collections: Vec<CollectionEntry>,
     tabs: Tabs,
@@ -666,6 +668,7 @@ impl Workspace {
             reveal_pending: None,
             team_resumes: HashSet::new(),
             team_reruns: HashSet::new(),
+            team_closing: HashMap::new(),
             session,
             collections: Vec::new(),
             tabs: Tabs::new(),
@@ -1022,6 +1025,7 @@ impl Workspace {
     /// open list; it stays in recents.
     pub fn close(&mut self, root: &Path, cx: &mut Context<Self>) {
         let root = absolute(root);
+        let team = self.entry_mut(&root).and_then(|e| e.team.take());
         self.collections.retain(|c| c.root != root);
         self.tabs.retain(|e| e.root != root);
         if self.tabs.chosen_root() == Some(root.as_path()) {
@@ -1049,7 +1053,32 @@ impl Workspace {
         self.forget_open(&root, cx);
         draft_store::return_root(&root, cx);
         self.release_reference(&root, cx);
+        if let Some(team) = team {
+            self.flush_closed(root, team.sync, cx);
+        }
         cx.notify();
+    }
+
+    // A closed collection's loop commits and pushes what it holds before it stops, as a
+    // window close does; a reopen in the meantime resumes only once the push is done.
+    fn flush_closed(&mut self, root: PathBuf, sync: Arc<TeamSync>, cx: &mut Context<Self>) {
+        self.team_closing.insert(root.clone(), Arc::clone(&sync));
+        let flushed = cx.background_spawn(async move { sync.flush(GIT_TIMEOUT) });
+        cx.spawn(async move |this, cx| {
+            flushed.await;
+            let _ = this.update(cx, |w, cx| {
+                w.team_closing.remove(&root);
+                if w.entry(&root).is_some_and(|e| e.opened && e.team.is_none()) {
+                    crate::team_mode::resume(w, &root, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Whether the closed collection at `root` still has its team loop pushing.
+    pub(crate) fn team_closing(&self, root: &Path) -> bool {
+        self.team_closing.contains_key(root)
     }
 
     // Drops the reference workspace once the last collection it listed is closed.
@@ -2716,15 +2745,16 @@ impl Workspace {
         }
     }
 
-    /// Whether any open collection runs a team sync loop.
+    /// Whether any open collection runs a team sync loop, or a closed one is still pushing.
     pub fn has_teams(&self) -> bool {
-        self.collections.iter().any(|c| c.team.is_some())
+        !self.team_closing.is_empty() || self.collections.iter().any(|c| c.team.is_some())
     }
 
     /// Every team collection's `TeamSync::flush(GIT_TIMEOUT)`, off the main thread.
     pub fn flush_teams(&self, cx: &mut Context<Self>) -> Task<()> {
-        let syncs: Vec<Arc<TeamSync>> = (self.collections.iter())
-            .filter_map(|c| Some(Arc::clone(&c.team.as_ref()?.sync)))
+        let open = (self.collections.iter()).filter_map(|c| Some(&c.team.as_ref()?.sync));
+        let syncs: Vec<Arc<TeamSync>> = (open.chain(self.team_closing.values()))
+            .map(Arc::clone)
             .collect();
         cx.background_spawn(async move {
             for sync in syncs {
