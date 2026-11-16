@@ -366,7 +366,8 @@ fn every_copies_folder_name_is_one_windows_accepts() {
         let dir = team_workspaces::copies_dir(conflicts, binding);
         let rel = dir.strip_prefix(conflicts).unwrap();
         let mut names: Vec<String> = (rel.iter()).map(|c| c.to_str().unwrap().into()).collect();
-        names.push(format!("{}.deleted", names.last().unwrap()));
+        let marks = apinata_core::team::ConflictCopies::new(dir.clone()).marks_dir();
+        names.push(marks.file_name().unwrap().to_str().unwrap().into());
         for name in &names {
             assert!(windows_safe(name), "{name:?} in {dir:?}");
         }
@@ -400,7 +401,7 @@ fn copies_kept_under_the_former_folder_names_are_moved_to_the_new_ones() {
         .join("api");
     std::fs::create_dir_all(old.join("f")).unwrap();
     std::fs::write(old.join("f/r.yml"), "theirs").unwrap();
-    let marks = conflicts.join("https_3A_2F_2Fteam.example.com./con/api.deleted");
+    let marks = apinata_core::team::ConflictCopies::new(old).marks_dir();
     std::fs::create_dir_all(&marks).unwrap();
     std::fs::write(marks.join("gone.yml"), "").unwrap();
 

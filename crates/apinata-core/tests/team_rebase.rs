@@ -176,6 +176,7 @@ fn a_local_delete_that_conflicted_is_remembered_beside_the_copies() {
     pull(&sb, &col, copies.dir()).unwrap();
     assert_eq!(copies.list().unwrap(), Vec::<String>::new());
     assert_eq!(copies.deleted().unwrap(), ["a.txt"]);
+    assert!(copies.marks_dir().join("a.txt").is_file());
     copies.forget_deleted("a.txt").unwrap();
     assert_eq!(copies.deleted().unwrap(), Vec::<String>::new());
     assert!(copies.forget_deleted("../a.txt").is_err());

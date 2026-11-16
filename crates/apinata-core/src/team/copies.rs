@@ -82,9 +82,15 @@ impl ConflictCopies {
         self.marks().rename(from, to)
     }
 
+    /// The folder beside this one where a pull remembers each conflicted local delete, so a
+    /// caller that moves the copies can move their marks with them.
+    pub fn marks_dir(&self) -> PathBuf {
+        deleted_marks(&self.dir)
+    }
+
     // The marks folder read with the same plain-path rules as the copies.
     fn marks(&self) -> ConflictCopies {
-        ConflictCopies::new(deleted_marks(&self.dir))
+        ConflictCopies::new(self.marks_dir())
     }
 
     // Climb from `path` toward the copy folder, removing folders until one still holds something.
