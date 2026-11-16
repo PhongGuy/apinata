@@ -66,6 +66,23 @@ impl Finding {
     }
 }
 
+/// What curl, through git, prints when the server is unreachable, drops the connection, or sits
+/// behind a proxy whose upstream is down. Each one clears on its own, so the loop retries it.
+const OFFLINE_SIGNS: &[&str] = &[
+    "Failed to connect to",
+    "Could not resolve host:",
+    "Connection reset by peer",
+    "Connection timed out",
+    "Operation timed out",
+    "Empty reply from server",
+    "transfer closed with outstanding read data",
+    "Send failure:",
+    "SSL_ERROR_SYSCALL",
+    "The requested URL returned error: 502",
+    "The requested URL returned error: 503",
+    "The requested URL returned error: 504",
+];
+
 /// The failure `err` stands for. Git's text is matched against what git prints for each HTTP
 /// refusal and for an unreachable host, before a push rejection's reason is read; every message
 /// kept has URL userinfo and tokens masked.
@@ -88,7 +105,7 @@ pub fn classify(err: &SyncError) -> SyncFailure {
     {
         return SyncFailure::NotFound;
     }
-    if stderr.contains("Failed to connect to") || stderr.contains("Could not resolve host:") {
+    if OFFLINE_SIGNS.iter().any(|sign| stderr.contains(sign)) {
         return SyncFailure::Offline { message: message() };
     }
     if let SyncError::Rejected { reason, stderr } = err {
