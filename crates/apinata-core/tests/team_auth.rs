@@ -56,6 +56,18 @@ fn unreachable_servers_read_as_offline() {
     for stderr in [
         "fatal: unable to access 'http://127.0.0.1:1/git/t/w.git/': Failed to connect to 127.0.0.1:1 after 0 ms: Could not connect to server",
         "fatal: unable to access 'http://nonexistent.invalid/git/t/w.git/': Could not resolve host: nonexistent.invalid",
+        "fatal: unable to access 'http://127.0.0.1:18080/git/t/w.git/': Recv failure: Connection reset by peer",
+        "error: RPC failed; curl 56 Recv failure: Connection reset by peer\nfatal: expected flush after ref listing",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': Failed to connect to team.example port 443 after 75003 ms: Couldn't connect to server",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': Connection timed out after 300000 milliseconds",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': Operation timed out after 300000 milliseconds with 0 bytes received",
+        "fatal: unable to access 'http://127.0.0.1:18080/git/t/w.git/': Empty reply from server",
+        "error: RPC failed; curl 18 transfer closed with outstanding read data remaining",
+        "error: RPC failed; curl 55 Send failure: Broken pipe",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to team.example:443",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': The requested URL returned error: 502",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': The requested URL returned error: 503",
+        "fatal: unable to access 'https://team.example/git/t/w.git/': The requested URL returned error: 504",
     ] {
         assert!(
             matches!(classify(&failed(stderr)), SyncFailure::Offline { .. }),
