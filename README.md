@@ -3,8 +3,8 @@
 Apinata is a native API client for HTTP, REST and GraphQL, written in Rust. It
 also streams server-sent events. It is local-first: your requests are plain
 YAML files on disk that live in git next to your code, with no account and no
-cloud sync. There is no Electron and no
-webview, so it starts fast and stays light. The same core drives a desktop app,
+cloud service. A team can share collections through a server it hosts itself.
+There is no Electron and no webview, so it starts fast and stays light. The same core drives a desktop app,
 a command-line runner and an MCP server for AI assistants. It is free and open
 source under MIT or Apache-2.0.
 
@@ -19,8 +19,9 @@ source under MIT or Apache-2.0.
   ![A collection open in the sidebar with a request and its response](assets/screenshots/collection.png)
 
 - **HTTP, GraphQL and server-sent events.** GraphQL requests fetch the schema
-  by introspection, check queries against it and run subscriptions over
-  WebSocket. Event-stream responses show each event as it arrives. WebSocket
+  by introspection, build queries from it in a builder panel, check queries
+  against it as you type and run subscriptions over WebSocket. From the command
+  line, `apinata graphql` fetches a schema and formats or checks a query. Event-stream responses show each event as it arrives. WebSocket
   and gRPC request files appear in the sidebar but cannot be opened or sent
   yet.
 
@@ -40,6 +41,13 @@ source under MIT or Apache-2.0.
   values stay in the system keychain, never in the collection files.
 
   ![The environments editor](assets/screenshots/environments.png)
+
+- **Team workspaces on your own server.** Join a self-hosted
+  [Potluck](https://github.com/PhongGuy/potluck) team server to share
+  collections as team workspaces. Saved changes sync in the background, the
+  status bar shows the sync state, and when two people change the same request
+  the app lets you compare both versions and keep one. Nothing leaves your
+  machine unless you join a server.
 
 - **Tests, scripts and a CLI runner.** Assertions and JavaScript scripts run
   in the app and from `apinata run`, with JSON, JUnit and HTML reports for CI.
@@ -152,7 +160,8 @@ To build without installing, run `cargo build --release`; the binaries land in
 Start `apinata-app`, or pass it a collection folder: `apinata-app ./my-api`.
 From its menu or command palette, choose Open collection for an existing one,
 New collection to start in an empty folder, Import collection to bring one in
-from another tool, or Clone repository to fetch one from git. Pick an
+from another tool, Clone repository to fetch one from git, or Join team server
+to open your team's workspaces. Pick an
 environment in the title bar, open a request in the sidebar and send it.
 
 To look around first, `make demo` builds the app from source and opens a
@@ -210,8 +219,10 @@ clients open as they are, with no import. Collections in the older text
 format [convert to YAML](GUIDE.md#legacy-bru-collections).
 
 Because the files live in git, the app and the CLI show what changed since the
-last commit (`apinata git status`, `apinata git diff`), and the app can clone a
-repository and switch its branches.
+last commit (`apinata git status`, `apinata git diff`). The CLI also commits,
+pulls and pushes (`apinata git commit`, `apinata git pull`, `apinata git
+push`), an AI assistant can commit through the MCP server, and the app can
+clone a repository and switch its branches.
 
 ### One core, three thin shells
 
