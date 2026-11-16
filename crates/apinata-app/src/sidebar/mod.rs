@@ -2294,6 +2294,10 @@ impl Sidebar {
             .tabs()
             .active()
             .and_then(|tab| Some((tab.id, tab.root.clone(), tab.item()?.clone())));
+        let active_item = follow
+            .as_ref()
+            .map(|(_, root, item)| (root.clone(), item.clone()));
+        let any_active = workspace.tabs().active().is_some();
         if follow.is_none() {
             self.followed = None;
         }
@@ -2409,8 +2413,26 @@ impl Sidebar {
                     .get(id)
                     .is_some_and(|n| n.root == root && n.path == path)
             });
+            let closed_draft = any_active
+                && path.is_draft()
+                && !drafts.iter().any(|d| d.root == root && d.path == path);
             match kept.or_else(|| self.find(&root, &path).map(|n| n.id.clone())) {
                 Some(id) => self.select(&id, cx),
+                // A closed draft's row never returns: the selection goes to the active tab's
+                // row, or clears when that tab has none, rather than to an unrelated neighbour.
+                // With no tab left the neighbour keeps the keyboard's place in the tree.
+                None if closed_draft => {
+                    let id = (active_item.as_ref())
+                        .and_then(|(r, item)| self.find(r, item))
+                        .map(|n| n.id.clone());
+                    self.tree.update(cx, |t, cx| {
+                        let ix = id.and_then(|id| t.index_of(&id));
+                        t.set_selected_index(ix, cx);
+                        if let Some(ix) = ix {
+                            t.scroll_to_item(ix, ScrollStrategy::Nearest);
+                        }
+                    });
+                }
                 // A row the filter hides, or whose snapshot is not loaded, comes back later;
                 // one that is gone hands the selection to its nearest surviving row, unless a
                 // multi-selection survives, which a single selection would clear.
@@ -3151,20 +3173,35 @@ impl Render for Sidebar {
                                     window,
                                     cx,
                                 );
+                                // The field takes the name's place, so the row keeps its
+                                // indent, chevron slot and icon or method tag.
+                                let lead = match n.kind {
+                                    NodeKind::Example => example_lead(n),
+                                    _ => item_lead(
+                                        n,
+                                        (n.kind == NodeKind::Request && entry.is_folder())
+                                            .then(|| examples_toggle(n, &view).into_any_element()),
+                                        &paints,
+                                    ),
+                                };
                                 return item.child(
-                                    v_flex()
-                                        .id(marker_id("rename", &id))
-                                        .test_support()
-                                        .child(field)
-                                        .when_some(error.clone(), |d, message| {
-                                            // An empty box after the field puts the anchor
-                                            // at the field's bottom edge.
-                                            d.child(div().child(ui::field_refusal(
-                                                "sidebar-rename-error",
-                                                message,
-                                                cx,
-                                            )))
-                                        }),
+                                    h_flex().w_full().gap(style::SPACE_1).child(lead).child(
+                                        v_flex()
+                                            .id(marker_id("rename", &id))
+                                            .test_support()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .child(field)
+                                            .when_some(error.clone(), |d, message| {
+                                                // An empty box after the field puts the anchor
+                                                // at the field's bottom edge.
+                                                d.child(div().child(ui::field_refusal(
+                                                    "sidebar-rename-error",
+                                                    message,
+                                                    cx,
+                                                )))
+                                            }),
+                                    ),
                                 );
                             }
                             let zone = hover.as_ref().filter(|(h, _)| *h == id).map(|(_, z)| *z);
@@ -4044,6 +4081,14 @@ fn example_row(n: &Node) -> gpui_kit::Div {
     h_flex()
         .gap(style::SPACE_1)
         .min_w_0()
+        .child(example_lead(n))
+        .child(div().truncate().child(n.name.clone()))
+}
+
+/// An example row's blank chevron slot and its icon, which stand before its name.
+fn example_lead(n: &Node) -> gpui_kit::Div {
+    h_flex()
+        .gap(style::SPACE_1)
         .child(div().w(style::SPACE_4).flex_none())
         .child(
             marker("icon", n)
@@ -4052,7 +4097,6 @@ fn example_row(n: &Node) -> gpui_kit::Div {
                 .justify_end()
                 .child(Icon::new(IconName::Bookmark).small()),
         )
-        .child(div().truncate().child(n.name.clone()))
 }
 
 /// The expand chevron of a collection or folder row, centred in the leading slot.
@@ -4086,8 +4130,35 @@ fn item_row(
     paints: &ui::TagPaints,
     muted: Hsla,
 ) -> gpui_kit::Div {
+    h_flex()
+        .gap(style::SPACE_1)
+        .min_w_0()
+        .child(item_lead(n, toggle, paints))
+        .child(
+            marker("name", n)
+                .flex_shrink(1.)
+                .min_w_0()
+                .child(div().truncate().child(n.name.clone())),
+        )
+        // The file name tells apart two sibling requests that share a name.
+        .children(n.hint.clone().map(|hint| {
+            marker("file", n)
+                .flex_none()
+                .text_xs()
+                .text_color(muted)
+                .child(hint)
+        }))
+}
+
+/// What stands before a folder or request row's name: the chevron slot, then the folder icon
+/// or the method tag. A rename field takes the name's place after it.
+fn item_lead(
+    n: &Node,
+    toggle: Option<gpui_kit::AnyElement>,
+    paints: &ui::TagPaints,
+) -> gpui_kit::Div {
     let slot = || div().w(style::SPACE_4).flex_none().flex().justify_center();
-    let lead = if n.kind == NodeKind::Folder {
+    if n.kind == NodeKind::Folder {
         h_flex()
             .gap(style::SPACE_1)
             .child(chevron_slot(n))
@@ -4111,25 +4182,7 @@ fn item_row(
             .gap(style::SPACE_1)
             .child(slot().children(toggle))
             .child(method)
-    };
-    h_flex()
-        .gap(style::SPACE_1)
-        .min_w_0()
-        .child(lead)
-        .child(
-            marker("name", n)
-                .flex_shrink(1.)
-                .min_w_0()
-                .child(div().truncate().child(n.name.clone())),
-        )
-        // The file name tells apart two sibling requests that share a name.
-        .children(n.hint.clone().map(|hint| {
-            marker("file", n)
-                .flex_none()
-                .text_xs()
-                .text_color(muted)
-                .child(hint)
-        }))
+    }
 }
 
 /// A row's content: `lead` on the left and `row_suffix` for `n` at the right edge.
