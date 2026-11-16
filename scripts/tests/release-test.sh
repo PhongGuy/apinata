@@ -315,11 +315,16 @@ test_release_notes_explain_each_install_warning() {
   for bullet in '- **Windows:**' '- **macOS:**' '- **Linux AppImage:**' '- **Linux .deb:**'; do
     grep -qF -- "$bullet" <<<"$before" || fail "no bullet $bullet"
   done
-  grep -F -- '- **Windows:**' <<<"$before" | grep -q 'More info.*Run anyway' || fail "Windows steps"
-  grep -F -- '- **macOS:**' <<<"$before" | grep -q 'Privacy & Security.*Open Anyway' || fail "macOS steps"
-  grep -F -- '- **macOS:**' <<<"$before" | grep -qF 'xattr' || fail "macOS terminal alternative"
-  grep -F -- '- **Linux AppImage:**' <<<"$before" | grep -q 'Properties.*chmod +x' || fail "AppImage steps"
-  grep -F -- '- **Linux .deb:**' <<<"$before" | grep -q 'software installer.*Install' || fail ".deb steps"
+  local line
+  line=$(grep -F -- '- **Windows:**' <<<"$before")
+  [[ $line == *'not code-signed'*SmartScreen*'More info'*'Run anyway'* ]] || fail "Windows steps"
+  line=$(grep -F -- '- **macOS:**' <<<"$before")
+  [[ $line == *'Privacy & Security'*'Open Anyway'* ]] || fail "macOS steps"
+  [[ $line == *xattr* ]] || fail "macOS terminal alternative"
+  line=$(grep -F -- '- **Linux AppImage:**' <<<"$before")
+  [[ $line == *Properties*'chmod +x'* ]] || fail "AppImage steps"
+  line=$(grep -F -- '- **Linux .deb:**' <<<"$before")
+  [[ $line == *'software installer'*Install* ]] || fail ".deb steps"
 }
 
 test_release_notes_say_per_package_how_it_updates() {
@@ -327,10 +332,14 @@ test_release_notes_say_per_package_how_it_updates() {
   notes=$(render_notes) || { fail "release_notes failed"; return 0; }
   updates=$(notes_section "$notes" Updates)
   local releases='[Releases page](https://github.com/o/r/releases)'
-  grep -F -- '- **Linux .deb:**' <<<"$updates" | grep -qF "does not update itself" || fail ".deb update line"
-  grep -F -- '- **Linux .deb:**' <<<"$updates" | grep -qF "$releases" || fail ".deb Releases link"
-  grep -F -- '- **Desktop app' <<<"$updates" | grep -q 'AppImage' || fail "app update line"
-  grep -F -- '- **Command line:**' <<<"$updates" | grep -qF 'apinata self-update' || fail "CLI update line"
+  local line
+  line=$(grep -F -- '- **Linux .deb:**' <<<"$updates")
+  [[ $line == *'does not update itself'* ]] || fail ".deb update line"
+  [[ $line == *"$releases"* ]] || fail ".deb Releases link"
+  line=$(grep -F -- '- **Desktop app' <<<"$updates")
+  [[ $line == *AppImage* ]] || fail "app update line"
+  line=$(grep -F -- '- **Command line:**' <<<"$updates")
+  [[ $line == *'apinata self-update'* ]] || fail "CLI update line"
   grep -q 'keychain' <<<"$updates" || fail "keychain note"
 }
 

@@ -338,12 +338,12 @@ The AppImage is for most Linux systems and the .deb for Ubuntu and Debian. Each 
 
 ## Before you install
 
-Apinata is free and its builds are not signed with a paid certificate, so your system may warn the first time you open it. Only follow these steps for files from this page.
+Apinata is free and its builds are not code-signed or notarised, so your system may warn the first time you open it. Only follow these steps for files from this page.
 
 NOTES
     cat <<'NOTES'
-- **Windows:** Windows may show a blue box saying "Windows protected your PC". Click "More info", then "Run anyway". If Windows blocks `apinata.exe` from the command line zip, right-click the zip before you unpack it, choose Properties, tick "Unblock" and click OK.
-- **macOS:** open the .dmg and drag Apinata into Applications. The first time you open it, macOS says it cannot check Apinata for malicious software; click Done. Open System Settings, choose Privacy & Security, scroll down to Security and click "Open Anyway" next to the message about Apinata, then click "Open Anyway" again and enter your password. From then on it opens normally. In a terminal, `xattr -dr com.apple.quarantine /Applications/Apinata.app` does the same, and `xattr -d com.apple.quarantine apinata` does it for the command line.
+- **Windows:** the installer and the zip are not code-signed, so Windows SmartScreen may show a blue box saying "Windows protected your PC". Click "More info", then "Run anyway". If Windows blocks `apinata.exe` from the command line zip, right-click the zip before you unpack it, choose Properties, tick "Unblock" and click OK.
+- **macOS:** the app is not notarised, so Gatekeeper stops the first open. Open the .dmg and drag Apinata into Applications. The first time you open it, macOS says it cannot check Apinata for malicious software; click Done. Open System Settings, choose Privacy & Security, scroll down to Security and click "Open Anyway" next to the message about Apinata, then click "Open Anyway" again and enter your password. From then on it opens normally. In a terminal, `xattr -dr com.apple.quarantine /Applications/Apinata.app` does the same, and `xattr -d com.apple.quarantine apinata` does it for the command line.
 - **Linux AppImage:** after downloading, right-click the file, open Properties, allow it to run as a program, then double-click it. In a terminal, `chmod +x` on the file does the same.
 - **Linux .deb:** open it with your software installer and click Install.
 
