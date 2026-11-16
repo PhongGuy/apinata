@@ -1,8 +1,9 @@
 //! What the team dialogs say for each failure.
 
 use apinata_app::team_text::{
-    SyncKind, error_text, finding_line, problem_lines, problem_toast, read_only_toast,
-    server_warning, sign_in_error_text, sync_status,
+    SyncKind, clone_stopped_text, error_text, finding_line, folder_exists_text, problem_lines,
+    problem_toast, read_only_toast, server_warning, sign_in_error_text, sync_status,
+    unopenable_text,
 };
 use apinata_core::team::{Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus};
 
@@ -35,6 +36,7 @@ fn all() -> Vec<TeamError> {
         TeamError::Protocol("x".into()),
         TeamError::Secrets("locked".into()),
         TeamError::Store("disk full".into()),
+        TeamError::Client("no TLS backend".into()),
     ]
 }
 
@@ -82,6 +84,32 @@ fn rate_limits_say_when_to_retry_and_field_errors_name_the_field() {
             message: String::new()
         }),
         "The server answered with an error (HTTP 500)."
+    );
+}
+
+#[test]
+fn a_client_that_cannot_start_is_not_blamed_on_the_connection() {
+    let text = error_text(&TeamError::Client("no TLS backend".into()));
+    assert_ne!(text, error_text(&TeamError::Offline("x".into())));
+    assert_eq!(
+        text,
+        "Apinata could not start its connection to servers: no TLS backend"
+    );
+}
+
+#[test]
+fn the_workspace_list_texts_name_the_workspace_and_the_folder() {
+    assert_eq!(
+        unopenable_text("the slug is not a folder name"),
+        "This workspace cannot be opened: the slug is not a folder name."
+    );
+    assert_eq!(
+        folder_exists_text("api", std::path::Path::new("/w")),
+        "A folder named api already exists in /w."
+    );
+    assert_eq!(
+        clone_stopped_text(),
+        "The clone stopped unexpectedly. Try again."
     );
 }
 

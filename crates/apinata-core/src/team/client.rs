@@ -81,7 +81,7 @@ impl HttpTeamClient {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| TeamError::Offline(e.to_string()))?;
+            .map_err(build_failed)?;
         Ok(HttpTeamClient { server, http })
     }
 
@@ -133,7 +133,9 @@ impl HttpTeamClient {
             .headers()
             .get(RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.trim().parse().ok());
+            .and_then(crate::retry::pause_from)
+            // A part second counts as a whole one, so the wait is never cut short.
+            .map(|pause| pause.as_secs() + u64::from(pause.subsec_nanos() > 0));
         // An unreadable or oversized error body still reports the status.
         let body = read_capped(response).await.unwrap_or_default();
         Err(TeamError::from_response(
@@ -157,6 +159,11 @@ fn with_json(request: RequestBuilder, body: &serde_json::Value) -> RequestBuilde
 
 fn parse<T: DeserializeOwned>(body: &[u8]) -> Result<T, TeamError> {
     serde_json::from_slice(body).map_err(|e| TeamError::Protocol(redact_token(&e.to_string())))
+}
+
+/// A client that cannot be built is a local fault, not an unreachable server.
+fn build_failed(e: reqwest::Error) -> TeamError {
+    TeamError::Client(e.to_string())
 }
 
 /// A send or body error: a timeout is `Timeout`, anything else means the server is unreachable.
@@ -272,5 +279,20 @@ impl TeamApi for HttpTeamClient {
             let request = self.request(Method::DELETE, &["tokens", token_id], Some(token))?;
             Self::send(request).await.map(drop)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TeamError, build_failed};
+
+    #[test]
+    fn a_client_that_cannot_be_built_is_not_reported_as_offline() {
+        let e = reqwest::Client::builder()
+            .tls_backend_preconfigured(0u8)
+            .build()
+            .map_err(build_failed)
+            .unwrap_err();
+        assert!(matches!(e, TeamError::Client(_)), "{e:?}");
     }
 }

@@ -3,21 +3,33 @@
 
 use std::path::Path;
 
-use super::{Account, Me, TeamApi, TeamError, TeamStore, TeamToken, token_key};
+use super::{Account, Me, ServerUrl, TeamApi, TeamError, TeamStore, TeamToken, token_key};
 use crate::{CancelFlag, SecretError, SecretStore};
 
 pub(super) fn secrets_error(e: SecretError) -> TeamError {
     TeamError::Secrets(e.to_string())
 }
 
-/// The token kept for `account`. A value that is not a token reads as none.
-pub(super) fn kept_token(
+/// The token kept for `username` on `server`. A value that is not a token reads as none; a
+/// keychain failure is `Secrets`.
+pub fn kept_token(
+    server: &ServerUrl,
+    secrets: &dyn SecretStore,
+    username: &str,
+) -> Result<Option<TeamToken>, TeamError> {
+    let text = secrets
+        .get(&token_key(server, username))
+        .map_err(secrets_error)?;
+    Ok(text.and_then(|t| TeamToken::parse(&t).ok()))
+}
+
+/// The token kept for `account` on the server `api` talks to.
+pub(super) fn account_token(
     api: &dyn TeamApi,
     secrets: &dyn SecretStore,
     account: &Account,
-) -> Result<Option<TeamToken>, SecretError> {
-    let text = secrets.get(&token_key(api.server(), &account.username))?;
-    Ok(text.and_then(|t| TeamToken::parse(&t).ok()))
+) -> Result<Option<TeamToken>, TeamError> {
+    kept_token(api.server(), secrets, &account.username)
 }
 
 /// Signs `username` in with a password and keeps the session, replacing any earlier account
@@ -50,7 +62,7 @@ pub async fn sign_in(
     // A keychain error here only means the old token cannot be revoked; sign-in goes on.
     let previous_token = previous
         .as_ref()
-        .and_then(|a| kept_token(api, secrets, a).ok().flatten());
+        .and_then(|a| account_token(api, secrets, a).ok().flatten());
 
     let account = Account::new(
         server,
@@ -105,7 +117,7 @@ pub async fn sign_out(
     let Some(account) = TeamStore::load(team_file)?.account(api.server()).cloned() else {
         return Ok(());
     };
-    if let Some(token) = kept_token(api, secrets, &account).map_err(secrets_error)? {
+    if let Some(token) = account_token(api, secrets, &account)? {
         match api.revoke(&token, &account.token_id).await {
             Ok(()) | Err(TeamError::Unauthenticated | TeamError::NotFound(_)) => {}
             Err(e) => return Err(e),
@@ -128,7 +140,7 @@ pub async fn current(
     let Some(account) = TeamStore::load(team_file)?.account(api.server()).cloned() else {
         return Err(TeamError::Unauthenticated);
     };
-    let Some(token) = kept_token(api, secrets, &account).map_err(secrets_error)? else {
+    let Some(token) = account_token(api, secrets, &account)? else {
         return Err(TeamError::Unauthenticated);
     };
     let me = match api.me(&token).await {
@@ -137,7 +149,7 @@ pub async fn current(
             let same_session = (TeamStore::load(team_file).ok())
                 .and_then(|t| t.account(api.server()).cloned())
                 .is_some_and(|a| a.username == account.username && a.token_id == account.token_id);
-            let same_token = (kept_token(api, secrets, &account).ok().flatten())
+            let same_token = (account_token(api, secrets, &account).ok().flatten())
                 .is_some_and(|kept| kept.expose() == token.expose());
             if same_session && same_token {
                 let _ = secrets.delete(&token_key(api.server(), &account.username));

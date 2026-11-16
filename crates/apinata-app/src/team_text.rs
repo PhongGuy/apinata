@@ -1,6 +1,8 @@
 //! What the team dialogs say when a server call fails, when an address is unsafe, and what
 //! stands in the way of a team collection's sync.
 
+use std::path::Path;
+
 use apinata_core::team::{Block, Finding, ServerUrl, TeamError, TeamState, TeamStatus};
 
 /// The user text for `e` anywhere outside sign-in.
@@ -35,6 +37,9 @@ pub fn error_text(e: &TeamError) -> String {
         TeamError::Offline(_) => {
             "Could not reach the server. Check the address and your connection.".into()
         }
+        TeamError::Client(message) => {
+            format!("Apinata could not start its connection to servers: {message}")
+        }
         TeamError::Timeout => "The server took too long to answer.".into(),
         TeamError::Protocol(_) => {
             "The server's answer was not understood. Is this a Potluck server?".into()
@@ -53,6 +58,24 @@ pub fn sign_in_error_text(e: &TeamError) -> String {
         TeamError::Unauthenticated => "Sign-in failed. Check the username and password.".into(),
         other => error_text(other),
     }
+}
+
+/// Why a listed workspace cannot become a folder, given the check's `reason`.
+pub fn unopenable_text(reason: &str) -> String {
+    format!("This workspace cannot be opened: {reason}.")
+}
+
+/// A clone refused because `parent` already holds a folder called `name`.
+pub fn folder_exists_text(name: &str, parent: &Path) -> String {
+    format!(
+        "A folder named {name} already exists in {}.",
+        parent.display()
+    )
+}
+
+/// A clone whose job ended without saying how.
+pub fn clone_stopped_text() -> String {
+    "The clone stopped unexpectedly. Try again.".to_owned()
 }
 
 /// A warning when `server` would carry the password and token over plain http to another machine.

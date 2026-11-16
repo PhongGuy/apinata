@@ -128,7 +128,7 @@ fn retry_after(response: &Response) -> Option<Duration> {
 }
 
 /// A `Retry-After` value as a pause.
-fn pause_from(value: &str) -> Option<Duration> {
+pub(crate) fn pause_from(value: &str) -> Option<Duration> {
     let value = value.trim();
     if let Ok(secs) = value.parse::<u64>() {
         return Some(Duration::from_secs(secs));

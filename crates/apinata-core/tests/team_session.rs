@@ -500,6 +500,51 @@ async fn a_session_refreshes_the_admin_flag_from_the_server() {
 }
 
 #[test]
+fn refreshing_an_account_keeps_its_place_in_the_file() {
+    let dir = TempDir::new().unwrap();
+    let (b, a) = (
+        ServerUrl::parse("http://127.0.0.2:9").unwrap(),
+        ServerUrl::parse("http://127.0.0.1:9").unwrap(),
+    );
+    TeamStore::update(&file(&dir), |t| {
+        t.put_account(Account::new(&b, "ada", "Ada", "1", false));
+        t.put_account(Account::new(&a, "ada", "Ada", "2", false));
+        t.put_account(Account::new(&b, "ada", "Ada Lovelace", "1", true));
+    })
+    .unwrap();
+    let store = TeamStore::load(&file(&dir)).unwrap();
+    let order: Vec<_> = (store.accounts().iter())
+        .map(|x| x.server.clone())
+        .collect();
+    assert_eq!(order, [b.as_str(), a.as_str()]);
+    assert!(store.accounts()[0].server_admin);
+}
+
+#[test]
+fn the_kept_token_is_read_back_and_anything_else_reads_as_none() {
+    let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();
+    let secrets = MemoryStore::new();
+    assert!(
+        team::kept_token(&server, &secrets, "ada")
+            .unwrap()
+            .is_none()
+    );
+    secrets
+        .set(&token_key(&server, "ada"), "not a token")
+        .unwrap();
+    assert!(
+        team::kept_token(&server, &secrets, "ada")
+            .unwrap()
+            .is_none()
+    );
+    secrets.set(&token_key(&server, "ada"), &tok()).unwrap();
+    let kept = team::kept_token(&server, &secrets, "ada").unwrap().unwrap();
+    assert_eq!(kept.expose(), tok());
+    let locked = team::kept_token(&server, &BrokenStore, "ada").unwrap_err();
+    assert!(matches!(locked, TeamError::Secrets(_)), "{locked:?}");
+}
+
+#[test]
 fn bindings_are_keyed_by_root_and_found_by_workspace() {
     let dir = TempDir::new().unwrap();
     let server = ServerUrl::parse("http://127.0.0.1:9").unwrap();

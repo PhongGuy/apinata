@@ -303,6 +303,38 @@ fn two_servers_with_the_same_workspace_keep_their_conflict_copies_apart(cx: &mut
     assert_eq!(ConflictCopies::new(second).read("a.txt").unwrap(), b"two");
 }
 
+#[gpui_kit::test]
+fn the_sections_keep_the_team_file_order_across_a_session_refresh(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let (one, two) = (potluck_server(cx), potluck_server(cx));
+    for server in [&one, &two] {
+        answer_me(cx, server, me(false, vec![]));
+    }
+    // Signed in to the later address first, so file order and address order differ.
+    let (first, second) = if one.uri() > two.uri() {
+        (&one, &two)
+    } else {
+        (&two, &one)
+    };
+    let (_col, s, _secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, first, false);
+        signed_in(paths, secrets, second, false);
+    });
+    let expected = [first.uri(), second.uri()];
+    let order = |cx: &mut TestAppContext, view: &Entity<WorkspacesView>| {
+        view.read_with(cx, |v, _| {
+            (v.sections().iter())
+                .map(|s| s.server().to_owned())
+                .collect::<Vec<_>>()
+        })
+    };
+    let view = open_list(cx, &s);
+    assert_eq!(order(cx, &view), expected);
+    settle(cx, &view);
+    let view = open_list(cx, &s);
+    assert_eq!(order(cx, &view), expected);
+}
+
 #[test]
 fn the_copies_folder_differs_by_server_team_and_workspace() {
     let conflicts = Path::new("/c");

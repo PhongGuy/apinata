@@ -147,10 +147,16 @@ impl TeamStore {
         self.accounts.iter().find(|a| a.server == server.as_str())
     }
 
-    /// Adds `account`, replacing the one for the same server.
+    /// Adds `account` at the end, or replaces the one for the same server in its place.
     pub fn put_account(&mut self, account: Account) {
-        self.accounts.retain(|a| a.server != account.server);
-        self.accounts.push(account);
+        match self
+            .accounts
+            .iter_mut()
+            .find(|a| a.server == account.server)
+        {
+            Some(kept) => *kept = account,
+            None => self.accounts.push(account),
+        }
     }
 
     /// Forgets the account on `server`.

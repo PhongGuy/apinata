@@ -211,6 +211,25 @@ async fn a_rate_limit_carries_retry_after_and_a_bare_error_keeps_its_status() {
 }
 
 #[tokio::test]
+async fn a_rate_limit_reads_retry_after_given_as_an_http_date() {
+    let s = MockServer::start().await;
+    let at = chrono::Utc::now() + chrono::Duration::seconds(120);
+    let date = at.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+    let limited = ResponseTemplate::new(429)
+        .insert_header("retry-after", date.as_str())
+        .set_body_json(error("rate_limited", "Slow down.", None));
+    answer(&s, "POST", "/api/v1/session", limited).await;
+    let e = client(&s).sign_in("ada", "x").await.unwrap_err();
+    let TeamError::RateLimited {
+        retry_after_secs: Some(secs),
+    } = e
+    else {
+        panic!("{e:?}");
+    };
+    assert!((100..=120).contains(&secs), "{secs}");
+}
+
+#[tokio::test]
 async fn a_redirect_is_not_followed_so_the_token_stays_on_this_server() {
     let s = MockServer::start().await;
     let other = MockServer::start().await;
