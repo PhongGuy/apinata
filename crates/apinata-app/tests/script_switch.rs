@@ -66,6 +66,10 @@ fn a_dot_marks_each_side_with_a_script(cx: &mut TestAppContext) {
         !present(cx, win, ("script-dot", 1usize)),
         "whitespace is no script"
     );
+    let muted = cx.update(|cx| gpui_kit::component::ActiveTheme::theme(cx).muted_foreground);
+    let (fills, edges) = mark_paint(cx, win, ("script-dot", 0usize));
+    assert_eq!(fills, vec![muted], "the section tabs' muted dot");
+    assert!(edges.is_empty(), "{edges:?}");
 }
 
 #[gpui_kit::test]

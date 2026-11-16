@@ -118,7 +118,7 @@ fn a_tests_script_marks_the_tests_tab(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn each_mode_ring_says_what_it_marks(cx: &mut TestAppContext) {
+fn each_content_dot_says_what_it_marks(cx: &mut TestAppContext) {
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", A)]);
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
@@ -133,8 +133,8 @@ fn each_mode_ring_says_what_it_marks(cx: &mut TestAppContext) {
     assert_eq!(label.as_deref(), Some("Has a body"));
 }
 
-/// The Auth tab's ring words for `rel` in `col`, or `None` when the tab shows no ring.
-fn auth_ring(cx: &mut TestAppContext, col: &tempfile::TempDir, rel: &str) -> Option<String> {
+/// The Auth tab's dot words for `rel` in `col`, or `None` when the tab shows no dot.
+fn auth_dot(cx: &mut TestAppContext, col: &tempfile::TempDir, rel: &str) -> Option<String> {
     let (_state, ws, root) = open_dir(cx, col);
     let (win, ed) = editor_for(cx, &ws, &root, rel, false);
     let marked = ed.read_with(cx, |e, cx| e.section_marked(Section::Auth, cx));
@@ -145,7 +145,7 @@ fn auth_ring(cx: &mut TestAppContext, col: &tempfile::TempDir, rel: &str) -> Opt
                 .and_then(|e| e.label().map(str::to_owned))
         })
         .unwrap();
-    assert_eq!(marked, words.is_some(), "the ring follows section_marked");
+    assert_eq!(marked, words.is_some(), "the dot follows section_marked");
     words
 }
 
@@ -153,11 +153,11 @@ fn auth_ring(cx: &mut TestAppContext, col: &tempfile::TempDir, rel: &str) -> Opt
 fn inheriting_no_auth_leaves_the_auth_tab_plain(cx: &mut TestAppContext) {
     let text = format!("{}  auth: inherit\n", request("a", "http://x/a"));
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &text)]);
-    assert_eq!(auth_ring(cx, &col, "a.yml"), None);
+    assert_eq!(auth_dot(cx, &col, "a.yml"), None);
 }
 
 #[gpui_kit::test]
-fn the_auth_ring_names_the_auth_that_applies(cx: &mut TestAppContext) {
+fn the_auth_dot_names_the_auth_that_applies(cx: &mut TestAppContext) {
     let root = format!("{ROOT}request:\n  auth:\n    type: bearer\n    token: t\n");
     let users = format!(
         "{}request:\n  auth:\n    type: basic\n    username: u\n    password: p\n",
@@ -176,22 +176,22 @@ fn the_auth_ring_names_the_auth_that_applies(cx: &mut TestAppContext) {
         ("own.yml", &own),
     ]);
     assert_eq!(
-        auth_ring(cx, &col, "top.yml").as_deref(),
+        auth_dot(cx, &col, "top.yml").as_deref(),
         Some("Uses Bearer Token from the collection")
     );
     assert_eq!(
-        auth_ring(cx, &col, "u/list.yml").as_deref(),
+        auth_dot(cx, &col, "u/list.yml").as_deref(),
         Some("Uses Basic Auth from folder \"users\"")
     );
     assert_eq!(
-        auth_ring(cx, &col, "own.yml").as_deref(),
+        auth_dot(cx, &col, "own.yml").as_deref(),
         Some("Uses API Key")
     );
 }
 
-// The ring is too small to aim at, so hovering anywhere on a marked tab says what it marks.
+// The dot is too small to aim at, so hovering anywhere on a marked tab says what it marks.
 #[gpui_kit::test]
-fn hovering_a_marked_tab_says_what_its_ring_means(cx: &mut TestAppContext) {
+fn hovering_a_marked_tab_says_what_its_dot_means(cx: &mut TestAppContext) {
     let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", A)]);
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
@@ -218,6 +218,30 @@ fn hovering_a_marked_tab_says_what_its_ring_means(cx: &mut TestAppContext) {
     assert_eq!(
         tip(cx, Section::Params as usize),
         None,
-        "a counted tab has no ring to explain"
+        "a counted tab has no dot to explain"
     );
+}
+
+// Every "has content" mark is the one muted dot the script switch also draws: filled, no ring.
+#[gpui_kit::test]
+fn every_content_mark_is_a_filled_dot(cx: &mut TestAppContext) {
+    let runtime = "runtime:\n  scripts:\n    - type: before-request\n      code: \"a()\"\n    - type: tests\n      code: \"t()\"\n";
+    let text = format!(
+        "{}  auth:\n    type: bearer\n    token: t\n  body:\n    type: json\n    data: \"{{}}\"\n{runtime}",
+        request("a", "http://x/")
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &text)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    let muted = cx.update(|cx| gpui_kit::component::ActiveTheme::theme(cx).muted_foreground);
+    for s in [
+        Section::Body,
+        Section::Auth,
+        Section::Script,
+        Section::Tests,
+    ] {
+        let (fills, edges) = mark_paint(cx, win, ("section-mode", s as usize));
+        assert_eq!(fills, vec![muted], "{s:?} is a muted dot");
+        assert!(edges.is_empty(), "{s:?} draws no ring: {edges:?}");
+    }
 }
