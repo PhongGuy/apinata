@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{BodySpec, QuerySyntaxError, VariableSet, check_query, format_query};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent, ShowDocumentHandler};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -503,14 +503,14 @@ impl GraphqlSection {
             ),
             _ => None,
         };
-        // Ghost toggles like the app's other toolbar toggles, so the open pane's fill stands out,
-        // and announced as pressed while their pane is open.
+        // Outlined, so a closed pane's toggle still reads as a button beside the schema
+        // buttons; the open pane's toggle adds the selected fill and is announced as pressed.
         let toggle = |id: &'static str, label: &'static str, panel: SidePanel| {
             Button::new(id)
-                .ghost()
+                .outline()
                 .label(label)
                 .toggled(self.side == panel)
-                .choose(self.side == panel, SelectedStyle::Ghost, cx)
+                .choose(self.side == panel, SelectedStyle::Plain, cx)
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_side(panel, cx)))
         };
         let builder = toggle("graphql-builder-toggle", "Builder", SidePanel::Builder);

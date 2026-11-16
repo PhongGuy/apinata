@@ -23,8 +23,12 @@ use crate::style::{self, FORM_INPUT_WIDTH, SPACE_1, SPACE_2};
 use crate::tag_input::{TagField, TagsChanged};
 use crate::ui;
 
-/// Why a typed custom timeout was refused: the limit is lifted by Never time out, never by 0.
-pub const TIMEOUT_ZERO_NOTE: &str = "Enter a number above 0, or choose Never time out.";
+/// Why a typed custom timeout was refused: the limit is lifted by No limit, never by 0.
+pub const TIMEOUT_ZERO_NOTE: &str = "Enter a number above 0, or choose No limit.";
+
+/// Why a typed custom timeout was refused for not being seconds to the millisecond.
+pub const SECONDS_NOTE: &str =
+    "Enter seconds, such as 2 or 2.5, to at most three decimals; the last valid number is kept.";
 
 /// Why a typed number was refused for not being digits.
 pub const DIGITS_NOTE: &str = "Only digits are allowed; the last valid number is kept.";
@@ -65,9 +69,9 @@ impl TimeoutMode {
     /// Preferences timeout, in the whole seconds Preferences takes.
     pub fn label(self, default: Option<Duration>) -> SharedString {
         match (self, default) {
-            (TimeoutMode::Inherit, None) => "Default (no limit)".into(),
+            (TimeoutMode::Inherit, None) => "Default (No limit)".into(),
             (TimeoutMode::Inherit, Some(d)) => format!("Default ({} s)", d.as_secs()).into(),
-            (TimeoutMode::Unlimited, _) => "Never time out".into(),
+            (TimeoutMode::Unlimited, _) => "No limit".into(),
             (TimeoutMode::Custom, _) => "Custom".into(),
         }
     }
@@ -77,7 +81,7 @@ impl TimeoutMode {
         match self {
             TimeoutMode::Inherit => "Uses the request timeout set in Preferences.",
             TimeoutMode::Unlimited => "Ignores the request timeout set in Preferences.",
-            TimeoutMode::Custom => "In milliseconds; Preferences sets its timeout in seconds.",
+            TimeoutMode::Custom => "Replaces the request timeout set in Preferences.",
         }
     }
 
@@ -110,8 +114,8 @@ impl TimeoutMode {
 /// Bruno's settings pane: three toggles, max redirects and the timeout.
 ///
 /// Each change sends the last sent or loaded settings with one field changed, so changes
-/// compose before their echo arrives. Number inputs take digits only; an empty Max redirects
-/// means 0, while a custom timeout must be above 0.
+/// compose before their echo arrives. Max redirects takes digits, empty meaning 0; a custom
+/// timeout takes seconds to the millisecond, stored as milliseconds, and must be above 0.
 pub struct SettingsSection {
     // The settings last sent or loaded; the base each change builds on.
     base: RequestSettings,
@@ -143,6 +147,37 @@ fn digits<T: std::str::FromStr + Default>(text: &str) -> Option<T> {
         return None;
     }
     text.parse().ok()
+}
+
+// The custom field shows seconds, as Preferences does, while the file keeps milliseconds: a
+// whole number with up to three decimals; empty is 0, anything else is refused.
+fn seconds_to_millis(text: &str) -> Option<u64> {
+    let (whole, frac) = text.split_once('.').unwrap_or((text, ""));
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    if !digits(whole)
+        || !digits(frac)
+        || frac.len() > 3
+        || (text.contains('.') && whole.is_empty() && frac.is_empty())
+    {
+        return None;
+    }
+    let whole: u64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let frac: u64 = format!("{frac:0<3}").parse().ok()?;
+    whole.checked_mul(1000)?.checked_add(frac)
+}
+
+/// `ms` as the seconds the custom timeout field shows: 2500 is "2.5", 30000 is "30".
+pub fn millis_to_seconds(ms: u64) -> String {
+    let (whole, frac) = (ms / 1000, ms % 1000);
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac = format!("{frac:03}");
+    format!("{whole}.{}", frac.trim_end_matches('0'))
 }
 
 impl SettingsSection {
@@ -179,7 +214,7 @@ impl SettingsSection {
                     return;
                 }
                 let text = state.read(cx).value().to_string();
-                let millis = digits::<u64>(&text);
+                let millis = seconds_to_millis(&text);
                 if millis == Some(0) {
                     this.invalid = Some((NumberField::Timeout, TIMEOUT_ZERO_NOTE));
                     cx.notify();
@@ -191,6 +226,9 @@ impl SettingsSection {
                 }
                 let timeout = millis.map(Timeout::Millis);
                 this.number(NumberField::Timeout, timeout, |s, t| s.timeout = t, cx);
+                if timeout.is_none() {
+                    this.invalid = Some((NumberField::Timeout, SECONDS_NOTE));
+                }
             }),
             cx.subscribe_in(
                 &timeout_select,
@@ -291,6 +329,11 @@ impl SettingsSection {
         &self.tags
     }
 
+    /// The refusal shown under a number field, if any.
+    pub fn refusal_shown(&self) -> Option<&'static str> {
+        self.invalid.map(|(_, note)| note)
+    }
+
     /// The text the timeout select shows.
     pub fn timeout_shown(&self, cx: &App) -> Option<SharedString> {
         self.timeout_select.read(cx).selected_value().cloned()
@@ -338,7 +381,7 @@ impl SettingsSection {
         self.timeout_select
             .update(cx, |s, cx| s.set_selected_value(&label, window, cx));
         if self.timeout_mode() == TimeoutMode::Custom {
-            let text = self.custom.map(|n| n.to_string()).unwrap_or_default();
+            let text = self.custom.map(millis_to_seconds).unwrap_or_default();
             set_text(&self.timeout, &text, window, cx);
         }
         cx.notify();
@@ -454,7 +497,7 @@ impl Render for SettingsSection {
                 r.child(ui::with_unit(
                     self.number_input(NumberField::Timeout, false, window, cx),
                     "set-timeout-unit",
-                    "ms",
+                    "s",
                     cx,
                 ))
             });

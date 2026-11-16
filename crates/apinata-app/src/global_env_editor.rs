@@ -45,8 +45,8 @@ pub const GLOBAL_ENV_MENU_DELETE: usize = 3;
 /// The empty pane's line on what a global environment is for.
 pub const GLOBAL_ENV_ABOUT: &str = "Global variables apply to every collection.";
 
-// Beside the Active box, which switches the global at once while the rest waits for Save.
-const ACTIVE_NOTE: &str = "Applies at once, without Save";
+// Beside the Active box, saying what it does; the switch is session state, so it skips Save.
+const ACTIVE_NOTE: &str = "Turns this global environment on or off right away";
 
 // Which name the name input is collecting.
 #[derive(Clone, Copy, PartialEq)]

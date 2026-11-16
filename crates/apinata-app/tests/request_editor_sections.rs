@@ -187,7 +187,7 @@ fn tab_walks_the_method_the_url_and_the_section_tabs(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_section_tab_focus_outline_clears_its_mode_ring(cx: &mut TestAppContext) {
+fn a_section_tab_focus_outline_clears_its_content_dot(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
@@ -208,21 +208,21 @@ fn a_section_tab_focus_outline_clears_its_mode_ring(cx: &mut TestAppContext) {
     press(cx, win, "tab");
     assert!(focused(cx, win, &focus), "Tab reaches the Auth tab");
     assert_eq!(label(cx), unfocused, "the outline never shifts the label");
-    let (outline, ring) = cx
+    let (outline, dot) = cx
         .update_window(win, |_, w, cx| {
             w.render_frame(cx);
             let outline = w.find(("section-focus", ix)).bounds();
             (outline, w.find(("section-mode", ix)).bounds())
         })
         .unwrap();
-    // The outline's 1px stroke is drawn inside its bounds, so the ring needs a gap past it.
+    // The outline's 1px stroke is drawn inside its bounds, so the dot needs a gap past it.
     let gap = gpui_kit::px(1.);
     assert!(
-        outline.left() + gap < ring.left()
-            && outline.right() - gap > ring.right()
-            && outline.top() + gap < ring.top()
-            && outline.bottom() - gap > ring.bottom(),
-        "the outline {outline:?} encloses the ring {ring:?} clear of its stroke"
+        outline.left() + gap < dot.left()
+            && outline.right() - gap > dot.right()
+            && outline.top() + gap < dot.top()
+            && outline.bottom() - gap > dot.bottom(),
+        "the outline {outline:?} encloses the dot {dot:?} clear of its stroke"
     );
 }
 

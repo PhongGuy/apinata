@@ -113,6 +113,46 @@ fn the_side_toggles_announce_which_panel_is_open(cx: &mut TestAppContext) {
     assert_eq!(pressed(cx), (Some(false), Some(false)));
 }
 
+// The edge colours painted along `id`'s box, one per bordered quad that covers it.
+fn edges(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Vec<gpui_kit::Hsla> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let scale = w.scale_factor();
+        let b = w.find(id).bounds();
+        let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
+        let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
+        w.painted_quads()
+            .into_iter()
+            .filter(|q| {
+                let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
+                let (x2, y2) = (x + q.bounds.size.width.0, y + q.bounds.size.height.0);
+                q.border_widths.left.0 > 0.
+                    && (x - l).abs() < 2.
+                    && (y - t).abs() < 2.
+                    && (x2 - r).abs() < 2.
+                    && (y2 - bt).abs() < 2.
+            })
+            .map(|q| q.border_color)
+            .collect()
+    })
+    .unwrap()
+}
+
+// Closed or open, each side toggle draws a visible edge, so it reads as a button either way.
+#[gpui_kit::test]
+fn the_side_toggles_show_an_outline_when_off(cx: &mut TestAppContext) {
+    let (win, _s) = section(cx, "{ users { id } }", true);
+    frame(cx, win);
+    for id in ["graphql-builder-toggle", "graphql-docs-toggle"] {
+        let off = edges(cx, win, id);
+        assert!(off.iter().any(|c| c.a > 0.), "{id} off: {off:?}");
+        click(cx, win, id);
+        let on = edges(cx, win, id);
+        assert!(on.iter().any(|c| c.a > 0.), "{id} on: {on:?}");
+        click(cx, win, id);
+    }
+}
+
 // A schema read from a file offers a load from the URL, never a "refresh" of the URL's schema.
 #[gpui_kit::test]
 fn a_schema_from_a_file_offers_the_url_load_instead_of_refresh(cx: &mut TestAppContext) {

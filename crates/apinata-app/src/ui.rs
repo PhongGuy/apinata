@@ -1342,9 +1342,9 @@ pub fn git_letter(id: ElementId, change: &GitChange, cx: &App) -> impl IntoEleme
         .tooltip(move |window, cx| Tooltip::new(words).build(window, cx))
 }
 
-/// A request mode marker: a hollow circle the size of [`dirty_dot`], so a chosen mode never
-/// reads as unsaved changes. `words` names it; the tab it sits in shows them on hover.
-pub fn mode_ring(id: impl Into<ElementId>, words: impl Into<SharedString>) -> Stateful<Div> {
+/// The "has content" mark of a tab: a muted dot the size of [`dirty_dot`], whose muted colour
+/// keeps it apart from unsaved changes. `words` names it; the tab shows them on hover.
+pub fn content_dot(id: impl Into<ElementId>, words: impl Into<SharedString>) -> Stateful<Div> {
     // Painted like `dirty_dot`, since the builder has no `App` to read the theme from.
     let words = words.into();
     div().id(id).size(DOT).flex_none().aria_label(words).child(
@@ -1353,8 +1353,7 @@ pub fn mode_ring(id: impl Into<ElementId>, words: impl Into<SharedString>) -> St
             |bounds, _, window, cx| {
                 let color = cx.theme().muted_foreground;
                 window.paint_quad(
-                    outline(bounds, color, BorderStyle::Solid)
-                        .corner_radii(Corners::all(resolve(DOT, window) / 2.)),
+                    fill(bounds, color).corner_radii(Corners::all(resolve(DOT, window) / 2.)),
                 );
             },
         )

@@ -2,7 +2,8 @@ use crate::support;
 
 use apinata_app::command::Edit;
 use apinata_app::settings_section::{
-    DIGITS_NOTE, DocsMode, DocsSection, SettingsSection, TIMEOUT_ZERO_NOTE, TimeoutMode,
+    DIGITS_NOTE, DocsMode, DocsSection, SECONDS_NOTE, SettingsSection, TIMEOUT_ZERO_NOTE,
+    TimeoutMode,
 };
 use apinata_app::style::{FORM_INPUT_WIDTH, at_zoom};
 use apinata_core::{RequestSettings, Timeout};
@@ -139,7 +140,7 @@ fn sent(cx: &mut TestAppContext, host: &Entity<SectionHost<SettingsSection>>) ->
     host.read_with(cx, |h, _| h.edits.len())
 }
 
-// Never time out is a choice of its own, so Custom always holds a limit above 0: picking Custom
+// No limit is a choice of its own, so Custom always holds a limit above 0: picking Custom
 // with no number yet sends nothing until one is typed, and a typed 0 is refused.
 #[gpui_kit::test]
 fn timeout_is_default_no_limit_or_custom(cx: &mut TestAppContext) {
@@ -168,7 +169,7 @@ fn timeout_is_default_no_limit_or_custom(cx: &mut TestAppContext) {
     assert!(found(cx, win, "set-timeout"));
     let shown = s.read_with(cx, |s, cx| s.timeout_input().read(cx).value().to_string());
     assert_eq!(shown, "");
-    replace_input(cx, win, None, "set-timeout", "5000");
+    replace_input(cx, win, None, "set-timeout", "5");
     cx.run_until_parked();
     assert_eq!(last(cx, &host).timeout, Timeout::Millis(5000));
     replace_input(cx, win, None, "set-timeout", "0");
@@ -238,8 +239,8 @@ fn a_non_digit_max_redirects_is_refused_under_its_field(cx: &mut TestAppContext)
     assert!(!found(cx, win, "set-timeout-error"));
 }
 
-// Each timeout choice says under the row where its limit comes from, so Default and Never
-// time out read apart even when the Preferences default is no limit.
+// Each timeout choice says under the row where its limit comes from, so Default and No
+// limit read apart even when the Preferences default is no limit.
 #[gpui_kit::test]
 fn each_timeout_choice_says_where_its_limit_comes_from(cx: &mut TestAppContext) {
     let mut base = RequestSettings::new();
@@ -260,7 +261,7 @@ fn each_timeout_choice_says_where_its_limit_comes_from(cx: &mut TestAppContext) 
     }
 }
 
-// A file's `timeout: 0` reads as Never time out, not as a custom timeout of 0.
+// A file's `timeout: 0` reads as No limit, not as a custom timeout of 0.
 #[gpui_kit::test]
 fn a_zero_timeout_shows_as_no_limit(cx: &mut TestAppContext) {
     let mut base = RequestSettings::new();
@@ -272,7 +273,7 @@ fn a_zero_timeout_shows_as_no_limit(cx: &mut TestAppContext) {
     );
     assert_eq!(
         s.read_with(cx, |s, cx| s.timeout_shown(cx)).as_deref(),
-        Some("Never time out")
+        Some("No limit")
     );
     assert!(!found(cx, win, "set-timeout"));
 }
@@ -395,7 +396,7 @@ fn a_custom_timeout_names_its_unit_beside_the_field(cx: &mut TestAppContext) {
         w.render_frame(cx);
         let input = w.find("set-timeout").bounds();
         let unit = w.within("set-row-timeout").find("set-timeout-unit");
-        assert_eq!(unit.label(), Some("ms"));
+        assert_eq!(unit.label(), Some("s"));
         let unit = unit.bounds();
         assert!(unit.left() >= input.right(), "{unit:?} after {input:?}");
         assert!(unit.top() >= input.top() && unit.bottom() <= input.bottom());
@@ -568,4 +569,39 @@ fn an_empty_tags_field_is_as_tall_as_the_other_inputs(cx: &mut TestAppContext) {
         assert_eq!(tags, redirects);
     })
     .unwrap();
+}
+
+// The custom field takes seconds to the millisecond, as Preferences takes seconds, and the
+// file keeps its milliseconds: 2.5 is sent as 2500, and a finer fraction is refused.
+#[gpui_kit::test]
+fn a_custom_timeout_is_typed_in_seconds(cx: &mut TestAppContext) {
+    let mut base = RequestSettings::new();
+    base.timeout = Timeout::Millis(1);
+    let (win, host, s) = settings(cx, base);
+    let field = |cx: &mut TestAppContext| {
+        s.read_with(cx, |s, cx| s.timeout_input().read(cx).value().to_string())
+    };
+    assert_eq!(field(cx), "0.001");
+    for (typed, ms) in [("2.5", 2500), ("30", 30_000), ("0.25", 250), (".5", 500)] {
+        replace_input(cx, win, None, "set-timeout", typed);
+        cx.run_until_parked();
+        assert_eq!(last(cx, &host).timeout, Timeout::Millis(ms), "{typed}");
+        assert!(!found(cx, win, "set-timeout-error"), "{typed}");
+    }
+    for bad in ["1.0005", "1.2.3", "x", "."] {
+        replace_input(cx, win, None, "set-timeout", bad);
+        cx.run_until_parked();
+        assert_eq!(last(cx, &host).timeout, Timeout::Millis(500), "{bad}");
+        assert_eq!(
+            s.read_with(cx, |s, _| s.refusal_shown()),
+            Some(SECONDS_NOTE),
+            "{bad}"
+        );
+    }
+    replace_input(cx, win, None, "set-timeout", "0.000");
+    cx.run_until_parked();
+    assert_eq!(
+        s.read_with(cx, |s, _| s.refusal_shown()),
+        Some(TIMEOUT_ZERO_NOTE)
+    );
 }

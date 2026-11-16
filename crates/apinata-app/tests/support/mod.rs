@@ -479,6 +479,47 @@ pub fn open_area_of(cx: &mut gpui_kit::TestAppContext, col: TempDir) -> Area {
     }
 }
 
+/// How the mark `id` paints: the fills and the border colours of the quads that cover its
+/// box, so a test can tell a filled dot from a hollow ring.
+pub fn mark_paint(
+    cx: &mut gpui_kit::TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    id: impl Into<gpui_kit::ElementId>,
+) -> (Vec<gpui_kit::Hsla>, Vec<gpui_kit::Hsla>) {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    let id = id.into();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let scale = w.scale_factor();
+        let b = w.find(id).bounds();
+        let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
+        let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
+        let quads: Vec<_> = w
+            .painted_quads()
+            .into_iter()
+            .filter(|q| {
+                let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
+                let (x2, y2) = (x + q.bounds.size.width.0, y + q.bounds.size.height.0);
+                (x - l).abs() < 1.
+                    && (y - t).abs() < 1.
+                    && (x2 - r).abs() < 1.
+                    && (y2 - bt).abs() < 1.
+            })
+            .collect();
+        let fills = (quads.iter())
+            .filter_map(|q| q.background.as_solid())
+            .filter(|c| c.a > 0.)
+            .collect();
+        let edges = (quads.iter())
+            .filter(|q| q.border_widths.left.0 > 0. && q.border_color.a > 0.)
+            .map(|q| q.border_color)
+            .collect();
+        (fills, edges)
+    })
+    .unwrap()
+}
+
 pub fn present(
     cx: &mut gpui_kit::TestAppContext,
     win: gpui_kit::AnyWindowHandle,

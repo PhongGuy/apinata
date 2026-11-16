@@ -5,7 +5,6 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use apinata_core::{ScriptPhase, Snippet, SnippetPhase, script_code, script_snippets};
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Editor, EditorState, Enter, InputEvent};
 use gpui_kit::component::tab::Tab;
@@ -436,10 +435,9 @@ impl ScriptSection {
 }
 
 impl ScriptSection {
-    // The phase switch: one tab per phase, a muted dot after each label whose script has text.
+    // The phase switch: one tab per phase, the content dot after each label whose script has text.
     fn switch(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
-        let muted = cx.theme().muted_foreground;
         let tabs = self.editors.iter().enumerate().map(|(ix, e)| {
             let has_script = !e.code.read(cx).value().trim().is_empty();
             Tab::new().child(
@@ -454,14 +452,7 @@ impl ScriptSection {
                             .child(label(e.phase)),
                     )
                     .when(has_script, |d| {
-                        d.child(
-                            div()
-                                .id(("script-dot", ix))
-                                .test_support()
-                                .size(style::DOT)
-                                .rounded_full()
-                                .bg(muted),
-                        )
+                        d.child(ui::content_dot(("script-dot", ix), "Has a script").test_support())
                     }),
             )
         });

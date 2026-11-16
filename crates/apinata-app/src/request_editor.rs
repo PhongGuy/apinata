@@ -1415,12 +1415,12 @@ impl RequestEditor {
         }
     }
 
-    /// Whether `section` shows a hollow ring; see `section_mark`.
+    /// Whether `section` shows a content dot; see `section_mark`.
     pub fn section_marked(&self, section: Section, cx: &App) -> bool {
         self.section_mark(section, cx).is_some()
     }
 
-    /// What a marked section's ring says when hovered: Body with a body, Auth when an auth
+    /// What a marked section's dot says when hovered: Body with a body, Auth when an auth
     /// other than No Auth applies (its own or the one it inherits), Script with a pre-request
     /// or post-response script, Tests with a tests script; `None` when unmarked.
     pub fn section_mark(&self, section: Section, cx: &App) -> Option<SharedString> {
@@ -3466,7 +3466,7 @@ impl RequestEditor {
     fn section_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         // A counted section shows its enabled rows beside the label (nothing for zero);
-        // Body, Auth, Script and Tests instead show a hollow ring naming what they hold.
+        // Body, Auth, Script and Tests instead show a muted dot naming what they hold.
         let kind = self.kind(cx);
         let selected = self.section as usize;
         let tabs = Section::ALL.iter().enumerate().map(|(ix, &s)| {
@@ -3475,8 +3475,8 @@ impl RequestEditor {
                 .test_support()
                 .child(s.label_for(kind));
             let badge = self.section_count(s, cx).and_then(ui::count_badge);
-            // The ring is too small to aim at, so the whole tab says what it marks.
-            let ring_words = badge.is_none().then(|| self.section_mark(s, cx)).flatten();
+            // The dot is too small to aim at, so the whole tab says what it marks.
+            let mark_words = badge.is_none().then(|| self.section_mark(s, cx)).flatten();
             let mark = match badge {
                 Some(badge) => Some(
                     div()
@@ -3485,8 +3485,8 @@ impl RequestEditor {
                         .child(badge)
                         .into_any_element(),
                 ),
-                None => ring_words.clone().map(|words| {
-                    ui::mode_ring(("section-mode", ix), words)
+                None => mark_words.clone().map(|words| {
+                    ui::content_dot(("section-mode", ix), words)
                         .test_support()
                         .into_any_element()
                 }),
@@ -3500,7 +3500,7 @@ impl RequestEditor {
                 h_flex()
                     .id(("section-tab", ix))
                     .relative()
-                    .when_some(ring_words, |d, words| {
+                    .when_some(mark_words, |d, words| {
                         d.tooltip(ui::text_tooltip("section-mode-tooltip", words))
                     })
                     .track_focus(focus)

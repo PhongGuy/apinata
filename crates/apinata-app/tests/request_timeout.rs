@@ -47,11 +47,11 @@ fn the_row_takes_whole_seconds_up_to_86400_or_nothing() {
 
 #[test]
 fn inherit_names_the_timeout_that_applies() {
-    assert_eq!(TimeoutMode::Inherit.label(None), "Default (no limit)");
+    assert_eq!(TimeoutMode::Inherit.label(None), "Default (No limit)");
     let thirty = Some(Duration::from_secs(30));
     assert_eq!(TimeoutMode::Inherit.label(thirty), "Default (30 s)");
     assert_eq!(TimeoutMode::Custom.label(thirty), "Custom");
-    assert_eq!(TimeoutMode::Unlimited.label(thirty), "Never time out");
+    assert_eq!(TimeoutMode::Unlimited.label(thirty), "No limit");
     assert_ne!(
         TimeoutMode::Unlimited.label(None),
         TimeoutMode::Inherit.label(None)
@@ -83,7 +83,7 @@ fn the_select_shows_the_preference_and_follows_it(cx: &mut TestAppContext) {
     frame(cx, s.win);
     assert_eq!(
         timeout_shown(cx, &view).as_deref(),
-        Some("Default (no limit)")
+        Some("Default (No limit)")
     );
 }
 
@@ -264,11 +264,11 @@ fn a_hand_edited_timeout_past_the_range_is_held_to_a_day() {
 }
 
 // An explicit `timeout: 0` is the request's own "no limit", which the executor sends whatever
-// the Preferences default, so it shows as Never time out; a trip through Default and back is clean.
+// the Preferences default, so it shows as No limit; a trip through Default and back is clean.
 #[gpui_kit::test]
 fn an_explicit_zero_timeout_shows_as_no_limit_and_round_trips(cx: &mut TestAppContext) {
     for (timeout, shown, own) in [
-        ("0", "Never time out", TimeoutMode::Unlimited),
+        ("0", "No limit", TimeoutMode::Unlimited),
         ("2500", "Custom", TimeoutMode::Custom),
     ] {
         let file = format!(
@@ -285,6 +285,11 @@ fn an_explicit_zero_timeout_shows_as_no_limit_and_round_trips(cx: &mut TestAppCo
             .expect("an editor");
         assert_eq!(timeout_shown(cx, &view).as_deref(), Some(shown));
         let settings = view.read_with(cx, |v, _| v.settings().clone());
+        if own == TimeoutMode::Custom {
+            let field =
+                settings.read_with(cx, |st, cx| st.timeout_input().read(cx).value().to_string());
+            assert_eq!(field, "2.5", "the file's 2500 ms shows in seconds");
+        }
         for mode in [TimeoutMode::Inherit, own] {
             cx.update_window(s.win, |_, w, cx| {
                 settings.update(cx, |st, cx| st.set_timeout_mode(mode, w, cx))
@@ -340,4 +345,19 @@ fn the_timeout_error_follows_the_typing(cx: &mut TestAppContext) {
         prefs.read_with(cx, |p, _| p.unsaved()),
         Vec::<String>::new()
     );
+}
+
+// Preferences names its timeout's unit as seconds, the unit request Settings uses too.
+#[gpui_kit::test]
+fn the_preferences_timeout_is_in_seconds(cx: &mut TestAppContext) {
+    let col = two_requests();
+    let s = started(cx, &col);
+    open_prefs(cx, &s);
+    let unit = cx
+        .update_window(s.win, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("request-timeout-unit").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(unit.as_deref(), Some("s"));
 }
