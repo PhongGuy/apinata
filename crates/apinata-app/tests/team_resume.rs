@@ -1,4 +1,5 @@
-//! Bound folders restart team mode at launch with the role the server gives; each connect re-reads it.
+//! Bound folders restart team mode at launch with the role the server gives; each connect and
+//! a periodic check re-read it.
 
 use crate::git_support::Sandbox;
 use crate::support::potluck::{error, me, tok, workspace};
@@ -179,4 +180,70 @@ fn an_unbound_folder_starts_no_team_mode_and_asks_nothing(cx: &mut TestAppContex
     settle(cx);
     assert_eq!(state(cx, &s), None);
     assert_eq!(hits_on(cx, &server, "GET", "/api/v1/me"), 0);
+}
+
+#[gpui_kit::test]
+fn a_raised_role_applies_within_a_minute_while_the_stream_stays_quiet(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let server = potluck_server(cx);
+    let base = server.uri();
+    let read = me(
+        false,
+        vec![workspace(&base, "core", "api", "apinata", "read")],
+    );
+    mount(
+        cx,
+        &server,
+        Mock::given(method("GET"))
+            .and(path("/api/v1/me"))
+            .respond_with(read),
+    );
+    // One connect, then a server that never answers again, so no reconnect re-reads the role.
+    let events = || Mock::given(method("GET")).and(path("/api/v1/workspaces/core/api/events"));
+    let opened = ResponseTemplate::new(200)
+        .insert_header("content-type", "text/event-stream")
+        .set_body_string(": ok\n\n");
+    mount(cx, &server, events().respond_with(opened).up_to_n_times(1));
+    let hung = ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(3600));
+    mount(cx, &server, events().respond_with(hung));
+    let root = col.path().to_path_buf();
+    let (s, _secrets) = team_started(cx, &sb, &col, |paths, secrets| {
+        signed_in(paths, secrets, &server, false);
+        bind(paths, &root, &base, Role::Read);
+    });
+    wait_for(cx, "the read-only loop", |cx| {
+        matches!(state(cx, &s), Some(TeamState::ReadOnly { .. }))
+    });
+    wait_for(cx, "the connect's re-read", |cx| {
+        hits_on(cx, &server, "GET", "/api/v1/me") >= 2
+    });
+
+    let raised = me(
+        false,
+        vec![workspace(&base, "core", "api", "apinata", "write")],
+    );
+    mount(
+        cx,
+        &server,
+        Mock::given(method("GET"))
+            .and(path("/api/v1/me"))
+            .respond_with(raised)
+            .with_priority(1),
+    );
+    settle(cx);
+    assert_eq!(
+        role(cx, &s),
+        Some(Role::Read),
+        "nothing re-read the role yet"
+    );
+    cx.executor()
+        .advance_clock(apinata_app::team_mode::ROLE_CHECK + std::time::Duration::from_secs(1));
+    wait_for(cx, "the raised role", |cx| {
+        role(cx, &s) == Some(Role::Write)
+    });
+    wait_for(cx, "a writable loop", |cx| {
+        state(cx, &s) == Some(TeamState::Idle)
+    });
 }
