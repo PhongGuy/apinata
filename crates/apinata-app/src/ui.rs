@@ -2759,11 +2759,24 @@ pub fn key_in(action: &dyn Action, stack: &[&str], cx: &App) -> Option<Keystroke
         .map(|k| k.as_keystroke().clone())
 }
 
+/// The first keystroke the keymap lists for `action` in any context: the key a command shows
+/// wherever it is offered, so two surfaces never name different keys for it.
+pub fn primary_key(action: &dyn Action, cx: &App) -> Option<Keystroke> {
+    let keymap = cx.key_bindings();
+    let keymap = keymap.borrow();
+    let binding = keymap.bindings_for_action(action).next()?;
+    binding
+        .keystrokes()
+        .first()
+        .map(|k| k.as_keystroke().clone())
+}
+
 /// One right-click menu entry: its label, the action whose bound key shows beside it, and
 /// whether it is greyed out, destructive, or opens a new group below a separator.
 pub struct MenuLine {
     label: SharedString,
     action: Option<Box<dyn Action>>,
+    key: Option<Keystroke>,
     disabled: bool,
     danger: bool,
     group_break: bool,
@@ -2775,6 +2788,7 @@ impl MenuLine {
         Self {
             label: label.into(),
             action: None,
+            key: None,
             disabled: false,
             danger: false,
             group_break: false,
@@ -2784,6 +2798,12 @@ impl MenuLine {
     /// The action whose bound key the entry shows; the click still runs the entry's own handler.
     pub fn action(mut self, action: Box<dyn Action>) -> Self {
         self.action = Some(action);
+        self
+    }
+
+    /// Shows `key` as the entry's hint in place of the key its action has where the menu opened.
+    pub fn key(mut self, key: Option<Keystroke>) -> Self {
+        self.key = key;
         self
     }
 
@@ -2807,7 +2827,8 @@ impl MenuLine {
 
     /// Appends the entry to `menu`, after a separator when it opens a group. A plain entry is
     /// the kit's own item, whose key hint the kit finds along the menu's trigger; a drawn one
-    /// (danger, or greyed out in a high-contrast theme) reads its key for `keys_in` itself.
+    /// (danger, a fixed key, or greyed out in a high-contrast theme) shows its fixed key or
+    /// reads its key for `keys_in` itself.
     pub fn add_to(
         self,
         menu: PopupMenu,
@@ -2823,12 +2844,13 @@ impl MenuLine {
         let MenuLine {
             label,
             action,
+            key,
             disabled,
             danger,
             ..
         } = self;
         let cue = menu_item_look(disabled, cx).italic;
-        if !danger && !cue {
+        if !danger && !cue && key.is_none() {
             let item = PopupMenuItem::new(label).disabled(disabled);
             let item = match action {
                 Some(action) => item.action(action),
@@ -2840,10 +2862,13 @@ impl MenuLine {
             let text = div();
             let text = if disabled {
                 menu_label_cue(text, cx)
-            } else {
+            } else if danger {
                 text.text_color(cx.theme().danger)
+            } else {
+                text
             };
-            let key = (action.as_ref()).and_then(|a| key_in(a.as_ref(), keys_in, cx));
+            let key = (key.clone())
+                .or_else(|| (action.as_ref()).and_then(|a| key_in(a.as_ref(), keys_in, cx)));
             h_flex()
                 .w_full()
                 .gap_3()

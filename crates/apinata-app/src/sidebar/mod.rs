@@ -44,7 +44,9 @@ use crate::commands::label;
 use crate::export::ExportFormat;
 use crate::git_status::{self, GitChange, GitChanges};
 use crate::history_palette::OpenHistory;
-use crate::keymap::{NewGraphqlRequest, NewRequest, SHELL_CONTEXT};
+use crate::keymap::{
+    NewGraphqlRequest, NewRequest, OpenCollectionSettings, RunCollection, RunFolder, SHELL_CONTEXT,
+};
 use crate::menu_focus;
 use crate::shell::collection_row;
 use crate::snapshot::{CollectionSnapshot, Content, DiskState, RowKind, Unsupported};
@@ -513,6 +515,14 @@ impl Sidebar {
         Some(node.name.clone().into())
     }
 
+    /// The name of the one selected row when its menu offers `entry`: the row a command
+    /// backed by that entry acts on.
+    pub fn selected_name_for(&self, entry: MenuEntry, cx: &App) -> Option<SharedString> {
+        self.selection_offers(entry, cx)
+            .then(|| self.selected_name(cx))
+            .flatten()
+    }
+
     /// Whether the menu the keyboard opened is open.
     pub fn key_menu_open(&self) -> bool {
         self.key_menu.is_some()
@@ -906,6 +916,21 @@ impl Sidebar {
             return;
         }
         self.choose(&node, entry, window, cx);
+    }
+
+    // With the tree focused on a row whose menu offers `entry`, the command acts on that row
+    // as the menu would; anywhere else it passes on to the current collection or tab. The
+    // scratch row has no collection to run or configure, so the shell refuses it instead.
+    fn on_tree_row(&mut self, entry: MenuEntry, window: &mut Window, cx: &mut Context<Self>) {
+        let scratch = self.workspace.read(cx).scratch_dir();
+        let node = (self.selected_node(cx).cloned())
+            .filter(|_| self.tree_holds_focus(window, cx))
+            .filter(|_| self.selection_offers(entry, cx))
+            .filter(|n| scratch.as_deref() != Some(n.root.as_path()));
+        match node {
+            Some(node) => self.choose(&node, entry, window, cx),
+            None => cx.propagate(),
+        }
     }
 
     // Runs `entry` on the single selected row when its menu offers it.
@@ -2885,6 +2910,15 @@ impl Render for Sidebar {
             .on_action(cx.listener(Self::folder_settings))
             .on_action(cx.listener(Self::save_selected_draft))
             .on_action(cx.listener(Self::close_selected_draft))
+            .on_action(cx.listener(|this, _: &RunFolder, window, cx| {
+                this.on_tree_row(MenuEntry::RunFolder, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &RunCollection, window, cx| {
+                this.on_tree_row(MenuEntry::RunCollection, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &OpenCollectionSettings, window, cx| {
+                this.on_tree_row(MenuEntry::CollectionSettings, window, cx)
+            }))
             .on_action(cx.listener(|this, _: &CopyAsCurl, window, cx| {
                 this.on_tree_request(MenuEntry::CopyAsCurl, window, cx)
             }))
@@ -3696,6 +3730,11 @@ fn fill_row_menu(
         let line = match choice.action() {
             Some(action) => line.action(action),
             None => line,
+        };
+        // Rename shows the key the palette shows for it, not the tree's own F2.
+        let line = match choice {
+            MenuEntry::Rename => line.key(ui::primary_key(&RenameSelected, cx)),
+            _ => line,
         };
         let line = line
             .disabled(blocked)

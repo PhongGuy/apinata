@@ -25,7 +25,10 @@ use crate::body_node::{
     AssertCaretJsonValue, CopyCaretJsonPath, CopyCaretJsonValue, SetCaretJsonVariable,
 };
 use crate::commands::registry;
-use crate::keymap::{DiscardChanges, RedoActive, SaveActive, ToggleOrientation, UndoActive};
+use crate::keymap::{
+    DiscardChanges, OpenCollectionSettings, RedoActive, RunCollection, RunFolder, SaveActive,
+    ToggleOrientation, UndoActive,
+};
 use crate::shell::{ShowChanges, SwitchBranch};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
@@ -282,7 +285,7 @@ pub struct Availability {
     pub save_draft: bool,
     /// "Close selected draft": one draft row is selected.
     pub close_draft: bool,
-    /// "Rename selected": no sidebar rename is already under way.
+    /// "Rename": no sidebar rename is already under way.
     pub rename_idle: bool,
     /// "Close all tabs": an unpinned tab is open.
     pub close_all: bool,
@@ -292,7 +295,7 @@ pub struct Availability {
     pub unpin: bool,
     /// The collection-scoped commands: a collection, or scratch work, is open.
     pub collection_open: bool,
-    /// "Rename selected": one row is selected and its menu offers Rename.
+    /// "Rename": one row is selected and its menu offers Rename.
     pub rename: bool,
     /// "Duplicate selected": one row is selected and its menu offers Duplicate.
     pub duplicate: bool,
@@ -597,9 +600,10 @@ fn show(
         updates,
         tree_request: (sidebar.as_ref()).and_then(|s| s.read(cx).tree_request_kind(window, cx)),
     };
-    let row_target = (sidebar.as_ref())
-        .filter(|_| opening.tree_request.is_some())
-        .and_then(|s| s.read(cx).selected_name(cx));
+    let row_targets: Rc<[RowTarget]> = (sidebar.as_ref())
+        .map(|s| row_targets(s.read(cx), opening, window, cx))
+        .unwrap_or_default()
+        .into();
     // The dialog builder runs every frame, so the requests are shared, not rebuilt.
     let requests: Rc<[RequestEntry]> = requests.into();
     // The state outlives the dialog's per-render rebuild, so the query and highlight persist.
@@ -636,7 +640,7 @@ fn show(
             let listing = Listing {
                 commands,
                 available,
-                row_target: row_target.clone(),
+                row_targets: Rc::clone(&row_targets),
             };
             palette(&dialog_state, &requests, &listing, rem, cap, cx).on_confirm({
                 let (target, requests) = (target.clone(), Rc::clone(&requests));
@@ -837,8 +841,9 @@ fn palette(
             let id = all
                 .iter()
                 .position(|a| a.action.partial_eq(e.action.as_ref()));
-            let target = (listing.row_target.as_ref()).filter(|_| acts_on_tree_row(e));
-            palette_row(id.unwrap_or_default(), e, target.cloned())
+            let name = e.action.name();
+            let target = (listing.row_targets.iter()).find(|t| t.action == name);
+            palette_row(id.unwrap_or_default(), e, target.map(|t| t.name.clone()))
         });
         command = command.group(CommandGroup::new().label(group.label()).items(rows));
     }
@@ -961,28 +966,60 @@ fn list_height(
     rem * base / zoom::UI_FONT_SIZE
 }
 
-// A row shows its label and the key bound in the entry's own context, so a key that only
-// works inside the request editor still shows while the palette has focus.
-// The commands that, run from the tree, act on its selected request rather than the tab.
-fn acts_on_tree_row(entry: &PaletteEntry) -> bool {
-    let name = entry.action.name();
-    [
+// A tree row a palette command acts on: the command's action name and the row's name.
+struct RowTarget {
+    action: &'static str,
+    name: SharedString,
+}
+
+// The rows the commands act on, read when the palette opens. The request commands act on the
+// tree's focused request row; the run and collection settings commands on its focused folder
+// or collection row; Rename, Folder settings and the draft commands on the selected row,
+// wherever focus is.
+fn row_targets(sidebar: &Sidebar, opening: Opening, window: &Window, cx: &App) -> Vec<RowTarget> {
+    let request = [
         CopyAsCurl.name(),
         GenerateCode.name(),
         ConvertToGraphql.name(),
         ConvertToHttp.name(),
-    ]
-    .contains(&name)
+    ];
+    let request_name = (opening.tree_request.is_some())
+        .then(|| sidebar.selected_name(cx))
+        .flatten();
+    let in_tree = sidebar.tree_holds_focus(window, cx);
+    let by_entry = [
+        (FolderSettings.name(), MenuEntry::Settings, true),
+        (RenameSelected.name(), MenuEntry::Rename, true),
+        (SaveSelectedDraft.name(), MenuEntry::SaveDraft, true),
+        (CloseSelectedDraft.name(), MenuEntry::CloseDraft, true),
+        (RunFolder.name(), MenuEntry::RunFolder, in_tree),
+        (RunCollection.name(), MenuEntry::RunCollection, in_tree),
+        (
+            OpenCollectionSettings.name(),
+            MenuEntry::CollectionSettings,
+            in_tree,
+        ),
+    ];
+    let requests = (request.into_iter()).filter_map(|action| Some((action, request_name.clone()?)));
+    let rows = (by_entry.into_iter())
+        .filter(|(_, _, applies)| *applies)
+        .filter_map(|(action, entry, _)| Some((action, sidebar.selected_name_for(entry, cx)?)));
+    (requests.chain(rows))
+        .map(|(action, name)| RowTarget { action, name })
+        .collect()
 }
 
 // What the palette's command rows are built from: whether it lists commands at all, which
-// of them apply, and the tree's request that the row commands act on, if any.
+// of them apply, and the tree rows the row commands act on.
 struct Listing {
     commands: bool,
     available: Availability,
-    row_target: Option<SharedString>,
+    row_targets: Rc<[RowTarget]>,
 }
 
+// A row shows its label and the key bound in the entry's own context, so a key that only
+// works inside the request editor still shows while the palette has focus. Rename shows the
+// key its row menu entry shows, so the two never read as different actions.
 fn palette_row(ix: usize, entry: &PaletteEntry, target: Option<SharedString>) -> CommandItem {
     let (label, context, area) = (entry.label, entry.context, entry.area);
     let action = entry.action.boxed_clone();
@@ -990,12 +1027,16 @@ fn palette_row(ix: usize, entry: &PaletteEntry, target: Option<SharedString>) ->
     let item = item.keywords(entry.keywords.iter().copied());
     item.child(move |window, cx| {
         count_row_build();
-        let key = KeyContext::parse(context)
-            .ok()
-            .and_then(|ctx| {
-                window.highest_precedence_binding_for_action_in_context(action.as_ref(), ctx)
-            })
-            .and_then(|b| b.keystrokes().first().map(|k| k.as_keystroke().clone()));
+        let key = if action.partial_eq(&RenameSelected) {
+            crate::ui::primary_key(action.as_ref(), cx)
+        } else {
+            KeyContext::parse(context)
+                .ok()
+                .and_then(|ctx| {
+                    window.highest_precedence_binding_for_action_in_context(action.as_ref(), ctx)
+                })
+                .and_then(|b| b.keystrokes().first().map(|k| k.as_keystroke().clone()))
+        };
         // The kit's scrollbar overlays the row's right end, so the key hint keeps clear of it.
         h_flex()
             .flex_1()
