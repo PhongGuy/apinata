@@ -409,3 +409,95 @@ fn a_long_target_gives_way_to_the_whole_summary(cx: &mut TestAppContext) {
         "summary {summary:?} outside row {row:?}"
     );
 }
+
+// An editor over `a.yml` with `count` kept sends, the oldest shown, so the menu's last row is
+// the checked one; `height` is the window's.
+fn viewing_oldest_of(
+    cx: &mut TestAppContext,
+    count: u64,
+    height: f32,
+) -> (gpui_kit::AnyWindowHandle, tempfile::TempDir) {
+    let col = two_requests();
+    let (state, ws, root) = open_dir(cx, &col);
+    let store = ResponseStore::new(state.path().join("responses"));
+    for i in 0..count {
+        store
+            .save(&root, &ip("a.yml"), &kept(200), at(1_000 + i))
+            .unwrap();
+    }
+    cx.update(|cx| install(store.clone(), cx));
+    let (win, editor) = editor_for(cx, &ws, &root, "a.yml", false);
+    gpui_kit::VisualTestContext::from_window(win, cx)
+        .simulate_resize(gpui_kit::size(gpui_kit::px(1280.), gpui_kit::px(height)));
+    let model = editor.read_with(cx, |e, _| e.send_model().clone());
+    let pane = editor.read_with(cx, |e, _| e.response().clone());
+    wait_real(cx, |cx| {
+        pane.read_with(cx, |p, _| p.history().len() == count as usize)
+    });
+    pane.update(cx, |p, cx| p.show_history(0, cx));
+    wait_real(cx, |cx| model.read_with(cx, |m, _| m.viewing()) == Some(0));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("response-history", cx))
+        .unwrap();
+    for _ in 0..3 {
+        frame(cx, win);
+    }
+    std::mem::forget(state);
+    (win, col)
+}
+
+// The bounds of the open menu and of its first item.
+fn menu_and_first(
+    cx: &mut TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+) -> (
+    gpui_kit::Bounds<gpui_kit::Pixels>,
+    gpui_kit::Bounds<gpui_kit::Pixels>,
+) {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let whole = w.find("popup-menu").bounds();
+        (whole, w.within("popup-menu").find(0usize).bounds())
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn three_runs_open_without_a_scrollbar_and_keep_the_top_padding(cx: &mut TestAppContext) {
+    let (win, _col) = viewing_oldest_of(cx, 3, 800.);
+    let (menu, first) = menu_and_first(cx, win);
+    assert!(
+        first.top() > menu.top(),
+        "the first row {first:?} keeps the padding under the menu's top {menu:?}"
+    );
+    let bar = gpui_kit::VisualTestContext::from_window(win, cx).debug_bounds("scrollbar-overlay");
+    assert_ne!(bar, Some(menu), "a list that fits draws no scrollbar");
+}
+
+// The kit draws a row's check 12 px after the row and 12 px wide.
+const CHECK_COLUMN: f32 = 24.;
+
+#[gpui_kit::test]
+fn a_scrolling_menu_keeps_the_checks_clear_of_its_scrollbar(cx: &mut TestAppContext) {
+    let (win, _col) = viewing_oldest_of(cx, 20, 500.);
+    let menu = menu_and_first(cx, win).0;
+    let bar = gpui_kit::VisualTestContext::from_window(win, cx).debug_bounds("scrollbar-overlay");
+    assert_eq!(bar, Some(menu), "twenty runs in a short window scroll");
+    let rows: Vec<_> = cx
+        .update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let menu = w.within("popup-menu");
+            (0..20usize)
+                .filter_map(|ix| menu.try_find(("history-row", ix)).map(|r| r.bounds()))
+                .collect()
+        })
+        .unwrap();
+    assert!(!rows.is_empty());
+    let gutter = menu.right() - apinata_app::style::SCROLLBAR_GUTTER;
+    for row in rows {
+        assert!(
+            row.right() + gpui_kit::px(CHECK_COLUMN) <= gutter,
+            "the check after {row:?} reaches into the scrollbar's gutter at {gutter:?}"
+        );
+    }
+}
