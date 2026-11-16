@@ -4,6 +4,8 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
+use crate::git::deleted_marks;
+
 /// One folder of conflict copies, each kept at its path relative to the collection root.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -54,6 +56,22 @@ impl ConflictCopies {
             dir = d.parent();
         }
         Ok(())
+    }
+
+    /// Every local delete a pull's conflict left unsettled, as sorted `/`-separated paths;
+    /// unlike a copy it holds no bytes, so it lives in a folder beside this one.
+    pub fn deleted(&self) -> io::Result<Vec<String>> {
+        self.marks().list()
+    }
+
+    /// Forget the local delete at `rel` once it is settled; a missing one is fine.
+    pub fn forget_deleted(&self, rel: &str) -> io::Result<()> {
+        self.marks().remove(rel)
+    }
+
+    // The marks folder read with the same plain-path rules as the copies.
+    fn marks(&self) -> ConflictCopies {
+        ConflictCopies::new(deleted_marks(&self.dir))
     }
 
     // A relative path that stays inside the folder: plain names only, so no copy escapes it.
