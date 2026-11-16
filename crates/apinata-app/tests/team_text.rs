@@ -123,13 +123,13 @@ fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
     );
     assert_eq!(
         finding_line(&found),
-        "environments/dev.yml: secret_value (secret_value on refs/heads/main)"
+        "environments/dev.yml: secret_value on refs/\u{2060}heads/\u{2060}main"
     );
     assert_eq!(
-        problem_lines(&status),
+        problem_lines(&status, 0),
         [
             "The server refused the push because it found secrets:",
-            "environments/dev.yml: secret_value (secret_value on refs/heads/main)",
+            "environments/dev.yml: secret_value on refs/\u{2060}heads/\u{2060}main",
             "and 3 more",
             "Remove them, save, then Retry.",
             "2 local commits are not on the server yet.",
@@ -141,7 +141,7 @@ fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
 fn a_paused_read_only_folder_explains_discard_and_counts_one_commit() {
     let status = TeamStatus::new(TeamState::ReadOnly { paused: true }, 1, vec![]);
     assert_eq!(
-        problem_lines(&status),
+        problem_lines(&status, 0),
         [
             "You can only read this workspace, so changes are not saved.",
             "Files changed here outside the app hold back updates. Discard them to keep pulling.",
@@ -153,11 +153,11 @@ fn a_paused_read_only_folder_explains_discard_and_counts_one_commit() {
 #[test]
 fn quiet_states_say_so_in_one_line() {
     assert_eq!(
-        problem_lines(&TeamStatus::new(TeamState::Idle, 0, vec![])),
+        problem_lines(&TeamStatus::new(TeamState::Idle, 0, vec![]), 0),
         ["In sync."]
     );
     assert_eq!(
-        problem_lines(&TeamStatus::new(TeamState::Pushing, 4, vec![])),
+        problem_lines(&TeamStatus::new(TeamState::Pushing, 4, vec![]), 0),
         ["Syncing."]
     );
     let hook = TeamStatus::new(
@@ -168,14 +168,14 @@ fn quiet_states_say_so_in_one_line() {
         vec![],
     );
     assert_eq!(
-        problem_lines(&hook),
+        problem_lines(&hook, 0),
         ["A commit hook refused the commit:", "nope"]
     );
 }
 
 #[test]
 fn every_other_state_has_its_own_line() {
-    let line = |state: TeamState| problem_lines(&TeamStatus::new(state, 0, vec![]));
+    let line = |state: TeamState| problem_lines(&TeamStatus::new(state, 0, vec![]), 0);
     assert_eq!(
         line(TeamState::Offline),
         ["The server cannot be reached. Changes are committed here and pushed once it is back."]
@@ -274,13 +274,29 @@ fn a_finding_outside_any_file_is_named_instead_of_showing_a_slash() {
         0,
         vec![],
     );
-    let lines = problem_lines(&status);
+    let lines = problem_lines(&status, 0);
     assert_eq!(
         lines[1],
-        "a.yml: secret_value (secret_value on refs/heads/main)"
+        "a.yml: secret_value on refs/\u{2060}heads/\u{2060}main"
     );
     assert_eq!(
         lines[2],
-        "not in a file (a commit or tag message, or a tag's target): secret_value (secret_value on refs/tags/v1)"
+        "not in a file (a commit or tag message, or a tag's target): secret_value on refs/\u{2060}tags/\u{2060}v1"
     );
+}
+
+#[test]
+fn a_finding_names_its_code_only_when_it_differs_from_the_rule() {
+    let found = Finding::new("secret_pattern", "refs/heads/main", "notes.txt", "aws");
+    assert_eq!(
+        finding_line(&found),
+        "notes.txt: aws (secret_pattern) on refs/\u{2060}heads/\u{2060}main"
+    );
+}
+
+#[test]
+fn an_idle_folder_with_clashes_says_they_wait_instead_of_in_sync() {
+    let idle = TeamStatus::new(TeamState::Idle, 0, vec![]);
+    assert_eq!(problem_lines(&idle, 1), ["1 clash to settle."]);
+    assert_eq!(problem_lines(&idle, 2), ["2 clashes to settle."]);
 }

@@ -322,6 +322,9 @@ enum PartInputs {
     ),
 }
 
+// The breadcrumb's mark for a team collection that refuses saves.
+const READ_ONLY_LABEL: &str = "Read only";
+
 // What the breadcrumb line shows.
 #[derive(Clone, PartialEq)]
 struct Crumbs {
@@ -333,6 +336,8 @@ struct Crumbs {
     folders: Vec<(String, ItemPath)>,
     // A draft is in no folder until saved, so its line names no folder.
     unsaved: bool,
+    // A read-only team collection refuses saves, so the line says so where the user types.
+    read_only: bool,
     title: String,
     tooltip: Option<String>,
 }
@@ -2769,6 +2774,7 @@ impl RequestEditor {
             }
         }
         Some(Crumbs {
+            read_only: workspace.is_team_read_only(&root),
             collection: workspace.collection_name(&root, cx),
             hint: workspace.collection_hints(cx).remove(&root),
             tooltip: crumb_tooltip(&item, &name),
@@ -2790,6 +2796,7 @@ impl RequestEditor {
             hint,
             folders,
             unsaved,
+            read_only,
             title,
             tooltip,
             ..
@@ -2900,6 +2907,18 @@ impl RequestEditor {
                     .text_color(cx.theme().foreground)
                     .child(title),
             )
+            .when(read_only, |row| {
+                row.child(
+                    div()
+                        .id("breadcrumb-read-only")
+                        .test_support()
+                        .aria_label(READ_ONLY_LABEL)
+                        .flex_none()
+                        .pl(style::SPACE_2)
+                        .text_color(muted)
+                        .child(READ_ONLY_LABEL),
+                )
+            })
             .into_any_element()
     }
 

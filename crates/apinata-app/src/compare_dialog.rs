@@ -343,8 +343,14 @@ fn present(
     let state = dialog.clone();
     let buttons = Rc::new(buttons);
     window.defer(cx, move |window, cx| {
+        // Over another dialog, such as team sync, it sits lower so the one beneath keeps its title.
+        let nested = window.has_active_dialog(cx);
         window.open_dialog(cx, move |frame, window, cx| {
-            let frame = crate::dialog_frame::place(frame, window);
+            let frame = if nested {
+                crate::dialog_frame::place_nested(frame, window)
+            } else {
+                crate::dialog_frame::place(frame, window)
+            };
             let close = {
                 let state = state.clone();
                 move |_: &_, window: &mut Window, cx: &mut App| {

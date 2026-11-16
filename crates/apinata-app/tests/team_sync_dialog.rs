@@ -57,7 +57,7 @@ fn a_secret_refusal_lists_the_findings_and_retry_pushes_the_fix(cx: &mut TestApp
     let text = lines(cx, &view);
     assert_eq!(
         text[1],
-        "a.yml: secret_value (secret_value on refs/heads/main)"
+        "a.yml: secret_value on refs/\u{2060}heads/\u{2060}main"
     );
     assert!(text.iter().all(|l| !l.contains("s3cr3t")), "{text:?}");
     std::fs::write(col.path().join("a.yml"), request("a", "http://x/fixed")).unwrap();
@@ -167,4 +167,42 @@ fn long_hook_output_scrolls_and_keeps_retry_in_the_window(cx: &mut TestAppContex
         retry.bottom() <= window.height,
         "{retry:?} outside {window:?}"
     );
+}
+
+// The first problem line as the open dialog last drew it, not as the workspace holds it now.
+fn drawn_headline(cx: &mut TestAppContext, s: &Started) -> Option<String> {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        w.try_find(("team-line", 0usize))
+            .and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn the_open_dialog_follows_the_sync_state_until_in_sync(cx: &mut TestAppContext) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (sb, col) = (Sandbox::new(), collection());
+    let bare = shared_origin(&sb, col.path());
+    let hook = col.path().join(".git/hooks/pre-commit");
+    std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    std::fs::write(&hook, "#!/bin/sh\necho nope >&2\nexit 1\n").unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
+    wait_for(cx, "the hook block", |cx| {
+        matches!(state(cx, &s), Some(TeamState::Blocked(Block::Hook { .. })))
+    });
+    open(cx, &s);
+    assert_eq!(
+        drawn_headline(cx, &s).as_deref(),
+        Some("A commit hook refused the commit:")
+    );
+    std::fs::remove_file(&hook).unwrap();
+    click(cx, &s, "team-retry");
+    wait_for(cx, "the push", |_| origin_has(&sb, &bare, "b.yml", "x/b"));
+    wait_for(cx, "idle", |cx| state(cx, &s) == Some(TeamState::Idle));
+    assert_eq!(drawn_headline(cx, &s).as_deref(), Some("In sync."));
 }
