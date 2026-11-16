@@ -210,3 +210,55 @@ fn compare_never_reads_through_a_symlink(cx: &mut TestAppContext) {
     assert!(shown(cx, s.win, "compare-diff"));
     assert!(!shown(cx, s.win, "compare-same"));
 }
+
+#[gpui_kit::test]
+fn the_dialog_counts_the_clashes_instead_of_saying_in_sync(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), with_notes());
+    shared_origin(&sb, col.path());
+    let s = app_with_copy(cx, &sb, &col);
+    open_sync(cx, &s);
+    let view = cx
+        .update(|cx| apinata_app::team_sync_dialog::current(cx))
+        .expect("the dialog");
+    assert_eq!(
+        view.read_with(cx, |v, cx| v.lines(cx)),
+        ["1 clash to settle."]
+    );
+}
+
+// Where Compare's diff starts, after a frame.
+fn diff_top(cx: &mut TestAppContext, s: &Started) -> gpui_kit::Pixels {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| w.find("compare-diff").bounds().top())
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn compare_over_the_sync_dialog_sits_lower_so_its_title_stays_in_view(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), with_notes());
+    shared_origin(&sb, col.path());
+    let s = app_with_copy(cx, &sb, &col);
+    let (ws, root) = (s.ws.clone(), s.root.clone());
+    cx.update_window(s.win, |_, w, cx| {
+        compare_dialog::open_copy(
+            ws,
+            root,
+            "notes.txt".into(),
+            "a\n".into(),
+            "b\n".into(),
+            w,
+            cx,
+        )
+    })
+    .unwrap();
+    let alone = diff_top(cx, &s);
+    click(cx, &s, "compare-close");
+    open_sync(cx, &s);
+    click(cx, &s, ("team-compare", 0usize));
+    let over = diff_top(cx, &s);
+    // The sync dialog's title row and a gap on each side of it.
+    let rem = cx.update_window(s.win, |_, w, _| w.rem_size()).unwrap();
+    let title =
+        gpui_kit::rems(1.75).to_pixels(rem) + apinata_app::style::SPACE_4.to_pixels(rem) * 2.;
+    assert!(over - alone >= title, "{over:?} over, {alone:?} alone");
+}
