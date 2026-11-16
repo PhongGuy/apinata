@@ -262,6 +262,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "dirs 7.0.0",
+ "futures-util",
  "gethostname",
  "gpui-kit",
  "image",
@@ -3319,8 +3320,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-pilot-host"
-version = "0.3.1"
-source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.3.1#68e7e1da817b7139a8dd3247a7c8efc66b329d63"
+version = "0.5.0"
+source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.5.0#7fbb511c1e71e42b7d0929e5af47691144aec1b4"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3334,8 +3335,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-pilot-protocol"
-version = "0.3.1"
-source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.3.1#68e7e1da817b7139a8dd3247a7c8efc66b329d63"
+version = "0.5.0"
+source = "git+https://github.com/PhongGuy/gpui-pilot?tag=v0.5.0#7fbb511c1e71e42b7d0929e5af47691144aec1b4"
 dependencies = [
  "serde",
  "serde_json",
