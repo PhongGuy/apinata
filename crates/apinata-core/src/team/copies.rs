@@ -47,14 +47,22 @@ impl ConflictCopies {
             Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
             _ => {}
         }
-        // Climb toward the copy folder, stopping at the first folder that still holds something.
-        let mut dir = path.parent();
-        while let Some(d) = dir.filter(|d| *d != self.dir && d.starts_with(&self.dir)) {
-            if fs::remove_dir(d).is_err() {
-                break;
-            }
-            dir = d.parent();
+        self.prune_above(&path);
+        Ok(())
+    }
+
+    /// Move the copy at `from` to `to`, as its file moved in the collection, dropping the
+    /// folders it leaves empty; a missing copy is fine.
+    pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
+        let (src, dst) = (self.path_of(from)?, self.path_of(to)?);
+        if fs::symlink_metadata(&src).is_err() {
+            return Ok(());
         }
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&src, &dst)?;
+        self.prune_above(&src);
         Ok(())
     }
 
@@ -69,9 +77,25 @@ impl ConflictCopies {
         self.marks().remove(rel)
     }
 
+    /// Move the local delete at `from` to `to`, as its file moved; a missing one is fine.
+    pub fn rename_deleted(&self, from: &str, to: &str) -> io::Result<()> {
+        self.marks().rename(from, to)
+    }
+
     // The marks folder read with the same plain-path rules as the copies.
     fn marks(&self) -> ConflictCopies {
         ConflictCopies::new(deleted_marks(&self.dir))
+    }
+
+    // Climb from `path` toward the copy folder, removing folders until one still holds something.
+    fn prune_above(&self, path: &Path) {
+        let mut dir = path.parent();
+        while let Some(d) = dir.filter(|d| *d != self.dir && d.starts_with(&self.dir)) {
+            if fs::remove_dir(d).is_err() {
+                break;
+            }
+            dir = d.parent();
+        }
     }
 
     // A relative path that stays inside the folder: plain names only, so no copy escapes it.
