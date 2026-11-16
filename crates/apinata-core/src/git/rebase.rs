@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::branch::{self, SwitchError, lines};
 use super::stream::{CancelFlag, StreamError, git_stream};
@@ -198,8 +198,16 @@ fn fall_back(
             (_, None) => ConflictKind::DeletedRemotely,
             _ => ConflictKind::BothChanged,
         };
-        if let Some(id) = &l {
-            keep_copy(root, id, &copies.join(path), opts)?;
+        match &l {
+            // The newest conflict on a path wins, so a copy replaces an older delete's mark.
+            Some(id) => {
+                keep_copy(root, id, &copies.join(path), opts)?;
+                match fs::remove_file(deleted_marks(copies).join(path)) {
+                    Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
+                    _ => {}
+                }
+            }
+            None => mark_deleted(&deleted_marks(copies).join(path))?,
         }
         paths.push(ConflictPath {
             path: path.clone(),
@@ -287,6 +295,24 @@ fn keep_copy(root: &Path, id: &str, dest: &Path, opts: &GitOptions) -> Result<()
     tmp.write_all(&out.stdout)?;
     tmp.as_file().sync_all()?;
     tmp.persist(dest).map_err(|e| e.error)?;
+    Ok(())
+}
+
+/// The folder beside `copies` that remembers each conflicted local delete as an empty file at
+/// its path, since such a conflict leaves no copy behind to show it after a restart.
+pub(crate) fn deleted_marks(copies: &Path) -> PathBuf {
+    let mut name = copies.as_os_str().to_owned();
+    name.push(".deleted");
+    PathBuf::from(name)
+}
+
+/// Record one conflicted local delete; the mark is empty, its path is the whole message.
+fn mark_deleted(mark: &Path) -> Result<(), SyncError> {
+    let dir = mark
+        .parent()
+        .ok_or_else(|| io::Error::other("a mark needs a parent folder"))?;
+    fs::create_dir_all(dir)?;
+    fs::File::create(mark)?.sync_all()?;
     Ok(())
 }
 

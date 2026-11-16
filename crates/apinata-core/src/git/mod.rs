@@ -14,6 +14,7 @@ pub(crate) use diff::hunks_within;
 pub use diff::text_hunks;
 mod porcelain;
 mod rebase;
+pub(crate) use rebase::deleted_marks;
 pub use rebase::{ConflictKind, ConflictPath, RebasePulled, rebase_pull};
 mod run;
 mod stream;

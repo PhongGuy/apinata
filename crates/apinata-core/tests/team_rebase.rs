@@ -9,6 +9,7 @@ use crate::git_sync::{clean, rev};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use apinata_core::team::ConflictCopies;
 use apinata_core::{CancelFlag, ConflictKind, ConflictPath, RebasePulled, SyncError, rebase_pull};
 
 /// Apply `edits` in `repo` (text, or `None` to delete), commit them, and return the new tip.
@@ -163,6 +164,21 @@ fn a_file_deleted_locally_but_changed_remotely_keeps_the_remote_file_and_no_copy
     assert_eq!(kinds(&paths), [("a.txt", ConflictKind::DeletedLocally)]);
     assert_eq!(fs::read_to_string(col.join("a.txt")).unwrap(), "theirs\n");
     assert!(!copies.join("a.txt").exists());
+}
+
+#[test]
+fn a_local_delete_that_conflicted_is_remembered_beside_the_copies() {
+    let sb = Sandbox::new();
+    let col = base_with(&sb, &[]);
+    let copies = ConflictCopies::new(sb.path().join("copies"));
+    edit(&sb, &col, &[("a.txt", None)]);
+    teammate(&sb, &[("a.txt", Some("theirs\n"))]);
+    pull(&sb, &col, copies.dir()).unwrap();
+    assert_eq!(copies.list().unwrap(), Vec::<String>::new());
+    assert_eq!(copies.deleted().unwrap(), ["a.txt"]);
+    copies.forget_deleted("a.txt").unwrap();
+    assert_eq!(copies.deleted().unwrap(), Vec::<String>::new());
+    assert!(copies.forget_deleted("../a.txt").is_err());
 }
 
 #[test]

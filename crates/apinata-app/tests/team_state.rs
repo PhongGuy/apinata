@@ -301,6 +301,36 @@ fn a_read_only_folder_only_keeps_theirs(cx: &mut TestAppContext) {
     assert_eq!(clashes(cx, &s), []);
 }
 
+#[gpui_kit::test]
+fn an_open_delete_again_clash_survives_a_restart(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let mate = sb.path().join("mate");
+    write(&mate, "a.yml", &request("a", "http://x/theirs"));
+    sb.commit_all(&mate, "theirs");
+    sb.git(&mate, &["push", "-q"]);
+    std::fs::remove_file(col.path().join("a.yml")).unwrap();
+    let deleted = Clash {
+        rel: "a.yml".into(),
+        kind: ClashKind::DeletedLocally,
+    };
+    wait_for(cx, "the clash", |cx| clashes(cx, &s) == [deleted.clone()]);
+    // A fresh loop holds nothing in memory from the last one, as after an app restart.
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    settle(cx);
+    assert_eq!(clashes(cx, &s), [deleted]);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        w.settle_clash(&root, "a.yml", ClashAnswer::DeleteAgain, cx)
+    })
+    .unwrap();
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    settle(cx);
+    assert_eq!(clashes(cx, &s), []);
+}
+
 #[cfg(unix)]
 #[gpui_kit::test]
 fn use_mine_never_writes_through_a_symlink(cx: &mut TestAppContext) {

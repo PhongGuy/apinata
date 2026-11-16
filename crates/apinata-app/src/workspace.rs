@@ -12,10 +12,10 @@ use apinata_core::team::{
     TeamNotice, TeamState, TeamStatus, TeamSync, follow_events,
 };
 use apinata_core::{
-    CommitError, ConflictKind, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError,
-    GitOptions, GitState, GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars,
-    ScriptPhase, SecretStore, StageState, WorkspaceFile, collection_status_with, commit,
-    is_workspace_dir, stage, unstage,
+    CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError, GitOptions,
+    GitState, GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase,
+    SecretStore, StageState, WorkspaceFile, collection_status_with, commit, is_workspace_dir,
+    stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -407,9 +407,10 @@ struct Team {
     connected: async_channel::Sender<()>,
     // A caller's task that lives exactly as long as this loop.
     watch: Option<Task<()>>,
-    // Copies the actor could not open as drafts, and DeletedLocally paths the user settled.
+    // Copies the actor could not open as drafts, and the unsettled conflicted local deletes
+    // read from the marks beside the copies.
     unplaced: BTreeSet<String>,
-    dismissed: BTreeSet<String>,
+    deleted: BTreeSet<String>,
     // Whether a refused edit already raised the read-only notice for this loop.
     told_read_only: bool,
     // The block last announced, kept through the retries that pass back into it.
@@ -2612,7 +2613,7 @@ impl Workspace {
             connected,
             watch: None,
             unplaced: BTreeSet::new(),
-            dismissed: BTreeSet::new(),
+            deleted: BTreeSet::new(),
             told_read_only: false,
             problem: None,
             _pump: pump,
@@ -2747,9 +2748,6 @@ impl Workspace {
         let pulled = matches!(team.status.state, TeamState::Pulling | TeamState::Squashing)
             || team.status.conflicts != status.conflicts;
         let adopt = pulled && !status.conflicts.is_empty();
-        if team.status.conflicts != status.conflicts {
-            team.dismissed.clear();
-        }
         // A hook block passes through Committing on every retry, so the last block announced is
         // remembered until the loop settles rather than compared with the previous state.
         let problem = match &status.state {
@@ -2789,9 +2787,12 @@ impl Workspace {
     }
 
     /// The clashes of the team collection at `root` the editor cannot open: unplaced conflict
-    /// copies, sorted, then the unsettled DeletedLocally paths of the latest pull.
+    /// copies, sorted, then the unsettled conflicted local deletes whose file is still there.
     pub fn team_clashes(&self, root: &Path) -> Vec<Clash> {
-        let Some(team) = self.entry(root).and_then(|e| e.team.as_ref()) else {
+        let Some(entry) = self.entry(root) else {
+            return Vec::new();
+        };
+        let Some(team) = entry.team.as_ref() else {
             return Vec::new();
         };
         let copies = (team.unplaced.iter())
@@ -2800,10 +2801,10 @@ impl Workspace {
                 rel: rel.clone(),
                 kind: ClashKind::Copy,
             });
-        let deleted = (team.status.conflicts.iter())
-            .filter(|c| c.kind == ConflictKind::DeletedLocally && !team.dismissed.contains(&c.path))
-            .map(|c| Clash {
-                rel: c.path.clone(),
+        let deleted = (team.deleted.iter())
+            .filter(|rel| entry.root.join(rel).exists())
+            .map(|rel| Clash {
+                rel: rel.clone(),
                 kind: ClashKind::DeletedLocally,
             });
         copies.chain(deleted).collect()
@@ -2853,7 +2854,8 @@ impl Workspace {
                 team.unplaced.remove(rel);
             }
             ClashKind::DeletedLocally => {
-                team.dismissed.insert(rel.to_owned());
+                team.copies.forget_deleted(rel)?;
+                team.deleted.remove(rel);
             }
         }
         team.sync.changed();
@@ -2864,13 +2866,15 @@ impl Workspace {
         Ok(())
     }
 
-    // Sends every conflict copy of `root`'s team to its request; a copy with no request path,
-    // or one the actor answers it could not open, is listed as a clash instead.
+    // Reads the conflicted local deletes kept on disk, then sends every conflict copy of `root`'s
+    // team to its request; a copy with no request path, or one the actor answers it could not
+    // open, is listed as a clash instead.
     fn adopt_copies(&mut self, root: &Path, cx: &mut Context<Self>) {
         let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
             return;
         };
         let copies = team.copies.clone();
+        team.deleted = copies.deleted().unwrap_or_default().into_iter().collect();
         let mut sends = Vec::new();
         for rel in copies.list().unwrap_or_default() {
             match ItemPath::new(&rel) {
