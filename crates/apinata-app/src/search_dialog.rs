@@ -302,8 +302,13 @@ impl SearchForm {
             scope,
             reply,
         };
-        self.workspace
+        // A refused send has already said why, such as a read-only team folder.
+        let sent = self
+            .workspace
             .update(cx, |w, cx| w.send(&self.root, command, cx));
+        if sent.is_none() {
+            return;
+        }
         self._replace = Some(cx.spawn_in(window, async move |this, cx| {
             let done = answer
                 .recv()

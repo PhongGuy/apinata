@@ -412,6 +412,57 @@ fn the_read_role_refuses_a_replace_and_its_reply_closes(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
+fn each_refused_replace_import_and_conversion_says_read_only(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Read, FAST);
+    let seen = events(cx, &s.ws);
+    let root = s.root.clone();
+    let expected = apinata_core::Collection::open(col.path())
+        .unwrap()
+        .conversion_preview(&ip("a.yml"), apinata_core::RequestKind::Graphql)
+        .unwrap();
+    let env = apinata_core::import::parse_environment(
+        None,
+        br#"{"name":"dev","values":[],"_postman_variable_scope":"environment"}"#,
+    )
+    .unwrap();
+    let sent = s.ws.update(cx, |w, cx| {
+        // A refused save first spends the once-per-loop notice an autosave would raise.
+        let save = w.send(&root, Command::Save(Target::Request(ip("a.yml"))), cx);
+        let replace = Command::Replace {
+            query: "x/0".into(),
+            replacement: "x/no".into(),
+            options: Default::default(),
+            scope: apinata_core::ReplaceScope::All,
+            reply: async_channel::bounded(1).0,
+        };
+        let convert = Command::ConvertKind {
+            item: ip("a.yml"),
+            kind: apinata_core::RequestKind::Graphql,
+            expected,
+            reply: async_channel::bounded(1).0,
+        };
+        let import = Command::ImportEnvironment {
+            env,
+            reply: async_channel::bounded(1).0,
+        };
+        [
+            save,
+            w.send(&root, replace, cx),
+            w.send(&root, convert, cx),
+            w.send(&root, import, cx),
+        ]
+    });
+    assert_eq!(sent, [None, None, None, None]);
+    let told = (seen.borrow().iter())
+        .filter(|e| matches!(e, WorkspaceEvent::TeamReadOnly { .. }))
+        .count();
+    assert_eq!(told, 4);
+}
+
+#[gpui_kit::test]
 fn the_read_role_still_drops_drafts(cx: &mut TestAppContext) {
     let (sb, col) = (Sandbox::new(), collection());
     shared_origin(&sb, col.path());

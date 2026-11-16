@@ -860,3 +860,30 @@ fn the_first_frame_with_hits_shows_the_first_group_header(cx: &mut TestAppContex
         "header {header:?} outside list {list:?}"
     );
 }
+
+#[gpui_kit::test]
+fn a_replace_in_a_read_only_team_folder_only_says_it_is_read_only(cx: &mut TestAppContext) {
+    use crate::support::team::{shared_origin, start_team_as, team_started};
+    let (sb, col) = (crate::git_support::Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    http_ready(cx);
+    let s = team_started(cx, &sb, &col, |_, _| {}).0;
+    start_team_as(
+        cx,
+        &sb,
+        &s,
+        apinata_core::team::Role::Read,
+        std::time::Duration::from_millis(50),
+    );
+    ready(cx, &s, "needle", "pin");
+    let shown = toasts(cx, &s);
+    click_id(cx, &s, "search-replace-all");
+    wait_real(cx, |cx| {
+        frame(cx, s.win);
+        toasts(cx, &s) > shown
+    });
+    cx.run_until_parked();
+    frame(cx, s.win);
+    assert_eq!(toasts(cx, &s), shown + 1, "only the read-only toast");
+    assert!(on_disk(&s, "a.yml").contains("http://x/needle"));
+}

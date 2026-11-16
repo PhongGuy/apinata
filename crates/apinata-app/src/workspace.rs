@@ -129,7 +129,8 @@ pub enum WorkspaceEvent {
         /// The collection's root.
         root: PathBuf,
     },
-    /// The read-only team collection at `root` refused its first edit or write of this loop.
+    /// The read-only team collection at `root` refused its first edit or write of this loop,
+    /// or a replace, kind conversion or environment import.
     TeamReadOnly {
         /// The collection's root.
         root: PathBuf,
@@ -1289,8 +1290,15 @@ impl Workspace {
                 | Command::Tree(TreeOp::DiscardDraft { .. })
         );
         if held && !drops && self.is_team_read_only(root) {
+            // Autosaves say so once per loop; an action the user picked says so every time.
+            let picked = matches!(
+                command,
+                Command::Replace { .. }
+                    | Command::ConvertKind { .. }
+                    | Command::ImportEnvironment { .. }
+            );
             let team = self.entry_mut(root).and_then(|e| e.team.as_mut())?;
-            if !std::mem::replace(&mut team.told_read_only, true) {
+            if !std::mem::replace(&mut team.told_read_only, true) || picked {
                 cx.emit(WorkspaceEvent::TeamReadOnly {
                     root: root.to_path_buf(),
                 });
