@@ -153,6 +153,29 @@ fn the_copy_folder_lists_reads_and_prunes() {
 }
 
 #[test]
+fn a_copy_and_a_delete_mark_move_with_their_file() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let copies = ConflictCopies::new(dir.path().join("b1"));
+    for (rel, text) in [("b1/f/r.yml", "r"), ("b1.deleted/f/d.yml", "")] {
+        let path = dir.path().join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    copies.rename("f/r.yml", "g/s.yml").unwrap();
+    assert_eq!(copies.list().unwrap(), ["g/s.yml"]);
+    assert_eq!(copies.read("g/s.yml").unwrap(), b"r");
+    assert!(!dir.path().join("b1/f").exists());
+    copies.rename_deleted("f/d.yml", "e.yml").unwrap();
+    assert_eq!(copies.deleted().unwrap(), ["e.yml"]);
+    assert!(!dir.path().join("b1.deleted/f").exists());
+    copies.rename("gone.yml", "x.yml").unwrap();
+    copies.rename_deleted("gone.yml", "x.yml").unwrap();
+    assert_eq!(copies.list().unwrap(), ["g/s.yml"]);
+    assert!(copies.rename("g/s.yml", "../s.yml").is_err());
+    assert!(copies.rename_deleted("e.yml", "../e.yml").is_err());
+}
+
+#[test]
 fn a_dirty_request_keeps_its_newer_edits_when_its_copy_is_adopted() {
     let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("a.yml", &request("a", 1))]);
     c.request_mut(&ip("a.yml"))

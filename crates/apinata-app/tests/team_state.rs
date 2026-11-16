@@ -186,6 +186,66 @@ fn a_file_deleted_here_and_changed_there_offers_delete_again(cx: &mut TestAppCon
     });
 }
 
+fn rename_a_to_b() -> Command {
+    Command::Tree(TreeOp::Rename {
+        item: ip("a.yml"),
+        name: "b".into(),
+        rename_file: true,
+    })
+}
+
+#[gpui_kit::test]
+fn an_adopted_copy_follows_its_request_through_a_rename(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    put_copy(&s, "a.yml", &request("a", "http://x/mine"));
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    settle(cx);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.send(&root, rename_a_to_b(), cx));
+    settle(cx);
+    assert!(col.path().join("b.yml").exists());
+    assert!(!copies_of(&s).join("a.yml").exists());
+    let kept = std::fs::read_to_string(copies_of(&s).join("b.yml")).unwrap();
+    assert!(kept.contains("x/mine"), "{kept}");
+    // A fresh loop opens the moved copy as the renamed request's edits, not as a clash.
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    settle(cx);
+    assert_eq!(clashes(cx, &s), []);
+    assert!(copies_of(&s).join("b.yml").exists());
+}
+
+#[gpui_kit::test]
+fn a_delete_again_clash_follows_its_file_through_a_rename(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    let mate = sb.path().join("mate");
+    write(&mate, "a.yml", &request("a", "http://x/theirs"));
+    sb.commit_all(&mate, "theirs");
+    sb.git(&mate, &["push", "-q"]);
+    std::fs::remove_file(col.path().join("a.yml")).unwrap();
+    let deleted = |rel: &str| Clash {
+        rel: rel.into(),
+        kind: ClashKind::DeletedLocally,
+    };
+    wait_for(cx, "the clash", |cx| clashes(cx, &s) == [deleted("a.yml")]);
+    // The watcher reloads the returned file before the editor can rename it.
+    settle(cx);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.send(&root, rename_a_to_b(), cx));
+    wait_for(cx, "the renamed file", |_| {
+        col.path().join("b.yml").exists()
+    });
+    settle(cx);
+    assert_eq!(clashes(cx, &s), [deleted("b.yml")]);
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    settle(cx);
+    assert_eq!(clashes(cx, &s), [deleted("b.yml")]);
+}
+
 #[cfg(unix)]
 #[gpui_kit::test]
 fn a_hook_refusal_is_one_problem_event(cx: &mut TestAppContext) {

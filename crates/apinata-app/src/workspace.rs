@@ -2906,6 +2906,30 @@ impl Workspace {
         }
     }
 
+    // Moves the unopened copies and local-delete marks under `from` to `to` with their files,
+    // so their clashes stay offered at the new path; the actor moves the copies it opened.
+    fn follow_team_move(
+        &mut self,
+        root: &Path,
+        from: &ItemPath,
+        to: &ItemPath,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        let copies = team.copies.clone();
+        let moved = carry_clashes(&mut team.unplaced, from, to, |a, b| copies.rename(a, b))
+            | carry_clashes(&mut team.deleted, from, to, |a, b| {
+                copies.rename_deleted(a, b)
+            });
+        if moved {
+            cx.emit(WorkspaceEvent::TeamStatus {
+                root: root.to_path_buf(),
+            });
+        }
+    }
+
     // Records the actor's answer for the copy at `rel`; a change of the clash list is a status.
     fn placed(&mut self, root: &Path, rel: String, adopted: bool, cx: &mut Context<Self>) {
         let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
@@ -3449,6 +3473,7 @@ impl Workspace {
                         draft_store::discard(&key, cx);
                     }
                     self.follow_run_move(root, from, to);
+                    self.follow_team_move(root, from, to, cx);
                     self.tabs.follow_move(root, from, to)
                 }
                 NoticeKind::ExampleDeleted { item, index } => {
@@ -4314,4 +4339,31 @@ fn as_shown(names: &[(PathBuf, SharedString)]) -> Vec<(&Path, &str)> {
     (names.iter())
         .map(|(root, name)| (root.as_path(), name.as_ref()))
         .collect()
+}
+
+/// Rewrite each clash path at or under `from` to sit under `to`, once `rename` moved its file;
+/// whether any moved. One that cannot be moved keeps its old path.
+fn carry_clashes(
+    set: &mut BTreeSet<String>,
+    from: &ItemPath,
+    to: &ItemPath,
+    rename: impl Fn(&str, &str) -> std::io::Result<()>,
+) -> bool {
+    let mut moved = false;
+    *set = std::mem::take(set)
+        .into_iter()
+        .map(|rel| {
+            let new = (rel.strip_prefix(from.as_str()))
+                .filter(|rest| rest.is_empty() || rest.starts_with('/'))
+                .map(|rest| format!("{}{rest}", to.as_str()));
+            match new {
+                Some(new) if rename(&rel, &new).is_ok() => {
+                    moved = true;
+                    new
+                }
+                _ => rel,
+            }
+        })
+        .collect();
+    moved
 }

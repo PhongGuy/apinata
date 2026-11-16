@@ -1240,6 +1240,23 @@ impl Actor {
             *Arc::make_mut(&mut self.stale) =
                 held.into_iter().map(|(k, v)| (rekey(k), v)).collect();
         }
+        // An adopted copy moves with its request on disk too, so settling or a restart finds it
+        // there; one that cannot move keeps its old path and is still deleted once settled.
+        self.copies = mem::take(&mut self.copies)
+            .into_iter()
+            .map(|(target, (copies, rel))| {
+                let target = rekey(target);
+                let new = match &target {
+                    Target::Request(p) if p.as_str() != rel => p.as_str().to_owned(),
+                    _ => return (target, (copies, rel)),
+                };
+                let rel = match copies.rename(&rel, &new) {
+                    Ok(()) => new,
+                    Err(_) => rel,
+                };
+                (target, (copies, rel))
+            })
+            .collect();
         self.ledger.record_move(from, to, self.seq + 1);
     }
 
