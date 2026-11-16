@@ -143,6 +143,29 @@ fn keep_theirs_drops_the_copy_and_leaves_the_file(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_clash_list_is_read_from_memory_and_refreshed_by_the_loop(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), with_notes());
+    shared_origin(&sb, col.path());
+    let s = app(cx, &sb, &col);
+    put_copy(&s, "notes.txt", "mine\n");
+    start_team_as(cx, &sb, &s, Role::Write, FAST);
+    wait_for(cx, "the clash", |cx| {
+        clashes(cx, &s) == [copy_clash("notes.txt")]
+    });
+    // The copy goes behind the loop's back, so only a disk check on read would notice now.
+    std::fs::remove_file(copies_of(&s).join("notes.txt")).unwrap();
+    assert_eq!(clashes(cx, &s), [copy_clash("notes.txt")]);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("a.yml", "http://x/1"), cx);
+        w.send(&root, Command::Save(Target::Request(ip("a.yml"))), cx);
+    });
+    wait_for(cx, "the next status drops it", |cx| {
+        clashes(cx, &s).is_empty()
+    });
+}
+
+#[gpui_kit::test]
 fn an_adopted_copy_is_not_a_clash(cx: &mut TestAppContext) {
     let (sb, col) = (Sandbox::new(), collection());
     shared_origin(&sb, col.path());
