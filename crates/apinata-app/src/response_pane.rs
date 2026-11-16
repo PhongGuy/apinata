@@ -1529,6 +1529,21 @@ impl ResponsePane {
             })
     }
 
+    // A muted line under the header when the JSON body this response was sent with did not
+    // parse, so a server's failure reads beside the error the editor knew about.
+    fn sent_json_note(&self, cx: &App) -> Option<impl IntoElement> {
+        let text = self.send.read(cx).sent_json_note()?.to_owned();
+        Some(
+            div()
+                .id("response-sent-json")
+                .test_support()
+                .aria_label(text.clone())
+                .text_size(style::TEXT_SMALL)
+                .text_color(cx.theme().muted_foreground)
+                .child(text),
+        )
+    }
+
     /// The result's warnings, then each skipped post-response variable, as displayed: in
     /// sentence case, with core's backticks as plain quotes; the CLI and MCP keep core's text.
     pub fn warnings(&self, cx: &App) -> Vec<String> {
@@ -5117,6 +5132,7 @@ impl Render for ResponsePane {
                     .gap_2()
                     .ring_room(RingSides::LEFT)
                     .children(self.stream_error_row(cx))
+                    .children(self.sent_json_note(cx))
                     .children(self.warnings(cx).into_iter().enumerate().map(|(ix, w)| {
                         div()
                             .id(("response-warning", ix))

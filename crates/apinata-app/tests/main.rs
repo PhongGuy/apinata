@@ -515,6 +515,7 @@ mod send_anywhere;
 mod send_model;
 mod send_stream;
 mod sensitive_runtime_values;
+mod sent_json_note;
 mod session_unknown_kinds;
 mod set_variable;
 mod settings_docs;

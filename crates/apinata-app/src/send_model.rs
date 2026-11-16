@@ -12,6 +12,7 @@ use apinata_core::{
 };
 use gpui_kit::{App, AsyncApp, Context, Entity, Global, Task, WeakEntity};
 
+use crate::body_section;
 use crate::command::{Command, PlanError, Planned};
 use crate::executor;
 use crate::last_response::{self, KeptDigests, SendExtra, Stored};
@@ -75,6 +76,9 @@ pub struct SendModel {
     shown_secrets: Vec<String>,
     // A draft's request as planned, kept with its send once scrubbed.
     snapshot: Option<DraftSnapshot>,
+    // The invalid-JSON note of the send in flight, then of the result it produced.
+    pending_json_note: Option<String>,
+    json_note: Option<SentNote>,
     restored: Option<Restored>,
     // The latest (state, restored) while an older kept send is shown, and that send's seq.
     stash: Option<(SendState, Option<Restored>)>,
@@ -113,6 +117,8 @@ impl SendModel {
             secrets_of: None,
             shown_secrets: Vec::new(),
             snapshot: None,
+            pending_json_note: None,
+            json_note: None,
             restored: None,
             stash: None,
             viewing: None,
@@ -245,6 +251,7 @@ impl SendModel {
         self.secrets = Vec::new();
         self.secrets_of = None;
         self.snapshot = None;
+        self.pending_json_note = None;
         self.restored = None;
         self.leave_history();
         let Some(exec) = executor::shared(cx) else {
@@ -313,10 +320,14 @@ impl SendModel {
                 .as_ref()
                 .filter(|_| draft)
                 .map(|(file, _)| file.snapshot());
+            let json_note = source
+                .as_ref()
+                .and_then(|(file, _)| body_section::sent_json_note(&file.body()));
             let _ = this.update(cx, |m, _| {
                 m.secrets = secrets;
                 m.secrets_of = source;
                 m.snapshot = snapshot;
+                m.pending_json_note = json_note;
             });
             let scripts = match prepare(root, &planned, cx) {
                 Prepared::Ready(scripts) => scripts,
@@ -543,6 +554,15 @@ impl SendModel {
         self.restored.clone()
     }
 
+    /// The note on the shown result when the JSON body it was sent with did not parse.
+    pub fn sent_json_note(&self) -> Option<&str> {
+        let SendState::Done(shown) = &self.state else {
+            return None;
+        };
+        let note = self.json_note.as_ref()?;
+        std::ptr::eq(note.result.as_ptr(), Arc::as_ptr(shown)).then_some(note.text.as_str())
+    }
+
     /// [`SendModel::restored`] borrowed, for a caller that reads it on every render.
     pub fn restored_ref(&self) -> Option<&Restored> {
         self.restored.as_ref()
@@ -602,6 +622,11 @@ impl SendModel {
                 }));
             }
         }
+        // The note belongs to this result alone, so a later result never inherits it.
+        self.json_note = self.pending_json_note.take().map(|text| SentNote {
+            result: Arc::downgrade(&result),
+            text,
+        });
         self.finish(SendState::Done(result), cx);
     }
 
@@ -648,6 +673,7 @@ impl SendModel {
             self.finished_at = Some(SystemTime::now());
         }
         self.state = state;
+        self.pending_json_note = None;
         self.ended_events = self
             .live
             .take()
@@ -695,6 +721,12 @@ impl SendModel {
         self.waiting = waiting;
         cx.notify();
     }
+}
+
+// A note tied to the one result it describes.
+struct SentNote {
+    result: std::sync::Weak<RequestResult>,
+    text: String,
 }
 
 struct Shown {
