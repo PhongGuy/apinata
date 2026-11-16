@@ -84,8 +84,9 @@ impl SyncView {
 
     /// The problem lines of the collection's live status; empty once its loop is gone.
     pub fn lines(&self, cx: &App) -> Vec<String> {
-        (self.workspace.read(cx).team_status(&self.root))
-            .map(|status| problem_lines(&status))
+        let workspace = self.workspace.read(cx);
+        (workspace.team_status(&self.root))
+            .map(|status| problem_lines(&status, workspace.team_clashes(&self.root).len()))
             .unwrap_or_default()
     }
 

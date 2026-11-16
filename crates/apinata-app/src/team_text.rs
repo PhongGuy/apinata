@@ -62,26 +62,38 @@ pub fn server_warning(server: &ServerUrl) -> Option<&'static str> {
     )
 }
 
-/// One secret the server refused, as `{path}: {rule} ({code} on {git_ref})`.
+/// One secret the server refused, as `{path}: {rule} ({code}) on {git_ref}`, naming the code
+/// only when it differs from the rule.
 ///
 /// The server reports a finding outside any file (a commit or tag message, or a
-/// tag's target) with the path `/`, which no repository file can have.
+/// tag's target) with the path `/`, which no repository file can have. A word joiner follows
+/// each slash of the ref, so a wrapped line breaks before the ref rather than inside it.
 pub fn finding_line(f: &Finding) -> String {
     let place = if f.path == "/" {
         "not in a file (a commit or tag message, or a tag's target)"
     } else {
         &f.path
     };
-    format!("{place}: {} ({} on {})", f.rule, f.code, f.git_ref)
+    let git_ref = f.git_ref.replace('/', "/\u{2060}");
+    if f.code == f.rule {
+        format!("{place}: {} on {git_ref}", f.rule)
+    } else {
+        format!("{place}: {} ({}) on {git_ref}", f.rule, f.code)
+    }
 }
 
-/// What the sync dialog says about `status`, one line each. Offline, read-only and blocked
-/// folders end with how many local commits wait for the server.
-pub fn problem_lines(status: &TeamStatus) -> Vec<String> {
+/// What the sync dialog says about `status` with `clashes` unsettled, one line each. Offline,
+/// read-only and blocked folders end with how many local commits wait for the server.
+pub fn problem_lines(status: &TeamStatus, clashes: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let waits = match &status.state {
+        // Clashes listed below are not in sync, even when the loop itself is idle.
         TeamState::Idle => {
-            lines.push("In sync.".into());
+            lines.push(match clashes {
+                0 => "In sync.".into(),
+                1 => "1 clash to settle.".into(),
+                n => format!("{n} clashes to settle."),
+            });
             false
         }
         TeamState::Offline => {
