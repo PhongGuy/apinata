@@ -1,5 +1,6 @@
 //! Team mode in the app: watched saves push, a conflict opens under the changed-on-disk
-//! banner, copies from an earlier run open at start, and closing the window pushes first.
+//! banner, copies from an earlier run open at start, and closing the window or a
+//! collection pushes first.
 
 use crate::git_support::{Sandbox, write};
 use crate::support::*;
@@ -231,4 +232,18 @@ fn a_close_that_saves_unsaved_edits_pushes_them_before_it_closes(cx: &mut TestAp
         origin_has(&sb, &bare, "a.yml", "x/saved"),
         "the saved edit was pushed first"
     );
+}
+
+#[gpui_kit::test]
+fn closing_a_collection_pushes_its_pending_save(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = collection();
+    let bare = shared(&sb, &col);
+    let s = team_app(cx, &sb, &col, Duration::from_secs(60));
+    std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.close(&root, cx));
+    wait_for(cx, "the closed collection's push", |_| {
+        origin_has(&sb, &bare, "b.yml", "x/b")
+    });
 }

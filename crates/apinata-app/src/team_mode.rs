@@ -27,7 +27,7 @@ pub const ROLE_CHECK: Duration = Duration::from_secs(60);
 /// loop already running there the current sign-in; nothing when git is off, it is unbound,
 /// or a resume for it is already running.
 pub fn resume(w: &mut Workspace, root: &Path, cx: &mut Context<Workspace>) {
-    if w.git_options().is_none() || w.team_resumes().contains(root) {
+    if w.git_options().is_none() || w.team_resumes().contains(root) || w.team_closing(root) {
         return;
     }
     let Some(state) = cx.try_global::<AppState>() else {
