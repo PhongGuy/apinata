@@ -404,3 +404,43 @@ fn signing_out_of_a_signed_out_server_sends_nothing(cx: &mut TestAppContext) {
     );
     assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/7"), 0);
 }
+
+#[gpui_kit::test]
+fn signing_out_waits_for_a_running_create(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let server = potluck_server(cx);
+    answer(cx, &server, "GET", "/api/v1/me", me(true, vec![]));
+    answer(cx, &server, "GET", "/api/v1/teams", teams());
+    answer(
+        cx,
+        &server,
+        "DELETE",
+        "/api/v1/tokens/7",
+        ResponseTemplate::new(204),
+    );
+    let created = workspace(&server.uri(), "core", "api-tests", "apinata", "admin");
+    let slow = ResponseTemplate::new(201)
+        .set_body_json(created)
+        .set_delay(std::time::Duration::from_millis(800));
+    answer(cx, &server, "POST", "/api/v1/teams/core/workspaces", slow);
+    let (_col, s, secrets) = team_app(cx, |paths, secrets| {
+        signed_in(paths, secrets, &server, true)
+    });
+    let view = ready(cx, &s);
+    create(cx, &s, &view, "core", "api-tests", "API tests");
+    let v = view.clone();
+    cx.update_window(s.win, |_, w, cx| v.update(cx, |v, cx| v.sign_out(0, w, cx)))
+        .unwrap();
+    wait_for(cx, "the new row", |cx| {
+        view.read_with(cx, |v, _| {
+            (v.sections().first()).is_some_and(|s| s.rows().iter().any(|r| r.slug == "api-tests"))
+        })
+    });
+    assert_eq!(hits_on(cx, &server, "DELETE", "/api/v1/tokens/7"), 0);
+    assert!(
+        secrets
+            .get(&token_key(&server_url(&server), "ada"))
+            .unwrap()
+            .is_some()
+    );
+}
