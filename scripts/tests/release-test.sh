@@ -241,6 +241,99 @@ test_stable_copies_refuses_ambiguous_or_empty_input() {
   return 0
 }
 
+# A repository with v1.0.0 and v1.1.0 tags and a gh stub, so release_notes runs offline.
+notes_fixture() {
+  local repo=$WORK/notes-repo
+  [[ -d $repo ]] && { echo "$repo"; return 0; }
+  mkdir -p "$repo"
+  (
+    cd "$repo"
+    git init -q
+    git config user.email t@example.com
+    git config user.name t
+    # A throwaway repository: the machine's own commit hooks have no say over it.
+    git config core.hooksPath /dev/null
+    git commit -q --allow-empty -m 'feat: first'
+    git tag v1.0.0
+    git commit -q --allow-empty -m 'feat: add a thing'
+    git commit -q --allow-empty -m 'fix: mend a thing'
+    git tag v1.1.0
+  )
+  printf '#!/usr/bin/env bash\nprintf "## What'"'"'s Changed\\n\\n* Add a thing by @o in https://x/1\\n\\n**Full Changelog**: https://x\\n"\n' >"$WORK/gh-notes"
+  chmod +x "$WORK/gh-notes"
+  echo "$repo"
+}
+
+# The notes for v1.1.0 of o/r, written by release_notes in the fixture repository.
+render_notes() {
+  local repo
+  repo=$(notes_fixture)
+  (cd "$repo" && GH=$WORK/gh-notes release_notes v1.1.0 o/r "$WORK/notes.md") || return 1
+  cat "$WORK/notes.md"
+}
+
+# The lines of section HEADING, up to the next "## " heading.
+notes_section() {
+  awk -v h="## $2" '$0 == h { on = 1; next } on && /^## / { exit } on' <<<"$1"
+}
+
+test_release_notes_sections_come_in_order() {
+  local notes
+  notes=$(render_notes) || { fail "release_notes failed"; return 0; }
+  local headings
+  headings=$(grep '^## ' <<<"$notes" | tr '\n' '|')
+  [[ $headings == "## What's Changed|## Downloads|## Before you install|## Updates|" ]] || fail "headings: $headings"
+  [[ $(sed -n 1p <<<"$notes") == "This release adds 1 feature and fixes 1 bug." ]] || fail "intro: $(sed -n 1p <<<"$notes")"
+  grep -qxF '**Full Changelog**: https://github.com/o/r/compare/v1.0.0...v1.1.0' <<<"$notes" || fail "no changelog link"
+  if grep -n -i -e bruno -e ' -- ' <<<"$notes"; then fail "notes break the user text rules"; fi
+  if LC_ALL=C grep -n '[^ -~]' <<<"$notes"; then fail "notes hold non-ASCII text"; fi
+}
+
+test_release_notes_link_every_download() {
+  local notes downloads f url=https://github.com/o/r/releases/download/v1.1.0
+  notes=$(render_notes) || { fail "release_notes failed"; return 0; }
+  downloads=$(notes_section "$notes" Downloads)
+  for f in apinata-app_1.1.0_amd64.deb apinata-app_1.1.0_x86_64.AppImage apinata-1.1.0-x86_64-unknown-linux-gnu.tar.gz \
+    apinata-app_1.1.0_arm64.deb apinata-app_1.1.0_aarch64.AppImage apinata-1.1.0-aarch64-unknown-linux-gnu.tar.gz \
+    Apinata_1.1.0_aarch64.dmg apinata-1.1.0-aarch64-apple-darwin.tar.gz \
+    Apinata_1.1.0_x86_64.dmg apinata-1.1.0-x86_64-apple-darwin.tar.gz \
+    apinata-app_1.1.0_x64-setup.exe apinata-1.1.0-x86_64-pc-windows-msvc.zip; do
+    grep -qF "[$f]($url/$f)" <<<"$downloads" || fail "no link for $f"
+  done
+  if grep -n '`[^`]*1\.1\.0[^`]*`' <<<"$downloads"; then fail "a download is named without a link"; fi
+  # Under the table: the version-free copies, then checksums, then attestations.
+  [[ $downloads == *"no version in its name"*'sha256sum -c SHA256SUMS'*'gh attestation verify <file> --repo o/r'* ]] \
+    || fail "lines under the table missing or out of order"
+  grep -q 'always point at the latest release' <<<"$downloads" || fail "copies line does not say what they are for"
+}
+
+test_release_notes_explain_each_install_warning() {
+  local notes before
+  notes=$(render_notes) || { fail "release_notes failed"; return 0; }
+  before=$(notes_section "$notes" "Before you install")
+  local bullet
+  for bullet in '- **Windows:**' '- **macOS:**' '- **Linux AppImage:**' '- **Linux .deb:**'; do
+    grep -qF -- "$bullet" <<<"$before" || fail "no bullet $bullet"
+  done
+  grep -F -- '- **Windows:**' <<<"$before" | grep -q 'More info.*Run anyway' || fail "Windows steps"
+  grep -F -- '- **macOS:**' <<<"$before" | grep -q 'Privacy & Security.*Open Anyway' || fail "macOS steps"
+  grep -F -- '- **macOS:**' <<<"$before" | grep -qF 'xattr' || fail "macOS terminal alternative"
+  grep -F -- '- **Linux AppImage:**' <<<"$before" | grep -q 'Properties.*chmod +x' || fail "AppImage steps"
+  grep -F -- '- **Linux .deb:**' <<<"$before" | grep -q 'software installer.*Install' || fail ".deb steps"
+}
+
+test_release_notes_say_per_package_how_it_updates() {
+  local notes updates
+  notes=$(render_notes) || { fail "release_notes failed"; return 0; }
+  updates=$(notes_section "$notes" Updates)
+  local releases='[Releases page](https://github.com/o/r/releases)'
+  grep -F -- '- **Linux .deb:**' <<<"$updates" | grep -qF "does not update itself" || fail ".deb update line"
+  grep -F -- '- **Linux .deb:**' <<<"$updates" | grep -qF "$releases" || fail ".deb Releases link"
+  grep -F -- '- **Desktop app' <<<"$updates" | grep -q 'AppImage' || fail "app update line"
+  grep -F -- '- **Command line:**' <<<"$updates" | grep -qF 'apinata self-update' || fail "CLI update line"
+  grep -q 'keychain' <<<"$updates" || fail "keychain note"
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do "$t"; done
 if ((FAILS > 0)); then echo "$FAILS failure(s)" >&2; exit 1; fi
 echo "release tests passed"

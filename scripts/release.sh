@@ -286,6 +286,11 @@ generated_changes() {
     awk 'NF { for (; blank > 0; blank--) print ""; print; seen = 1; next } seen { blank++ }'
 }
 
+# "[FILE](BASE/FILE)": FILE as a markdown link to its download under BASE.
+download_link() {
+  printf '[%s](%s/%s)' "$2" "$1" "$2"
+}
+
 # Write OUT, the draft notes for TAG in REPO (owner/name): the intro, What's
 # Changed as the pull requests merged since the previous v* tag, Downloads
 # named from the tag's version, and the install and update notes. Runs in the
@@ -316,34 +321,39 @@ release_notes() {
       echo
       echo "**Full Changelog**: https://github.com/$repo/compare/$prev...$tag"
     fi
+    local d="https://github.com/$repo/releases/download/$tag"
     cat <<NOTES
 
 ## Downloads
 
 | Platform | Desktop app | Command line |
 | --- | --- | --- |
-| Linux x86_64 | \`apinata-app_${v}_amd64.deb\` or \`apinata-app_${v}_x86_64.AppImage\` | \`apinata-$v-x86_64-unknown-linux-gnu.tar.gz\` |
-| Linux arm64 | \`apinata-app_${v}_arm64.deb\` or \`apinata-app_${v}_aarch64.AppImage\` | \`apinata-$v-aarch64-unknown-linux-gnu.tar.gz\` |
-| macOS Apple silicon | \`Apinata_${v}_aarch64.dmg\` | \`apinata-$v-aarch64-apple-darwin.tar.gz\` |
-| macOS Intel | \`Apinata_${v}_x86_64.dmg\` | \`apinata-$v-x86_64-apple-darwin.tar.gz\` |
-| Windows x86_64 | \`apinata-app_${v}_x64-setup.exe\` | \`apinata-$v-x86_64-pc-windows-msvc.zip\` |
+| Linux x86_64 | $(download_link "$d" "apinata-app_${v}_x86_64.AppImage") or $(download_link "$d" "apinata-app_${v}_amd64.deb") | $(download_link "$d" "apinata-$v-x86_64-unknown-linux-gnu.tar.gz") |
+| Linux arm64 | $(download_link "$d" "apinata-app_${v}_aarch64.AppImage") or $(download_link "$d" "apinata-app_${v}_arm64.deb") | $(download_link "$d" "apinata-$v-aarch64-unknown-linux-gnu.tar.gz") |
+| macOS Apple silicon | $(download_link "$d" "Apinata_${v}_aarch64.dmg") | $(download_link "$d" "apinata-$v-aarch64-apple-darwin.tar.gz") |
+| macOS Intel | $(download_link "$d" "Apinata_${v}_x86_64.dmg") | $(download_link "$d" "apinata-$v-x86_64-apple-darwin.tar.gz") |
+| Windows x86_64 | $(download_link "$d" "apinata-app_${v}_x64-setup.exe") | $(download_link "$d" "apinata-$v-x86_64-pc-windows-msvc.zip") |
 
-Check a download with \`sha256sum -c SHA256SUMS\`.
-Check that this project's release workflow built it with \`gh attestation verify <file> --repo $repo\`.
+The AppImage is for most Linux systems and the .deb for Ubuntu and Debian. Each desktop app file also has a copy with no version in its name, such as \`apinata-linux-x86_64.AppImage\`, for links that always point at the latest release. Check a download with \`sha256sum -c SHA256SUMS\`. To check that a file was built by GitHub from this project's own code, use \`gh attestation verify <file> --repo $repo\`.
 
 ## Before you install
 
+Apinata is free and its builds are not signed with a paid certificate, so your system may warn the first time you open it. Only follow these steps for files from this page.
+
 NOTES
     cat <<'NOTES'
-- **Windows:** the installer and the zip are not code-signed, so SmartScreen warns on first run. Choose "More info", then "Run anyway".
-- **macOS:** the app is not notarised, so Gatekeeper blocks the first open. Right-click the app and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Apinata.app`. For the command line, run `xattr -d com.apple.quarantine apinata`.
-- **Linux:** no extra steps.
+- **Windows:** Windows may show a blue box saying "Windows protected your PC". Click "More info", then "Run anyway". If Windows blocks `apinata.exe` from the command line zip, right-click the zip before you unpack it, choose Properties, tick "Unblock" and click OK.
+- **macOS:** open the .dmg and drag Apinata into Applications. The first time you open it, macOS says it cannot check Apinata for malicious software; click Done. Open System Settings, choose Privacy & Security, scroll down to Security and click "Open Anyway" next to the message about Apinata, then click "Open Anyway" again and enter your password. From then on it opens normally. In a terminal, `xattr -dr com.apple.quarantine /Applications/Apinata.app` does the same, and `xattr -d com.apple.quarantine apinata` does it for the command line.
+- **Linux AppImage:** after downloading, right-click the file, open Properties, allow it to run as a program, then double-click it. In a terminal, `chmod +x` on the file does the same.
+- **Linux .deb:** open it with your software installer and click Install.
 
 ## Updates
 
-This release checks for signed updates. Later versions install in place from inside the app, after verifying the signature against the key built into this release.
-
-On macOS, the system may ask for keychain access the first time the app starts after an update.
+NOTES
+    cat <<NOTES
+- **Desktop app on Windows, macOS and the Linux AppImage:** Apinata checks for a new version once a day and offers it in the app. It installs the new version when you quit, after checking its signature. On macOS, keep Apinata in Applications: a copy opened straight from the .dmg cannot update itself, and the system may ask for keychain access the first time the app starts after an update.
+- **Linux .deb:** does not update itself; get new versions from the [Releases page](https://github.com/$repo/releases).
+- **Command line:** run \`apinata self-update\` to install a new version after checking its signature. The command line that comes with the desktop app updates along with the app, and the one in the .deb with a new .deb.
 NOTES
   } >"$out"
 }
