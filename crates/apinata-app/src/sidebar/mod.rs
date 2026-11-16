@@ -52,7 +52,7 @@ use crate::shell::collection_row;
 use crate::snapshot::{CollectionSnapshot, Content, DiskState, RowKind, Unsupported};
 use crate::stale::rebase;
 use crate::tab_area::{ConvertToGraphql, ConvertToHttp, CopyAsCurl, GenerateCode};
-use crate::tabs::TabId;
+use crate::tabs::{TabId, TabKind};
 use crate::workspace::{Workspace, WorkspaceEvent};
 use crate::{style, ui};
 use batch::{Batch, Verb, bulk_delete_ask, permanent_delete_ask, single_delete_ask};
@@ -2287,13 +2287,13 @@ impl Sidebar {
                 self.restore_expanded(root, snap, cx);
             }
         }
-        // Follow the active request only when another tab becomes active, so a later click
+        // Follow the active tab's row only when another tab becomes active, so a later click
         // elsewhere stays. Keyed by tab, since a rename moves the tab before its notice arrives.
         // Its folders open before the build so its row exists to select.
         let follow = workspace
             .tabs()
             .active()
-            .and_then(|tab| Some((tab.id, tab.root.clone(), tab.item()?.clone())));
+            .and_then(|tab| Some((tab.id, tab.root.clone(), tab_row(&tab.kind)?)));
         let active_item = follow
             .as_ref()
             .map(|(_, root, item)| (root.clone(), item.clone()));
@@ -4284,5 +4284,15 @@ fn index(nodes: &[Node], out: &mut HashMap<SharedString, Node>) {
                 ..n.clone()
             },
         );
+    }
+}
+
+// The tree row a tab stands for: a request's or folder's own row, or the collection's root
+// row for its settings. Other tabs leave the selection where it is.
+fn tab_row(kind: &TabKind) -> Option<ItemPath> {
+    match kind {
+        TabKind::Request(path) | TabKind::Folder(path) => Some(path.clone()),
+        TabKind::Collection => Some(ItemPath::root()),
+        _ => None,
     }
 }
