@@ -72,7 +72,11 @@ fn offline_counts_the_unpushed_commits(cx: &mut TestAppContext) {
     .base_options(sb.options())
     .debounce_unclamped(FAST);
     s.ws.update(cx, |w, cx| w.start_team(&root, config, None, cx));
-    std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
+    // The start pull commits whatever is on disk, so the file arrives whole through a rename,
+    // as the app saves: a half-written file would be committed twice.
+    let staged = sb.path().join("b.yml");
+    std::fs::write(&staged, request("b", "http://x/b")).unwrap();
+    std::fs::rename(&staged, col.path().join("b.yml")).unwrap();
     let want = format!("{}: offline, 1 unpushed", name(&s));
     wait_for(cx, "offline", |cx| {
         label(cx, &s).as_deref() == Some(want.as_str())
