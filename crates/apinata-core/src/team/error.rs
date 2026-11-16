@@ -64,6 +64,9 @@ pub enum TeamError {
     /// The team file could not be read or written.
     #[error("The team file could not be used: {0}")]
     Store(String),
+    /// The caller cancelled the call before it kept anything.
+    #[error("Cancelled.")]
+    Cancelled,
 }
 
 /// The server's error envelope: `{"error": {"code", "message", "field"}}`.

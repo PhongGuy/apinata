@@ -17,6 +17,7 @@ use crate::team_text::{server_warning, sign_in_error_text};
 use crate::ui::LockButton as _;
 use crate::workspace::Workspace;
 use crate::{tokio_bridge, ui};
+use apinata_core::CancelFlag;
 use apinata_core::team::{self, HttpTeamClient, ServerUrl, TeamError};
 
 /// Which screen the dialog shows.
@@ -36,7 +37,16 @@ pub struct JoinView {
     password: Entity<InputState>,
     phase: JoinPhase,
     error: Option<String>,
+    // The running sign-in's flag; closing the dialog sets it.
+    cancel: Option<CancelFlag>,
     _subscriptions: Vec<Subscription>,
+}
+
+// A dialog torn down mid-sign-in (its window closing) cancels like the Cancel button.
+impl Drop for JoinView {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 // The most recently opened dialog's view; it lapses once the dialog lets go of it.
@@ -98,17 +108,23 @@ pub fn open_for(
             password,
             phase: JoinPhase::Form,
             error: None,
+            cancel: None,
             _subscriptions: subscriptions,
         }
     });
     cx.set_global(OpenView(view.downgrade()));
     let body = view.clone();
     window.open_dialog(cx, move |dialog, window, _| {
-        // Enter never closes the dialog: the fields submit themselves.
+        // Enter never closes the dialog: the fields submit themselves. Escape cancels a sign-in.
+        let view = body.clone();
         crate::dialog_frame::place(dialog, window)
             .title("Join team server")
             .close_button(false)
             .on_ok(|_, _, _| false)
+            .on_cancel(move |_, _, cx| {
+                view.update(cx, |v, _| v.stop());
+                true
+            })
             .child(body.clone())
     });
     // A prefilled form only lacks the password.
@@ -170,6 +186,13 @@ impl JoinView {
             .and_then(|s| server_warning(&s))
     }
 
+    // Cancels the running sign-in, if any; core then keeps nothing and revokes a new token.
+    fn stop(&mut self) {
+        if let Some(cancel) = self.cancel.take() {
+            cancel.cancel();
+        }
+    }
+
     // Shows `text` on the form, which stays open.
     fn fail(&mut self, text: String, cx: &mut Context<Self>) {
         self.phase = JoinPhase::Form;
@@ -204,22 +227,39 @@ impl JoinView {
         // The password moves into the sign-in future and is dropped with it.
         let shown = server.to_string();
         let resumed = server.clone();
+        let cancel = CancelFlag::new();
+        self.cancel = Some(cancel.clone());
+        let watched = cancel.clone();
         let task = tokio_bridge::spawn(cx, async move {
             let api = HttpTeamClient::new(server)?;
-            team::sign_in(&api, &*secrets, &file, &username, &password).await
+            team::sign_in(&api, &*secrets, &file, &username, &password, &watched).await
         });
+        // The result is handled even after the dialog is gone: a cancel that came too late to
+        // stop the sign-in still leaves the user signed in, and the toast says so.
+        let workspace = self.workspace.clone();
         cx.spawn_in(window, async move |this, cx| {
             let result = task.await;
-            let _ = this.update_in(cx, |this, window, cx| match result {
+            let cancelled = cancel.is_cancelled();
+            let _ = cx.update(|window, cx| match result {
                 Ok(Ok(account)) => {
-                    window.close_dialog(cx);
+                    if !cancelled {
+                        window.close_dialog(cx);
+                    }
                     let text = format!("Signed in to {shown} as {}.", account.username);
                     window.push_notification(ui::info_toast(text), cx);
-                    crate::team_mode::resume_server(&this.workspace, &resumed, cx);
-                    crate::team_workspaces::open(&this.workspace, window, cx);
+                    crate::team_mode::resume_server(&workspace, &resumed, cx);
+                    if !cancelled {
+                        crate::team_workspaces::open(&workspace, window, cx);
+                    }
                 }
-                Ok(Err(e)) => this.fail(sign_in_error_text(&e), cx),
-                Err(_) => this.fail(sign_in_error_text(&TeamError::Unavailable), cx),
+                _ if cancelled => {}
+                Ok(Err(e)) => {
+                    let _ = this.update(cx, |this, cx| this.fail(sign_in_error_text(&e), cx));
+                }
+                Err(_) => {
+                    let text = sign_in_error_text(&TeamError::Unavailable);
+                    let _ = this.update(cx, |this, cx| this.fail(text, cx));
+                }
             });
         })
         .detach();
@@ -271,7 +311,10 @@ impl Render for JoinView {
                 Some(
                     Button::new("team-join-cancel")
                         .label("Cancel")
-                        .on_click(|_, window, cx| window.close_dialog(cx)),
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.stop();
+                            window.close_dialog(cx);
+                        })),
                 ),
                 [],
                 Button::new("team-join-submit")
