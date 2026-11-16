@@ -76,6 +76,11 @@ pub async fn resume(
     let token = kept_token(api, secrets, &account).map_err(secrets_error)?;
 
     match current(api, secrets, team_file).await {
+        // A sign-in as someone else landing mid-check makes `/me` speak for that user, whose
+        // role and identity are not this folder's.
+        Ok(me) if me.user.username != binding.username => {
+            Ok(kept(Standing::SignedOut, cached, String::new(), None))
+        }
         Ok(me) => {
             let listed = me
                 .workspaces
