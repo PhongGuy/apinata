@@ -4,7 +4,9 @@
 
 use crate::theme::SelectedStyle;
 use crate::ui::{ChooseButton as _, LockButton as _};
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::ItemPath;
@@ -21,7 +23,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::prelude::*;
 use gpui_kit::{
     App, Entity, FocusHandle, Focusable, Global, PathPromptOptions, Pixels, Result, ScrollHandle,
-    SharedString, Task, TestSupportExt, WeakEntity, Window, div, px,
+    SharedString, Task, TestSupportExt, WeakEntity, Window, canvas, div, px,
 };
 
 use crate::command::Command;
@@ -184,6 +186,8 @@ pub struct ImportLinkDialog {
     asking: Option<Task<()>>,
     // The report body's scroll position, for its scrollbar.
     scroll: ScrollHandle,
+    // The Create in label's width and text size from its last layout, to fit the path to.
+    parent_room: Rc<Cell<Option<(Pixels, Pixels)>>>,
 }
 
 // The most recently opened dialog; it lapses once the dialog lets go of it.
@@ -232,6 +236,7 @@ pub fn open(
             task: None,
             asking: None,
             scroll: ScrollHandle::new(),
+            parent_room: Rc::default(),
         }
     });
     cx.set_global(OpenDialog(view.downgrade()));
@@ -1343,11 +1348,37 @@ impl Render for ImportLinkDialog {
                 .child(formats_text())
         });
         let parent_row = (self.mode == Mode::New).then(|| {
+            // The path is fitted to the room its label got from layout, so leading folders give
+            // way first and the last one stays whole; until the first layout it shows whole.
             let home = dirs::home_dir();
+            let room = self.parent_room.get();
             let shown = self.parent.as_deref().map_or_else(
                 || "No folder chosen".to_owned(),
-                |p| crate::path_display::tilde(p, home.as_deref()),
+                |p| match room {
+                    Some((room, size)) => crate::path_display::display(
+                        p,
+                        home.as_deref(),
+                        f32::from(room),
+                        &crate::path_display::measurer(window, size),
+                    ),
+                    None => crate::path_display::tilde(p, home.as_deref()),
+                },
             );
+            let (cell, me) = (Rc::clone(&self.parent_room), cx.entity().downgrade());
+            let measure = canvas(
+                move |bounds, window, cx| {
+                    let size = window.text_style().font_size.to_pixels(window.rem_size());
+                    let now = Some((bounds.size.width, size));
+                    if cell.replace(now) != now {
+                        window.defer(cx, move |_, cx| {
+                            me.update(cx, |_, cx| cx.notify()).ok();
+                        });
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full();
             let full = self
                 .parent
                 .as_deref()
@@ -1363,16 +1394,16 @@ impl Render for ImportLinkDialog {
                         .id("import-link-parent")
                         .test_support()
                         .aria_label(full.clone())
+                        .aria_value(shown.clone())
+                        .relative()
                         .flex_1()
                         .min_w_0()
                         .overflow_hidden()
-                        .whitespace_nowrap()
-                        // Cut in the middle, so the last folder always shows; hovering shows
-                        // the path whole.
-                        .text_ellipsis_middle()
+                        .truncate()
                         .when(self.parent.is_some(), |d| {
                             d.tooltip(ui::text_tooltip("import-link-parent-tooltip", full))
                         })
+                        .child(measure)
                         .child(shown),
                 )
                 .child(

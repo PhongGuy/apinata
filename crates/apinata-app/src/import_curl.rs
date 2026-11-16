@@ -17,7 +17,7 @@ use crate::workspace::Workspace;
 const NOT_CURL: &str = "Not a curl command. Paste one that starts with curl.";
 
 /// What the empty editor shows, so the first open says what to paste.
-const HINT: &str = "Paste a curl command, for example curl https://api.example.com/users -H 'Accept: application/json'";
+const HINT: &str = "Paste a curl command";
 
 /// A pasted command whose body is a GraphQL query becomes a GraphQL request; any other stays HTTP.
 pub fn graphql_or_http(request: ImportedRequest) -> ImportedRequest {
