@@ -354,7 +354,7 @@ fn settings_timeout(cx: &mut TestAppContext) {
         |e| e.settings().clone(),
         |s: &mut SettingsSection, w, cx| s.set_timeout_mode(TimeoutMode::Custom, w, cx),
     );
-    replace_input(cx, c.win, Some("settings"), "set-timeout", "5000");
+    replace_input(cx, c.win, Some("settings"), "set-timeout", "5");
     finish(cx, &c, "settings-timeout");
 }
 

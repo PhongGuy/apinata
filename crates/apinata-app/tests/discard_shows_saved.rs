@@ -127,7 +127,7 @@ fn type_limit(limit: &'static str) -> impl Fn(&mut TestAppContext, &Started) {
 }
 
 #[gpui_kit::test]
-fn an_empty_custom_timeout_goes_back_to_never_time_out(cx: &mut TestAppContext) {
+fn an_empty_custom_timeout_goes_back_to_no_limit(cx: &mut TestAppContext) {
     timeout_is_put_back(
         cx,
         Some("0"),
@@ -142,7 +142,7 @@ fn an_empty_custom_timeout_goes_back_to_the_default(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_typed_custom_timeout_goes_back_to_never_time_out(cx: &mut TestAppContext) {
+fn a_typed_custom_timeout_goes_back_to_no_limit(cx: &mut TestAppContext) {
     timeout_is_put_back(cx, Some("0"), TimeoutMode::Unlimited, type_limit("500"));
 }
 

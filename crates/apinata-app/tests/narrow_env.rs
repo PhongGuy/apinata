@@ -1057,7 +1057,10 @@ fn the_active_box_says_what_it_does(cx: &mut TestAppContext) {
             (w.try_find("global-env-active-note")).and_then(|e| e.label().map(str::to_owned))
         })
         .unwrap();
-    assert_eq!(note.as_deref(), Some("Turns this global environment on or off right away"));
+    assert_eq!(
+        note.as_deref(),
+        Some("Turns this global environment on or off right away")
+    );
 }
 
 // The name field's Cancel and Create are full-size buttons with the header's spacing.

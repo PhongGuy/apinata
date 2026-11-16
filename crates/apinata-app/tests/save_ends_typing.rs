@@ -763,6 +763,7 @@ fn one_undo_in_a_settings_input_after_a_save_keeps_the_saved_text(cx: &mut TestA
 
 #[gpui_kit::test]
 fn one_undo_in_the_timeout_after_a_save_keeps_the_saved_text(cx: &mut TestAppContext) {
+    // The field shows the file's 5000 ms as 5 s, so the typed 1 makes 51 s.
     let text = TEXT_BODY.replace("timeout: 0", "timeout: 5000");
     let r = rig(cx, &[("t.yml", text.as_str())], "t.yml");
     r.show(cx, Section::Settings);
@@ -774,7 +775,7 @@ fn one_undo_in_the_timeout_after_a_save_keeps_the_saved_text(cx: &mut TestAppCon
     r.press(cx, &secondary("z"));
     assert_eq!(
         r.view(cx, "t.yml").settings.timeout,
-        apinata_core::Timeout::Millis(50001)
+        apinata_core::Timeout::Millis(51_000)
     );
 }
 
