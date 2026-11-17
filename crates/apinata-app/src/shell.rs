@@ -1291,12 +1291,12 @@ impl Shell {
             .test_support()
             .aria_label(APP_MENU_TIP)
             .when(!open, |slot| {
-                slot.tooltip(|window, cx| {
+                slot.tooltip(ui::tooltip(|window, cx| {
                     let tip = |_: &mut Window, _: &mut App| {
                         div().id(APP_MENU_TIP_ID).test_support().child(APP_MENU_TIP)
                     };
                     Tooltip::element(tip).build(window, cx)
-                })
+                }))
             })
             .child(menu)
     }

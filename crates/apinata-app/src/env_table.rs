@@ -1392,7 +1392,9 @@ impl EnvVarTable {
                     .flex()
                     .justify_center()
                     .w(CHECKBOX_SIZE)
-                    .tooltip(|window, cx| Tooltip::new(ENABLED_HEADING).build(window, cx))
+                    .tooltip(ui::tooltip(|window, cx| {
+                        Tooltip::new(ENABLED_HEADING).build(window, cx)
+                    }))
                     .child(Icon::new(IconName::Check).small().text_color(muted)),
             )
             .child(text(name).id("env-head-name").test_support())

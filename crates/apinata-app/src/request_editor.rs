@@ -2706,7 +2706,9 @@ impl RequestEditor {
                     .on_action(cx.listener(|this, _: &Escape, window, cx| {
                         this.cancel_custom_method(window, cx)
                     }))
-                    .tooltip(|window, cx| Tooltip::new("Custom method").build(window, cx))
+                    .tooltip(ui::tooltip(|window, cx| {
+                        Tooltip::new("Custom method").build(window, cx)
+                    }))
                     .child(ui::invalid_input(
                         Input::new(&self.custom_method)
                             .id("custom-method")
@@ -2841,7 +2843,9 @@ impl RequestEditor {
             .font_family(cx.theme().font_family.clone())
             .text_size(style::TEXT_SMALL)
             .when_some(tooltip, |row, tooltip| {
-                row.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+                row.tooltip(ui::tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone()).build(window, cx)
+                }))
             })
             .child(collection_crumb)
             // A muted hint after the name, as a tab shows; it gives way before the name does.

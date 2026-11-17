@@ -1283,7 +1283,38 @@ pub fn rollup_dot(id: ElementId) -> impl IntoElement + use<> {
             )
             .size_full(),
         )
-        .tooltip(|window, cx| Tooltip::new("Changes inside").build(window, cx))
+        .tooltip(self::tooltip(|window, cx| {
+            Tooltip::new("Changes inside").build(window, cx)
+        }))
+}
+
+/// The tooltip `build` makes, hidden while a dialog opened after it was shown lies over the
+/// window. Every element tooltip goes through this; a kit button's tooltip needs none.
+pub fn tooltip(
+    build: impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static,
+) -> impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static {
+    use gpui_kit::component::WindowExt as _;
+    move |window, cx| {
+        let tip = build(window, cx);
+        let over_dialog = window.has_active_dialog(cx);
+        cx.new(|_| CoverableTip { tip, over_dialog }).into()
+    }
+}
+
+// GPUI keeps an element's tooltip while the pointer stays inside the element's bounds, even
+// once a modal covers it. A tip can only start on the top layer, so one shown with no dialog
+// open belongs to a control that any later dialog covers.
+struct CoverableTip {
+    tip: gpui_kit::AnyView,
+    over_dialog: bool,
+}
+
+impl Render for CoverableTip {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit::component::WindowExt as _;
+        let covered = !self.over_dialog && window.has_active_dialog(cx);
+        div().when(!covered, |d| d.child(self.tip.clone()))
+    }
 }
 
 /// A tooltip of `text` whose element tests find by `id`, named by the text itself.
@@ -1292,7 +1323,7 @@ pub fn text_tooltip(
     text: impl Into<SharedString>,
 ) -> impl Fn(&mut Window, &mut App) -> gpui_kit::AnyView + 'static {
     let (id, text): (SharedString, SharedString) = (id.into(), text.into());
-    move |window, cx| {
+    self::tooltip(move |window, cx| {
         let (id, text) = (id.clone(), text.clone());
         Tooltip::element(move |_, _| {
             div()
@@ -1302,7 +1333,7 @@ pub fn text_tooltip(
                 .child(text.clone())
         })
         .build(window, cx)
-    }
+    })
 }
 
 /// As [`text_tooltip`], but placed on `placement`'s side of the bounds `anchor` was last painted
@@ -1356,7 +1387,9 @@ pub fn git_letter(id: ElementId, change: &GitChange, cx: &App) -> impl IntoEleme
         .aria_label(words)
         .text_color(color)
         .child(change.letter())
-        .tooltip(move |window, cx| Tooltip::new(words).build(window, cx))
+        .tooltip(self::tooltip(move |window, cx| {
+            Tooltip::new(words).build(window, cx)
+        }))
 }
 
 /// The "has content" mark of a tab: a muted dot the size of [`dirty_dot`], whose muted colour
@@ -3221,7 +3254,9 @@ where
         // A press never moves focus, as with the kit control.
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .when_some(parts.tooltip, |b, text| {
-            b.tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
+            b.tooltip(self::tooltip(move |window, cx| {
+                Tooltip::new(text.clone()).build(window, cx)
+            }))
         })
 }
 
@@ -3945,7 +3980,9 @@ pub fn stored_secret(
         .items_center()
         .min_w_0()
         .aria_label(text)
-        .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx))
+        .tooltip(self::tooltip(move |window, cx| {
+            Tooltip::new(tip).build(window, cx)
+        }))
         .child(div().text_color(cx.theme().muted_foreground).child(text))
         .child(
             Button::new(replace_id)

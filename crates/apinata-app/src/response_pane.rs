@@ -2242,7 +2242,9 @@ impl ResponsePane {
                 .aria_label(label)
                 .children(date)
                 .child(age_box)
-                .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                .tooltip(ui::tooltip(move |window, cx| {
+                    Tooltip::new(tip.clone()).build(window, cx)
+                }))
         });
         // The address is the one fact that gives way: it truncates first when the row is short,
         // and the tooltip keeps the whole peer.
@@ -2484,7 +2486,9 @@ impl ResponsePane {
                                     .text_color(muted)
                                     .child(line.summary.clone()),
                             )
-                            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                            .tooltip(ui::tooltip(move |window, cx| {
+                                Tooltip::new(tip.clone()).build(window, cx)
+                            }))
                     })
                     .checked(viewing == Some(seq))
                     .on_click(move |_, _, cx| {

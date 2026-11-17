@@ -645,6 +645,7 @@ mod title_bar_setting;
 mod title_count;
 mod title_priority;
 mod token_panel;
+mod tooltip_dismiss;
 mod trusted_hosts;
 mod typing_keys;
 mod ui_checkbox;

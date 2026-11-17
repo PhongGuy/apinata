@@ -496,7 +496,9 @@ impl GraphqlSection {
                     .text_size(style::TEXT_SMALL)
                     .text_color(cx.theme().danger)
                     .when_some(detail, |d, detail| {
-                        d.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+                        d.tooltip(crate::ui::tooltip(move |window, cx| {
+                            Tooltip::new(detail.clone()).build(window, cx)
+                        }))
                     })
                     .child(message),
             ),

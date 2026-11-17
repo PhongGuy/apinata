@@ -750,7 +750,7 @@ impl RenderOnce for KvView {
                             .py(KV_VIEW_PAD_Y)
                             .when(!col.width.flexible() || col.tip_when_cut, |d| d.truncate())
                             .when_some(tip, |d, (text, flex)| {
-                                d.tooltip(move |w, cx| {
+                                d.tooltip(ui::tooltip(move |w, cx| {
                                     let tip = cut_tip(&text, w, cx);
                                     match &flex {
                                         None => tip,
@@ -764,7 +764,7 @@ impl RenderOnce for KvView {
                                             })
                                             .into(),
                                     }
-                                })
+                                }))
                             })
                             .when_some(measure, |d, m| d.relative().child(m))
                             .child(content),
@@ -890,7 +890,7 @@ pub fn cut_line(
         .flex_1()
         .min_w_0()
         .truncate()
-        .tooltip(move |w, cx| {
+        .tooltip(ui::tooltip(move |w, cx| {
             let tip = cut_tip(&tip_text, w, cx);
             cx.new(|_| FlexTip {
                 text: tip_text.clone(),
@@ -900,7 +900,7 @@ pub fn cut_line(
                 tip,
             })
             .into()
-        })
+        }))
         .child(measure)
         .child(text)
 }

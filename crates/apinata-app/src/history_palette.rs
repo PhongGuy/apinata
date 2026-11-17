@@ -563,7 +563,9 @@ fn history_row(
                     .truncate()
                     .text_color(muted)
                     .child(marked(&target, &found.target))
-                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                    .tooltip(crate::ui::tooltip(move |window, cx| {
+                        Tooltip::new(tip.clone()).build(window, cx)
+                    }))
             });
             // A highlighted name or detail changes its id, so tests can tell a hit from a
             // plain row.
