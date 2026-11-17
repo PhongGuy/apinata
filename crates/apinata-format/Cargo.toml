@@ -6,6 +6,7 @@ publish = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 # One integration binary: tests/main.rs declares every test file as a module.
 autotests = false
 
