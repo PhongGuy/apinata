@@ -597,3 +597,68 @@ fn a_long_file_in_the_report_stays_on_one_line_cut_to_fit(cx: &mut TestAppContex
     assert!(file.right() <= place.right(), "{file:?} stays in {place:?}");
     assert!(full > f32::from(file.size.width), "{name} is cut to fit");
 }
+
+/// The first note's first place row and its file, laid out after importing `text`.
+fn place_and_file(
+    text: &str,
+    cx: &mut TestAppContext,
+) -> (
+    String,
+    gpui_kit::Bounds<gpui_kit::Pixels>,
+    gpui_kit::Bounds<gpui_kit::Pixels>,
+) {
+    let (files, win, _view) = shell(cx);
+    let into = tempfile::tempdir().unwrap();
+    click_import(cx, win);
+    answer(cx, input(files.path(), text), into.path().to_path_buf());
+    assert!(dialog(cx, win));
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let note = w.within(("import-note", 0usize));
+        let place = note.find(("report-place", 0usize));
+        let label = place.label().unwrap_or_default().to_owned();
+        (
+            label,
+            place.bounds(),
+            note.find(("report-file", 0usize)).bounds(),
+        )
+    })
+    .unwrap()
+}
+
+// A description that wraps hands its file to the next line, where the phrase continues,
+// rather than leaving it alone beside the first line.
+#[gpui_kit::test]
+fn a_wrapped_report_place_is_followed_by_its_file(cx: &mut TestAppContext) {
+    let long = "Fetch the complete order history of a customer ".repeat(4);
+    let text = shop(true).replace("Get user", long.trim());
+    let (label, place, file) = place_and_file(&text, cx);
+    assert!(label.contains(", in "), "{label}");
+    assert!(
+        file.top() > place.top(),
+        "{label}: {file:?} sits under the description in {place:?}"
+    );
+    assert_eq!(
+        file.bottom(),
+        place.bottom(),
+        "{label}: the file ends the row"
+    );
+    assert_eq!(
+        file.left(),
+        place.left(),
+        "{label}: the file starts its line"
+    );
+}
+
+// A short description keeps its file beside it on the same line.
+#[gpui_kit::test]
+fn a_short_report_place_keeps_its_file_beside_it(cx: &mut TestAppContext) {
+    let (label, place, file) = place_and_file(&shop(true), cx);
+    assert!(label.contains(", in "), "{label}");
+    assert_eq!(file.top(), place.top(), "{label}: one line");
+    assert_eq!(file.bottom(), place.bottom(), "{label}: one line");
+    assert!(
+        file.left() > place.left(),
+        "{label}: the file follows the description"
+    );
+}

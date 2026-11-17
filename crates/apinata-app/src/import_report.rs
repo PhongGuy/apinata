@@ -203,9 +203,9 @@ pub fn open_report(
             let notes = lines.iter().enumerate().map(move |(i, l)| {
                 let mut rows = l.split('\n');
                 let kind = rows.next().unwrap_or_default().to_owned();
-                // A place's file keeps to one line and is the first to give way, cut at its start
-                // so the name that tells files apart stays in view; a long place wraps within
-                // three quarters of the row.
+                // A place's file keeps to one line, cut at its start so the name that tells files
+                // apart stays in view. It sits beside a short place and wraps under a long one,
+                // so the file always follows the words that lead into it.
                 let places = rows.enumerate().map(|(p, place)| {
                     let (at, file) = match place.rsplit_once(FILE_JOIN) {
                         Some((at, file)) => (format!("{at}{FILE_JOIN}"), Some(file.to_owned())),
@@ -217,15 +217,17 @@ pub fn open_report(
                         .aria_label(place.to_owned())
                         .ml(SPACE_3)
                         .flex()
+                        .flex_wrap()
                         .items_start()
                         .min_w_0()
-                        .child(div().flex_none().max_w(relative(0.75)).child(at))
+                        .child(div().min_w_0().max_w_full().child(at))
                         .children(file.map(|file| {
                             div()
                                 .id(("report-file", p))
                                 .test_support()
                                 .aria_label(file.clone())
-                                .min_w_0()
+                                .flex_1()
+                                .min_w(relative(0.25))
                                 .overflow_hidden()
                                 .whitespace_nowrap()
                                 .text_ellipsis_start()
