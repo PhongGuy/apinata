@@ -357,6 +357,29 @@ fn open_drafts_head_their_collection_under_unsaved() {
     assert_eq!(group.children[0].method.as_deref(), Some("GET"));
 }
 
+// A draft saves into the folder it was made in, so its row names that folder by the display
+// names the tree shows; a root draft has nothing to add.
+#[test]
+fn a_draft_row_hints_the_folder_it_saves_into() {
+    let dir = tree();
+    let c = content(&dir);
+    let input = [(dir.path(), "c", Some(&c))];
+    let drafts = [
+        draft(dir.path(), "untitled-1.draft", "Untitled request 1"),
+        draft(dir.path(), "users/untitled-2.draft", "Untitled request 2"),
+        draft(
+            dir.path(),
+            "users/admin/untitled-3.draft",
+            "Untitled request 3",
+        ),
+    ];
+    let nodes = build(&input, &drafts, &open_root(dir.path()), "", None);
+    let hints: Vec<Option<&str>> = (nodes[0].children[0].children.iter())
+        .map(|n| n.hint.as_deref())
+        .collect();
+    assert_eq!(hints, [None, Some("Users"), Some("Users/admin")]);
+}
+
 // Everything in the scratch pad is unsaved, so its drafts sit right under it, as the
 // breadcrumb shows them, and carry their dirty state like saved rows do.
 #[test]

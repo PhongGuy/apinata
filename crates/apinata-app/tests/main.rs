@@ -534,6 +534,7 @@ mod sidebar_batch;
 mod sidebar_cap;
 mod sidebar_clicks;
 mod sidebar_collapse_all;
+mod sidebar_draft_folder;
 mod sidebar_drafts;
 mod sidebar_drop;
 mod sidebar_drop_multi;

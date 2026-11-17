@@ -83,6 +83,10 @@ pub const FILTER_TOOLTIP: &str = "Filter by name. Use tag:name or method:get.";
 // so the hint is what tells them apart and keeps its room until the name is gone.
 const HINT_SHRINK: f32 = 1. / 10_000.;
 
+// A draft's folder shrinks this many times faster than its name, so a long path is cut before
+// the name loses a letter.
+const DRAFT_FOLDER_SHRINK: f32 = 10_000.;
+
 // The group every tree row carries, so a row's run button shows while the row is hovered.
 const ROW_GROUP: &str = "sidebar-row";
 /// The notice a Duplicate of a row with unsaved edits pushes.
@@ -3442,7 +3446,7 @@ impl Render for Sidebar {
                                 NodeKind::Draft => {
                                     let view = view.clone();
                                     let (root, path) = (n.root.clone(), n.path.clone());
-                                    item.child(with_suffix(
+                                    let content = with_suffix(
                                         item_row(n, None, &paints, muted)
                                             .italic()
                                             .text_color(cx.theme().muted_foreground),
@@ -3450,8 +3454,26 @@ impl Render for Sidebar {
                                         &git,
                                         false,
                                         cx,
-                                    ))
-                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    );
+                                    // A draft made in a folder says where Save puts it, on hover
+                                    // and in its accessible name, since the suffix may be cut.
+                                    let item = match n.hint.as_ref() {
+                                        Some(folder) => item
+                                            .accessibility_label(format!(
+                                                "{}, saves into {folder}",
+                                                n.name
+                                            ))
+                                            .child(
+                                                content
+                                                    .id(marker_id("draft-folder-row", &n.id))
+                                                    .tooltip(ui::text_tooltip(
+                                                        marker_id("draft-folder-tip", &n.id),
+                                                        format!("Saves into {folder}"),
+                                                    )),
+                                            ),
+                                        None => item.child(content),
+                                    };
+                                    item.on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()
                                     })
                                     .on_click(
@@ -4140,13 +4162,25 @@ fn item_row(
                 .min_w_0()
                 .child(div().truncate().child(n.name.clone())),
         )
-        // The file name tells apart two sibling requests that share a name.
+        // The file name tells apart two sibling requests that share a name; a draft's folder is
+        // cut with an ellipsis, as a collection's hint is, but gives way first.
         .children(n.hint.clone().map(|hint| {
-            marker("file", n)
-                .flex_none()
-                .text_xs()
-                .text_color(muted)
-                .child(hint)
+            match n.kind {
+                NodeKind::Draft => marker("draft-folder", n)
+                    .min_w_0()
+                    .flex_shrink(DRAFT_FOLDER_SHRINK)
+                    .truncate()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(hint)
+                    .into_any_element(),
+                _ => marker("file", n)
+                    .flex_none()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(hint)
+                    .into_any_element(),
+            }
         }))
 }
 
