@@ -13,4 +13,5 @@
 mod aliases;
 mod common;
 mod contract;
+mod details;
 mod environment;

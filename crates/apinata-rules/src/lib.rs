@@ -5,7 +5,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-use potluck_kind::{Blob, Change, Code, Finding, RuleSet, SeedFile};
+use potluck_kind::{Blob, Change, Finding, RuleSet, SeedFile};
 
 mod environment;
 
@@ -63,7 +63,7 @@ impl RuleSet for Apinata {
             Some(Blob::Bytes(bytes)) => environment::environment_rule(path, bytes)
                 .into_iter()
                 .collect(),
-            Some(_) => vec![Finding::new(Code::SecretValue, ENV_UNPARSABLE, path)],
+            Some(_) => vec![environment::unparsable(path, "too large to check")],
         }
     }
 
