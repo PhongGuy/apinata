@@ -25,7 +25,7 @@ fn all() -> Vec<TeamError> {
         TeamError::RateLimited {
             retry_after_secs: None,
         },
-        TeamError::Unavailable,
+        TeamError::Unavailable(String::new()),
         TeamError::Server {
             status: 500,
             code: "internal".into(),

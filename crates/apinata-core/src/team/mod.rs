@@ -29,7 +29,8 @@ pub use failure::{Finding, SyncFailure, classify};
 pub use git::{clone_request, events_url};
 pub use machine::{Block, Role, TeamAction, TeamEvent, TeamMachine, TeamState};
 pub use model::{
-    Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamToken, User, Workspace,
+    Me, NewWorkspace, ServerInfo, ServerRelease, ServerUpdate, ServerUrl, SignIn, Team, TeamToken,
+    UpdateState, User, Workspace,
 };
 pub use resume::{Resumed, Standing, resume};
 pub use session::{current, kept_token, sign_in, sign_out};

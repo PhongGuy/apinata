@@ -30,7 +30,7 @@ pub fn error_text(e: &TeamError) -> String {
         TeamError::RateLimited {
             retry_after_secs: None,
         } => "Too many attempts. Try again shortly.".into(),
-        TeamError::Unavailable => "The server is unavailable right now. Try again later.".into(),
+        TeamError::Unavailable(_) => "The server is unavailable right now. Try again later.".into(),
         TeamError::Server { status, .. } => {
             format!("The server answered with an error (HTTP {status}).")
         }

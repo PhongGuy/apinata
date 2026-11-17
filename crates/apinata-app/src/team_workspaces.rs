@@ -1,7 +1,8 @@
 //! The workspace list: one section per joined team server, listing the Apinata workspaces the
 //! user can reach with their role. Opening one clones it with the server token in git's
 //! environment, binds the folder in the team file and starts team mode on it. A server admin
-//! can create a seeded workspace there, and each server has its own sign out.
+//! can create a seeded workspace there and sees whether the server has a newer release, and
+//! each server has its own sign out.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,8 +23,8 @@ use crate::ui::LockButton as _;
 use crate::workspace::Workspace;
 use crate::{tokio_bridge, ui};
 use apinata_core::team::{
-    self, Account, Binding, ConflictCopies, HttpTeamClient, Me, NewWorkspace, Role, ServerUrl,
-    TeamApi as _, TeamAuth, TeamError, TeamStore,
+    self, Account, Binding, ConflictCopies, HttpTeamClient, Me, NewWorkspace, Role, ServerUpdate,
+    ServerUrl, TeamApi as _, TeamAuth, TeamError, TeamStore, UpdateState,
 };
 use apinata_core::{CloneRequest, GitOptions};
 use sha2::{Digest as _, Sha256};
@@ -73,6 +74,9 @@ pub struct ServerSection {
     new_name: Entity<InputState>,
     creating: bool,
     signing_out: bool,
+    // The server update line, read only for a server admin.
+    update: Option<UpdateLine>,
+    checking_update: bool,
 }
 
 impl ServerSection {
@@ -105,6 +109,48 @@ impl ServerSection {
     /// last load.
     pub fn can_create(&self) -> bool {
         self.admin
+    }
+
+    /// The server update line; None for a user who is not a server admin.
+    pub fn update_line(&self) -> Option<&str> {
+        self.update.as_ref().map(|u| u.text.as_str())
+    }
+}
+
+// What the update line says and, for a newer release, where its notes are.
+struct UpdateLine {
+    text: String,
+    notes: Option<String>,
+}
+
+impl UpdateLine {
+    fn from_result(result: Result<ServerUpdate, TeamError>) -> UpdateLine {
+        let u = match result {
+            Ok(u) => u,
+            Err(e) => {
+                let text = update_error_text(&e);
+                return UpdateLine { text, notes: None };
+            }
+        };
+        let text = match (u.state(), &u.latest) {
+            (UpdateState::Newer, Some(latest)) => format!(
+                "Potluck {} is available. This server runs {}.",
+                latest.version, u.current
+            ),
+            (UpdateState::UpToDate, _) => format!("Potluck {} is up to date.", u.current),
+            (UpdateState::Off, _) => "Update checks are off on this server.".to_owned(),
+            _ => "The server has not checked for updates yet.".to_owned(),
+        };
+        let notes = u.latest.map(|l| l.notes_url);
+        UpdateLine { text, notes }
+    }
+}
+
+// A 503 names the server's reason; any other failure reads like the rest of the list's errors.
+fn update_error_text(e: &TeamError) -> String {
+    match e {
+        TeamError::Unavailable(m) if !m.is_empty() => format!("Update check unavailable: {m}"),
+        e => error_text(e),
     }
 }
 
@@ -253,6 +299,8 @@ pub fn open(
                 new_name: input("Name"),
                 creating: false,
                 signing_out: false,
+                update: None,
+                checking_update: false,
             })
         })
         .collect();
@@ -290,8 +338,8 @@ impl WorkspacesView {
     }
 
     // Asks each server who the user is, off the main thread, and fills its section. For a
-    // server admin it also reads the teams, so New workspace starts on the first one; a teams
-    // failure only leaves that field empty.
+    // server admin it also reads the teams, so New workspace starts on the first one, and the
+    // update status; either failing only leaves its own part empty or explained.
     fn load(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(state) = cx.try_global::<AppState>() else {
             return;
@@ -305,19 +353,22 @@ impl WorkspacesView {
                 let api = HttpTeamClient::new(server.clone())?;
                 let me = team::current(&api, &*secrets, &file).await?;
                 let store = TeamStore::load(&file)?;
-                let mut first_team = None;
+                let (mut first_team, mut update) = (None, None);
                 if me.user.server_admin {
                     let user = (store.account(&server)).map_or(username, |a| a.username.clone());
                     if let Ok(Some(token)) = team::kept_token(&server, &*secrets, &user) {
                         let teams = api.teams(&token).await.unwrap_or_default();
                         first_team = teams.into_iter().next().map(|t| t.slug);
+                        update = Some(api.server_update(&token).await);
                     }
                 }
-                Ok::<_, TeamError>((me, store, first_team))
+                Ok::<_, TeamError>((me, store, first_team, update))
             });
             let server = section.server.clone();
             cx.spawn_in(window, async move |this, cx| {
-                let result = task.await.unwrap_or(Err(TeamError::Unavailable));
+                let result = task
+                    .await
+                    .unwrap_or(Err(TeamError::Unavailable(String::new())));
                 let _ = this.update_in(cx, |this, window, cx| {
                     this.loaded(&server, result, window, cx)
                 });
@@ -329,7 +380,7 @@ impl WorkspacesView {
     fn loaded(
         &mut self,
         server: &ServerUrl,
-        result: Result<(Me, TeamStore, Option<String>), TeamError>,
+        result: Result<Loaded, TeamError>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -337,7 +388,7 @@ impl WorkspacesView {
             return;
         };
         match result {
-            Ok((me, store, first_team)) => {
+            Ok((me, store, first_team, update)) => {
                 section.workspaces = me.apinata_workspaces().into_iter().cloned().collect();
                 section.rows = (section.workspaces.iter())
                     .map(|w| {
@@ -348,6 +399,7 @@ impl WorkspacesView {
                     })
                     .collect();
                 section.admin = me.user.server_admin;
+                section.update = update.map(UpdateLine::from_result);
                 if let Some(slug) = first_team
                     && section.new_team.read(cx).value().is_empty()
                 {
@@ -476,7 +528,11 @@ impl WorkspacesView {
                 }
                 Err(_) => {
                     this.cloning = false;
-                    this.set_error_on(&open.server, Some(error_text(&TeamError::Unavailable)), cx);
+                    this.set_error_on(
+                        &open.server,
+                        Some(error_text(&TeamError::Unavailable(String::new()))),
+                        cx,
+                    );
                 }
             });
         })
@@ -622,7 +678,9 @@ impl WorkspacesView {
         }
         self.set_error(section, None, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let result = task.await.unwrap_or(Err(TeamError::Unavailable));
+            let result = task
+                .await
+                .unwrap_or(Err(TeamError::Unavailable(String::new())));
             let _ = this.update_in(cx, |this, window, cx| {
                 this.created(&server, result, window, cx)
             });
@@ -658,6 +716,46 @@ impl WorkspacesView {
         cx.notify();
     }
 
+    /// Asks `section`'s server to check for its own update now and shows what it found. Only a
+    /// server admin's section asks; for anyone else, or while a check runs, nothing is sent.
+    pub fn check_update(&mut self, section: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(s) = self.sections.get_mut(section) else {
+            return;
+        };
+        if !s.admin || s.checking_update || s.signing_out {
+            return;
+        }
+        let Some(state) = cx.try_global::<AppState>() else {
+            return;
+        };
+        let secrets = Arc::clone(&state.secrets);
+        let (server, username) = (s.server.clone(), s.account.username.clone());
+        s.checking_update = true;
+        let task = tokio_bridge::spawn(cx, {
+            let server = server.clone();
+            async move {
+                let token = (team::kept_token(&server, &*secrets, &username)?)
+                    .ok_or(TeamError::Unauthenticated)?;
+                HttpTeamClient::new(server)?
+                    .check_server_update(&token)
+                    .await
+            }
+        });
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = (task.await).unwrap_or(Err(TeamError::Unavailable(String::new())));
+            let _ = this.update(cx, |this, cx| {
+                if let Some(i) = this.position(&server) {
+                    let s = &mut this.sections[i];
+                    s.checking_update = false;
+                    s.update = Some(UpdateLine::from_result(result));
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// Signs out of `section`'s server: revokes its token and forgets the account, keeping the
     /// bound folders. A failure keeps the section and says why. Ignored while a clone runs or
     /// while this server is creating a workspace, so the created one still reaches the list.
@@ -683,7 +781,9 @@ impl WorkspacesView {
         });
         self.set_error(section, None, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let result = task.await.unwrap_or(Err(TeamError::Unavailable));
+            let result = task
+                .await
+                .unwrap_or(Err(TeamError::Unavailable(String::new())));
             let _ = this.update_in(cx, |this, window, cx| {
                 let Some(index) = this.position(&server) else {
                     return;
@@ -703,6 +803,15 @@ impl WorkspacesView {
         .detach();
     }
 }
+
+// What a server's load found: who the user is, the team file, the first team for New
+// workspace and, for a server admin, the update status.
+type Loaded = (
+    Me,
+    TeamStore,
+    Option<String>,
+    Option<Result<ServerUpdate, TeamError>>,
+);
 
 // What an Open captured when it started, so the binding uses that account and workspace.
 struct Opening {
@@ -816,6 +925,43 @@ impl Render for WorkspacesView {
                             ),
                     )
             });
+            let update = (s.state == SectionState::Ready)
+                .then_some(s.update.as_ref())
+                .flatten()
+                .map(|u| {
+                    let notes = u.notes.clone().map(|url| {
+                        Button::new(("team-update-notes", i))
+                            .link()
+                            .label("Release notes")
+                            .tooltip(url.clone())
+                            .on_click(move |_, _, cx| cx.open_url(&url))
+                    });
+                    h_flex()
+                        .gap(SPACE_2)
+                        .child(
+                            div()
+                                .id(("team-update-line", i))
+                                .test_support()
+                                // Shrinks and wraps, so the buttons stay inside the dialog.
+                                .flex_1()
+                                .min_w_0()
+                                .text_color(muted)
+                                .child(u.text.clone()),
+                        )
+                        .children(notes)
+                        .child(
+                            Button::new(("team-update-check", i))
+                                .label(if s.checking_update {
+                                    "Checking…"
+                                } else {
+                                    "Check now"
+                                })
+                                .lock(s.checking_update, cx)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.check_update(i, window, cx)
+                                })),
+                        )
+                });
             let error = s.error.clone().map(|message| {
                 div()
                     .id(("team-section-error", i))
@@ -829,6 +975,7 @@ impl Render for WorkspacesView {
                 .gap(SPACE_2)
                 .child(header)
                 .child(body)
+                .children(update)
                 .children(create)
                 .children(error)
         });

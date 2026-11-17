@@ -16,8 +16,8 @@ use serde_json::json;
 use url::Url;
 
 use super::{
-    APINATA_KIND, Me, NewWorkspace, ServerInfo, ServerUrl, SignIn, Team, TeamError, TeamToken,
-    User, Workspace, redact_token,
+    APINATA_KIND, Me, NewWorkspace, ServerInfo, ServerRelease, ServerUpdate, ServerUrl, SignIn,
+    Team, TeamError, TeamToken, User, Workspace, redact_token,
 };
 
 /// A boxed future from a `TeamApi` call.
@@ -49,6 +49,10 @@ pub trait TeamApi: Send + Sync {
     ) -> TeamFuture<'a, Workspace>;
     /// `DELETE /api/v1/tokens/{id}`: revokes a token.
     fn revoke<'a>(&'a self, token: &'a TeamToken, token_id: &'a str) -> TeamFuture<'a, ()>;
+    /// `GET /api/v1/update` (server admin): what the server's last release check found.
+    fn server_update<'a>(&'a self, token: &'a TeamToken) -> TeamFuture<'a, ServerUpdate>;
+    /// `POST /api/v1/update/check` (server admin): checks now; 503 carries the server's reason.
+    fn check_server_update<'a>(&'a self, token: &'a TeamToken) -> TeamFuture<'a, ServerUpdate>;
 }
 
 /// `TeamApi` over reqwest against one server.
@@ -219,6 +223,35 @@ struct TokenMetaWire {
     id: i64,
 }
 
+// Only the fields the update line shows; the digest and dates are left to the server.
+#[derive(Deserialize)]
+struct UpdateWire {
+    current: String,
+    latest: Option<ReleaseWire>,
+    checked_at: Option<String>,
+    check: String,
+}
+
+#[derive(Deserialize)]
+struct ReleaseWire {
+    version: String,
+    notes_url: String,
+}
+
+impl From<UpdateWire> for ServerUpdate {
+    fn from(wire: UpdateWire) -> ServerUpdate {
+        ServerUpdate {
+            current: wire.current,
+            latest: wire.latest.map(|r| ServerRelease {
+                version: r.version,
+                notes_url: r.notes_url,
+            }),
+            checked_at: wire.checked_at,
+            checks_off: wire.check == "off",
+        }
+    }
+}
+
 impl TeamApi for HttpTeamClient {
     fn server(&self) -> &ServerUrl {
         &self.server
@@ -278,6 +311,20 @@ impl TeamApi for HttpTeamClient {
         Box::pin(async move {
             let request = self.request(Method::DELETE, &["tokens", token_id], Some(token))?;
             Self::send(request).await.map(drop)
+        })
+    }
+
+    fn server_update<'a>(&'a self, token: &'a TeamToken) -> TeamFuture<'a, ServerUpdate> {
+        Box::pin(async move {
+            let request = self.request(Method::GET, &["update"], Some(token))?;
+            Ok(Self::call::<UpdateWire>(request).await?.into())
+        })
+    }
+
+    fn check_server_update<'a>(&'a self, token: &'a TeamToken) -> TeamFuture<'a, ServerUpdate> {
+        Box::pin(async move {
+            let request = self.request(Method::POST, &["update", "check"], Some(token))?;
+            Ok(Self::call::<UpdateWire>(request).await?.into())
         })
     }
 }

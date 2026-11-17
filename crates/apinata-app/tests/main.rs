@@ -622,6 +622,7 @@ mod team_clash_dialog;
 mod team_join;
 mod team_paths;
 mod team_resume;
+mod team_server_update;
 mod team_sign_in_again;
 mod team_state;
 mod team_status_bar;
