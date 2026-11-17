@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/apinata-core", "crates/apinata-cli", "crates/apinata-app", "crates/apinata-mcp", "crates/xtask"]
+members = ["crates/apinata-core", "crates/apinata-format", "crates/apinata-cli", "crates/apinata-app", "crates/apinata-mcp", "crates/xtask"]
 exclude = ["tools/apinata-pilot"]
 resolver = "3"
 

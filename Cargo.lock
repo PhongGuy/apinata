@@ -448,6 +448,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "apinata-format"
+version = "0.1.0"
+dependencies = [
+ "saphyr-parser",
+ "yaml_serde",
+]
+
+[[package]]
 name = "apinata-mcp"
 version = "0.2.0"
 dependencies = [
