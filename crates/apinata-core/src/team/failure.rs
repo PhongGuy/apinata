@@ -21,8 +21,9 @@ pub enum SyncFailure {
     },
     /// The remote moved on; a pull comes first.
     NonFastForward,
-    /// The server's hook found secrets in the pushed commits: the listed ones and `more` unlisted.
-    Secret {
+    /// The server's hook refused the pushed commits, for secrets or other reasons: the listed
+    /// findings and `more` unlisted.
+    Refused {
         /// The findings the hook listed.
         findings: Vec<Finding>,
         /// Findings beyond the listed ones.
@@ -35,11 +36,11 @@ pub enum SyncFailure {
     },
 }
 
-/// One secret the server's hook refused, as its `potluck-reject` line names it.
+/// One thing the server's hook refused, as its `potluck-reject` line names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Finding {
-    /// The kind of secret, such as `secret_env_file`.
+    /// The kind of refusal, such as `secret_env_file` or `format_unsupported`.
     pub code: String,
     /// The ref the commit was pushed to.
     pub git_ref: String,
@@ -47,10 +48,12 @@ pub struct Finding {
     pub path: String,
     /// The rule that matched.
     pub rule: String,
+    /// What the server added about it: names and key paths, never values.
+    pub detail: Option<String>,
 }
 
 impl Finding {
-    /// A finding of secret `code` in `path` on `git_ref`, matched by `rule`.
+    /// A finding of kind `code` in `path` on `git_ref`, matched by `rule`, without detail.
     pub fn new(
         code: impl Into<String>,
         git_ref: impl Into<String>,
@@ -62,7 +65,21 @@ impl Finding {
             git_ref: git_ref.into(),
             path: path.into(),
             rule: rule.into(),
+            detail: None,
         }
+    }
+
+    /// This finding with `detail` attached.
+    pub fn with_detail(self, detail: impl Into<String>) -> Finding {
+        Finding {
+            detail: Some(detail.into()),
+            ..self
+        }
+    }
+
+    /// Whether this finding is a secret rather than another kind of refusal.
+    pub fn is_secret(&self) -> bool {
+        self.code.starts_with("secret_")
     }
 }
 
@@ -114,7 +131,7 @@ pub fn classify(err: &SyncError) -> SyncFailure {
         }
         let (findings, more) = findings(stderr);
         if !findings.is_empty() || more > 0 {
-            return SyncFailure::Secret { findings, more };
+            return SyncFailure::Refused { findings, more };
         }
     }
     SyncFailure::Other { message: message() }
@@ -124,16 +141,26 @@ pub fn classify(err: &SyncError) -> SyncFailure {
 /// `potluck-reject-more <n>` line. Git pads remote lines with spaces, so each is trimmed first. The
 /// ref and path arrive percent-encoded, so a line is exactly five space-separated fields; any
 /// other field count or a malformed escape drops the line.
+///
+/// A `potluck-reject-detail <text>` line directly after a kept finding attaches to it; anywhere
+/// else, or with a malformed escape, it is ignored.
 fn findings(stderr: &str) -> (Vec<Finding>, usize) {
-    let mut found = Vec::new();
+    let mut found: Vec<Finding> = Vec::new();
     let mut more = 0;
+    // Set only on the line right after a kept finding, so a detail never reaches an older one.
+    let mut open = false;
     for line in stderr.lines() {
         let line = line.trim();
         let Some(line) = line.strip_prefix("remote: ") else {
             continue;
         };
         let line = line.trim();
-        if let Some(count) = line.strip_prefix("potluck-reject-more ") {
+        let after_finding = std::mem::take(&mut open);
+        if let Some(text) = line.strip_prefix("potluck-reject-detail ") {
+            if after_finding && let Some(last) = found.last_mut() {
+                last.detail = percent_decode(text.trim());
+            }
+        } else if let Some(count) = line.strip_prefix("potluck-reject-more ") {
             more = count.trim().parse().unwrap_or(more);
         } else if line.starts_with("potluck-reject ") {
             let parts: Vec<&str> = line.split(' ').collect();
@@ -145,7 +172,9 @@ fn findings(stderr: &str) -> (Vec<Finding>, usize) {
                     git_ref,
                     path,
                     rule: (*rule).to_owned(),
+                    detail: None,
                 });
+                open = true;
             }
         }
     }

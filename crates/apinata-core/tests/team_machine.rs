@@ -27,7 +27,7 @@ fn pushing() -> Vec<E> {
 }
 
 fn secret() -> SyncFailure {
-    SyncFailure::Secret {
+    SyncFailure::Refused {
         findings: Vec::new(),
         more: 0,
     }
@@ -173,7 +173,7 @@ fn a_secret_refusal_blocks_commits_locally_and_retry_squashes() {
     let mut events = pushing();
     events.push(E::PushFailed(secret()));
     let (mut m, _) = run(Role::Write, events);
-    let blocked = S::Blocked(Block::Secret {
+    let blocked = S::Blocked(Block::Refused {
         findings: Vec::new(),
         more: 0,
     });
@@ -287,7 +287,7 @@ fn a_flush_while_offline_or_blocked_commits_locally() {
     events.push(E::PushFailed(secret()));
     let (mut m, _) = run(Role::Write, events);
     assert_eq!(m.handle(E::Flush), [A::CancelDebounce, A::Commit]);
-    assert!(matches!(m.state(), S::Blocked(Block::Secret { .. })));
+    assert!(matches!(m.state(), S::Blocked(Block::Refused { .. })));
     let (mut m, _) = run(Role::Read, vec![]);
     assert_eq!(m.handle(E::Flush), Vec::<A>::new());
 }

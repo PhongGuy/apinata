@@ -422,14 +422,14 @@ fn a_secret_refusal_with_new_findings_is_a_new_problem_event(cx: &mut TestAppCon
     let seen = events(cx, &s.ws);
     std::fs::write(col.path().join("b.yml"), request("b", "http://x/b")).unwrap();
     wait_for(cx, "the secret block", |cx| {
-        blocked(cx, &s, |b| matches!(b, Block::Secret { .. }))
+        blocked(cx, &s, |b| matches!(b, Block::Refused { .. }))
     });
     s.ws.read_with(cx, |w, _| w.team_sync(&s.root))
         .unwrap()
         .retry();
     wait_for(cx, "the second refusal", |_| runs_of(&runs) > 1);
     wait_for(cx, "the secret block", |cx| {
-        blocked(cx, &s, |b| matches!(b, Block::Secret { .. }))
+        blocked(cx, &s, |b| matches!(b, Block::Refused { .. }))
     });
     settle(cx);
     assert_eq!(problems(&seen), 2);

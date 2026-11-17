@@ -201,7 +201,7 @@ impl Render for SyncView {
         let retry = matches!(
             state,
             Some(TeamState::Blocked(
-                Block::Secret { .. } | Block::Hook { .. } | Block::Failed { .. }
+                Block::Refused { .. } | Block::Hook { .. } | Block::Failed { .. }
             ))
         )
         .then(|| {

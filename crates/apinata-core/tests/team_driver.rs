@@ -192,10 +192,10 @@ fn a_secret_refusal_blocks_until_retry_squashes_it_away() {
     wait("the refusal", || {
         matches!(
             sync.status().state,
-            TeamState::Blocked(Block::Secret { .. })
+            TeamState::Blocked(Block::Refused { .. })
         )
     });
-    let TeamState::Blocked(Block::Secret { findings, .. }) = sync.status().state else {
+    let TeamState::Blocked(Block::Refused { findings, .. }) = sync.status().state else {
         unreachable!()
     };
     assert_eq!(findings[0].path, "environments/dev.yml");

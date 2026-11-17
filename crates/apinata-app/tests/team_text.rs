@@ -142,7 +142,7 @@ fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
         "secret_value",
     );
     let status = TeamStatus::new(
-        TeamState::Blocked(Block::Secret {
+        TeamState::Blocked(Block::Refused {
             findings: vec![found.clone()],
             more: 3,
         }),
@@ -276,8 +276,8 @@ fn each_state_has_one_status() {
 
 #[test]
 fn toasts_name_the_collection_and_the_reason() {
-    let secret = Block::Secret {
-        findings: vec![],
+    let secret = Block::Refused {
+        findings: vec![Finding::new("secret_value", "r", "a.yml", "secret_value")],
         more: 1,
     };
     assert_eq!(
@@ -295,7 +295,7 @@ fn a_finding_outside_any_file_is_named_instead_of_showing_a_slash() {
     let file = Finding::new("secret_value", "refs/heads/main", "a.yml", "secret_value");
     let bare = Finding::new("secret_value", "refs/tags/v1", "/", "secret_value");
     let status = TeamStatus::new(
-        TeamState::Blocked(Block::Secret {
+        TeamState::Blocked(Block::Refused {
             findings: vec![file, bare],
             more: 0,
         }),
@@ -327,4 +327,101 @@ fn an_idle_folder_with_clashes_says_they_wait_instead_of_in_sync() {
     let idle = TeamStatus::new(TeamState::Idle, 0, vec![]);
     assert_eq!(problem_lines(&idle, 1), ["1 clash to settle."]);
     assert_eq!(problem_lines(&idle, 2), ["2 clashes to settle."]);
+}
+
+fn refused(findings: Vec<Finding>, more: usize) -> Block {
+    Block::Refused { findings, more }
+}
+
+#[test]
+fn a_detail_shows_after_the_rule_beside_any_code() {
+    let main = "refs/heads/main";
+    let same = Finding::new(
+        "secret_value",
+        main,
+        "environments/prod.yml",
+        "secret_value",
+    )
+    .with_detail("token");
+    let differs = Finding::new("secret_pattern", main, "notes.txt", "aws").with_detail("key");
+    assert_eq!(
+        finding_line(&same),
+        "environments/prod.yml: secret_value (token) on refs/\u{2060}heads/\u{2060}main"
+    );
+    assert_eq!(
+        finding_line(&differs),
+        "notes.txt: aws (secret_pattern: key) on refs/\u{2060}heads/\u{2060}main"
+    );
+}
+
+#[test]
+fn a_mixed_refusal_lists_secrets_and_other_refusals_under_their_own_headings() {
+    let main = "refs/heads/main";
+    let block = refused(
+        vec![
+            Finding::new(
+                "format_unsupported",
+                main,
+                "opencollection.yml",
+                "workspace_format",
+            )
+            .with_detail("format missing"),
+            Finding::new(
+                "secret_value",
+                main,
+                "environments/prod.yml",
+                "secret_value",
+            )
+            .with_detail("token"),
+            Finding::new("future_code", main, "a.yml", "new_rule"),
+        ],
+        2,
+    );
+    let status = TeamStatus::new(TeamState::Blocked(block.clone()), 0, vec![]);
+    let at = "on refs/\u{2060}heads/\u{2060}main";
+    assert_eq!(
+        problem_lines(&status, 0),
+        [
+            "The server refused the push because it found secrets:".to_owned(),
+            format!("environments/prod.yml: secret_value (token) {at}"),
+            "The server refused the push:".to_owned(),
+            format!(
+                "opencollection.yml: workspace_format (format_unsupported: format missing) {at}"
+            ),
+            format!("a.yml: new_rule (future_code) {at}"),
+            "and 2 more".to_owned(),
+            "Fix them, save, then Retry.".to_owned(),
+        ]
+    );
+    assert_eq!(
+        sync_status(&status, false, 0),
+        (SyncKind::Problem, "problem: secrets found".into())
+    );
+    assert_eq!(
+        problem_toast("api", &block),
+        "Sync of api stopped: the server found secrets."
+    );
+}
+
+#[test]
+fn a_refusal_without_secrets_never_says_secrets_were_found() {
+    let found = Finding::new("safety_relaxation", "refs/heads/main", "a.yml", "scripts");
+    let block = refused(vec![found], 0);
+    let status = TeamStatus::new(TeamState::Blocked(block.clone()), 0, vec![]);
+    assert_eq!(
+        problem_lines(&status, 0),
+        [
+            "The server refused the push:",
+            "a.yml: scripts (safety_relaxation) on refs/\u{2060}heads/\u{2060}main",
+            "Fix them, save, then Retry.",
+        ]
+    );
+    assert_eq!(
+        sync_status(&status, false, 0),
+        (SyncKind::Problem, "problem: push refused".into())
+    );
+    assert_eq!(
+        problem_toast("api", &block),
+        "Sync of api stopped: the server refused the push."
+    );
 }
