@@ -1063,11 +1063,7 @@ impl BodyView {
                 flip(this, cx);
                 this.refocus_find(window, cx);
             }))
-            .child(ui::icon_button(ids.1, icon, &tooltip, None).choose(
-                on,
-                SelectedStyle::Ghost,
-                cx,
-            ))
+            .child(ui::icon_button(ids.1, icon, &tooltip, None).toggle(on, cx))
     }
 
     /// Moves to the previous match, wrapping, and scrolls it into view.
@@ -3363,9 +3359,8 @@ impl Render for BodyView {
             bar = bar.child(
                 div().id("body-filter").test_support().child(
                     Button::new("body-filter-button")
-                        .ghost()
                         .label("Filter")
-                        .choose(self.filter_open, SelectedStyle::Ghost, cx)
+                        .toggle(self.filter_open, cx)
                         .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                             this.toggle_filter(window, cx)
                         })),

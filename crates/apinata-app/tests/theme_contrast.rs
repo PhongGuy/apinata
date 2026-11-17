@@ -1075,6 +1075,7 @@ fn selected_button_labels_reach_aa_in_every_theme(cx: &mut gpui_kit::TestAppCont
                 ("ghost toggle", SelectedStyle::Ghost),
                 ("plain toggle", SelectedStyle::Plain),
                 ("chosen collection", SelectedStyle::ChosenOutlinePrimary),
+                ("on toggle", SelectedStyle::Toggle),
             ] {
                 let (text, fill) = selected_look(t, style);
                 check(control, text, fill);
@@ -1099,6 +1100,119 @@ fn selected_button_labels_reach_aa_in_every_theme(cx: &mut gpui_kit::TestAppCont
         });
     }
     assert!(low.is_empty(), "{low:#?}");
+}
+
+/// Every on/off button goes through `ui::ChooseButton::toggle`: off it draws only its edge,
+/// with a clear fill and the kit's label, and on it adds the `SelectedStyle::Toggle` fill and
+/// label and a differently coloured edge, in every theme.
+#[gpui_kit::test]
+fn a_toggle_is_outlined_when_off_and_filled_when_on(cx: &mut gpui_kit::TestAppContext) {
+    use apinata_app::theme::{DARK, LIGHT, SelectedStyle, selected_look, toggle_edge};
+    use apinata_app::ui::ChooseButton as _;
+    use gpui_kit::Styled as _;
+    use gpui_kit::component::ActiveTheme as _;
+    use gpui_kit::component::button::Button;
+    let fill_of = |b: &mut Button| match b.style().background.clone() {
+        Some(gpui_kit::Fill::Color(b)) => b.as_solid(),
+        _ => None,
+    };
+    for name in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
+        crate::support::use_theme(cx, name);
+        cx.update(|cx| {
+            let t = cx.theme().clone();
+            let mut off = Button::new("b").toggle(false, cx);
+            assert_eq!(
+                off.style().border_color,
+                Some(toggle_edge(&t, false)),
+                "{name} off edge"
+            );
+            assert_eq!(
+                fill_of(&mut off).map(|f| f.a),
+                Some(0.),
+                "{name} off has no fill"
+            );
+            assert_eq!(
+                off.style().text.color,
+                None,
+                "{name} off keeps the kit label"
+            );
+            let mut on = Button::new("b").toggle(true, cx);
+            let (text, fill) = selected_look(&t, SelectedStyle::Toggle);
+            assert_eq!(
+                on.style().border_color,
+                Some(toggle_edge(&t, true)),
+                "{name} on edge"
+            );
+            assert_eq!(on.style().text.color, Some(text), "{name} on label");
+            assert_eq!(fill_of(&mut on), Some(fill), "{name} on fill");
+            assert_ne!(
+                toggle_edge(&t, true),
+                toggle_edge(&t, false),
+                "{name} edges differ"
+            );
+        });
+    }
+}
+
+/// The on toggle's edge and fill read as pressed at a glance: the edge reaches 3:1 (WCAG
+/// non-text contrast) against every surface, and the fill shifts the surface it sits on by at
+/// least 1.2:1, well clear of the near-identical shades a neutral selected fill gave.
+#[gpui_kit::test]
+fn an_on_toggle_stands_out_from_an_off_one_in_every_theme(cx: &mut gpui_kit::TestAppContext) {
+    use apinata_app::theme::{DARK, LIGHT, SelectedStyle, selected_look, toggle_edge};
+    use gpui_kit::component::ActiveTheme as _;
+    let mut low = Vec::new();
+    for name in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
+        crate::support::use_theme(cx, name);
+        cx.update(|cx| {
+            let t = cx.theme();
+            let on = toggle_edge(t, true);
+            let (_, fill) = selected_look(t, SelectedStyle::Toggle);
+            for (surface, shown) in over_surfaces(t, gpui_kit::transparent_black()) {
+                let r = hsla_ratio(on, shown);
+                if r < 3.0 {
+                    low.push(format!("{name}: on edge on {surface} = {r:.2}"));
+                }
+                let filled = shown.blend(fill);
+                let r = hsla_ratio(filled, shown);
+                if r < 1.2 {
+                    low.push(format!("{name}: on fill on {surface} = {r:.2}"));
+                }
+            }
+        });
+    }
+    assert!(low.is_empty(), "{low:#?}");
+}
+
+/// Only `ui.rs` sets the kit's pressed state, so every on/off button takes its look from
+/// `ui::ChooseButton::toggle` rather than a hand-made outline or ghost style.
+#[test]
+fn only_ui_rs_marks_a_button_pressed() {
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
+    assert!(files.len() > 50, "found the sources");
+    let bad: Vec<_> = files
+        .iter()
+        .filter(|p| p.file_name().unwrap() != "ui.rs")
+        .filter(|p| std::fs::read_to_string(p).unwrap().contains(".toggled("))
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "mark toggles through ui::ChooseButton::toggle: {bad:?}"
+    );
 }
 
 /// A button a view marks selected carries the label and fill `selected_look` names, and only

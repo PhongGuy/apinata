@@ -742,3 +742,17 @@ mod xml_parsed_once {
         assert_eq!(parses(cx, &view), 1);
     }
 }
+
+fn pressed(cx: &mut TestAppContext, win: AnyWindowHandle, id: &'static str) -> Option<bool> {
+    frame(cx, win);
+    cx.update_window(win, |_, w, _| w.try_find(id).and_then(|e| e.checked()))
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_filter_button_reports_whether_it_is_on(cx: &mut TestAppContext) {
+    let (win, _view) = shown_with(cx, JSON.into(), "application/json");
+    assert_eq!(pressed(cx, win, "body-filter-button"), Some(false));
+    open_filter(cx, win);
+    assert_eq!(pressed(cx, win, "body-filter-button"), Some(true));
+}

@@ -153,6 +153,27 @@ fn the_side_toggles_show_an_outline_when_off(cx: &mut TestAppContext) {
     }
 }
 
+// The painted edge of a side toggle is the off edge while closed and the on edge while open.
+#[gpui_kit::test]
+fn the_side_toggles_paint_a_different_edge_when_on(cx: &mut TestAppContext) {
+    use apinata_app::theme::toggle_edge;
+    use gpui_kit::component::ActiveTheme as _;
+    let (win, _s) = section(cx, "{ users { id } }", true);
+    frame(cx, win);
+    let (off_edge, on_edge) = cx.update(|cx| {
+        let t = cx.theme();
+        (toggle_edge(t, false), toggle_edge(t, true))
+    });
+    for id in ["graphql-builder-toggle", "graphql-docs-toggle"] {
+        let off = edges(cx, win, id);
+        assert!(off.contains(&off_edge), "{id} off: {off:?}");
+        click(cx, win, id);
+        let on = edges(cx, win, id);
+        assert!(on.contains(&on_edge), "{id} on: {on:?}");
+        click(cx, win, id);
+    }
+}
+
 // A schema read from a file offers a load from the URL, never a "refresh" of the URL's schema.
 #[gpui_kit::test]
 fn a_schema_from_a_file_offers_the_url_load_instead_of_refresh(cx: &mut TestAppContext) {
