@@ -2652,6 +2652,9 @@ impl Workspace {
                     break;
                 }
             }
+            // Only a driver that died mid-pull closes this channel while its entry still holds
+            // it (a replaced or closed loop drops this task first), so nothing may stay held.
+            let _ = this.update(cx, |w, cx| w.team_loop_ended(&pump_key, cx));
         });
         let events = events.map(|config| follow_team(&sync, &connected, config, cx));
         entry.team = Some(Team {
@@ -2810,6 +2813,13 @@ impl Workspace {
         self.refresh_git(root, cx);
         if changed {
             self.team_changed(root, cx);
+        }
+    }
+
+    // Releases what a loop that stopped reporting was holding; its stored status stays as is.
+    fn team_loop_ended(&mut self, root: &Path, cx: &mut Context<Self>) {
+        if let Some(held) = self.entry_mut(root).and_then(|e| e.held.take()) {
+            self.release(root, held, cx);
         }
     }
 
