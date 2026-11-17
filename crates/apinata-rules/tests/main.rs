@@ -15,3 +15,4 @@ mod common;
 mod contract;
 mod details;
 mod environment;
+mod seed;
