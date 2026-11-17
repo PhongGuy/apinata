@@ -1,4 +1,4 @@
-//! Section tabs count enabled rows and mark a body or auth mode, following the draft.
+//! Section tabs count enabled rows and mark what is set on the request, following the draft.
 
 use crate::support;
 
@@ -157,7 +157,7 @@ fn inheriting_no_auth_leaves_the_auth_tab_plain(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_auth_dot_names_the_auth_that_applies(cx: &mut TestAppContext) {
+fn only_the_requests_own_auth_shows_the_dot(cx: &mut TestAppContext) {
     let root = format!("{ROOT}request:\n  auth:\n    type: bearer\n    token: t\n");
     let users = format!(
         "{}request:\n  auth:\n    type: basic\n    username: u\n    password: p\n",
@@ -176,12 +176,14 @@ fn the_auth_dot_names_the_auth_that_applies(cx: &mut TestAppContext) {
         ("own.yml", &own),
     ]);
     assert_eq!(
-        auth_dot(cx, &col, "top.yml").as_deref(),
-        Some("Uses Bearer Token from the collection")
+        auth_dot(cx, &col, "top.yml"),
+        None,
+        "inheriting is not set here"
     );
     assert_eq!(
-        auth_dot(cx, &col, "u/list.yml").as_deref(),
-        Some("Uses Basic Auth from folder \"users\"")
+        auth_dot(cx, &col, "u/list.yml"),
+        None,
+        "inheriting is not set here"
     );
     assert_eq!(
         auth_dot(cx, &col, "own.yml").as_deref(),
@@ -244,4 +246,115 @@ fn every_content_mark_is_a_filled_dot(cx: &mut TestAppContext) {
         assert_eq!(fills, vec![muted], "{s:?} is a muted dot");
         assert!(edges.is_empty(), "{s:?} draws no ring: {edges:?}");
     }
+}
+
+// The file a new request starts as, with the settings block both writers fill with defaults.
+fn new_file(kind: &str, extra: &str, settings: &str) -> String {
+    format!(
+        "info:\n  name: n\n  type: {kind}\n  seq: 1\n{kind}:\n  method: POST\n  url: \"\"\n  auth: inherit\n{extra}settings:\n{settings}"
+    )
+}
+
+const NEW_SETTINGS: &str = "  encodeUrl: true\n  timeout: inherit\n  followRedirects: true\n  maxRedirects: 5\n  forwardAuthorizationHeader: false\n";
+const OLD_SETTINGS: &str = "  encodeUrl: true\n  timeout: 0\n  followRedirects: true\n  maxRedirects: 5\n  forwardAuthorizationHeader: true\n";
+
+/// Whether `section` of a request file `text` shows its dot, checked on the model and the tab.
+fn dotted(cx: &mut TestAppContext, root: &str, text: &str, section: Section) -> bool {
+    let col = write_tree(&[("opencollection.yml", root), ("n.yml", text)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, ed) = editor_for(cx, &ws, &root, "n.yml", false);
+    let marked = ed.read_with(cx, |e, cx| e.section_marked(section, cx));
+    let drawn = present(cx, win, ("section-mode", section as usize));
+    assert_eq!(marked, drawn, "the dot follows section_marked");
+    marked
+}
+
+const BEARER_ROOT: &str =
+    "opencollection: 1.0.0\ninfo:\n  name: c\nrequest:\n  auth:\n    type: bearer\n    token: t\n";
+
+#[gpui_kit::test]
+fn a_new_http_request_inheriting_auth_has_no_auth_dot(cx: &mut TestAppContext) {
+    let text = new_file("http", "", NEW_SETTINGS);
+    assert!(!dotted(cx, BEARER_ROOT, &text, Section::Auth));
+}
+
+#[gpui_kit::test]
+fn a_new_graphql_request_inheriting_auth_has_no_auth_dot(cx: &mut TestAppContext) {
+    let text = new_file("graphql", "", NEW_SETTINGS);
+    assert!(!dotted(cx, BEARER_ROOT, &text, Section::Auth));
+}
+
+#[gpui_kit::test]
+fn a_graphql_request_with_its_own_auth_has_the_auth_dot(cx: &mut TestAppContext) {
+    let text = new_file("graphql", "", NEW_SETTINGS).replace(
+        "  auth: inherit\n",
+        "  auth:\n    type: bearer\n    token: t\n",
+    );
+    assert!(dotted(cx, ROOT, &text, Section::Auth));
+}
+
+#[gpui_kit::test]
+fn default_settings_leave_the_settings_tab_plain(cx: &mut TestAppContext) {
+    for kind in ["http", "graphql"] {
+        for settings in [NEW_SETTINGS, OLD_SETTINGS] {
+            let text = new_file(kind, "", settings);
+            assert!(
+                !dotted(cx, ROOT, &text, Section::Settings),
+                "{kind}: {settings}"
+            );
+        }
+    }
+    let bare = "info:\n  name: n\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: u\n";
+    assert!(
+        !dotted(cx, ROOT, bare, Section::Settings),
+        "no settings block"
+    );
+}
+
+#[gpui_kit::test]
+fn each_custom_setting_marks_the_settings_tab(cx: &mut TestAppContext) {
+    let custom = [
+        ("encodeUrl: true", "encodeUrl: false"),
+        ("timeout: inherit", "timeout: 2500"),
+        ("followRedirects: true", "followRedirects: false"),
+        ("maxRedirects: 5", "maxRedirects: 9"),
+    ];
+    for kind in ["http", "graphql"] {
+        for (from, to) in custom {
+            let text = new_file(kind, "", &NEW_SETTINGS.replace(from, to));
+            assert!(dotted(cx, ROOT, &text, Section::Settings), "{kind}: {to}");
+        }
+        let tagged = new_file(kind, "", NEW_SETTINGS)
+            .replace("  seq: 1\n", "  seq: 1\n  tags:\n    - smoke\n");
+        assert!(dotted(cx, ROOT, &tagged, Section::Settings), "{kind}: tags");
+    }
+}
+
+#[gpui_kit::test]
+fn the_settings_dot_says_what_it_marks(cx: &mut TestAppContext) {
+    let text = new_file(
+        "http",
+        "",
+        &NEW_SETTINGS.replace("timeout: inherit", "timeout: 2500"),
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("n.yml", &text)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (_win, ed) = editor_for(cx, &ws, &root, "n.yml", false);
+    let words = ed.read_with(cx, |e, cx| e.section_mark(Section::Settings, cx));
+    assert_eq!(words.as_deref(), Some("Has custom settings"));
+}
+
+#[gpui_kit::test]
+fn docs_mark_the_docs_tab(cx: &mut TestAppContext) {
+    let with_docs = format!(
+        "{}docs: \"Lists users.\"\n",
+        new_file("http", "", NEW_SETTINGS)
+    );
+    assert!(dotted(cx, ROOT, &with_docs, Section::Docs));
+    assert!(!dotted(
+        cx,
+        ROOT,
+        &new_file("http", "", NEW_SETTINGS),
+        Section::Docs
+    ));
 }
