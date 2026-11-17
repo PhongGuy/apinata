@@ -1194,7 +1194,7 @@ impl KvTable {
         let cols = columns.describe(self.labels);
         let win: &Window = window;
         // A cell explains its placeholders only while the row is on and the cell editable; its
-        // edge lights while the pointer is over it and turns to the ring while it is focused.
+        // edge rests in the input colour and turns to the ring while it is focused.
         let cell = |input: &Entity<InputState>,
                     (name, ix): (&'static str, usize),
                     (wrapper, explains): (&'static str, bool),

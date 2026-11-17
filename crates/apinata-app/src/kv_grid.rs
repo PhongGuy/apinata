@@ -1,5 +1,5 @@
 //! The shared key-value table look: column descriptions, the heading row, the row frame,
-//! the check and action slots, the borderless cell with its own hover and focus edge, and the
+//! the check and action slots, the borderless cell with its own resting and focus edge, and the
 //! read-only `kv_view`.
 
 use std::rc::Rc;
@@ -31,8 +31,6 @@ pub const STRUCTURED_ROWS_CONTEXT: &str = "StructuredRows";
 
 /// The hover group a row forms, so its action slot can show on hover.
 pub const KV_ROW_GROUP: &str = "kv-row";
-/// The hover group a cell forms, so its edge can show on hover.
-pub const KV_CELL_GROUP: &str = "kv-cell";
 
 /// How wide a column is.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -382,8 +380,8 @@ impl RenderOnce for ActionSlot {
     }
 }
 
-/// `field` with a transparent border, plus the edge `edge_id`: the input colour while the
-/// cell is hovered, the ring colour while `focused`.
+/// `field` with a transparent border, plus the edge `edge_id`: the input colour at rest, as on
+/// every text field, and the ring colour while `focused`.
 pub fn kv_cell(
     edge_id: impl Into<ElementId>,
     field: Input,
@@ -391,19 +389,7 @@ pub fn kv_cell(
     focused: bool,
     cx: &App,
 ) -> Div {
-    edged_cell(edge_id.into(), field, state, focused, false, None, cx)
-}
-
-/// `kv_cell` whose edge is drawn at rest too, for a field on a fill the same as its own
-/// (a dialog), where the hover-only edge leaves a light theme's field unmarked.
-pub fn kv_cell_resting(
-    edge_id: impl Into<ElementId>,
-    field: Input,
-    state: &Entity<InputState>,
-    focused: bool,
-    cx: &App,
-) -> Div {
-    edged_cell(edge_id.into(), field, state, focused, true, None, cx)
+    edged_cell(edge_id.into(), field, state, focused, None, cx)
 }
 
 /// `kv_cell` for a cell the last edit was refused on: the alert icon trails the field (id
@@ -416,7 +402,7 @@ pub fn kv_cell_marked(
     cx: &App,
 ) -> Div {
     let marked = Some((danger_id.clone(), icon_id));
-    edged_cell(danger_id, field, state, focused, false, marked, cx)
+    edged_cell(danger_id, field, state, focused, marked, cx)
 }
 
 fn edged_cell(
@@ -424,14 +410,9 @@ fn edged_cell(
     field: Input,
     state: &Entity<InputState>,
     focused: bool,
-    resting: bool,
     marked: Option<(ElementId, ElementId)>,
     cx: &App,
 ) -> Div {
-    // A light theme has no fill step to mark a cell, so its edge rests visible; dark stays
-    // hover-only.
-    // A refused cell's edge always shows, so it never hides behind the hover-only edge.
-    let resting = resting || marked.is_some() || !cx.theme().mode.is_dark();
     // Focus draws the same 2px accent ring as a padded input, as an overlay so nothing shifts;
     // a refused cell's danger colour outranks that ring and the resting edge.
     let colour = if marked.is_some() {
@@ -449,7 +430,6 @@ fn edged_cell(
     ui::forward_padding_press(div(), state)
         .relative()
         .w_full()
-        .group(KV_CELL_GROUP)
         .child(field.border_color(transparent_black()).w_full())
         .child(
             div()
@@ -460,10 +440,7 @@ fn edged_cell(
                 .rounded(RADIUS)
                 .when(focused, |d| d.border_2())
                 .when(!focused, |d| d.border_1())
-                .border_color(colour)
-                .when(!focused && !resting, |d| {
-                    d.opacity(0.).group_hover(KV_CELL_GROUP, |s| s.opacity(1.))
-                }),
+                .border_color(colour),
         )
 }
 

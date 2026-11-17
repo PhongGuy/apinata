@@ -958,16 +958,15 @@ fn edge(cx: &mut TestAppContext, win: AnyWindowHandle, id: (&'static str, usize)
 }
 
 #[gpui_kit::test]
-fn a_cell_shows_its_edge_on_hover_or_focus(cx: &mut TestAppContext) {
+fn a_cell_shows_its_edge_at_rest_on_hover_and_on_focus(cx: &mut TestAppContext) {
     let (win, _host, _t) = host(cx, rows());
-    // Hover-only edges are the dark themes' behaviour; light ones rest visible.
     support::use_theme(cx, apinata_app::theme::DARK);
     hover(cx, win, "env-head");
-    assert!(!edge(cx, win, ("env-name-edge", 0)));
-    assert!(!edge(cx, win, ("env-value-edge", 0)));
+    assert!(edge(cx, win, ("env-name-edge", 0)));
+    assert!(edge(cx, win, ("env-value-edge", 0)));
     hover(cx, win, ("env-name", 0usize));
     assert!(edge(cx, win, ("env-name-edge", 0)));
-    assert!(!edge(cx, win, ("env-value-edge", 0)));
+    assert!(edge(cx, win, ("env-value-edge", 0)));
     cx.update_window(win, |_, w, cx| w.click(("env-value", 0usize), cx))
         .unwrap();
     hover(cx, win, "env-head");

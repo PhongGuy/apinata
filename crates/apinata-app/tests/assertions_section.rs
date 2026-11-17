@@ -433,7 +433,6 @@ fn action_shown(cx: &mut TestAppContext, win: AnyWindowHandle, ix: usize) -> boo
 #[gpui_kit::test]
 fn the_assertion_remove_shows_on_hover_or_focus(cx: &mut TestAppContext) {
     let (win, _host, _s) = section(cx, vec![new("res.status", "eq", Some("200"), true)]);
-    // Hover-only edges are the dark themes' behaviour; light ones rest visible.
     support::use_theme(cx, apinata_app::theme::DARK);
     hover_on(cx, win, "as-head");
     assert!(!action_shown(cx, win, 0));
@@ -443,7 +442,7 @@ fn the_assertion_remove_shows_on_hover_or_focus(cx: &mut TestAppContext) {
     hover_on(cx, win, "as-head");
     assert!(action_shown(cx, win, 0));
     assert!(shown_at(cx, win, ("as-expr-edge", 0usize)));
-    assert!(!shown_at(cx, win, ("as-value-edge", 0usize)));
+    assert!(shown_at(cx, win, ("as-value-edge", 0usize)), "edges rest visible");
 }
 
 #[gpui_kit::test]

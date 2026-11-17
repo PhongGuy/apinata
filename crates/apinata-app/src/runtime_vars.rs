@@ -586,13 +586,7 @@ impl RuntimeVarsView {
             .child(cell((name_id, ix), row.name.clone(), true, None))
             .child(
                 value_column()
-                    .child(kv_grid::kv_cell_resting(
-                        (edge, ix),
-                        field,
-                        input,
-                        focused,
-                        cx,
-                    ))
+                    .child(kv_grid::kv_cell((edge, ix), field, input, focused, cx))
                     .when(row.kind == Kind::Script, |d| {
                         d.child(div().text_size(style::TEXT_SMALL).child(cell(
                             ("script-var-note", ix),
@@ -618,7 +612,7 @@ impl RuntimeVarsView {
         let cell = |input: &Entity<InputState>, id: &'static str, edge: &'static str, cx: &App| {
             let focused = input.focus_handle(cx).contains_focused(window, cx);
             let field = ui::table_input(input, false, window, cx).id(id);
-            kv_grid::kv_cell_resting(edge, field, input, focused, cx)
+            kv_grid::kv_cell(edge, field, input, focused, cx)
         };
         h_flex()
             .id("runtime-vars-add-row")

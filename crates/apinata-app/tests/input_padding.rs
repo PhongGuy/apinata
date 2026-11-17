@@ -362,7 +362,7 @@ fn no_source_file_draws_an_unwrapped_input() {
                 || before.ends_with("invalid_input(")
                 || before.ends_with("missing_input(")
         };
-        let cells = code.contains("kv_cell(") || code.contains("kv_cell_resting(");
+        let cells = code.contains("kv_cell(");
         for (at, _) in code.match_indices("Input::new(") {
             if !code[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') && !wrapped(at) {
                 bad.push(format!("{}: Input::new at {at}", f.display()));
