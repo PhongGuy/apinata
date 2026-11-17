@@ -38,6 +38,9 @@ pub const BODY_LIMIT: u64 = ExampleResponse::BODY_LIMIT;
 const NOTE: &str = "Examples are saved in the request file and committed with the collection, \
                     response headers and body included. Remove anything secret before saving.";
 
+/// The dialog's line pointing at the mock server.
+pub const MOCK_NOTE: &str = "The mock server answers with saved examples.";
+
 /// The `dismissed_tips` id of the commit note, stored once the user ticks "Don't show again".
 pub const NOTE_TIP: &str = "example-commit-note";
 
@@ -384,6 +387,14 @@ impl Render for SaveExampleForm {
                 "Description",
                 &self.description,
             ))
+            .child(
+                div()
+                    .id("save-example-mock")
+                    .test_support()
+                    .aria_label(MOCK_NOTE)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(MOCK_NOTE),
+            )
             .children(finding.map(|(id, text)| {
                 div()
                     .id(id)

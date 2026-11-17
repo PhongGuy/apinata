@@ -48,6 +48,8 @@ pub enum MenuEntry {
     RunFolder,
     /// Open the collection's settings tab.
     CollectionSettings,
+    /// Start or stop the collection's mock server; the menu labels it by the server's state.
+    MockServer,
     /// Open the folder's settings tab.
     Settings,
     /// Rename the row inline.
@@ -99,6 +101,7 @@ impl MenuEntry {
             MenuEntry::RunCollection => label("collection.run"),
             MenuEntry::RunFolder => label("collection.run_folder"),
             MenuEntry::CollectionSettings => label("collection.settings"),
+            MenuEntry::MockServer => crate::mock_server::command_label(false),
             MenuEntry::Settings => label("collection.folder_settings"),
             MenuEntry::Rename => "Rename",
             MenuEntry::Delete => "Delete",
@@ -129,6 +132,7 @@ impl MenuEntry {
             E::NewRequest | E::NewGraphqlRequest | E::NewFolder => 0,
             E::CloneItem | E::CopyItem | E::CutItem | E::PasteItem | E::SortByName => 1,
             E::RunCollection | E::RunFolder | E::CollectionSettings | E::Settings => 2,
+            E::MockServer => 2,
             E::CopyAsCurl | E::GenerateCode | E::ConvertToGraphql | E::ConvertToHttp => 3,
             E::ExportPostman | E::ExportPostmanKeepScripts | E::ExportOpenApi | E::ExportHtml => 4,
             E::ShowInFileManager | E::OpenInTerminal | E::ShowChanges => 5,
@@ -174,6 +178,7 @@ pub fn scratch_blocked(entry: MenuEntry) -> bool {
         entry,
         E::RunCollection
             | E::CollectionSettings
+            | E::MockServer
             | E::ExportPostman
             | E::ExportPostmanKeepScripts
             | E::ExportOpenApi
@@ -194,6 +199,7 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
             E::SortByName,
             E::RunCollection,
             E::CollectionSettings,
+            E::MockServer,
             E::ExportPostman,
             E::ExportPostmanKeepScripts,
             E::ExportOpenApi,

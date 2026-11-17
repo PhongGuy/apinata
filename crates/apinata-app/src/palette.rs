@@ -29,7 +29,8 @@ use crate::keymap::{
     DiscardChanges, OpenCollectionSettings, RedoActive, RunCollection, RunFolder, SaveActive,
     ToggleOrientation, UndoActive,
 };
-use crate::shell::{ShowChanges, SwitchBranch};
+use crate::mock_server::MockState;
+use crate::shell::{ShowChanges, SwitchBranch, ToggleMockServer};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, FolderSettings, RedoInTree, RenameSelected, RunSelected,
@@ -317,6 +318,8 @@ pub struct Availability {
     pub updates: bool,
     /// "Toggle layout": the active request has room to show side by side.
     pub side_by_side: bool,
+    /// The mock command reads "Stop mock server": the current collection's mock runs.
+    pub mock_on: bool,
 }
 
 impl Availability {
@@ -358,6 +361,7 @@ impl Availability {
             git_repo: true,
             updates: true,
             side_by_side: true,
+            mock_on: false,
         }
     }
 }
@@ -486,6 +490,13 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
             }
         })
         .filter(|e| !hidden.contains(&e.action.name()))
+        .map(|mut e| {
+            // The mock toggle names what choosing it will do, start or stop.
+            if e.action.name() == ToggleMockServer.name() {
+                e.label = crate::mock_server::command_label(available.mock_on);
+            }
+            e
+        })
         .collect()
 }
 
@@ -745,6 +756,10 @@ fn availability_now(
         git_repo,
         updates,
         side_by_side: tab_area.is_none_or(|t| !t.read(cx).too_narrow_for_side_by_side(window, cx)),
+        mock_on: workspace.is_some_and(|w| {
+            let w = w.read(cx);
+            (w.current_user_root()).is_some_and(|r| w.mock_state(&r) != MockState::Off)
+        }),
     }
 }
 

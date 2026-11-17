@@ -9,6 +9,7 @@ pub mod multi;
 pub mod paste;
 pub mod terms;
 
+use crate::mock_server::MockState;
 use crate::ui::LockButton as _;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -1768,6 +1769,7 @@ impl Sidebar {
                 cx.emit(SidebarEvent::OpenSettings { root, folder });
             }
             MenuEntry::RunCollection => cx.emit(SidebarEvent::Run { root, folder: None }),
+            MenuEntry::MockServer => self.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx)),
             MenuEntry::RunFolder => {
                 let folder = Some(path);
                 cx.emit(SidebarEvent::Run { root, folder });
@@ -3765,7 +3767,14 @@ fn fill_row_menu(
             .then(|| s.request_kind(node, cx))
             .flatten();
         let scratch = s.workspace.read(cx).scratch_dir();
-        (changed, request_kind, scratch, s.paste_blocked(node))
+        let mock_on = s.workspace.read(cx).mock_state(&node.root) != MockState::Off;
+        (
+            changed,
+            request_kind,
+            scratch,
+            s.paste_blocked(node),
+            mock_on,
+        )
     });
     if multi_on {
         let view = view.clone();
@@ -3773,7 +3782,9 @@ fn fill_row_menu(
             view.update(cx, |s, cx| s.clear_multi(cx)).ok();
         });
     }
-    let (Some(node), Some((changed, request_kind, scratch, paste_blocked))) = (node, facts) else {
+    let (Some(node), Some((changed, request_kind, scratch, paste_blocked, mock_on))) =
+        (node, facts)
+    else {
         return menu;
     };
     let extra = changed.then_some(MenuEntry::ShowChanges);
@@ -3785,7 +3796,12 @@ fn fill_row_menu(
         // itself; the scratch's row greys out what needs collection files.
         let blocked = (choice == MenuEntry::PasteItem && paste_blocked)
             || (scratch.as_deref() == Some(node.root.as_path()) && menu::scratch_blocked(choice));
-        let line = ui::MenuLine::new(choice.label());
+        // The mock entry names what choosing it does for this collection's server.
+        let text = match choice {
+            MenuEntry::MockServer => crate::mock_server::command_label(mock_on),
+            _ => choice.label(),
+        };
+        let line = ui::MenuLine::new(text);
         let line = match choice.action() {
             Some(action) => line.action(action),
             None => line,

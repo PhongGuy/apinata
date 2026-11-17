@@ -56,6 +56,7 @@ fn entries_follow_the_row_kind() {
             E::SortByName,
             E::RunCollection,
             E::CollectionSettings,
+            E::MockServer,
             E::ExportPostman,
             E::ExportPostmanKeepScripts,
             E::ExportOpenApi,

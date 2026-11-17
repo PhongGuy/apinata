@@ -464,10 +464,10 @@ fn palette(cx: &mut TestAppContext, s: &Started, text: &str) {
 fn the_palette_starts_and_stops_the_mock(cx: &mut TestAppContext) {
     let col = mocked();
     let s = start(cx, &col);
-    palette(cx, &s, "toggle mock server");
+    palette(cx, &s, "start mock server");
     let addr = running(cx, &s.ws, &s.root);
     assert!(get(addr, "/users").starts_with("HTTP/1.1 200"));
-    palette(cx, &s, "toggle mock server");
+    palette(cx, &s, "stop mock server");
     assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
     wait_real(cx, |_| refused(addr));
 }
@@ -694,4 +694,120 @@ fn the_toggle_paints_its_off_edge_and_its_on_edge_in_the_status_bar(cx: &mut Tes
     frame(cx, s.win);
     let on = painted_edges(cx, s.win, "mock-toggle");
     assert!(on.contains(&on_edge), "on: {on:?}");
+}
+
+// The palette names what choosing the command will do: start while off, stop while on.
+#[test]
+fn the_palette_labels_the_mock_command_by_its_state() {
+    use apinata_app::palette::{Availability, palette_items_for};
+    let label = |on: bool| {
+        let available = Availability {
+            mock_on: on,
+            ..Availability::all()
+        };
+        let items = palette_items_for(available);
+        let mock = |e: &&apinata_app::palette::PaletteEntry| e.label.ends_with("mock server");
+        let found: Vec<_> = items.iter().filter(mock).map(|e| e.label).collect();
+        found
+    };
+    assert_eq!(label(false), ["Start mock server"]);
+    assert_eq!(label(true), ["Stop mock server"]);
+}
+
+fn choose_on_collection_row(cx: &mut TestAppContext, s: &Started, entry: &str) {
+    cx.update_window(s.win, |_, w, cx| w.right_click(row(""), cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        let ix = menu_index(w, entry);
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn the_collection_menu_starts_and_stops_the_mock(cx: &mut TestAppContext) {
+    let col = mocked();
+    let s = start(cx, &col);
+    choose_on_collection_row(cx, &s, "Start mock server");
+    let addr = running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    choose_on_collection_row(cx, &s, "Stop mock server");
+    assert_eq!(state(cx, &s.ws, &s.root), MockState::Off);
+    wait_real(cx, |_| refused(addr));
+}
+
+fn served(method: &str, path: &str, names: &[&str]) -> apinata_app::mock_server::ServedRoute {
+    apinata_app::mock_server::ServedRoute {
+        method: method.into(),
+        path: path.into(),
+        names: names.iter().map(|n| n.to_string()).collect(),
+    }
+}
+
+#[test]
+fn the_served_list_names_each_route_with_its_examples() {
+    use apinata_app::mock_server::served_lines;
+    let routes = [
+        served("GET", "/users", &["ok"]),
+        served("POST", "/users/:id", &["created", "conflict"]),
+    ];
+    assert_eq!(
+        served_lines(&routes),
+        ["GET /users · ok", "POST /users/:id · created, conflict"]
+    );
+}
+
+#[test]
+fn a_long_served_list_stops_at_eight_lines_and_counts_the_rest() {
+    use apinata_app::mock_server::served_lines;
+    let routes: Vec<_> = (0..11)
+        .map(|i| served("GET", &format!("/r{i}"), &["ok"]))
+        .collect();
+    let lines = served_lines(&routes);
+    assert_eq!(lines.len(), 9);
+    assert_eq!(lines[7], "GET /r7 · ok");
+    assert_eq!(lines[8], "and 3 more");
+    assert_eq!(served_lines(&routes[..8]).len(), 8);
+}
+
+// What is served, what a miss gets and which of several examples answers, in plain words.
+#[test]
+fn the_served_notes_say_what_counts_what_misses_get_and_which_example_wins() {
+    use apinata_app::mock_server::{SERVED_NOTE, WINNER_NOTE};
+    assert_eq!(
+        SERVED_NOTE,
+        "Only saved examples are served. Other calls get 404."
+    );
+    assert_eq!(
+        WINNER_NOTE,
+        "When a request has several examples, a call gets the one with the most saved query \
+         parameters, all of which must match. Otherwise it gets the first."
+    );
+}
+
+#[gpui_kit::test]
+fn clicking_the_status_lists_what_the_mock_serves(cx: &mut TestAppContext) {
+    use apinata_app::mock_server::{SERVED_NOTE, WINNER_NOTE};
+    let col = mocked();
+    let s = start(cx, &col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    assert!(!present(cx, s.win, "mock-served"));
+    click(cx, s.win, "mock-status");
+    assert_eq!(
+        label(cx, s.win, "mock-served-0").as_deref(),
+        Some("GET /users · ok")
+    );
+    assert_eq!(
+        label(cx, s.win, "mock-served-note").as_deref(),
+        Some(SERVED_NOTE)
+    );
+    assert_eq!(
+        label(cx, s.win, "mock-served-winner").as_deref(),
+        Some(WINNER_NOTE)
+    );
 }
