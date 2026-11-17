@@ -284,23 +284,28 @@ fn downloads_carry_the_version_and_how_to_check_a_file() {
     let t = history(&["feat: one", "tag:v1.4.2"]);
     let text = notes(&t, "v1.4.2");
     let table = section(&text, "Downloads");
-    assert!(
-        table.contains(
-            "| Linux x86_64 | `apinata-app_1.4.2_amd64.deb` or `apinata-app_1.4.2_x86_64.AppImage` | `apinata-1.4.2-x86_64-unknown-linux-gnu.tar.gz` |"
-        ),
-        "{table}"
+    let link = |f: &str| format!("[{f}](https://github.com/{REPO}/releases/download/v1.4.2/{f})");
+    let linux = format!(
+        "| Linux x86_64 | {} or {} | {} |",
+        link("apinata-app_1.4.2_x86_64.AppImage"),
+        link("apinata-app_1.4.2_amd64.deb"),
+        link("apinata-1.4.2-x86_64-unknown-linux-gnu.tar.gz")
     );
-    assert!(
-        table.contains(
-            "| Windows x86_64 | `apinata-app_1.4.2_x64-setup.exe` | `apinata-1.4.2-x86_64-pc-windows-msvc.zip` |"
-        ),
-        "{table}"
+    assert!(table.contains(&linux), "{table}");
+    let windows = format!(
+        "| Windows x86_64 | {} | {} |",
+        link("apinata-app_1.4.2_x64-setup.exe"),
+        link("apinata-1.4.2-x86_64-pc-windows-msvc.zip")
     );
-    assert!(table.contains("Check a download with `sha256sum -c SHA256SUMS`."));
-    assert!(
-        table.contains(&format!("`gh attestation verify <file> --repo {REPO}`")),
-        "{table}"
-    );
+    assert!(table.contains(&windows), "{table}");
+    let copies = table.find("no version in its name").expect("copies line");
+    let sums = table
+        .find("Check a download with `sha256sum -c SHA256SUMS`.")
+        .expect("checksum line");
+    let attest = table
+        .find(&format!("`gh attestation verify <file> --repo {REPO}`"))
+        .expect("attestation line");
+    assert!(copies < sums && sums < attest, "{table}");
 }
 
 #[test]
@@ -312,18 +317,26 @@ fn before_you_install_and_updates_cover_each_platform() {
     for needle in [
         "**Windows:** the installer and the zip are not code-signed",
         "SmartScreen",
-        "**macOS:**",
+        "**macOS:** the app is not notarised",
+        "Gatekeeper",
         "xattr -dr com.apple.quarantine /Applications/Apinata.app",
         "xattr -d com.apple.quarantine apinata",
-        "**Linux:** no extra steps.",
+        "**Linux AppImage:**",
+        "chmod +x",
+        "**Linux .deb:** open it with your software installer",
     ] {
         assert!(before.contains(needle), "{needle}: {before}");
     }
     let updates = section(&text, "Updates");
-    assert!(
-        updates.contains("install in place") && updates.contains("keychain"),
-        "{updates}"
-    );
+    for needle in [
+        "**Desktop app on Windows, macOS and the Linux AppImage:**",
+        "after checking its signature",
+        "keychain",
+        "**Linux .deb:** does not update itself",
+        "**Command line:** run `apinata self-update`",
+    ] {
+        assert!(updates.contains(needle), "{needle}: {updates}");
+    }
 }
 
 #[test]
