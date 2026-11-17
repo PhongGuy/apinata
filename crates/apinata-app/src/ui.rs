@@ -1497,12 +1497,12 @@ pub fn label_with_key(label: &str, action: &dyn Action, cx: &App) -> String {
 pub fn solid_ring(button: Button, cx: &App) -> Button {
     use gpui_kit::component::FocusableExt as _;
     let ring = cx.theme().ring;
-    // The border is reserved in every state, transparent until the ring shows, so focus
-    // never moves the control's content.
-    let button = button
-        .focus_ring(false)
-        .border_1()
-        .border_color(gpui_kit::transparent_black());
+    // The border is reserved in every state, so focus never moves the control's content. It
+    // stays transparent until the ring shows, unless the button already has an edge colour.
+    let mut button = button.focus_ring(false).border_1();
+    if button.style().border_color.is_none() {
+        button = button.border_color(gpui_kit::transparent_black());
+    }
     if crate::focus_mode::is_keyboard(cx) {
         button.focus(move |s| s.border_color(ring))
     } else {
