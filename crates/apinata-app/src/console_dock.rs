@@ -66,8 +66,8 @@ pub struct ConsoleDock {
     selected: Option<u64>,
     polling: Option<Task<()>>,
     focus: FocusHandle,
-    // One tab stop per dock tab, Console then Network.
-    tab_focus: [FocusHandle; 2],
+    // A focus marker under each dock tab, Console then Network.
+    tab_markers: [FocusHandle; 2],
     collapsed: bool,
     _subs: Vec<Subscription>,
 }
@@ -108,10 +108,7 @@ impl ConsoleDock {
             selected: None,
             polling: None,
             focus: cx.focus_handle(),
-            tab_focus: [
-                cx.focus_handle().tab_stop(true),
-                cx.focus_handle().tab_stop(true),
-            ],
+            tab_markers: [ui::tab_marker_handle(cx), ui::tab_marker_handle(cx)],
             collapsed: false,
             _subs: subs,
         }
@@ -132,7 +129,7 @@ impl ConsoleDock {
 
     /// Whether focus is in the dock but not on a header tab, as last drawn.
     pub fn body_focused(&self, window: &Window, cx: &App) -> bool {
-        self.focus.contains_focused(window, cx) && self.focused_tab(window).is_none()
+        self.focus.contains_focused(window, cx) && self.focused_tab(window, cx).is_none()
     }
 
     /// Names the tab area whose request tabs the HAR export prefers over the session log.
@@ -201,19 +198,9 @@ impl ConsoleDock {
         cx.notify();
     }
 
-    // The dock tab holding focus, if any.
-    fn focused_tab(&self, window: &Window) -> Option<usize> {
-        self.tab_focus.iter().position(|f| f.is_focused(window))
-    }
-
-    // With two tabs, either arrow moves from the focused tab to the other one, choosing it.
-    fn step_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ix) = self.focused_tab(window) else {
-            return;
-        };
-        let to = 1 - ix;
-        window.focus(&self.tab_focus[to], cx);
-        self.set_tab(DockTab::at(to), cx);
+    /// The dock tab holding keyboard focus, if any, as last drawn.
+    pub fn focused_tab(&self, window: &Window, cx: &App) -> Option<usize> {
+        ui::focused_tab(&self.tab_markers, window, cx)
     }
 
     /// The console level filter; `None` keeps every level.
@@ -766,72 +753,48 @@ impl Focusable for ConsoleDock {
 }
 
 impl Render for ConsoleDock {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.renders += 1;
         let tab = self.tab;
         let dock = cx.entity().downgrade();
-        let ring = cx.theme().ring;
-        let keyboard = crate::focus_mode::is_keyboard(cx);
-        // Each tab is its own tab stop; the ring is an overlay on a padded box, since the
-        // kit tab clips anything drawn outside its content, and marks keyboard focus only.
+        // The kit's tab list owns keyboard focus: Tab enters on the selected tab, the arrows
+        // move focus, and Enter or Space chooses, as a click does.
         let labels = ["Console", "Network"]
             .into_iter()
             .enumerate()
             .map(|(ix, label)| {
-                let focus = &self.tab_focus[ix];
-                // The box is as tall as a counted section tab, so both rings leave the same room.
+                // The box is as tall as a counted section tab, so both strips line up.
                 Tab::new().child(
                     h_flex()
                         .id(("dock-tab", ix))
                         .test_support()
                         .relative()
-                        .track_focus(focus)
                         .line_height(relative(style::TAB_LINE_HEIGHT))
                         .px(style::SPACE_0)
                         .items_center()
                         .child(div().id(("dock-tab-label", ix)).test_support().child(label))
                         .child(ui::badge_strut())
-                        .when(focus.is_focused(window) && keyboard, |d| {
-                            d.child(
-                                div()
-                                    .id(("dock-tab-ring", ix))
-                                    .test_support()
-                                    .absolute()
-                                    .inset_0()
-                                    .border_1()
-                                    .border_color(ring),
-                            )
-                        }),
+                        .child(ui::tab_focus_marker(&self.tab_markers[ix])),
                 )
             });
-        // The tabs answer the segmented keys: Enter and Space choose the
-        // focused tab, the arrows choose and focus the other, wrapping.
-        let tabs = div()
-            .id("dock-tabs")
-            .test_support()
-            .key_context(ui::SEGMENTED_CONTEXT)
-            .on_action(cx.listener(|d, _: &ui::ActivateSegment, window, cx| {
-                if let Some(ix) = d.focused_tab(window) {
-                    d.set_tab(DockTab::at(ix), cx);
-                    if d.collapsed {
-                        cx.emit(ExpandDock);
-                    }
-                }
-            }))
-            .on_action(cx.listener(|d, _: &ui::NextSegment, window, cx| d.step_tab(window, cx)))
-            .on_action(cx.listener(|d, _: &ui::PrevSegment, window, cx| d.step_tab(window, cx)))
-            .child(
-                ui::tab_strip("dock-tab-strip", cx)
-                    .selected_index(match tab {
-                        DockTab::Console => 0,
-                        DockTab::Network => 1,
+        // A collapsed dock opens on a chosen tab, whether a click or the keyboard chose it.
+        let tabs = div().id("dock-tabs").test_support().child(
+            ui::tab_strip("dock-tab-strip", cx)
+                .selected_index(match tab {
+                    DockTab::Console => 0,
+                    DockTab::Network => 1,
+                })
+                .children(labels)
+                .on_click(move |ix, _, cx| {
+                    dock.update(cx, |d, cx| {
+                        d.set_tab(DockTab::at(*ix), cx);
+                        if d.collapsed {
+                            cx.emit(ExpandDock);
+                        }
                     })
-                    .children(labels)
-                    .on_click(move |ix, _, cx| {
-                        dock.update(cx, |d, cx| d.set_tab(DockTab::at(*ix), cx))
-                            .ok();
-                    }),
-            );
+                    .ok();
+                }),
+        );
         let clear = match tab {
             DockTab::Console => Button::new("dock-console-clear")
                 .label("Clear")

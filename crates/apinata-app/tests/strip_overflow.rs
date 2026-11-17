@@ -543,9 +543,9 @@ fn in_viewport(
     .unwrap()
 }
 
-// Tab onto a section hidden past the strip's right edge scrolls the strip to show it.
+// Keyboard focus moved onto a section hidden past the strip's right edge scrolls it into view.
 #[gpui_kit::test]
-fn tab_onto_a_hidden_section_scrolls_it_into_view(cx: &mut TestAppContext) {
+fn focus_moved_onto_a_hidden_section_scrolls_it_into_view(cx: &mut TestAppContext) {
     let col = two_requests();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
@@ -557,16 +557,26 @@ fn tab_onto_a_hidden_section_scrolls_it_into_view(cx: &mut TestAppContext) {
         !in_viewport(cx, win, item, "section-strip").0,
         "Settings starts hidden"
     );
-    let before = ed.read_with(cx, |e, _| e.section_focus(last - 1));
-    cx.update_window(win, |_, w, cx| before.focus(w, cx))
-        .unwrap();
-    cx.simulate_keystrokes(win, "tab");
+    // Focus enters the strip on the chosen section; End moves it to the hidden last one.
+    let url = ed.read_with(cx, |e, cx| e.url_focus(cx));
+    cx.update_window(win, |_, w, cx| url.focus(w, cx)).unwrap();
+    let focused = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            ed.read(cx).focused_section(w, cx)
+        })
+        .unwrap()
+    };
+    for _ in 0..3 {
+        cx.simulate_keystrokes(win, "tab");
+        cx.run_until_parked();
+        if focused(cx).is_some() {
+            break;
+        }
+    }
+    cx.simulate_keystrokes(win, "end");
     cx.run_until_parked();
-    let focus = ed.read_with(cx, |e, _| e.section_focus(last));
-    assert!(
-        cx.update_window(win, |_, w, _| focus.is_focused(w))
-            .unwrap()
-    );
+    assert_eq!(focused(cx), Some(last));
     settle(cx, win);
     let (inside, at) = in_viewport(cx, win, item, "section-strip");
     assert!(inside, "the focused Settings tab scrolls into view: {at}");
@@ -574,7 +584,7 @@ fn tab_onto_a_hidden_section_scrolls_it_into_view(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn tab_onto_a_hidden_response_tab_scrolls_it_into_view(cx: &mut TestAppContext) {
+fn focus_moved_onto_a_hidden_response_tab_scrolls_it_into_view(cx: &mut TestAppContext) {
     let s = send_once(cx, wiremock::ResponseTemplate::new(200), "");
     support::init(cx);
     let model = s.model.clone();
@@ -592,16 +602,24 @@ fn tab_onto_a_hidden_response_tab_scrolls_it_into_view(cx: &mut TestAppContext) 
         !in_viewport(cx, win, item, "response-tab-strip").0,
         "Tests starts hidden"
     );
-    let before = pane.read_with(cx, |p, _| p.tab_focus(ResponseTab::Timeline));
-    cx.update_window(win, |_, w, cx| before.focus(w, cx))
-        .unwrap();
-    cx.simulate_keystrokes(win, "tab");
-    cx.run_until_parked();
-    let focus = pane.read_with(cx, |p, _| p.tab_focus(ResponseTab::Tests));
-    assert!(
-        cx.update_window(win, |_, w, _| focus.is_focused(w))
-            .unwrap()
-    );
+    // Focus enters the strip on the chosen Body tab; the arrows walk it to the hidden Tests.
+    let focused = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            pane.read(cx).focused_tab(w, cx)
+        })
+        .unwrap()
+    };
+    cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
+    assert_eq!(focused(cx), Some(ResponseTab::Body));
+    for _ in 0..8 {
+        if focused(cx) == Some(ResponseTab::Tests) {
+            break;
+        }
+        cx.simulate_keystrokes(win, "right");
+        cx.run_until_parked();
+    }
+    assert_eq!(focused(cx), Some(ResponseTab::Tests));
     settle(cx, win);
     let (inside, at) = in_viewport(cx, win, item, "response-tab-strip");
     assert!(inside, "the focused Tests tab scrolls into view: {at}");

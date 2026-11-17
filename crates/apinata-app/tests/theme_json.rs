@@ -139,6 +139,7 @@ fn key_map() -> Vec<(String, String)> {
             "ring",
             "caret",
             "link",
+            "list.highlight.foreground",
             "table.active.border",
             "progress.bar.background",
             "slider.thumb.background",

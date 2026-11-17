@@ -147,15 +147,49 @@ fn press(cx: &mut TestAppContext, win: gpui_kit::AnyWindowHandle, keys: &str) {
     cx.run_until_parked();
 }
 
+// A whole key press, down and up: the kit activates the focused tab on release.
+fn activate(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
+    cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
+    cx.run_until_parked();
+}
+
+// The section tab holding keyboard focus, as an index into `Section::ALL`, after a frame.
+fn focused_section(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    ed: &Entity<RequestEditor>,
+) -> Option<usize> {
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        ed.read(cx).focused_section(w, cx)
+    })
+    .unwrap()
+}
+
+// Tabs forward from the URL until focus enters the section strip, and says where it landed.
+fn tab_into_sections(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    ed: &Entity<RequestEditor>,
+) -> usize {
+    let url = ed.read_with(cx, |e, cx| e.url_focus(cx));
+    cx.update_window(win, |_, w, cx| url.focus(w, cx)).unwrap();
+    for _ in 0..3 {
+        press(cx, win, "tab");
+        if let Some(ix) = focused_section(cx, win, ed) {
+            return ix;
+        }
+    }
+    panic!("Tab from the url never reached the section strip");
+}
+
 #[gpui_kit::test]
-fn tab_walks_the_method_the_url_and_the_section_tabs(cx: &mut TestAppContext) {
+fn tab_walks_the_method_the_url_and_the_section_strip(cx: &mut TestAppContext) {
     let col = two_requests();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
     let url = ed.read_with(cx, |e, cx| e.url_focus(cx));
     let method = ed.read_with(cx, |e, cx| e.method_focus(cx));
-    let first = ed.read_with(cx, |e, _| e.section_focus(0));
-    let second = ed.read_with(cx, |e, _| e.section_focus(1));
     cx.update_window(win, |_, w, cx| url.focus(w, cx)).unwrap();
     press(cx, win, "shift-tab");
     assert!(
@@ -167,88 +201,91 @@ fn tab_walks_the_method_the_url_and_the_section_tabs(cx: &mut TestAppContext) {
         focused(cx, win, &url),
         "tab from the method reaches the url"
     );
-    let mut reached = false;
-    for _ in 0..3 {
-        press(cx, win, "tab");
-        if focused(cx, win, &first) {
-            reached = true;
-            break;
-        }
-    }
-    assert!(reached, "tab from the url reaches the first section tab");
-    press(cx, win, "tab");
-    assert!(focused(cx, win, &second));
-    assert_eq!(ed.read_with(cx, |e, _| e.section()), Section::ALL[0]);
-    press(cx, win, "enter");
+    assert_eq!(
+        tab_into_sections(cx, win, &ed),
+        0,
+        "Tab lands on the chosen section"
+    );
+    press(cx, win, "right");
+    assert_eq!(focused_section(cx, win, &ed), Some(1));
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.section()),
+        Section::ALL[0],
+        "an arrow moves focus without choosing"
+    );
+    activate(cx, win, "enter");
     assert_eq!(ed.read_with(cx, |e, _| e.section()), Section::ALL[1]);
-    press(cx, win, "shift-tab");
-    press(cx, win, "space");
+    press(cx, win, "left");
+    activate(cx, win, "space");
     assert_eq!(ed.read_with(cx, |e, _| e.section()), Section::ALL[0]);
+    press(cx, win, "tab");
+    assert_eq!(
+        focused_section(cx, win, &ed),
+        None,
+        "one Tab leaves the strip"
+    );
+    press(cx, win, "shift-tab");
+    assert_eq!(focused_section(cx, win, &ed), Some(0), "Shift+Tab returns");
+    press(cx, win, "shift-tab");
+    assert_eq!(
+        focused_section(cx, win, &ed),
+        None,
+        "Shift+Tab leaves the strip backwards"
+    );
 }
 
+// The kit draws keyboard focus as a 2px ring inset in its tab, which encloses our padded box,
+// so a content dot at least that far inside the box never lies under the ring.
 #[gpui_kit::test]
-fn a_section_tab_focus_outline_clears_its_content_dot(cx: &mut TestAppContext) {
+fn a_section_tab_focus_ring_clears_its_content_dot(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
-    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
+    let (win, _ed) = editor_for(cx, &ws, &root, "a.yml", false);
     let ix = Section::Auth as usize;
-    let label = |cx: &mut TestAppContext| {
-        cx.update_window(win, |_, w, cx| {
-            w.render_frame(cx);
-            w.find(("section", ix)).bounds()
-        })
-        .unwrap()
-    };
-    let unfocused = label(cx);
-    let focus = ed.read_with(cx, |e, _| e.section_focus(ix));
-    // The outline shows for keyboard focus only, so Tab onto the tab from its neighbour.
-    let before = ed.read_with(cx, |e, _| e.section_focus(ix - 1));
-    cx.update_window(win, |_, w, cx| before.focus(w, cx))
-        .unwrap();
-    press(cx, win, "tab");
-    assert!(focused(cx, win, &focus), "Tab reaches the Auth tab");
-    assert_eq!(label(cx), unfocused, "the outline never shifts the label");
-    let (outline, dot) = cx
+    let (tab, dot) = cx
         .update_window(win, |_, w, cx| {
             w.render_frame(cx);
-            let outline = w.find(("section-focus", ix)).bounds();
-            (outline, w.find(("section-mode", ix)).bounds())
+            let tab = w.find(("section-tab", ix)).bounds();
+            (tab, w.find(("section-mode", ix)).bounds())
         })
         .unwrap();
-    // The outline's 1px stroke is drawn inside its bounds, so the dot needs a gap past it.
-    let gap = gpui_kit::px(1.);
+    let ring = gpui_kit::px(2.);
     assert!(
-        outline.left() + gap < dot.left()
-            && outline.right() - gap > dot.right()
-            && outline.top() + gap < dot.top()
-            && outline.bottom() - gap > dot.bottom(),
-        "the outline {outline:?} encloses the dot {dot:?} clear of its stroke"
+        tab.left() + ring <= dot.left()
+            && tab.right() - ring >= dot.right()
+            && tab.top() + ring <= dot.top()
+            && tab.bottom() - ring >= dot.bottom(),
+        "the tab {tab:?} holds the dot {dot:?} clear of the ring"
     );
 }
 
 #[gpui_kit::test]
-fn left_and_right_move_focus_between_section_tabs_and_stop_at_the_ends(cx: &mut TestAppContext) {
+fn arrows_home_and_end_move_focus_along_the_section_strip(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
     let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    let at = |cx: &mut TestAppContext, ix: usize| {
-        let h = ed.read_with(cx, |e, _| e.section_focus(ix));
-        cx.update_window(win, |_, w, _| h.is_focused(w)).unwrap()
-    };
-    let first = ed.read_with(cx, |e, _| e.section_focus(0));
-    cx.update_window(win, |_, w, cx| first.focus(w, cx))
-        .unwrap();
-    for (key, ix) in [("left", 0), ("right", 1), ("left", 0)] {
-        cx.simulate_keystrokes(win, key);
-        cx.run_until_parked();
-        assert!(at(cx, ix), "{key} lands on section {ix}");
-    }
     let last = Section::ALL.len() - 1;
-    let end = ed.read_with(cx, |e, _| e.section_focus(last));
-    cx.update_window(win, |_, w, cx| end.focus(w, cx)).unwrap();
-    cx.simulate_keystrokes(win, "right");
-    cx.run_until_parked();
-    assert!(at(cx, last), "no wrap at the end");
+    assert_eq!(tab_into_sections(cx, win, &ed), 0);
+    for (key, ix) in [
+        ("right", 1),
+        ("left", 0),
+        ("left", last),
+        ("right", 0),
+        ("end", last),
+        ("home", 0),
+    ] {
+        press(cx, win, key);
+        assert_eq!(
+            focused_section(cx, win, &ed),
+            Some(ix),
+            "{key} lands on section {ix}"
+        );
+    }
+    assert_eq!(
+        ed.read_with(cx, |e, _| e.section()),
+        Section::ALL[0],
+        "moving focus chooses nothing"
+    );
 }
 
 const HEADERS: &str = "info:\n  name: h\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"http://x/0\"\n  headers:\n    - name: A\n      value: \"1\"\n    - name: B\n      value: \"2\"\n    - name: C\n      value: \"3\"\n";
@@ -305,8 +342,12 @@ fn tab_from_the_section_tabs_reaches_the_bulk_toggle_then_its_editor(cx: &mut Te
         let text = table.read_with(cx, |t, cx| {
             gpui_kit::Focusable::focus_handle(t.bulk_editor().expect("bulk on").read(cx), cx)
         });
-        let last = ed.read_with(cx, |e, _| e.section_focus(Section::ALL.len() - 1));
-        cx.update_window(win, |_, w, cx| last.focus(w, cx)).unwrap();
+        let chosen = section as usize;
+        assert_eq!(
+            tab_into_sections(cx, win, &ed),
+            chosen,
+            "{section:?}: Tab enters the tabs on the chosen section"
+        );
         press(cx, win, "tab");
         let on_toggle = cx
             .update_window(win, |_, w, cx| {
@@ -320,7 +361,11 @@ fn tab_from_the_section_tabs_reaches_the_bulk_toggle_then_its_editor(cx: &mut Te
         // The editor keeps Shift+Tab for outdent, so its leave chord steps back out.
         press(cx, win, "ctrl-shift-tab");
         press(cx, win, "shift-tab");
-        assert!(focused(cx, win, &last), "{section:?}: and back to the tabs");
+        assert_eq!(
+            focused_section(cx, win, &ed),
+            Some(chosen),
+            "{section:?}: and back to the tabs"
+        );
         std::mem::forget(col);
     }
 }

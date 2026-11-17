@@ -618,8 +618,8 @@ pub struct ResponsePane {
     // The shown result's events, parsed off-thread once per result.
     done_events: Option<(Weak<RequestResult>, Rc<Vec<SseEvent>>)>,
     events_task: Option<Task<()>>,
-    // One Tab stop per tab, indexed by `ResponseTab::ALL` position.
-    tab_focus: Vec<FocusHandle>,
+    // A focus marker under each tab, indexed by `ResponseTab::ALL` position.
+    tab_markers: Vec<FocusHandle>,
     tab_reveal: ui::Reveal,
     // Keeps the tab that holds keyboard focus in view, apart from the chosen one.
     tab_focus_reveal: ui::Reveal,
@@ -792,9 +792,9 @@ impl ResponsePane {
             events_tab: false,
             done_events: None,
             events_task: None,
-            tab_focus: ResponseTab::ALL
+            tab_markers: ResponseTab::ALL
                 .iter()
-                .map(|_| cx.focus_handle().tab_stop(true))
+                .map(|_| ui::tab_marker_handle(cx))
                 .collect(),
             tab_reveal: ui::Reveal::whole_at_left(),
             tab_focus_reveal: ui::Reveal::default(),
@@ -1165,16 +1165,11 @@ impl ResponsePane {
         self.tab
     }
 
-    // The focus handle of the shown tab `step` places from position `pos`, none past an end.
-    fn neighbour_focus(&self, pos: usize, step: isize) -> Option<FocusHandle> {
-        let to = pos.checked_add_signed(step)?;
-        let tab = *self.strip_tabs().get(to)?;
-        Some(self.tab_focus[tab as usize].clone())
-    }
-
-    /// The focus handle of `tab`'s strip tab.
-    pub fn tab_focus(&self, tab: ResponseTab) -> FocusHandle {
-        self.tab_focus[tab as usize].clone()
+    /// The strip tab holding keyboard focus, if one does, as last drawn.
+    pub fn focused_tab(&self, window: &Window, cx: &App) -> Option<ResponseTab> {
+        let shown = self.strip_tabs();
+        let markers = shown.iter().map(|t| &self.tab_markers[*t as usize]);
+        ui::focused_tab(markers, window, cx).map(|pos| shown[pos])
     }
 
     /// Selects `tab`.
@@ -1639,10 +1634,13 @@ impl ResponsePane {
     }
 
     // The strip position of the tab holding focus, if one does.
-    fn focused_tab_position(&self, window: &Window) -> Option<usize> {
-        self.strip_tabs()
-            .iter()
-            .position(|t| self.tab_focus[*t as usize].is_focused(window))
+    fn focused_tab_position(&self, window: &Window, cx: &App) -> Option<usize> {
+        let markers = self.strip_tabs();
+        ui::focused_tab(
+            markers.iter().map(|t| &self.tab_markers[*t as usize]),
+            window,
+            cx,
+        )
     }
 
     // The tabs the strip lists: the pane's own, then Compare while a source is set.
@@ -1662,11 +1660,11 @@ impl ResponsePane {
         tabs.into()
     }
 
-    fn tab_bar(&self, window: &Window, cx: &mut Context<Self>) -> TabBar {
+    fn tab_bar(&self, cx: &mut Context<Self>) -> TabBar {
         let this = cx.entity();
         let shown = self.strip_tabs();
         let selected = self.tab_position(self.tab);
-        let tabs = shown.iter().enumerate().map(|(pos, &t)| {
+        let tabs = shown.iter().map(|&t| {
             let ix = t as usize;
             let words = self.badge_text(t, cx);
             let badge =
@@ -1686,30 +1684,10 @@ impl ResponsePane {
                     .when_some(words, |d, text| d.aria_label(text))
                     .child(b)
             });
-            // Each tab is its own Tab stop, as in the request's section strip: Enter or Space
-            // opens it, and keyboard focus draws an outline over its padded box.
-            let focus = &self.tab_focus[ix];
-            let pane = this.clone();
+            // The kit's tab list owns keyboard focus, as in the request's section strip.
             Tab::new().child(
                 h_flex()
                     .relative()
-                    .track_focus(focus)
-                    .on_key_down(move |event, window, cx| {
-                        let key = event.keystroke.key.as_str();
-                        if event.keystroke.modifiers.modified() {
-                            return;
-                        }
-                        if matches!(key, "enter" | "space") {
-                            cx.stop_propagation();
-                            pane.update(cx, |p, cx| p.set_tab(t, cx));
-                        } else if let Some(step) = crate::ui::arrow_step(key) {
-                            cx.stop_propagation();
-                            let next = pane.read(cx).neighbour_focus(pos, step);
-                            if let Some(next) = next {
-                                window.focus(&next, cx);
-                            }
-                        }
-                    })
                     .line_height(relative(style::TAB_LINE_HEIGHT))
                     .px(style::SPACE_0)
                     .gap(style::SPACE_1)
@@ -1721,20 +1699,7 @@ impl ResponsePane {
                             .child(t.label()),
                     )
                     .children(count)
-                    .when(
-                        focus.is_focused(window) && crate::focus_mode::is_keyboard(cx),
-                        |d| {
-                            d.child(
-                                div()
-                                    .id(("response-tab-focus", ix))
-                                    .test_support()
-                                    .absolute()
-                                    .inset_0()
-                                    .border_1()
-                                    .border_color(cx.theme().ring),
-                            )
-                        },
-                    ),
+                    .child(ui::tab_focus_marker(&self.tab_markers[ix])),
             )
         });
         // The menu shows only while last frame's layout overflowed; the strip's watch
@@ -4769,7 +4734,7 @@ impl ResponsePane {
     }
 
     // The streaming view: the tab strip over the tail of the body, one row per line.
-    fn live_view(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn live_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let strip = div()
             .id("response-tab-strip")
             .test_support()
@@ -4778,7 +4743,7 @@ impl ResponsePane {
             .flex_grow(1.)
             .flex_shrink_0()
             .max_w_full()
-            .child(self.tab_bar(window, cx))
+            .child(self.tab_bar(cx))
             .child(self.tabs_probe());
         let header = h_flex()
             .w_full()
@@ -5045,7 +5010,7 @@ impl Render for ResponsePane {
                     .key_context(crate::request_editor::KEY_CONTEXT),
                 )
                 .into_any_element(),
-            (SendState::Streaming, _) => self.live_view(window, cx),
+            (SendState::Streaming, _) => self.live_view(cx),
             (SendState::Sending, _) => {
                 let (waiting, elapsed) = {
                     let m = self.send.read(cx);
@@ -5129,7 +5094,7 @@ impl Render for ResponsePane {
                                 strip.flex_grow(1.).max_w_full().flex_shrink_0()
                             })
                             .on_scroll(ui::wheel_sideways(&self.tab_scroll))
-                            .child(self.tab_bar(window, cx))
+                            .child(self.tab_bar(cx))
                             .child(self.tabs_probe())
                             .children(self.tab_fades.render(
                                 "response-tab-strip",
@@ -5147,7 +5112,7 @@ impl Render for ResponsePane {
                             )
                             .children(self.tab_focus_reveal.watch_focused(
                                 &self.tab_scroll,
-                                self.focused_tab_position(window),
+                                self.focused_tab_position(window, cx),
                             )),
                     )
                     .children(self.status_line(&result, window, cx));

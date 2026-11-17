@@ -319,124 +319,104 @@ fn the_dock_tabs_switch_the_panel(cx: &mut TestAppContext) {
 }
 
 // The dock tab holding focus, if any, after a fresh frame.
-fn focused_tab(cx: &mut TestAppContext, win: AnyWindowHandle) -> Option<usize> {
+fn focused_tab(
+    cx: &mut TestAppContext,
+    win: AnyWindowHandle,
+    dock: &Entity<ConsoleDock>,
+) -> Option<usize> {
     use gpui_kit::test::TestWindowExt as _;
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
-        (0..2usize).find(|&ix| w.find(("dock-tab", ix)).focused() == Some(true))
+        dock.read(cx).focused_tab(w, cx)
     })
     .unwrap()
 }
 
-// A dock with the app's keymap whose first tab holds keyboard focus.
-fn dock_on_first_tab(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<ConsoleDock>) {
+// A whole key press, down and up: the kit activates the focused tab on release.
+fn full_press(cx: &mut TestAppContext, win: AnyWindowHandle, key: &str) {
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(win, |_, w, cx| w.press(key, cx)).unwrap();
+    frame(cx, win);
+}
+
+// A dock with the app's keymap, entered with one Tab press.
+fn dock_entered(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<ConsoleDock>) {
     let (win, dock) = host(cx, SessionLog::new());
     cx.update(apinata_app::keymap::init);
     frame(cx, win);
     cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
-    assert_eq!(
-        focused_tab(cx, win),
-        Some(0),
-        "Tab reaches the first dock tab"
-    );
     (win, dock)
+}
+
+#[gpui_kit::test]
+fn tab_enters_the_dock_strip_once_on_the_chosen_tab(cx: &mut TestAppContext) {
+    use apinata_app::console_dock::DockTab;
+    let (win, dock) = host(cx, SessionLog::new());
+    cx.update(apinata_app::keymap::init);
+    dock.update(cx, |d, cx| d.set_tab(DockTab::Network, cx));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
+    assert_eq!(
+        focused_tab(cx, win, &dock),
+        Some(1),
+        "Tab lands on the chosen tab"
+    );
+    cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
+    assert_eq!(
+        focused_tab(cx, win, &dock),
+        None,
+        "the next Tab leaves the strip"
+    );
+    cx.update_window(win, |_, w, cx| w.focus_prev(cx)).unwrap();
+    assert_eq!(focused_tab(cx, win, &dock), Some(1), "Shift+Tab comes back");
+    cx.update_window(win, |_, w, cx| w.focus_prev(cx)).unwrap();
+    assert_eq!(
+        focused_tab(cx, win, &dock),
+        None,
+        "Shift+Tab leaves the strip backwards"
+    );
 }
 
 #[gpui_kit::test]
 fn enter_and_space_choose_the_focused_dock_tab(cx: &mut TestAppContext) {
     use apinata_app::console_dock::DockTab;
-    let (win, dock) = dock_on_first_tab(cx);
-    cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
-    assert_eq!(focused_tab(cx, win), Some(1));
+    let (win, dock) = dock_entered(cx);
+    assert_eq!(focused_tab(cx, win, &dock), Some(0));
+    cx.simulate_keystrokes(win, "right");
+    assert_eq!(focused_tab(cx, win, &dock), Some(1));
     assert_eq!(
         dock.read_with(cx, |d, _| d.tab()),
         DockTab::Console,
         "focus alone chooses nothing"
     );
-    cx.simulate_keystrokes(win, "enter");
-    frame(cx, win);
+    full_press(cx, win, "enter");
     assert_eq!(dock.read_with(cx, |d, _| d.tab()), DockTab::Network);
-    cx.update_window(win, |_, w, cx| w.focus_prev(cx)).unwrap();
-    assert_eq!(focused_tab(cx, win), Some(0));
-    cx.simulate_keystrokes(win, "space");
-    frame(cx, win);
+    cx.simulate_keystrokes(win, "left");
+    assert_eq!(focused_tab(cx, win, &dock), Some(0));
+    full_press(cx, win, "space");
     assert_eq!(dock.read_with(cx, |d, _| d.tab()), DockTab::Console);
 }
 
 #[gpui_kit::test]
-fn arrows_move_the_dock_tab_and_the_focus(cx: &mut TestAppContext) {
+fn arrows_home_and_end_move_focus_without_choosing(cx: &mut TestAppContext) {
     use apinata_app::console_dock::DockTab;
-    let (win, dock) = dock_on_first_tab(cx);
-    let at = |cx: &mut TestAppContext| (dock.read_with(cx, |d, _| d.tab()), focused_tab(cx, win));
+    let (win, dock) = dock_entered(cx);
+    let at = |cx: &mut TestAppContext| {
+        (
+            dock.read_with(cx, |d, _| d.tab()),
+            focused_tab(cx, win, &dock),
+        )
+    };
     cx.simulate_keystrokes(win, "right");
-    assert_eq!(at(cx), (DockTab::Network, Some(1)));
+    assert_eq!(at(cx), (DockTab::Console, Some(1)));
     cx.simulate_keystrokes(win, "right");
     assert_eq!(at(cx), (DockTab::Console, Some(0)), "wraps");
     cx.simulate_keystrokes(win, "left");
-    assert_eq!(at(cx), (DockTab::Network, Some(1)), "wraps back");
-    cx.simulate_keystrokes(win, "up");
+    assert_eq!(at(cx), (DockTab::Console, Some(1)), "wraps back");
+    cx.simulate_keystrokes(win, "home");
     assert_eq!(at(cx), (DockTab::Console, Some(0)));
-    cx.simulate_keystrokes(win, "down");
-    assert_eq!(at(cx), (DockTab::Network, Some(1)));
-}
-
-// The dock's keyboard ring leaves the room around its label that a request section tab's
-// ring does, for a section tab that carries a count.
-#[gpui_kit::test]
-fn the_dock_tab_ring_pads_its_label_like_the_section_strip(cx: &mut TestAppContext) {
-    use apinata_app::focus_mode::{self, Modality};
-    use apinata_app::request_editor::Section;
-    use gpui_kit::test::TestWindowExt as _;
-    use gpui_kit::{Bounds, Pixels};
-    let col = write_tree(&[
-        ("opencollection.yml", ROOT),
-        ("a.yml", &request("a", "http://x/0?q=1")),
-    ]);
-    let (_state, ws, root) = open_dir(cx, &col);
-    let (ed_win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    let (dock_win, _dock) = open_dock(cx, SessionLog::new());
-    let params = Section::Params as usize;
-    let handle = ed.read_with(cx, |e, _| e.section_focus(params));
-    cx.update_window(ed_win, |_, w, cx| handle.focus(w, cx))
-        .unwrap();
-    cx.update_window(dock_win, |_, w, cx| w.focus_next(cx))
-        .unwrap();
-    cx.update(|cx| focus_mode::set(Modality::Keyboard, cx));
-    // (left, top, bottom) room between a ring and the label it marks.
-    let room = |ring: Bounds<Pixels>, label: Bounds<Pixels>| {
-        (
-            label.left() - ring.left(),
-            label.top() - ring.top(),
-            ring.bottom() - label.bottom(),
-        )
-    };
-    let section = cx
-        .update_window(ed_win, |_, w, cx| {
-            w.render_frame(cx);
-            room(
-                w.find(("section-focus", params)).bounds(),
-                w.find(("section", params)).bounds(),
-            )
-        })
-        .unwrap();
-    let (dock, right) = cx
-        .update_window(dock_win, |_, w, cx| {
-            w.render_frame(cx);
-            let ring = w.find(("dock-tab-ring", 0usize)).bounds();
-            let label = w.find(("dock-tab-label", 0usize)).bounds();
-            (room(ring, label), ring.right() - label.right())
-        })
-        .unwrap();
-    let near = |a: Pixels, b: Pixels| (f32::from(a) - f32::from(b)).abs() < 0.5;
-    assert!(
-        near(dock.0, section.0) && near(dock.1, section.1) && near(dock.2, section.2),
-        "dock room {dock:?}, section room {section:?}"
-    );
-    assert!(
-        near(right, dock.0),
-        "even sides: {right:?} and {:?}",
-        dock.0
-    );
+    cx.simulate_keystrokes(win, "end");
+    assert_eq!(at(cx), (DockTab::Console, Some(1)));
 }
 
 #[gpui_kit::test]

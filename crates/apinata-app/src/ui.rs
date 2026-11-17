@@ -3955,13 +3955,33 @@ pub fn stored_secret(
         )
 }
 
-/// The step a Left or Right key takes along a tab strip: -1, +1, or none for any other key.
-pub fn arrow_step(key: &str) -> Option<isize> {
-    match key {
-        "left" => Some(-1),
-        "right" => Some(1),
-        _ => None,
-    }
+/// A zero-size marker for inside a kit tab. The kit's tab list owns each tab's keyboard focus;
+/// the marker sits under that tab and is never a tab stop, so [`focused_tab`] can tell which
+/// tab holds focus. Having no area, it never takes a click's focus from the tab.
+pub fn tab_focus_marker(handle: &FocusHandle) -> impl IntoElement + use<> {
+    div().absolute().size_0().track_focus(handle)
+}
+
+/// A fresh handle for a [`tab_focus_marker`].
+pub fn tab_marker_handle(cx: &mut App) -> FocusHandle {
+    cx.focus_handle().tab_stop(false)
+}
+
+/// The position of the tab whose marker alone sits under keyboard focus, as last drawn. Focus
+/// on an ancestor of the whole strip is over every marker, so no tab counts as focused then.
+pub fn focused_tab<'a>(
+    markers: impl IntoIterator<Item = &'a FocusHandle>,
+    window: &Window,
+    cx: &App,
+) -> Option<usize> {
+    let focused = window.focused(cx)?;
+    let mut under = markers
+        .into_iter()
+        .enumerate()
+        .filter(|(_, m)| focused.contains(m, window))
+        .map(|(ix, _)| ix);
+    let first = under.next()?;
+    under.next().is_none().then_some(first)
 }
 
 /// `view` drawn from its last frame until it is notified, so a key typed elsewhere in the

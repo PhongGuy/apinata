@@ -275,31 +275,6 @@ fn the_empty_rows_reach_the_url_and_file_only_once_typed(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
-fn a_clicked_section_tab_shows_no_ring_until_the_keyboard_moves(cx: &mut TestAppContext) {
-    let col = tree();
-    let (_state, ws, root) = open_dir(cx, &col);
-    let (win, ed) = editor_for(cx, &ws, &root, "a.yml", false);
-    cx.update_window(win, |_, w, cx| {
-        w.render_frame(cx);
-        w.click(("section", 2usize), cx)
-    })
-    .unwrap();
-    frame(cx, win);
-    let handle = ed.read_with(cx, |e, _| e.section_focus(2));
-    let focused = cx
-        .update_window(win, |_, w, _| handle.is_focused(w))
-        .unwrap();
-    assert!(focused, "the click focused the tab");
-    let ring =
-        |cx: &mut TestAppContext| (0..8usize).any(|ix| present(cx, win, ("section-focus", ix)));
-    assert!(!ring(cx), "a click leaves no ring");
-    cx.update_window(win, |_, w, cx| w.press("tab", cx))
-        .unwrap();
-    frame(cx, win);
-    assert!(ring(cx), "Tab shows the ring");
-}
-
-#[gpui_kit::test]
 fn a_refused_header_name_marks_only_its_own_cell(cx: &mut TestAppContext) {
     let col = tree();
     let (_state, ws, root) = open_dir(cx, &col);
