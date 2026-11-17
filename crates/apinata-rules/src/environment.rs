@@ -59,7 +59,7 @@ fn refusal_detail(e: &ReadError) -> String {
 
 // Rounds of `apply_merge` allowed before a leftover `<<` counts as unparsable; the
 // parser's nesting limit, since each round folds at least one level.
-const MERGE_ROUNDS: usize = 128;
+const MERGE_ROUNDS: usize = apinata_format::MAX_NESTING;
 
 // One `apply_merge` folds a single level, so a `<<` carried in by a merge survives it;
 // repeat until none is left. `false` on a merge error, on the round bound, and at once for a
@@ -145,7 +145,7 @@ fn valued_secrets(node: &Value, names: &mut Names) -> bool {
             if here && let Some(Value::String(name)) = map.get("name") {
                 names.add(name);
             }
-            // Visit every entry, not just up to the first hit, so every name is collected.
+            // Visit every entry, not just up to the first hit, so the verdict sees the whole file.
             let mut found = here;
             for (k, v) in map {
                 found |= valued_secrets(k, names);
