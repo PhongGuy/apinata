@@ -87,7 +87,8 @@ pub struct Node {
     /// The example's index in its request's `examples`, on example nodes only.
     pub example: Option<usize>,
     /// The muted text that tells this row apart from another showing its name: a request's
-    /// file name beside a same-named sibling, a collection's differing folder path.
+    /// file name beside a same-named sibling, a collection's differing folder path, the folder
+    /// a draft saves into.
     pub hint: Option<String>,
     /// On an opaque row, the request kind the app cannot send yet.
     pub unsupported: Option<Unsupported>,
@@ -266,10 +267,26 @@ impl Ctx<'_> {
                 expanded: false,
                 children: Vec::new(),
                 example: None,
-                hint: None,
+                hint: self.draft_folder(&d.path),
                 unsupported: None,
             })
             .collect()
+    }
+
+    /// The folder a draft saves into, by the display names its tree rows show; `None` at the
+    /// root. A folder the snapshot does not know yet shows its directory name.
+    fn draft_folder(&self, path: &ItemPath) -> Option<String> {
+        let mut names = Vec::new();
+        let mut next = path.parent().filter(|p| !p.is_root());
+        while let Some(folder) = next {
+            let display = (self.content)
+                .and_then(|c| c.folders.get(&folder))
+                .and_then(|f| f.name.clone());
+            names.push(display.unwrap_or_else(|| folder.file_name().to_owned()));
+            next = folder.parent().filter(|p| !p.is_root());
+        }
+        names.reverse();
+        (!names.is_empty()).then(|| names.join("/"))
     }
 
     /// The always-expanded group of this collection's drafts, or None when no draft is kept.
