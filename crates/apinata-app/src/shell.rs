@@ -2608,14 +2608,11 @@ impl Shell {
     fn mock_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (root, state) = self.current_mock(cx)?;
         let examples = self.workspace.read(cx).mock_examples(&root);
-        use crate::theme::SelectedStyle;
         use crate::ui::ChooseButton as _;
         let toggle = Button::new("mock-toggle")
-            .ghost()
             .xsmall()
             .label("Mock")
-            .choose(state != MockState::Off, SelectedStyle::Ghost, cx)
-            .toggled(state != MockState::Off)
+            .toggle(state != MockState::Off, cx)
             .accessibility_label("Mock server")
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx));

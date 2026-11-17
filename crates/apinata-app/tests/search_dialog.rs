@@ -887,3 +887,25 @@ fn a_replace_in_a_read_only_team_folder_only_says_it_is_read_only(cx: &mut TestA
     assert_eq!(toasts(cx, &s), shown + 1, "only the read-only toast");
     assert!(on_disk(&s, "a.yml").contains("http://x/needle"));
 }
+
+fn pressed(cx: &mut TestAppContext, s: &Started, id: &'static str) -> Option<bool> {
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| w.try_find(id).and_then(|e| e.checked()))
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn the_dialog_toggles_report_whether_they_are_on(cx: &mut TestAppContext) {
+    let s = started(cx, &collection());
+    open_search(cx, &s);
+    for id in [
+        "search-case-button",
+        "search-regex-button",
+        "search-replace-toggle-button",
+    ] {
+        assert_eq!(pressed(cx, &s, id), Some(false), "{id} starts off");
+        cx.update_window(s.win, |_, w, cx| w.click(id, cx)).unwrap();
+        cx.run_until_parked();
+        assert_eq!(pressed(cx, &s, id), Some(true), "{id} after a click");
+    }
+}

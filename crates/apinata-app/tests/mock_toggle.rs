@@ -673,3 +673,25 @@ fn a_save_followed_by_more_typing_in_one_batch_is_served(cx: &mut TestAppContext
     wait_real(cx, |cx| dirty_at(cx, "http://api.test/later"));
     wait_real(cx, |_| get(addr, "/people").starts_with("HTTP/1.1 200"));
 }
+
+// The status bar's toggle paints the off edge while the mock is off and the accent edge while
+// it runs, like every other on/off button.
+#[gpui_kit::test]
+fn the_toggle_paints_its_off_edge_and_its_on_edge_in_the_status_bar(cx: &mut TestAppContext) {
+    use apinata_app::theme::toggle_edge;
+    use gpui_kit::component::ActiveTheme as _;
+    let col = mocked();
+    let s = start(cx, &col);
+    frame(cx, s.win);
+    let (off_edge, on_edge) = cx.update(|cx| {
+        let t = cx.theme();
+        (toggle_edge(t, false), toggle_edge(t, true))
+    });
+    let off = painted_edges(cx, s.win, "mock-toggle");
+    assert!(off.contains(&off_edge), "off: {off:?}");
+    click(cx, s.win, "mock-toggle");
+    running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    let on = painted_edges(cx, s.win, "mock-toggle");
+    assert!(on.contains(&on_edge), "on: {on:?}");
+}

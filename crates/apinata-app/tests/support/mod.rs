@@ -2244,3 +2244,34 @@ pub fn clear_environment(
     let _ = ws.update(cx, |w, cx| w.select_environment(root, None, cx));
     cx.run_until_parked();
 }
+
+// The edge colours painted along `id`'s box, one per bordered quad that covers it.
+pub fn painted_edges(
+    cx: &mut TestAppContext,
+    win: gpui_kit::AnyWindowHandle,
+    id: &'static str,
+) -> Vec<gpui_kit::Hsla> {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let scale = w.scale_factor();
+        let b = w.find(id).bounds();
+        let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
+        let (r, bt) = (b.right().as_f32() * scale, b.bottom().as_f32() * scale);
+        w.painted_quads()
+            .into_iter()
+            .filter(|q| {
+                let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
+                let (x2, y2) = (x + q.bounds.size.width.0, y + q.bounds.size.height.0);
+                q.border_widths.left.0 > 0.
+                    && (x - l).abs() < 2.
+                    && (y - t).abs() < 2.
+                    && (x2 - r).abs() < 2.
+                    && (y2 - bt).abs() < 2.
+            })
+            .map(|q| q.border_color)
+            .collect()
+    })
+    .unwrap()
+}

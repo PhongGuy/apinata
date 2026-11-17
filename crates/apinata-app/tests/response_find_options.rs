@@ -482,3 +482,23 @@ fn the_toggles_hold_across_the_switch_between_editor_and_rows(cx: &mut TestAppCo
     assert_eq!(label(cx, &view), "1 of 1");
     assert_eq!(marked(cx, &view), ["needle 42"]);
 }
+
+#[gpui_kit::test]
+fn the_find_toggles_report_whether_they_are_on(cx: &mut TestAppContext) {
+    let (win, view) = body(cx, XS);
+    query(cx, win, &view, "x");
+    let pressed = |cx: &mut TestAppContext, id: &'static str| {
+        frame(cx, win);
+        cx.update_window(win, |_, w, _| w.try_find(id).and_then(|e| e.checked()))
+            .unwrap()
+    };
+    for (wrapper, button) in [
+        ("body-find-case", "body-find-case-button"),
+        ("body-find-word", "body-find-word-button"),
+        ("body-find-regex", "body-find-regex-button"),
+    ] {
+        assert_eq!(pressed(cx, button), Some(false), "{button} starts off");
+        click(cx, win, wrapper);
+        assert_eq!(pressed(cx, button), Some(true), "{button} after a click");
+    }
+}

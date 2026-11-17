@@ -2,7 +2,6 @@
 //! hits grouped under their request. Opening a hit opens its request and shows the section
 //! that holds the match.
 
-use crate::theme::SelectedStyle;
 use crate::ui::{ChooseButton as _, LockButton as _};
 use std::path::PathBuf;
 
@@ -264,11 +263,10 @@ impl SearchForm {
                 // The press lives on the button so Enter or Space on it toggles too.
                 Button::new(SharedString::from(format!("{id}-button")))
                     .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
-                    .ghost()
                     .compact()
                     .label(text)
                     .tooltip(name)
-                    .choose(on, SelectedStyle::Ghost, cx)
+                    .toggle(on, cx)
                     .on_click(
                         cx.listener(move |form, _: &ClickEvent, _, cx| form.toggle(flip, cx)),
                     ),
@@ -521,11 +519,10 @@ impl Render for SearchForm {
             .child(
                 Button::new("search-replace-toggle-button")
                     .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
-                    .ghost()
                     .compact()
                     .label("Replace")
                     .tooltip(toggle_name)
-                    .choose(replacing, SelectedStyle::Ghost, cx)
+                    .toggle(replacing, cx)
                     .on_click(cx.listener(|form, _: &ClickEvent, window, cx| {
                         form.toggle_replace(window, cx)
                     })),

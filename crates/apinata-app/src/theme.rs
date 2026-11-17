@@ -295,12 +295,14 @@ pub fn chosen_label_colors(theme: &Theme) -> (Hsla, Hsla) {
 /// A selected button's kit style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectedStyle {
-    /// A ghost button, such as a toolbar toggle or a navigation entry.
+    /// A ghost button, such as a navigation entry or a picked list row.
     Ghost,
     /// A plain (default variant) button.
     Plain,
     /// The chosen collection button, outline primary; see [`chosen_label_colors`].
     ChosenOutlinePrimary,
+    /// An on/off button while on; see [`toggle_edge`].
+    Toggle,
 }
 
 /// The label colour and opaque fill a selected button of `style` draws.
@@ -309,7 +311,15 @@ pub fn selected_look(theme: &Theme, style: SelectedStyle) -> (Hsla, Hsla) {
         SelectedStyle::Ghost => (theme.secondary_foreground, theme.secondary_active),
         SelectedStyle::Plain => (theme.button_foreground, theme.button_active),
         SelectedStyle::ChosenOutlinePrimary => chosen_label_colors(theme),
+        // The accent laid thin over whatever surface the button sits on reads as pressed in
+        // every theme, where a neutral step barely differs from the idle fill.
+        SelectedStyle::Toggle => (theme.foreground, theme.primary.opacity(0.2)),
     }
+}
+
+/// The edge an on/off button draws: the accent while on, the input edge while off.
+pub fn toggle_edge(theme: &Theme, on: bool) -> Hsla {
+    if on { theme.primary } else { theme.input }
 }
 
 /// The fill a select button draws in every state, or `None` for the kit's own. In High

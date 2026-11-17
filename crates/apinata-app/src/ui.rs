@@ -16,7 +16,7 @@ use gpui_kit::base::{
     Checkbox as BaseCheckbox, CheckboxIndicator, Placement, Radio as BaseRadio, TooltipPositioner,
 };
 use gpui_kit::component::Colorize as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
 use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::input::{Editor, EditorState, Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::kbd::Kbd;
@@ -190,12 +190,29 @@ pub trait ChooseButton: Sized {
 
     /// `self` selected or not, drawing `look` (a [`selected_look`] result) while selected.
     fn chosen(self, selected: bool, look: (Hsla, Hsla)) -> Self;
+
+    /// `self` as an on/off button, announced as pressed while `on`: outlined in
+    /// [`theme::toggle_edge`] with no fill while off, and filled with the
+    /// [`SelectedStyle::Toggle`] look inside the accent edge while on.
+    fn toggle(self, on: bool, cx: &App) -> Self;
 }
 
 impl ChooseButton for Button {
     fn chosen(self, selected: bool, (text, fill): (Hsla, Hsla)) -> Self {
         self.selected(selected)
             .when(selected, |b| b.text_color(text).bg(fill))
+    }
+
+    fn toggle(self, on: bool, cx: &App) -> Self {
+        // An outlined default button keeps its edge colour on hover, unlike a ghost one whose
+        // hover clears the border. The kit replays these colours inside its selected state.
+        let edge = theme::toggle_edge(cx.theme(), on);
+        self.with_variant(ButtonVariant::Default)
+            .outline()
+            .toggled(on)
+            .border_color(edge)
+            .when(!on, |b| b.bg(cx.theme().transparent))
+            .choose(on, SelectedStyle::Toggle, cx)
     }
 }
 
@@ -1480,12 +1497,12 @@ pub fn label_with_key(label: &str, action: &dyn Action, cx: &App) -> String {
 pub fn solid_ring(button: Button, cx: &App) -> Button {
     use gpui_kit::component::FocusableExt as _;
     let ring = cx.theme().ring;
-    // The border is reserved in every state, transparent until the ring shows, so focus
-    // never moves the control's content.
-    let button = button
-        .focus_ring(false)
-        .border_1()
-        .border_color(gpui_kit::transparent_black());
+    // The border is reserved in every state, so focus never moves the control's content. It
+    // stays transparent until the ring shows, unless the button already has an edge colour.
+    let mut button = button.focus_ring(false).border_1();
+    if button.style().border_color.is_none() {
+        button = button.border_color(gpui_kit::transparent_black());
+    }
     if crate::focus_mode::is_keyboard(cx) {
         button.focus(move |s| s.border_color(ring))
     } else {

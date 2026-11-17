@@ -30,7 +30,6 @@ use crate::graphql_variables::VariableTools;
 use crate::schema_load::load_from_file;
 use crate::section::SectionEdit;
 use crate::style;
-use crate::theme::SelectedStyle;
 use crate::ui::ChooseButton as _;
 use crate::var_tokens::VarField;
 
@@ -503,14 +502,10 @@ impl GraphqlSection {
             ),
             _ => None,
         };
-        // Outlined, so a closed pane's toggle still reads as a button beside the schema
-        // buttons; the open pane's toggle adds the selected fill and is announced as pressed.
         let toggle = |id: &'static str, label: &'static str, panel: SidePanel| {
             Button::new(id)
-                .outline()
                 .label(label)
-                .toggled(self.side == panel)
-                .choose(self.side == panel, SelectedStyle::Plain, cx)
+                .toggle(self.side == panel, cx)
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_side(panel, cx)))
         };
         let builder = toggle("graphql-builder-toggle", "Builder", SidePanel::Builder);
