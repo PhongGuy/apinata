@@ -257,7 +257,7 @@ impl JoinView {
                     let _ = this.update(cx, |this, cx| this.fail(sign_in_error_text(&e), cx));
                 }
                 Err(_) => {
-                    let text = sign_in_error_text(&TeamError::Unavailable);
+                    let text = sign_in_error_text(&TeamError::Unavailable(String::new()));
                     let _ = this.update(cx, |this, cx| this.fail(text, cx));
                 }
             });

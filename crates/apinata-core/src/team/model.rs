@@ -269,3 +269,54 @@ impl NewWorkspace {
         })
     }
 }
+
+/// What the server's last check for its own new release found, as a server admin reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ServerUpdate {
+    /// The version the server runs.
+    pub current: String,
+    /// The newer release it found, if any.
+    pub latest: Option<ServerRelease>,
+    /// When it last checked, RFC 3339; None before the first check.
+    pub checked_at: Option<String>,
+    /// Whether its daily check is turned off.
+    pub checks_off: bool,
+}
+
+/// A newer server release.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ServerRelease {
+    /// Its version.
+    pub version: String,
+    /// Where its release notes are.
+    pub notes_url: String,
+}
+
+/// The one line an admin sees about server updates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum UpdateState {
+    /// A newer release is out.
+    Newer,
+    /// The last check found nothing newer.
+    UpToDate,
+    /// Nothing checked yet and the daily check is off.
+    Off,
+    /// Nothing checked yet.
+    NotChecked,
+}
+
+impl ServerUpdate {
+    /// A found release wins, then a past check; "off" only shows while nothing was checked, so a
+    /// manual check with the daily one off still reads as up to date.
+    pub fn state(&self) -> UpdateState {
+        match (&self.latest, &self.checked_at) {
+            (Some(_), _) => UpdateState::Newer,
+            (None, Some(_)) => UpdateState::UpToDate,
+            (None, None) if self.checks_off => UpdateState::Off,
+            (None, None) => UpdateState::NotChecked,
+        }
+    }
+}

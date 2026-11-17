@@ -120,7 +120,7 @@ pub async fn resume(
         Err(
             TeamError::Offline(_)
             | TeamError::Timeout
-            | TeamError::Unavailable
+            | TeamError::Unavailable(_)
             | TeamError::RateLimited { .. }
             | TeamError::Server { .. },
         ) => Ok(match token {

@@ -122,7 +122,9 @@ impl Source {
 
 // A lost runtime reads as an unavailable server.
 async fn answer(asked: Asked) -> Result<Resumed, TeamError> {
-    asked.await.unwrap_or(Err(TeamError::Unavailable))
+    asked
+        .await
+        .unwrap_or(Err(TeamError::Unavailable(String::new())))
 }
 
 // Starts the loop from what the resume returned, tells it a standing that blocks it, and

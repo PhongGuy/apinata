@@ -36,9 +36,9 @@ pub enum TeamError {
         /// How long the server asked to wait, when it said.
         retry_after_secs: Option<u64>,
     },
-    /// The server is up but cannot serve the call now.
+    /// The server is up but cannot serve the call now; carries its message, which may be empty.
     #[error("The server is unavailable.")]
-    Unavailable,
+    Unavailable(String),
     /// Any other error the server reported.
     #[error("The server failed ({status} {code}): {message}")]
     Server {
@@ -111,7 +111,7 @@ impl TeamError {
             "rate_limited" => TeamError::RateLimited {
                 retry_after_secs: retry_after,
             },
-            "unavailable" => TeamError::Unavailable,
+            "unavailable" => TeamError::Unavailable(message),
             _ => TeamError::Server {
                 status,
                 code: super::redact_token(&error.code),

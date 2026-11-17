@@ -2,7 +2,9 @@
 
 use crate::common::dead_port;
 use crate::common::potluck::*;
-use apinata_core::team::{HttpTeamClient, NewWorkspace, Role, ServerUrl, TeamApi, TeamError};
+use apinata_core::team::{
+    HttpTeamClient, NewWorkspace, Role, ServerUrl, TeamApi, TeamError, UpdateState,
+};
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -142,7 +144,7 @@ async fn each_error_code_maps_to_its_own_variant() {
         (
             503,
             error("unavailable", "Busy.", None),
-            TeamError::Unavailable,
+            TeamError::Unavailable("Busy.".into()),
         ),
         (
             500,
@@ -318,4 +320,83 @@ async fn a_server_under_a_path_prefix_gets_its_api_under_that_prefix() {
     let api =
         HttpTeamClient::new(ServerUrl::parse(&format!("{}/potluck", s.uri())).unwrap()).unwrap();
     assert!(api.server_info().await.unwrap().password_sign_in);
+}
+
+fn update(check: &str, latest: Option<&str>, checked_at: Option<&str>) -> ResponseTemplate {
+    let latest = latest.map(|v| {
+        json!({"version": v, "digest": "sha256:00", "published": "2026-11-16T09:00:00Z",
+               "notes_url": format!("https://example.test/releases/{v}"), "extra": 1})
+    });
+    ResponseTemplate::new(200).set_body_json(json!({"current": "0.3.0", "latest": latest,
+        "checked_at": checked_at, "check": check, "later": true}))
+}
+
+#[tokio::test]
+async fn the_update_status_reads_as_one_of_four_states() {
+    let s = MockServer::start().await;
+    let at = Some("2026-11-17T06:00:00Z");
+    let cases = [
+        (update("daily", Some("0.4.0"), at), UpdateState::Newer),
+        (update("daily", None, at), UpdateState::UpToDate),
+        (update("daily", None, None), UpdateState::NotChecked),
+        (update("off", None, None), UpdateState::Off),
+    ];
+    for (body, want) in cases {
+        s.reset().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/update"))
+            .and(header("authorization", bearer().as_str()))
+            .respond_with(body)
+            .mount(&s)
+            .await;
+        let got = client(&s).server_update(&token()).await.unwrap();
+        assert_eq!(got.state(), want);
+        assert_eq!(got.current, "0.3.0");
+    }
+    s.reset().await;
+    answer(
+        &s,
+        "GET",
+        "/api/v1/update",
+        update("daily", Some("0.4.0"), at),
+    )
+    .await;
+    let got = client(&s).server_update(&token()).await.unwrap();
+    let latest = got.latest.unwrap();
+    assert_eq!(
+        (latest.version.as_str(), latest.notes_url.as_str()),
+        ("0.4.0", "https://example.test/releases/0.4.0")
+    );
+}
+
+#[tokio::test]
+async fn check_now_posts_and_returns_the_fresh_status() {
+    let s = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/update/check"))
+        .and(header("authorization", bearer().as_str()))
+        .respond_with(update("off", None, Some("2026-11-17T06:00:00Z")))
+        .expect(1)
+        .mount(&s)
+        .await;
+    let got = client(&s).check_server_update(&token()).await.unwrap();
+    assert_eq!(got.state(), UpdateState::UpToDate);
+}
+
+#[tokio::test]
+async fn an_unavailable_check_keeps_the_server_message() {
+    let s = MockServer::start().await;
+    let body = error("unavailable", "no update source is configured", None);
+    answer(
+        &s,
+        "POST",
+        "/api/v1/update/check",
+        ResponseTemplate::new(503).set_body_json(body),
+    )
+    .await;
+    let e = client(&s).check_server_update(&token()).await.unwrap_err();
+    assert_eq!(
+        e,
+        TeamError::Unavailable("no update source is configured".into())
+    );
 }

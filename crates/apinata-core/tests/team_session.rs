@@ -741,6 +741,18 @@ impl team::TeamApi for RacedMe {
     fn revoke<'a>(&'a self, _: &'a team::TeamToken, _: &'a str) -> team::TeamFuture<'a, ()> {
         unreachable!()
     }
+    fn server_update<'a>(
+        &'a self,
+        _: &'a team::TeamToken,
+    ) -> team::TeamFuture<'a, team::ServerUpdate> {
+        unreachable!()
+    }
+    fn check_server_update<'a>(
+        &'a self,
+        _: &'a team::TeamToken,
+    ) -> team::TeamFuture<'a, team::ServerUpdate> {
+        unreachable!()
+    }
 }
 
 // Ada signed in on a stub server with token id `7` and the shared test token.
