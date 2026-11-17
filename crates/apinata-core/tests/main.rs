@@ -424,6 +424,7 @@ mod search;
 mod secret_forms;
 mod secret_forms_legacy;
 mod secret_names;
+mod secret_renames;
 mod secret_values;
 mod secrets;
 mod sensitive_values;

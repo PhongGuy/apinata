@@ -605,6 +605,12 @@ pub enum EnvError {
         /// What the file system reported.
         message: String,
     },
+    /// Git could not say what a pull changed, so whether a secret was left behind is unknown.
+    #[error("cannot read the pulled changes: {message}")]
+    RenameScan {
+        /// What git reported.
+        message: String,
+    },
     /// Writing, renaming or removing a file failed.
     #[error(transparent)]
     Save(#[from] SaveError),
