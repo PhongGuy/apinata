@@ -208,11 +208,15 @@ fn enter_on_a_collapsed_dock_tab_expands_it(cx: &mut TestAppContext) {
     let on_tab = cx
         .update_window(s.win, |_, w, cx| {
             w.render_frame(cx);
-            w.find(("dock-tab", 0usize)).focused()
+            dock.read(cx).focused_tab(w, cx)
         })
         .unwrap();
-    assert_eq!(on_tab, Some(true), "Tab reaches the first dock tab");
-    keys(cx, &s, "enter");
+    assert_eq!(on_tab, Some(0), "Tab reaches the chosen dock tab");
+    // A whole key press: the kit activates the focused tab on release.
+    cx.update_window(s.win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    frame(cx, s.win);
+    frame(cx, s.win);
     assert!(!collapsed(cx, &s));
     assert!(present(cx, s.win, "dock-console-search"));
 }

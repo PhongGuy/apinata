@@ -62,6 +62,30 @@ fn typing_emits_the_phase_and_text(cx: &mut TestAppContext) {
     }
 }
 
+// The phase switch had no keyboard access of its own; the kit's tab list gives it one stop.
+#[gpui_kit::test]
+fn tab_reaches_the_phase_switch_and_enter_chooses_a_phase(cx: &mut TestAppContext) {
+    let (win, host) = host_section(cx, |w, cx| {
+        ScriptSection::new(&[PreRequest, PostResponse], w, cx)
+    });
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.focus_next(cx)).unwrap();
+    frame(cx, win);
+    cx.simulate_keystrokes(win, "right");
+    cx.run_until_parked();
+    assert_eq!(
+        s.read_with(cx, |s, _| s.shown()),
+        Some(PreRequest),
+        "an arrow only moves focus"
+    );
+    // A whole key press: the kit activates the focused tab on release.
+    cx.update_window(win, |_, w, cx| w.press("enter", cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(s.read_with(cx, |s, _| s.shown()), Some(PostResponse));
+}
+
 #[gpui_kit::test]
 fn typed_edge_whitespace_survives_the_trimmed_echo(cx: &mut TestAppContext) {
     let col = scripted();

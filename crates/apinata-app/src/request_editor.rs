@@ -266,7 +266,8 @@ pub struct RequestEditor {
     // Keeps the section tab that holds keyboard focus in view, apart from the chosen one.
     section_focus_reveal: ui::Reveal,
     section_fades: ui::StripFades,
-    section_focus: Vec<FocusHandle>,
+    // A focus marker under each section tab, indexed like `Section::ALL`.
+    section_markers: Vec<FocusHandle>,
     pinned: bool,
     unit: UrlParamsUnit,
     // The structured edits this tab can undo and redo.
@@ -772,9 +773,9 @@ impl RequestEditor {
             section_reveal: ui::Reveal::whole_at_left(),
             section_focus_reveal: ui::Reveal::default(),
             section_fades: ui::StripFades::default(),
-            section_focus: Section::ALL
+            section_markers: Section::ALL
                 .iter()
-                .map(|_| cx.focus_handle().tab_stop(true))
+                .map(|_| ui::tab_marker_handle(cx))
                 .collect(),
             pinned: false,
             unit: UrlParamsUnit::default(),
@@ -914,9 +915,9 @@ impl RequestEditor {
         self.method.read(cx).focus_handle(cx)
     }
 
-    /// The focus of section tab `ix`, an index into [`Section::ALL`].
-    pub fn section_focus(&self, ix: usize) -> FocusHandle {
-        self.section_focus[ix].clone()
+    /// The section tab holding keyboard focus, as an index into [`Section::ALL`], as last drawn.
+    pub fn focused_section(&self, window: &Window, cx: &App) -> Option<usize> {
+        ui::focused_tab(&self.section_markers, window, cx)
     }
 
     /// The section shown under the URL bar.
@@ -3493,34 +3494,15 @@ impl RequestEditor {
                         .into_any_element()
                 }),
             };
-            // Each tab is its own tab stop; Enter or Space opens it as a click would. The
-            // focus ring is an overlay on a padded box, since the kit tab clips anything
-            // drawn outside its content, so the stroke clears the label and the marker.
-            let focus = &self.section_focus[ix];
-            let editor = this.clone();
+            // The kit's tab list owns keyboard focus: one tab stop on the chosen tab, arrows
+            // that move focus, and Enter or Space that opens the focused tab as a click does.
             Tab::new().child(
                 h_flex()
                     .id(("section-tab", ix))
+                    .test_support()
                     .relative()
                     .when_some(mark_words, |d, words| {
                         d.tooltip(ui::text_tooltip("section-mode-tooltip", words))
-                    })
-                    .track_focus(focus)
-                    .on_key_down(move |event, window, cx| {
-                        let key = event.keystroke.key.as_str();
-                        if matches!(key, "enter" | "space") {
-                            cx.stop_propagation();
-                            editor.update(cx, |e, cx| e.show_section(ix, cx));
-                        } else if event.keystroke.modifiers.modified() {
-                            // Chords with an arrow stay for whoever binds them.
-                        } else if let Some(step) = ui::arrow_step(key) {
-                            cx.stop_propagation();
-                            let next = ix.checked_add_signed(step);
-                            let next = next.and_then(|n| editor.read(cx).section_focus.get(n));
-                            if let Some(next) = next.cloned() {
-                                window.focus(&next, cx);
-                            }
-                        }
                     })
                     .line_height(relative(style::TAB_LINE_HEIGHT))
                     .px(style::SPACE_0)
@@ -3528,22 +3510,7 @@ impl RequestEditor {
                     .items_center()
                     .child(label)
                     .children(mark)
-                    // A click already shows which tab is active, so the ring marks
-                    // keyboard focus only.
-                    .when(
-                        focus.is_focused(window) && crate::focus_mode::is_keyboard(cx),
-                        |d| {
-                            d.child(
-                                div()
-                                    .id(("section-focus", ix))
-                                    .test_support()
-                                    .absolute()
-                                    .inset_0()
-                                    .border_1()
-                                    .border_color(cx.theme().ring),
-                            )
-                        },
-                    ),
+                    .child(ui::tab_focus_marker(&self.section_markers[ix])),
             )
         });
         // The menu shows only while last frame's layout overflowed; the watch redraws once
@@ -3585,10 +3552,10 @@ impl RequestEditor {
                 self.section as usize,
                 Section::ALL.len(),
             ))
-            .children(self.section_focus_reveal.watch_focused(
-                &self.section_scroll,
-                self.section_focus.iter().position(|f| f.is_focused(window)),
-            ))
+            .children(
+                self.section_focus_reveal
+                    .watch_focused(&self.section_scroll, self.focused_section(window, cx)),
+            )
     }
 
     // The editors scroll inside themselves and know nothing of the section body around them,
@@ -3682,8 +3649,8 @@ impl RequestEditor {
     /// Shows the section `step` places from the current one, wrapping at either end. Every
     /// section is always in the strip, so the cycle is [`Section::ALL`].
     ///
-    /// When focus sat inside the section being left, it moves to the new section's tab in the
-    /// strip, since the focused control unmounts and key dispatch would lose its path.
+    /// When focus sat inside the section being left, it moves to the section body, which stays
+    /// mounted, since the focused control unmounts and key dispatch would lose its path.
     pub fn step_section(&mut self, step: isize, window: &mut Window, cx: &mut Context<Self>) {
         let inside = self.section_body_focus.contains_focused(window, cx);
         let n = Section::ALL.len() as isize;
@@ -3693,8 +3660,8 @@ impl RequestEditor {
             .unwrap_or(0) as isize;
         let ix = (at + step).rem_euclid(n) as usize;
         self.show_section(ix, cx);
-        if inside && let Some(tab) = self.section_focus.get(ix) {
-            window.focus(tab, cx);
+        if inside {
+            window.focus(&self.section_body_focus, cx);
         }
     }
 
