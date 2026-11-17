@@ -10,7 +10,7 @@ autotests = false
 
 [dependencies]
 yaml_serde.workspace = true
-saphyr-parser.workspace = true
+apinata-format = { path = "../apinata-format" }
 serde.workspace = true
 serde_json.workspace = true
 apollo-parser.workspace = true
