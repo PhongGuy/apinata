@@ -8,8 +8,11 @@ use crate::support::*;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use apinata_app::command::{Command, Target};
 use apinata_app::snapshot::DiskState;
+use apinata_app::tabs::TabKind;
 use apinata_app::watch::set::notify_factory;
+use apinata_core::GitOptions;
 use apinata_core::team::{Identity, Role, TeamAuth, TeamConfig, TeamState};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
@@ -59,6 +62,11 @@ fn app(cx: &mut TestAppContext, sb: &Sandbox, col: &tempfile::TempDir) -> Starte
 
 /// Start team mode on `s` and wait for its start pull to settle.
 fn start_team(cx: &mut TestAppContext, sb: &Sandbox, s: &Started, debounce: Duration) {
+    start_team_with(cx, sb.options(), s, debounce);
+}
+
+/// As `start_team`, with the sync loop's git calls run under `options`.
+fn start_team_with(cx: &mut TestAppContext, options: GitOptions, s: &Started, debounce: Duration) {
     let config = TeamConfig::new(
         s.root.clone(),
         copies_dir(s),
@@ -66,7 +74,7 @@ fn start_team(cx: &mut TestAppContext, sb: &Sandbox, s: &Started, debounce: Dura
         Identity::new("Ada", "ada@example.com"),
         Role::Write,
     )
-    .base_options(sb.options())
+    .base_options(options)
     .debounce_unclamped(debounce);
     let root = s.root.clone();
     s.ws.update(cx, |w, cx| w.start_team(&root, config, None, cx));
@@ -149,6 +157,122 @@ fn a_conflict_opens_the_local_copy_under_the_changed_on_disk_banner(cx: &mut Tes
     wait_for(cx, "the copy settled", |_| {
         !copies_dir(&s).join("a.yml").exists()
     });
+}
+
+/// A `git` first on the PATH that holds `rebase --abort` until `<gate>/go` exists, touching
+/// `<gate>/waiting` once it holds, so a test can look at the tree a stopped rebase leaves.
+#[cfg(unix)]
+fn held_abort(gate: &std::path::Path) -> std::ffi::OsString {
+    use std::os::unix::fs::PermissionsExt as _;
+    let path = std::env::var_os("PATH").unwrap();
+    let real = std::env::split_paths(&path)
+        .map(|d| d.join("git"))
+        .find(|g| g.is_file())
+        .unwrap();
+    let bin = gate.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let script = format!(
+        "#!/bin/sh\ncase \" $* \" in *\" rebase --abort \"*)\n  touch '{g}/waiting'\n  i=0\n  while [ ! -e '{g}/go' ] && [ $i -lt 600 ]; do sleep 0.05; i=$((i+1)); done;;\nesac\nexec '{real}' \"$@\"\n",
+        g = gate.display(),
+        real = real.display(),
+    );
+    let wrapper = bin.join("git");
+    std::fs::write(&wrapper, script).unwrap();
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path))).unwrap()
+}
+
+fn tab_open(cx: &mut TestAppContext, s: &Started, item: &str) -> bool {
+    s.ws.read_with(cx, |w, _| {
+        (w.tabs().entries().iter())
+            .any(|e| e.root == s.root && e.kind == TabKind::Request(ip(item)))
+    })
+}
+
+// The rebase is held where it stopped on the conflict until the workspace has seen the
+// conflict markers, so the half-merged tree has every chance to reach the open tab.
+#[cfg(unix)]
+#[gpui_kit::test]
+fn an_open_request_keeps_its_tab_through_a_conflicted_pull(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = collection();
+    shared(&sb, &col);
+    let s = app(cx, &sb, &col);
+    let root = s.root.clone();
+    let gate = sb.path().join("gate");
+    let options = sb.options().env("PATH", held_abort(&gate));
+    start_team_with(cx, options, &s, Duration::from_millis(50));
+    let opened =
+        s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx));
+    assert!(opened.is_some(), "a.yml did not open");
+    let mate = sb.path().join("mate");
+    write(&mate, "a.yml", &request("a", "http://x/theirs"));
+    sb.commit_all(&mate, "theirs");
+    sb.git(&mate, &["push", "-q"]);
+    std::fs::write(col.path().join("a.yml"), request("a", "http://x/mine")).unwrap();
+    wait_for(cx, "the rebase to stop", |_| gate.join("waiting").exists());
+    wait_for(cx, "the markers to reach the workspace", |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.reloads_held(&root) || w.request(&root, &ip("a.yml"), cx).is_none()
+        })
+    });
+    std::fs::write(gate.join("go"), "").unwrap();
+    wait_for(cx, "the copy adopted", |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.request(&root, &ip("a.yml"), cx)
+                .is_some_and(|r| r.disk == DiskState::Changed)
+        })
+    });
+    assert!(tab_open(cx, &s, "a.yml"), "the tab on a.yml closed");
+    wait_for(cx, "the banner", |cx| {
+        frame(cx, s.win);
+        shown(cx, s.win, "banner-changed")
+    });
+}
+
+// Unsaved edits on top of the conflicted save must outlive the half-merged tree too.
+#[cfg(unix)]
+#[gpui_kit::test]
+fn unsaved_edits_survive_a_conflicted_pull(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let col = collection();
+    shared(&sb, &col);
+    let s = app(cx, &sb, &col);
+    let root = s.root.clone();
+    let gate = sb.path().join("gate");
+    let options = sb.options().env("PATH", held_abort(&gate));
+    start_team_with(cx, options, &s, Duration::from_millis(50));
+    let opened =
+        s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx));
+    assert!(opened.is_some(), "a.yml did not open");
+    let mate = sb.path().join("mate");
+    write(&mate, "a.yml", &request("a", "http://x/theirs"));
+    sb.commit_all(&mate, "theirs");
+    sb.git(&mate, &["push", "-q"]);
+    s.ws.update(cx, |w, cx| {
+        w.send(&root, edit_url("a.yml", "http://x/mine"), cx);
+        w.send(&root, Command::Save(Target::Request(ip("a.yml"))), cx);
+        w.send(&root, edit_url("a.yml", "http://x/draft"), cx);
+    });
+    wait_for(cx, "the rebase to stop", |_| gate.join("waiting").exists());
+    wait_for(cx, "the markers to reach the workspace", |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.reloads_held(&root)
+                || (w.request(&root, &ip("a.yml"), cx)).is_none_or(|r| r.disk == DiskState::Broken)
+        })
+    });
+    std::fs::write(gate.join("go"), "").unwrap();
+    wait_for(cx, "the pull to settle", |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.request(&root, &ip("a.yml"), cx)
+                .is_some_and(|r| r.disk == DiskState::Changed)
+        })
+    });
+    assert!(tab_open(cx, &s, "a.yml"), "the tab on a.yml closed");
+    let view =
+        s.ws.read_with(cx, |w, cx| w.request(&root, &ip("a.yml"), cx).unwrap());
+    assert!(view.dirty, "the unsaved edit was lost");
+    assert_eq!(view.url, "http://x/draft");
 }
 
 #[gpui_kit::test]
