@@ -8,6 +8,7 @@ use crate::support::*;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use apinata_app::snapshot::DiskState;
 use apinata_app::watch::set::notify_factory;
 use apinata_core::team::{Identity, Role, TeamAuth, TeamConfig, TeamState};
 use gpui_kit::test::TestWindowExt as _;
@@ -120,9 +121,17 @@ fn a_conflict_opens_the_local_copy_under_the_changed_on_disk_banner(cx: &mut Tes
     sb.git(&mate, &["push", "-q"]);
     std::fs::write(col.path().join("a.yml"), request("a", "http://x/mine")).unwrap();
     wait_for(cx, "the copy", |_| copies_dir(&s).join("a.yml").is_file());
-    s.ws.update(cx, |w, cx| {
-        w.open_item(&root, ip("a.yml"), false, cx);
+    // The copy is kept before the pull resets the tree, so the request can still be out of the
+    // tree from the rebase's conflict markers; open it once the adopted copy is in the snapshot.
+    wait_for(cx, "the copy adopted", |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.request(&root, &ip("a.yml"), cx)
+                .is_some_and(|r| r.disk == DiskState::Changed)
+        })
     });
+    let opened =
+        s.ws.update(cx, |w, cx| w.open_item(&root, ip("a.yml"), false, cx));
+    assert!(opened.is_some(), "a.yml did not open");
     wait_for(cx, "the banner", |cx| {
         frame(cx, s.win);
         shown(cx, s.win, "banner-changed")
