@@ -256,6 +256,8 @@ notes_fixture() {
     git commit -q --allow-empty -m 'feat: first'
     git tag v1.0.0
     git commit -q --allow-empty -m 'feat: add a thing'
+    # A rules crate release between app releases must never become the notes' base.
+    git tag apinata-rules-v0.1.0
     git commit -q --allow-empty -m 'fix: mend a thing'
     git tag v1.1.0
   )
@@ -287,6 +289,13 @@ test_release_notes_sections_come_in_order() {
   grep -qxF '**Full Changelog**: https://github.com/o/r/compare/v1.0.0...v1.1.0' <<<"$notes" || fail "no changelog link"
   if grep -n -i -e bruno -e ' -- ' <<<"$notes"; then fail "notes break the user text rules"; fi
   if LC_ALL=C grep -n '[^ -~]' <<<"$notes"; then fail "notes hold non-ASCII text"; fi
+}
+
+test_release_notes_skip_a_rules_crate_tag() {
+  local notes
+  notes=$(render_notes) || { fail "release_notes failed"; return 0; }
+  grep -qxF '**Full Changelog**: https://github.com/o/r/compare/v1.0.0...v1.1.0' <<<"$notes" || fail "a rules tag became the base"
+  [[ $(sed -n 1p <<<"$notes") == "This release adds 1 feature and fixes 1 bug." ]] || fail "intro: $(sed -n 1p <<<"$notes")"
 }
 
 test_release_notes_link_every_download() {

@@ -12,6 +12,7 @@ mod package_linux_script;
 mod packager_config;
 mod packager_metadata;
 mod release_notes;
+mod rules_crate;
 mod script_suites;
 mod update_manifest;
 mod windows_check;
