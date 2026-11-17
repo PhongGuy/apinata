@@ -542,23 +542,39 @@ impl GraphqlSection {
     }
 
     // One editor taking an even share of the pane's height, wrapped for placeholder hovers.
-    fn editor(&self, id: &'static str, label: &'static str, state: &Entity<EditorState>) -> Div {
+    // A note under it shares the editor's floor, so a short pane shrinks the editor instead
+    // of pushing the note and the next editor below the section.
+    fn editor(
+        &self,
+        id: &'static str,
+        label: &'static str,
+        state: &Entity<EditorState>,
+        note: Option<impl IntoElement>,
+    ) -> Div {
         v_flex().flex_1().gap_1().child(label).child(
-            div()
-                .id(id)
-                .test_support()
+            v_flex()
                 .w_full()
                 .flex_1()
                 .min_h(style::EDITOR_MIN_HEIGHT)
+                .gap_2()
                 .child(
-                    VarField::editor(
-                        SharedString::from(format!("{id}-vars")),
-                        state,
-                        crate::ui::ringed_editor(Editor::new(state).h_full(), state),
-                        self.vars.clone(),
-                    )
-                    .size_full(),
-                ),
+                    div()
+                        .id(id)
+                        .test_support()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .child(
+                            VarField::editor(
+                                SharedString::from(format!("{id}-vars")),
+                                state,
+                                crate::ui::ringed_editor(Editor::new(state).h_full(), state),
+                                self.vars.clone(),
+                            )
+                            .size_full(),
+                        ),
+                )
+                .children(note),
         )
     }
 }
@@ -580,14 +596,18 @@ impl Render for GraphqlSection {
             .child(
                 // Accepting a completion lets Enter bubble on, and an unhandled Enter is then
                 // typed as a newline; stopping it at each wrapper ends the key at the accepted item.
-                self.editor("graphql-query", "Query", &self.query)
+                self.editor("graphql-query", "Query", &self.query, beautify_error)
                     .key_context(GRAPHQL_QUERY_CONTEXT)
                     .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             )
-            .children(beautify_error)
             .child(
-                self.editor("graphql-variables", "Variables", &self.variables)
-                    .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
+                self.editor(
+                    "graphql-variables",
+                    "Variables",
+                    &self.variables,
+                    None::<Div>,
+                )
+                .on_action(|_: &Enter, _, cx| cx.stop_propagation()),
             );
         // Each panel carries its own id, so the wrapper only sizes it.
         let panel: Option<AnyView> = match self.side {
