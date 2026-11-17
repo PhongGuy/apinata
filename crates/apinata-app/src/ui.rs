@@ -1903,7 +1903,7 @@ struct RevealKey {
 
 impl Reveal {
     /// A reveal that also, once the strip holds still after a check, scrolls a tab cut by the
-    /// strip's left edge whole or wholly out of view, so no sliver of it shows there.
+    /// strip's left edge whole, or wholly out of view when whole would cut the chosen item.
     pub fn whole_at_left() -> Reveal {
         Reveal {
             snap_left: true,
@@ -2072,9 +2072,10 @@ impl Reveal {
 }
 
 // The offset that leaves no tab cut by the strip's left edge while item `chosen` stays clear
-// of the fades: the cut tab scrolled wholly out of view, else scrolled back whole. None when
-// no tab is cut there or neither move keeps the chosen item whole. The first `items` children
-// are the tabs.
+// of the fades: the last tab starting past that edge, cut or scrolled out by a click's peek,
+// brought back whole, else a cut one hidden wholly. Bringing it back first means the strip
+// never parks a blank gap under its left fade. None when no tab starts past the edge or no
+// move keeps the chosen item whole. The first `items` children are the tabs.
 fn left_edge_snap(
     scroll: &ScrollHandle,
     chosen: usize,
@@ -2087,10 +2088,11 @@ fn left_edge_snap(
         .map_while(|ix| scroll.bounds_for_item(ix))
         .collect();
     let (first, last) = (items.first()?, items.last()?);
-    let (cut_ix, cut) = items.iter().enumerate().find(|(_, b)| {
-        b.left() + x < view.left() - px(1.) && b.right() + x > view.left() + px(1.)
-    })?;
-    if cut_ix == chosen {
+    let (edge_ix, edge) = items
+        .iter()
+        .enumerate()
+        .rfind(|(_, b)| b.left() + x < view.left() - px(1.))?;
+    if edge_ix >= chosen {
         return None;
     }
     // The chosen item keeps clear only of the fades drawn at that offset: a fade shows on a
@@ -2109,13 +2111,14 @@ fn left_edge_snap(
         };
         left >= view.left() + room_left - px(1.) && right <= view.right() - room_right + px(1.)
     };
-    let hide = view.left() - cut.right();
-    let show = view.left() - cut.left();
-    [hide, show]
-        .into_iter()
+    let cut = edge.right() + x > view.left() + px(1.);
+    let show = view.left() - edge.left();
+    let hide = cut.then(|| view.left() - edge.right());
+    std::iter::once(show)
+        .chain(hide)
         .map(|at| at.clamp(-max, px(0.)))
         .find(|at| {
-            let (left, right) = (cut.left() + *at, cut.right() + *at);
+            let (left, right) = (edge.left() + *at, edge.right() + *at);
             let whole_or_gone = right <= view.left() + px(1.) || left >= view.left() - px(1.);
             whole_or_gone && keeps_chosen(*at)
         })

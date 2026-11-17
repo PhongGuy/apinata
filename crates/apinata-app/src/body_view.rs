@@ -98,6 +98,8 @@ pub const OPEN_PAGE_TIP: &str = "Opens an inert copy in your browser: scripts, n
 
 /// Why a kept body's eye cannot reveal anything: secret values are never saved.
 pub const SCRUBBED_TIP: &str = "Secret values are not saved, so they cannot be shown.";
+/// The note a body over the editor's limits shows in its bar.
+pub const LARGE_BODY_NOTE: &str = "Large body: shown as plain text, folding and editing are off";
 
 /// How long typing in the filter, or a rows-mode find query, must pause before it runs.
 pub const SETTLE: Duration = Duration::from_millis(250);
@@ -3314,6 +3316,20 @@ impl Render for BodyView {
             .justify_end()
             .gap(style::SPACE_2);
         let filterable = matches!(self.kind, Some(BodyKind::Json | BodyKind::Xml));
+        // A body too large for the editor has no fold arrows and no View/Edit switch, so a
+        // muted note at the bar's start says why; a wide line's rows return to the editor.
+        if self.in_rows() && !self.editor_backed {
+            bar = bar.child(
+                div()
+                    .id("body-large-note")
+                    .test_support()
+                    .aria_label(LARGE_BODY_NOTE)
+                    .mr_auto()
+                    .text_size(style::TEXT_SMALL)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(LARGE_BODY_NOTE),
+            );
+        }
         // One eye for the whole body, when redaction hid something in it.
         if self.maskable() {
             let on = self.reveal;

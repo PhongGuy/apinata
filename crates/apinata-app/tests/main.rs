@@ -368,6 +368,7 @@ mod menu_focus;
 mod menu_hints;
 mod mock_toggle;
 mod name_hints;
+mod narrow_body_strips;
 mod narrow_env;
 mod network_cert_focus;
 mod network_certificates;
