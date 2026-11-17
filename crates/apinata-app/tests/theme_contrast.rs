@@ -98,12 +98,12 @@ fn text_pairs(mode: ThemeMode, t: &Value) -> Vec<(String, String, String)> {
             );
         }
     }
-    // Input selection over the editable and the locked field fill.
-    for field in ["secondary.background", "muted.background"] {
+    // Input selection over every field fill as drawn.
+    for (field, fill) in field_fills(t) {
         add(
             format!("foreground on selection over {field}"),
             col(t, "foreground"),
-            selection_over(t, field),
+            selection_over_hex(t, &fill),
         );
     }
     for (name, fill) in &fills[..3] {
@@ -159,8 +159,8 @@ fn every_text_pair_reaches_aa() {
         let pairs = text_pairs(mode, &t);
         assert_eq!(
             pairs.len(),
-            41,
-            "the 40 listed pairs, less muted on the selection, plus 2 field selections"
+            43,
+            "the 40 listed pairs, less muted on the selection, plus 4 field selections"
         );
         for (label, a, b) in pairs {
             let r = ratio(&a, &b);
@@ -207,7 +207,7 @@ fn the_focus_ring_reaches_three_to_one() {
 /// The kit's keyboard focus band alpha (gpui-component 0.9.0 `FOCUS_RING_OPACITY`, styled.rs).
 const KIT_FOCUS_BAND_ALPHA: f64 = 0.5;
 
-/// Every opaque surface a focus ring can sit on; the editable input fill is `secondary.background`.
+/// Every opaque surface a focus ring can sit on; the field fills are checked as drawn elsewhere.
 const RING_SURFACES: [&str; 11] = [
     "background",
     "popover.background",
@@ -367,8 +367,33 @@ fn blend(top: &str, under: &str, a: f64) -> String {
     format!("#{mixed}")
 }
 
+/// Each text field fill as drawn, labelled: the editable tint (`input.border` at
+/// `FIELD_FILL_ALPHA`) and the disabled field's bare surface, over every surface a field sits
+/// on. Panes and dialogs are `background` and the sidebar its own; no field sits on a popover.
+fn field_fills(t: &Value) -> Vec<(String, String)> {
+    let alpha = f64::from(apinata_app::ui::FIELD_FILL_ALPHA);
+    ["background", "sidebar.background"]
+        .into_iter()
+        .flat_map(|surface| {
+            let under = col(t, surface);
+            [
+                (
+                    format!("editable field on {surface}"),
+                    blend(&col(t, "input.border"), &under, alpha),
+                ),
+                (format!("disabled field on {surface}"), under),
+            ]
+        })
+        .collect()
+}
+
 /// `selection.background` as the kit draws it over the `field` fill: alpha capped at 0.3.
 fn selection_over(t: &Value, field: &str) -> String {
+    selection_over_hex(t, &col(t, field))
+}
+
+/// `selection.background` as the kit draws it over the opaque `fill`: alpha capped at 0.3.
+fn selection_over_hex(t: &Value, fill: &str) -> String {
     let sel = col(t, "selection.background");
     let alpha = if sel.len() == 9 {
         u8::from_str_radix(&sel[7..9], 16).unwrap()
@@ -376,7 +401,7 @@ fn selection_over(t: &Value, field: &str) -> String {
         255
     };
     let alpha = alpha.min((0.3_f64 * 255.0).round() as u8);
-    over(&format!("{}{alpha:02X}", &sel[..7]), &col(t, field))
+    over(&format!("{}{alpha:02X}", &sel[..7]), fill)
 }
 
 /// The input selection as drawn: the kit caps its alpha at 0.3, so the highlight is that
@@ -395,9 +420,8 @@ fn the_input_selection_is_visible_on_both_field_fills() {
             (_, ThemeMode::Dark) => 2.6,
             _ => 2.0,
         };
-        for field in ["secondary.background", "muted.background", "background"] {
-            let fill = col(&t, field);
-            let drawn = selection_over(&t, field);
+        for (field, fill) in field_fills(&t) {
+            let drawn = selection_over_hex(&t, &fill);
             let edge = ratio(&drawn, &fill);
             let text = ratio(&col(&t, "foreground"), &drawn);
             if edge < edge_floor {
@@ -418,7 +442,11 @@ fn variable_tints_keep_text_readable_and_stand_out() {
     let mut fails = Vec::new();
     for (mode, t) in themes() {
         let h = &t["highlight"];
-        let field = col(&t, "secondary.background");
+        let fields: Vec<String> = field_fills(&t)
+            .into_iter()
+            .filter(|(label, _)| label.starts_with("editable"))
+            .map(|(_, fill)| fill)
+            .collect();
         let editor = h["editor.background"].as_str().unwrap().to_string();
         let code_texts = [
             h["editor.foreground"].as_str().unwrap().to_string(),
@@ -433,16 +461,18 @@ fn variable_tints_keep_text_readable_and_stand_out() {
         distinct.dedup();
         assert_eq!(distinct.len(), 4, "{} tints differ", t["name"]);
         for tint in tints {
-            // A single-line field paints the tint over its text.
-            let fill = over(tint, &field);
-            let text = over(tint, &col(&t, "foreground"));
             let mut check = |label: &str, r: f64, min: f64| {
                 if r < min {
                     fails.push(format!("{} {tint} {label} = {r:.2}", t["name"]));
                 }
             };
-            check("field text", ratio(&text, &fill), floor(&t));
-            check("field fill", ratio(&fill, &field), 1.2);
+            // A single-line field paints the tint over its text.
+            let text = over(tint, &col(&t, "foreground"));
+            for field in &fields {
+                let fill = over(tint, field);
+                check("field text", ratio(&text, &fill), floor(&t));
+                check("field fill", ratio(&fill, field), 1.2);
+            }
             // The body editor paints it behind its text.
             let fill = over(tint, &editor);
             for c in &code_texts {
@@ -683,7 +713,7 @@ fn both_sets_are_checked_and_high_contrast_foreground_reaches_seven() {
 }
 
 /// Placeholders and disabled fields as the kit paints them: a placeholder is `muted.foreground`
-/// as is, a disabled table cell is `muted.foreground` at the kit's alpha over `muted.background`.
+/// as is, a disabled table cell is `muted.foreground` at the kit's alpha over the field fill.
 /// The high-contrast themes keep both readable and apart from entered text.
 #[test]
 fn high_contrast_placeholders_and_disabled_text_stay_readable() {
@@ -700,8 +730,8 @@ fn high_contrast_placeholders_and_disabled_text_stay_readable() {
             continue;
         }
         let muted = col(&t, "muted.foreground");
-        for fill in ["background", "secondary.background", "muted.background"] {
-            let r = ratio(&muted, &col(&t, fill));
+        for (fill, hex) in field_fills(&t) {
+            let r = ratio(&muted, &hex);
             if r < 7.0 {
                 fails.push(format!("{name}: placeholder on {fill} = {r:.2}"));
             }
@@ -710,10 +740,12 @@ fn high_contrast_placeholders_and_disabled_text_stay_readable() {
             fails.push(format!("{name}: placeholder matches entered text"));
         }
         let alpha = format!("{:02X}", (disabled_text_alpha(name) * 255.0).round() as u8);
-        let dimmed = over(&format!("{muted}{alpha}"), &col(&t, "muted.background"));
-        let r = ratio(&dimmed, &col(&t, "muted.background"));
-        if r < 4.5 {
-            fails.push(format!("{name}: disabled text {dimmed} on muted = {r:.2}"));
+        for (fill, hex) in field_fills(&t) {
+            let dimmed = over(&format!("{muted}{alpha}"), &hex);
+            let r = ratio(&dimmed, &hex);
+            if r < 4.5 {
+                fails.push(format!("{name}: disabled text {dimmed} on {fill} = {r:.2}"));
+            }
         }
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
@@ -880,8 +912,8 @@ fn shadowed_variable_rows_reach_aa_in_high_contrast(cx: &mut gpui_kit::TestAppCo
 }
 
 /// An off row of a key-value table draws its cells in `muted.foreground` (`kv_table`), on the
-/// raised field fill, or on the muted fill when the table is locked. Both must clear 4.5:1 in
-/// every theme, high contrast included.
+/// editable field fill, or on the bare surface when the table is locked. Both must clear 4.5:1
+/// in every theme, high contrast included.
 #[test]
 fn off_table_rows_reach_aa_on_both_field_fills() {
     let mut low = Vec::new();
@@ -889,8 +921,8 @@ fn off_table_rows_reach_aa_on_both_field_fills() {
     for (_, t) in themes() {
         seen += 1;
         let name = t["name"].as_str().unwrap();
-        for fill in ["secondary.background", "muted.background"] {
-            let r = ratio(&col(&t, "muted.foreground"), &col(&t, fill));
+        for (fill, hex) in field_fills(&t) {
+            let r = ratio(&col(&t, "muted.foreground"), &hex);
             if r < 4.5 {
                 low.push(format!("{name}: off row on {fill} = {r:.2}"));
             }
@@ -1683,4 +1715,58 @@ fn disabled_menu_items_checkboxes_and_lock_toggles_reach_aa(cx: &mut gpui_kit::T
         });
     }
     assert!(low.is_empty(), "{low:#?}");
+}
+
+/// Every text input draws one style in all four themes: an `input` edge at 3:1 on the surface
+/// behind it, and a fill that differs from that surface but only subtly. The disabled field
+/// stays apart from the editable one, and text, placeholder, caret, the keyboard focus ring and
+/// the invalid ring keep their floors on the fill as drawn. A pointer focus draws the `input`
+/// edge itself. Fields sit on panes, dialogs and the sidebar, never on a popover.
+#[gpui_kit::test]
+fn inputs_draw_one_bordered_and_filled_style_in_every_theme(cx: &mut gpui_kit::TestAppContext) {
+    use apinata_app::theme::{DARK, LIGHT};
+    use apinata_app::ui::field_fill;
+    use gpui_kit::component::ActiveTheme as _;
+    let mut bad = Vec::new();
+    for name in [LIGHT, DARK, HC_LIGHT, HC_DARK] {
+        crate::support::use_theme(cx, name);
+        cx.update(|cx| {
+            let t = cx.theme();
+            let text_floor = if [HC_LIGHT, HC_DARK].contains(&name) {
+                7.0
+            } else {
+                4.5
+            };
+            let (editable, disabled) = (field_fill(false, cx), field_fill(true, cx));
+            let ring = apinata_app::focus_mode::accent_ring(t);
+            for (surface, under) in [("background", t.background), ("sidebar", t.sidebar)] {
+                let (fill, off) = (under.blend(editable), under.blend(disabled));
+                let mut check = |what: &str, r: f64, ok: bool| {
+                    println!("{name} on {surface}: {what} {r:.3}");
+                    if !ok {
+                        bad.push(format!("{name} on {surface}: {what} = {r:.3}"));
+                    }
+                };
+                let r = hsla_ratio(t.input, under);
+                check("edge vs surface", r, r >= 3.0);
+                let r = hsla_ratio(fill, under);
+                check("fill vs surface", r, (1.05..=1.25).contains(&r));
+                let r = hsla_ratio(fill, off);
+                check("editable vs disabled fill", r, r >= 1.05);
+                let r = hsla_ratio(t.foreground, fill);
+                check("text on fill", r, r >= text_floor);
+                let r = hsla_ratio(t.muted_foreground, fill);
+                check("placeholder on fill", r, r >= text_floor);
+                let r = hsla_ratio(t.caret, fill);
+                check("caret on fill", r, r >= 3.0);
+                let r = hsla_ratio(ring, fill);
+                check("focus ring on fill", r, r >= 3.0);
+                let r = hsla_ratio(t.danger, fill);
+                check("invalid ring on fill", r, r >= 3.0);
+                let r = hsla_ratio(t.muted_foreground, off);
+                check("placeholder on disabled fill", r, r >= text_floor);
+            }
+        });
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
 }

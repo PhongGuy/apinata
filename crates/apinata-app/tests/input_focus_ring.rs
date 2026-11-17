@@ -29,7 +29,8 @@ fn the_ring_token_is_three_to_one_on_the_field_and_the_page(cx: &mut TestAppCont
         use_theme(cx, name);
         let (ring, fill, page) = cx.update(|cx| {
             let t = cx.theme();
-            (ring_token(t), t.secondary, t.background)
+            let field = t.background.blend(apinata_app::ui::field_fill(false, cx));
+            (ring_token(t), field, t.background)
         });
         assert!(contrast(ring, fill) >= 3.0, "{name}: ring on field fill");
         assert!(contrast(ring, page) >= 3.0, "{name}: ring on page");
@@ -77,7 +78,8 @@ fn a_focused_input_draws_the_ring_by_pointer_and_by_key(cx: &mut TestAppContext)
             frame(cx, s.win);
             let (ring, fill, page) = cx.update(|cx| {
                 let t = cx.theme();
-                (ring_token(t), t.secondary, t.background)
+                let field = t.background.blend(apinata_app::ui::field_fill(false, cx));
+                (ring_token(t), field, t.background)
             });
             let seen = edges(cx, &s);
             assert!(

@@ -378,15 +378,16 @@ fn segments_with_their_own_ids_keep_the_arrow_keys(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn field_fills_are_the_raised_fill_and_disabled_differs(cx: &mut TestAppContext) {
+fn field_fills_tint_the_surface_with_the_edge_and_disabled_differs(cx: &mut TestAppContext) {
     use gpui_kit::component::ThemeMode;
     support::init(cx);
     for mode in [ThemeMode::Dark, ThemeMode::Light] {
         cx.update(|cx| apinata_app::theme::set_mode(mode, None, cx));
         cx.update(|cx| {
             let t = cx.theme();
-            assert_eq!(field_fill(false, cx), t.secondary, "{mode:?}");
-            assert_eq!(field_fill(true, cx), t.muted, "{mode:?}");
+            let tint = t.input.opacity(apinata_app::ui::FIELD_FILL_ALPHA);
+            assert_eq!(field_fill(false, cx), tint, "{mode:?}");
+            assert_eq!(field_fill(true, cx), t.transparent, "{mode:?}");
             assert_ne!(field_fill(true, cx), field_fill(false, cx), "{mode:?}");
         });
     }
