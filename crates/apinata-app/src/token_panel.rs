@@ -435,7 +435,9 @@ impl Render for TokenPanel {
                 .aria_label(text)
                 .text_color(cx.theme().danger)
                 .when_some(detail, |d, detail| {
-                    d.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+                    d.tooltip(ui::tooltip(move |window, cx| {
+                        Tooltip::new(detail.clone()).build(window, cx)
+                    }))
                 })
         });
         let note = self.action_note.map(|text| {

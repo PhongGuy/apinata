@@ -3228,7 +3228,9 @@ fn entry_items(
                         .id(label)
                         .test_support()
                         .aria_label(format!("{label} ({reason})"))
-                        .tooltip(move |window, cx| Tooltip::new(reason).build(window, cx))
+                        .tooltip(ui::tooltip(move |window, cx| {
+                            Tooltip::new(reason).build(window, cx)
+                        }))
                         .child(label)
                 })
                 .disabled(true),

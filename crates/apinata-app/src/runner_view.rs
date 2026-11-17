@@ -730,9 +730,9 @@ fn hinted_label(
         .aria_label(text)
         .text_color(cx.theme().muted_foreground)
         .child(text)
-        .tooltip(move |window, cx| {
+        .tooltip(ui::tooltip(move |window, cx| {
             gpui_kit::component::tooltip::Tooltip::new(hint).build(window, cx)
-        })
+        }))
 }
 
 // One group of options; a narrow pane wraps it a whole option at a time.
