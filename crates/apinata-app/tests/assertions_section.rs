@@ -442,7 +442,10 @@ fn the_assertion_remove_shows_on_hover_or_focus(cx: &mut TestAppContext) {
     hover_on(cx, win, "as-head");
     assert!(action_shown(cx, win, 0));
     assert!(shown_at(cx, win, ("as-expr-edge", 0usize)));
-    assert!(shown_at(cx, win, ("as-value-edge", 0usize)), "edges rest visible");
+    assert!(
+        shown_at(cx, win, ("as-value-edge", 0usize)),
+        "edges rest visible"
+    );
 }
 
 #[gpui_kit::test]
