@@ -1,4 +1,4 @@
-//! The YAML pre-pass, now in apinata-format; re-exported so core's call sites keep their paths.
+//! The YAML pre-pass from apinata-format, re-exported so core's call sites keep their paths.
 
 pub(crate) use apinata_format::{Refusal, prepass};
 
