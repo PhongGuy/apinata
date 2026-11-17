@@ -50,7 +50,7 @@ fn a_secret_refusal_lists_the_findings_and_retry_pushes_the_fix(cx: &mut TestApp
     wait_for(cx, "the refusal", |cx| {
         matches!(
             state(cx, &s),
-            Some(TeamState::Blocked(Block::Secret { .. }))
+            Some(TeamState::Blocked(Block::Refused { .. }))
         )
     });
     let view = open(cx, &s);

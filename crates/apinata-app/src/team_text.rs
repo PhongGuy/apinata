@@ -85,8 +85,8 @@ pub fn server_warning(server: &ServerUrl) -> Option<&'static str> {
     )
 }
 
-/// One secret the server refused, as `{path}: {rule} ({code}) on {git_ref}`, naming the code
-/// only when it differs from the rule.
+/// One finding the server refused, as `{path}: {rule} ({code}: {detail}) on {git_ref}`. The code
+/// shows only when it differs from the rule, and the parentheses only when they hold something.
 ///
 /// The server reports a finding outside any file (a commit or tag message, or a
 /// tag's target) with the path `/`, which no repository file can have. A word joiner follows
@@ -98,11 +98,13 @@ pub fn finding_line(f: &Finding) -> String {
         &f.path
     };
     let git_ref = f.git_ref.replace('/', "/\u{2060}");
-    if f.code == f.rule {
-        format!("{place}: {} on {git_ref}", f.rule)
-    } else {
-        format!("{place}: {} ({}) on {git_ref}", f.rule, f.code)
-    }
+    let code = (f.code != f.rule).then_some(f.code.as_str());
+    let note = match (code, f.detail.as_deref()) {
+        (Some(code), Some(detail)) => format!(" ({code}: {detail})"),
+        (Some(text), None) | (None, Some(text)) => format!(" ({text})"),
+        (None, None) => String::new(),
+    };
+    format!("{place}: {}{note} on {git_ref}", f.rule)
 }
 
 /// What the sync dialog says about `status` with `clashes` unsettled, one line each. Offline,
@@ -156,13 +158,26 @@ pub fn problem_lines(status: &TeamStatus, clashes: usize) -> Vec<String> {
 
 fn block_lines(block: &Block, lines: &mut Vec<String>) {
     match block {
-        Block::Secret { findings, more } => {
-            lines.push("The server refused the push because it found secrets:".into());
-            lines.extend(findings.iter().map(finding_line));
+        Block::Refused { findings, more } => {
+            // Secrets keep their own heading; any other code, known or not, is a plain refusal.
+            let (secrets, others): (Vec<&Finding>, Vec<&Finding>) =
+                findings.iter().partition(|f| f.is_secret());
+            if !secrets.is_empty() {
+                lines.push("The server refused the push because it found secrets:".into());
+                lines.extend(secrets.into_iter().map(finding_line));
+            }
+            if !others.is_empty() || findings.is_empty() {
+                lines.push("The server refused the push:".into());
+                lines.extend(others.into_iter().map(finding_line));
+            }
             if *more > 0 {
                 lines.push(format!("and {more} more"));
             }
-            lines.push("Remove them, save, then Retry.".into());
+            lines.push(if all_secrets(findings) {
+                "Remove them, save, then Retry.".into()
+            } else {
+                "Fix them, save, then Retry.".into()
+            });
         }
         Block::SignedOut => lines.push(
             "You are signed out of this team server. Changes are committed here until you sign in again."
@@ -179,6 +194,16 @@ fn block_lines(block: &Block, lines: &mut Vec<String>) {
         }
         _ => lines.push("Sync stopped.".into()),
     }
+}
+
+/// Whether any listed finding is a secret, which the short labels name ahead of other refusals.
+fn any_secret(findings: &[Finding]) -> bool {
+    findings.iter().any(Finding::is_secret)
+}
+
+/// Whether there are findings and every one is a secret, so removing them is the whole fix.
+fn all_secrets(findings: &[Finding]) -> bool {
+    !findings.is_empty() && findings.iter().all(Finding::is_secret)
 }
 
 /// How a team collection's sync stands, for the status bar's tone.
@@ -200,7 +225,8 @@ pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (Syn
     let problem = |text: &str| (SyncKind::Problem, format!("problem: {text}"));
     match &status.state {
         TeamState::Blocked(block) => problem(match block {
-            Block::Secret { .. } => "secrets found",
+            Block::Refused { findings, .. } if any_secret(findings) => "secrets found",
+            Block::Refused { .. } => "push refused",
             Block::SignedOut => "signed out",
             Block::Gone => "workspace gone",
             Block::Hook { .. } => "commit hook refused",
@@ -226,7 +252,8 @@ pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (Syn
 /// The toast that announces `block` on the collection called `name`.
 pub fn problem_toast(name: &str, block: &Block) -> String {
     let reason = match block {
-        Block::Secret { .. } => "the server found secrets",
+        Block::Refused { findings, .. } if any_secret(findings) => "the server found secrets",
+        Block::Refused { .. } => "the server refused the push",
         Block::SignedOut => "you are signed out",
         Block::Gone => "the workspace is gone from the server",
         Block::Hook { .. } => "a commit hook refused the commit",

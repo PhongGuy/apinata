@@ -7,7 +7,9 @@ use crate::git_sync::local_commit;
 
 use std::fs;
 
-use apinata_core::team::{Identity, SyncFailure, TeamAuth, classify, redact_token, team_options};
+use apinata_core::team::{
+    Finding, Identity, SyncFailure, TeamAuth, classify, redact_token, team_options,
+};
 use apinata_core::{CancelFlag, SyncError, commit_all, push};
 
 pub const TOKEN: &str = "plk_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -89,7 +91,7 @@ fn potluck_findings_are_parsed_from_the_remote_lines() {
                   remote: potluck-reject secret_value refs/heads/main environments/dev.yml secret_value        \n\
                   remote: potluck-reject-more 3        \n\
                   error: failed to push some refs to 'http://127.0.0.1:8080/git/t/w.git'";
-    let SyncFailure::Secret { findings, more } =
+    let SyncFailure::Refused { findings, more } =
         classify(&rejected("pre-receive hook declined", stderr))
     else {
         panic!("a secret refusal");
@@ -128,7 +130,7 @@ fn refused(lines: &[&str]) -> Vec<(String, String)> {
         .collect::<String>()
         + "error: failed to push some refs";
     match classify(&rejected("pre-receive hook declined", &stderr)) {
-        SyncFailure::Secret { findings, .. } => {
+        SyncFailure::Refused { findings, .. } => {
             findings.into_iter().map(|f| (f.git_ref, f.path)).collect()
         }
         SyncFailure::Other { .. } => Vec::new(),
@@ -174,6 +176,81 @@ fn a_line_with_a_malformed_escape_is_ignored() {
         "potluck-reject c r ok rule",
     ]);
     assert_eq!(got, [("r".to_owned(), "ok".to_owned())]);
+}
+
+/// The (rule, detail) pairs the findings of a refusal carry, for the lines given.
+fn details(lines: &[&str]) -> Vec<(String, Option<String>)> {
+    let stderr = lines
+        .iter()
+        .map(|l| format!("remote: {l}        \n"))
+        .collect::<String>();
+    match classify(&rejected("pre-receive hook declined", &stderr)) {
+        SyncFailure::Refused { findings, .. } => {
+            findings.into_iter().map(|f| (f.rule, f.detail)).collect()
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_detail_line_attaches_decoded_to_the_finding_before_it() {
+    let got = details(&[
+        "potluck-reject secret_value refs/heads/main environments/prod.yml secret_value",
+        "potluck-reject-detail token%20and%20api%2Ekey",
+        "potluck-reject format_unsupported refs/heads/main opencollection.yml format",
+        "potluck-reject-detail format%3A%20v9",
+        "potluck-reject safety_relaxation refs/heads/main a.yml scripts",
+    ]);
+    assert_eq!(
+        got,
+        [
+            ("secret_value".into(), Some("token and api.key".into())),
+            ("format".into(), Some("format: v9".into())),
+            ("scripts".into(), None),
+        ]
+    );
+}
+
+#[test]
+fn an_orphan_detail_line_is_ignored() {
+    let got = details(&[
+        "potluck-reject-detail before%20any",
+        "potluck-reject c r a.yml one",
+        "potluck-reject-detail first",
+        "potluck-reject-detail second",
+        "potluck-reject-more 2",
+        "potluck-reject-detail after%20more",
+    ]);
+    assert_eq!(got, [("one".into(), Some("first".into()))]);
+}
+
+#[test]
+fn a_detail_after_a_dropped_finding_does_not_reach_the_one_before() {
+    let got = details(&[
+        "potluck-reject c r a.yml one",
+        "potluck-reject c r bad%zz two",
+        "potluck-reject-detail for%20two",
+    ]);
+    assert_eq!(got, [("one".into(), None)]);
+}
+
+#[test]
+fn a_malformed_detail_escape_drops_the_detail_and_keeps_the_finding() {
+    let got = details(&[
+        "potluck-reject c r a.yml one",
+        "potluck-reject-detail bad%zz",
+    ]);
+    assert_eq!(got, [("one".into(), None)]);
+}
+
+#[test]
+fn only_codes_starting_with_secret_are_secrets() {
+    let finding = |code| Finding::new(code, "r", "p", "rule");
+    assert!(finding("secret_value").is_secret());
+    assert!(finding("secret_pattern").is_secret());
+    assert!(!finding("format_unsupported").is_secret());
+    assert!(!finding("safety_relaxation").is_secret());
+    assert!(!finding("secretive").is_secret());
 }
 
 #[test]

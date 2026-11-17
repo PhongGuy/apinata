@@ -53,8 +53,8 @@ impl<'de> Deserialize<'de> for Role {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Block {
-    /// The server's hook found secrets in the pushed commits.
-    Secret {
+    /// The server's hook refused the pushed commits, for secrets or other reasons.
+    Refused {
         /// The findings the hook listed.
         findings: Vec<Finding>,
         /// Findings beyond the listed ones.
@@ -316,7 +316,7 @@ impl TeamMachine {
                 actions
             }
             E::Retry => match self.state {
-                S::Blocked(Block::Secret { .. }) if writes => {
+                S::Blocked(Block::Refused { .. }) if writes => {
                     self.state = S::Squashing;
                     vec![A::Squash]
                 }
@@ -417,8 +417,8 @@ impl TeamMachine {
                 self.stop(TeamState::Blocked(Block::Gone))
             }
             SyncFailure::Offline { .. } => self.stop(TeamState::Offline),
-            SyncFailure::Secret { findings, more } => {
-                self.stop(TeamState::Blocked(Block::Secret { findings, more }))
+            SyncFailure::Refused { findings, more } => {
+                self.stop(TeamState::Blocked(Block::Refused { findings, more }))
             }
             SyncFailure::Other { message } => {
                 self.stop(TeamState::Blocked(Block::Failed { message }))
@@ -433,7 +433,7 @@ impl TeamMachine {
         match self.state {
             TeamState::Idle
             | TeamState::Committing
-            | TeamState::Blocked(Block::Hook { .. } | Block::Secret { .. })
+            | TeamState::Blocked(Block::Hook { .. } | Block::Refused { .. })
                 if role == Role::Read =>
             {
                 self.settle()
