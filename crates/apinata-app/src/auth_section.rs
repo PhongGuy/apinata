@@ -1115,12 +1115,6 @@ pub fn inherit_text(inherited: &InheritedAuth, collection: &Collection) -> Strin
     format!("Inherits {}.", inherited_words(inherited, collection))
 }
 
-/// The auth an inheriting item ends up using and where it comes from, or `None` when it
-/// inherits No Auth and so sends none.
-pub fn inherited_use(inherited: &InheritedAuth, collection: &Collection) -> Option<String> {
-    (!matches!(inherited.auth(), AuthSpec::None)).then(|| inherited_words(inherited, collection))
-}
-
 // The masked inputs, re-checked every render so a lone reference shows while typed.
 const SECRET_FIELDS: [AuthField; 8] = [
     AuthField::Password,

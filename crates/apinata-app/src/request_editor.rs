@@ -12,7 +12,7 @@ use apinata_core::import::{
 use apinata_core::{
     AuthSpec, BodySpec, CollectionNetwork, EnvVariable, GlobalEnvironments, HeaderSource, ItemPath,
     KeyValue, Param, ParamKind, PostResponseVar, RequestKind, RequestResult, RequestSettings,
-    ScriptPhase, Snippet, VarValue, Variable, VariableSet,
+    ScriptPhase, Snippet, Timeout, VarValue, Variable, VariableSet,
 };
 use gpui_kit::assets::IconName;
 use gpui_kit::component::IndexPath;
@@ -1420,9 +1420,10 @@ impl RequestEditor {
         self.section_mark(section, cx).is_some()
     }
 
-    /// What a marked section's dot says when hovered: Body with a body, Auth when an auth
-    /// other than No Auth applies (its own or the one it inherits), Script with a pre-request
-    /// or post-response script, Tests with a tests script; `None` when unmarked.
+    /// What a marked section's dot says when hovered: Body with a body, Auth with a mode of
+    /// its own other than No Auth, Script with a pre-request or post-response script, Tests
+    /// with a tests script, Docs with docs, Settings with a setting off its default or a tag;
+    /// `None` when unmarked. Inherited and default values never mark a section.
     pub fn section_mark(&self, section: Section, cx: &App) -> Option<SharedString> {
         let view = self.view(cx)?;
         let marked = match section {
@@ -1434,10 +1435,7 @@ impl RequestEditor {
             },
             Section::Auth => {
                 return match &view.auth {
-                    AuthSpec::None => None,
-                    AuthSpec::Inherit => {
-                        (view.inherited_use.as_ref()).map(|words| format!("Uses {words}").into())
-                    }
+                    AuthSpec::None | AuthSpec::Inherit => None,
                     auth => Some(format!("Uses {}", crate::auth_section::auth_label(auth)).into()),
                 };
             }
@@ -1445,11 +1443,15 @@ impl RequestEditor {
                 !view.scripts.pre_request.is_empty() || !view.scripts.post_response.is_empty()
             }
             Section::Tests => !view.scripts.tests.is_empty(),
+            Section::Docs => !view.docs.trim().is_empty(),
+            Section::Settings => custom_settings(&view.settings) || !view.tags.is_empty(),
             _ => false,
         };
         let words = match section {
             Section::Body => "Has a body",
             Section::Tests => "Has tests",
+            Section::Docs => "Has docs",
+            Section::Settings => "Has custom settings",
             _ => "Has a script",
         };
         marked.then(|| words.into())
@@ -3466,7 +3468,7 @@ impl RequestEditor {
     fn section_bar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         // A counted section shows its enabled rows beside the label (nothing for zero);
-        // Body, Auth, Script and Tests instead show a muted dot naming what they hold.
+        // the other sections instead show a muted dot naming what they hold.
         let kind = self.kind(cx);
         let selected = self.section as usize;
         let tabs = Section::ALL.iter().enumerate().map(|(ix, &s)| {
@@ -3783,4 +3785,15 @@ impl RequestEditor {
             ))
             .into_any_element()
     }
+}
+
+// Whether `s` holds a setting off its default. The timeout's `inherit` and `0` and either
+// value of the Authorization toggle are what a new request is written with by one writer or
+// the other, so none of them counts as set.
+fn custom_settings(s: &RequestSettings) -> bool {
+    let d = RequestSettings::new();
+    s.encode_url != d.encode_url
+        || s.follow_redirects != d.follow_redirects
+        || s.max_redirects != d.max_redirects
+        || matches!(s.timeout, Timeout::Millis(_))
 }

@@ -11,7 +11,7 @@ use apinata_core::{
     Variable,
 };
 
-use crate::auth_section::{inherit_text, inherited_use};
+use crate::auth_section::inherit_text;
 use crate::command::{Edit, Notice, Target};
 use crate::network_secrets;
 
@@ -138,8 +138,6 @@ pub struct RequestView {
     pub auth: AuthSpec,
     /// What an inheriting auth inherits and from where, as the Auth section shows it.
     pub inherited_auth: String,
-    /// The auth an inheriting auth ends up using and from where; `None` when it is No Auth.
-    pub inherited_use: Option<String>,
     /// The headers the collection and folders add, with the level that supplies each.
     pub inherited_headers: Vec<crate::inherited_headers_section::InheritedRow>,
     /// The header the request's auth, or the auth it inherits, writes over a same-named one.
@@ -625,7 +623,6 @@ fn request_view(path: &ItemPath, r: &RequestFile, collection: &Collection) -> Re
         auth,
         auth_header,
         inherited_auth: inherit_text(&inherited, collection),
-        inherited_use: inherited_use(&inherited, collection),
         inherited_headers: crate::inherited_headers_section::inherited_rows(collection, path),
         vars: r.vars(),
         post_response_vars: r.post_response_vars(),
