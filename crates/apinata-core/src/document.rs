@@ -1,7 +1,6 @@
 //! An order-preserving YAML document backing a typed file view.
 
 use crate::error::{FileError, SaveError};
-use crate::import::yaml_prepass::{Refusal, prepass};
 use crate::order;
 use crate::yaml::emit::to_bruno_yaml;
 use std::hash::{DefaultHasher, Hasher};
@@ -138,39 +137,7 @@ impl std::fmt::Debug for Document {
     }
 }
 
-/// The most YAML events a collection file may expand to, counting each alias as the node it names.
-const MAX_EXPANDED_EVENTS: u64 = 2_000_000;
-
-/// Refuse a YAML text whose alias expansion would exhaust memory or time, before `yaml_serde`
-/// builds anything from it. The pre-pass can reject text `yaml_serde` accepts, so past such an
-/// error the aliases are uncounted; text with both an anchor and an alias marker is then refused
-/// rather than trusted. Any other syntax or nesting error passes through to `yaml_serde`.
-pub(crate) fn bound_expansion(text: &str) -> Result<(), String> {
-    let too_large =
-        || format!("file is too large: more than {MAX_EXPANDED_EVENTS} values once aliases expand");
-    match prepass(text, MAX_EXPANDED_EVENTS) {
-        Err(Refusal::TooManyEvents) => Err(too_large()),
-        Err(Refusal::At { .. }) if text.contains('&') && text.contains('*') => {
-            Err("file has aliases and a syntax the safety check cannot follow".to_owned())
-        }
-        _ => Ok(()),
-    }
-}
-
-/// The 1-based line of the first git conflict marker in `text`, if any. Only consulted
-/// after a parse failure, so marker-like lines inside a block scalar never matter.
-fn conflict_marker_line(text: &str) -> Option<usize> {
-    text.lines()
-        .position(|l| {
-            let l = l.trim_end();
-            l == "<<<<<<<"
-                || l == ">>>>>>>"
-                || l == "======="
-                || l.starts_with("<<<<<<< ")
-                || l.starts_with(">>>>>>> ")
-        })
-        .map(|i| i + 1)
-}
+pub(crate) use apinata_format::bound_expansion;
 
 impl Document {
     /// Read and parse `path`, rejecting anything that is not a tag-free mapping.
@@ -182,28 +149,8 @@ impl Document {
     /// Parse `bytes` as the content of `path`, under the same rules as [`Document::load`].
     pub(crate) fn parse(path: &Path, bytes: Vec<u8>) -> Result<Document, FileError> {
         let loaded_hash = hash_bytes(&bytes);
-        let text = String::from_utf8(bytes)
-            .map_err(|_| FileError::new(path, "file is not valid UTF-8"))?;
-        // yaml_serde reports a BOM as a second document, so drop it first.
-        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-        bound_expansion(text).map_err(|reason| FileError::new(path, reason))?;
-        let value: Value = yaml_serde::from_str(text).map_err(|e| {
-            // A file git left conflicted is better named than described by the parser.
-            match conflict_marker_line(text) {
-                Some(n) => FileError::new(
-                    path,
-                    format!("merge conflict markers at line {n}; resolve them in git"),
-                ),
-                None => FileError::new(path, e.to_string()),
-            }
-        })?;
-        // Tags first, so a tagged root is reported as a tag rather than a non-mapping.
-        if has_tag(&value) {
-            return Err(FileError::new(path, "YAML tags are not supported"));
-        }
-        let Value::Mapping(root) = value else {
-            return Err(FileError::new(path, "the file root must be a mapping"));
-        };
+        let root = apinata_format::read_mapping(&bytes)
+            .map_err(|e| FileError::new(path, e.to_string()))?;
         Ok(Document {
             path: path.to_path_buf(),
             saved: root.clone(),
@@ -869,16 +816,6 @@ pub(crate) fn as_seq(value: &Value) -> Option<u64> {
     })
 }
 
-/// Whether a tagged value appears anywhere under `value`.
-fn has_tag(value: &Value) -> bool {
-    match value {
-        Value::Tagged(_) => true,
-        Value::Sequence(items) => items.iter().any(has_tag),
-        Value::Mapping(map) => map.iter().any(|(k, v)| has_tag(k) || has_tag(v)),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -973,17 +910,6 @@ mod tests {
         let err = Document::load(&path).expect_err("refused");
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
         assert!(err.to_string().contains("too large"), "{err}");
-    }
-
-    #[test]
-    fn bound_expansion_fails_closed_past_a_prepass_error() {
-        // A tab-led quoted continuation is a syntax the pre-pass rejects but yaml_serde loads, so
-        // the bomb after it would go uncounted.
-        let tabbed = "k: \"a\n\tb\"\n";
-        assert!(yaml_serde::from_str::<Value>(tabbed).is_ok());
-        assert!(super::bound_expansion(tabbed).is_ok());
-        let bomb = format!("{tabbed}{}", crate::import::yaml_prepass::hostile_yaml());
-        assert!(super::bound_expansion(&bomb).is_err());
     }
 
     #[test]

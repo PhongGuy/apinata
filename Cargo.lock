@@ -372,6 +372,7 @@ name = "apinata-core"
 version = "0.2.0"
 dependencies = [
  "aes-gcm",
+ "apinata-format",
  "apollo-compiler",
  "apollo-parser",
  "apple-native-keyring-store",
@@ -415,7 +416,6 @@ dependencies = [
  "rsa",
  "rustls",
  "ryu-js",
- "saphyr-parser",
  "scrypt 0.12.0",
  "self-replace",
  "semver",
@@ -445,6 +445,14 @@ dependencies = [
  "wiremock",
  "yaml_serde",
  "zbus-secret-service-keyring-store",
+]
+
+[[package]]
+name = "apinata-format"
+version = "0.1.0"
+dependencies = [
+ "saphyr-parser",
+ "yaml_serde",
 ]
 
 [[package]]

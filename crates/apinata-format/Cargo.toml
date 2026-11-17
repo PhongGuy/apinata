@@ -1,0 +1,21 @@
+[package]
+name = "apinata-format"
+version = "0.1.0"
+description = "Apinata's YAML reader kernel: the acceptance gate shared by the app and the server rules"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# One integration binary: tests/main.rs declares every test file as a module.
+autotests = false
+
+[dependencies]
+yaml_serde.workspace = true
+saphyr-parser.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
+
+[lints]
+workspace = true
