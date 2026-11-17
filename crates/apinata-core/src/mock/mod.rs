@@ -195,6 +195,7 @@ fn summarize(table: &routes::RouteTable) -> Vec<MockRoute> {
             method: r.method.clone(),
             path: format!("/{}", r.segments.join("/")),
             examples: r.entries.len(),
+            names: r.entries.iter().map(|e| e.example.name.clone()).collect(),
         })
         .collect()
 }
@@ -209,6 +210,8 @@ pub struct MockRoute {
     pub path: String,
     /// How many saved examples back the route.
     pub examples: usize,
+    /// The names of those examples, in the order the server tries them.
+    pub names: Vec<String>,
 }
 
 /// One request the server answered.

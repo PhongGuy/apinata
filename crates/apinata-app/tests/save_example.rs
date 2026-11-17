@@ -75,6 +75,20 @@ fn the_form_answers_trimmed_text_and_needs_a_name(cx: &mut TestAppContext) {
         .unwrap();
     frame(cx, win);
     assert!(present(cx, win, "save-example-note"));
+    let mock_line = cx
+        .update_window(win, |_, w, _| {
+            w.try_find("save-example-mock")
+                .and_then(|e| e.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(
+        mock_line.as_deref(),
+        Some(apinata_app::save_example::MOCK_NOTE)
+    );
+    assert_eq!(
+        apinata_app::save_example::MOCK_NOTE,
+        "The mock server answers with saved examples."
+    );
     let answer = form
         .read_with(cx, |f, cx| f.answer(cx))
         .expect("the default name");

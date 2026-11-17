@@ -204,6 +204,7 @@ async fn startup_warnings_and_routes_are_reported() {
     assert_eq!(h.routes().len(), 1);
     assert_eq!(h.routes()[0].path, "/a");
     assert_eq!(h.routes()[0].examples, 2);
+    assert_eq!(h.routes()[0].names, ["ok", "teapot"]);
     assert_eq!(h.warnings().len(), 1);
     h.stop().await;
 }

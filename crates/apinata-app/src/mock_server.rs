@@ -34,6 +34,47 @@ pub fn status(examples: usize) -> String {
     }
 }
 
+/// One route a running mock answers, with the names of the examples behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedRoute {
+    /// The upper-case method.
+    pub method: String,
+    /// The path template, such as `/users/:id`.
+    pub path: String,
+    /// The example names, in the order the server tries them.
+    pub names: Vec<String>,
+}
+
+/// The served list's note on what counts and what a miss gets.
+pub const SERVED_NOTE: &str = "Only saved examples are served. Other calls get 404.";
+
+/// The served list's note on which of several examples answers, as core's pick decides it.
+pub const WINNER_NOTE: &str = "With several examples on a line, a call gets the one with the \
+                               most saved query parameters that all match it, or else the first.";
+
+// The served list stays short enough to read at a glance; the rest is only counted.
+const SERVED_CAP: usize = 8;
+
+/// One line per route, "METHOD path · names", capped at eight with an "and N more" line.
+pub fn served_lines(routes: &[ServedRoute]) -> Vec<String> {
+    let mut lines: Vec<String> = (routes.iter().take(SERVED_CAP))
+        .map(|r| format!("{} {} · {}", r.method, r.path, r.names.join(", ")))
+        .collect();
+    if routes.len() > SERVED_CAP {
+        lines.push(format!("and {} more", routes.len() - SERVED_CAP));
+    }
+    lines
+}
+
+/// The mock command's label in the palette and the collection menu: what choosing it does.
+pub fn command_label(on: bool) -> &'static str {
+    if on {
+        "Stop mock server"
+    } else {
+        "Start mock server"
+    }
+}
+
 /// Where one collection's mock server stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MockState {
@@ -88,6 +129,22 @@ impl MockServers {
     pub fn examples(&self, root: &Path) -> Option<usize> {
         match self.slots.get(root) {
             Some(Slot::On { handle, .. }) => Some(handle.routes().iter().map(|r| r.examples).sum()),
+            _ => None,
+        }
+    }
+
+    /// The routes `root`'s running server answers, with their example names.
+    pub fn served(&self, root: &Path) -> Option<Vec<ServedRoute>> {
+        match self.slots.get(root) {
+            Some(Slot::On { handle, .. }) => Some(
+                (handle.routes().iter())
+                    .map(|r| ServedRoute {
+                        method: r.method.clone(),
+                        path: r.path.clone(),
+                        names: r.names.clone(),
+                    })
+                    .collect(),
+            ),
             _ => None,
         }
     }

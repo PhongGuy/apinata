@@ -2608,6 +2608,7 @@ impl Shell {
     fn mock_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (root, state) = self.current_mock(cx)?;
         let examples = self.workspace.read(cx).mock_examples(&root);
+        let served_root = root.clone();
         use crate::ui::ChooseButton as _;
         let toggle = Button::new("mock-toggle")
             .xsmall()
@@ -2649,14 +2650,7 @@ impl Shell {
                         }),
                     cx,
                 ))
-                .child(
-                    div()
-                        .id("mock-status")
-                        .test_support()
-                        .aria_label(status.clone())
-                        .text_color(cx.theme().muted_foreground)
-                        .child(status),
-                )
+                .child(self.mock_served_popover(&served_root, status, cx))
         });
         Some(
             h_flex()
@@ -2670,6 +2664,54 @@ impl Shell {
                 )
                 .into_any_element(),
         )
+    }
+
+    // The example count opens what the running mock serves: one line per route, then what a
+    // miss gets and which of several examples answers. Read when opened, so it stays current.
+    fn mock_served_popover(&self, root: &Path, status: String, cx: &App) -> impl IntoElement {
+        let (workspace, root) = (self.workspace.clone(), root.to_path_buf());
+        let trigger = Button::new("mock-status")
+            .ghost()
+            .xsmall()
+            .label(status.clone())
+            .accessibility_label(status)
+            .text_color(cx.theme().muted_foreground);
+        let note = |id: &'static str, text: &'static str, cx: &App| {
+            div()
+                .id(id)
+                .test_support()
+                .aria_label(text)
+                .text_color(cx.theme().muted_foreground)
+                .child(text)
+        };
+        Popover::new("mock-served-popover")
+            .anchor(gpui_kit::Anchor::BottomRight)
+            .trigger(trigger)
+            .content(move |_, _, cx| {
+                let routes = workspace.read(cx).mock_served(&root).unwrap_or_default();
+                let lines = crate::mock_server::served_lines(&routes);
+                v_flex()
+                    .id("mock-served")
+                    .gap(style::SPACE_1)
+                    .max_w(style::MOCK_SERVED_WIDTH)
+                    .children(lines.into_iter().enumerate().map(|(ix, line)| {
+                        div()
+                            .id(SharedString::from(format!("mock-served-{ix}")))
+                            .test_support()
+                            .aria_label(line.clone())
+                            .child(line)
+                    }))
+                    .child(note(
+                        "mock-served-note",
+                        crate::mock_server::SERVED_NOTE,
+                        cx,
+                    ))
+                    .child(note(
+                        "mock-served-winner",
+                        crate::mock_server::WINNER_NOTE,
+                        cx,
+                    ))
+            })
     }
 
     // The kit's bar owns drag, double click and the window controls; its close goes through

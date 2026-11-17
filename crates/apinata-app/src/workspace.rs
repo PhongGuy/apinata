@@ -4038,6 +4038,11 @@ impl Workspace {
         self.mocks.examples(&absolute(root))
     }
 
+    /// The routes the running mock server of `root` answers, with their example names.
+    pub fn mock_served(&self, root: &Path) -> Option<Vec<mock_server::ServedRoute>> {
+        self.mocks.served(&absolute(root))
+    }
+
     /// Test-only: how many mock rebuilds have started.
     #[doc(hidden)]
     pub fn mock_rebuilds(&self) -> u64 {

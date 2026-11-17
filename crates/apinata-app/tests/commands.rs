@@ -495,9 +495,14 @@ fn the_palette_and_the_app_menu_come_from_the_registry() {
     let items = palette_items();
     assert_eq!(items.len(), listed.len());
     for (e, c) in items.iter().zip(&listed) {
+        // The mock toggle's palette row names what it will do; with the server off, start.
+        let label = match c.id {
+            "collection.toggle_mock" => "Start mock server",
+            _ => c.label,
+        };
         assert_eq!(
             (e.label, e.group, e.context),
-            (c.label, c.group, c.targets[0].context)
+            (label, c.group, c.targets[0].context)
         );
         assert!(
             e.action.partial_eq(c.targets[0].action.as_ref()),
