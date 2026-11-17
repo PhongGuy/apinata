@@ -1,0 +1,6 @@
+name: one
+---
+variables:
+  - secret: true
+    name: k
+    value: fixture-second-document
