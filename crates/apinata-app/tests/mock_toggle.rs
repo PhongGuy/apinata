@@ -782,8 +782,8 @@ fn the_served_notes_say_what_counts_what_misses_get_and_which_example_wins() {
     );
     assert_eq!(
         WINNER_NOTE,
-        "With several examples on a line, a call gets the one with the most saved query \
-         parameters that all match it, or else the first."
+        "When a request has several examples, a call gets the one with the most saved query \
+         parameters, all of which must match. Otherwise it gets the first."
     );
 }
 

@@ -49,8 +49,9 @@ pub struct ServedRoute {
 pub const SERVED_NOTE: &str = "Only saved examples are served. Other calls get 404.";
 
 /// The served list's note on which of several examples answers, as core's pick decides it.
-pub const WINNER_NOTE: &str = "With several examples on a line, a call gets the one with the \
-                               most saved query parameters that all match it, or else the first.";
+pub const WINNER_NOTE: &str = "When a request has several examples, a call gets the one with \
+                               the most saved query parameters, all of which must match. \
+                               Otherwise it gets the first.";
 
 // The served list stays short enough to read at a glance; the rest is only counted.
 const SERVED_CAP: usize = 8;
