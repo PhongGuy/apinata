@@ -364,7 +364,17 @@ pub struct CollectionEntry {
     // Unique per open in the session, so it tells this entry from a reopened one.
     generation: u64,
     team: Option<Team>,
+    // What the watcher asked for while the team loop was rewriting the tree.
+    held: Option<HeldReload>,
     _observer: Subscription,
+}
+
+/// Watcher requests held back while a team pull rewrites the tree, so a half-merged file never
+/// reaches the snapshot; an empty one still owes a git refresh.
+#[derive(Default)]
+struct HeldReload {
+    paths: BTreeSet<PathBuf>,
+    all: bool,
 }
 
 /// What kind of team clash the editor cannot settle on its own.
@@ -1015,6 +1025,7 @@ impl Workspace {
             git_write: None,
             generation,
             team: None,
+            held: None,
             _observer: observer,
         });
         self.generations += 1;
@@ -2641,6 +2652,9 @@ impl Workspace {
                     break;
                 }
             }
+            // Only a driver that died mid-pull closes this channel while its entry still holds
+            // it (a replaced or closed loop drops this task first), so nothing may stay held.
+            let _ = this.update(cx, |w, cx| w.team_loop_ended(&pump_key, cx));
         });
         let events = events.map(|config| follow_team(&sync, &connected, config, cx));
         entry.team = Some(Team {
@@ -2788,6 +2802,33 @@ impl Workspace {
         }
     }
 
+    // Replays the watcher requests held during a pull against the tree it left.
+    fn release(&mut self, root: &Path, held: HeldReload, cx: &mut Context<Self>) {
+        let changed = held.all || !held.paths.is_empty();
+        if held.all {
+            self.send(root, Command::ReloadAll, cx);
+        } else if !held.paths.is_empty() {
+            self.send(root, Command::Reload(held.paths.into_iter().collect()), cx);
+        }
+        self.refresh_git(root, cx);
+        if changed {
+            self.team_changed(root, cx);
+        }
+    }
+
+    // Releases what a loop that stopped reporting was holding; its stored status stays as is.
+    fn team_loop_ended(&mut self, root: &Path, cx: &mut Context<Self>) {
+        if let Some(held) = self.entry_mut(root).and_then(|e| e.held.take()) {
+            self.release(root, held, cx);
+        }
+    }
+
+    /// Whether watcher reloads of the collection at `root` are being held until its team sync
+    /// loop finishes rewriting the tree.
+    pub fn reloads_held(&self, root: &Path) -> bool {
+        self.entry(root).is_some_and(|e| e.held.is_some())
+    }
+
     // Stores a driver status; a pull that just left new conflicts opens their copies.
     fn on_team_status(&mut self, root: &Path, status: TeamStatus, cx: &mut Context<Self>) {
         let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
@@ -2815,6 +2856,10 @@ impl Workspace {
             _ => false,
         };
         team.status = status;
+        let settled = !rewriting(&team.status.state);
+        if settled && let Some(held) = self.entry_mut(root).and_then(|e| e.held.take()) {
+            self.release(root, held, cx);
+        }
         if adopt {
             self.adopt_copies(root, cx);
         }
@@ -3165,6 +3210,23 @@ impl Workspace {
     // Turns a watcher message into a reload through `send`. A failure drops only the watcher:
     // this runs inside the pump, which ends by itself once the finished loop closes its channel.
     fn on_watch(&mut self, root: &Path, msg: WatchMsg, cx: &mut Context<Self>) {
+        // A pull or squash leaves conflict markers and a stopped rebase on disk partway, which a
+        // reload would show as vanished requests; it is read once the loop has finished instead.
+        if !matches!(msg, WatchMsg::Failed(_))
+            && let Some(entry) = self.entry_mut(root)
+            && entry
+                .team
+                .as_ref()
+                .is_some_and(|t| rewriting(&t.status.state))
+        {
+            let held = entry.held.get_or_insert_with(HeldReload::default);
+            match msg {
+                WatchMsg::Paths(paths) => held.paths.extend(paths),
+                WatchMsg::Rescan => held.all = true,
+                _ => {}
+            }
+            return;
+        }
         match msg {
             WatchMsg::Paths(paths) => {
                 self.send(root, Command::Reload(paths), cx);
@@ -4450,4 +4512,9 @@ fn same_problem(last: &Block, next: &Block) -> bool {
         (Block::Hook { .. }, Block::Hook { .. }) => true,
         _ => last == next,
     }
+}
+
+// The team states in which git rewrites the working tree and may leave it half merged.
+fn rewriting(state: &TeamState) -> bool {
+    matches!(state, TeamState::Pulling | TeamState::Squashing)
 }
