@@ -24,15 +24,15 @@ pub(crate) fn environment_rule(path: &str, bytes: &[u8]) -> Option<Finding> {
     if !fold_merges(&mut doc) {
         return Some(unparsable(path, "a merge key that cannot be applied"));
     }
-    let mut names = Vec::new();
+    let mut names = Names::default();
     if !valued_secrets(&doc, &mut names) {
         return None;
     }
     let finding = Finding::new(Code::SecretValue, SECRET_VALUE, path);
-    Some(if names.is_empty() {
+    Some(if names.list.is_empty() {
         finding
     } else {
-        finding.with_detail(&names.join(", "))
+        finding.with_detail(&names.list.join(", "))
     })
 }
 
@@ -104,21 +104,46 @@ fn merge_in_a_key(node: &Value) -> bool {
     }
 }
 
+// The most bytes a detail's joined names may take; Potluck keeps no more than this of a detail.
+const DETAIL_BYTES: usize = 200;
+
+/// The valued secrets' names for the detail, each once, in walk order, joined no longer than
+/// `DETAIL_BYTES`. The first name that does not fit closes the list, which keeps it short and
+/// so keeps the walk linear however many secrets a file holds.
+#[derive(Default)]
+struct Names {
+    list: Vec<String>,
+    bytes: usize,
+    full: bool,
+}
+
+impl Names {
+    fn add(&mut self, name: &str) {
+        if self.full || self.list.iter().any(|n| n == name) {
+            return;
+        }
+        let bytes = self.bytes + if self.list.is_empty() { 0 } else { 2 } + name.len();
+        if bytes > DETAIL_BYTES {
+            self.full = true;
+            return;
+        }
+        self.bytes = bytes;
+        self.list.push(name.to_owned());
+    }
+}
+
 /// Whether any mapping under `node`, keys included, pairs `secret: true` with a non-null
-/// `value`, pushing each such mapping's string `name` onto `names` once, in walk order. The
+/// `value`, adding each such mapping's string `name` to `names`. The
 /// reader refuses tags, so no tagged node needs looking through, and its depth limit bounds
 /// the recursion.
-fn valued_secrets(node: &Value, names: &mut Vec<String>) -> bool {
+fn valued_secrets(node: &Value, names: &mut Names) -> bool {
     match node {
         Value::Mapping(map) => {
             let secret = map.get("secret") == Some(&Value::Bool(true));
             let valued = map.get("value").is_some_and(|v| !v.is_null());
             let here = secret && valued;
-            if here
-                && let Some(Value::String(name)) = map.get("name")
-                && !names.contains(name)
-            {
-                names.push(name.clone());
+            if here && let Some(Value::String(name)) = map.get("name") {
+                names.add(name);
             }
             // Visit every entry, not just up to the first hit, so every name is collected.
             let mut found = here;

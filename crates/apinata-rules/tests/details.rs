@@ -171,3 +171,17 @@ fn no_detail_holds_a_value_or_parser_text_from_any_fixture() {
     }
     assert_eq!(seen, 15, "the vendored corpus");
 }
+
+#[test]
+fn a_detail_names_secrets_only_up_to_200_bytes() {
+    let mut text = String::from("variables:\n");
+    for i in 0..20_000 {
+        text.push_str(&format!("  - {{name: s{i:05}, secret: true, value: x}}\n"));
+    }
+    let found = finding(ENV, text.as_bytes()).expect("a valued secret");
+    assert_eq!(found.rule(), "secret_value");
+    let detail = found.detail().expect("names");
+    assert!(detail.len() <= 200, "{} bytes", detail.len());
+    assert!(detail.starts_with("s00000, s00001, "), "{detail:?}");
+    assert!(detail.split(", ").all(|n| n.len() == 6), "{detail:?}");
+}
