@@ -219,3 +219,107 @@ fn script_and_tests_fit_wherever_the_body_editor_fits(cx: &mut TestAppContext) {
         );
     }
 }
+
+// The smallest stacked window height, on a 10 px step, where `wrapper` fits its pane.
+fn least_fitting(cx: &mut TestAppContext, s: &Started, wrapper: &'static str) -> f32 {
+    (300..=900)
+        .step_by(10)
+        .map(|h| h as f32)
+        .find(|&h| {
+            room(cx, s, 1200., h, Orientation::Vertical);
+            bounds(cx, s, wrapper).bottom() <= bounds(cx, s, "section-body").bottom() + px(0.5)
+        })
+        .expect("the section fits at some height")
+}
+
+// Raises the Beautify error of the active tab's request.
+fn beautify(cx: &mut TestAppContext, s: &Started, graphql: bool) {
+    let tab =
+        s.ws.read_with(cx, |w, _| w.tabs().active().expect("a tab").id);
+    let ed = editor_of(cx, s, tab);
+    cx.update_window(s.win, |_, w, cx| {
+        ed.update(cx, |e, cx| match graphql {
+            true => e.beautify_query(w, cx),
+            false => e.beautify_body(w, cx),
+        })
+    })
+    .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn an_error_row_under_an_editor_stays_in_view_where_the_editor_fits(cx: &mut TestAppContext) {
+    let body = |kind: &str, data: &str| {
+        JSON.replace("type: json", kind)
+            .replace("'{\"a\": 1}'", data)
+    };
+    let bad_json = body("type: json", "'{\"a\": 1,}'");
+    let bad_xml = body("type: xml", "'<a><b></a>'");
+    let bad_query = GRAPHQL.replace("{ me }", "{ me { id }");
+    // Each case: the error-free request that sets the height, the request with the error, the
+    // toolbar control above the editor, the error row, and whether Beautify raises it.
+    let cases = [
+        (
+            JSON,
+            bad_json.as_str(),
+            "body-mode",
+            "body-json-error",
+            None,
+        ),
+        (
+            bad_xml.as_str(),
+            bad_xml.as_str(),
+            "body-mode",
+            "body-beautify-error",
+            Some(false),
+        ),
+        (
+            bad_query.as_str(),
+            bad_query.as_str(),
+            "graphql-schema-file",
+            "graphql-beautify-error",
+            Some(true),
+        ),
+    ];
+    let mut failed = Vec::new();
+    for (fine, broken, control, error, raise) in cases {
+        let (s, _col) = opened(cx, fine, Section::Body);
+        let h = least_fitting(cx, &s, "body");
+        let (s, _col) = opened(cx, broken, Section::Body);
+        room(cx, &s, 1200., h, Orientation::Vertical);
+        if let Some(graphql) = raise {
+            beautify(cx, &s, graphql);
+        }
+        frame(cx, s.win);
+        frame(cx, s.win);
+        let found = cx
+            .update_window(s.win, |_, w, cx| {
+                w.render_frame(cx);
+                w.try_find(error).is_some()
+            })
+            .unwrap();
+        if !found {
+            failed.push(format!("{error} not shown"));
+            continue;
+        }
+        let pane = bounds(cx, &s, "section-body");
+        let row = bounds(cx, &s, error);
+        let top = bounds(cx, &s, control);
+        let mut miss = Vec::new();
+        if row.bottom() > pane.bottom() + px(0.5) {
+            miss.push(format!("{error} {row:?} falls below {pane:?}"));
+        }
+        if top.top() < pane.top() - px(0.5) {
+            miss.push(format!("{control} {top:?} scrolled above {pane:?}"));
+        }
+        // An error row between two editors must not push the lower one out instead.
+        let content = bounds(cx, &s, "body");
+        if content.bottom() > pane.bottom() + px(0.5) {
+            miss.push(format!("content {content:?} overflows {pane:?}"));
+        }
+        if !miss.is_empty() {
+            failed.push(format!("{error} at height {h}: {miss:#?}"));
+        }
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
+}

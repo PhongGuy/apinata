@@ -818,21 +818,49 @@ impl Render for BodySection {
                 .w_full()
                 .child(self.table.clone())
                 .into_any_element(),
-            (None, Some(_), _) => div()
-                .id("body-code")
-                .test_support()
+            // The error rows share the editor's floor, so a short pane shrinks the editor to
+            // keep them in view instead of pushing them below the section.
+            (None, Some(_), _) => v_flex()
                 .w_full()
                 .flex_1()
                 .min_h(style::EDITOR_MIN_HEIGHT)
+                .gap_2()
                 .child(
-                    VarField::editor(
-                        "body-code-vars",
-                        &self.code,
-                        crate::ui::ringed_editor(Editor::new(&self.code).h_full(), &self.code),
-                        self.vars.clone(),
-                    )
-                    .size_full(),
+                    div()
+                        .id("body-code")
+                        .test_support()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .child(
+                            VarField::editor(
+                                "body-code-vars",
+                                &self.code,
+                                crate::ui::ringed_editor(
+                                    Editor::new(&self.code).h_full(),
+                                    &self.code,
+                                ),
+                                self.vars.clone(),
+                            )
+                            .size_full(),
+                        ),
                 )
+                .children(self.json_error().map(|message| {
+                    div()
+                        .id("body-json-error")
+                        .test_support()
+                        .text_xs()
+                        .text_color(cx.theme().danger)
+                        .child(message)
+                }))
+                .children(self.beautify_error.clone().map(|message| {
+                    div()
+                        .id("body-beautify-error")
+                        .test_support()
+                        .text_xs()
+                        .text_color(cx.theme().danger)
+                        .child(message)
+                }))
                 .into_any_element(),
         };
         let beautify = self.mode.filter(|m| m.beautifiable()).map(|_| {
@@ -862,22 +890,6 @@ impl Render for BodySection {
                         cx.listener(|this, on: &bool, window, cx| this.set_wrap(*on, window, cx)),
                     )
             });
-        let error = self.beautify_error.clone().map(|message| {
-            div()
-                .id("body-beautify-error")
-                .test_support()
-                .text_xs()
-                .text_color(cx.theme().danger)
-                .child(message)
-        });
-        let json_error = self.json_error().map(|message| {
-            div()
-                .id("body-json-error")
-                .test_support()
-                .text_xs()
-                .text_color(cx.theme().danger)
-                .child(message)
-        });
         // The section grows into the pane and the code editor takes what the mode row leaves.
         v_flex()
             .w_full()
@@ -898,7 +910,5 @@ impl Render for BodySection {
                     .children(wrap),
             )
             .child(content)
-            .children(json_error)
-            .children(error)
     }
 }
