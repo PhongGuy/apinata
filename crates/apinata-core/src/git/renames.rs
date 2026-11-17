@@ -22,10 +22,17 @@ pub(crate) fn env_changes(
     to: &str,
     opts: &GitOptions,
 ) -> Result<Option<EnvChanges>, GitError> {
+    // `--end-of-options` keeps a revision shaped like `--flag` from ever reaching git as one.
     for rev in [from, to] {
         let commit = format!("{rev}^{{commit}}");
         let out = run::git(
-            &["rev-parse", "--verify", "-q", commit.as_str()],
+            &[
+                "rev-parse",
+                "--verify",
+                "-q",
+                "--end-of-options",
+                commit.as_str(),
+            ],
             root,
             opts,
         )?;
@@ -39,6 +46,7 @@ pub(crate) fn env_changes(
         "-z",
         "-M",
         "--relative",
+        "--end-of-options",
         from,
         to,
         "--",
@@ -61,7 +69,11 @@ pub(crate) fn blob_at(
 ) -> Result<Option<Vec<u8>>, GitError> {
     // The `./` makes the path relative to the collection, not the repository top.
     let object = format!("{rev}:./{rel}");
-    let out = run::git(&["cat-file", "blob", object.as_str()], root, opts)?;
+    let out = run::git(
+        &["cat-file", "blob", "--end-of-options", object.as_str()],
+        root,
+        opts,
+    )?;
     Ok(out.status.success().then_some(out.stdout))
 }
 

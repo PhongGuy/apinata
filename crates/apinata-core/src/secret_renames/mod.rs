@@ -1,9 +1,11 @@
-//! Stored secrets that a pulled environment rename left under their old name.
+//! Stored secrets that a pulled environment or variable rename left under their old name.
 
 use std::collections::BTreeSet;
 
 use crate::collection::{Collection, Environment};
 use crate::document::Document;
+use crate::env_file::EnvVariable;
+use crate::env_ops::secret_names;
 use crate::error::EnvError;
 use crate::git::{EnvChanges, GitError, GitOptions, blob_at, env_changes};
 use crate::secrets::{SecretKey, SecretStore};
@@ -122,18 +124,37 @@ impl Collection {
         let orphans = self.all_orphaned_secrets(store)?;
         let mut renames = Vec::new();
         for pair in pairs {
-            let Some(was_secret) = self.secrets_at(&range.from, &pair.old, opts)? else {
+            let Some(was) = self.env_at(&range.from, &pair.old, opts)? else {
                 continue;
             };
+            let was_secret: BTreeSet<String> = secret_names(&was).into_iter().collect();
+            let mut nows = Vec::new();
+            for stem in &pair.new {
+                if let Some(now) = self.env_at(&range.to, stem, opts)? {
+                    nows.push((stem, now.variables()));
+                }
+            }
             let stored = orphans
                 .orphans
                 .iter()
                 .filter(|o| o.environment == pair.old && was_secret.contains(&o.variable));
             for orphan in stored {
                 let from = SecretName::new(&pair.old, &orphan.variable);
-                let to = self.targets(&from, &pair.new, store)?;
+                // Each candidate stem crossed with the names the variable may have taken there.
+                let mut wanted = Vec::new();
+                let mut kept = true;
+                for (stem, now) in &nows {
+                    let (vars, same) = var_targets(&orphan.variable, &was_secret, now);
+                    kept &= same;
+                    wanted.extend(
+                        vars.into_iter()
+                            .map(|v| SecretName::new(*stem, v))
+                            .filter(|to| *to != from),
+                    );
+                }
+                let to = self.targets(&from, &wanted, store)?;
                 if !to.is_empty() {
-                    renames.push(SecretRename::new(from, to, pair.sure));
+                    renames.push(SecretRename::new(from, to, pair.sure && kept));
                 }
             }
         }
@@ -141,30 +162,26 @@ impl Collection {
         Ok(SecretRenames::new(renames, 0))
     }
 
-    /// The names marked secret in environment `stem`'s file at commit `rev`; `None` when that
-    /// commit has no such file or it does not parse, which gives the pair no rows.
-    fn secrets_at(
+    /// Environment `stem`'s file at commit `rev`; `None` when that commit has no such file or
+    /// it does not parse, which gives the pair no rows.
+    fn env_at(
         &self,
         rev: &str,
         stem: &str,
         opts: &GitOptions,
-    ) -> Result<Option<BTreeSet<String>>, EnvError> {
+    ) -> Result<Option<Environment>, EnvError> {
         let rel = format!("environments/{stem}.yml");
         let bytes = blob_at(self.root(), rev, &rel, opts).map_err(scan_failed)?;
-        let Some(doc) = bytes.and_then(|b| Document::parse(&self.root().join(&rel), b).ok()) else {
-            return Ok(None);
-        };
-        let env = Environment::from_parts(stem.to_owned(), doc);
-        let names = env.variables().into_iter().filter(|v| v.secret);
-        Ok(Some(names.map(|v| v.name).collect()))
+        let doc = bytes.and_then(|b| Document::parse(&self.root().join(&rel), b).ok());
+        Ok(doc.map(|doc| Environment::from_parts(stem.to_owned(), doc)))
     }
 
-    /// Each of `stems` whose file declares `from`'s variable secret now, with the store's state
-    /// there compared against the value under `from`.
+    /// Each of `wanted` that its environment's file declares secret now, with the store's
+    /// state there compared against the value under `from`.
     fn targets(
         &self,
         from: &SecretName,
-        stems: &[String],
+        wanted: &[SecretName],
         store: &dyn SecretStore,
     ) -> Result<Vec<(SecretName, TargetState)>, EnvError> {
         let read = |key: &SecretKey| {
@@ -176,21 +193,41 @@ impl Collection {
         };
         let old = read(&self.secret_key(&from.environment, &from.variable))?;
         let mut out = Vec::new();
-        for stem in stems {
-            let declared = self.try_saved_secret_names(stem).unwrap_or_default();
-            if !declared.contains(&from.variable) {
+        for to in wanted {
+            let declared = self
+                .try_saved_secret_names(&to.environment)
+                .unwrap_or_default();
+            if !declared.contains(&to.variable) {
                 continue;
             }
-            let new = read(&self.secret_key(stem, &from.variable))?;
-            let state = match new {
+            let state = match read(&self.secret_key(&to.environment, &to.variable))? {
                 None => TargetState::Free,
                 Some(v) if Some(&v) == old.as_ref() => TargetState::Same,
                 Some(_) => TargetState::Taken,
             };
-            out.push((SecretName::new(stem, &from.variable), state));
+            out.push((to.clone(), state));
         }
         Ok(out)
     }
+}
+
+/// The names `var`, secret in an old file declaring `was_secret`, may have in `now`, same name first, and whether it kept its
+/// name. A secret gone from `now` may have become any secret `now` added; one kept but made plain
+/// is not gone, so it is never paired.
+fn var_targets(
+    var: &str,
+    was_secret: &BTreeSet<String>,
+    now: &[EnvVariable],
+) -> (Vec<String>, bool) {
+    if now.iter().any(|v| v.name == var) {
+        return (vec![var.to_owned()], true);
+    }
+    let added: BTreeSet<&String> = now
+        .iter()
+        .filter(|v| v.secret && !was_secret.contains(&v.name))
+        .map(|v| &v.name)
+        .collect();
+    (added.into_iter().cloned().collect(), false)
 }
 
 /// A git failure while reading the range, which must not read as "nothing to move".
@@ -208,8 +245,9 @@ struct EnvPair {
     sure: bool,
 }
 
-/// Every removed environment paired with every added one. A pairing is sure only when the range
-/// removed one environment, added one, and git matched the two as a rename.
+/// Every removed environment paired with every added one, and each modified one with itself. A
+/// rename pairing is sure only when the range removed one environment, added one, and git matched
+/// the two as a rename; a modified environment is always sure.
 fn env_pairs(changes: &EnvChanges) -> Vec<EnvPair> {
     let deleted: BTreeSet<&String> = changes
         .deleted
@@ -238,5 +276,10 @@ fn env_pairs(changes: &EnvChanges) -> Vec<EnvPair> {
             }
         })
         .filter(|pair| !pair.new.is_empty())
+        .chain(changes.modified.iter().map(|stem| EnvPair {
+            old: stem.clone(),
+            new: vec![stem.clone()],
+            sure: true,
+        }))
         .collect()
 }

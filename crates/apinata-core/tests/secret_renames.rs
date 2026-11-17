@@ -300,3 +300,175 @@ fn a_store_that_cannot_list_fails_the_scan() {
         "{got:?}"
     );
 }
+
+fn renamed_vars(sb: &Sandbox, old: &str, new: &str, keys: &[(&str, &str)]) -> SecretRenames {
+    let (col, base) = repo(sb, &[("environments/dev.yml", old)]);
+    if old.starts_with("name: dev") && new.starts_with("name: dev") {
+        edit(sb, &col, &[("environments/dev.yml", Some(new))]);
+    } else {
+        edit(
+            sb,
+            &col,
+            &[
+                ("environments/dev.yml", None),
+                ("environments/staging.yml", Some(new)),
+            ],
+        );
+    }
+    let c = Collection::open(&col).unwrap();
+    scan(sb, &col, &base, &stored(&c, keys))
+}
+
+#[test]
+fn an_environment_and_a_variable_renamed_together_compose() {
+    let sb = Sandbox::new();
+    let found = renamed_vars(
+        &sb,
+        &env("dev", &["token", "host_key"]),
+        &env("staging", &["api_token", "host_key"]),
+        &[("dev", "token"), ("dev", "host_key")],
+    );
+    assert_eq!(
+        names(&found),
+        [
+            row("dev/host_key", &["staging/host_key"], true),
+            row("dev/token", &["staging/api_token"], false),
+        ]
+    );
+}
+
+#[test]
+fn a_variable_renamed_in_place_is_offered_but_not_sure() {
+    let sb = Sandbox::new();
+    let found = renamed_vars(
+        &sb,
+        &env("dev", &["token"]),
+        &env("dev", &["api_token"]),
+        &[("dev", "token")],
+    );
+    assert_eq!(names(&found), [row("dev/token", &["dev/api_token"], false)]);
+}
+
+#[test]
+fn two_removed_and_two_added_offer_every_pairing() {
+    let sb = Sandbox::new();
+    let found = renamed_vars(
+        &sb,
+        &env("dev", &["a", "b"]),
+        &env("dev", &["c", "d"]),
+        &[("dev", "a"), ("dev", "b")],
+    );
+    assert_eq!(
+        names(&found),
+        [
+            row("dev/a", &["dev/c", "dev/d"], false),
+            row("dev/b", &["dev/c", "dev/d"], false)
+        ]
+    );
+}
+
+#[test]
+fn a_secret_made_plain_is_not_offered() {
+    let sb = Sandbox::new();
+    let plain = "name: dev\nvariables:\n  - name: host\n    value: h.test\n  - name: token\n    value: plain\n";
+    let found = renamed_vars(&sb, &env("dev", &["token"]), plain, &[("dev", "token")]);
+    assert!(found.renames.is_empty());
+}
+
+#[test]
+fn the_target_state_says_whether_a_value_is_already_there() {
+    let sb = Sandbox::new();
+    let (col, base) = repo(
+        &sb,
+        &[(
+            "environments/dev.yml",
+            env("dev", &["a", "b", "c"]).as_str(),
+        )],
+    );
+    let staging = env("staging", &["a", "b", "c"]);
+    edit(
+        &sb,
+        &col,
+        &[
+            ("environments/dev.yml", None),
+            ("environments/staging.yml", Some(staging.as_str())),
+        ],
+    );
+    let c = Collection::open(&col).unwrap();
+    let store = MemoryStore::new();
+    for var in ["a", "b", "c"] {
+        store.set(&c.secret_key("dev", var), "v").unwrap();
+    }
+    store.set(&c.secret_key("staging", "b"), "v").unwrap();
+    store.set(&c.secret_key("staging", "c"), "other").unwrap();
+    let found = scan(&sb, &col, &base, &store);
+    let states: Vec<TargetState> = found.renames.iter().map(|r| r.to[0].1).collect();
+    assert_eq!(
+        states,
+        [TargetState::Free, TargetState::Same, TargetState::Taken]
+    );
+}
+
+#[test]
+fn a_target_the_current_file_no_longer_declares_is_dropped() {
+    let sb = Sandbox::new();
+    let (col, base) = repo(
+        &sb,
+        &[("environments/dev.yml", env("dev", &["token"]).as_str())],
+    );
+    let staging = env("staging", &["token"]);
+    edit(
+        &sb,
+        &col,
+        &[
+            ("environments/dev.yml", None),
+            ("environments/staging.yml", Some(staging.as_str())),
+        ],
+    );
+    // An edit after the pull, not yet committed, drops the secret again.
+    write(&col, "environments/staging.yml", &env("staging", &[]));
+    let c = Collection::open(&col).unwrap();
+    let found = scan(&sb, &col, &base, &stored(&c, &[("dev", "token")]));
+    assert!(found.renames.is_empty());
+}
+
+#[test]
+fn a_renamed_environment_whose_old_file_did_not_mark_the_variable_secret_offers_nothing() {
+    let sb = Sandbox::new();
+    let plain = "name: dev\nvariables:\n  - name: token\n    value: plain\n";
+    let found = renamed_vars(&sb, plain, &env("staging", &["token"]), &[("dev", "token")]);
+    assert!(found.renames.is_empty());
+}
+
+#[test]
+fn a_renamed_environment_whose_old_file_does_not_parse_offers_nothing() {
+    let sb = Sandbox::new();
+    let found = renamed_vars(
+        &sb,
+        "name: [unclosed\n",
+        &env("staging", &["token"]),
+        &[("dev", "token")],
+    );
+    assert!(found.renames.is_empty());
+}
+
+#[test]
+fn a_range_commit_shaped_like_an_option_is_never_read_as_one() {
+    let sb = Sandbox::new();
+    let (col, _) = repo(
+        &sb,
+        &[("environments/dev.yml", env("dev", &["token"]).as_str())],
+    );
+    let c = Collection::open(&col).unwrap();
+    let planted = col.join("planted.txt");
+    let range = PullRange::new(
+        format!("--output={}", planted.display()),
+        rev(&sb, &col, "HEAD"),
+    );
+    let store = stored(&c, &[("dev", "token")]);
+    let found = c
+        .secret_renames(&range, None, &store, &sb.options())
+        .unwrap();
+    assert_eq!(found, SecretRenames::default());
+    assert!(!planted.exists());
+}
