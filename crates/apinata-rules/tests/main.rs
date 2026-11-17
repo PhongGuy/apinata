@@ -10,4 +10,6 @@
     clippy::missing_assert_message
 )]
 
+mod common;
 mod contract;
+mod environment;

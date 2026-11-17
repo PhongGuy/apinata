@@ -5,16 +5,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-use potluck_kind::{Change, Code, Finding, RuleSet, SeedFile};
+use potluck_kind::{Blob, Change, Code, Finding, RuleSet, SeedFile};
+
+mod environment;
 
 /// The rule set Potluck registers for kind `apinata`.
 pub const RULE_SET: &dyn RuleSet = &Apinata;
 
 /// The rule an environment file breaks when it holds a valued secret.
-#[expect(
-    dead_code,
-    reason = "the environment walk that reports it is not wired in yet"
-)]
 const SECRET_VALUE: &str = "secret_value";
 /// The rule an environment file breaks when it cannot be read and so cannot be vouched for.
 const ENV_UNPARSABLE: &str = "env_unparsable";
@@ -58,10 +56,13 @@ impl RuleSet for Apinata {
         if !is_environment_file(path) {
             return Vec::new();
         }
-        // Fail closed: a blob the hook did not read, or bytes not yet judged, cannot be vouched
-        // for. A deleted file has no new side and passes.
+        // Fail closed: a blob the hook did not read cannot be vouched for. A deleted file has no
+        // new side and passes.
         match change.new_blob() {
             None => Vec::new(),
+            Some(Blob::Bytes(bytes)) => environment::environment_rule(path, bytes)
+                .into_iter()
+                .collect(),
             Some(_) => vec![Finding::new(Code::SecretValue, ENV_UNPARSABLE, path)],
         }
     }
