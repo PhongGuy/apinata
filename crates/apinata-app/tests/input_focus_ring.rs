@@ -29,7 +29,8 @@ fn the_ring_token_is_three_to_one_on_the_field_and_the_page(cx: &mut TestAppCont
         use_theme(cx, name);
         let (ring, fill, page) = cx.update(|cx| {
             let t = cx.theme();
-            (ring_token(t), t.secondary, t.background)
+            let field = t.background.blend(apinata_app::ui::field_fill(false, cx));
+            (ring_token(t), field, t.background)
         });
         assert!(contrast(ring, fill) >= 3.0, "{name}: ring on field fill");
         assert!(contrast(ring, page) >= 3.0, "{name}: ring on page");
@@ -77,7 +78,8 @@ fn a_focused_input_draws_the_ring_by_pointer_and_by_key(cx: &mut TestAppContext)
             frame(cx, s.win);
             let (ring, fill, page) = cx.update(|cx| {
                 let t = cx.theme();
-                (ring_token(t), t.secondary, t.background)
+                let field = t.background.blend(apinata_app::ui::field_fill(false, cx));
+                (ring_token(t), field, t.background)
             });
             let seen = edges(cx, &s);
             assert!(
@@ -418,28 +420,28 @@ fn the_input_border_is_three_to_one_on_the_page_and_differs_from_the_ring(cx: &m
     }
 }
 
+/// A key-value or environment table cell draws the same resting `input` edge as every other
+/// text field, unhovered and unfocused, in all four themes, at 3:1 on the page behind it.
 #[gpui_kit::test]
-fn a_resting_kv_or_env_cell_has_an_edge_in_light_themes_only(cx: &mut TestAppContext) {
+fn a_resting_kv_or_env_cell_has_an_edge_in_every_theme(cx: &mut TestAppContext) {
     let (kv, env) = resting_hosts(cx);
     let cells: [(_, (&'static str, usize)); 2] =
         [(kv, ("kv-value-edge", 0)), (env, ("env-name-edge", 0))];
     for name in THEMES {
         use_theme(cx, name);
-        let light = cx.update(|cx| !cx.theme().mode.is_dark());
-        let input = cx.update(|cx| cx.theme().input);
+        let (input, page) = cx.update(|cx| (cx.theme().input, cx.theme().background));
         for (win, id) in cells {
             frame(cx, win);
             let shown = cx
                 .update_window(win, |_, w, _| w.find(id).visible())
                 .unwrap();
-            assert_eq!(shown, light, "{name} {id:?}: resting edge visible");
-            if light {
-                let seen = ring_quads(cx, win, id);
-                assert!(
-                    seen.iter().any(|(c, _)| *c == input),
-                    "{name} {id:?}: no input-coloured edge in {seen:?}"
-                );
-            }
+            assert!(shown, "{name} {id:?}: resting edge hidden");
+            let seen = ring_quads(cx, win, id);
+            assert!(
+                seen.iter().any(|(c, _)| *c == input),
+                "{name} {id:?}: no input-coloured edge in {seen:?}"
+            );
+            assert!(contrast(input, page) >= 3.0, "{name} {id:?}: edge on page");
         }
     }
 }

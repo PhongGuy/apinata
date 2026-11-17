@@ -126,7 +126,8 @@ impl Render for SetVariableForm {
             .overflow_y_scroll()
             .p(SPACE_2)
             .rounded(cx.theme().radius)
-            .bg(ui::field_fill(true, cx))
+            // A read-only value box with no edge, so it keeps a solid muted fill to show its bounds.
+            .bg(cx.theme().muted)
             .text_color(cx.theme().muted_foreground)
             .whitespace_normal()
             .child(self.value.clone());

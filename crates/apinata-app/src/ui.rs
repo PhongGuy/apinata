@@ -933,13 +933,17 @@ fn paint_accent_ring(bounds: Bounds<Pixels>, window: &mut Window, cx: &App) {
     window.paint_quad(edge);
 }
 
-/// The fill every text input takes: the raised fill when editable, the muted fill when
-/// disabled, so a locked field reads as locked in both themes.
+/// The share of the `input` edge colour an editable field lays over the surface behind it.
+pub const FIELD_FILL_ALPHA: f32 = 0.1;
+
+/// The fill every text input takes. An editable field tints whatever surface it sits on with
+/// its own edge colour, so every theme draws the same subtle fill inside the same edge; a
+/// disabled field drops the tint and shows only its edge, so it reads as locked.
 pub fn field_fill(disabled: bool, cx: &App) -> Hsla {
     if disabled {
-        cx.theme().muted
+        cx.theme().transparent
     } else {
-        cx.theme().secondary
+        cx.theme().input.opacity(FIELD_FILL_ALPHA)
     }
 }
 

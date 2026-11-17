@@ -374,7 +374,7 @@ pub fn var_tint_hex(kind: VarKind, mode: ThemeMode) -> &'static str {
         (ThemeMode::Light, VarKind::Defined) => "#23703224",
         (ThemeMode::Light, VarKind::Undefined) => "#C92A2A24",
         (ThemeMode::Light, VarKind::Dynamic) => "#1864AB24",
-        (ThemeMode::Light, VarKind::Prompt) => "#9A5A0024",
+        (ThemeMode::Light, VarKind::Prompt) => "#9A5A0028",
     }
 }
 

@@ -156,7 +156,12 @@ fn the_box_is_neutral_and_a_disabled_tick_is_muted(cx: &mut TestAppContext) {
             let on = checkbox_look(true, false, cx);
             assert_eq!(
                 (on.border, on.fill, on.tick, on.opacity),
-                (t.input, t.secondary, Some(t.foreground), 1.0),
+                (
+                    t.input,
+                    apinata_app::ui::field_fill(false, cx),
+                    Some(t.foreground),
+                    1.0
+                ),
                 "{mode:?}"
             );
             assert!(

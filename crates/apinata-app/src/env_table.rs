@@ -1103,7 +1103,7 @@ impl EnvVarTable {
         // following the row keeps only its left edge in view.
         let follow = &self.follow;
         let followed = |id: &'static str, child: AnyElement| Followed::new((id, ix), follow, child);
-        // Each input sits borderless in a shared-look cell whose edge shows on hover or focus;
+        // Each input sits borderless in a shared-look cell whose edge rests visible and rings on focus;
         // the minimum sits on the cell, so the lock and eye never eat into it.
         let cell = |input: &Entity<InputState>,
                     field: Input,

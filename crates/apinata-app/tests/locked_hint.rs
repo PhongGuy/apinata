@@ -178,39 +178,51 @@ fn a_locked_value_still_copies(cx: &mut TestAppContext) {
 }
 
 /// The lock icon is drawn at full strength on the fill the locked field really draws
-/// ([`ui::field_fill`]), so that pair is what must reach 3:1.
+/// ([`ui::field_fill`] over the window's `background`), so that pair is what must reach 3:1.
 #[gpui_kit::test]
 fn the_lock_hint_keeps_a_legible_contrast(cx: &mut TestAppContext) {
+    use gpui_kit::component::ActiveTheme as _;
     for theme in [HC_DARK, HC_LIGHT, DARK, LIGHT] {
         let (win, view) = host(cx, theme, true);
         focus(cx, win, |h| h.locked.clone(), &view);
-        let (icon, fill) = cx.update(|cx| (ui::lock_hint_color(cx), ui::field_fill(true, cx)));
+        let (icon, fill, shown) = cx.update(|cx| {
+            let fill = ui::field_fill(true, cx);
+            (
+                ui::lock_hint_color(cx),
+                fill,
+                cx.theme().background.blend(fill),
+            )
+        });
+        // The locked fill is clear, so the field must paint no solid fill of its own.
+        let painted = field_fills(cx, win, &view);
         assert!(
-            drawn_fill(cx, win, &view, fill),
-            "{theme}: the locked field is not drawn on the locked fill"
+            painted.iter().all(|c| *c == fill || c.a == 0.),
+            "{theme}: the locked field paints {painted:?} over the surface"
         );
-        let r = contrast(fill.blend(icon), fill);
+        let r = contrast(shown.blend(icon), shown);
         assert!(r >= 3.0, "{theme}: lock icon {r:.2}:1 on the locked fill");
     }
 }
 
-/// Whether the locked input paints a solid quad of `fill` within its bounds.
-fn drawn_fill(
+/// The solid fills of the quads the locked input paints at its own origin.
+fn field_fills(
     cx: &mut TestAppContext,
     win: AnyWindowHandle,
     view: &Entity<Host>,
-    fill: gpui_kit::Hsla,
-) -> bool {
+) -> Vec<gpui_kit::Hsla> {
     let id = view.read_with(cx, |h, _| h.locked.entity_id());
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
         let scale = w.scale_factor();
         let b = w.find(("input", id)).bounds();
-        w.painted_quads().into_iter().any(|q| {
-            q.background.as_solid() == Some(fill)
-                && (q.bounds.origin.x.0 / scale - f32::from(b.left())).abs() < 2.
-                && (q.bounds.origin.y.0 / scale - f32::from(b.top())).abs() < 2.
-        })
+        w.painted_quads()
+            .into_iter()
+            .filter(|q| {
+                (q.bounds.origin.x.0 / scale - f32::from(b.left())).abs() < 2.
+                    && (q.bounds.origin.y.0 / scale - f32::from(b.top())).abs() < 2.
+            })
+            .filter_map(|q| q.background.as_solid())
+            .collect()
     })
     .unwrap()
 }

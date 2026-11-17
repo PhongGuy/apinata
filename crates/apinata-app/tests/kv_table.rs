@@ -614,26 +614,26 @@ fn the_remove_control_shows_on_row_hover(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_focused_row_keeps_its_remove_control_and_cell_edge(cx: &mut TestAppContext) {
     let (win, _view) = host(cx, vec![row("a", "1")]);
-    // Hover-only edges are the dark themes' behaviour; light ones rest visible.
     support::use_theme(cx, apinata_app::theme::DARK);
     cx.update_window(win, |_, w, cx| w.click(("kv-value", 0usize), cx))
         .unwrap();
     hover(cx, win, "kv-head");
     assert!(shows(cx, win, ("kv-row", 0), "kv-action"));
     assert!(edge(cx, win, ("kv-value-edge", 0)));
-    assert!(!edge(cx, win, ("kv-name-edge", 0)));
+    assert!(edge(cx, win, ("kv-name-edge", 0)));
 }
 
+/// Every cell edge rests visible, as on any text field, with or without the pointer over it.
 #[gpui_kit::test]
-fn a_cell_shows_its_edge_only_under_the_pointer(cx: &mut TestAppContext) {
+fn a_cell_shows_its_edge_with_or_without_the_pointer(cx: &mut TestAppContext) {
     let (win, _view) = host(cx, vec![row("a", "1")]);
-    // Hover-only edges are the dark themes' behaviour; light ones rest visible.
     support::use_theme(cx, apinata_app::theme::DARK);
     hover(cx, win, "kv-head");
-    assert!(!edge(cx, win, ("kv-name-edge", 0)));
+    assert!(edge(cx, win, ("kv-name-edge", 0)));
+    assert!(edge(cx, win, ("kv-value-edge", 0)));
     hover(cx, win, ("kv-name", 0usize));
     assert!(edge(cx, win, ("kv-name-edge", 0)));
-    assert!(!edge(cx, win, ("kv-value-edge", 0)));
+    assert!(edge(cx, win, ("kv-value-edge", 0)));
 }
 
 #[gpui_kit::test]
