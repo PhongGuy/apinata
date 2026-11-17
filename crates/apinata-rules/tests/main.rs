@@ -10,6 +10,7 @@
     clippy::missing_assert_message
 )]
 
+mod aliases;
 mod common;
 mod contract;
 mod environment;
