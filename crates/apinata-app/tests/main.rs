@@ -271,6 +271,8 @@ mod form_label_align;
 mod generate_code;
 mod git_head;
 mod git_status_model;
+#[cfg(unix)]
+mod git_sync;
 mod git_watch;
 mod git_watch_window;
 mod git_workspace;

@@ -1,12 +1,16 @@
-//! The branch picker model: list, fetch and switch the branches of an open collection.
-//! Core does the git work; this model orchestrates it off the UI thread and checks that the
-//! collection survives the switch.
+//! The branch picker model: list, fetch and switch the branches of an open collection, and
+//! pull or push the current one. Core does the git work; this model orchestrates it off the UI
+//! thread and checks that the collection survives the switch or pull.
 
 use std::path::{Path, PathBuf};
 
-use crate::blocking::off_thread;
+use crate::blocking::{off_thread, off_thread_events};
 use crate::command::Command;
-use apinata_core::{Branch, CancelFlag, FetchError, GitOptions, SwitchError, Switched, Upstream};
+use crate::sync_text::{self, Direction};
+use apinata_core::{
+    Branch, CancelFlag, FetchError, GitOptions, Pulled, Pushed, SwitchError, Switched, SyncError,
+    Upstream,
+};
 use gpui_kit::{Context, Entity, EventEmitter, Subscription};
 
 use crate::git_head;
@@ -26,6 +30,10 @@ pub enum Activity {
     Fetching,
     /// Switching branch.
     Switching,
+    /// Pulling the current branch.
+    Pulling,
+    /// Pushing the current branch.
+    Pushing,
 }
 
 /// Why the last request did not do what was asked.
@@ -41,6 +49,13 @@ pub enum Notice {
     Failed(String),
     /// The switch landed on a branch that tracks another branch, left as is; the full text.
     OtherUpstream(String),
+    /// The branch has no upstream and the repository one remote, which a publish would use.
+    Publish {
+        /// The local branch.
+        branch: String,
+        /// The only remote.
+        remote: String,
+    },
 }
 
 impl Notice {
@@ -53,6 +68,7 @@ impl Notice {
                 "The branch switched, but the open tabs were not reloaded because of unsaved edits"
             }
             Notice::Failed(text) | Notice::OtherUpstream(text) => text,
+            Notice::Publish { .. } => "This branch is not on the remote yet",
         }
     }
 }
@@ -69,6 +85,11 @@ pub enum PickerEvent {
     CollectionClosed {
         /// The branch name.
         branch: String,
+        /// The notification text.
+        message: String,
+    },
+    /// A pull or push finished; what it did.
+    Synced {
         /// The notification text.
         message: String,
     },
@@ -89,6 +110,20 @@ pub struct BranchPicker {
     reload_timer: Option<gpui_kit::Task<()>>,
     // The newest listing's number; an older listing's result is stale and dropped.
     listing: u64,
+    // Whether the running pull's fetch is over, after which Cancel no longer stops it.
+    fetched: bool,
+}
+
+// What a running pull reports from its thread.
+enum PullStep {
+    Fetched,
+    Done(Result<Pulled, SyncError>),
+}
+
+// What a finished switch or pull announces once the collection has reloaded.
+enum Landing {
+    Switched(String),
+    Synced(String),
 }
 
 impl EventEmitter<PickerEvent> for BranchPicker {}
@@ -107,14 +142,20 @@ impl BranchPicker {
             reload_wait: None,
             reload_timer: None,
             listing: 0,
+            fetched: false,
         };
-        // Whatever ends the picker, a window torn down mid-switch included, lifts the hold.
+        // Whatever ends the picker, a window torn down mid-switch or mid-pull included, lifts
+        // the hold; a pull's HEAD is never taken as the app's own.
         cx.on_release(|this, cx| {
-            let root = this.root.clone();
+            let (root, activity) = (this.root.clone(), this.activity);
             let _ = this
                 .workspace
                 .downgrade()
-                .update(cx, |w, cx| w.end_switch(&root, cx));
+                .update(cx, |w, cx| match activity {
+                    Activity::Switching => w.end_switch(&root, cx),
+                    Activity::Pulling => w.end_pull(&root, true, cx),
+                    _ => {}
+                });
         })
         .detach();
         picker.relist(cx);
@@ -218,9 +259,165 @@ impl BranchPicker {
         .detach();
     }
 
-    /// Stops a running fetch; a cancelled fetch leaves no notice.
+    /// Whether the running fetch, pull or push can still be stopped: a pull only until its
+    /// fetch is over, since the fast-forward is never stopped halfway.
+    pub fn can_cancel(&self) -> bool {
+        match self.activity {
+            Activity::Fetching | Activity::Pushing => true,
+            Activity::Pulling => !self.fetched,
+            _ => false,
+        }
+    }
+
+    /// Stops a running fetch, pull or push; a cancelled fetch or pull leaves no notice.
     pub fn cancel_fetch(&mut self) {
         self.cancel.cancel();
+    }
+
+    // A pull or push may start while the list is still loading, since neither reads it.
+    fn may_sync(&self) -> bool {
+        matches!(self.activity, Activity::Idle | Activity::Listing)
+    }
+
+    /// Fetches the upstream of the current branch and fast-forwards to it, holding the
+    /// collection read-only meanwhile. Unsaved in-app edits refuse it up front, as for a switch.
+    pub fn pull(&mut self, cx: &mut Context<Self>) {
+        if !self.may_sync() {
+            return;
+        }
+        self.notice = None;
+        let root = self.root.clone();
+        if !self.workspace.read(cx).unsaved(Some(&root), cx).is_empty() {
+            self.notice = Some(Notice::Unsaved);
+            cx.notify();
+            return;
+        }
+        self.activity = Activity::Pulling;
+        self.fetched = false;
+        self.cancel = CancelFlag::new();
+        self.workspace.update(cx, |w, cx| w.begin_pull(&root, cx));
+        let (options, cancel) = (self.options(cx), self.cancel.clone());
+        let rx = off_thread_events(move |tx| {
+            let done = apinata_core::pull_reporting(&root, &cancel, &options, &mut || {
+                let _ = tx.try_send(PullStep::Fetched);
+            });
+            let _ = tx.try_send(PullStep::Done(done));
+        });
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            while let Ok(step) = rx.recv().await {
+                let _ = this.update(cx, |this, cx| match step {
+                    PullStep::Fetched => {
+                        this.fetched = true;
+                        cx.notify();
+                    }
+                    PullStep::Done(result) => this.pulled(result, cx),
+                });
+            }
+        })
+        .detach();
+    }
+
+    // Lands a pull the way a switch lands: a branch that moved reloads the collection before
+    // the pull is announced, or closes it when the collection file is gone.
+    fn pulled(&mut self, result: Result<Pulled, SyncError>, cx: &mut Context<Self>) {
+        let root = self.root.clone();
+        match result {
+            Ok(done) => {
+                let message = sync_text::pulled(&done);
+                self.relist(cx);
+                if done.from == done.to
+                    || !self.workspace.read(cx).unsaved(Some(&root), cx).is_empty()
+                {
+                    self.release(true, cx);
+                    cx.emit(PickerEvent::Synced { message });
+                } else if collection_survives(&root) {
+                    self.reload_then_land(Landing::Synced(message), cx);
+                } else {
+                    let branch = done.branch;
+                    self.close_collection(
+                        branch.clone(),
+                        format!("Closed the collection: {branch} no longer has a collection at its root."),
+                        cx,
+                    );
+                }
+                return;
+            }
+            Err(SyncError::Cancelled) => {}
+            Err(SyncError::Dirty) => self.notice = Some(Notice::Dirty),
+            Err(e) => self.notice = Some(Notice::Failed(sync_text::failure(&e, Direction::Pull))),
+        }
+        self.release(true, cx);
+    }
+
+    /// Pushes the current branch to its upstream. A branch without one, in a repository with
+    /// exactly one remote, gets a notice that offers to publish it there.
+    pub fn push(&mut self, cx: &mut Context<Self>) {
+        self.start_push(None, cx);
+    }
+
+    /// Publishes the branch the notice names to its only remote and makes that its upstream.
+    pub fn publish(&mut self, cx: &mut Context<Self>) {
+        if let Some(Notice::Publish { remote, .. }) = &self.notice {
+            let remote = remote.clone();
+            self.start_push(Some(remote), cx);
+        }
+    }
+
+    fn start_push(&mut self, set_upstream: Option<String>, cx: &mut Context<Self>) {
+        if !self.may_sync() {
+            return;
+        }
+        self.notice = None;
+        self.activity = Activity::Pushing;
+        self.cancel = CancelFlag::new();
+        let (root, options, cancel) = (self.root.clone(), self.options(cx), self.cancel.clone());
+        let rx = off_thread(move || {
+            let done = apinata_core::push(&root, set_upstream.as_deref(), &cancel, &options);
+            // A branch without an upstream is offered a publish, which needs the remotes.
+            let remotes = match &done {
+                Err(SyncError::NoUpstream { .. }) => {
+                    apinata_core::remotes(&root, &options).unwrap_or_default()
+                }
+                _ => Vec::new(),
+            };
+            (done, remotes)
+        });
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let Ok((done, remotes)) = rx.recv().await else {
+                return;
+            };
+            let _ = this.update(cx, |this, cx| this.pushed(done, remotes, cx));
+        })
+        .detach();
+    }
+
+    fn pushed(
+        &mut self,
+        result: Result<Pushed, SyncError>,
+        remotes: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.activity = Activity::Idle;
+        match result {
+            Ok(done) => {
+                self.relist(cx);
+                cx.notify();
+                cx.emit(PickerEvent::Synced {
+                    message: sync_text::pushed(&done),
+                });
+                return;
+            }
+            Err(SyncError::NoUpstream { branch, .. }) => {
+                self.notice = Some(match <[String; 1]>::try_from(remotes) {
+                    Ok([remote]) => Notice::Publish { branch, remote },
+                    Err(remotes) => Notice::Failed(sync_text::no_upstream(&branch, &remotes)),
+                });
+            }
+            Err(e) => self.notice = Some(Notice::Failed(sync_text::failure(&e, Direction::Push))),
+        }
+        cx.notify();
     }
 
     /// Switches to `branch`, then reports whether the collection still opens there.
@@ -282,38 +479,47 @@ impl BranchPicker {
                 if !self.workspace.read(cx).unsaved(Some(&root), cx).is_empty() {
                     self.notice = Some(Notice::KeptOpen);
                 } else if collection_survives(&root) {
-                    let reload = self
-                        .workspace
-                        .update(cx, |w, cx| w.send(&root, Command::ReloadAll, cx));
-                    if let Some(id) = reload
-                        && !self.reload_acked(id, cx)
-                    {
-                        // The reload's snapshot has not arrived; finish when it does.
-                        let sub = cx.observe(&self.workspace, move |this, _, cx| {
-                            if this.reload_acked(id, cx) {
-                                this.land(name.clone(), cx);
-                            }
-                        });
-                        self.reload_wait = Some(sub);
-                        let timer = cx.background_executor().timer(RELOAD_BOUND);
-                        self.reload_timer = Some(cx.spawn(async move |this, cx| {
-                            timer.await;
-                            let _ = this.update(cx, |this, cx| this.reload_timed_out(cx));
-                        }));
-                        cx.notify();
-                        return;
-                    }
-                    self.land(name, cx);
+                    self.reload_then_land(Landing::Switched(name), cx);
                     return;
                 } else {
-                    self.finish_closed(name, cx);
+                    let message = closed_message(&name);
+                    self.close_collection(name, message, cx);
                     return;
                 }
             }
             Err(SwitchError::Dirty) => self.notice = Some(Notice::Dirty),
             Err(e) => self.notice = Some(Notice::Failed(e.to_string())),
         }
-        self.release(cx);
+        self.release(true, cx);
+    }
+
+    // Reloads the whole collection, then lands once its snapshot has the reload, so no paint
+    // shows the old files.
+    fn reload_then_land(&mut self, landing: Landing, cx: &mut Context<Self>) {
+        let root = self.root.clone();
+        let reload = self
+            .workspace
+            .update(cx, |w, cx| w.send(&root, Command::ReloadAll, cx));
+        let Some(id) = reload.filter(|id| !self.reload_acked(*id, cx)) else {
+            self.land(landing, cx);
+            return;
+        };
+        // The reload's snapshot has not arrived; finish when it does.
+        let mut landing = Some(landing);
+        let sub = cx.observe(&self.workspace, move |this, _, cx| {
+            if this.reload_acked(id, cx)
+                && let Some(landing) = landing.take()
+            {
+                this.land(landing, cx);
+            }
+        });
+        self.reload_wait = Some(sub);
+        let timer = cx.background_executor().timer(RELOAD_BOUND);
+        self.reload_timer = Some(cx.spawn(async move |this, cx| {
+            timer.await;
+            let _ = this.update(cx, |this, cx| this.reload_timed_out(cx));
+        }));
+        cx.notify();
     }
 
     // Whether the collection has applied the reload command `id`, or is no longer there to.
@@ -322,40 +528,48 @@ impl BranchPicker {
         ws.snapshot(&self.root, cx).is_none_or(|s| s.acked >= id)
     }
 
-    // The reload has landed: end the hold and tell the shell the switch is done.
-    fn land(&mut self, name: String, cx: &mut Context<Self>) {
+    // The reload has landed: end the hold, its watcher reloads already covered, and tell the
+    // shell the switch or pull is done.
+    fn land(&mut self, landing: Landing, cx: &mut Context<Self>) {
         self.reload_wait = None;
         self.reload_timer = None;
-        self.release(cx);
-        cx.emit(PickerEvent::Switched { branch: name });
+        self.release(false, cx);
+        cx.emit(match landing {
+            Landing::Switched(branch) => PickerEvent::Switched { branch },
+            Landing::Synced(message) => PickerEvent::Synced { message },
+        });
     }
 
     // The collection never answered the reload: let go rather than hold it read-only forever.
     fn reload_timed_out(&mut self, cx: &mut Context<Self>) {
         if self.reload_wait.take().is_some() {
-            self.notice = Some(Notice::Failed(
-                "The branch switched, but the open tabs were not reloaded".to_owned(),
-            ));
-            self.release(cx);
+            let done = match self.activity {
+                Activity::Pulling => "The pull finished",
+                _ => "The branch switched",
+            };
+            self.notice = Some(Notice::Failed(format!(
+                "{done}, but the open tabs were not reloaded"
+            )));
+            self.release(true, cx);
         }
     }
 
-    fn finish_closed(&mut self, name: String, cx: &mut Context<Self>) {
+    fn close_collection(&mut self, branch: String, message: String, cx: &mut Context<Self>) {
         let root = self.root.clone();
         self.workspace.update(cx, |w, cx| w.close(&root, cx));
-        self.release(cx);
-        let message = closed_message(&name);
-        cx.emit(PickerEvent::CollectionClosed {
-            branch: name,
-            message,
-        });
+        self.release(true, cx);
+        cx.emit(PickerEvent::CollectionClosed { branch, message });
     }
 
-    // Ends the switch: the picker is idle again and the collection takes edits.
-    fn release(&mut self, cx: &mut Context<Self>) {
-        self.activity = Activity::Idle;
+    // Ends the switch or pull: the picker is idle again and the collection takes edits. With
+    // `replay` a pull's held watcher reloads run; without it a full reload has covered them.
+    fn release(&mut self, replay: bool, cx: &mut Context<Self>) {
+        let ended = std::mem::replace(&mut self.activity, Activity::Idle);
         let root = self.root.clone();
-        self.workspace.update(cx, |w, cx| w.end_switch(&root, cx));
+        self.workspace.update(cx, |w, cx| match ended {
+            Activity::Pulling => w.end_pull(&root, replay, cx),
+            _ => w.end_switch(&root, cx),
+        });
         cx.notify();
     }
 }

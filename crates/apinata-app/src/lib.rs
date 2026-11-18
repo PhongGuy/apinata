@@ -158,6 +158,7 @@ pub mod snapshot;
 pub mod stale;
 pub mod stand_in;
 pub mod style;
+pub mod sync_text;
 pub mod tab_area;
 pub mod tabs;
 pub mod tag_input;

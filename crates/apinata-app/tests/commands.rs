@@ -39,6 +39,8 @@ const IDS: &[&str] = &[
     "collection.team_workspaces",
     "collection.open_demo",
     "collection.switch_branch",
+    "collection.pull",
+    "collection.push",
     "collection.show_changes",
     "collection.toggle_mock",
     "collection.settings",

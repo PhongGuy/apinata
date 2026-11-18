@@ -1,7 +1,7 @@
 //! The open collections of the window: opening, closing and restoring them, the only path
 //! that sends them commands, and the session's open and recent lists.
 
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -386,6 +386,15 @@ pub struct CollectionEntry {
     _observer: Subscription,
 }
 
+/// What holds a collection read-only while git rewrites its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Hold {
+    // A branch switch: the HEAD it lands on is the app's own.
+    Switch,
+    // A pull: its new HEAD is someone else's work, and watcher reloads wait for it.
+    Pull,
+}
+
 /// Why rename rows are asked for: a pull outside team mode widens and announces them, anything
 /// else refreshes them quietly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -675,8 +684,8 @@ pub struct Workspace {
     edit_generation: u64,
     // How git runs for status, `None` while git is off.
     git_options: Option<GitOptions>,
-    // Roots a branch switch holds read-only: edits and writes to them are refused.
-    switching: BTreeSet<PathBuf>,
+    // Roots a branch switch or pull holds read-only: edits and writes to them are refused.
+    switching: BTreeMap<PathBuf, Hold>,
     // The next open generation; see `CollectionEntry::generation`.
     generations: u64,
     // The request pane's share of every opened split in this window; in memory only.
@@ -744,7 +753,7 @@ impl Workspace {
             reference: None,
             edit_generation: 0,
             git_options: None,
-            switching: BTreeSet::new(),
+            switching: BTreeMap::new(),
             generations: 0,
             split_ratio: crate::style::DEFAULT_SPLIT_RATIO,
             script_sides: HashMap::new(),
@@ -1942,15 +1951,19 @@ impl Workspace {
         }
     }
 
-    /// Whether a branch switch holds the collection at `root` read-only.
+    /// Whether a branch switch or pull holds the collection at `root` read-only.
     pub fn is_switching(&self, root: &Path) -> bool {
-        self.switching.contains(&absolute(root))
+        self.switching.contains_key(&absolute(root))
+    }
+
+    fn held_by(&self, root: &Path, hold: Hold) -> bool {
+        self.switching.get(&absolute(root)) == Some(&hold)
     }
 
     /// Holds the collection at `root` read-only: until `end_switch`, `send` refuses every
     /// command that edits or writes it, so nothing lands while a branch switch runs.
     pub fn begin_switch(&mut self, root: &Path, cx: &mut Context<Self>) {
-        self.switching.insert(absolute(root));
+        self.switching.insert(absolute(root), Hold::Switch);
         if let Some(entry) = self.entry_mut(root) {
             entry.switches += 1;
         }
@@ -1965,9 +1978,33 @@ impl Workspace {
             entry.adopt_head = true;
         }
         self.check_head(root, cx);
-        if self.switching.remove(&absolute(root)) {
+        if self.switching.remove(&absolute(root)).is_some() {
             cx.notify();
         }
+    }
+
+    /// Holds the collection at `root` read-only for a pull, as `begin_switch` does, and keeps
+    /// watcher reloads back until `end_pull`, so a half-moved tree never reaches the snapshot.
+    pub fn begin_pull(&mut self, root: &Path, cx: &mut Context<Self>) {
+        self.switching.insert(absolute(root), Hold::Pull);
+        cx.notify();
+    }
+
+    /// Lifts the hold `begin_pull` put on the collection at `root`. With `replay` the watcher
+    /// reloads held meanwhile run now; without it the caller has reloaded everything already.
+    /// The new HEAD is read as a pull, so the renamed-secrets check runs on it.
+    pub fn end_pull(&mut self, root: &Path, replay: bool, cx: &mut Context<Self>) {
+        if !self.held_by(root, Hold::Pull) {
+            return;
+        }
+        self.switching.remove(&absolute(root));
+        let held = self.entry_mut(root).and_then(|e| e.held.take());
+        match held {
+            Some(held) if replay => self.release(root, held, cx),
+            _ => self.refresh_git(root, cx),
+        }
+        self.check_head(root, cx);
+        cx.notify();
     }
 
     /// Whether the collection at `root` is open and its actor has stalled.
@@ -3231,6 +3268,10 @@ impl Workspace {
     // renames of a move forward from the HEAD last seen. One check runs at a time; a request
     // meanwhile runs once more after it.
     fn check_head(&mut self, root: &Path, cx: &mut Context<Self>) {
+        // A pull reads HEAD once it ends; a check mid-pull would take its HEAD as already seen.
+        if self.held_by(root, Hold::Pull) {
+            return;
+        }
         let Some(entry) = self.entry_mut(root) else {
             return;
         };
@@ -3240,7 +3281,7 @@ impl Workspace {
     }
 
     fn run_head_check(&mut self, root: &Path, cx: &mut Context<Self>) {
-        let switching = self.is_switching(root);
+        let switching = self.held_by(root, Hold::Switch);
         let remembered = self.remembered_head(root, cx);
         let Some(git) = self.git_options.clone() else {
             if let Some(entry) = self.entry_mut(root) {
@@ -3726,14 +3767,16 @@ impl Workspace {
     // Turns a watcher message into a reload through `send`. A failure drops only the watcher:
     // this runs inside the pump, which ends by itself once the finished loop closes its channel.
     fn on_watch(&mut self, root: &Path, msg: WatchMsg, cx: &mut Context<Self>) {
-        // A pull or squash leaves conflict markers and a stopped rebase on disk partway, which a
-        // reload would show as vanished requests; it is read once the loop has finished instead.
+        // A pull leaves a half-moved tree, and a team pull or squash conflict markers or a stopped
+        // rebase, which a reload would show as vanished requests; it is read once it is done.
+        let pulling = self.held_by(root, Hold::Pull);
         if !matches!(msg, WatchMsg::Failed(_))
             && let Some(entry) = self.entry_mut(root)
-            && entry
-                .team
-                .as_ref()
-                .is_some_and(|t| rewriting(&t.status.state))
+            && (pulling
+                || entry
+                    .team
+                    .as_ref()
+                    .is_some_and(|t| rewriting(&t.status.state)))
         {
             let held = entry.held.get_or_insert_with(HeldReload::default);
             match msg {

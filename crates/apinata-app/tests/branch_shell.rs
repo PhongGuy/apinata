@@ -369,7 +369,7 @@ fn an_unsaved_edit_refuses_a_switch_from_the_title_bar_picker(cx: &mut TestAppCo
 }
 
 // Opens the command palette, types `query` and returns the labels of the rows it lists.
-fn palette_rows(cx: &mut TestAppContext, s: &Started, query: &str) -> Vec<String> {
+pub fn palette_rows(cx: &mut TestAppContext, s: &Started, query: &str) -> Vec<String> {
     cx.simulate_keystrokes(s.win, &key("shift-p"));
     frame(cx, s.win);
     cx.update_window(s.win, |_, w, cx| w.input(query, cx))
@@ -393,7 +393,13 @@ fn searching_git_in_the_palette_lists_the_git_commands(cx: &mut TestAppContext) 
     rows.sort();
     assert_eq!(
         rows,
-        ["Clone repository…", "Show changes…", "Switch branch…"]
+        [
+            "Clone repository…",
+            "Pull from remote",
+            "Push to remote",
+            "Show changes…",
+            "Switch branch…"
+        ]
     );
 }
 
