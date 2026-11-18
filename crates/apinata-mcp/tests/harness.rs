@@ -56,6 +56,7 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "create_folder",
             "create_global_environment",
             "create_request",
+            "delete_cookie",
             "delete_environment",
             "delete_example",
             "delete_item",
@@ -105,6 +106,7 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "scrub_example_userinfo",
             "search",
             "send_request",
+            "set_cookie",
             "set_runtime_variable",
             "update_environment",
             "update_folder",
@@ -133,4 +135,6 @@ async fn send_and_run_are_open_world_and_the_listings_read_only() {
     assert_eq!(hints("graphql_format"), (Some(false), Some(false)));
     assert_eq!(hints("graphql_validate"), (Some(true), Some(false)));
     assert_eq!(hints("clear_cookies"), (None, Some(false)));
+    assert_eq!(hints("set_cookie"), (None, Some(false)));
+    assert_eq!(hints("delete_cookie"), (None, Some(false)));
 }

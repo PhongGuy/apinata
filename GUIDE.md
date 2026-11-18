@@ -852,7 +852,7 @@ A client config looks like this:
 The agent can read, search, create, edit, move and delete requests, folders and
 environments (and the global environments, with the `_global_environment`
 tools under the same secret rules), import a request, send a request, run a folder, list and clear
-cookies, list the trusted hosts, and read the git status and one file's
+cookies, set or delete one cookie, list the trusted hosts, and read the git status and one file's
 diff since the last commit, and commit collection changes locally with
 `git_commit` (the repository's hooks run; nothing is pushed). It can also find and replace text across the
 requests with `replace`, which only previews the hits until `dry_run` is set
@@ -877,6 +877,12 @@ and a bad expression is an error that sends nothing.
 The agent can check the collection with `check_collection`, which returns the same
 report as `apinata check --json` (undefined variables, missing files, script syntax
 errors) and sends nothing; `env` limits it to one environment.
+
+`set_cookie` stores one cookie as if a response from its `url` had set it, so later sends to
+that domain and path carry it; setting one contacts no host. `domain` widens it to a parent
+domain of the URL's host, and a domain the URL could not set is refused. `delete_cookie` takes
+the `domain`, `path` and `name` a `list_cookies` entry shows and says whether anything matched.
+Neither tool ever repeats a cookie's value.
 
 `set_runtime_variable` gives a session variable a value, so the next
 `send_request` or `run_folder` resolves `{{name}}` to it, and
