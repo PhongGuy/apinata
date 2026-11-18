@@ -71,6 +71,7 @@ mod scripts;
 mod scripts_run;
 mod scrub_userinfo;
 mod search;
+mod secret_renames;
 mod send_graphql;
 mod send_request;
 mod send_set_cookies;

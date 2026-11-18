@@ -381,6 +381,8 @@ async fn every_tool_result_matches_its_output_schema() {
         json!({"message": "edit", "paths": ["f/a.yml"]}),
     )
     .await;
+    ex.run(&server, "list_secret_renames", json!({"since": "HEAD~1"}))
+        .await;
 
     // The mock, idle and then with a hit.
     let started = ex

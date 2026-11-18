@@ -8,8 +8,8 @@ use crate::team_rebase::edit;
 use std::path::{Path, PathBuf};
 
 use apinata_core::{
-    Collection, EnvError, MemoryStore, PullRange, SecretError, SecretKey, SecretName,
-    SecretRenames, SecretStore, TargetState,
+    Collection, EnvError, MemoryStore, PullRange, RenameStatus, SecretError, SecretKey, SecretName,
+    SecretRename, SecretRenames, SecretStore, TargetState,
 };
 
 /// An environment file `name` with a plain `host` and each of `secrets` marked secret.
@@ -498,4 +498,49 @@ fn a_range_commit_shaped_like_an_option_is_never_read_as_one() {
         .unwrap();
     assert_eq!(found, SecretRenames::default());
     assert!(!planted.exists());
+}
+
+#[test]
+fn only_a_sure_row_with_one_free_or_same_target_is_ready() {
+    let n = |s: &str| {
+        let (e, v) = s.split_once('/').unwrap();
+        SecretName::new(e, v)
+    };
+    let status = |to: &[(&str, TargetState)], sure: bool| {
+        let to = to.iter().map(|(t, s)| (n(t), *s)).collect();
+        SecretRename::new(n("dev/a"), to, sure).status()
+    };
+    use TargetState::{Free, Same, Taken};
+    assert_eq!(status(&[("s/a", Free)], true), RenameStatus::Ready);
+    assert_eq!(status(&[("s/a", Same)], true), RenameStatus::Ready);
+    assert_eq!(status(&[("s/a", Taken)], true), RenameStatus::Taken);
+    assert_eq!(status(&[("s/a", Taken)], false), RenameStatus::Taken);
+    assert_eq!(status(&[("s/a", Free)], false), RenameStatus::Ambiguous);
+    assert_eq!(
+        status(&[("s/a", Free), ("s/b", Free)], true),
+        RenameStatus::Ambiguous
+    );
+}
+
+#[test]
+fn a_range_to_head_resolves_both_ends_or_is_none() {
+    let sb = Sandbox::new();
+    let (col, base) = repo(
+        &sb,
+        &[("environments/dev.yml", env("dev", &["token"]).as_str())],
+    );
+    let key = env("dev", &["key"]);
+    let tip = edit(&sb, &col, &[("environments/dev.yml", Some(key.as_str()))]);
+    let o = sb.options();
+    assert_eq!(
+        PullRange::to_head(&col, &base[..7], &o).unwrap(),
+        Some(PullRange::new(base.clone(), tip.clone()))
+    );
+    assert_eq!(PullRange::to_head(&col, "ORIG_HEAD", &o).unwrap(), None);
+    assert_eq!(PullRange::to_head(&col, "--all", &o).unwrap(), None);
+    sb.git(&col, &["update-ref", "ORIG_HEAD", &base]);
+    assert_eq!(
+        PullRange::to_head(&col, "ORIG_HEAD", &o).unwrap(),
+        Some(PullRange::new(base, tip))
+    );
 }

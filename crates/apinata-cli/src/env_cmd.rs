@@ -225,6 +225,16 @@ impl<'a> Target<'a> {
 
 /// Run the action: 0 when printed, 3 for an unopenable collection or an unknown environment.
 pub fn run(args: &EnvArgs) -> ExitCode {
+    // Its exit code also says whether a rename was skipped, so it bypasses `go`'s 0 or 3.
+    if let EnvAction::Renames {
+        since,
+        move_ready,
+        pick,
+    } = &args.action
+    {
+        let collection = args.collection.as_deref();
+        return crate::renames_cmd::run(collection, since.as_deref(), *move_ready, pick);
+    }
     match go(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

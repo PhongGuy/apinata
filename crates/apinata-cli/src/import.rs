@@ -858,10 +858,18 @@ pub(crate) fn secret_store(no_keychain: bool) -> Arc<dyn SecretStore> {
 }
 
 /// The store `run`, `check`, `import` and `env` read secret values from: the platform keychain,
-/// opened on first use and bounded per call. Debug builds only: `APINATA_TEST_NO_KEYCHAIN` set
-/// swaps in an empty memory store, so the suite never reaches a real keychain, and
+/// opened on first use and bounded per call. Debug builds only: `APINATA_TEST_SECRETS_FILE`
+/// names a JSON file store that outlives the process, `APINATA_TEST_NO_KEYCHAIN` set swaps in
+/// an empty memory store, so the suite never reaches a real keychain, and
 /// `APINATA_TEST_REPORT_STORE` names, once on stderr, the store a command first used.
 pub(crate) fn platform_store() -> Arc<dyn SecretStore> {
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("APINATA_TEST_SECRETS_FILE") {
+        return reported(
+            "file",
+            Arc::new(crate::test_store::FileStore::new(path.into())),
+        );
+    }
     #[cfg(debug_assertions)]
     if std::env::var_os("APINATA_TEST_NO_KEYCHAIN").is_some() {
         return reported("memory", Arc::new(apinata_core::MemoryStore::new()));

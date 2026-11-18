@@ -485,6 +485,7 @@ fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
         Ok(root) => root,
         Err(e) => return usage(&e),
     };
+    let at = root.clone();
     let result = with_interrupt(move |cancel| {
         let done = apinata_core::pull(&root, cancel, &GitOptions::new());
         (done, cancel.is_cancelled())
@@ -504,6 +505,7 @@ fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
                     short(&p.from),
                     short(&p.to)
                 );
+                rename_hint(&at, &p.from, &p.to);
             }
             if p.from == p.to && p.ahead > 0 {
                 let n = p.ahead;
@@ -512,6 +514,23 @@ fn pull(collection: Option<&Path>, json: bool) -> ExitCode {
             }
         },
     )
+}
+
+/// Point at `env renames` when the pull from `from` to `to` left a stored secret under a name it
+/// renamed. Best effort: a collection or store that cannot be read only loses the hint.
+fn rename_hint(root: &Path, from: &str, to: &str) {
+    let Ok(c) = apinata_core::Collection::open(root) else {
+        return;
+    };
+    let range = apinata_core::PullRange::new(from, to);
+    let store = crate::import::platform_store();
+    let found = c.secret_renames(&range, None, &*store, &GitOptions::new());
+    if found.is_ok_and(|f| !f.renames.is_empty()) {
+        eprintln!(
+            "hint: stored secrets may need moving to their renamed names; run apinata env renames --since {}",
+            short(from)
+        );
+    }
 }
 
 fn push(collection: Option<&Path>, set_upstream: Option<&str>, json: bool) -> ExitCode {

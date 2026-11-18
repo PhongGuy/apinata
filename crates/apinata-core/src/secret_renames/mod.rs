@@ -2,13 +2,14 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
+use std::path::Path;
 
 use crate::collection::{Collection, Environment};
 use crate::document::Document;
 use crate::env_file::EnvVariable;
 use crate::env_ops::secret_names;
 use crate::error::EnvError;
-use crate::git::{EnvChanges, GitError, GitOptions, blob_at, env_changes};
+use crate::git::{EnvChanges, GitError, GitOptions, blob_at, env_changes, resolve_commit};
 use crate::secrets::{SecretKey, SecretStore};
 use crate::team::ConflictCopies;
 
@@ -31,6 +32,19 @@ impl PullRange {
             from: from.into(),
             to: to.into(),
         }
+    }
+
+    /// From the commit `rev` names to `HEAD`, both resolved in the repository holding `root`;
+    /// `None` when either names no commit.
+    pub fn to_head(
+        root: &Path,
+        rev: &str,
+        opts: &GitOptions,
+    ) -> Result<Option<PullRange>, GitError> {
+        let Some(from) = resolve_commit(root, rev, opts)? else {
+            return Ok(None);
+        };
+        Ok(resolve_commit(root, "HEAD", opts)?.map(|to| PullRange::new(from, to)))
     }
 }
 
@@ -84,10 +98,31 @@ pub struct SecretRename {
     pub sure: bool,
 }
 
+/// Whether a rename can be moved without a person choosing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RenameStatus {
+    /// Sure, with one new name that is free or already holds the same value.
+    Ready,
+    /// Not sure, or several new names: a person picks one.
+    Ambiguous,
+    /// The one new name holds a different value, which is never overwritten.
+    Taken,
+}
+
 impl SecretRename {
     /// A row moving `from` to one of `to`.
     pub fn new(from: SecretName, to: Vec<(SecretName, TargetState)>, sure: bool) -> SecretRename {
         SecretRename { from, to, sure }
+    }
+
+    /// Whether the row can move as it stands.
+    pub fn status(&self) -> RenameStatus {
+        match self.to.as_slice() {
+            [(_, TargetState::Taken)] => RenameStatus::Taken,
+            [(_, TargetState::Free | TargetState::Same)] if self.sure => RenameStatus::Ready,
+            _ => RenameStatus::Ambiguous,
+        }
     }
 }
 
