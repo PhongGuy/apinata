@@ -63,6 +63,7 @@ mod cli_init;
 mod cli_item;
 mod cli_item_folder;
 mod cli_item_pruned;
+mod cli_item_request;
 mod cli_item_restore;
 mod cli_iteration_reports;
 mod cli_ls;

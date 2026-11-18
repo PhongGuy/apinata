@@ -20,6 +20,7 @@ mod hosts_cmd;
 mod import;
 mod init_cmd;
 mod item_cmd;
+mod item_request;
 mod ls_cmd;
 mod mcp;
 mod mock_cmd;
@@ -569,11 +570,17 @@ pub enum ItemAction {
     /// environment instead (`apinata env set --secret`, stored in the keychain) and refer to it
     /// as `{{name}}`.
     Folder(Box<FolderArgs>),
+    /// Change a request's name, method, URL, params, headers, body, auth, variables,
+    /// assertions, settings, docs, tags or position, as MCP's `update_request` does.
+    ///
+    /// Values are written into the request file as given, `{{variables}}` included. Keep a
+    /// secret in an environment instead (`apinata env set --secret`, stored in the keychain)
+    /// and refer to it as `{{name}}`.
+    Request(Box<RequestArgs>),
 }
 
 // `item folder`'s flags; the variant's doc comment is the command's help.
 #[derive(clap::Args)]
-#[command(group(clap::ArgGroup::new("auth_mode").args(["auth", "bearer", "basic", "digest", "api_key", "auth_json", "auth_json_file"])))]
 pub struct FolderArgs {
     /// The folder; `.` or `""` for the collection itself.
     pub path: String,
@@ -604,6 +611,20 @@ pub struct FolderArgs {
     /// Disable every variable named NAME, applied after --var.
     #[arg(long = "disable-var", value_name = "NAME")]
     pub disable_vars: Vec<String>,
+    #[command(flatten)]
+    pub auth: AuthArgs,
+    /// Set the Markdown docs; blank text removes them.
+    #[arg(long, conflicts_with = "docs_file")]
+    pub docs: Option<String>,
+    /// Set the docs from a file, `-` for standard input.
+    #[arg(long, value_name = "FILE")]
+    pub docs_file: Option<PathBuf>,
+}
+
+/// The auth flags `item folder` and `item request` share; at most one of them sets the auth.
+#[derive(clap::Args)]
+#[command(group(clap::ArgGroup::new("auth_mode").args(["auth", "bearer", "basic", "digest", "api_key", "auth_json", "auth_json_file"])))]
+pub struct AuthArgs {
     /// Set the auth to none, or to inherit the parent folder's or collection's.
     #[arg(long, value_enum, value_name = "MODE")]
     pub auth: Option<FolderAuthArg>,
@@ -624,18 +645,178 @@ pub struct FolderArgs {
     #[arg(long, value_enum, value_name = "WHERE", requires = "api_key")]
     pub api_key_in: Option<ApiKeyInArg>,
     /// Set any auth mode, OAuth 2.0 included, from JSON in the shape MCP's `read_folder`
-    /// shows: `{"type": "oauth2", "flow": ..., ...}`.
+    /// and `read_request` show: `{"type": "oauth2", "flow": ..., ...}`.
     #[arg(long, value_name = "JSON")]
     pub auth_json: Option<String>,
     /// Set the auth from a JSON file as --auth-json does, `-` for standard input.
     #[arg(long, value_name = "FILE")]
     pub auth_json_file: Option<PathBuf>,
+}
+
+// `item request`'s flags; the variant's doc comment is the command's help. List flags follow
+// `item folder`: unsets first, then sets, then the enable and disable toggles.
+#[derive(clap::Args)]
+pub struct RequestArgs {
+    /// The request, such as `users/get.yml`.
+    pub path: String,
+    /// Set the display name in `info.name`; the file keeps its name (`item rename` renames both).
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Set the HTTP method, such as GET.
+    #[arg(long)]
+    pub method: Option<String>,
+    /// Set the URL; the params are derived from it again, as the app does.
+    #[arg(long)]
+    pub url: Option<String>,
+    /// Set a query param as --header sets a header; the URL's query follows the params.
+    #[arg(long = "query", value_name = "NAME=VALUE")]
+    pub query: Vec<String>,
+    /// Remove every query param named NAME.
+    #[arg(long = "unset-query", value_name = "NAME")]
+    pub unset_query: Vec<String>,
+    /// Enable every query param named NAME.
+    #[arg(long = "enable-query", value_name = "NAME")]
+    pub enable_query: Vec<String>,
+    /// Disable every query param named NAME, applied after --query.
+    #[arg(long = "disable-query", value_name = "NAME")]
+    pub disable_query: Vec<String>,
+    /// Set the value of the path param NAME, which the URL names as `:NAME`.
+    #[arg(long = "path-param", value_name = "NAME=VALUE")]
+    pub path_params: Vec<String>,
+    /// Set a header: the first one named NAME gets the value and is enabled, else it is
+    /// added. The value lands in the git-tracked request file; put a secret in
+    /// `apinata env set --secret` and use `{{name}}`.
+    #[arg(long = "header", value_name = "NAME=VALUE")]
+    pub headers: Vec<String>,
+    /// Remove every header named NAME.
+    #[arg(long = "unset-header", value_name = "NAME")]
+    pub unset_headers: Vec<String>,
+    /// Enable every header named NAME.
+    #[arg(long = "enable-header", value_name = "NAME")]
+    pub enable_headers: Vec<String>,
+    /// Disable every header named NAME, applied after --header.
+    #[arg(long = "disable-header", value_name = "NAME")]
+    pub disable_headers: Vec<String>,
+    /// Set a request variable as --header sets a header; a typed variable keeps its type.
+    #[arg(long = "var", value_name = "NAME=VALUE")]
+    pub vars: Vec<String>,
+    /// Remove every variable named NAME.
+    #[arg(long = "unset-var", value_name = "NAME")]
+    pub unset_vars: Vec<String>,
+    /// Enable every variable named NAME.
+    #[arg(long = "enable-var", value_name = "NAME")]
+    pub enable_vars: Vec<String>,
+    /// Disable every variable named NAME, applied after --var.
+    #[arg(long = "disable-var", value_name = "NAME")]
+    pub disable_vars: Vec<String>,
+    /// Switch the body mode; a text mode keeps the current text, a list mode its entries.
+    #[arg(long, value_enum, value_name = "MODE")]
+    pub body_mode: Option<BodyModeArg>,
+    /// Set the text of a json, xml, text or sparql body, or a graphql request's query.
+    #[arg(long, conflicts_with = "body_file")]
+    pub body: Option<String>,
+    /// Set the body text from a file as --body does, `-` for standard input.
+    #[arg(long, value_name = "FILE")]
+    pub body_file: Option<PathBuf>,
+    /// Set a graphql request's variables, as JSON text.
+    #[arg(long, value_name = "JSON")]
+    pub graphql_variables: Option<String>,
+    /// Set a form-urlencoded or multipart text field as --header sets a header.
+    #[arg(long = "form", value_name = "NAME=VALUE")]
+    pub form: Vec<String>,
+    /// Set a multipart field to upload files; repeat a NAME to send several.
+    #[arg(long = "form-file", value_name = "NAME=PATH")]
+    pub form_files: Vec<String>,
+    /// Set a multipart field's content type.
+    #[arg(long = "form-type", value_name = "NAME=TYPE")]
+    pub form_types: Vec<String>,
+    /// Remove every form field named NAME.
+    #[arg(long = "unset-form", value_name = "NAME")]
+    pub unset_form: Vec<String>,
+    /// Enable every form field named NAME.
+    #[arg(long = "enable-form", value_name = "NAME")]
+    pub enable_form: Vec<String>,
+    /// Disable every form field named NAME, applied after --form.
+    #[arg(long = "disable-form", value_name = "NAME")]
+    pub disable_form: Vec<String>,
+    /// Send this file as a file body, adding it to the list when absent.
+    #[arg(long, value_name = "PATH")]
+    pub select_file: Option<String>,
+    /// Set a file body entry's content type, adding the entry when absent.
+    #[arg(long = "file-type", value_name = "PATH=TYPE")]
+    pub file_types: Vec<String>,
+    /// Remove a file body entry.
+    #[arg(long = "unset-file", value_name = "PATH")]
+    pub unset_files: Vec<String>,
+    #[command(flatten)]
+    pub auth: AuthArgs,
+    /// Set an assertion on EXPR, such as `res.status=eq 200`; the operator comes first, then
+    /// its value, if any.
+    #[arg(long = "assert", value_name = "EXPR=OP [VALUE]")]
+    pub asserts: Vec<String>,
+    /// Remove every assertion on EXPR.
+    #[arg(long = "unset-assert", value_name = "EXPR")]
+    pub unset_asserts: Vec<String>,
+    /// Enable every assertion on EXPR.
+    #[arg(long = "enable-assert", value_name = "EXPR")]
+    pub enable_asserts: Vec<String>,
+    /// Disable every assertion on EXPR, applied after --assert.
+    #[arg(long = "disable-assert", value_name = "EXPR")]
+    pub disable_asserts: Vec<String>,
+    /// Set the timeout: milliseconds, `unlimited` or `inherit`.
+    #[arg(long, value_name = "MS")]
+    pub timeout: Option<String>,
+    /// Whether the URL is percent-encoded before sending.
+    #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set)]
+    pub encode_url: Option<bool>,
+    /// Whether redirects are followed.
+    #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set)]
+    pub follow_redirects: Option<bool>,
+    /// How many redirects are followed.
+    #[arg(long, value_name = "N")]
+    pub max_redirects: Option<u32>,
+    /// Whether `Authorization` is kept across a redirect.
+    #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set)]
+    pub forward_auth: Option<bool>,
     /// Set the Markdown docs; blank text removes them.
     #[arg(long, conflicts_with = "docs_file")]
     pub docs: Option<String>,
     /// Set the docs from a file, `-` for standard input.
     #[arg(long, value_name = "FILE")]
     pub docs_file: Option<PathBuf>,
+    /// Add a tag.
+    #[arg(long = "tag", value_name = "TAG")]
+    pub tags: Vec<String>,
+    /// Remove a tag.
+    #[arg(long = "unset-tag", value_name = "TAG")]
+    pub unset_tags: Vec<String>,
+    /// Set the position among the folder's items, without renumbering the others.
+    #[arg(long, value_name = "N")]
+    pub seq: Option<u64>,
+    /// Settle a URL and params query mismatch, after every other edit: `url` keeps the URL's
+    /// query, `params` rebuilds it from the enabled query params.
+    #[arg(long, value_enum, value_name = "SIDE")]
+    pub sync_query: Option<SyncQueryArg>,
+}
+
+/// The body modes `item request --body-mode` switches to.
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum BodyModeArg {
+    None,
+    Json,
+    Xml,
+    Text,
+    Sparql,
+    FormUrlencoded,
+    Multipart,
+    File,
+}
+
+/// Which side `item request --sync-query` keeps.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum SyncQueryArg {
+    Url,
+    Params,
 }
 
 /// The auth modes `item folder --auth` sets without credentials.
