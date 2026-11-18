@@ -300,11 +300,31 @@ json` prints `path`, `file` and `changed`. Values are written into the file as g
 keep a secret in an environment (`apinata env set --secret`) and refer to it as
 `{{name}}`.
 
+`apinata item request <path>` edits one request the way MCP's `update_request` does, and
+the file it writes is the same. `--name`, `--method` and `--url` set those fields (a new
+URL derives the params again). The list flags work as in `item folder`: `--header`,
+`--var`, `--query` (query params) and `--form` (form-urlencoded or multipart text fields)
+take `NAME=VALUE`, each with `--unset-`, `--enable-` and `--disable-` forms, and
+`--assert 'EXPR=OP VALUE'` with `--unset-assert`, `--enable-assert` and
+`--disable-assert` edits assertions. `--path-param NAME=VALUE` sets a path param the URL
+names. `--body-mode none|json|xml|text|sparql|form-urlencoded|multipart|file` switches
+the body, `--body TEXT` or `--body-file FILE` (`-` for standard input) sets its text (a
+GraphQL request's query, with `--graphql-variables`), `--form-file NAME=PATH` and
+`--form-type NAME=TYPE` edit multipart files, and `--select-file PATH`, `--file-type
+PATH=TYPE` and `--unset-file PATH` edit a file body. The auth flags, `--docs` and
+`--docs-file` are `item folder`'s. `--timeout MS|unlimited|inherit`, `--encode-url`,
+`--follow-redirects`, `--forward-auth` (each `true` or `false`) and `--max-redirects N`
+change the settings, `--tag` and `--unset-tag` the tags, `--seq N` the position, and
+`--sync-query url|params` settles a query that disagrees with the params. It prints
+`updated` or `unchanged`; `--format json` prints `path` and `changed`. Values, `{{vars}}`
+included, are written as given, with the same advice for secrets.
+
 ```sh
 apinata item new Find --in users --method GET --url "{{baseUrl}}/users?q=1"
 apinata item mv users/Find.yml --before users/get.yml
 apinata item rm users/old.yml
 apinata item folder users --header X-Team=core --unset-var oldHost --bearer "{{token}}"
+apinata item request users/Find.yml --method POST --body-mode json --body '{"q": "{{term}}"}'
 ```
 
 ### Host overrides

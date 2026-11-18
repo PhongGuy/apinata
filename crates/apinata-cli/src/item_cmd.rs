@@ -13,10 +13,11 @@ use apinata_core::{
 };
 use serde::Serialize;
 
+use crate::item_request;
 use crate::trust;
 use crate::{
-    ApiKeyInArg, EXIT_USAGE, FolderArgs, FolderAuthArg, Format, ItemAction, ItemArgs, ItemKindArg,
-    collection_arg,
+    ApiKeyInArg, AuthArgs, EXIT_USAGE, FolderArgs, FolderAuthArg, Format, ItemAction, ItemArgs,
+    ItemKindArg, collection_arg,
 };
 
 /// Where an action left its item: the MCP tools' `ItemPathResult`.
@@ -143,6 +144,7 @@ fn go(args: &ItemArgs) -> anyhow::Result<()> {
         } => return restore_pruned(&mut c, batch.as_deref(), json),
         ItemAction::ScrubUserinfo { write } => return scrub_userinfo(&mut c, *write, json),
         ItemAction::Folder(args) => return update_folder(&mut c, args, json),
+        ItemAction::Request(args) => return item_request::update_request(&mut c, args, json),
     };
     let path = path.to_string();
     if json {
@@ -286,38 +288,16 @@ fn update_folder(c: &mut Collection, args: &FolderArgs, json: bool) -> anyhow::R
         enable_vars,
         disable_vars,
         auth,
-        bearer,
-        basic,
-        digest,
-        api_key,
-        api_key_in,
-        auth_json,
-        auth_json_file,
         docs,
         docs_file,
     } = args;
     let path = folder(Some(path));
     let stdin = Path::new("-");
-    if auth_json_file.as_deref() == Some(stdin) && docs_file.as_deref() == Some(stdin) {
+    if auth.auth_json_file.as_deref() == Some(stdin) && docs_file.as_deref() == Some(stdin) {
         bail!("only one of --auth-json-file and --docs-file can read standard input");
     }
-    let auth = match (auth_json, auth_json_file) {
-        (Some(text), _) => Some(parse_auth(text)?),
-        (None, Some(file)) => Some(parse_auth(&read_text(file, "the auth JSON")?)?),
-        (None, None) => auth_flag(
-            *auth,
-            bearer.as_deref(),
-            basic.as_deref(),
-            digest.as_deref(),
-            api_key.as_deref(),
-            *api_key_in,
-        )?,
-    };
-    let docs = match (docs, docs_file) {
-        (Some(text), _) => Some(text.clone()),
-        (None, Some(file)) => Some(read_text(file, "the docs")?),
-        (None, None) => None,
-    };
+    let auth = auth_from(auth)?;
+    let docs = text_from(docs.as_deref(), docs_file.as_deref(), "the docs")?;
     let header_edit = !(headers.is_empty()
         && unset_headers.is_empty()
         && enable_headers.is_empty()
@@ -416,6 +396,35 @@ fn update_folder(c: &mut Collection, args: &FolderArgs, json: bool) -> anyhow::R
     Ok(())
 }
 
+/// The auth the shared auth flags name, if any, reading `--auth-json-file` when given.
+pub(crate) fn auth_from(a: &AuthArgs) -> anyhow::Result<Option<AuthSpec>> {
+    match (&a.auth_json, &a.auth_json_file) {
+        (Some(text), _) => Ok(Some(parse_auth(text)?)),
+        (None, Some(file)) => Ok(Some(parse_auth(&read_text(file, "the auth JSON")?)?)),
+        (None, None) => auth_flag(
+            a.auth,
+            a.bearer.as_deref(),
+            a.basic.as_deref(),
+            a.digest.as_deref(),
+            a.api_key.as_deref(),
+            a.api_key_in,
+        ),
+    }
+}
+
+/// The text a `--X TEXT` / `--X-file FILE` pair gives, if either is set.
+pub(crate) fn text_from(
+    text: Option<&str>,
+    file: Option<&Path>,
+    what: &str,
+) -> anyhow::Result<Option<String>> {
+    match (text, file) {
+        (Some(text), _) => Ok(Some(text.to_owned())),
+        (None, Some(file)) => Ok(Some(read_text(file, what)?)),
+        (None, None) => Ok(None),
+    }
+}
+
 /// The auth the flags name, if any; clap already allows at most one.
 fn auth_flag(
     mode: Option<FolderAuthArg>,
@@ -493,7 +502,7 @@ fn toggle<'a, T>(
 }
 
 /// Split a `NAME=VALUE` flag at its first `=`; the message never repeats the value.
-fn name_value<'a>(flag: &str, raw: &'a str) -> anyhow::Result<(&'a str, &'a str)> {
+pub(crate) fn name_value<'a>(flag: &str, raw: &'a str) -> anyhow::Result<(&'a str, &'a str)> {
     match raw.split_once('=') {
         Some((name, value)) if !name.is_empty() => Ok((name, value)),
         _ => bail!("{flag} takes NAME=VALUE"),
@@ -508,7 +517,7 @@ fn remove_named<T>(list: &mut Vec<T>, name: &str, of: fn(&T) -> &String) -> Opti
 }
 
 /// `file`'s text, or standard input for `-`; `what` names it in the error.
-fn read_text(file: &Path, what: &str) -> anyhow::Result<String> {
+pub(crate) fn read_text(file: &Path, what: &str) -> anyhow::Result<String> {
     if file == Path::new("-") {
         return std::io::read_to_string(std::io::stdin())
             .with_context(|| format!("could not read {what} from standard input"));
