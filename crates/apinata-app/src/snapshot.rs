@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use apinata_core::{
-    Assertion, AuthSpec, BodySpec, Collection, CollectionNetwork, EnvVariable, Environment, Folder,
-    ItemPath, KeyValue, Param, PostResponseVar, RequestFile, RequestSettings, ScriptPhase, Sibling,
-    Variable,
+    Assertion, AuthSpec, BodySpec, Collection, CollectionNetwork, EnvError, EnvVariable,
+    Environment, Folder, ItemPath, KeyValue, Param, PostResponseVar, RequestFile, RequestSettings,
+    ScriptPhase, Sibling, Variable,
 };
 
 use crate::auth_section::inherit_text;
@@ -230,10 +230,69 @@ pub struct EnvView {
     pub variables: Vec<EnvVariable>,
     pub color: Option<String>,
     pub extends: Option<String>,
+    /// The other environments, and a parent `extends` names, that core would refuse as the
+    /// parent, so the picker can leave them out or mark them.
+    pub refused_parents: Vec<RefusedParent>,
     pub dirty: bool,
     pub disk: DiskState,
     /// The seq of the last outside reload of this environment's file, 0 if none.
     pub reloaded: u64,
+}
+
+/// A parent core's `check_environment_extends` refuses for an environment.
+#[derive(Clone, PartialEq)]
+pub struct RefusedParent {
+    /// The parent's name.
+    pub name: String,
+    /// Which refusal it is.
+    pub reason: ParentRefusal,
+    /// Core's error text.
+    pub message: String,
+}
+
+/// Why core refuses a parent.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ParentRefusal {
+    /// It is the environment itself.
+    Itself,
+    /// It has no environment file.
+    Missing,
+    /// Its chain leads back to the environment.
+    Loops,
+}
+
+// Asks core about every sibling and the parent the file names, so the picker never offers a
+// parent that saving would refuse.
+fn refused_parents(c: &Collection, env: &Environment) -> Vec<RefusedParent> {
+    let own = env.extends();
+    let mut candidates: Vec<&str> = (c.environments().iter())
+        .map(Environment::name)
+        .filter(|n| *n != env.name())
+        .collect();
+    if let Some(parent) = own.as_deref()
+        && !candidates.contains(&parent)
+    {
+        candidates.push(parent);
+    }
+    candidates
+        .into_iter()
+        .filter_map(|parent| {
+            let error = c
+                .check_environment_extends(env.name(), Some(parent))
+                .err()?;
+            let reason = match &error {
+                EnvError::ExtendsItself { .. } => ParentRefusal::Itself,
+                EnvError::ExtendsMissing { .. } => ParentRefusal::Missing,
+                EnvError::ExtendsCycle { .. } => ParentRefusal::Loops,
+                _ => return None,
+            };
+            Some(RefusedParent {
+                name: parent.to_owned(),
+                reason,
+                message: error.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Everything a snapshot shows about the collection's files.
@@ -422,8 +481,17 @@ impl SnapshotCache {
             .iter()
             .map(|env| {
                 let target = Target::Environment(env.name().to_owned());
+                // A sibling's edit can change which parents loop, so a kept view is reused
+                // only while its refusals still hold.
+                let refused = refused_parents(c, env);
                 match self.environments.get(env.name()) {
-                    Some(view) if self.fresh(&target) => Arc::clone(view),
+                    Some(view) if self.fresh(&target) && view.refused_parents == refused => {
+                        Arc::clone(view)
+                    }
+                    Some(view) if self.fresh(&target) => Arc::new(EnvView {
+                        refused_parents: refused,
+                        ..(**view).clone()
+                    }),
                     _ => {
                         let view = env_view(env);
                         let disk = mark(changed, &target, view.disk);
@@ -431,6 +499,7 @@ impl SnapshotCache {
                         Arc::new(EnvView {
                             disk,
                             reloaded,
+                            refused_parents: refused,
                             ..view
                         })
                     }
@@ -712,6 +781,7 @@ fn env_view(e: &Environment) -> EnvView {
         variables: e.variables(),
         color: e.color(),
         extends: e.extends(),
+        refused_parents: Vec::new(),
         dirty: e.is_dirty(),
         disk: e.disk_state().into(),
         reloaded: 0,

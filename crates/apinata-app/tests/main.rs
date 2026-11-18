@@ -242,6 +242,7 @@ mod env_color;
 mod env_duplicates;
 mod env_edit_undo;
 mod env_editor;
+mod env_extends;
 mod env_fileless;
 mod env_move;
 mod env_naming;

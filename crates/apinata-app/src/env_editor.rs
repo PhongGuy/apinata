@@ -38,7 +38,7 @@ use crate::orphan_section::{self, Fileless, Orphans};
 use crate::request_editor::{RedoEdit, UndoEdit};
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep, ReplaceAnswer};
-use crate::snapshot::{CollectionSnapshot, DiskState, EnvView};
+use crate::snapshot::{CollectionSnapshot, DiskState, EnvView, ParentRefusal, RefusedParent};
 use crate::style::{self, PANE_INSET};
 use crate::ui;
 use crate::workspace::{Workspace, WorkspaceEvent};
@@ -101,20 +101,47 @@ impl SelectItem for Parent {
     }
 }
 
-// "None", then every other environment, then a named parent that is missing, so the
-// picker can always show what the file says.
-fn parents(names: &[String], selected: &str, extends: Option<&str>) -> Vec<Parent> {
+// "None", then every other environment core would accept, then the parent the file names
+// when core refuses it or it is missing, marked, so the picker can always show what the file
+// says.
+fn parents(
+    names: &[String],
+    selected: &str,
+    extends: Option<&str>,
+    refused: &[RefusedParent],
+) -> Vec<Parent> {
+    let refusal = |name: &str| refused.iter().find(|r| r.name == name).map(|r| r.reason);
     let mut items = vec![Parent {
         title: "None".into(),
         value: None,
     }];
-    let others = names.iter().filter(|n| *n != selected);
-    let missing = extends.filter(|e| !names.iter().any(|n| n == e) || *e == selected);
-    for name in others.map(String::as_str).chain(missing) {
+    let offered = names
+        .iter()
+        .filter(|n| *n != selected && refusal(n).is_none());
+    for name in offered {
         items.push(Parent {
-            title: name.to_string().into(),
-            value: Some(name.to_string()),
+            title: name.clone().into(),
+            value: Some(name.clone()),
         });
+    }
+    if let Some(parent) = extends {
+        let mark = match refusal(parent) {
+            Some(ParentRefusal::Itself) => Some("itself"),
+            Some(ParentRefusal::Missing) => Some("missing"),
+            Some(ParentRefusal::Loops) => Some("loops"),
+            None => None,
+        };
+        if let Some(mark) = mark {
+            items.push(Parent {
+                title: format!("{parent} ({mark})").into(),
+                value: Some(parent.to_owned()),
+            });
+        } else if !names.iter().any(|n| n == parent) {
+            items.push(Parent {
+                title: parent.to_owned().into(),
+                value: Some(parent.to_owned()),
+            });
+        }
     }
     items
 }
@@ -164,7 +191,9 @@ pub struct EnvEditor {
     /// The secrets of each file as last seen clean, which a collision check compares against.
     saved_records: HashMap<String, Vec<SecretRecord>>,
     extends: Entity<SelectState<Vec<Parent>>>,
-    parent_names: Vec<Option<String>>,
+    // The picker's entries as (title, parent) when last set, so a reload resets them only
+    // when they change.
+    parent_names: Vec<(String, Option<String>)>,
     name_input: Entity<InputState>,
     naming: Option<Naming>,
     /// The rename in flight as (from, to, id): the selection and the name field wait for it.
@@ -335,6 +364,11 @@ impl EnvEditor {
             "{} of {collection}",
             self.selected.as_deref().unwrap_or_default()
         )
+    }
+
+    /// The Extends picker's entries as (title, parent), "None" first.
+    pub fn parent_choices(&self) -> Vec<(String, Option<String>)> {
+        self.parent_names.clone()
     }
 
     /// Selects the environment `name` and shows it as the snapshot has it. Secret typing not
@@ -1596,8 +1630,15 @@ impl EnvEditor {
             });
         }
         if all || !self.busy(Field::Extends, cx) {
-            let items = parents(&self.names(cx), &name, view.extends.as_deref());
-            let values: Vec<Option<String>> = items.iter().map(|p| p.value.clone()).collect();
+            let items = parents(
+                &self.names(cx),
+                &name,
+                view.extends.as_deref(),
+                &view.refused_parents,
+            );
+            let values: Vec<(String, Option<String>)> = (items.iter())
+                .map(|p| (p.title.to_string(), p.value.clone()))
+                .collect();
             let extends = view.extends.clone();
             self.extends.update(cx, |s, cx| {
                 if values != self.parent_names {
