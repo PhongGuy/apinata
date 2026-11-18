@@ -26,6 +26,7 @@ mod mcp;
 mod mock_cmd;
 mod network;
 mod network_notice;
+mod oauth2_cmd;
 mod query_notice;
 mod renames_cmd;
 mod replace_cmd;
@@ -225,6 +226,59 @@ enum Command {
         an unknown header or variable to unset, an unknown, taken or ambiguous example name, \
         or a refused edit")]
     Item(ItemArgs),
+    /// Show and clear the cached OAuth 2.0 tokens `run` reuses; token values are never shown.
+    #[command(after_help = "Exit codes:\n  \
+        0  shown, cleared, or nothing to clear\n  \
+        3  usage or collection error, an unknown path, auth that is not OAuth 2.0, \
+        or settings that do not resolve")]
+    Oauth2(OAuth2Args),
+}
+
+#[derive(clap::Args)]
+pub struct OAuth2Args {
+    #[command(subcommand)]
+    pub action: OAuth2Action,
+    /// The collection directory or a directory inside it; defaults to the working directory.
+    #[arg(long, global = true)]
+    pub collection: Option<PathBuf>,
+    /// The environment the tokens were fetched under; tokens are kept per environment.
+    #[arg(long, value_name = "NAME", global = true)]
+    pub env: Option<String>,
+    /// Define a variable the auth settings use, like `run --env-var`.
+    #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var, global = true)]
+    pub env_var: Vec<EnvVar>,
+    /// The global environment the tokens were fetched with, as `run --global-env`.
+    #[arg(long, value_name = "NAME", global = true)]
+    pub global_env: Option<String>,
+    /// Set or override a global environment variable, like `run --global-env-var`.
+    #[arg(long = "global-env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var, global = true)]
+    pub global_env_var: Vec<EnvVar>,
+    /// A workspace folder whose environments `--global-env` can also name, as for `run`.
+    #[arg(long, value_name = "DIR", global = true)]
+    pub workspace: Option<PathBuf>,
+    /// Do not read secret values from the platform keychain.
+    #[arg(long, global = true)]
+    pub no_keychain: bool,
+    /// Print the result as text or as JSON.
+    #[arg(long, value_enum, global = true, default_value_t = Format::Text)]
+    pub format: Format,
+}
+
+/// The token actions. PATH is a request or folder relative to the collection root, such as
+/// `users/get.yml` or `users`; `.` is the collection's own auth. Without PATH the action covers
+/// every request, folder and collection auth that is OAuth 2.0 of its own.
+#[derive(Subcommand)]
+pub enum OAuth2Action {
+    /// List cached tokens: where the auth is defined, grant, expiry, scope, refresh token.
+    Status {
+        /// A request or folder path; every OAuth 2.0 auth in the collection when absent.
+        path: Option<String>,
+    },
+    /// Forget the cached tokens of PATH's auth, or of every OAuth 2.0 auth when absent.
+    Clear {
+        /// A request or folder path; every OAuth 2.0 auth in the collection when absent.
+        path: Option<String>,
+    },
 }
 
 #[derive(clap::Args)]
@@ -1517,6 +1571,7 @@ fn main() -> ExitCode {
         Command::Env(args) => return env_cmd::run(&args),
         Command::Item(args) => return item_cmd::run(&args),
         Command::Network(args) => return hosts_cmd::run(&args),
+        Command::Oauth2(args) => return oauth2_cmd::run(&args),
     };
     // Fold `--collection` into the positional so the rest of the run sees one path.
     match collection_arg::require(
