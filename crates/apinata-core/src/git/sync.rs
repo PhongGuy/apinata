@@ -164,6 +164,36 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
     Ok(pulled(oid))
 }
 
+/// Which way a sync goes, for [`sync_urls`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SyncDirection {
+    /// A [`pull`], which fetches from the remote's URLs.
+    Pull,
+    /// A [`push`] to the upstream, which goes to the remote's push URLs.
+    Push,
+}
+
+/// Every URL a pull or a push (to the upstream) of the branch HEAD is on would contact, as git
+/// resolves them with `insteadOf` and `pushInsteadOf` applied. Nothing is contacted. A detached
+/// HEAD or a branch with no upstream is refused as the sync itself would refuse it.
+pub fn sync_urls(
+    root: &Path,
+    direction: SyncDirection,
+    opts: &GitOptions,
+) -> Result<Vec<String>, SyncError> {
+    check_root(root).map_err(from_git)?;
+    let branch = current_branch(root, opts)?;
+    let up = upstream_of(root, &branch, opts)?;
+    let mut args = vec!["remote", "get-url", "--all"];
+    if direction == SyncDirection::Push {
+        args.push("--push");
+    }
+    args.extend(["--", &up.remote]);
+    let text = lines(root, &args, opts).map_err(from_git)?;
+    Ok(text.lines().map(str::to_owned).collect())
+}
+
 /// Fast-forward the checked-out `branch` to `oid`, the tip of `upstream`.
 pub(super) fn fast_forward(
     root: &Path,

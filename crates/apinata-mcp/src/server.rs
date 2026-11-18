@@ -8,11 +8,12 @@ use std::time::Duration;
 use apinata_core::import::{FetchError, SourceFetch, default_import_name, fetch_source};
 use apinata_core::mock::{self as core_mock, MockHandle, MockOptions};
 use apinata_core::{
-    ApprovalInbox, AuthorizeOptions, CancelHandle, Collection, CookieJar, EnvOverlay, ExecError,
-    ExecOptions, ExecutionMode, Executor, IntrospectGuard, IntrospectOptions, ItemPath,
-    OAuth2Error, Outcome, RunError, RunEvent, RunOptions, RuntimeVars, SCHEMA_BODY_LIMIT,
-    ScriptPhase, ScriptTextKind, SecretStore, TokenCache, assertion_sensitive_values, introspect,
-    plan_script_texts, request_secrets, script_texts, send_one,
+    ApprovalInbox, AuthorizeOptions, CancelFlag, CancelHandle, Collection, CookieJar, EnvOverlay,
+    ExecError, ExecOptions, ExecutionMode, Executor, GitOptions, IntrospectGuard,
+    IntrospectOptions, ItemPath, OAuth2Error, Outcome, RemoteHost, RunError, RunEvent, RunOptions,
+    RuntimeVars, SCHEMA_BODY_LIMIT, ScriptPhase, ScriptTextKind, SecretStore, SyncDirection,
+    TokenCache, assertion_sensitive_values, introspect, plan_script_texts, request_secrets,
+    script_texts, send_one,
 };
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::tool::ToolCallContext;
@@ -43,7 +44,8 @@ use crate::examples::{
 use crate::export::{self, ExportDoc, ExportOpenapiArgs, ExportPostmanArgs};
 use crate::generate::{self, GenerateArgs, GeneratedCode};
 use crate::git::{
-    self, CommitArgs, CommitDoc, GitDiffDoc, GitStatusDoc, SecretRenamesDoc, SinceArgs,
+    self, BranchesDoc, CommitArgs, CommitDoc, GitDiffDoc, GitStatusDoc, PulledDoc, PushedDoc,
+    SecretRenamesDoc, SinceArgs, SwitchArgs, SwitchedDoc, SyncArgs,
 };
 use crate::graphql::{self, GraphqlSchemaArgs, GraphqlSchemaDoc};
 use crate::graphql_query::{
@@ -91,6 +93,7 @@ const NO_FILE_WRITES: &[&str] = &[
     "set_runtime_variable",
     "clear_runtime_variables",
     "git_commit",
+    "git_push",
     "create_global_environment",
     "duplicate_global_environment",
     "rename_global_environment",
@@ -411,6 +414,56 @@ impl ApinataServer {
         })
         .await
         .map_err(|_| PANICKED.to_owned())?
+    }
+
+    /// Refuse a pull or push whose remote URLs reach a host that is neither local nor trusted,
+    /// filing it for approval as a refused send is; nothing has contacted the remote yet.
+    async fn sync_gate(
+        &self,
+        direction: SyncDirection,
+        label: &str,
+        nothing: &str,
+    ) -> Result<(), String> {
+        let options = self.options.git_options().clone();
+        let hosts = self
+            .with_collection(move |c| git::remote_hosts(c.root(), direction, &options))
+            .await?;
+        for host in hosts {
+            match host {
+                RemoteHost::Local => {}
+                RemoteHost::Host(host) if self.trust.allows_fresh(&host) => {}
+                RemoteHost::Host(host) => {
+                    let inbox = self.inbox.as_ref();
+                    return Err(self.trust.refuse_remote(&host, label, inbox, nothing));
+                }
+                _ => {
+                    return Err(format!(
+                        "the remote uses a transport whose host cannot be checked; {nothing}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Run the git call `f` on the collection, stopping it when the client cancels.
+    async fn git_with_cancel<T, F>(&self, ct: CancellationToken, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&std::path::Path, &CancelFlag, &GitOptions) -> Result<T, String> + Send + 'static,
+    {
+        let options = self.options.git_options().clone();
+        let cancel = CancelFlag::new();
+        let flag = cancel.clone();
+        let watch = tokio::spawn(async move {
+            ct.cancelled().await;
+            flag.cancel();
+        });
+        let done = self
+            .with_collection(move |c| f(c.root(), &cancel, &options))
+            .await;
+        watch.abort();
+        done
     }
 
     /// Run `f` on a fresh open of the global environments, one call at a time as collection
@@ -1182,6 +1235,79 @@ impl ApinataServer {
             git::commit_paths(collection.root(), &args, &options).map(Json)
         })
         .await
+    }
+
+    #[tool(
+        description = "List the repository's branches as of its last fetch: each local branch \
+                       with the remote branch it tracks (`<remote>/<name>`) and whether HEAD \
+                       is on it, then the remote branches no local branch tracks. Reads git \
+                       only; never fetches.",
+        annotations(read_only_hint = true)
+    )]
+    async fn git_branches(&self) -> Result<Json<BranchesDoc>, String> {
+        let options = self.options.git_options().clone();
+        self.with_collection(move |c| git::list_branches(c.root(), &options).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "Switch the repository to `branch`: a local branch, or a remote branch \
+                       as `<remote>/<name>`, which gets a local branch tracking it. Refused \
+                       while anything is uncommitted; nothing is carried over, stashed or \
+                       forced, so a switch can always be switched back.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn git_switch_branch(
+        &self,
+        Parameters(args): Parameters<SwitchArgs>,
+    ) -> Result<Json<SwitchedDoc>, String> {
+        let options = self.options.git_options().clone();
+        self.with_collection(move |c| git::switch(c.root(), &args, &options).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "Fetch the current branch's upstream and fast-forward to it. Refused \
+                       with uncommitted changes or when the branches have diverged; never \
+                       merges or rebases. A remote on a host that is not local needs that \
+                       host trusted for the collection, as sends do; otherwise the user is \
+                       asked in the Apinata app and nothing is pulled.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn git_pull(
+        &self,
+        Parameters(SyncArgs {}): Parameters<SyncArgs>,
+        ct: CancellationToken,
+    ) -> Result<Json<PulledDoc>, String> {
+        self.sync_gate(SyncDirection::Pull, "git_pull", "nothing was pulled")
+            .await?;
+        self.git_with_cancel(ct, git::pull_branch).await.map(Json)
+    }
+
+    #[tool(
+        description = "Push the current branch to its existing upstream, never forced; a \
+                       branch without an upstream must be published in the Apinata app or a \
+                       terminal. A remote on a host that is not local needs that host trusted \
+                       for the collection, as sends do; otherwise the user is asked in the \
+                       Apinata app and nothing is pushed.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn git_push(
+        &self,
+        Parameters(SyncArgs {}): Parameters<SyncArgs>,
+        ct: CancellationToken,
+    ) -> Result<Json<PushedDoc>, String> {
+        self.sync_gate(SyncDirection::Push, "git_push", "nothing was pushed")
+            .await?;
+        self.git_with_cancel(ct, git::push_branch).await.map(Json)
     }
 
     #[tool(

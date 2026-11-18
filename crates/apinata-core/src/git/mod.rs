@@ -27,12 +27,12 @@ pub use branch::{
 pub use clone::{CloneError, CloneProgress, CloneRequest, clone_repo};
 pub use stream::CancelFlag;
 mod sync;
-pub use sync::{Pulled, Pushed, SyncError, pull, push};
+pub use sync::{Pulled, Pushed, SyncDirection, SyncError, pull, push, sync_urls};
 mod url;
 pub(crate) use url::redact_header_url;
 pub use url::{
-    CloneUrlKind, default_folder_name, redact_url, redact_url_userinfo, validate_clone_url,
-    validate_folder_name,
+    CloneUrlKind, RemoteHost, default_folder_name, redact_url, redact_url_userinfo, remote_host,
+    validate_clone_url, validate_folder_name,
 };
 #[cfg(windows)]
 #[allow(unsafe_code)]

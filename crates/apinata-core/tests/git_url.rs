@@ -1,6 +1,6 @@
 use apinata_core::{
-    CloneError, CloneUrlKind, default_folder_name, redact_url, validate_clone_url,
-    validate_folder_name,
+    CloneError, CloneUrlKind, RemoteHost, default_folder_name, redact_url, remote_host,
+    validate_clone_url, validate_folder_name,
 };
 
 #[test]
@@ -93,5 +93,60 @@ fn redaction_drops_the_whole_userinfo_of_every_scheme() {
         ("/tmp/x/origin.git", "/tmp/x/origin.git"),
     ] {
         assert_eq!(redact_url(url), want);
+    }
+}
+
+#[test]
+fn a_network_remote_names_the_host_git_would_contact() {
+    for (url, host) in [
+        ("https://example.invalid/r.git", "example.invalid"),
+        (
+            "HTTPS://User:pw@Example.INVALID:8443/r.git",
+            "example.invalid",
+        ),
+        ("http://example.invalid/r", "example.invalid"),
+        ("ssh://git@example.invalid:2222/r.git", "example.invalid"),
+        ("git+ssh://example.invalid/r", "example.invalid"),
+        ("git://example.invalid/r", "example.invalid"),
+        ("git@example.invalid:r.git", "example.invalid"),
+        ("example.invalid:team/r.git", "example.invalid"),
+        ("git@[2001:db8::1]:r.git", "[2001:db8::1]"),
+        ("ssh://[2001:db8::1]:22/r", "[2001:db8::1]"),
+        ("[git@example.invalid:22]:r.git", "example.invalid"),
+    ] {
+        assert_eq!(remote_host(url), RemoteHost::Host(host.to_owned()), "{url}");
+    }
+}
+
+#[test]
+fn a_path_file_url_or_loopback_host_is_local() {
+    for url in [
+        "/srv/git/r.git",
+        "../r.git",
+        "r.git",
+        "./a:b",
+        "file:///srv/git/r.git",
+        "FILE:///srv/r",
+        "ssh://git@localhost/r.git",
+        "git@127.0.0.1:r.git",
+        "https://[::1]/r.git",
+        "https://api.localhost/r.git",
+    ] {
+        assert_eq!(remote_host(url), RemoteHost::Local, "{url}");
+    }
+}
+
+#[test]
+fn a_transport_whose_destination_cannot_be_read_is_unknown() {
+    for url in [
+        "",
+        "ext::ssh -o ProxyCommand=x host",
+        "fd::3",
+        "persistent-https::example.invalid/r",
+        "gcrypt://example.invalid/r",
+        "https:///nohost",
+        "git@:r.git",
+    ] {
+        assert_eq!(remote_host(url), RemoteHost::Unknown, "{url:?}");
     }
 }

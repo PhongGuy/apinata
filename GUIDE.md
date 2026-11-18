@@ -851,6 +851,17 @@ diff since the last commit, and commit collection changes locally with
 requests with `replace`, which only previews the hits until `dry_run` is set
 to false.
 
+The agent can also work with branches and the remote. `git_branches` lists the
+local branches and the remote branches as of the last fetch, and never fetches.
+`git_switch_branch` switches to a local branch, or to a remote one as
+`<remote>/<name>`, and is refused while anything is uncommitted. `git_pull`
+fast-forwards the current branch to its upstream, and `git_push` pushes it to
+its existing upstream, never forced and never setting a new upstream. Pull and
+push follow the same trust rule as sends: a remote on a host other than a local
+path, a `file://` URL, `localhost` or a loopback address needs that host
+trusted for the collection, and an untrusted one is refused before git runs and
+waits for your approval in the desktop app.
+
 `send_request` takes `body_filter`, a JSONPath for a JSON response or an XPath for an XML one,
 and returns only the matched text, so an agent can read a large list in parts. `total_bytes`
 stays the whole body's size, `truncated` says whether the matches were cut to `max_body_bytes`,

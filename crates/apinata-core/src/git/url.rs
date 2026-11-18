@@ -88,6 +88,101 @@ pub fn validate_clone_url(url: &str) -> Result<CloneUrlKind, CloneError> {
     }
 }
 
+/// Where a git remote URL leads, for deciding whether reaching it needs the user's trust.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RemoteHost {
+    /// A path, a `file://` URL, or a loopback or `localhost` host: nothing leaves the machine.
+    Local,
+    /// The normalised host a network transport would contact.
+    Host(String),
+    /// A transport whose destination cannot be read, such as `ext::` or a remote helper.
+    Unknown,
+}
+
+/// The host git would contact for remote `url`, read the way git tells a URL, the scp form
+/// `[user@]host:path` and a local path apart.
+pub fn remote_host(url: &str) -> RemoteHost {
+    let url = url.trim();
+    if url.is_empty() || helper_scheme(url, "::").is_some() {
+        return RemoteHost::Unknown;
+    }
+    if std::path::Path::new(url).is_absolute() || dos_drive(url) {
+        return RemoteHost::Local;
+    }
+    if let Some((scheme, rest)) = helper_scheme(url, "://") {
+        return match scheme.to_ascii_lowercase().as_str() {
+            "file" => RemoteHost::Local,
+            "http" | "https" | "ftp" | "ftps" | "git" | "ssh" | "git+ssh" | "ssh+git" => {
+                let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+                authority_host(&rest[..end])
+            }
+            _ => RemoteHost::Unknown,
+        };
+    }
+    // Git reads a colon before any slash as the scp form; anything else is a path.
+    let Some(colon) = url.find(':') else {
+        return RemoteHost::Local;
+    };
+    if url.find('/').is_some_and(|slash| slash < colon) {
+        return RemoteHost::Local;
+    }
+    // A bracketed host may hold colons of its own, so the host ends at its bracket.
+    let start = match url.find('@') {
+        Some(at) if at < colon && !url[..at].contains('[') => at + 1,
+        _ => 0,
+    };
+    let rest = &url[start..];
+    let host = match rest.strip_prefix('[') {
+        Some(inner) => inner.find(']').map_or("", |end| &rest[..end + 2]),
+        None => rest.split(':').next().unwrap_or(""),
+    };
+    authority_host(host)
+}
+
+/// `scheme` and the rest when `url` starts with a scheme followed by `separator`.
+fn helper_scheme<'a>(url: &'a str, separator: &str) -> Option<(&'a str, &'a str)> {
+    let (scheme, rest) = url.split_once(separator)?;
+    let valid = !scheme.is_empty()
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c));
+    valid.then_some((scheme, rest))
+}
+
+/// Git reads `C:...` as a drive on Windows only; elsewhere it is the scp form for host `C`.
+fn dos_drive(url: &str) -> bool {
+    let bytes = url.as_bytes();
+    cfg!(windows) && bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+/// The host of `[user@]host[:port]`, where a bracketed part is an IPv6 address or git's
+/// `[user@host:port]` form.
+fn authority_host(authority: &str) -> RemoteHost {
+    let host = authority.rsplit('@').next().unwrap_or("");
+    let host = match host.strip_prefix('[').and_then(|h| h.split_once(']')) {
+        Some((inner, _)) if inner.parse::<std::net::Ipv6Addr>().is_ok() => &host[..inner.len() + 2],
+        Some((inner, _)) => return authority_host(inner),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    let Some(name) = (!host.is_empty())
+        .then(|| crate::trust::normalize_host(host))
+        .flatten()
+    else {
+        return RemoteHost::Unknown;
+    };
+    let loopback = name
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(crate::trust::is_loopback);
+    if loopback || name == "localhost" || name.ends_with(".localhost") {
+        RemoteHost::Local
+    } else {
+        RemoteHost::Host(name)
+    }
+}
+
 /// Accept `name` only when it is one plain path component.
 pub fn validate_folder_name(name: &str) -> Result<(), CloneError> {
     let reason = if name.is_empty() {
