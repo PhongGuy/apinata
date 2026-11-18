@@ -508,3 +508,46 @@ fn a_team_collection_leaves_pull_and_push_out_of_the_palette(cx: &mut TestAppCon
     frame(cx, s.win);
     assert!(crate::branch_shell::palette_rows(cx, &s, "push to").is_empty());
 }
+
+/// The branch the dialog's list marks checked out, and the picker's own idea of it.
+fn shown_head(cx: &mut TestAppContext, r: &Rig) -> (Option<String>, Option<String>) {
+    r.picker.read_with(cx, |p, _| {
+        let row = p.branches().iter().find(|b| b.head);
+        (
+            row.and_then(|b| b.local.clone()),
+            p.current().map(str::to_owned),
+        )
+    })
+}
+
+fn wait_shown_head(cx: &mut TestAppContext, r: &Rig, branch: &str) {
+    let want = (Some(branch.to_owned()), Some(branch.to_owned()));
+    wait_for(cx, "the list to show the real checked-out branch", |cx| {
+        shown_head(cx, r) == want
+    });
+}
+
+#[gpui_kit::test]
+fn a_failed_push_refreshes_the_list_after_an_outside_switch(cx: &mut TestAppContext) {
+    let r = rig(cx, Sandbox::new(), |_| {});
+    assert_eq!(shown_head(cx, &r).0.as_deref(), Some("main"));
+    r.sb.git(
+        r.root(),
+        &["switch", "-q", "-c", "other", "--track", "origin/main"],
+    );
+    write(r.root(), "d.txt", "d\n");
+    r.sb.commit_all(r.root(), "local");
+    advance(&r.sb, "c.txt", "c\n");
+    push(cx, &r);
+    assert!(notice_text(cx, &r).contains("rejected"), "the push failed");
+    wait_shown_head(cx, &r, "other");
+}
+
+#[gpui_kit::test]
+fn a_failed_pull_refreshes_the_list_after_an_outside_switch(cx: &mut TestAppContext) {
+    let r = rig(cx, Sandbox::new(), |_| {});
+    r.sb.git(r.root(), &["switch", "-q", "-c", "loose"]);
+    pull(cx, &r);
+    assert!(notice(cx, &r).is_some(), "the pull failed");
+    wait_shown_head(cx, &r, "loose");
+}

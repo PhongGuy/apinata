@@ -195,23 +195,29 @@ impl BranchPicker {
             .unwrap_or_default()
     }
 
-    // Lists the branches in the background; an unreadable repository leaves the list empty.
-    // Only the newest listing lands, and it ends the listing or fetch that started it, never a
-    // switch or a fetch begun after it.
+    // Lists the branches and rereads HEAD in the background; an unreadable repository leaves the
+    // list empty. Only the newest listing lands, and it ends the listing or fetch that started
+    // it, never a switch or a fetch begun after it.
     fn relist(&mut self, cx: &mut Context<Self>) {
         self.listing += 1;
         let id = self.listing;
         let ends = matches!(self.activity, Activity::Listing | Activity::Fetching)
             .then_some(self.activity);
         let (root, options) = (self.root.clone(), self.options(cx));
-        let rx = off_thread(move || apinata_core::branches(&root, &options));
+        let rx = off_thread(move || {
+            let listed = apinata_core::branches(&root, &options);
+            (listed, git_head::branch_label(&root))
+        });
         cx.spawn(async move |this, cx| {
-            let Ok(listed) = rx.recv().await else { return };
+            let Ok((listed, current)) = rx.recv().await else {
+                return;
+            };
             let _ = this.update(cx, |this, cx| {
                 if this.listing != id {
                     return;
                 }
                 this.branches = listed.unwrap_or_default();
+                this.current = current;
                 if ends == Some(this.activity) {
                     this.activity = Activity::Idle;
                 }
@@ -253,7 +259,7 @@ impl BranchPicker {
             let notice = rx.recv().await.ok().flatten();
             let _ = this.update(cx, |this, cx| {
                 this.notice = notice;
-                this.relist(cx);
+                this.sync_ended(cx);
             });
         })
         .detach();
@@ -272,6 +278,12 @@ impl BranchPicker {
     /// Stops a running fetch, pull or push; a cancelled fetch or pull leaves no notice.
     pub fn cancel_fetch(&mut self) {
         self.cancel.cancel();
+    }
+
+    // Every fetch, pull or push that ends, however it ends, relists: git may have moved HEAD
+    // or the branches meanwhile, from the app or from outside it.
+    fn sync_ended(&mut self, cx: &mut Context<Self>) {
+        self.relist(cx);
     }
 
     // A pull or push may start while the list is still loading, since neither reads it.
@@ -322,10 +334,10 @@ impl BranchPicker {
     // the pull is announced, or closes it when the collection file is gone.
     fn pulled(&mut self, result: Result<Pulled, SyncError>, cx: &mut Context<Self>) {
         let root = self.root.clone();
+        self.sync_ended(cx);
         match result {
             Ok(done) => {
                 let message = sync_text::pulled(&done);
-                self.relist(cx);
                 if done.from == done.to
                     || !self.workspace.read(cx).unsaved(Some(&root), cx).is_empty()
                 {
@@ -400,9 +412,9 @@ impl BranchPicker {
         cx: &mut Context<Self>,
     ) {
         self.activity = Activity::Idle;
+        self.sync_ended(cx);
         match result {
             Ok(done) => {
-                self.relist(cx);
                 cx.notify();
                 cx.emit(PickerEvent::Synced {
                     message: sync_text::pushed(&done),
