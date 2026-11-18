@@ -426,6 +426,7 @@ mod secret_forms_legacy;
 mod secret_names;
 mod secret_rename_move;
 mod secret_renames;
+mod secret_renames_pull;
 mod secret_values;
 mod secrets;
 mod sensitive_values;

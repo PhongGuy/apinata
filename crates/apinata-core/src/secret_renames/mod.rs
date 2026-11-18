@@ -116,7 +116,7 @@ impl Collection {
     pub fn secret_renames(
         &self,
         range: &PullRange,
-        _copies: Option<&ConflictCopies>,
+        copies: Option<&ConflictCopies>,
         store: &dyn SecretStore,
         opts: &GitOptions,
     ) -> Result<SecretRenames, EnvError> {
@@ -168,7 +168,7 @@ impl Collection {
             }
         }
         renames.sort_by(|a, b| a.from.cmp(&b.from));
-        Ok(SecretRenames::new(renames, 0))
+        Ok(hold_back(renames, copies))
     }
 
     /// Environment `stem`'s file at commit `rev`; `None` when that commit has no such file or
@@ -237,6 +237,27 @@ fn var_targets(
         .map(|v| &v.name)
         .collect();
     (added.into_iter().cloned().collect(), false)
+}
+
+/// Split `rows` into those to offer and a count of those touching a file with an unsettled
+/// copy or local-delete mark. Both lists are read afresh, and a list that cannot be read holds
+/// every row back, since a move made mid-clash could follow the wrong side.
+fn hold_back(rows: Vec<SecretRename>, copies: Option<&ConflictCopies>) -> SecretRenames {
+    let Some(copies) = copies else {
+        return SecretRenames::new(rows, 0);
+    };
+    let clashing: Option<BTreeSet<String>> = match (copies.list(), copies.deleted()) {
+        (Ok(list), Ok(deleted)) => Some(list.into_iter().chain(deleted).collect()),
+        _ => None,
+    };
+    let (held, offered): (Vec<_>, Vec<_>) = rows.into_iter().partition(|row| {
+        clashing.as_ref().is_none_or(|paths| {
+            std::iter::once(&row.from)
+                .chain(row.to.iter().map(|(to, _)| to))
+                .any(|name| paths.contains(&format!("environments/{}.yml", name.environment)))
+        })
+    });
+    SecretRenames::new(offered, held.len())
 }
 
 /// A git failure while reading the range, which must not read as "nothing to move".
