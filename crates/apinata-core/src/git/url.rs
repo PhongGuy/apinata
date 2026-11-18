@@ -107,15 +107,25 @@ pub fn remote_host(url: &str) -> RemoteHost {
     if url.is_empty() || helper_scheme(url, "::").is_some() {
         return RemoteHost::Unknown;
     }
+    // A UNC share reaches another machine on Windows; it is never taken for a local path.
+    if url.starts_with("//") || url.starts_with("\\\\") {
+        return RemoteHost::Unknown;
+    }
     if std::path::Path::new(url).is_absolute() || dos_drive(url) {
         return RemoteHost::Local;
     }
     if let Some((scheme, rest)) = helper_scheme(url, "://") {
         return match scheme.to_ascii_lowercase().as_str() {
-            "file" => RemoteHost::Local,
-            "http" | "https" | "ftp" | "ftps" | "git" | "ssh" | "git+ssh" | "ssh+git" => {
+            "file" if rest.starts_with('/') || rest.starts_with("localhost/") => RemoteHost::Local,
+            // curl ends the authority at `?` or `#`; ssh and the git daemon do not, so there
+            // such a character makes the host unreadable.
+            "http" | "https" | "ftp" | "ftps" => {
                 let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
                 authority_host(&rest[..end])
+            }
+            "git" | "ssh" | "git+ssh" | "ssh+git" => {
+                let end = rest.find('/').unwrap_or(rest.len());
+                ssh_host(&rest[..end])
             }
             _ => RemoteHost::Unknown,
         };
@@ -137,7 +147,16 @@ pub fn remote_host(url: &str) -> RemoteHost {
         Some(inner) => inner.find(']').map_or("", |end| &rest[..end + 2]),
         None => rest.split(':').next().unwrap_or(""),
     };
-    authority_host(host)
+    // The user part goes along, since ssh takes the host after its last `@`.
+    ssh_host(&url[..start + host.len()])
+}
+
+/// [`authority_host`] for a transport that hands the host text to ssh or a socket as it is.
+fn ssh_host(authority: &str) -> RemoteHost {
+    if authority.contains(['?', '#']) {
+        return RemoteHost::Unknown;
+    }
+    authority_host(authority)
 }
 
 /// `scheme` and the rest when `url` starts with a scheme followed by `separator`.

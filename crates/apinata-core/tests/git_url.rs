@@ -113,6 +113,9 @@ fn a_network_remote_names_the_host_git_would_contact() {
         ("git@[2001:db8::1]:r.git", "[2001:db8::1]"),
         ("ssh://[2001:db8::1]:22/r", "[2001:db8::1]"),
         ("[git@example.invalid:22]:r.git", "example.invalid"),
+        ("ssh://a@localhost@evil.invalid/r", "evil.invalid"),
+        ("a@localhost@evil.invalid:r", "evil.invalid"),
+        ("https://127.0.0.1@evil.invalid/r", "evil.invalid"),
     ] {
         assert_eq!(remote_host(url), RemoteHost::Host(host.to_owned()), "{url}");
     }
@@ -126,6 +129,7 @@ fn a_path_file_url_or_loopback_host_is_local() {
         "r.git",
         "./a:b",
         "file:///srv/git/r.git",
+        "file://localhost/srv/git/r.git",
         "FILE:///srv/r",
         "ssh://git@localhost/r.git",
         "git@127.0.0.1:r.git",
@@ -146,6 +150,16 @@ fn a_transport_whose_destination_cannot_be_read_is_unknown() {
         "gcrypt://example.invalid/r",
         "https:///nohost",
         "git@:r.git",
+        // ssh reads a `?` or `#` as part of the host text, not as the end of it.
+        "ssh://127.0.0.1?@evil.invalid/repo",
+        "ssh://localhost#@evil2.invalid/repo",
+        "git://localhost?x/repo",
+        "localhost?x@evil.invalid:repo",
+        "localhost#@evil.invalid:repo",
+        // A network share or a file URL naming a host is never read as local.
+        "\\\\evil.invalid\\share\\r.git",
+        "//evil.invalid/share/r.git",
+        "file://evil.invalid/share/r.git",
     ] {
         assert_eq!(remote_host(url), RemoteHost::Unknown, "{url:?}");
     }
