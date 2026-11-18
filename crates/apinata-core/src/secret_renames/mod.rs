@@ -1,6 +1,7 @@
 //! Stored secrets that a pulled environment or variable rename left under their old name.
 
 use std::collections::BTreeSet;
+use std::fmt;
 
 use crate::collection::{Collection, Environment};
 use crate::document::Document;
@@ -10,6 +11,8 @@ use crate::error::EnvError;
 use crate::git::{EnvChanges, GitError, GitOptions, blob_at, env_changes};
 use crate::secrets::{SecretKey, SecretStore};
 use crate::team::ConflictCopies;
+
+mod moves;
 
 /// The commits a pull moved the collection between.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +51,12 @@ impl SecretName {
             environment: environment.into(),
             variable: variable.into(),
         }
+    }
+}
+
+impl fmt::Display for SecretName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.environment, self.variable)
     }
 }
 
@@ -211,8 +220,8 @@ impl Collection {
     }
 }
 
-/// The names `var`, secret in an old file declaring `was_secret`, may have in `now`, same name first, and whether it kept its
-/// name. A secret gone from `now` may have become any secret `now` added; one kept but made plain
+/// The names secret `var` of an old file may have in `now`, and whether it kept its name.
+/// A secret gone from `now` may have become any secret `now` added; one kept but made plain
 /// is not gone, so it is never paired.
 fn var_targets(
     var: &str,

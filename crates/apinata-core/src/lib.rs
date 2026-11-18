@@ -185,8 +185,8 @@ pub use env_ops::{
 };
 pub use env_overlay::{EnvOverlay, OverlayLayer, OverlayVar};
 pub use error::{
-    ContextError, CreateError, EditError, EnvError, FileError, HintShell, OpenError, ResolveError,
-    SaveError, TreeError, UndefinedHint,
+    ContextError, CreateError, EditError, EnvError, FileError, HintShell, OpenError, RenameRefusal,
+    ResolveError, SaveError, TreeError, UndefinedHint,
 };
 pub use example::{
     Example, ExampleBody, ExampleBodyKind, ExampleRequest, ExampleResponse, ScrubReport, Scrubbed,
