@@ -445,7 +445,8 @@ pub(crate) fn check_targets(
     let targets = sync_targets(root, direction, options).map_err(|e| e.to_string())?;
     if let Some(key) = targets.overrides.first() {
         return Err(format!(
-            "{key} is set, which makes git run a command Apinata cannot check; {nothing}"
+            "{key} is set, so git could run a command or reach a host Apinata cannot \
+             check; {nothing}"
         ));
     }
     let hosts = targets.urls.iter().map(|url| (remote_host(url), false));

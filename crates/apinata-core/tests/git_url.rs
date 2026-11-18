@@ -160,6 +160,10 @@ fn a_transport_whose_destination_cannot_be_read_is_unknown() {
         "\\\\evil.invalid\\share\\r.git",
         "//evil.invalid/share/r.git",
         "file://evil.invalid/share/r.git",
+        "file:////evil.invalid/share/r.git",
+        "file://///evil.invalid/share/r.git",
+        "file:///\\\\evil.invalid\\share",
+        "file://localhost//evil.invalid/share",
     ] {
         assert_eq!(remote_host(url), RemoteHost::Unknown, "{url:?}");
     }

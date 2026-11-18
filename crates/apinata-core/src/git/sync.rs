@@ -184,8 +184,9 @@ pub struct SyncTargets {
     /// Every proxy that may carry an http or https URL there: `remote.<name>.proxy`,
     /// `http.proxy` (as matched for the URL) and the proxy environment variables.
     pub proxies: Vec<String>,
-    /// The remote's settings that make git run another command: `uploadpack`, `receivepack`
-    /// or `vcs`, named in full such as `remote.origin.uploadpack`.
+    /// Settings that make git run another command or reach a host it was not given:
+    /// `remote.<name>.uploadpack`, `receivepack` or `vcs`, `core.gitProxy` or
+    /// `GIT_PROXY_COMMAND` for a `git://` URL, and `http.followRedirects` set to follow.
     pub overrides: Vec<String>,
 }
 
@@ -229,6 +230,30 @@ pub fn sync_targets(
         let lower = url.to_ascii_lowercase();
         lower.starts_with("http://") || lower.starts_with("https://")
     };
+    for url in &urls {
+        if url.to_ascii_lowercase().starts_with("git://") {
+            let set = config_value(root, &["config", "--get-all", "core.gitProxy"], opts)?;
+            if set.is_some() {
+                targets.overrides.push("core.gitProxy".to_owned());
+            }
+            if opts
+                .env_value("GIT_PROXY_COMMAND")
+                .is_some_and(|v| !v.is_empty())
+            {
+                targets.overrides.push("GIT_PROXY_COMMAND".to_owned());
+            }
+        }
+        // A URL-specific setting beats the `-c http.followRedirects=false` the sync passes.
+        if http(&url) {
+            let args = ["config", "--get-urlmatch", "http.followRedirects", url];
+            let follows = config_value(root, &args, opts)?.is_some_and(|v| {
+                !["false", "no", "off", "0"].contains(&v.trim().to_ascii_lowercase().as_str())
+            });
+            if follows {
+                targets.overrides.push("http.followRedirects".to_owned());
+            }
+        }
+    }
     for url in urls.iter().filter(http) {
         let remote_key = format!("remote.{remote}.proxy");
         let configured = [

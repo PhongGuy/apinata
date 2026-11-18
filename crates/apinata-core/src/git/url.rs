@@ -116,7 +116,15 @@ pub fn remote_host(url: &str) -> RemoteHost {
     }
     if let Some((scheme, rest)) = helper_scheme(url, "://") {
         return match scheme.to_ascii_lowercase().as_str() {
-            "file" if rest.starts_with('/') || rest.starts_with("localhost/") => RemoteHost::Local,
+            // A path starting `//` or `\\` opens a UNC share on Windows.
+            "file" => match rest
+                .strip_prefix("localhost")
+                .unwrap_or(rest)
+                .strip_prefix('/')
+            {
+                Some(path) if !path.starts_with(['/', '\\']) => RemoteHost::Local,
+                _ => RemoteHost::Unknown,
+            },
             // curl ends the authority at `?` or `#`; ssh and the git daemon do not, so there
             // such a character makes the host unreadable.
             "http" | "https" | "ftp" | "ftps" => {

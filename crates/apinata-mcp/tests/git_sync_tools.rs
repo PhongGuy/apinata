@@ -475,3 +475,57 @@ async fn a_remote_that_runs_its_own_command_is_refused() {
         assert!(!server.root().join("pwned").exists(), "{key}");
     }
 }
+
+#[tokio::test]
+async fn a_repo_setting_that_follows_redirects_is_refused() {
+    let sb = Sandbox::new();
+    let (elsewhere, followed) = http_server(
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned(),
+    )
+    .await;
+    let redirect = format!(
+        "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{elsewhere}/x\r\nContent-Length: 0\r\n\
+         Connection: close\r\n\r\n"
+    );
+    let (port, _) = http_server(redirect).await;
+    let base = format!("http://127.0.0.1:{port}/");
+    let server = tracking_url(&sb, &format!("{base}r.git")).await;
+    let key = format!("http.{base}.followRedirects");
+    sb.git(server.root(), &["config", &key, "true"]);
+    for (tool, nothing) in [
+        ("git_pull", "nothing was pulled"),
+        ("git_push", "nothing was pushed"),
+    ] {
+        let message = server.err(tool, json!({})).await;
+        assert!(message.contains("http.followRedirects"), "{message}");
+        assert!(message.contains(nothing), "{message}");
+    }
+    assert_eq!(
+        followed.load(Ordering::SeqCst),
+        0,
+        "a redirect was followed"
+    );
+}
+
+#[tokio::test]
+async fn a_git_protocol_proxy_command_is_refused() {
+    let sb = Sandbox::new();
+    let marker = sb.path().join("proxied");
+    let body = format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display());
+    let proxy = sb.fake_tool("proxy-bin", "proxy", &body).join("proxy");
+    let proxy = proxy.to_str().expect("utf-8");
+    let server = tracking_url(&sb, "git://127.0.0.1:9/r.git").await;
+    sb.git(server.root(), &["config", "core.gitProxy", proxy]);
+    let message = server.err("git_pull", json!({})).await;
+    assert!(message.contains("core.gitProxy"), "{message}");
+    assert!(message.contains("nothing was pulled"), "{message}");
+    assert!(!marker.exists());
+
+    let sb = Sandbox::new();
+    let env = [("GIT_PROXY_COMMAND", proxy)];
+    let server = tracking_url_with(&sb, "git://127.0.0.1:9/r.git", &env).await;
+    let message = server.err("git_push", json!({})).await;
+    assert!(message.contains("GIT_PROXY_COMMAND"), "{message}");
+    assert!(message.contains("nothing was pushed"), "{message}");
+    assert!(!marker.exists());
+}
