@@ -208,8 +208,9 @@ fn import_curl_stays_listed_without_a_collection() {
     assert!(!collection_scoped_ids().contains(&"collection.import_curl"));
 }
 
-// Opens the palette, filters it to `label` and counts the rows left. The filter matches
-// substrings, so "Pin tab" also keeps "Unpin tab".
+// Opens the palette, filters it to `label` and counts the rows whose label starts with it. The
+// filter also keeps other commands that only contain the text ("Unpin tab" under "Pin tab",
+// Check for renamed secrets under "Rename"), so those are not counted.
 fn palette_rows(cx: &mut TestAppContext, s: &Started, label: &str) -> usize {
     cx.simulate_keystrokes(s.win, &key("shift-p"));
     frame(cx, s.win);
@@ -221,6 +222,7 @@ fn palette_rows(cx: &mut TestAppContext, s: &Started, label: &str) -> usize {
             gpui_kit::base::test_support::snapshots(w)
                 .iter()
                 .filter(|n| n.role() == Some(gpui_kit::Role::ListBoxOption))
+                .filter(|n| n.label().is_some_and(|l| l.starts_with(label)))
                 .count()
         })
         .unwrap();

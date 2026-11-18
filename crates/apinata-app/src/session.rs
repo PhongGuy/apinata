@@ -127,6 +127,14 @@ pub struct CollectionSession {
     /// The port the collection's mock server last bound, kept so clients find it again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mock_port: Option<u16>,
+    /// The full id of the last `HEAD` the app saw, so a pull made while it was closed reads as
+    /// one at the next open.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient::option"
+    )]
+    pub seen_head: Option<String>,
 }
 
 /// The runner options that outlive a restart. Tags and exclude tags are left out on purpose:

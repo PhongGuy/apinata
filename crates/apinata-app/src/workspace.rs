@@ -125,6 +125,12 @@ pub enum WorkspaceEvent {
         /// The collection's root.
         root: PathBuf,
     },
+    /// A pull that reached the collection at `root` outside team mode left stored secrets under
+    /// renamed variables; its rows are in [`Workspace::secret_renames`].
+    SecretRenames {
+        /// The collection's root.
+        root: PathBuf,
+    },
     /// The team sync loop of the collection at `root` became blocked, or blocked differently.
     TeamProblem {
         /// The collection's root.
@@ -367,7 +373,25 @@ pub struct CollectionEntry {
     team: Option<Team>,
     // What the watcher asked for while the team loop was rewriting the tree.
     held: Option<HeldReload>,
+    // The secret rename rows the last ask found, until the range they answer is cleared.
+    renames: Option<RenameRows>,
+    // The last HEAD seen, so a move forward from it reads as a pull; the one-run gate of that
+    // check, the checks finished, and the switch count and adopt mark that keep the app's own
+    // branch switches from reading as pulls.
+    seen_head: Option<String>,
+    head_gate: RefreshGate,
+    pull_checks: u64,
+    switches: u64,
+    adopt_head: bool,
     _observer: Subscription,
+}
+
+/// Why rename rows are asked for: a pull outside team mode widens and announces them, anything
+/// else refreshes them quietly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ask {
+    Pull,
+    Refresh,
 }
 
 /// Watcher requests held back while a team pull rewrites the tree, so a half-merged file never
@@ -429,10 +453,8 @@ struct Team {
     told_read_only: bool,
     // The block last announced, kept through the retries that pass back into it.
     problem: Option<Block>,
-    // A pull landed since the last rename ask, so the next settled status asks again; and the
-    // rows that ask found, until the range they answer is cleared.
+    // A pull landed since the last rename ask, so the next settled status asks again.
     ask_renames: bool,
-    renames: Option<RenameRows>,
     _pump: Task<()>,
     _events: Option<Task<Result<(), crate::tokio_bridge::JoinError>>>,
 }
@@ -1031,6 +1053,12 @@ impl Workspace {
             generation,
             team: None,
             held: None,
+            renames: None,
+            seen_head: None,
+            head_gate: RefreshGate::default(),
+            pull_checks: 0,
+            switches: 0,
+            adopt_head: false,
             _observer: observer,
         });
         self.generations += 1;
@@ -1923,11 +1951,20 @@ impl Workspace {
     /// command that edits or writes it, so nothing lands while a branch switch runs.
     pub fn begin_switch(&mut self, root: &Path, cx: &mut Context<Self>) {
         self.switching.insert(absolute(root));
+        if let Some(entry) = self.entry_mut(root) {
+            entry.switches += 1;
+        }
         cx.notify();
     }
 
     /// Lifts the hold `begin_switch` put on the collection at `root`.
+    /// The HEAD the switch landed on is taken as seen, never as a pull.
     pub fn end_switch(&mut self, root: &Path, cx: &mut Context<Self>) {
+        if let Some(entry) = self.entry_mut(root) {
+            entry.switches += 1;
+            entry.adopt_head = true;
+        }
+        self.check_head(root, cx);
         if self.switching.remove(&absolute(root)) {
             cx.notify();
         }
@@ -2279,7 +2316,7 @@ impl Workspace {
         result
     }
 
-    // Once a team collection's Environments tab is gone, each value typed again there is checked
+    // Once a collection's Environments tab is gone, each value typed again there is checked
     // once: saved under its new name, its row finishes; otherwise the row opens again.
     fn check_closed_reentries(&mut self, cx: &mut Context<Self>) {
         let tabs = &self.tabs;
@@ -2289,7 +2326,7 @@ impl Workspace {
                     .any(|e| e.root == c.root && e.kind == TabKind::Environments)
             })
             .filter_map(|c| {
-                let rows = c.team.as_mut()?.renames.as_mut()?;
+                let rows = c.renames.as_mut()?;
                 Some((c.root.clone(), rows.editor_closed()))
             })
             .filter(|(_, checks)| !checks.is_empty())
@@ -2690,6 +2727,10 @@ impl Workspace {
             entry.git_gate = RefreshGate::default();
             return;
         }
+        let short = match &result {
+            Ok(GitState::Repo(repo)) => repo.head.clone(),
+            _ => None,
+        };
         // An equal state keeps its Arc, so views key a list rebuild on pointer identity; every
         // finished run still notifies, as file contents may change under an unchanged status.
         let next = after_refresh(entry.git.clone(), result);
@@ -2697,7 +2738,14 @@ impl Workspace {
             entry.git = next;
         }
         let again = entry.git_gate.finish();
+        // A HEAD other than the one last seen may be a pull; the check reads the full ids.
+        let moved = short.is_some_and(|short| {
+            !(entry.seen_head.as_ref()).is_some_and(|seen| seen.starts_with(short.as_str()))
+        });
         cx.notify();
+        if moved {
+            self.check_head(&root, cx);
+        }
         if again {
             self.run_git(root, epoch, cx);
         }
@@ -2717,6 +2765,8 @@ impl Workspace {
             return;
         };
         entry.team = None;
+        // Rows of an earlier pull answer no range the loop keeps; its own ask brings them back.
+        entry.renames = None;
         let key = entry.root.clone();
         let copies = ConflictCopies::new(config.copies().to_path_buf());
         let role = config.role();
@@ -2756,7 +2806,6 @@ impl Workspace {
             told_read_only: false,
             problem: None,
             ask_renames: false,
-            renames: None,
             _pump: pump,
             _events: events,
         });
@@ -3003,79 +3052,130 @@ impl Workspace {
     /// The secret rename rows the last ask found for the team collection at `root`; `None`
     /// with no team loop, no pending pull range or no answer yet.
     pub fn team_renames(&self, root: &Path) -> Option<RenameRows> {
-        self.entry(root)?.team.as_ref()?.renames.clone()
+        let entry = self.entry(root)?;
+        entry.team.as_ref()?;
+        entry.renames.clone()
+    }
+
+    /// The secret rename rows of the collection at `root`, team-bound or not; `None` with no
+    /// pull or check waiting for an answer.
+    pub fn secret_renames(&self, root: &Path) -> Option<RenameRows> {
+        self.entry(root)?.renames.clone()
+    }
+
+    /// The full id of the last HEAD the app saw for the collection at `root`.
+    pub fn seen_head(&self, root: &Path) -> Option<String> {
+        self.entry(root)?.seen_head.clone()
+    }
+
+    /// How many HEAD checks of the collection at `root` have finished, with any rename ask
+    /// they made; a test seam to wait on.
+    #[doc(hidden)]
+    pub fn pull_checks(&self, root: &Path) -> u64 {
+        self.entry(root).map_or(0, |e| e.pull_checks)
     }
 
     /// Test seam: sets the rename rows of `root`'s team without asking or settling, so a test
     /// can reach states an ask cannot.
     #[doc(hidden)]
     pub fn set_team_renames(&mut self, root: &Path, rows: RenameRows) {
-        if let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) {
-            team.renames = Some(rows);
+        if let Some(entry) = self.entry_mut(root).filter(|e| e.team.is_some()) {
+            entry.renames = Some(rows);
         }
     }
 
     /// Asks the actor which stored secrets the pending pull range of `root`'s team left under
-    /// an old name. With no pending range the rows go; without git nothing is asked.
+    /// an old name; with no pending range the rows go. Outside team mode the open rows' range is
+    /// asked again. Without git nothing is asked.
     pub fn ask_secret_renames(&mut self, root: &Path, cx: &mut Context<Self>) {
-        let git = self.git_options.clone();
-        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+        let Some(entry) = self.entry_mut(root) else {
             return;
         };
-        let Some(range) = team.sync.pending_renames() else {
-            if team.renames.take().is_some() {
-                self.renames_changed(root, cx);
-            }
-            return;
+        let (range, copies) = match entry.team.as_ref() {
+            Some(team) => match team.sync.pending_renames() {
+                Some(range) => (range, Some(team.copies.clone())),
+                None => {
+                    if entry.renames.take().is_some() {
+                        self.renames_changed(root, cx);
+                    }
+                    return;
+                }
+            },
+            None => match entry.renames.as_ref() {
+                Some(rows) => (rows.range().clone(), None),
+                None => return,
+            },
         };
-        let Some(git) = git else {
-            return;
-        };
-        let (reply, found) = async_channel::bounded(1);
-        let command = Command::FindSecretRenames {
-            range: range.clone(),
-            copies: Some(team.copies.clone()),
-            git,
-            reply,
-        };
-        self.send(root, command, cx);
-        let key = absolute(root);
-        cx.spawn(async move |this, cx| {
-            let Ok(found) = found.recv().await else {
-                return;
-            };
-            this.update(cx, |w, cx| w.found_secret_renames(&key, range, found, cx))
-                .ok();
-        })
-        .detach();
+        if let Some(ask) = self.find_secret_renames(root, range, copies, Ask::Refresh, cx) {
+            ask.detach();
+        }
     }
 
-    // Takes an ask's answer: a good one refreshes the rows and finishes the values typed again,
-    // a failed one marks the rows so the range stays.
-    fn found_secret_renames(
+    // Sends the actor a rename scan of `range` and hands its answer to `found_secret_renames`;
+    // the task ends once the rows are updated, and says whether any are left to show.
+    fn find_secret_renames(
         &mut self,
         root: &Path,
         range: PullRange,
-        found: Result<SecretRenames, String>,
+        copies: Option<ConflictCopies>,
+        ask: Ask,
         cx: &mut Context<Self>,
-    ) {
-        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
-            return;
+    ) -> Option<Task<bool>> {
+        let git = self.git_options.clone()?;
+        let (reply, found) = async_channel::bounded(1);
+        let command = Command::FindSecretRenames {
+            range: range.clone(),
+            copies,
+            git,
+            reply,
         };
+        self.send(root, command, cx)?;
+        let key = absolute(root);
+        Some(cx.spawn(async move |this, cx| {
+            let Ok(found) = found.recv().await else {
+                return false;
+            };
+            this.update(cx, |w, cx| {
+                w.found_secret_renames(&key, range, found, ask, cx)
+            })
+            .unwrap_or(false)
+        }))
+    }
+
+    // Takes an ask's answer: a good one refreshes the rows and finishes the values typed again,
+    // a failed one marks the rows so the range stays. A pull's answer widens rows still open
+    // from an earlier one and is announced; whether anything is left to show.
+    fn found_secret_renames(
+        &mut self,
+        root: &Path,
+        mut range: PullRange,
+        found: Result<SecretRenames, String>,
+        ask: Ask,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(entry) = self.entry_mut(root) else {
+            return false;
+        };
+        if ask == Ask::Pull {
+            entry.pull_checks += 1;
+            if let Some(rows) = entry.renames.as_ref() {
+                range = PullRange::new(rows.range().from.clone(), range.to);
+            }
+        }
         let reentering = match found {
-            Ok(found) => match team.renames.as_mut() {
+            Ok(found) => match entry.renames.as_mut() {
                 Some(rows) => {
                     rows.refresh(range, found);
                     rows.reentering()
                 }
-                None => team
+                None => entry
                     .renames
                     .insert(RenameRows::new(range, found))
                     .reentering(),
             },
             Err(message) => {
                 let empty = || RenameRows::new(range, SecretRenames::new(Vec::new(), 0));
-                team.renames.get_or_insert_with(empty).fail(message);
+                entry.renames.get_or_insert_with(empty).fail(message);
                 Vec::new()
             }
         };
@@ -3083,6 +3183,134 @@ impl Workspace {
             self.finish_reentered(root, from, to, false, cx);
         }
         self.settle_renames(root, cx);
+        let rows = self.entry(root).and_then(|e| e.renames.as_ref());
+        let show = rows.is_some_and(|r| !r.open_rows().is_empty() || r.failed().is_some());
+        if show && ask == Ask::Pull {
+            cx.emit(WorkspaceEvent::SecretRenames {
+                root: absolute(root),
+            });
+        }
+        show
+    }
+
+    /// Looks for stored secrets the commits from `ORIG_HEAD` to `HEAD` of the collection at
+    /// `root` left under an old name, as after a pull, and replaces its rows with what it
+    /// finds. Resolves to whether there are rows or a failure to show; a team collection keeps
+    /// the rows of its own pending range.
+    pub fn check_secret_renames(&mut self, root: &Path, cx: &mut Context<Self>) -> Task<bool> {
+        let (Some(git), Some(entry)) = (self.git_options.clone(), self.entry(root)) else {
+            return Task::ready(false);
+        };
+        if entry.team.is_some() {
+            let rows = entry.renames.as_ref();
+            return Task::ready(rows.is_some_and(|r| !r.open_rows().is_empty()));
+        }
+        let dir = entry.root.clone();
+        let range = cx.background_spawn(async move {
+            PullRange::to_head(&dir, "ORIG_HEAD", &git).ok().flatten()
+        });
+        let key = absolute(root);
+        cx.spawn(async move |this, cx| {
+            let Some(range) = range.await else {
+                return false;
+            };
+            let ask = this.update(cx, |w, cx| {
+                if let Some(entry) = w.entry_mut(&key) {
+                    entry.renames = None;
+                }
+                w.find_secret_renames(&key, range, None, Ask::Refresh, cx)
+            });
+            match ask.ok().flatten() {
+                Some(task) => task.await,
+                None => false,
+            }
+        })
+    }
+
+    // Reads the full id of HEAD for the collection at `root` and, outside team mode, offers the
+    // renames of a move forward from the HEAD last seen. One check runs at a time; a request
+    // meanwhile runs once more after it.
+    fn check_head(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(entry) = self.entry_mut(root) else {
+            return;
+        };
+        if entry.head_gate.request() {
+            self.run_head_check(root, cx);
+        }
+    }
+
+    fn run_head_check(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let switching = self.is_switching(root);
+        let remembered = self.remembered_head(root, cx);
+        let Some(git) = self.git_options.clone() else {
+            if let Some(entry) = self.entry_mut(root) {
+                entry.head_gate = RefreshGate::default();
+            }
+            return;
+        };
+        let Some(entry) = self.entry_mut(root) else {
+            return;
+        };
+        // A check that starts or ends inside the app's own switch only records where it landed.
+        let offer = !std::mem::take(&mut entry.adopt_head) && !switching;
+        let (switches, epoch) = (entry.switches, entry.generation);
+        let seen = entry.seen_head.clone().or(remembered);
+        let dir = entry.root.clone();
+        let work = cx.background_spawn(async move {
+            let head = PullRange::to_head(&dir, "HEAD", &git).ok().flatten();
+            let range = match (&seen, &head) {
+                (Some(seen), Some(_)) if offer => {
+                    PullRange::forward(&dir, seen, &git).ok().flatten()
+                }
+                _ => None,
+            };
+            (head.map(|h| h.to), range)
+        });
+        let key = absolute(root);
+        cx.spawn(async move |this, cx| {
+            let (head, range) = work.await;
+            this.update(cx, |w, cx| {
+                w.head_checked(&key, epoch, switches, head, range, cx)
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn head_checked(
+        &mut self,
+        root: &Path,
+        epoch: u64,
+        switches: u64,
+        head: Option<String>,
+        range: Option<PullRange>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(entry) = self.entry_mut(root).filter(|e| e.generation == epoch) else {
+            return;
+        };
+        let range = range.filter(|_| entry.switches == switches && entry.team.is_none());
+        if head.is_some() {
+            entry.seen_head = head.clone();
+        }
+        let again = entry.head_gate.finish();
+        let asked =
+            range.and_then(|range| self.find_secret_renames(root, range, None, Ask::Pull, cx));
+        match asked {
+            Some(task) => task.detach(),
+            None => {
+                if let Some(entry) = self.entry_mut(root) {
+                    entry.pull_checks += 1;
+                }
+            }
+        }
+        if let Some(head) = head {
+            self.remember_head(root, head, cx);
+        }
+        if again {
+            self.run_head_check(root, cx);
+        }
+        cx.notify();
     }
 
     /// Moves each stored secret of `moves` from its old name to its new one; a move that works
@@ -3166,9 +3394,7 @@ impl Workspace {
         cx: &mut Context<Self>,
         change: impl FnOnce(&mut RenameRows),
     ) {
-        let rows =
-            (self.entry_mut(root).and_then(|e| e.team.as_mut())).and_then(|t| t.renames.as_mut());
-        let Some(rows) = rows else {
+        let Some(rows) = self.entry_mut(root).and_then(|e| e.renames.as_mut()) else {
             return;
         };
         change(rows);
@@ -3177,13 +3403,14 @@ impl Workspace {
 
     // Clears the pending range once the rows allow it. A range a newer pull widened stays,
     // with its rows, for the ask that pull brings.
+    // Outside team mode there is no stored range, so settled rows simply go.
     fn settle_renames(&mut self, root: &Path, cx: &mut Context<Self>) {
-        if let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut())
-            && let Some(rows) = team.renames.as_ref()
+        if let Some(entry) = self.entry_mut(root)
+            && let Some(rows) = entry.renames.as_ref()
             && rows.settle_now()
-            && team.sync.renames_settled(rows.range())
+            && (entry.team.as_ref()).is_none_or(|t| t.sync.renames_settled(rows.range()))
         {
-            team.renames = None;
+            entry.renames = None;
         }
         self.renames_changed(root, cx);
     }
@@ -4504,6 +4731,30 @@ impl Workspace {
     fn remembered_mock(&self, root: &Path, cx: &App) -> bool {
         let session = self.session.read(cx).get();
         session.collections.get(root).is_some_and(|c| c.mock)
+    }
+
+    fn remembered_head(&self, root: &Path, cx: &App) -> Option<String> {
+        let session = self.session.read(cx).get();
+        session
+            .collections
+            .get(root)
+            .and_then(|c| c.seen_head.clone())
+    }
+
+    // Keeps the HEAD last seen across restarts, so a pull made while the app was closed is
+    // offered at the next open; a root without a UTF-8 path is not stored.
+    fn remember_head(&mut self, root: &Path, head: String, cx: &mut Context<Self>) {
+        if root.to_str().is_none() || self.remembered_head(root, cx).as_ref() == Some(&head) {
+            return;
+        }
+        self.session.update(cx, |p, cx| {
+            p.update(cx, |s| {
+                s.collections
+                    .entry(root.to_path_buf())
+                    .or_default()
+                    .seen_head = Some(head);
+            })
+        });
     }
 
     fn remembered_port(&self, root: &Path, cx: &App) -> Option<u16> {

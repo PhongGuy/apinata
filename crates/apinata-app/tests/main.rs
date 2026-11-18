@@ -421,6 +421,7 @@ mod prompt_dialog;
 mod prompt_runner;
 mod prompt_send;
 mod proxy_password_async;
+mod pull_renames;
 mod px_literals;
 mod query_mismatch_notice;
 mod redo_keys;
