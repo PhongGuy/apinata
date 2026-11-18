@@ -11,6 +11,7 @@ use crate::config_file::{CollectionFile, FolderFile};
 use crate::edit::{AuthSpec, KeyValue, Variable};
 use crate::error::{EditError, FileError, SaveError, TreeError};
 use crate::item_path::ItemPath;
+use crate::js::js_trim;
 use crate::method::{InvalidMethod, normalize_method};
 use crate::request::RequestKind;
 use crate::trash::Trash;
@@ -154,6 +155,27 @@ pub enum ItemError {
     TrashLog {
         /// The file and why.
         message: String,
+    },
+    /// The request has no example by that name; nothing changed.
+    #[error("{item} has no example named `{name}`")]
+    NoExample {
+        /// The request as given.
+        item: String,
+        /// The example name, trimmed.
+        name: String,
+    },
+    /// More than one example has that name, so which one was meant is unknown; nothing changed.
+    #[error(
+        "{count} examples of {item} are named `{name}`, so none was changed; rename one in the \
+         app or edit the file, then try again"
+    )]
+    AmbiguousExample {
+        /// The request as given.
+        item: String,
+        /// The example name, trimmed.
+        name: String,
+        /// How many examples have it.
+        count: usize,
     },
     /// The trash refused to give the item back; the record is kept.
     #[error("could not restore {item} from the trash: {message}")]
@@ -387,6 +409,61 @@ pub fn rename_item(c: &mut Collection, path: &str, name: &str) -> Result<ItemPat
         });
     }
     Ok(c.rename(&item, name, true)?)
+}
+
+/// Rename the example named `example` of the request at `path` to `name`, both trimmed.
+/// Returns the name as saved; a name another example has is refused.
+pub fn rename_example(
+    c: &mut Collection,
+    path: &str,
+    example: &str,
+    name: &str,
+) -> Result<String, ItemError> {
+    let (item, index) = example_index(c, path, example)?;
+    c.rename_example(&item, index, name)?;
+    Ok(js_trim(name).to_owned())
+}
+
+/// Remove the example named `example` (trimmed) from the request at `path`. Returns the
+/// name as matched.
+pub fn delete_example(c: &mut Collection, path: &str, example: &str) -> Result<String, ItemError> {
+    let (item, index) = example_index(c, path, example)?;
+    c.delete_example(&item, index)?;
+    Ok(js_trim(example).to_owned())
+}
+
+// Finds the one example with this name. Several with it is refused rather than taking the
+// first, since a delete could then remove the wrong one.
+fn example_index(
+    c: &Collection,
+    path: &str,
+    example: &str,
+) -> Result<(ItemPath, usize), ItemError> {
+    let item = parse_path(path)?;
+    let request = c
+        .request(&item)
+        .filter(|r| r.kind() == RequestKind::Http)
+        .ok_or_else(|| TreeError::NotFound { item: item.clone() })?;
+    let name = js_trim(example);
+    let found: Vec<usize> = request
+        .examples()
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.name == name)
+        .map(|(i, _)| i)
+        .collect();
+    match found[..] {
+        [index] => Ok((item, index)),
+        [] => Err(ItemError::NoExample {
+            item: path.to_owned(),
+            name: name.to_owned(),
+        }),
+        _ => Err(ItemError::AmbiguousExample {
+            item: path.to_owned(),
+            name: name.to_owned(),
+            count: found.len(),
+        }),
+    }
 }
 
 /// Move the item at `path` into folder `inside` (`""` for the root), or above `before` or

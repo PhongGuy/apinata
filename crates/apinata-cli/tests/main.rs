@@ -34,6 +34,7 @@ mod cli_env_orphans;
 mod cli_env_prompt;
 mod cli_env_renames;
 mod cli_env_var_from_env;
+mod cli_example_edit;
 mod cli_example_identity;
 mod cli_exit_codes;
 mod cli_export;

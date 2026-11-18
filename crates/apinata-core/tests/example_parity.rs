@@ -411,3 +411,33 @@ fn an_example_already_on_disk_keeps_its_userinfo() {
     assert!(disk.contains(existing), "{disk}");
     assert!(disk.contains("  - name: new\n"), "{disk}");
 }
+
+#[test]
+fn renaming_onto_another_examples_name_is_refused_without_writing() {
+    let (dir, mut c) = open(&[("a.yml", PLAIN)]);
+    let item = ip("a.yml");
+    let ok = ExampleResponse::new(200);
+    c.add_example(&item, "one", "", &ok).unwrap();
+    c.add_example(&item, "two", "", &ok).unwrap();
+    let before = read(&dir, "a.yml");
+    match c.rename_example(&item, 1, " one ") {
+        Err(TreeError::ExampleNameTaken { item: at, name }) => {
+            assert_eq!((at, name.as_str()), (item.clone(), "one"));
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(read(&dir, "a.yml"), before);
+}
+
+#[test]
+fn renaming_an_example_to_its_own_name_writes_nothing() {
+    let (dir, mut c) = open(&[("a.yml", PLAIN)]);
+    let item = ip("a.yml");
+    c.add_example(&item, "one", "", &ExampleResponse::new(200))
+        .unwrap();
+    // A stale on-disk edit proves no write happens: a write would conflict with it.
+    let edited = read(&dir, "a.yml").replace("status: 200", "status: 201");
+    fs::write(dir.path().join("a.yml"), &edited).unwrap();
+    c.rename_example(&item, 0, "one ").unwrap();
+    assert_eq!(read(&dir, "a.yml"), edited);
+}

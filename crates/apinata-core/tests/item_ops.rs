@@ -241,3 +241,46 @@ fn trash_item_reports_a_failed_renumber_as_the_same_warning() {
     };
     assert_one_renumber_warning(&dir, &warnings);
 }
+
+const EXAMPLES: &str = "info:\n  name: r\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: http://x/r\nexamples:\n  - name: ok\n    response:\n      status: 200\n  - name: dup\n    response:\n      status: 201\n  - name: dup\n    response:\n      status: 202\n";
+
+#[test]
+fn examples_are_renamed_and_deleted_by_name() {
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("r.yml", EXAMPLES)]);
+    let name = item_ops::rename_example(&mut c, "r.yml", " ok ", " fine ").unwrap();
+    assert_eq!(name, "fine");
+    let text = fs::read_to_string(dir.path().join("r.yml")).unwrap();
+    assert!(
+        text.contains("- name: fine\n") && !text.contains("- name: ok\n"),
+        "{text}"
+    );
+    item_ops::delete_example(&mut c, "r.yml", "fine").unwrap();
+    let text = fs::read_to_string(dir.path().join("r.yml")).unwrap();
+    assert!(!text.contains("status: 200"), "{text}");
+}
+
+#[test]
+fn an_unknown_or_ambiguous_example_name_changes_nothing() {
+    let (dir, mut c) = open(&[("opencollection.yml", ROOT), ("r.yml", EXAMPLES)]);
+    let err = item_ops::delete_example(&mut c, "r.yml", "gone").unwrap_err();
+    assert!(matches!(err, ItemError::NoExample { .. }), "{err:?}");
+    assert_eq!(err.to_string(), "r.yml has no example named `gone`");
+    let err = item_ops::delete_example(&mut c, "r.yml", "dup").unwrap_err();
+    assert!(
+        matches!(err, ItemError::AmbiguousExample { count: 2, .. }),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "2 examples of r.yml are named `dup`, so none was changed; rename one in the app or \
+         edit the file, then try again"
+    );
+    let err = item_ops::rename_example(&mut c, "r.yml", "dup", "x").unwrap_err();
+    assert!(matches!(err, ItemError::AmbiguousExample { .. }), "{err:?}");
+    let err = item_ops::delete_example(&mut c, "nope.yml", "ok").unwrap_err();
+    assert!(matches!(err, ItemError::Tree(_)), "{err:?}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("r.yml")).unwrap(),
+        EXAMPLES
+    );
+}

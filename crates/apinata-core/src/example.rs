@@ -474,7 +474,8 @@ impl Collection {
     }
 
     /// Set example `index`'s name (trimmed), written through. `NotFound` for a missing
-    /// request or index, `InvalidName` for a blank name.
+    /// request or index, `InvalidName` for a blank name, `ExampleNameTaken` when another
+    /// example already has it.
     pub fn rename_example(
         &mut self,
         item: &ItemPath,
@@ -482,6 +483,17 @@ impl Collection {
         name: &str,
     ) -> Result<(), TreeError> {
         let name = checked_name(name)?;
+        let others = self.request(item).map(|r| r.examples()).unwrap_or_default();
+        if others
+            .iter()
+            .enumerate()
+            .any(|(i, e)| i != index && e.name == name)
+        {
+            return Err(TreeError::ExampleNameTaken {
+                item: item.clone(),
+                name: name.to_owned(),
+            });
+        }
         self.edit_examples(item, index, |items| {
             let entry = &mut items[index];
             // An entry that is not a mapping cannot hold a name, so it becomes one that does.

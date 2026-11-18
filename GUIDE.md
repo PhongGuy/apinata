@@ -284,6 +284,13 @@ is at its path now. A name already taken in the folder
 gets a number, as `Find 1.yml`. Each prints the item's new path; `--format json` prints
 it as data.
 
+`rename-example <path> <example> <name>` renames a request's saved example, and
+`rm-example <path> <example>` removes one, so `apinata mock` stops serving it. Both find
+the example by its name and change nothing, exiting 3, when no example has it, when more
+than one does (rename one in the app or edit the file first), or, for a rename, when
+another example already has the new name. They print what changed; `--format json`
+prints `path` with the new `name` or the `removed` one.
+
 `folder <path>` changes what a folder (or the collection, with `.`) gives every request
 below it: `--header NAME=VALUE` and `--var NAME=VALUE` set an entry (the first of that
 name, enabling it, else a new one; a typed variable keeps its type), `--unset-header` and
@@ -323,6 +330,7 @@ included, are written as given, with the same advice for secrets.
 apinata item new Find --in users --method GET --url "{{baseUrl}}/users?q=1"
 apinata item mv users/Find.yml --before users/get.yml
 apinata item rm users/old.yml
+apinata item rm-example users/get.yml "not found"
 apinata item folder users --header X-Team=core --unset-var oldHost --bearer "{{token}}"
 apinata item request users/Find.yml --method POST --body-mode json --body '{"q": "{{term}}"}'
 ```
@@ -866,7 +874,9 @@ collection's saved examples with `mock_start`, read what it was asked with
 Starting it needs no approval because nothing leaves your machine.
 `save_example` keeps the last response `send_request` got for a request as a
 saved example, with every secret value the request knew replaced by its
-placeholder, and `read_request` lists a request's examples.
+placeholder, and `read_request` lists a request's examples. `rename_example` and
+`delete_example` rename or remove a saved example by name, refusing as `apinata item
+rename-example` and `rm-example` do.
 
 The server also lists the collection's requests, folders and environments as MCP
 resources (`apinata://<collection>/<path>`, read-only JSON, secret values never
