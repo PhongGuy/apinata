@@ -694,6 +694,7 @@ impl RenderOnce for KvView {
                                     (face, ix),
                                     icon,
                                     words,
+                                    cx,
                                 );
                                 let eye = if locked.is_some() {
                                     eye.lock(true, cx)
@@ -762,7 +763,7 @@ impl RenderOnce for KvView {
                             .test_support()
                             .min_h(ROW_HEIGHT)
                             .child(action_slot(
-                                ui::icon_button((*id, ix), IconName::Copy, tooltip, None)
+                                ui::icon_button((*id, ix), IconName::Copy, tooltip, None, cx)
                                     .on_click(move |_, window, cx| f(ix, window, cx)),
                                 ActionShow::OnHover,
                             )),
@@ -776,7 +777,7 @@ impl RenderOnce for KvView {
                             .test_support()
                             .min_h(ROW_HEIGHT)
                             .child(action_slot(
-                                ui::icon_button((*id, ix), IconName::Close, tooltip, None)
+                                ui::icon_button((*id, ix), IconName::Close, tooltip, None, cx)
                                     .on_click(move |_, window, cx| f(ix, window, cx)),
                                 ActionShow::OnHover,
                             )),

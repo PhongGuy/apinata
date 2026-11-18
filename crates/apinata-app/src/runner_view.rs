@@ -5,6 +5,7 @@
 //! rows. A finished row opens its request's tab showing that row's result.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -856,37 +857,42 @@ impl Render for RunnerView {
         let bail = ui::checkbox("run-bail", model.bail())
             .label("Stop after the first failure")
             .on_click(move |on: &bool, _, cx| m1.update(cx, |m, cx| m.set_bail(*on, cx)));
-        let data =
-            h_flex()
-                .min_w_0()
-                .gap_2()
-                .items_center()
-                .child(
-                    Button::new("run-data-file")
-                        .label("Choose file…")
-                        .on_click(cx.listener(|this, _, window, cx| this.pick_data(window, cx))),
-                )
-                .children(data_name.map(|name| {
-                    // A long file name is cut short so Clear stays inside the pane.
-                    h_flex()
-                        .min_w_0()
-                        .gap_1()
-                        .items_center()
-                        .child(
-                            div()
-                                .id("run-data-name")
-                                .test_support()
-                                .aria_label(name.clone())
-                                .min_w_0()
-                                .max_w(style::FORM_INPUT_WIDTH)
-                                .truncate()
-                                .text_size(style::TEXT_CONTROL)
-                                .child(name),
-                        )
-                        .child(Button::new("run-data-clear").label("Clear").on_click(
-                            move |_, _, cx| m4.update(cx, |m, cx| m.set_data_file(None, cx)),
-                        ))
-                }));
+        let data = h_flex()
+            .min_w_0()
+            .gap_2()
+            .items_center()
+            .child(
+                Button::new("run-data-file")
+                    .solid_ring(cx)
+                    .label("Choose file…")
+                    .on_click(cx.listener(|this, _, window, cx| this.pick_data(window, cx))),
+            )
+            .children(data_name.map(|name| {
+                // A long file name is cut short so Clear stays inside the pane.
+                h_flex()
+                    .min_w_0()
+                    .gap_1()
+                    .items_center()
+                    .child(
+                        div()
+                            .id("run-data-name")
+                            .test_support()
+                            .aria_label(name.clone())
+                            .min_w_0()
+                            .max_w(style::FORM_INPUT_WIDTH)
+                            .truncate()
+                            .text_size(style::TEXT_CONTROL)
+                            .child(name),
+                    )
+                    .child(
+                        Button::new("run-data-clear")
+                            .solid_ring(cx)
+                            .label("Clear")
+                            .on_click(move |_, _, cx| {
+                                m4.update(cx, |m, cx| m.set_data_file(None, cx))
+                            }),
+                    )
+            }));
         let retry_unsafe = v_flex()
             .min_w_0()
             .gap_1()
@@ -1000,6 +1006,7 @@ impl Render for RunnerView {
             let button = |id: &'static str, format: ReportFormat| {
                 let m = self.model.clone();
                 Button::new(id)
+                    .solid_ring(cx)
                     .label(format.label())
                     .lock(!finished, cx)
                     .on_click(move |_, window, cx| export_results(&m, format, window, cx))
@@ -1032,6 +1039,7 @@ impl Render for RunnerView {
             };
             // One id for both labels, so focus stays on the button after a press.
             Button::new("run-selection-toggle")
+                .solid_ring(cx)
                 .label(text)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.choosing = !this.choosing;
@@ -1052,6 +1060,7 @@ impl Render for RunnerView {
             .when(running, |d| {
                 d.child(
                     Button::new("run-cancel")
+                        .solid_ring(cx)
                         .label("Cancel")
                         .on_click(move |_, _, cx| m3.update(cx, |m, cx| m.cancel(cx))),
                 )
@@ -1059,6 +1068,7 @@ impl Render for RunnerView {
             .when(rerunnable, |d| {
                 d.child(
                     Button::new("run-rerun-failed")
+                        .solid_ring(cx)
                         .label("Re-run failed")
                         .on_click(move |_, _, cx| {
                             m4.update(cx, |m, cx| m.rerun_failed(cx));
@@ -1067,6 +1077,7 @@ impl Render for RunnerView {
             })
             .child(
                 Button::new("run-start")
+                    .solid_ring(cx)
                     .primary()
                     .min_w(style::SEND_SLOT_WIDTH)
                     .label(run_label(chosen))

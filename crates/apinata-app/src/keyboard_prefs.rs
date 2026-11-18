@@ -2,6 +2,7 @@
 //! recorder that takes a new key with a conflict prompt, an unbind per command with keys, a
 //! reset per edited command and a reset for all of them. The rows form one keyboard list.
 
+use crate::ui::SolidRing as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::button::Button;
@@ -338,12 +339,14 @@ impl KeyboardPrefs {
             let id = cmd.id;
             let on_reset = cx.listener(move |this, _, _, cx| this.reset(id, cx));
             let on_unbind = cx.listener(move |this, _, _, cx| this.unbind(id, cx));
-            let control = row_control(cmd, keys, flags, muted, on_unbind, on_reset);
+            let control =
+                row_control(cmd, keys, flags, muted, on_unbind, on_reset, cx).into_any_element();
             let control = self.with_prompt(cmd.id, control, muted, cx);
             section = section.row_with_terms(format!("key-{}", cmd.id), cmd.label, terms, control);
         }
         let list = self.list_wrap(spoken, window, cx);
         let reset_all_button = Button::new("keys-reset-all")
+            .solid_ring(cx)
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .label("Reset all")
             .on_click(|_, window, cx| ask_reset_all(window, cx));
@@ -527,24 +530,46 @@ impl KeyboardPrefs {
                 el.child(
                     h_flex()
                         .gap(SPACE_1)
-                        .child(answer(id, "replace", "Replace", {
-                            let view = cx.entity();
-                            move |_, cx: &mut App| {
-                                view.update(cx, |this, cx| this.resolve(Resolution::Replace, cx))
-                            }
-                        }))
-                        .when(swap, |el| {
-                            el.child(answer(id, "swap", "Swap", {
+                        .child(answer(
+                            id,
+                            "replace",
+                            "Replace",
+                            {
                                 let view = cx.entity();
                                 move |_, cx: &mut App| {
-                                    view.update(cx, |this, cx| this.resolve(Resolution::Swap, cx))
+                                    view.update(cx, |this, cx| {
+                                        this.resolve(Resolution::Replace, cx)
+                                    })
                                 }
-                            }))
+                            },
+                            cx,
+                        ))
+                        .when(swap, |el| {
+                            el.child(answer(
+                                id,
+                                "swap",
+                                "Swap",
+                                {
+                                    let view = cx.entity();
+                                    move |_, cx: &mut App| {
+                                        view.update(cx, |this, cx| {
+                                            this.resolve(Resolution::Swap, cx)
+                                        })
+                                    }
+                                },
+                                cx,
+                            ))
                         })
-                        .child(answer(id, "cancel", "Cancel", {
-                            let view = cx.entity();
-                            move |_, cx: &mut App| view.update(cx, |this, cx| this.cancel(cx))
-                        })),
+                        .child(answer(
+                            id,
+                            "cancel",
+                            "Cancel",
+                            {
+                                let view = cx.entity();
+                                move |_, cx: &mut App| view.update(cx, |this, cx| this.cancel(cx))
+                            },
+                            cx,
+                        )),
                 )
             })
     }
@@ -566,6 +591,7 @@ fn answer(
     what: &str,
     label: &'static str,
     on_press: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     let wrapper = SharedString::from(format!("key-{id}-{what}"));
     let on_press = Rc::new(on_press);
@@ -580,6 +606,7 @@ fn answer(
         })
         .child(
             Button::new(SharedString::from(format!("{wrapper}-button")))
+                .solid_ring(cx)
                 .label(label)
                 .small()
                 .on_click(move |_, window, cx| on_press(window, cx)),
@@ -634,6 +661,7 @@ fn row_control(
     muted: Hsla,
     on_unbind: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     let id = cmd.id;
     h_flex()
@@ -670,7 +698,7 @@ fn row_control(
         // one stop per command would bury the dialog's other controls.
         .when(bound, |el| {
             let icon = (IconName::Close, "Unbind");
-            el.child(row_button(id, "unbind", icon, false, on_unbind))
+            el.child(row_button(id, "unbind", icon, false, on_unbind, cx))
         })
         .when(edited, |el| {
             el.child(row_button(
@@ -679,6 +707,7 @@ fn row_control(
                 (IconName::Undo2, "Reset"),
                 true,
                 on_reset,
+                cx,
             ))
         })
 }
@@ -691,6 +720,7 @@ fn row_button(
     (icon, name): (IconName, &'static str),
     tab_stop: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     let wrapper = SharedString::from(format!("key-{id}-{what}"));
     div().id(wrapper.clone()).test_support().child(
@@ -699,6 +729,7 @@ fn row_button(
             icon,
             name,
             None,
+            cx,
         )
         .key_context(ui::DIALOG_FOOTER_CONTEXT)
         .tab_stop(tab_stop)

@@ -2,6 +2,7 @@
 //! tabs for one tab's send, with run errors shown in place of the body.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash as _, Hasher as _};
@@ -1514,6 +1515,7 @@ impl ResponsePane {
         (approvals.read(cx).script_decision(&root) == Some(apinata_core::ScriptDecision::Blocked))
             .then(|| {
                 Button::new("response-warning-ask-again")
+                    .solid_ring(cx)
                     .ghost()
                     .label("Ask again")
                     .on_click(cx.listener(move |_, _, _, cx| {
@@ -1723,6 +1725,7 @@ impl ResponsePane {
                         let shown = Rc::clone(&shown);
                         move |ix, _, cx| pane.update(cx, |p, cx| p.set_tab(shown[ix], cx))
                     },
+                    cx,
                 ))
             })
             .on_click(move |ix, _, cx| this.update(cx, |p, cx| p.set_tab(picked[*ix], cx)))
@@ -2141,6 +2144,7 @@ impl ResponsePane {
     ) -> Div {
         let pane = cx.entity();
         let copy = Button::new(copy_id)
+            .solid_ring(cx)
             .ghost()
             .small()
             .label("Copy")
@@ -2511,6 +2515,7 @@ impl ResponsePane {
         let open = self.details_open;
         let toggle = view.message.as_ref().map(|_| {
             Button::new("response-error-details-toggle")
+                .solid_ring(cx)
                 .ghost()
                 .small()
                 .label(if open { "Hide details" } else { "Show details" })
@@ -2683,6 +2688,7 @@ impl ResponsePane {
         let send = self.send.clone();
         Some(
             Button::new("response-latest")
+                .solid_ring(cx)
                 .ghost()
                 .compact()
                 .label("Back to latest")
@@ -2717,6 +2723,7 @@ impl ResponsePane {
         let choices = self.compare_menu_choices(cx);
         let pane = cx.entity().downgrade();
         Button::new("response-more")
+            .solid_ring(cx)
             .ghost()
             .compact()
             .icon(ui::glyph("response-more", AssetIcon::Ellipsis))
@@ -3022,7 +3029,7 @@ impl ResponsePane {
                                         } else {
                                             (ids.1, AssetIcon::Eye, "Show value")
                                         };
-                                        ui::swap_icon_button(ids.0, face, icon, words).on_click(
+                                        ui::swap_icon_button(ids.0, face, icon, words, cx).on_click(
                                             cx.listener(move |p, _, _, cx| {
                                                 p.toggle_reveal((ix, field, 0), cx)
                                             }),
@@ -3435,6 +3442,7 @@ impl ResponsePane {
         // Copy reads the shown result when clicked, so a render never builds the text.
         let pane = cx.entity();
         let copy = Button::new("console-copy")
+            .solid_ring(cx)
             .ghost()
             .small()
             .label("Copy")
@@ -4397,6 +4405,7 @@ impl ResponsePane {
         let button = match icon {
             Some(icon) => icon_dropdown(id, icon, label, cx),
             None => Button::new(id)
+                .solid_ring(cx)
                 .ghost()
                 .compact()
                 .max_w(style::COMPARE_SOURCE_MAX_WIDTH)
@@ -4859,6 +4868,7 @@ impl ResponsePane {
                 )
                 .child(
                     Button::new("response-stop")
+                        .solid_ring(cx)
                         .ghost()
                         .small()
                         .label("Stop")
@@ -4914,6 +4924,7 @@ impl ResponsePane {
                     .flex_none()
                     .child(
                         Button::new("compare-close")
+                            .solid_ring(cx)
                             .ghost()
                             .compact()
                             .icon(IconName::Close)
@@ -5063,6 +5074,7 @@ impl Render for ResponsePane {
                     .child(status)
                     .child(
                         Button::new("response-cancel")
+                            .solid_ring(cx)
                             .ghost()
                             .label("Cancel")
                             .on_click(move |_, _, cx| send.update(cx, |m, cx| m.cancel(cx))),
@@ -5616,6 +5628,7 @@ fn icon_dropdown(
     cx: &App,
 ) -> Button {
     Button::new(id)
+        .solid_ring(cx)
         .ghost()
         .compact()
         .accessibility_label(label.into())
@@ -5646,9 +5659,12 @@ pub const COMPARE_ICON: AssetIcon = AssetIcon::FileDiff;
 // The tooltip sits on a wrapper, which shows it whether or not the button is locked; a
 // locked one names the action before the reason, since the icon carries no text.
 fn export_har_button(response: &Response, cx: &App) -> AnyElement {
+    // Square like an icon button: a locked one carries a child, which would size it by padding.
     let button = Button::new("response-export-har")
+        .solid_ring(cx)
         .ghost()
         .compact()
+        .aspect_ratio(1.)
         .icon(ui::glyph("response-export-har", EXPORT_HAR_ICON))
         .accessibility_label("Export HAR");
     let (button, tip) = match response.timeline().is_empty() {
@@ -5679,6 +5695,7 @@ fn save_example_button(response: &Response, blocked: Option<&'static str>, cx: &
             ui::glyph(id, AssetIcon::Bookmark),
             "Save response as example",
             Some(&SaveAsExample),
+            cx,
         );
     }
     let why = if let Some(why) = blocked {
@@ -5688,13 +5705,16 @@ fn save_example_button(response: &Response, blocked: Option<&'static str>, cx: &
     } else {
         "Responses of 5 MiB or more cannot be saved as examples"
     };
-    ui::icon_button(id, ui::glyph(id, AssetIcon::Bookmark), why, None).lock(true, cx)
+    ui::icon_button(id, ui::glyph(id, AssetIcon::Bookmark), why, None, cx).lock(true, cx)
 }
 
 // A button in the error block. The plain fill barely differs from a light pane, so the
 // input outline marks its boundary at the 3:1 a control needs.
 fn error_action(id: impl Into<ElementId>, cx: &App) -> Button {
-    Button::new(id).border_1().border_color(cx.theme().input)
+    Button::new(id)
+        .solid_ring(cx)
+        .border_1()
+        .border_color(cx.theme().input)
 }
 
 // Points the body's download button at the collection of the latest send; without one the

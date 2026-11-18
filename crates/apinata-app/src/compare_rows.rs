@@ -127,7 +127,7 @@ fn header_eye(ix: usize, name: &str, eye: HeaderEye, actions: &RowActions, cx: &
         HeaderEye::Revealed => ("compare-hide", IconName::EyeOff, "Hide value"),
         HeaderEye::Locked => ("compare-reveal", IconName::Eye, SCRUBBED_TIP),
     };
-    let button = ui::swap_icon_button(("compare-eye", ix), (face, ix), icon, words);
+    let button = ui::swap_icon_button(("compare-eye", ix), (face, ix), icon, words, cx);
     let button = match eye {
         HeaderEye::Locked => button.lock(true, cx),
         _ => {

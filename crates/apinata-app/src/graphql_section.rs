@@ -1,6 +1,7 @@
 //! The Query section of a GraphQL request: a schema row, then a query editor above a variables
 //! editor.
 
+use crate::ui::SolidRing as _;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -464,6 +465,7 @@ impl GraphqlSection {
         let from_file = graphql_schema_store::source(cx, &self.schema_url).is_some();
         let load = |id: &'static str, label: &'static str| {
             Button::new(id)
+                .solid_ring(cx)
                 .label(label)
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(SchemaAction::Load)))
         };
@@ -506,6 +508,7 @@ impl GraphqlSection {
         };
         let toggle = |id: &'static str, label: &'static str, panel: SidePanel| {
             Button::new(id)
+                .solid_ring(cx)
                 .label(label)
                 .toggle(self.side == panel, cx)
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_side(panel, cx)))
@@ -513,6 +516,7 @@ impl GraphqlSection {
         let builder = toggle("graphql-builder-toggle", "Builder", SidePanel::Builder);
         let docs = toggle("graphql-docs-toggle", "Schema", SidePanel::Docs);
         let file = Button::new("graphql-schema-file")
+            .solid_ring(cx)
             .label("Load schema from file")
             .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx)));
         let status = self.basis.as_ref().map(|basis| {

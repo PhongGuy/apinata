@@ -1,6 +1,7 @@
 //! The GraphQL docs explorer: a pure `page` builder over a loaded schema, and the panel that
 //! shows it with a navigation stack, a search on the root page and a show-deprecated toggle.
 
+use crate::ui::SolidRing as _;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -383,6 +384,7 @@ impl DocsPanel {
         let muted = theme.muted_foreground;
         let back = (self.stack.len() > 1).then(|| {
             Button::new("graphql-docs-back")
+                .solid_ring(cx)
                 .label("Back")
                 .on_click(cx.listener(|this, _, _, cx| this.back(cx)))
         });
@@ -510,6 +512,7 @@ pub(crate) fn schema_state<V: EventEmitter<SchemaAction>>(
             .child(status(ids.hint, ids.hint_text.into()).test_support())
             .child(
                 Button::new(ids.load)
+                    .solid_ring(cx)
                     .label("Load schema")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(SchemaAction::Load))),
             )

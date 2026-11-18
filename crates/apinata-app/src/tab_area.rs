@@ -1,5 +1,6 @@
 //! The tab bar over the open request and settings tabs and the editor of the active one.
 
+use crate::ui::SolidRing as _;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -2498,39 +2499,41 @@ impl TabArea {
                 if pinned {
                     // A pinned tab trades its close button for the pin; clicking it unpins.
                     let pin_view = view.clone();
-                    let icon = ui::icon_button(("tab-pin", ix), IconName::Pin, "Unpin tab", None)
-                        .text_color(cx.theme().muted_foreground)
-                        .on_click(move |_, _, cx| {
-                            cx.stop_propagation();
-                            pin_view.update(cx, |a, cx| a.set_pinned(id, false, cx));
-                        });
+                    let icon =
+                        ui::icon_button(("tab-pin", ix), IconName::Pin, "Unpin tab", None, cx)
+                            .text_color(cx.theme().muted_foreground)
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                pin_view.update(cx, |a, cx| a.set_pinned(id, false, cx));
+                            });
                     return slot.child(icon);
                 }
                 let close_view = view.clone();
-                let close = ui::icon_button(("tab-close", ix), IconName::Close, "Close tab", None)
-                    .tooltip_with_action("Close tab", &CloseTab, Some(SHELL_CONTEXT))
-                    .when(!active && !hovered, |b| {
-                        b.text_color(cx.theme().muted_foreground)
-                    })
-                    .on_click(move |_, window, cx| {
-                        cx.stop_propagation();
-                        // A button cut by the strip's edge or under a fade selects its tab:
-                        // the user cannot see what a press there would close.
-                        close_view.update(cx, |a, cx| {
-                            let count = a.workspace.read(cx).tabs().entries().len();
-                            if a.may_close(count, ix, window) {
-                                a.close(vec![id], window, cx);
-                            } else {
-                                a.reveal.clicked();
-                                if active {
-                                    a.reveal.request();
+                let close =
+                    ui::icon_button(("tab-close", ix), IconName::Close, "Close tab", None, cx)
+                        .tooltip_with_action("Close tab", &CloseTab, Some(SHELL_CONTEXT))
+                        .when(!active && !hovered, |b| {
+                            b.text_color(cx.theme().muted_foreground)
+                        })
+                        .on_click(move |_, window, cx| {
+                            cx.stop_propagation();
+                            // A button cut by the strip's edge or under a fade selects its tab:
+                            // the user cannot see what a press there would close.
+                            close_view.update(cx, |a, cx| {
+                                let count = a.workspace.read(cx).tabs().entries().len();
+                                if a.may_close(count, ix, window) {
+                                    a.close(vec![id], window, cx);
+                                } else {
+                                    a.reveal.clicked();
+                                    if active {
+                                        a.reveal.request();
+                                    }
+                                    a.workspace.update(cx, |w, cx| {
+                                        w.update_tabs(cx, |t| t.activate_index(ix))
+                                    });
                                 }
-                                a.workspace.update(cx, |w, cx| {
-                                    w.update_tabs(cx, |t| t.activate_index(ix))
-                                });
-                            }
+                            });
                         });
-                    });
                 slot.child(close)
             });
         let weak = view.downgrade();
@@ -2632,11 +2635,13 @@ impl TabArea {
         details: Vec<Option<String>>,
         dirty: Vec<bool>,
         selected: usize,
+        cx: &App,
     ) -> impl IntoElement + use<> {
         let workspace = self.workspace.clone();
         let reveal = self.reveal.clone();
         ui::strip_chevron(
             Button::new("tab-overflow")
+                .solid_ring(cx)
                 .ghost()
                 .compact()
                 .icon(IconName::ChevronDown)
@@ -2858,7 +2863,7 @@ impl TabArea {
             .enumerate()
             .map(|(ix, (e, detail))| self.tab(ix, e, detail, e.id == active, closable[ix], cx))
             .collect();
-        let overflow = self.overflow_menu(labels, methods, details, dirty, selected);
+        let overflow = self.overflow_menu(labels, methods, details, dirty, selected, cx);
         // The kit's filler after the last tab keeps its close button off the chevron. The strip's
         // gap precedes it, so the filler pulls back by that gap and trails the tab by its width.
         let pad = style::resolve(style::ui(12.), window);

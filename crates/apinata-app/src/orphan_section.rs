@@ -2,6 +2,7 @@
 //! environment's file no longer marks secret, then those of environments with no file at all,
 //! each with a Remove behind a confirmation. Only names appear here, never a value.
 
+use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -107,6 +108,7 @@ pub fn section(
                         ("env-orphan-remove-follow", ix),
                         follow,
                         Button::new(("env-orphan-remove", ix))
+                            .solid_ring(cx)
                             .ghost()
                             .compact()
                             .label("Remove")
@@ -251,6 +253,7 @@ pub fn fileless_section(
                     ("env-fileless-remove-follow", ix - 1),
                     follow,
                     Button::new(("env-fileless-remove", ix - 1))
+                        .solid_ring(cx)
                         .ghost()
                         .compact()
                         .label("Remove")

@@ -8,6 +8,7 @@ use crate::env_table::{ACTION_SLOT_WIDTH, SECRET_HIDDEN};
 use crate::kv_grid;
 use crate::style;
 use crate::ui;
+use crate::ui::SolidRing as _;
 use apinata_core::{EnvOverlay, OverlayLayer, RuntimeVars};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
@@ -530,7 +531,7 @@ impl RuntimeVarsView {
             .w(ACTION_SLOT_WIDTH)
             .when(masked, |d| {
                 d.child(
-                    ui::swap_icon_button((eye, ix), (id, ix), icon, words)
+                    ui::swap_icon_button((eye, ix), (id, ix), icon, words, cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .on_click(cx.listener(move |t, _, _, cx| {
                             t.set_revealed(kind, n.clone(), !revealed, cx)
@@ -600,9 +601,15 @@ impl RuntimeVarsView {
             .child(
                 div().flex_none().w(ACTION_SLOT_WIDTH).child(
                     // Each row button takes Enter as its press; the row's field keeps its own.
-                    ui::icon_button((delete_id, ix), IconName::Close, "Remove variable", None)
-                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
-                        .on_click(cx.listener(move |t, _, _, cx| t.delete(kind, layer, &name, cx))),
+                    ui::icon_button(
+                        (delete_id, ix),
+                        IconName::Close,
+                        "Remove variable",
+                        None,
+                        cx,
+                    )
+                    .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                    .on_click(cx.listener(move |t, _, _, cx| t.delete(kind, layer, &name, cx))),
                 ),
             )
     }
@@ -634,7 +641,7 @@ impl RuntimeVarsView {
             .child(div().flex_none().w(ACTION_SLOT_WIDTH))
             .child(
                 div().flex_none().w(ACTION_SLOT_WIDTH).child(
-                    ui::icon_button("runtime-vars-add", IconName::Plus, "Add variable", None)
+                    ui::icon_button("runtime-vars-add", IconName::Plus, "Add variable", None, cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .on_click(cx.listener(|t, _, window, cx| {
                             t.add(window, cx);
@@ -694,6 +701,7 @@ impl Render for RuntimeVarsView {
             .when(!empty, |d| {
                 d.child(
                     Button::new("runtime-vars-clear")
+                        .solid_ring(cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .label("Clear all")
                         .on_click(cx.listener(|this, _, _, cx| this.clear(cx))),

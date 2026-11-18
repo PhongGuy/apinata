@@ -2,6 +2,7 @@
 //! the response font size apply at once; the network settings apply at the next start. The
 //! global proxy password goes to the secret store, never to the settings file.
 
+use crate::ui::SolidRing as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::WindowExt;
@@ -728,6 +729,7 @@ impl PreferencesView {
     fn pac_row(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         // Each Preferences button takes Enter as its press; the inputs beside them keep theirs.
         let refetch = Button::new("global-proxy-pac-refetch")
+            .solid_ring(cx)
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .label("Refetch")
             .on_click(cx.listener(|this, _, _, cx| {
@@ -827,6 +829,7 @@ impl PreferencesView {
                     ))
                     .child(
                         Button::new("global-proxy-password-forget")
+                            .solid_ring(cx)
                             .key_context(ui::DIALOG_FOOTER_CONTEXT)
                             .label("Forget")
                             .on_click(cx.listener(|this, _, _, cx| this.store_password(None, cx))),
@@ -1002,6 +1005,7 @@ fn with_reset(
     input: impl IntoElement,
     reset_id: &'static str,
     on_reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     h_flex().gap(SPACE_1).child(input).child(
         div().id(reset_id).test_support().child(
@@ -1010,6 +1014,7 @@ fn with_reset(
                 IconName::Undo2,
                 "Reset",
                 None,
+                cx,
             )
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .on_click(on_reset),
@@ -1148,6 +1153,7 @@ impl PreferencesView {
                         cx.listener(|this, _, _, cx| {
                             this.reset(Field::Zoom, 1.0, |s, v| s.zoom = v, cx)
                         }),
+                        cx,
                     ),
                     cx,
                 ),
@@ -1163,6 +1169,7 @@ impl PreferencesView {
                         cx.listener(|this, _, _, cx| {
                             this.reset(Field::EditorFont, 0.0, |s, v| s.editor_font_offset = v, cx)
                         }),
+                        cx,
                     ),
                     cx,
                 ),
@@ -1179,6 +1186,7 @@ impl PreferencesView {
                             let field = Field::ResponseFont;
                             this.reset(field, 0.0, |s, v| s.response_font_offset = v, cx)
                         }),
+                        cx,
                     ),
                     cx,
                 ),
@@ -1274,6 +1282,7 @@ impl PreferencesView {
                         .child(self.framed(Field::CaFile, window, cx))
                         .child(
                             Button::new("ca-file-choose")
+                                .solid_ring(cx)
                                 .label("Choose")
                                 .key_context(ui::DIALOG_FOOTER_CONTEXT)
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -1356,6 +1365,7 @@ impl PreferencesView {
                     "pref-check-now",
                     "Manual check",
                     Button::new("check-updates-now")
+                        .solid_ring(cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .label("Check now")
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -1401,6 +1411,7 @@ impl PreferencesView {
                 "pref-clear-responses",
                 "Saved responses",
                 Button::new("clear-responses")
+                    .solid_ring(cx)
                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                     .label("Clear saved responses")
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -1514,6 +1525,7 @@ impl Render for PreferencesView {
                     .child(
                         // The kit centres a label; a full-width child holds the name at the left.
                         Button::new(("prefs-nav-entry", ix))
+                            .solid_ring(cx)
                             .ghost()
                             .w_full()
                             .accessibility_label(title.clone())

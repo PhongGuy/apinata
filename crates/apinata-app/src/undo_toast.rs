@@ -1,5 +1,6 @@
 //! The toast that follows a delete into the trash: an Undo button for as long as it shows.
 
+use crate::ui::SolidRing as _;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -118,6 +119,7 @@ fn undo_toast(
             let this = cx.entity();
             // Read from the keymap at each render, so a rebound key shows at once.
             Button::new("undo-delete")
+                .solid_ring(cx)
                 .ghost()
                 .label("Undo")
                 .tooltip(crate::ui::label_with_key("Undo", &UndoDelete, cx))

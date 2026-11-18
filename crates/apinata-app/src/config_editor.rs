@@ -981,7 +981,7 @@ impl ConfigEditor {
                 .role(None::<Role>)
                 .tab_stop(false);
             // Styled as the live pair, since the primary Save is narrower than a plain one.
-            let save = crate::env_editor::save_button("config-save-slot", true)
+            let save = crate::env_editor::save_button("config-save-slot", true, cx)
                 .role(None::<Role>)
                 .tab_stop(false);
             let hidden = h_flex().gap_2().child(discard).child(save);
@@ -989,7 +989,7 @@ impl ConfigEditor {
         }
         let discard = crate::env_editor::discard_button("config-discard-button", true, cx)
             .on_click(cx.listener(|this, _, window, cx| this.discard_asking(window, cx)));
-        let button = crate::env_editor::save_button("config-save-button", true)
+        let button = crate::env_editor::save_button("config-save-button", true, cx)
             .tooltip_with_action(
                 crate::commands::label("request.save"),
                 &SaveConfig,
@@ -1081,6 +1081,7 @@ impl ConfigEditor {
                     labels,
                     selected,
                     move |ix, _, cx| pick(ix, cx),
+                    cx,
                 ))
             })
             .on_click(move |ix, _, cx| pick(*ix, cx));
@@ -1226,12 +1227,16 @@ impl Render for ConfigEditor {
                 .into_iter()
                 .map(|b| {
                     let this = this.clone();
-                    banner::banner_row(b, move |b, choice, window, cx| {
-                        this.update(cx, |e, cx| match choice {
-                            Choice::Tertiary => e.open_compare(window, cx),
-                            _ => e.answer(b, choice, cx),
-                        })
-                    })
+                    banner::banner_row(
+                        b,
+                        move |b, choice, window, cx| {
+                            this.update(cx, |e, cx| match choice {
+                                Choice::Tertiary => e.open_compare(window, cx),
+                                _ => e.answer(b, choice, cx),
+                            })
+                        },
+                        cx,
+                    )
                 })
                 .collect()
         });

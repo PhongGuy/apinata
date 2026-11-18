@@ -1,5 +1,6 @@
 //! The About dialog: the app's name, running version and licence, with links to the project.
 
+use crate::ui::SolidRing as _;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::v_flex;
@@ -33,7 +34,7 @@ pub fn version_text() -> String {
 
 /// Opens the About dialog, id `about-dialog`, on `window`.
 pub fn open(window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, |d, window, _| {
+    window.open_dialog(cx, |d, window, cx| {
         let version = version_text();
         let licence = format!("Licence: {LICENCE}");
         // Enter acts on the focused link or button only, never as a confirm of the dialog.
@@ -47,13 +48,14 @@ pub fn open(window: &mut Window, cx: &mut App) {
                     .gap(SPACE_1)
                     .child(line("about-version", version))
                     .child(line("about-licence", licence))
-                    .child(link("about-repository", "Repository", REPOSITORY_URL))
-                    .child(link("about-issues", "Report an issue", ISSUES_URL)),
+                    .child(link("about-repository", "Repository", REPOSITORY_URL, cx))
+                    .child(link("about-issues", "Report an issue", ISSUES_URL, cx)),
             )
             .child(dialog_footer(
                 None,
                 [],
                 Button::new("about-close")
+                    .solid_ring(cx)
                     .label("Close")
                     .primary()
                     .on_click(|_, window, cx| window.close_dialog(cx)),
@@ -70,9 +72,10 @@ fn line(id: &'static str, text: String) -> impl IntoElement {
 }
 
 // A link opens through the app's browser opener, the same way the update notice's page does.
-fn link(id: &'static str, label: &'static str, url: &'static str) -> impl IntoElement {
+fn link(id: &'static str, label: &'static str, url: &'static str, cx: &App) -> impl IntoElement {
     div().child(
         Button::new(id)
+            .solid_ring(cx)
             .link()
             .label(label)
             .tooltip(url)

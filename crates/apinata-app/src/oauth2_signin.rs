@@ -1,6 +1,7 @@
 //! The OAuth 2.0 browser sign-in: an `Authorizer` that core drives on tokio, bridged over a
 //! channel to one dialog at a time on the shell window, plus the injectable URL opener.
 
+use crate::ui::SolidRing as _;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
@@ -272,11 +273,13 @@ fn open_dialog(id: u64, paste: Option<Entity<InputState>>, window: &mut Window, 
         let muted = cx.theme().muted_foreground;
         let url = SharedString::from(shown.url.clone());
         let copy = Button::new("oauth2-signin-copy")
+            .solid_ring(cx)
             .label("Copy URL")
             .on_click(move |_, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(shown.url.clone()))
             });
         let cancel = Button::new("oauth2-signin-cancel")
+            .solid_ring(cx)
             .label("Cancel")
             .on_click(move |_, window, cx| {
                 answer(id, Err(AuthorizeCancelled), cx);
@@ -284,6 +287,7 @@ fn open_dialog(id: u64, paste: Option<Entity<InputState>>, window: &mut Window, 
             });
         let cont = paste.is_some().then(|| {
             Button::new("oauth2-signin-continue")
+                .solid_ring(cx)
                 .label("Continue")
                 .primary()
                 .on_click(move |_, window, cx| {

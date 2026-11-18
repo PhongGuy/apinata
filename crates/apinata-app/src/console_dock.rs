@@ -1,6 +1,7 @@
 //! The bottom dock over the app's session log: a Console tab and a Network tab, each read
 //! through its own feed and cursor, polled only while the dock is open.
 
+use crate::ui::SolidRing as _;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -621,6 +622,7 @@ fn detail_pane(e: &NetworkEntry, area: Option<WeakEntity<TabArea>>, cx: &App) ->
     let export = HarExchange::from_network_entry(e).map(|exchange| {
         h_flex().child(
             Button::new("dock-export-har")
+                .solid_ring(cx)
                 .ghost()
                 .compact()
                 .label("Export as HAR")
@@ -797,9 +799,11 @@ impl Render for ConsoleDock {
         );
         let clear = match tab {
             DockTab::Console => Button::new("dock-console-clear")
+                .solid_ring(cx)
                 .label("Clear")
                 .on_click(cx.listener(|d, _, _, cx| d.clear_console(cx))),
             DockTab::Network => Button::new("dock-network-clear")
+                .solid_ring(cx)
                 .label("Clear")
                 .on_click(cx.listener(|d, _, _, cx| d.clear_network(cx))),
         };

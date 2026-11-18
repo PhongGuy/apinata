@@ -1,6 +1,7 @@
 //! The Changes dialog: a collection's changed files beside the selected file's changed sections
 //! and line diff, read off the UI thread.
 
+use crate::ui::SolidRing as _;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -980,6 +981,7 @@ impl ChangesView {
                         })
                         .child(
                             Button::new("changes-toggle-all")
+                                .solid_ring(cx)
                                 .label(if all { "Unstage all" } else { "Stage all" })
                                 .small()
                                 .lock(self.busy, cx)
@@ -1204,10 +1206,12 @@ impl Render for ChangesView {
             .child(ui::dialog_footer(
                 None,
                 [Button::new("changes-close")
+                    .solid_ring(cx)
                     .label("Close")
                     .ghost()
                     .on_click(|_, window, cx| window.close_dialog(cx))],
                 Button::new("changes-commit")
+                    .solid_ring(cx)
                     .label(commit_label(self.branch.as_deref()))
                     .primary()
                     .lock_filled(!self.can_commit(cx), cx)

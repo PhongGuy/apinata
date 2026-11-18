@@ -2,6 +2,7 @@
 //! The model is `branch_picker`; this is the view over it.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -104,6 +105,7 @@ impl Render for BranchView {
                 };
                 let branch = b.clone();
                 Button::new(("branch-row", ix))
+                    .solid_ring(cx)
                     .ghost()
                     .label(label)
                     .children(upstream.map(|u| {
@@ -140,6 +142,7 @@ impl Render for BranchView {
         let notice = picker.notice().cloned().map(|n| {
             let changes = (n == Notice::Dirty).then(|| {
                 Button::new("branch-open-changes")
+                    .solid_ring(cx)
                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                     .label("Open changes")
                     .on_click(cx.listener(|this, _, window, cx| this.open_changes(window, cx)))
@@ -157,6 +160,7 @@ impl Render for BranchView {
         });
         let fetching = activity == Activity::Fetching;
         let fetch = Button::new("branch-fetch")
+            .solid_ring(cx)
             .label(if fetching { "Fetching…" } else { "Fetch" })
             .lock(!idle, cx);
         let fetch = fetch.on_click(cx.listener(|this, _, _, cx| {
@@ -164,12 +168,14 @@ impl Render for BranchView {
         }));
         let stop = fetching.then(|| {
             Button::new("branch-fetch-cancel")
+                .solid_ring(cx)
                 .label("Stop")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.picker.update(cx, |p, _| p.cancel_fetch());
                 }))
         });
         let close = Button::new("branch-close")
+            .solid_ring(cx)
             .label("Close")
             .primary()
             .lock_filled(activity == Activity::Switching, cx)

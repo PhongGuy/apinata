@@ -306,7 +306,10 @@ impl Render for Pair {
         gpui_kit::component::h_flex()
             .size_full()
             .child(Button::new("labelled").label("Send").lock(self.locked, cx))
-            .child(ui::icon_button("icon-only", IconName::Copy, "Copy", None).lock(self.locked, cx))
+            .child(
+                ui::icon_button("icon-only", IconName::Copy, "Copy", None, cx)
+                    .lock(self.locked, cx),
+            )
     }
 }
 

@@ -1,6 +1,7 @@
 //! The join dialog: a server address, a username and a password in; a kept session out.
 //! The password goes to the server once and is never stored; the token lands in the keychain.
 
+use crate::ui::SolidRing as _;
 use std::sync::Arc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -310,6 +311,7 @@ impl Render for JoinView {
             .child(ui::dialog_footer(
                 Some(
                     Button::new("team-join-cancel")
+                        .solid_ring(cx)
                         .label("Cancel")
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.stop();
@@ -318,6 +320,7 @@ impl Render for JoinView {
                 ),
                 [],
                 Button::new("team-join-submit")
+                    .solid_ring(cx)
                     .label(if signing { "Signing in…" } else { "Sign in" })
                     .primary()
                     .lock_filled(signing, cx)

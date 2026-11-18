@@ -15,9 +15,9 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::v_flex;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    Action, AnyElement, AnyWindowHandle, AppContext as _, Bounds, Context, Entity, FocusHandle,
-    InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render, Styled,
-    TestAppContext, TestSupportExt as _, Window, WindowOptions, actions, div, px,
+    Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
+    FocusHandle, InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render,
+    Styled, TestAppContext, TestSupportExt as _, Window, WindowOptions, actions, div, px,
 };
 use support::*;
 
@@ -26,7 +26,7 @@ actions!(probe, [Ping, Unbound, Shelled]);
 struct Host {
     focus: FocusHandle,
     pings: usize,
-    build: fn() -> AnyElement,
+    build: fn(&App) -> AnyElement,
 }
 
 impl Render for Host {
@@ -36,11 +36,11 @@ impl Render for Host {
             .size_full()
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &Ping, _, _| this.pings += 1))
-            .child((self.build)())
+            .child((self.build)(cx))
     }
 }
 
-fn host(cx: &mut TestAppContext, build: fn() -> AnyElement) -> (AnyWindowHandle, Entity<Host>) {
+fn host(cx: &mut TestAppContext, build: fn(&App) -> AnyElement) -> (AnyWindowHandle, Entity<Host>) {
     support::init(cx);
     cx.update(|cx| cx.bind_keys([KeyBinding::new("ctrl-k", Ping, None)]));
     let (win, view) = cx
@@ -117,7 +117,7 @@ fn count_badge_hides_zero() {
 #[gpui_kit::test]
 fn dirty_dot_and_method_tag_sizes(cx: &mut TestAppContext) {
     // A flex row lets each child keep its own width instead of stretching to the window.
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         div()
             .flex()
             .child(dirty_dot("dot").test_support())
@@ -140,10 +140,10 @@ fn dirty_dot_and_method_tag_sizes(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn icon_button_dispatches_its_action(cx: &mut TestAppContext) {
-    let (win, view) = host(cx, || {
+    let (win, view) = host(cx, |cx| {
         div()
-            .child(icon_button("ping", IconName::Send, "Ping", Some(&Ping)))
-            .child(icon_button("plain", IconName::Close, "Close", None))
+            .child(icon_button("ping", IconName::Send, "Ping", Some(&Ping), cx))
+            .child(icon_button("plain", IconName::Close, "Close", None, cx))
             .into_any_element()
     });
     cx.update_window(win, |_, w, cx| w.click("ping", cx))
@@ -156,7 +156,7 @@ fn icon_button_dispatches_its_action(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn empty_state_shows_actions_with_bound_hints(cx: &mut TestAppContext) {
-    let (win, view) = host(cx, || {
+    let (win, view) = host(cx, |_| {
         let actions: [(&str, &dyn Action); 2] = [("Ping", &Ping), ("Other", &Unbound)];
         empty_state("empty", "Nothing here", &actions).into_any_element()
     });
@@ -186,7 +186,7 @@ static PICKED: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 #[gpui_kit::test]
 fn segmented_marks_the_current_option_and_reports_clicks(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         segmented("seg", ["One", "Two", "Three"], 1, |ix, _, _| {
             PICKED.store(*ix, Ordering::SeqCst)
         })
@@ -205,7 +205,7 @@ fn segmented_marks_the_current_option_and_reports_clicks(cx: &mut TestAppContext
 
 #[gpui_kit::test]
 fn form_rows_share_their_columns(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(form_heading("form-heading", "Section"))
             .child(form_row(
@@ -250,7 +250,7 @@ fn form_rows_share_their_columns(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_form_note_is_smaller_than_a_form_label(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(form_row("row", "Label", div()))
             .child(form_note("note", "Note"))
@@ -276,7 +276,7 @@ fn empty_state_hints_shell_keys_outside_the_shell(cx: &mut TestAppContext) {
             Some(apinata_app::keymap::SHELL_CONTEXT),
         )])
     });
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         let actions: [(&str, &dyn Action); 1] = [("Shelled", &Shelled)];
         empty_state("empty", "Nothing here", &actions).into_any_element()
     });
@@ -315,7 +315,7 @@ fn a_selected_segment_is_a_raised_fill_edged_in_neither_ring_nor_brand(cx: &mut 
 fn a_segment_is_as_big_as_a_plain_ghost_button(cx: &mut TestAppContext) {
     use gpui_kit::component::button::{Button, ButtonVariants as _};
     // A bordered segment is 2 px larger each way than the same ghost button without one.
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(segmented("same", ["Same", "Same"], 0, |_, _, _| {}))
             .child(
@@ -342,7 +342,7 @@ static PICKED_ID: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 #[gpui_kit::test]
 fn segments_with_their_own_ids_keep_the_arrow_keys(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         segmented("ided", ["A", "B"], 0, |ix, _, _| {
             PICKED_ID.store(*ix, Ordering::SeqCst)
         })
@@ -483,7 +483,7 @@ thread_local! {
 #[gpui_kit::test]
 fn a_rendered_method_tag_paints_its_class_colour_in_both_themes(cx: &mut TestAppContext) {
     use gpui_kit::component::ThemeMode;
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         let paints = TAG_PAINTS.with(|p| p.clone());
         div()
             .flex()
@@ -526,7 +526,7 @@ fn centre_y(b: Bounds<Pixels>) -> f32 {
 
 #[gpui_kit::test]
 fn a_form_label_sits_on_the_first_line_of_its_control(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(form_row(
                 "row-input",
@@ -630,7 +630,7 @@ fn every_panel_switch_uses_the_tab_strip() {
 #[gpui_kit::test]
 fn the_dialog_footer_puts_the_primary_at_the_right_edge(cx: &mut TestAppContext) {
     use gpui_kit::component::button::Button;
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         dialog_footer(
             Some(Button::new("f-cancel").label("Cancel")),
             [Button::new("f-other").label("Other")],
@@ -658,7 +658,7 @@ fn the_dialog_footer_puts_the_primary_at_the_right_edge(cx: &mut TestAppContext)
 #[gpui_kit::test]
 fn a_dialog_footer_too_narrow_for_its_buttons_wraps_them_inside_its_edges(cx: &mut TestAppContext) {
     use gpui_kit::component::button::Button;
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         div()
             .id("f-box")
             .test_support()
@@ -725,7 +725,7 @@ fn line(id: &'static str) -> impl IntoElement {
 
 #[gpui_kit::test]
 fn a_narrow_form_row_stacks_its_label_over_the_control(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(
                 div()
@@ -754,7 +754,7 @@ fn a_narrow_form_row_stacks_its_label_over_the_control(cx: &mut TestAppContext) 
 
 #[gpui_kit::test]
 fn a_form_row_restacks_when_its_window_narrows_and_widens(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         form_row("row", "Label", line("ctl")).into_any_element()
     });
     let stacked = |cx: &mut TestAppContext| {
@@ -772,7 +772,7 @@ fn a_form_row_restacks_when_its_window_narrows_and_widens(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 fn a_long_label_wraps_inside_its_column_from_the_top(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         form_row(
             "long",
             "A label long enough that it has to wrap onto a second line",
@@ -791,7 +791,7 @@ fn a_long_label_wraps_inside_its_column_from_the_top(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_hint_sits_under_the_control_in_smaller_text(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         form_row("hinted", "Label", line("ctl-hinted"))
             .hint("hinted-hint", "Helper text")
             .into_any_element()
@@ -812,7 +812,7 @@ fn a_hint_sits_under_the_control_in_smaller_text(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_short_label_column_never_stacks(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         div()
             .w(px(300.))
             .child(form_row("short", "Name", line("ctl-short")).label_width(SHORT_FORM_LABEL_WIDTH))
@@ -827,7 +827,7 @@ fn a_short_label_column_never_stacks(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_form_note_follows_stacked_rows(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(
                 v_flex()
@@ -856,7 +856,7 @@ fn a_form_note_follows_stacked_rows(cx: &mut TestAppContext) {
 // A stacked row without a label leaves no blank band above its control.
 #[gpui_kit::test]
 fn a_stacked_row_without_a_label_starts_at_its_control(cx: &mut TestAppContext) {
-    let (win, _) = host(cx, || {
+    let (win, _) = host(cx, |_| {
         v_flex()
             .child(
                 div()

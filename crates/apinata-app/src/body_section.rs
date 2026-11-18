@@ -1,5 +1,6 @@
 //! The Body section: a mode picker over a code editor or a key-value table.
 
+use crate::ui::SolidRing as _;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -668,6 +669,7 @@ impl BodySection {
             )
             .child(
                 Button::new("body-file-choose")
+                    .solid_ring(cx)
                     .label("Choose file\u{2026}")
                     .on_click(cx.listener(|this, _, window, cx| this.pick(0, window, cx))),
             )
@@ -731,11 +733,13 @@ impl BodySection {
             }))
             .child(
                 Button::new("body-file-change")
+                    .solid_ring(cx)
                     .label(choose)
                     .on_click(cx.listener(|this, _, window, cx| this.pick(0, window, cx))),
             )
             .child(
                 Button::new("body-file-remove")
+                    .solid_ring(cx)
                     .ghost()
                     .label("Remove")
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -750,6 +754,7 @@ impl BodySection {
     /// The button that adds one more file to a file body, whose radios then pick the one sent.
     fn render_file_add(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         Button::new("body-file-add")
+            .solid_ring(cx)
             .ghost()
             .label("Add another file\u{2026}")
             .tooltip("Keep several files and choose the one to send")
@@ -865,6 +870,7 @@ impl Render for BodySection {
         };
         let beautify = self.mode.filter(|m| m.beautifiable()).map(|_| {
             Button::new("body-beautify")
+                .solid_ring(cx)
                 .ghost()
                 .small()
                 .label("Beautify")
@@ -873,6 +879,7 @@ impl Render for BodySection {
         });
         let minify = self.mode.filter(|m| m.beautifiable()).map(|_| {
             Button::new("body-minify")
+                .solid_ring(cx)
                 .ghost()
                 .small()
                 .label("Minify")

@@ -4,6 +4,7 @@
 use crate::style::{
     DIALOG_FOOTER_GAP, ROW_HEIGHT, SCROLLBAR_GUTTER, SPACE_1, SPACE_2, SPACE_3, resolve,
 };
+use crate::ui::SolidRing as _;
 use crate::ui::{dialog_footer, form_heading, plain_quotes};
 use apinata_core::import::{ImportNote, ImportReport, NoteKind};
 use gpui_kit::component::WindowExt;
@@ -192,7 +193,7 @@ pub fn open_report(
     cx: &mut App,
 ) {
     let scroll = ScrollHandle::new();
-    window.open_dialog(cx, move |d, window, _| {
+    window.open_dialog(cx, move |d, window, cx| {
         let d = crate::dialog_frame::place(d, window);
         // Note ids count across groups, so each group starts where the previous one ended.
         let mut first = 0usize;
@@ -294,6 +295,7 @@ pub fn open_report(
                 None,
                 [],
                 Button::new(ids.close)
+                    .solid_ring(cx)
                     .label("Close")
                     .primary()
                     .on_click(|_, window, cx| window.close_dialog(cx)),

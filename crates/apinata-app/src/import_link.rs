@@ -3,6 +3,7 @@
 //! chosen file, so both write identical collections.
 
 use crate::theme::SelectedStyle;
+use crate::ui::SolidRing as _;
 use crate::ui::{ChooseButton as _, LockButton as _};
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
@@ -59,6 +60,7 @@ pub enum PickStyle {
 /// on the chosen row and, when it is the one current choice, the selected fill.
 fn pick_row(id: SharedString, label: String, style: PickStyle, cx: &App) -> Button {
     Button::new(id)
+        .solid_ring(cx)
         .ghost()
         .w_full()
         .accessibility_label(label.clone())
@@ -1331,6 +1333,7 @@ impl Render for ImportLinkDialog {
             .child(
                 // Wrapped alone: the link field beside it keeps Enter to start the import.
                 Button::new(browse_id)
+                    .solid_ring(cx)
                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                     .flex_none()
                     .label("Browse…")
@@ -1408,6 +1411,7 @@ impl Render for ImportLinkDialog {
                 )
                 .child(
                     Button::new("import-link-parent-change")
+                        .solid_ring(cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .flex_none()
                         .label("Change…")
@@ -1531,6 +1535,7 @@ impl Render for ImportLinkDialog {
                 None,
                 [],
                 Button::new("import-update-close")
+                    .solid_ring(cx)
                     .label("Close")
                     .primary()
                     .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
@@ -1538,11 +1543,13 @@ impl Render for ImportLinkDialog {
             Phase::Preview { .. } | Phase::Applying => ui::dialog_footer(
                 Some(
                     Button::new("import-link-cancel")
+                        .solid_ring(cx)
                         .label("Cancel")
                         .lock(self.phase == Phase::Applying, cx)
                         .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
                 ),
                 [Button::new("import-update-change-source")
+                    .solid_ring(cx)
                     .label("Change source")
                     .lock(self.phase == Phase::Applying || self.replanning, cx)
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -1550,6 +1557,7 @@ impl Render for ImportLinkDialog {
                         this.link.read(cx).focus_handle(cx).focus(window, cx);
                     }))],
                 Button::new("import-update-apply")
+                    .solid_ring(cx)
                     .label("Update")
                     .primary()
                     .lock_filled(
@@ -1564,12 +1572,14 @@ impl Render for ImportLinkDialog {
             _ => ui::dialog_footer(
                 Some(
                     Button::new("import-link-cancel")
+                        .solid_ring(cx)
                         .label("Cancel")
                         .lock(self.phase == Phase::Writing, cx)
                         .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
                 ),
                 [],
                 Button::new("import-link-import")
+                    .solid_ring(cx)
                     .label(match self.phase {
                         Phase::Fetching => "Fetching…",
                         Phase::Writing => "Importing…",

@@ -5,6 +5,7 @@
 //! `SetSecretValue` and come back only on a reveal's reply channel, never in a snapshot.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -1818,7 +1819,11 @@ impl EnvEditor {
         let dirty = self.view(cx).is_some_and(|v| v.dirty);
         let this = cx.entity();
         let followed = |id: &'static str, button: Button| Followed::new(id, &self.follow, button);
-        let more = more_button("env-more", move |menu| env_menu(menu, this.clone(), locked));
+        let more = more_button(
+            "env-more",
+            move |menu| env_menu(menu, this.clone(), locked),
+            cx,
+        );
         // Only an environment other than the one requests are sent with can be made active.
         let in_use = self.workspace.read(cx).selected_environment(&self.root, cx);
         let offer = (!name.is_empty() && in_use.as_deref() != Some(name.as_str())).then(|| {
@@ -1826,6 +1831,7 @@ impl EnvEditor {
             followed(
                 "env-use-follow",
                 Button::new("env-use")
+                    .solid_ring(cx)
                     .label("Use this environment")
                     .on_click(cx.listener(move |e, _, _, cx| {
                         e.workspace.update(cx, |w, cx| {
@@ -1850,7 +1856,7 @@ impl EnvEditor {
             ))
             .child(followed(
                 "env-save-follow",
-                save_button("env-save", dirty)
+                save_button("env-save", dirty, cx)
                     .on_click(cx.listener(|e, _, window, cx| e.save_asking(window, cx))),
             ))
     }
@@ -1931,6 +1937,7 @@ fn swatch(
             .border_color(theme.foreground)
     });
     Button::new(id)
+        .solid_ring(cx)
         .ghost()
         .compact()
         .tooltip(label.to_string())
@@ -1970,8 +1977,10 @@ pub(crate) fn pane_header(title_id: &'static str, name: String) -> Div {
 pub(crate) fn more_button(
     id: &'static str,
     menu: impl Fn(PopupMenu) -> PopupMenu + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     Button::new(id)
+        .solid_ring(cx)
         .ghost()
         .compact()
         .icon(IconName::Ellipsis)
@@ -1983,6 +1992,7 @@ pub(crate) fn more_button(
 /// The header's Duplicate, off while `locked` by unsaved edits, with the reason as its tip.
 pub(crate) fn duplicate_button(id: &'static str, locked: bool, cx: &App) -> Button {
     Button::new(id)
+        .solid_ring(cx)
         .label("Duplicate")
         .lock(locked, cx)
         .when(locked, |b| b.tooltip(RENAME_LOCKED_REASON))
@@ -1990,12 +2000,18 @@ pub(crate) fn duplicate_button(id: &'static str, locked: bool, cx: &App) -> Butt
 
 /// The header's Discard changes, live only while there are `edits` to drop.
 pub(crate) fn discard_button(id: &'static str, edits: bool, cx: &App) -> Button {
-    Button::new(id).label("Discard changes").lock(!edits, cx)
+    Button::new(id)
+        .solid_ring(cx)
+        .label("Discard changes")
+        .lock(!edits, cx)
 }
 
 /// The header's Save, the primary action only while it has `edits` to store.
-pub(crate) fn save_button(id: &'static str, edits: bool) -> Button {
-    Button::new(id).when(edits, |b| b.primary()).label("Save")
+pub(crate) fn save_button(id: &'static str, edits: bool, cx: &App) -> Button {
+    Button::new(id)
+        .solid_ring(cx)
+        .when(edits, |b| b.primary())
+        .label("Save")
 }
 
 /// The "…" menu's Delete entry in the danger colour, its content under `id`.
@@ -2193,9 +2209,12 @@ impl Render for EnvEditor {
                 list.child(Followed::new(
                     "env-create-follow",
                     &self.follow,
-                    Button::new("env-create").label("New").on_click(
-                        cx.listener(|e, _, window, cx| e.start_naming(Naming::Create, window, cx)),
-                    ),
+                    Button::new("env-create")
+                        .solid_ring(cx)
+                        .label("New")
+                        .on_click(cx.listener(|e, _, window, cx| {
+                            e.start_naming(Naming::Create, window, cx)
+                        })),
                 ))
             });
         // The editor scrolls as one page, list included, so a short or narrow window still
@@ -2272,6 +2291,7 @@ impl Render for EnvEditor {
                 )
                 .child(
                     Button::new("env-empty-create")
+                        .solid_ring(cx)
                         .label("New environment")
                         .on_click(cx.listener(|e, _, window, cx| {
                             e.start_naming(Naming::Create, window, cx)
@@ -2308,12 +2328,16 @@ impl Render for EnvEditor {
             .into_iter()
             .map(|b| {
                 let this = this.clone();
-                banner::banner_row(b, move |b, choice, window, cx| {
-                    this.update(cx, |e, cx| match choice {
-                        Choice::Tertiary => e.open_compare(window, cx),
-                        _ => e.answer_asking(b, choice, window, cx),
-                    })
-                })
+                banner::banner_row(
+                    b,
+                    move |b, choice, window, cx| {
+                        this.update(cx, |e, cx| match choice {
+                            Choice::Tertiary => e.open_compare(window, cx),
+                            _ => e.answer_asking(b, choice, window, cx),
+                        })
+                    },
+                    cx,
+                )
             })
             .collect();
         let has_secret = self
@@ -2402,14 +2426,21 @@ pub(crate) fn naming_buttons(
     creating: bool,
     on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_confirm: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     h_flex()
         .flex_wrap()
         .justify_end()
         .gap(style::SPACE_2)
-        .child(Button::new(cancel_id).label("Cancel").on_click(on_cancel))
+        .child(
+            Button::new(cancel_id)
+                .solid_ring(cx)
+                .label("Cancel")
+                .on_click(on_cancel),
+        )
         .child(
             Button::new(confirm_id)
+                .solid_ring(cx)
                 .label(if creating { "Create" } else { "Rename" })
                 .primary()
                 .on_click(on_confirm),
@@ -2472,6 +2503,7 @@ impl EnvEditor {
                     let text = e.name_input.read(cx).value().trim().to_string();
                     e.commit_name(&text, window, cx);
                 }),
+                cx,
             ));
         Some(field.into_any_element())
     }

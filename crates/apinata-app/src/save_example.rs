@@ -2,6 +2,7 @@
 //! check that swaps the request's secret values for placeholders before they reach the file.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use apinata_core::{
     ExampleBodyKind, ExampleResponse, ItemPath, NamedSecret, RequestKind, Response,
     bytes_hold_secret, replace_secrets, request_secrets as core_request_secrets,
@@ -455,6 +456,7 @@ pub fn ask(
             let keep = builder_form.read(cx).finding().is_some().then(|| {
                 let (tx, form) = (tx.clone(), builder_form.clone());
                 Button::new("example-keep-secrets")
+                    .solid_ring(cx)
                     .label("Keep values")
                     .lock(answer.is_none(), cx)
                     .on_click(move |_, window, cx| {
@@ -472,14 +474,18 @@ pub fn ask(
                 .gap_2()
                 .justify_end()
                 .children(keep)
-                .child(Button::new("save-example-cancel").label("Cancel").on_click(
-                    move |_, window, cx| {
-                        let _ = click_tx.try_send(None);
-                        window.close_dialog(cx);
-                    },
-                ))
+                .child(
+                    Button::new("save-example-cancel")
+                        .solid_ring(cx)
+                        .label("Cancel")
+                        .on_click(move |_, window, cx| {
+                            let _ = click_tx.try_send(None);
+                            window.close_dialog(cx);
+                        }),
+                )
                 .child(
                     Button::new("save-example-save")
+                        .solid_ring(cx)
                         .label("Save")
                         .primary()
                         .lock_filled(answer.is_none(), cx)

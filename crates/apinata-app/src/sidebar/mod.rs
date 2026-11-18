@@ -11,6 +11,7 @@ pub mod terms;
 
 use crate::mock_server::MockState;
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -3071,9 +3072,11 @@ impl Render for Sidebar {
                             )
                             .child(
                                 Button::new("sidebar-history")
+                                    .solid_ring(cx)
                                     .lock(idle, cx)
                                     .ghost()
                                     .compact()
+                                    .aspect_ratio(1.)
                                     .icon(IconName::RotateCcwClock)
                                     .tooltip_with_action(
                                         "History",
@@ -3185,8 +3188,9 @@ impl Render for Sidebar {
                                     NodeKind::Example => example_lead(n),
                                     _ => item_lead(
                                         n,
-                                        (n.kind == NodeKind::Request && entry.is_folder())
-                                            .then(|| examples_toggle(n, &view).into_any_element()),
+                                        (n.kind == NodeKind::Request && entry.is_folder()).then(
+                                            || examples_toggle(n, &view, cx).into_any_element(),
+                                        ),
                                         &paints,
                                     ),
                                 };
@@ -3220,7 +3224,7 @@ impl Render for Sidebar {
                                     // which makes it current, then uses New request or New folder.
                                     let create = |id: &'static str, icon, tip, entry| {
                                         let (view, node) = (view.clone(), n.clone());
-                                        ui::icon_button((id, n.collection), icon, tip, None)
+                                        ui::icon_button((id, n.collection), icon, tip, None, cx)
                                             .tab_stop(false)
                                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                                 cx.stop_propagation()
@@ -3366,7 +3370,7 @@ impl Render for Sidebar {
                                     // double click keeps the tab the first one previewed.
                                     let toggle = entry
                                         .is_folder()
-                                        .then(|| examples_toggle(n, &view).into_any_element());
+                                        .then(|| examples_toggle(n, &view, cx).into_any_element());
                                     let view = view.clone();
                                     let (root, path) = (n.root.clone(), n.path.clone());
                                     item.child(with_suffix(
@@ -3999,7 +4003,7 @@ fn marker(kind: &str, n: &Node) -> impl ParentElement + Styled + IntoElement + u
 
 /// The examples chevron of a request row: flips the request's expansion without selecting or
 /// opening it.
-fn examples_toggle(n: &Node, view: &WeakEntity<Sidebar>) -> impl IntoElement + use<> {
+fn examples_toggle(n: &Node, view: &WeakEntity<Sidebar>, cx: &App) -> impl IntoElement + use<> {
     let (view, id) = (view.clone(), n.id.clone());
     let tip = if n.expanded {
         "Hide examples"
@@ -4011,6 +4015,7 @@ fn examples_toggle(n: &Node, view: &WeakEntity<Sidebar>) -> impl IntoElement + u
         chevron_icon(n.expanded),
         tip,
         None,
+        cx,
     )
     .xsmall()
     // Off the Tab order; Right and Left on the row open and close its examples.
@@ -4041,7 +4046,7 @@ fn run_button(
 ) -> Button {
     let (view, node) = (view.clone(), n.clone());
     // Off the Tab order so a big tree is one stop; Shift+Enter runs the selected row instead.
-    ui::icon_button(id, IconName::Play, &run_tooltip(command, cx), None)
+    ui::icon_button(id, IconName::Play, &run_tooltip(command, cx), None, cx)
         .tab_stop(false)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, window, cx| {

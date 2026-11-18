@@ -1,5 +1,6 @@
 //! The editor of one request tab: breadcrumb, method, URL and the section tables.
 
+use crate::ui::SolidRing as _;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -2024,8 +2025,10 @@ fn crumb_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> Button {
     Button::new(id)
+        .solid_ring(cx)
         .link()
         .xsmall()
         .px(style::SPACE_1)
@@ -2825,6 +2828,7 @@ impl RequestEditor {
                         w.open_settings(&root, TabKind::Collection, cx);
                     });
                 },
+                cx,
             )
             .flex_shrink(1.)
             .min_w(CRUMB_SHRUNK_MIN)
@@ -2882,15 +2886,19 @@ impl RequestEditor {
                     .flat_map(|(ix, (segment, folder))| {
                         let workspace = self.workspace.downgrade();
                         let root = root_dir.clone();
-                        let button =
-                            crumb_button(("breadcrumb-folder", ix), segment, move |_, _, cx| {
+                        let button = crumb_button(
+                            ("breadcrumb-folder", ix),
+                            segment,
+                            move |_, _, cx| {
                                 let folder = folder.clone();
                                 // Open the settings tab, then reveal so the sidebar follows.
                                 _ = workspace.update(cx, |w, cx| {
                                     w.open_settings(&root, TabKind::Folder(folder.clone()), cx);
                                     w.reveal_folder(&root, folder, cx);
                                 });
-                            });
+                            },
+                            cx,
+                        );
                         let button = if ix == nearest {
                             button.flex_none()
                         } else {
@@ -3107,7 +3115,9 @@ impl RequestEditor {
             return None;
         }
         if !self.save_shown(cx) {
+            // Ringed like Save itself, so the slot keeps the border Save reserves.
             let ghost = Button::new("save-slot-button")
+                .solid_ring(cx)
                 .ghost()
                 .small()
                 .label("Save")
@@ -3125,6 +3135,7 @@ impl RequestEditor {
         }
         // Called directly: a dispatched action reaches the editor only while it holds focus.
         let button = Button::new("save-request-button")
+            .solid_ring(cx)
             .ghost()
             .small()
             .label("Save")
@@ -3146,6 +3157,7 @@ impl RequestEditor {
     // Opens Generate code on this editor's own request, which need not be the active tab.
     fn generate_code_button(&self, cx: &mut Context<Self>) -> AnyElement {
         let button = Button::new("generate-code-button")
+            .solid_ring(cx)
             .ghost()
             .compact()
             .icon(IconName::CodeXml)
@@ -3190,6 +3202,7 @@ impl RequestEditor {
                     .w_full()
                     .child(
                         Button::new("stop-button")
+                            .solid_ring(cx)
                             .w_full()
                             .label("Stop")
                             .on_click(move |_, _, cx| model.update(cx, |m, cx| m.stop(cx))),
@@ -3218,6 +3231,7 @@ impl RequestEditor {
                     .w_full()
                     .child(
                         Button::new("cancel-button")
+                            .solid_ring(cx)
                             .w_full()
                             .label("Cancel")
                             .on_click(move |_, _, cx| model.update(cx, |m, cx| m.cancel(cx))),
@@ -3239,6 +3253,7 @@ impl RequestEditor {
             slot.child(
                 div().id("send").test_support().w_full().child(
                     Button::new("send-button")
+                        .solid_ring(cx)
                         .primary()
                         .w_full()
                         .label("Send")
@@ -3352,12 +3367,16 @@ impl RequestEditor {
             .into_iter()
             .map(|b| {
                 let this = this.clone();
-                banner::banner_row(b, move |b, choice, window, cx| {
-                    this.update(cx, |e, cx| match choice {
-                        Choice::Tertiary => e.open_compare(window, cx),
-                        _ => e.answer(b, choice, cx),
-                    })
-                })
+                banner::banner_row(
+                    b,
+                    move |b, choice, window, cx| {
+                        this.update(cx, |e, cx| match choice {
+                            Choice::Tertiary => e.open_compare(window, cx),
+                            _ => e.answer(b, choice, cx),
+                        })
+                    },
+                    cx,
+                )
             })
             .collect()
     }
@@ -3393,6 +3412,7 @@ impl RequestEditor {
             )
             .child(
                 Button::new("dismiss-paste-banner")
+                    .solid_ring(cx)
                     .label("Dismiss")
                     .on_click(dismiss),
             );
@@ -3436,6 +3456,7 @@ impl RequestEditor {
         );
         let keep = |id: &'static str, label: &'static str, edit: Edit, cx: &mut Context<Self>| {
             Button::new(id)
+                .solid_ring(cx)
                 .ghost()
                 .xsmall()
                 .label(label)
@@ -3535,6 +3556,7 @@ impl RequestEditor {
                     labels,
                     self.section as usize,
                     move |ix, _, cx| editor.update(cx, |e, cx| e.show_section(ix, cx)),
+                    cx,
                 ))
             })
             .on_click(move |ix, _, cx| this.update(cx, |e, cx| e.show_section(*ix, cx)));

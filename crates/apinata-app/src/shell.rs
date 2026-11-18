@@ -1,6 +1,7 @@
 //! The window's root view: a title bar over a resizable sidebar and tab-area split, the
 //! open-collection flow, and the dialogs and notifications for workspace and save errors.
 
+use crate::ui::SolidRing as _;
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -1730,22 +1731,26 @@ impl Shell {
             .when(offer.notes.is_some(), |el| {
                 el.child(
                     Button::new("update-notes")
+                        .solid_ring(cx)
                         .label("View notes")
                         .on_click(on(Updates::toggle_notes)),
                 )
             })
             .child(
                 Button::new("update-download")
+                    .solid_ring(cx)
                     .label("Open download page")
                     .on_click(move |_, _, cx| cx.open_url(&page)),
             )
             .child(
                 Button::new("update-later")
+                    .solid_ring(cx)
                     .label("Later")
                     .on_click(on(Updates::later)),
             )
             .child(
                 Button::new("update-skip")
+                    .solid_ring(cx)
                     .label("Skip this version")
                     .on_click(on(Updates::skip)),
             )
@@ -1863,7 +1868,10 @@ impl Shell {
         let current_hint = (current_root.as_ref())
             .and_then(|root| self.workspace.read(cx).collection_hints(cx).remove(root));
         let muted = cx.theme().muted_foreground;
-        let trigger = ui::solid_ring(Button::new("collection-switcher").ghost().small(), cx)
+        let trigger = Button::new("collection-switcher")
+            .solid_ring(cx)
+            .ghost()
+            .small()
             .min_w_0()
             .dropdown_caret(true)
             .map(|b| match current {
@@ -1897,12 +1905,13 @@ impl Shell {
                     let current = current_root.as_ref() == Some(&root);
                     let hint = open_hints[ix].clone();
                     let reveal =
-                        switcher_row(("switch-open", ix), name.clone(), hint, muted, current)
+                        switcher_row(("switch-open", ix), name.clone(), hint, muted, current, cx)
                             .on_click(cx.listener(move |state, _, window, cx| {
                                 shell.update(cx, |s, cx| s.reveal_collection(&root, window, cx));
                                 state.dismiss(window, cx);
                             }));
                     let gear = Button::new(("switcher-settings", ix))
+                        .solid_ring(cx)
                         .ghost()
                         .compact()
                         .icon(IconName::Settings)
@@ -1942,7 +1951,7 @@ impl Shell {
                     );
                     let hint = recent_hints[ix].clone();
                     let button =
-                        switcher_row(("recent", ix), names[&root].clone(), hint, muted, false)
+                        switcher_row(("recent", ix), names[&root].clone(), hint, muted, false, cx)
                             .on_click(cx.listener(move |state, _, window, cx| {
                                 shell.update(cx, |s, cx| s.open(root.clone(), window, cx));
                                 state.dismiss(window, cx);
@@ -1993,6 +2002,7 @@ impl Shell {
                             // Each row shows the key its command has in the live keymap, if any.
                             let key = ui::key_in(action.as_ref(), &[SHELL_CONTEXT], cx);
                             Button::new(id)
+                                .solid_ring(cx)
                                 .ghost()
                                 .w_full()
                                 .accessibility_label(label)
@@ -2051,6 +2061,7 @@ impl Shell {
                 ENV_EDITOR_ICON,
                 MANAGE_ENVIRONMENTS_TIP,
                 Some(&OpenEnvironments),
+                cx,
             );
         }
         icon_button(
@@ -2058,6 +2069,7 @@ impl Shell {
             ENV_EDITOR_ICON,
             MANAGE_ENVIRONMENTS_TIP,
             None,
+            cx,
         )
         .tooltip(NO_COLLECTION_ENV_TIP)
         .lock(true, cx)
@@ -2271,29 +2283,27 @@ impl Shell {
         ];
         // Each part is a ghost Button, so Tab, Enter and Space reach it.
         let part = |id: &'static str, name: SharedString, factor: f32, gone: bool| {
-            ui::solid_ring(
-                Button::new(id)
-                    .ghost()
-                    .small()
-                    .accessibility_label(name)
-                    .tab_stop(!gone)
-                    .map(|mut b| {
-                        b.style().flex_shrink = Some(factor);
-                        b
-                    }),
-                cx,
-            )
-            .min_w_0()
-            .when(gone, |d| {
-                d.absolute()
-                    .w_0()
-                    .h_0()
-                    .p_0()
-                    .border_0()
-                    .overflow_hidden()
-                    .invisible()
-            })
-            .text_color(muted)
+            Button::new(id)
+                .solid_ring(cx)
+                .ghost()
+                .small()
+                .accessibility_label(name)
+                .tab_stop(!gone)
+                .map(|mut b| {
+                    b.style().flex_shrink = Some(factor);
+                    b
+                })
+                .min_w_0()
+                .when(gone, |d| {
+                    d.absolute()
+                        .w_0()
+                        .h_0()
+                        .p_0()
+                        .border_0()
+                        .overflow_hidden()
+                        .invisible()
+                })
+                .text_color(muted)
         };
         let comma_shows = has_name && count.is_some() && !count_hidden;
         let branch = name.map(|name| {
@@ -2371,6 +2381,7 @@ impl Shell {
         // The chevron opens the branch picker; the wrapper carries the shrink so narrowing is
         // unchanged.
         let chevron = Button::new("git-branch-chevron")
+            .solid_ring(cx)
             .ghost()
             .small()
             .icon(IconName::ChevronDown)
@@ -2423,6 +2434,7 @@ impl Shell {
                 )
                 .child(
                     Button::new(("reload-collection", ix))
+                        .solid_ring(cx)
                         .label("Reload collection")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.workspace
@@ -2468,40 +2480,40 @@ impl Shell {
                     .size_full()
                     .py_0()
                     .items_center()
-                    .left(ui::solid_ring(
+                    .left(
                         icon_button(
                             "toggle-sidebar",
                             IconName::PanelLeft,
                             "Toggle sidebar",
                             Some(&ToggleSidebar),
+                            cx,
                         )
                         .xsmall(),
-                        cx,
-                    ))
+                    )
                     .children(markers)
                     .children(statuses)
                     .when_some(mock, |bar, mock| bar.right(mock))
-                    .right(ui::solid_ring(
+                    .right(
                         icon_button(
                             "toggle-console",
                             IconName::PanelBottom,
                             "Toggle console",
                             Some(&ToggleConsole),
+                            cx,
                         )
                         .xsmall(),
-                        cx,
-                    ))
-                    .right(ui::solid_ring(
+                    )
+                    .right(
                         icon_button(
                             "toggle-layout",
                             layout_icon,
                             layout_tip,
                             (!narrow).then_some(&ToggleOrientation as &dyn Action),
+                            cx,
                         )
                         .xsmall()
                         .lock(narrow, cx),
-                        cx,
-                    )),
+                    ),
             )
     }
 }
@@ -2612,6 +2624,7 @@ impl Shell {
         let served_root = root.clone();
         use crate::ui::ChooseButton as _;
         let toggle = Button::new("mock-toggle")
+            .solid_ring(cx)
             .xsmall()
             .label("Mock")
             .toggle(state != MockState::Off, cx)
@@ -2641,16 +2654,15 @@ impl Shell {
                         .text_color(cx.theme().muted_foreground)
                         .child(url),
                 )
-                .child(ui::solid_ring(
-                    icon_button("mock-copy", IconName::Copy, "Copy mock address", None)
+                .child(
+                    icon_button("mock-copy", IconName::Copy, "Copy mock address", None, cx)
                         .xsmall()
                         .on_click(move |_, _, cx| {
                             cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(
                                 copied.clone(),
                             ));
                         }),
-                    cx,
-                ))
+                )
                 .child(self.mock_served_popover(&served_root, status, cx))
         });
         Some(
@@ -2661,7 +2673,7 @@ impl Shell {
                     div()
                         .id("mock-toggle-slot")
                         .tooltip(ui::text_tooltip("mock-tooltip", tip))
-                        .child(ui::solid_ring(toggle, cx)),
+                        .child(toggle),
                 )
                 .into_any_element(),
         )
@@ -2672,6 +2684,7 @@ impl Shell {
     fn mock_served_popover(&self, root: &Path, status: String, cx: &App) -> impl IntoElement {
         let (workspace, root) = (self.workspace.clone(), root.to_path_buf());
         let trigger = Button::new("mock-status")
+            .solid_ring(cx)
             .ghost()
             .xsmall()
             .label(status.clone())
@@ -2778,17 +2791,13 @@ impl Shell {
                             // a way in from the bar, as an icon that never shrinks.
                             .map(|row| {
                                 if global_button {
-                                    row.child(no_window_move(div().flex_none().child(
-                                        ui::solid_ring(
-                                            icon_button(
-                                                "global-environments",
-                                                GLOBAL_ENV_ICON,
-                                                GLOBAL_ENVIRONMENTS_TIP,
-                                                Some(&OpenGlobalEnvironments),
-                                            ),
-                                            cx,
-                                        ),
-                                    )))
+                                    row.child(no_window_move(div().flex_none().child(icon_button(
+                                        "global-environments",
+                                        GLOBAL_ENV_ICON,
+                                        GLOBAL_ENVIRONMENTS_TIP,
+                                        Some(&OpenGlobalEnvironments),
+                                        cx,
+                                    ))))
                                 } else {
                                     row.child(Self::env_slot(
                                         self.global_env_selector.clone(),
@@ -2799,20 +2808,16 @@ impl Shell {
                             })
                             // A narrow bar has no room for it; the palette still lists the command.
                             .children((!narrow).then(|| {
-                                no_window_move(div().flex_none().child(ui::solid_ring(
-                                    icon_button(
-                                        "variables-button",
-                                        VARIABLES_ICON,
-                                        VARIABLES_TIP,
-                                        Some(&OpenVariablesOverview),
-                                    ),
+                                no_window_move(div().flex_none().child(icon_button(
+                                    "variables-button",
+                                    VARIABLES_ICON,
+                                    VARIABLES_TIP,
+                                    Some(&OpenVariablesOverview),
                                     cx,
                                 )))
                             }))
                             .child(no_window_move(
-                                div()
-                                    .flex_none()
-                                    .child(ui::solid_ring(self.environments_button(cx), cx)),
+                                div().flex_none().child(self.environments_button(cx)),
                             ))
                             .child(Self::app_menu_slot(
                                 crate::app_menu::app_menu(
@@ -3408,6 +3413,7 @@ fn switcher_row(
     hint: Option<String>,
     muted: Hsla,
     checked: bool,
+    cx: &App,
 ) -> Button {
     let slot = if checked {
         "switch-current"
@@ -3416,6 +3422,7 @@ fn switcher_row(
     };
     let check = check_slot(checked).id((slot, id.1)).test_support();
     Button::new(id)
+        .solid_ring(cx)
         .ghost()
         .w_full()
         .accessibility_label(name.clone())
@@ -3458,13 +3465,14 @@ fn check_slot(checked: bool) -> Div {
         .child(Icon::new(IconName::Check).small())
 }
 
-// A switcher row's path line, inset by the row button's padding and an empty check slot so the
-// path starts at the same left edge as the name above it.
+// A switcher row's path line, inset by the row button's padding, the border its ring keeps in
+// reserve and an empty check slot, so the path starts at the same left edge as the name above.
 fn under_name(path: impl IntoElement) -> Div {
     h_flex()
         .w_full()
         .min_w_0()
         .px_2p5()
+        .border_x_1()
         .gap(style::SPACE_2)
         .child(check_slot(false))
         .child(path)
