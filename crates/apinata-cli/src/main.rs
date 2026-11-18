@@ -18,6 +18,7 @@ mod graphql_query_cmd;
 mod har_cmd;
 mod hosts_cmd;
 mod import;
+mod init_cmd;
 mod item_cmd;
 mod ls_cmd;
 mod mcp;
@@ -78,6 +79,11 @@ struct CompletionsArgs {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create an empty collection in a directory, the same files the desktop app writes.
+    #[command(after_help = "Exit codes:\n  \
+        0  created\n  \
+        3  the directory already holds a collection, is not empty, or could not be written")]
+    Init(init_cmd::InitArgs),
     /// Run a collection, a folder in it, or one request file.
     #[command(after_help = "Exit codes:\n  \
         0  all passed\n  \
@@ -1256,6 +1262,7 @@ fn main() -> ExitCode {
         Command::Search(args) => return search_cmd::run(&args),
         Command::Check(args) => return check_cmd::run(&args),
         Command::Replace(args) => return replace_cmd::run(&args),
+        Command::Init(args) => return init_cmd::run(&args),
         Command::Ls(args) => return ls_cmd::run(&args),
         Command::Env(args) => return env_cmd::run(&args),
         Command::Item(args) => return item_cmd::run(&args),

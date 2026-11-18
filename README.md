@@ -190,9 +190,10 @@ apinata run ./my-api/users/get.yml --body | jq .id
 apinata run ./my-api --reporter-junit results.xml --reporter-html results.html
 ```
 
-Look around a collection and check it without sending anything:
+Start an empty collection, look around one and check it without sending anything:
 
 ```sh
+apinata init ./my-api
 apinata ls ./my-api
 apinata check ./my-api --env staging
 ```

@@ -7,6 +7,7 @@ and a quick start, see the [README](README.md).
 ## Contents
 
 - [Working with collections](#working-with-collections)
+  - [Creating a collection](#creating-a-collection)
   - [Naming the collection](#naming-the-collection)
   - [Git](#git)
   - [Search](#search)
@@ -43,6 +44,20 @@ and a quick start, see the [README](README.md).
 A collection is a directory of OpenCollection YAML: one file per request, a
 `folder.yml` per folder, `environments/*.yml`, and `opencollection.yml` at the
 root. It is meant to live in git next to your code.
+
+### Creating a collection
+
+`apinata init [DIR] [--name NAME]` creates an empty collection in `DIR`, the
+working directory by default, and creates `DIR` when it is missing. The name
+defaults to the directory's name. It writes the same `opencollection.yml` the
+desktop app's New collection does, and like it fills only an empty directory
+(see [Desktop app](#desktop-app)). A directory that already holds
+`opencollection.yml` is refused.
+
+```sh
+apinata init ./my-api
+apinata init --name "My API"
+```
 
 ### Naming the collection
 
@@ -312,6 +327,7 @@ the command never exits with that code.
 | `run` | all passed | an assertion or test failed, or a reply matched `--fail-on-status` | a request errored | usage error, a collection or file that failed to load, a report file could not be written, or no request matched |
 | `send` | the request was sent and passed | a reply matched `--fail-on-status` | the request errored | usage error, an unusable URL or curl command, or a file that could not be written |
 | `check` | no error findings (warnings do not count) | at least one error finding | - | usage error, collection cannot be opened, unknown `--env`, or JSON output could not be written |
+| `init` | created | - | - | the directory already holds a collection, is not empty, or could not be written |
 | `ls` | listed | - | - | usage or collection error, the path is not a folder, or JSON output could not be written |
 | `search` | searched, with or without hits | - | - | usage or collection error, or JSON output could not be written |
 | `replace` | replaced or previewed, with or without matches | - | - | usage or collection error, or an invalid regular expression |
@@ -615,8 +631,9 @@ updates looks for a newer release.
 
 New collection fills the folder you choose when it is empty, or holds only
 `.git`, `.gitignore`, `.gitattributes` or `.DS_Store` (what a fresh repository or a
-file manager leaves behind). A folder with any other entry is refused. The CLI
-never fills an existing folder: `import collection` makes a new folder named
+file manager leaves behind). A folder with any other entry is refused.
+`apinata init` follows the same rule and writes the same files. Otherwise the
+CLI never fills an existing folder: `import collection` makes a new folder named
 after the collection inside `--into`, and `convert --out` and `git clone` need a
 folder that does not exist yet.
 
