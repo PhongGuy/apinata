@@ -13,6 +13,7 @@ pub struct RenameRows {
     found: SecretRenames,
     answered: BTreeSet<SecretName>,
     reentering: BTreeMap<SecretName, SecretName>,
+    checking: BTreeSet<SecretName>,
     errors: BTreeMap<SecretName, String>,
     failed: Option<String>,
 }
@@ -25,6 +26,7 @@ impl RenameRows {
             found,
             answered: BTreeSet::new(),
             reentering: BTreeMap::new(),
+            checking: BTreeSet::new(),
             errors: BTreeMap::new(),
             failed: None,
         }
@@ -65,6 +67,7 @@ impl RenameRows {
     /// The value of `from` is being typed again under `to`.
     pub fn reenter(&mut self, from: SecretName, to: SecretName) {
         self.errors.remove(&from);
+        self.checking.remove(&from);
         self.reentering.insert(from, to);
     }
 
@@ -78,7 +81,25 @@ impl RenameRows {
     /// The value of `from` was typed again and its old key is gone: the row is answered.
     pub fn finished(&mut self, from: &SecretName) {
         self.reentering.remove(from);
+        self.checking.remove(from);
         self.answer(from);
+    }
+
+    /// The editor the values were typed in has closed: the values not yet checked since, old
+    /// name first, each returned only once until it is typed again.
+    pub fn editor_closed(&mut self) -> Vec<(SecretName, SecretName)> {
+        let unchecked: Vec<_> = (self.reentering.iter())
+            .filter(|(from, _)| !self.checking.contains(*from))
+            .map(|(from, to)| (from.clone(), to.clone()))
+            .collect();
+        (self.checking).extend(unchecked.iter().map(|(from, _)| from.clone()));
+        unchecked
+    }
+
+    /// No value was saved under the new name of `from`: its row is open again.
+    pub fn returned(&mut self, from: &SecretName) {
+        self.reentering.remove(from);
+        self.checking.remove(from);
     }
 
     /// A failed ask: rows kept as they were, `settle_now` false until the next good ask.

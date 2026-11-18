@@ -124,3 +124,41 @@ fn a_row_reads_old_to_new_and_says_when_it_is_a_guess() {
         "dev / token → staging / api_token (renamed? check before moving)"
     );
 }
+
+#[test]
+fn a_closed_editor_checks_each_typed_value_once_and_an_unsaved_one_reopens_its_row() {
+    let mut r = rows(
+        vec![rename("dev/token", &[("staging/token", Free)], true)],
+        0,
+    );
+    r.reenter(name("dev/token"), name("staging/token"));
+    assert_eq!(
+        r.editor_closed(),
+        [(name("dev/token"), name("staging/token"))]
+    );
+    assert_eq!(
+        r.editor_closed(),
+        [],
+        "a check already sent is not repeated"
+    );
+    assert!(r.open_rows().is_empty(), "hidden until the check answers");
+    r.returned(&name("dev/token"));
+    assert_eq!(r.open_rows().len(), 1);
+    assert!(r.reentering().is_empty());
+    assert!(!r.settle_now());
+}
+
+#[test]
+fn typing_again_after_a_return_checks_the_value_again() {
+    let mut r = rows(
+        vec![rename("dev/token", &[("staging/token", Free)], true)],
+        0,
+    );
+    r.reenter(name("dev/token"), name("staging/token"));
+    r.editor_closed();
+    r.returned(&name("dev/token"));
+    r.reenter(name("dev/token"), name("staging/token"));
+    assert_eq!(r.editor_closed().len(), 1);
+    r.finished(&name("dev/token"));
+    assert!(r.settle_now());
+}
