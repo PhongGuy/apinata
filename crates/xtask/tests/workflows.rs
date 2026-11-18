@@ -125,6 +125,67 @@ fn every_job_has_a_timeout() {
     }
 }
 
+/// Whether a step's script runs a system package manager, which waits on an outside mirror.
+fn installs_system_packages(step: &Value) -> bool {
+    const MANAGERS: [&str; 7] = ["apt-get", "apt", "brew", "choco", "winget", "dnf", "yum"];
+    str_of(&step["run"]).lines().any(|line| {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        words.iter().enumerate().any(|(i, w)| {
+            MANAGERS.contains(w)
+                && words[i + 1..]
+                    .iter()
+                    .any(|a| ["install", "update", "upgrade"].contains(a))
+        })
+    })
+}
+
+#[test]
+fn every_package_install_step_has_its_own_timeout_inside_the_jobs() {
+    // A stuck mirror must fail its own step by name, not eat the budget of the steps after it.
+    let mut found = 0;
+    for name in workflow_files() {
+        let wf = load(&name);
+        for (job, body) in wf["jobs"].as_mapping().unwrap() {
+            let job_limit = body["timeout-minutes"].as_u64().unwrap_or(0);
+            for step in body["steps"].as_sequence().unwrap() {
+                if !installs_system_packages(step) {
+                    continue;
+                }
+                found += 1;
+                let minutes = step["timeout-minutes"].as_u64();
+                assert!(
+                    matches!(minutes, Some(m) if m >= 1 && m < job_limit),
+                    "{name}: {job:?} step {:?} has timeout-minutes {:?}, want 1 to below the job's {job_limit}",
+                    step["name"],
+                    step["timeout-minutes"]
+                );
+            }
+        }
+    }
+    assert!(found > 0, "no package install step was recognised");
+}
+
+#[test]
+fn the_ci_gate_job_outlasts_its_install_and_gate_steps_together() {
+    // The gate keeps its whole budget however long a healthy apt run takes.
+    let ci = load("ci.yml");
+    let limit = |s: &Value| s["timeout-minutes"].as_u64();
+    let all = steps(&ci, "gate");
+    let install = all.iter().find(|s| installs_system_packages(s)).unwrap();
+    let gate = all
+        .iter()
+        .find(|s| str_of(&s["run"]).trim_start().starts_with("make"))
+        .unwrap();
+    let (Some(install), Some(gate)) = (limit(install), limit(gate)) else {
+        panic!("the install and gate steps each need timeout-minutes");
+    };
+    let job = ci["jobs"]["gate"]["timeout-minutes"].as_u64().unwrap();
+    assert!(
+        install + gate < job,
+        "gate job {job} min must exceed install {install} + gate {gate}"
+    );
+}
+
 #[test]
 fn linux_builds_free_runner_disk_and_skip_debug_info() {
     // A GPUI debug build overflows the hosted runner's free disk, so Linux jobs that build

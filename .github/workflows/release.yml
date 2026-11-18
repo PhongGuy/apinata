@@ -71,11 +71,13 @@ jobs:
           df -h /
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends $LINUX_BUILD_DEPS xvfb
       - name: Install make (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 15
         run: choco install make --version=4.4.1 --no-progress -y
       - name: Install cargo-packager
         run: cargo install --locked cargo-packager --version 0.11.8
@@ -159,6 +161,7 @@ jobs:
       # The distro minisign signs cargo packager's keys; the updater accepts its signature.
       - name: Install minisign
         if: vars.APINATA_UPDATE_BASE_URL != ''
+        timeout-minutes: 10
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends minisign=0.11-1
