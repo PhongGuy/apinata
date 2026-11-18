@@ -164,7 +164,7 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
     Ok(pulled(oid))
 }
 
-/// Which way a sync goes, for [`sync_urls`].
+/// Which way a sync goes, for [`sync_targets`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SyncDirection {
