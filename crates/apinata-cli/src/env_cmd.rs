@@ -151,6 +151,144 @@ impl Envs {
     }
 }
 
+/// The environments an edit works on: a collection's or the global ones, which core edits
+/// alike, so every action below is written once for both.
+trait Editable {
+    fn environments(&self) -> &[apinata_core::Environment];
+    fn environment(&self, name: &str) -> Option<&apinata_core::Environment>;
+    fn environment_not_found(&self, name: &str) -> EnvError;
+    fn saved_secret_names(&self, env: &str) -> Vec<String>;
+    fn set_variable_text(&mut self, env: &str, var: &str, value: &str) -> Result<bool, EnvError>;
+    fn remove_variable(
+        &mut self,
+        env: &str,
+        var: &str,
+        with_secret: bool,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError>;
+    fn set_secret_value(
+        &mut self,
+        env: &str,
+        var: &str,
+        value: &str,
+        store: &dyn SecretStore,
+    ) -> Result<(), EnvError>;
+    fn create_environment(
+        &mut self,
+        name: &str,
+        store: &dyn SecretStore,
+    ) -> Result<(String, Vec<EnvWarning>), EnvError>;
+    fn duplicate_environment(
+        &mut self,
+        from: &str,
+        store: &dyn SecretStore,
+    ) -> Result<(String, Vec<EnvWarning>), EnvError>;
+    fn rename_environment(
+        &mut self,
+        from: &str,
+        to: &str,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError>;
+    fn delete_environment(
+        &mut self,
+        name: &str,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError>;
+}
+
+/// Forwards every [`Editable`] method to the inherent method of the same name.
+macro_rules! editable {
+    ($ty:ty) => {
+        impl Editable for $ty {
+            fn environments(&self) -> &[apinata_core::Environment] {
+                <$ty>::environments(self)
+            }
+            fn environment(&self, name: &str) -> Option<&apinata_core::Environment> {
+                <$ty>::environment(self, name)
+            }
+            fn environment_not_found(&self, name: &str) -> EnvError {
+                <$ty>::environment_not_found(self, name)
+            }
+            fn saved_secret_names(&self, env: &str) -> Vec<String> {
+                <$ty>::saved_secret_names(self, env)
+            }
+            fn set_variable_text(
+                &mut self,
+                env: &str,
+                var: &str,
+                value: &str,
+            ) -> Result<bool, EnvError> {
+                <$ty>::set_variable_text(self, env, var, value)
+            }
+            fn remove_variable(
+                &mut self,
+                env: &str,
+                var: &str,
+                with_secret: bool,
+                store: &dyn SecretStore,
+            ) -> Result<Vec<EnvWarning>, EnvError> {
+                <$ty>::remove_variable(self, env, var, with_secret, store)
+            }
+            fn set_secret_value(
+                &mut self,
+                env: &str,
+                var: &str,
+                value: &str,
+                store: &dyn SecretStore,
+            ) -> Result<(), EnvError> {
+                <$ty>::set_secret_value(self, env, var, value, store)
+            }
+            fn create_environment(
+                &mut self,
+                name: &str,
+                store: &dyn SecretStore,
+            ) -> Result<(String, Vec<EnvWarning>), EnvError> {
+                <$ty>::create_environment(self, name, store)
+            }
+            fn duplicate_environment(
+                &mut self,
+                from: &str,
+                store: &dyn SecretStore,
+            ) -> Result<(String, Vec<EnvWarning>), EnvError> {
+                <$ty>::duplicate_environment(self, from, store)
+            }
+            fn rename_environment(
+                &mut self,
+                from: &str,
+                to: &str,
+                store: &dyn SecretStore,
+            ) -> Result<Vec<EnvWarning>, EnvError> {
+                <$ty>::rename_environment(self, from, to, store)
+            }
+            fn delete_environment(
+                &mut self,
+                name: &str,
+                store: &dyn SecretStore,
+            ) -> Result<Vec<EnvWarning>, EnvError> {
+                <$ty>::delete_environment(self, name, store)
+            }
+        }
+    };
+}
+
+editable!(Collection);
+editable!(GlobalEnvironments);
+
+/// Whether the action asked for the global environments.
+fn wants_global(action: &EnvAction) -> bool {
+    matches!(
+        action,
+        EnvAction::Ls { global: true, .. }
+            | EnvAction::Show { global: true, .. }
+            | EnvAction::Set { global: true, .. }
+            | EnvAction::Unset { global: true, .. }
+            | EnvAction::New { global: true, .. }
+            | EnvAction::Cp { global: true, .. }
+            | EnvAction::Mv { global: true, .. }
+            | EnvAction::Rm { global: true, .. }
+    )
+}
+
 /// What one action works on: `name`'s orphans or, raw, whatever the store holds under `name`.
 struct Target<'a> {
     envs: &'a Envs,
@@ -519,11 +657,16 @@ fn go_with(
     store: &dyn SecretStore,
     read_value: &mut dyn FnMut() -> anyhow::Result<String>,
 ) -> anyhow::Result<()> {
-    let root: PathBuf = collection_arg::with_hint(
-        trust::directory_root(args.collection.as_deref()),
-        "pass the collection with --collection <DIR>",
-    )?;
-    let mut collection = Collection::open(&root)?;
+    let mut envs: Box<dyn Editable> = if wants_global(&args.action) {
+        Box::new(crate::run::global_environments()?)
+    } else {
+        let root: PathBuf = collection_arg::with_hint(
+            trust::directory_root(args.collection.as_deref()),
+            "pass the collection with --collection <DIR>",
+        )?;
+        Box::new(Collection::open(&root)?)
+    };
+    let collection = &mut *envs;
     match &args.action {
         EnvAction::Set {
             name,
@@ -565,20 +708,20 @@ fn go_with(
         EnvAction::New { .. }
         | EnvAction::Cp { .. }
         | EnvAction::Mv { .. }
-        | EnvAction::Rm { .. } => manage(&mut collection, &args.action, store)?,
-        _ => show_or_list(&collection, &args.action)?,
+        | EnvAction::Rm { .. } => manage(collection, &args.action, store)?,
+        _ => show_or_list(collection, &args.action)?,
     }
     Ok(())
 }
 
 /// Create, copy, rename or delete a whole environment through core, which writes every file.
 fn manage(
-    collection: &mut Collection,
+    collection: &mut dyn Editable,
     action: &EnvAction,
     store: &dyn SecretStore,
 ) -> anyhow::Result<()> {
     // Read before the change: the secrets a `--no-keychain` run leaves alone, named in a note.
-    let left = |c: &Collection, name: &str, skipped: bool| {
+    let left = |c: &dyn Editable, name: &str, skipped: bool| {
         if skipped {
             c.saved_secret_names(name)
         } else {
@@ -586,7 +729,7 @@ fn manage(
         }
     };
     match action {
-        EnvAction::New { name, json } => {
+        EnvAction::New { name, json, .. } => {
             let (made, warnings) = collection.create_environment(name, store)?;
             warn(&warnings);
             print_name(&format!("created {}", shown(&made)), &made, *json)?;
@@ -595,6 +738,7 @@ fn manage(
             name,
             json,
             no_keychain,
+            ..
         } => {
             let secrets = left(collection, name, *no_keychain);
             let (made, warnings) = collection.duplicate_environment(name, store)?;
@@ -610,6 +754,7 @@ fn manage(
             from,
             to,
             no_keychain,
+            ..
         } => {
             // Core treats this as a no-op; say so, as `set` does.
             if from == to && collection.environment(from).is_some() {
@@ -625,7 +770,9 @@ fn manage(
             );
             outln!("renamed {} to {}", shown(from), shown(to));
         }
-        EnvAction::Rm { name, no_keychain } => {
+        EnvAction::Rm {
+            name, no_keychain, ..
+        } => {
             if collection.environment(name).is_none() {
                 return Err(collection.environment_not_found(name).into());
             }
@@ -679,9 +826,9 @@ fn secret_hint(e: EnvError) -> anyhow::Error {
     }
 }
 
-fn show_or_list(collection: &Collection, action: &EnvAction) -> anyhow::Result<()> {
+fn show_or_list(collection: &dyn Editable, action: &EnvAction) -> anyhow::Result<()> {
     match action {
-        EnvAction::Ls { json } => {
+        EnvAction::Ls { json, .. } => {
             let names: Vec<String> = collection
                 .environments()
                 .iter()
@@ -777,6 +924,7 @@ mod tests {
             assignment: key.into(),
             secret: true,
             no_keychain: false,
+            global: false,
         };
         let args = EnvArgs {
             action,
@@ -811,6 +959,7 @@ mod tests {
             key: key.into(),
             secret: true,
             no_keychain: false,
+            global: false,
         };
         let args = EnvArgs {
             action,
@@ -857,6 +1006,7 @@ mod tests {
             from: "dev".into(),
             to: "staging".into(),
             no_keychain: false,
+            global: false,
         };
         act(dir.path(), mv, &store).unwrap();
         assert!(!dir.path().join("environments/dev.yml").exists());
@@ -876,6 +1026,7 @@ mod tests {
         let rm = EnvAction::Rm {
             name: "dev".into(),
             no_keychain: false,
+            global: false,
         };
         act(dir.path(), rm, &store).unwrap();
         assert!(!dir.path().join("environments/dev.yml").exists());
@@ -896,6 +1047,7 @@ mod tests {
         let rm = EnvAction::Rm {
             name: "dev".into(),
             no_keychain: false,
+            global: false,
         };
         let err = act(dir.path(), rm, &store).unwrap_err().to_string();
         assert!(err.contains("`child`"), "{err}");
@@ -914,6 +1066,7 @@ mod tests {
             name: "dev".into(),
             json: false,
             no_keychain: false,
+            global: false,
         };
         act(dir.path(), cp, &store).unwrap();
         let c = Collection::open(dir.path()).unwrap();

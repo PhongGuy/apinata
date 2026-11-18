@@ -1,15 +1,192 @@
-//! Environment tools. Agents never see, set or delete a secret value: a rename moves stored
-//! values with the environment, and deleting an environment that holds a secret is refused.
+//! Environment tools, for a collection's environments and the global ones alike. Agents never
+//! see, set or delete a secret value: a rename moves stored values with the environment, and
+//! deleting an environment that holds a secret is refused.
+
+use std::path::Path;
 
 use apinata_core::{
-    Collection, EnvVariable, EnvWarning, SecretStore, VarValue, VariableRefusal, without_variable,
+    Collection, EnvError, EnvVariable, EnvWarning, Environment, GlobalEnvironments, SecretKey,
+    SecretStore, VarValue, VariableRefusal, without_variable,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::dto::EnvironmentDoc;
-use crate::reads;
+use crate::dto::{self, EnvironmentDoc};
 use crate::writes::{Failure, write_retrying};
+
+/// A set of environments the tools edit: a collection's, whose writes retry after a conflict
+/// and drop a failed draft, or the global ones, opened fresh for every call.
+pub(crate) trait EnvSet {
+    fn environment(&self, name: &str) -> Option<&Environment>;
+    fn environment_mut(&mut self, name: &str) -> Option<&mut Environment>;
+    fn environment_not_found(&self, name: &str) -> EnvError;
+    fn secret_key(&self, env: &str, var: &str) -> SecretKey;
+    fn create_environment(
+        &mut self,
+        name: &str,
+        store: &dyn SecretStore,
+    ) -> Result<(String, Vec<EnvWarning>), EnvError>;
+    fn duplicate_environment(
+        &mut self,
+        from: &str,
+        store: &dyn SecretStore,
+    ) -> Result<(String, Vec<EnvWarning>), EnvError>;
+    fn rename_environment(
+        &mut self,
+        from: &str,
+        to: &str,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError>;
+    fn delete_environment(
+        &mut self,
+        name: &str,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError>;
+    fn set_variable_secret(
+        &mut self,
+        env: &str,
+        var: &str,
+        secret: bool,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError>;
+    /// Run `attempt` as one write, retried as this set's writes are.
+    fn write<T>(
+        &mut self,
+        attempt: impl FnMut(&mut Self) -> Result<T, Failure>,
+    ) -> Result<T, String>;
+    /// Drop any unsaved draft of environment `name`.
+    fn discard(&mut self, name: &str);
+}
+
+/// Forwards the [`EnvSet`] calls core gives both sets to the inherent methods.
+macro_rules! forward {
+    ($ty:ty) => {
+        fn environment(&self, name: &str) -> Option<&Environment> {
+            <$ty>::environment(self, name)
+        }
+        fn environment_mut(&mut self, name: &str) -> Option<&mut Environment> {
+            <$ty>::environment_mut(self, name)
+        }
+        fn environment_not_found(&self, name: &str) -> EnvError {
+            <$ty>::environment_not_found(self, name)
+        }
+        fn secret_key(&self, env: &str, var: &str) -> SecretKey {
+            <$ty>::secret_key(self, env, var)
+        }
+        fn create_environment(
+            &mut self,
+            name: &str,
+            store: &dyn SecretStore,
+        ) -> Result<(String, Vec<EnvWarning>), EnvError> {
+            <$ty>::create_environment(self, name, store)
+        }
+        fn duplicate_environment(
+            &mut self,
+            from: &str,
+            store: &dyn SecretStore,
+        ) -> Result<(String, Vec<EnvWarning>), EnvError> {
+            <$ty>::duplicate_environment(self, from, store)
+        }
+        fn rename_environment(
+            &mut self,
+            from: &str,
+            to: &str,
+            store: &dyn SecretStore,
+        ) -> Result<Vec<EnvWarning>, EnvError> {
+            <$ty>::rename_environment(self, from, to, store)
+        }
+        fn delete_environment(
+            &mut self,
+            name: &str,
+            store: &dyn SecretStore,
+        ) -> Result<Vec<EnvWarning>, EnvError> {
+            <$ty>::delete_environment(self, name, store)
+        }
+        fn set_variable_secret(
+            &mut self,
+            env: &str,
+            var: &str,
+            secret: bool,
+            store: &dyn SecretStore,
+        ) -> Result<Vec<EnvWarning>, EnvError> {
+            <$ty>::set_variable_secret(self, env, var, secret, store)
+        }
+    };
+}
+
+impl EnvSet for Collection {
+    forward!(Collection);
+
+    fn write<T>(
+        &mut self,
+        attempt: impl FnMut(&mut Self) -> Result<T, Failure>,
+    ) -> Result<T, String> {
+        write_retrying(self, attempt)
+    }
+
+    fn discard(&mut self, name: &str) {
+        if let Some(path) = Collection::environment(self, name).map(|e| e.path().to_owned()) {
+            let _ = self.revert(&path);
+        }
+    }
+}
+
+// Opened fresh for each call, so there is no draft to drop and a conflict cannot be retried
+// against a newer read.
+impl EnvSet for GlobalEnvironments {
+    forward!(GlobalEnvironments);
+
+    fn write<T>(
+        &mut self,
+        mut attempt: impl FnMut(&mut Self) -> Result<T, Failure>,
+    ) -> Result<T, String> {
+        attempt(self).map_err(|f| match f {
+            Failure::Conflict(path) => crate::writes::conflict_message(&path),
+            Failure::Failed { message, .. } => message,
+        })
+    }
+
+    fn discard(&mut self, _name: &str) {}
+}
+
+/// The global environments in `dir`, or why there are none to edit.
+pub(crate) fn open_globals(dir: Option<&Path>) -> Result<GlobalEnvironments, String> {
+    let dir = dir.ok_or("no config directory for global environments")?;
+    GlobalEnvironments::open(dir).map_err(|e| e.to_string())
+}
+
+/// The names of the global environments, sorted.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct GlobalNames {
+    /// Each global environment's name.
+    pub environments: Vec<String>,
+}
+
+/// List the global environments by name.
+pub(crate) fn list_globals(g: &GlobalEnvironments) -> GlobalNames {
+    GlobalNames {
+        environments: g
+            .environments()
+            .iter()
+            .map(|e| e.name().to_owned())
+            .collect(),
+    }
+}
+
+/// One environment's variables, a secret without its value.
+pub(crate) fn read<E: EnvSet>(c: &E, name: &str) -> Result<EnvironmentDoc, String> {
+    let env = c
+        .environment(name)
+        .ok_or_else(|| c.environment_not_found(name).to_string())?;
+    Ok(EnvironmentDoc {
+        name: env.name().to_owned(),
+        variables: env
+            .variables()
+            .iter()
+            .map(dto::env_var)
+            .collect::<Result<_, _>>()?,
+    })
+}
 
 /// `rename_environment`'s arguments.
 #[derive(Deserialize, JsonSchema)]
@@ -76,8 +253,8 @@ fn texts(warnings: &[EnvWarning]) -> Vec<String> {
 }
 
 /// Create an empty environment named after `name`, returning the name core settled on.
-pub(crate) fn create(
-    c: &mut Collection,
+pub(crate) fn create<E: EnvSet>(
+    c: &mut E,
     name: &str,
     store: &dyn SecretStore,
 ) -> Result<EnvNameResult, String> {
@@ -91,8 +268,8 @@ pub(crate) fn create(
 }
 
 /// Copy an environment and its stored secret values; the copy is named as a new one is.
-pub(crate) fn duplicate(
-    c: &mut Collection,
+pub(crate) fn duplicate<E: EnvSet>(
+    c: &mut E,
     name: &str,
     store: &dyn SecretStore,
 ) -> Result<EnvNameResult, String> {
@@ -107,12 +284,12 @@ pub(crate) fn duplicate(
 
 /// Rename an environment, moving its stored secrets; rewriting the environments that extend it
 /// can conflict with another writer, so the call is retried once.
-pub(crate) fn rename(
-    c: &mut Collection,
+pub(crate) fn rename<E: EnvSet>(
+    c: &mut E,
     a: &RenameEnvArgs,
     store: &dyn SecretStore,
 ) -> Result<EnvNameResult, String> {
-    let warnings = write_retrying(c, |c| {
+    let warnings = c.write(|c| {
         c.rename_environment(&a.from, &a.to, store)
             .map_err(Failure::env)
     })?;
@@ -124,8 +301,8 @@ pub(crate) fn rename(
 
 /// Delete a plain environment. One holding a secret is refused: its stored values are not in
 /// git, so only the user may discard them. Core refuses one that others extend.
-pub(crate) fn delete(
-    c: &mut Collection,
+pub(crate) fn delete<E: EnvSet>(
+    c: &mut E,
     name: &str,
     store: &dyn SecretStore,
 ) -> Result<DeletedEnv, String> {
@@ -149,14 +326,13 @@ pub(crate) fn delete(
 /// plain variable is made secret. Every refusal is decided before the first write; a failure
 /// in the second phase leaves the plain edits saved. Returns the environment without secret
 /// values.
-pub(crate) fn update(
-    c: &mut Collection,
+pub(crate) fn update<E: EnvSet>(
+    c: &mut E,
     a: &UpdateEnvArgs,
     store: &dyn SecretStore,
 ) -> Result<EnvironmentDoc, String> {
-    let to_secret = write_retrying(c, |c| {
-        let not_found =
-            |c: &Collection| Failure::refused(c.environment_not_found(&a.name).to_string());
+    let to_secret = c.write(|c| {
+        let not_found = |c: &E| Failure::refused(c.environment_not_found(&a.name).to_string());
         let Some(env) = c.environment(&a.name) else {
             return Err(not_found(c));
         };
@@ -173,22 +349,20 @@ pub(crate) fn update(
     // Phase 2 is not retried: phase 1 is on disk, so planning again would refuse its removals.
     for (i, var) in to_secret.iter().enumerate() {
         if let Err(e) = c.set_variable_secret(&a.name, var, true, store) {
-            if let Some(path) = c.environment(&a.name).map(|env| env.path().to_owned()) {
-                let _ = c.revert(&path);
-            }
+            c.discard(&a.name);
             return Err(format!(
                 "the plain edits were saved, but these variables are still plain: {} ({e})",
                 to_secret[i..].join(", ")
             ));
         }
     }
-    reads::environment(c, &a.name)
+    read(c, &a.name)
 }
 
 /// Refuses when any of `names` already has a stored value, which making it secret could
 /// replace, or when the store cannot say: only the user may discard a stored value.
-fn refuse_stored(
-    c: &Collection,
+fn refuse_stored<E: EnvSet>(
+    c: &E,
     env: &str,
     names: &[String],
     store: &dyn SecretStore,

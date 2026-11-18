@@ -600,6 +600,31 @@ async fn every_tool_result_matches_its_output_schema() {
     .await;
     ex.run(&server, "delete_environment", json!({"name": "tmp2"}))
         .await;
+    ex.run(&server, "create_global_environment", json!({"name": "g"}))
+        .await;
+    ex.run(
+        &server,
+        "duplicate_global_environment",
+        json!({"name": "g"}),
+    )
+    .await;
+    ex.run(
+        &server,
+        "rename_global_environment",
+        json!({"from": "g copy", "to": "g2"}),
+    )
+    .await;
+    ex.run(
+        &server,
+        "update_global_environment",
+        json!({"name": "g2", "set": [{"name": "a", "value": "b"}]}),
+    )
+    .await;
+    ex.run(&server, "list_global_environments", json!({})).await;
+    ex.run(&server, "read_global_environment", json!({"name": "g2"}))
+        .await;
+    ex.run(&server, "delete_global_environment", json!({"name": "g2"}))
+        .await;
 
     let listed: BTreeSet<String> = ex.schemas.keys().cloned().collect();
     let missed: Vec<&String> = listed.difference(&ex.seen).collect();

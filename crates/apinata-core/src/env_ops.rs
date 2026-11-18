@@ -50,10 +50,7 @@ impl Collection {
     /// Like [`Collection::saved_secret_names`], but `None` for an unknown environment or a
     /// missing or unparseable file, so a failed read is not mistaken for "no secrets".
     pub fn try_saved_secret_names(&self, env: &str) -> Option<Vec<String>> {
-        // Re-read the file so a draft, reload or revert can never make the answer stale.
-        let path = self.environment(env)?.path();
-        let doc = Document::load(path).ok()?;
-        Some(secret_names(&Environment::from_parts(env.to_owned(), doc)))
+        try_saved_secret_names(self, env)
     }
 
     /// The variables of environment `env`'s file as it is on disk, ignoring any draft; `None`
@@ -173,26 +170,7 @@ impl Collection {
         var: &str,
         value: &str,
     ) -> Result<bool, EnvError> {
-        let Some(environment) = self.environment_mut(env) else {
-            return Err(not_found(self, env));
-        };
-        let vars = environment.variables();
-        let Some(vars) = with_text(vars, var, value) else {
-            return Err(EnvError::SecretVariable {
-                environment: env.to_owned(),
-                variable: var.to_owned(),
-            });
-        };
-        let (vars, changed) = vars;
-        if changed {
-            let before = environment.variables();
-            environment.set_variables(vars);
-            if let Err(e) = environment.save() {
-                environment.set_variables(before);
-                return Err(e.into());
-            }
-        }
-        Ok(changed)
+        set_variable_text(self, env, var, value)
     }
 
     /// Remove variable `var` from environment `env` and save. A secret is refused with
@@ -205,41 +183,7 @@ impl Collection {
         with_secret: bool,
         store: &dyn SecretStore,
     ) -> Result<Vec<EnvWarning>, EnvError> {
-        let key = self.secret_key(env, var);
-        let Some(environment) = self.environment_mut(env) else {
-            return Err(not_found(self, env));
-        };
-        let before = environment.variables();
-        let was_secret = before.iter().any(|v| v.name == var && v.secret);
-        let vars = match without_variable(before.clone(), var, with_secret) {
-            Ok(vars) => vars,
-            Err(VariableRefusal::Missing) => {
-                return Err(EnvError::VariableNotFound {
-                    environment: env.to_owned(),
-                    variable: var.to_owned(),
-                });
-            }
-            Err(VariableRefusal::Secret) => {
-                return Err(EnvError::SecretVariable {
-                    environment: env.to_owned(),
-                    variable: var.to_owned(),
-                });
-            }
-        };
-        environment.set_variables(vars);
-        if let Err(e) = environment.save() {
-            environment.set_variables(before);
-            return Err(e.into());
-        }
-        let mut warnings = Vec::new();
-        if was_secret && let Err(error) = store.delete(&key) {
-            warnings.push(EnvWarning::Secret {
-                environment: env.to_owned(),
-                variable: var.to_owned(),
-                error,
-            });
-        }
-        Ok(warnings)
+        remove_variable(self, env, var, with_secret, store)
     }
 
     /// Store `value` as the secret value of `var` in environment `env`, declaring the variable
@@ -253,43 +197,124 @@ impl Collection {
         value: &str,
         store: &dyn SecretStore,
     ) -> Result<(), EnvError> {
-        let key = self.secret_key(env, var);
-        let Some(environment) = self.environment_mut(env) else {
-            return Err(not_found(self, env));
-        };
-        let refused = |error| EnvError::SecretStore {
+        set_secret_value(self, env, var, value, store)
+    }
+}
+
+pub(crate) fn set_variable_text<H: EnvHost + ?Sized>(
+    host: &mut H,
+    env: &str,
+    var: &str,
+    value: &str,
+) -> Result<bool, EnvError> {
+    let Some(environment) = host.env_mut(env) else {
+        return Err(not_found(host, env));
+    };
+    let vars = environment.variables();
+    let Some(vars) = with_text(vars, var, value) else {
+        return Err(EnvError::SecretVariable {
             environment: env.to_owned(),
             variable: var.to_owned(),
-            error,
-        };
+        });
+    };
+    let (vars, changed) = vars;
+    if changed {
         let before = environment.variables();
-        let previous = store.get(&key).map_err(refused)?;
-        store.set(&key, value).map_err(refused)?;
-        let mut vars = before.clone();
-        match vars.iter_mut().find(|v| v.name == var) {
-            Some(v) if v.secret => {}
-            Some(v) => {
-                v.secret = true;
-                v.value = VarValue::Text(String::new());
-            }
-            None => vars.push(EnvVariable::secret(var)),
-        }
-        if vars.iter().zip(&before).all(|(a, b)| a.secret == b.secret) && vars.len() == before.len()
-        {
-            return Ok(());
-        }
         environment.set_variables(vars);
         if let Err(e) = environment.save() {
             environment.set_variables(before);
-            // The save error is the one reported, so a failed restore is ignored.
-            let _ = match previous {
-                Some(old) => store.set(&key, &old),
-                None => store.delete(&key),
-            };
             return Err(e.into());
         }
-        Ok(())
     }
+    Ok(changed)
+}
+
+pub(crate) fn remove_variable<H: EnvHost + ?Sized>(
+    host: &mut H,
+    env: &str,
+    var: &str,
+    with_secret: bool,
+    store: &dyn SecretStore,
+) -> Result<Vec<EnvWarning>, EnvError> {
+    let key = host.env_secret_key(env, var);
+    let Some(environment) = host.env_mut(env) else {
+        return Err(not_found(host, env));
+    };
+    let before = environment.variables();
+    let was_secret = before.iter().any(|v| v.name == var && v.secret);
+    let vars = match without_variable(before.clone(), var, with_secret) {
+        Ok(vars) => vars,
+        Err(VariableRefusal::Missing) => {
+            return Err(EnvError::VariableNotFound {
+                environment: env.to_owned(),
+                variable: var.to_owned(),
+            });
+        }
+        Err(VariableRefusal::Secret) => {
+            return Err(EnvError::SecretVariable {
+                environment: env.to_owned(),
+                variable: var.to_owned(),
+            });
+        }
+    };
+    environment.set_variables(vars);
+    if let Err(e) = environment.save() {
+        environment.set_variables(before);
+        return Err(e.into());
+    }
+    let mut warnings = Vec::new();
+    if was_secret && let Err(error) = store.delete(&key) {
+        warnings.push(EnvWarning::Secret {
+            environment: env.to_owned(),
+            variable: var.to_owned(),
+            error,
+        });
+    }
+    Ok(warnings)
+}
+
+pub(crate) fn set_secret_value<H: EnvHost + ?Sized>(
+    host: &mut H,
+    env: &str,
+    var: &str,
+    value: &str,
+    store: &dyn SecretStore,
+) -> Result<(), EnvError> {
+    let key = host.env_secret_key(env, var);
+    let Some(environment) = host.env_mut(env) else {
+        return Err(not_found(host, env));
+    };
+    let refused = |error| EnvError::SecretStore {
+        environment: env.to_owned(),
+        variable: var.to_owned(),
+        error,
+    };
+    let before = environment.variables();
+    let previous = store.get(&key).map_err(refused)?;
+    store.set(&key, value).map_err(refused)?;
+    let mut vars = before.clone();
+    match vars.iter_mut().find(|v| v.name == var) {
+        Some(v) if v.secret => {}
+        Some(v) => {
+            v.secret = true;
+            v.value = VarValue::Text(String::new());
+        }
+        None => vars.push(EnvVariable::secret(var)),
+    }
+    if vars.iter().zip(&before).all(|(a, b)| a.secret == b.secret) && vars.len() == before.len() {
+        return Ok(());
+    }
+    environment.set_variables(vars);
+    if let Err(e) = environment.save() {
+        environment.set_variables(before);
+        // The save error is the one reported, so a failed restore is ignored.
+        let _ = match previous {
+            Some(old) => store.set(&key, &old),
+            None => store.delete(&key),
+        };
+        return Err(e.into());
+    }
+    Ok(())
 }
 
 /// Why [`without_variable`] refused.
@@ -389,6 +414,17 @@ pub(crate) trait EnvHost {
     fn env_mut(&mut self, name: &str) -> Option<&mut Environment> {
         self.envs_mut().iter_mut().find(|e| e.name() == name)
     }
+}
+
+/// The names marked secret in `env`'s file as it is on disk; `None` when it cannot be read.
+pub(crate) fn try_saved_secret_names<H: EnvHost + ?Sized>(
+    host: &H,
+    env: &str,
+) -> Option<Vec<String>> {
+    // Re-read the file so a draft, reload or revert can never make the answer stale.
+    let path = host.env(env)?.path();
+    let doc = Document::load(path).ok()?;
+    Some(secret_names(&Environment::from_parts(env.to_owned(), doc)))
 }
 
 /// The unknown-name error, carrying the names `host` does have.

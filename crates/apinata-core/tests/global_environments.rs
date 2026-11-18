@@ -180,3 +180,58 @@ fn delete_refuses_a_global_environment_others_extend() {
     assert!(dir.join("base.yml").exists());
     assert!(globals.environment("base").is_some());
 }
+
+#[test]
+fn variables_are_set_and_removed_as_in_a_collection() {
+    let (_p, dir, mut globals) =
+        globals_with(&[("e", "name: e\nvariables:\n  - name: host\n    value: a\n")]);
+    let store = MemoryStore::new();
+    assert!(globals.set_variable_text("e", "host", "b").expect("sets"));
+    assert!(!globals.set_variable_text("e", "host", "b").expect("same"));
+    globals
+        .set_secret_value("e", "tok", "s3cret", &store)
+        .expect("stores");
+    let text = fs::read_to_string(dir.join("e.yml")).expect("read");
+    assert!(
+        text.contains("value: b") && !text.contains("s3cret"),
+        "{text}"
+    );
+    assert_eq!(globals.saved_secret_names("e"), ["tok"]);
+    assert_eq!(
+        store
+            .get(&globals.secret_key("e", "tok"))
+            .expect("get")
+            .as_deref(),
+        Some("s3cret")
+    );
+    let refused = globals
+        .set_variable_text("e", "tok", "x")
+        .expect_err("secret");
+    assert!(
+        matches!(refused, apinata_core::EnvError::SecretVariable { .. }),
+        "{refused:?}"
+    );
+    let refused = globals
+        .remove_variable("e", "tok", false, &store)
+        .expect_err("secret");
+    assert!(
+        matches!(refused, apinata_core::EnvError::SecretVariable { .. }),
+        "{refused:?}"
+    );
+    globals
+        .remove_variable("e", "tok", true, &store)
+        .expect("removes");
+    globals
+        .remove_variable("e", "host", false, &store)
+        .expect("removes");
+    assert_eq!(
+        store.get(&globals.secret_key("e", "tok")).expect("get"),
+        None
+    );
+    let text = fs::read_to_string(dir.join("e.yml")).expect("read");
+    assert!(!text.contains("tok") && !text.contains("host"), "{text}");
+    let err = globals
+        .set_variable_text("nope", "a", "b")
+        .expect_err("unknown");
+    assert!(err.to_string().contains("global"), "{err}");
+}

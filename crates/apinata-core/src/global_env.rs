@@ -135,6 +135,43 @@ impl GlobalEnvironments {
         env_ops::set_variable_secret(self, env, var, secret, store)
     }
 
+    /// As [`Collection::saved_secret_names`](crate::Collection::saved_secret_names).
+    pub fn saved_secret_names(&self, env: &str) -> Vec<String> {
+        env_ops::try_saved_secret_names(self, env).unwrap_or_default()
+    }
+
+    /// As [`Collection::set_variable_text`](crate::Collection::set_variable_text).
+    pub fn set_variable_text(
+        &mut self,
+        env: &str,
+        var: &str,
+        value: &str,
+    ) -> Result<bool, EnvError> {
+        env_ops::set_variable_text(self, env, var, value)
+    }
+
+    /// As [`Collection::remove_variable`](crate::Collection::remove_variable).
+    pub fn remove_variable(
+        &mut self,
+        env: &str,
+        var: &str,
+        with_secret: bool,
+        store: &dyn SecretStore,
+    ) -> Result<Vec<EnvWarning>, EnvError> {
+        env_ops::remove_variable(self, env, var, with_secret, store)
+    }
+
+    /// As [`Collection::set_secret_value`](crate::Collection::set_secret_value).
+    pub fn set_secret_value(
+        &mut self,
+        env: &str,
+        var: &str,
+        value: &str,
+        store: &dyn SecretStore,
+    ) -> Result<(), EnvError> {
+        env_ops::set_secret_value(self, env, var, value, store)
+    }
+
     /// As [`Collection::orphaned_secrets`](crate::Collection::orphaned_secrets).
     pub fn orphaned_secrets(
         &self,

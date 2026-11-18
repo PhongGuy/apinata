@@ -275,6 +275,9 @@ pub enum EnvAction {
         /// Print the names as JSON.
         #[arg(long)]
         json: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Show one environment's variables; a secret shows `<secret>`, never its value.
     Show {
@@ -286,6 +289,9 @@ pub enum EnvAction {
         /// Accepted for symmetry with `run`; never shown.
         #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]
         env_var: Vec<EnvVar>,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Create or change one variable in an environment file; the other variables stay as they are.
     ///
@@ -302,6 +308,9 @@ pub enum EnvAction {
         /// Do not use the platform keychain; a secret value then cannot be stored.
         #[arg(long)]
         no_keychain: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Remove a variable from an environment file.
     Unset {
@@ -315,6 +324,9 @@ pub enum EnvAction {
         /// Do not use the platform keychain.
         #[arg(long)]
         no_keychain: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Create an empty environment; a taken name gets a suffix (`dev copy`, `dev copy 2`).
     New {
@@ -323,6 +335,9 @@ pub enum EnvAction {
         /// Print the name used as JSON.
         #[arg(long)]
         json: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Copy an environment to `<NAME> copy` (suffixed if taken), with its stored secret values.
     Cp {
@@ -334,6 +349,9 @@ pub enum EnvAction {
         /// Do not use the platform keychain; the copy's secrets then have no values.
         #[arg(long)]
         no_keychain: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Rename an environment, move its stored secret values and re-point every `extends` of it.
     Mv {
@@ -344,6 +362,9 @@ pub enum EnvAction {
         /// Do not use the platform keychain; secret values stay under the old name.
         #[arg(long)]
         no_keychain: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// Delete an environment file and its stored secret values.
     ///
@@ -354,6 +375,9 @@ pub enum EnvAction {
         /// Do not use the platform keychain; secret values are left in it.
         #[arg(long)]
         no_keychain: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
     },
     /// List stored secrets the environment's file no longer marks secret.
     ///
@@ -386,8 +410,8 @@ pub enum EnvAction {
         /// Print the names as JSON.
         #[arg(long)]
         json: bool,
-        /// Use the global environments; `--collection` is ignored.
-        #[arg(long)]
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
         global: bool,
     },
     /// List the stored secrets a pulled rename left under an old name, and move them.
@@ -433,8 +457,8 @@ pub enum EnvAction {
         /// canonicalised. Refused while anything exists there, and with `--collection`.
         #[arg(long, value_name = "PATH", conflicts_with = "global")]
         old_root: Option<PathBuf>,
-        /// Use the global environments; `--collection` is ignored.
-        #[arg(long)]
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
         global: bool,
         /// Do not ask first.
         #[arg(long)]

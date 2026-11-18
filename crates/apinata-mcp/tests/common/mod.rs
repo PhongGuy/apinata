@@ -177,7 +177,8 @@ impl TestServer {
             .trash(Arc::new(FakeTrash::new(true)))
             .trash_log(state.path().join("trash-log"))
             .trust_file(state.path().join("trusted-hosts.json"))
-            .script_trust_file(state.path().join("script-trust.json"));
+            .script_trust_file(state.path().join("script-trust.json"))
+            .global_dir(state.path().join("global-environments"));
         // Never fall back to the per-user default: a test must not file into the real inbox.
         let options = if with_inbox {
             options.approval_dir(state.path().join("approvals"))
@@ -467,6 +468,30 @@ impl TestServer {
         self.store
             .set(&self.secret_key(env, variable), value)
             .expect("memory store");
+    }
+
+    /// The directory the global environment tools work on, never the user's.
+    pub fn global_dir(&self) -> PathBuf {
+        self.state.path().join("global-environments")
+    }
+
+    /// Write global environment `name` with `body`.
+    pub fn write_global(&self, name: &str, body: &str) {
+        write_file(&self.global_dir(), &format!("{name}.yml"), body);
+    }
+
+    /// The secret stored for `variable` of global environment `env`.
+    pub fn global_secret(&self, env: &str, variable: &str) -> Option<String> {
+        let globals = apinata_core::GlobalEnvironments::open(self.global_dir()).expect("globals");
+        let key = globals.secret_key(env, variable);
+        self.store.get(&key).expect("memory store")
+    }
+
+    /// Store `value` as the secret of `variable` in global environment `env`.
+    pub fn set_global_secret(&self, env: &str, variable: &str, value: &str) {
+        let globals = apinata_core::GlobalEnvironments::open(self.global_dir()).expect("globals");
+        let key = globals.secret_key(env, variable);
+        self.store.set(&key, value).expect("memory store");
     }
 
     fn secret_key(&self, env: &str, variable: &str) -> SecretKey {
