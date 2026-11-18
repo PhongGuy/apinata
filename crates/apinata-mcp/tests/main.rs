@@ -34,6 +34,8 @@ mod example_edit;
 mod export_har;
 mod export_tools;
 mod generate_code;
+#[cfg(unix)]
+mod git_sync_tools;
 mod git_tools;
 mod global_env;
 mod global_env_ops;

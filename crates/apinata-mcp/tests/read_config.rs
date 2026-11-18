@@ -135,13 +135,14 @@ async fn read_environment_names_an_unknown_environment() {
 
 #[tokio::test]
 async fn every_read_tool_is_listed_read_only_with_an_output_schema() {
-    const READS: [&str; 21] = [
+    const READS: [&str; 22] = [
         "check_collection",
         "export_har",
         "export_openapi",
         "export_postman",
         "generate_code",
         "get_collection",
+        "git_branches",
         "git_diff",
         "git_status",
         "graphql_validate",

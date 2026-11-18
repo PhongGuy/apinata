@@ -164,6 +164,130 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
     Ok(pulled(oid))
 }
 
+/// Which way a sync goes, for [`sync_targets`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SyncDirection {
+    /// A [`pull`], which fetches from the remote's URLs.
+    Pull,
+    /// A [`push`] to the upstream, which goes to the remote's push URLs.
+    Push,
+}
+
+/// Where a pull or a push of the branch HEAD is on would go, read from the config without
+/// contacting anything.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SyncTargets {
+    /// Every URL contacted, as git resolves them with `insteadOf` and `pushInsteadOf`.
+    pub urls: Vec<String>,
+    /// Every proxy that may carry an http or https URL there: `remote.<name>.proxy`,
+    /// `http.proxy` (as matched for the URL) and the proxy environment variables.
+    pub proxies: Vec<String>,
+    /// Settings that make git run another command or reach a host it was not given:
+    /// `remote.<name>.uploadpack`, `receivepack` or `vcs`, `core.gitProxy` or
+    /// `GIT_PROXY_COMMAND` for a `git://` URL, and `http.followRedirects` set to follow.
+    pub overrides: Vec<String>,
+}
+
+/// The proxy variables curl reads, in both cases since either may be honoured.
+const PROXY_VARS: [&str; 6] = [
+    "http_proxy",
+    "HTTP_PROXY",
+    "https_proxy",
+    "HTTPS_PROXY",
+    "all_proxy",
+    "ALL_PROXY",
+];
+
+/// The [`SyncTargets`] of a pull or a push to the upstream. A detached HEAD or a branch with no
+/// upstream is refused as the sync itself would refuse it.
+pub fn sync_targets(
+    root: &Path,
+    direction: SyncDirection,
+    opts: &GitOptions,
+) -> Result<SyncTargets, SyncError> {
+    check_root(root).map_err(from_git)?;
+    let branch = current_branch(root, opts)?;
+    let remote = upstream_of(root, &branch, opts)?.remote;
+    let mut args = vec!["remote", "get-url", "--all"];
+    if direction == SyncDirection::Push {
+        args.push("--push");
+    }
+    args.extend(["--", &remote]);
+    let text = lines(root, &args, opts).map_err(from_git)?;
+    let urls: Vec<String> = text.lines().map(str::to_owned).collect();
+    let mut targets = SyncTargets::default();
+    for key in ["uploadpack", "receivepack", "vcs"] {
+        let key = format!("remote.{remote}.{key}");
+        if config_value(root, &["config", "--get", &key], opts)?.is_some() {
+            targets.overrides.push(key);
+        }
+    }
+    // Over-counting is safe here: a proxy that `no_proxy` or a closer setting would skip is
+    // still listed, so it only ever asks for more trust.
+    let http = |url: &&String| {
+        let lower = url.to_ascii_lowercase();
+        lower.starts_with("http://") || lower.starts_with("https://")
+    };
+    for url in &urls {
+        if url.to_ascii_lowercase().starts_with("git://") {
+            let set = config_value(root, &["config", "--get-all", "core.gitProxy"], opts)?;
+            if set.is_some() {
+                targets.overrides.push("core.gitProxy".to_owned());
+            }
+            if opts
+                .env_value("GIT_PROXY_COMMAND")
+                .is_some_and(|v| !v.is_empty())
+            {
+                targets.overrides.push("GIT_PROXY_COMMAND".to_owned());
+            }
+        }
+        // A URL-specific setting beats the `-c http.followRedirects=false` the sync passes.
+        if http(&url) {
+            let args = ["config", "--get-urlmatch", "http.followRedirects", url];
+            let follows = config_value(root, &args, opts)?.is_some_and(|v| {
+                !["false", "no", "off", "0"].contains(&v.trim().to_ascii_lowercase().as_str())
+            });
+            if follows {
+                targets.overrides.push("http.followRedirects".to_owned());
+            }
+        }
+    }
+    for url in urls.iter().filter(http) {
+        let remote_key = format!("remote.{remote}.proxy");
+        let configured = [
+            config_value(root, &["config", "--get", &remote_key], opts)?,
+            config_value(root, &["config", "--get-urlmatch", "http.proxy", url], opts)?,
+        ];
+        let env = PROXY_VARS.iter().filter_map(|name| opts.env_value(name));
+        for proxy in configured.into_iter().flatten().chain(env) {
+            if !proxy.is_empty() && !targets.proxies.contains(&proxy) {
+                targets.proxies.push(proxy);
+            }
+        }
+    }
+    targets.urls = urls;
+    Ok(targets)
+}
+
+/// The value git config prints for `args`, `None` when it is unset.
+fn config_value(
+    root: &Path,
+    args: &[&str],
+    opts: &GitOptions,
+) -> Result<Option<String>, SyncError> {
+    let out = run::git(args, root, opts).map_err(from_git)?;
+    if out.status.code() == Some(1) {
+        return Ok(None);
+    }
+    if !out.status.success() {
+        return Err(from_git(out.failed(args)));
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(Some(text.trim_end_matches('\n').to_owned()))
+}
+
 /// Fast-forward the checked-out `branch` to `oid`, the tip of `upstream`.
 pub(super) fn fast_forward(
     root: &Path,
@@ -178,7 +302,14 @@ pub(super) fn fast_forward(
     }
     // A fresh flag: stopping a checkout halfway would leave the tree half moved.
     match git_stream(
-        &["merge", "--ff-only", "--no-autostash", oid],
+        &[
+            "-c",
+            "submodule.recurse=false",
+            "merge",
+            "--ff-only",
+            "--no-autostash",
+            oid,
+        ],
         root,
         opts,
         &CancelFlag::new(),
@@ -237,7 +368,10 @@ pub fn push(
         return Err(SyncError::Busy { lock });
     }
     let refspec = format!("{full}:{dst}");
+    // A remote reached over http must not hand the push on to another host.
     let mut args = vec![
+        "-c",
+        "http.followRedirects=false",
         "push",
         "--porcelain",
         "--no-recurse-submodules",

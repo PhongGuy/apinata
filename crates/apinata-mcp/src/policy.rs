@@ -12,6 +12,9 @@ use serde::Serialize;
 use crate::redact::Redactor;
 use crate::send;
 
+/// How a refused send ends.
+const SENT: &str = "nothing was sent";
+
 /// What `list_trusted_hosts` reports for the served collection.
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub(crate) struct TrustedHosts {
@@ -87,24 +90,29 @@ impl HostTrust {
 
     /// The answer to a refused host, or to the proxy a hop went through when `proxy` is set:
     /// files an approval unless the host is denied, pending, names no host, or holds a secret.
+    /// `nothing` ends each refusal, such as "nothing was sent".
+    #[allow(clippy::too_many_arguments)] // one call shape shared by sends, fetches and git
     fn untrusted(
         &self,
-        hop: usize,
+        hop: Option<usize>,
         host: &str,
         route: Route<'_>,
         request: &str,
         inbox: Option<&ApprovalInbox>,
         redactor: &Redactor,
+        nothing: &str,
     ) -> String {
+        // A git remote has no redirect hops, so its host is named without one.
+        let at = hop.map_or(String::new(), |hop| format!(" (hop {hop})"));
         if normalize_host(host).is_none() {
-            return format!("hop {hop} names no host that can be trusted; nothing was sent");
+            let hop = hop.map_or("the remote".to_owned(), |hop| format!("hop {hop}"));
+            return format!("{hop} names no host that can be trusted; {nothing}");
         }
         // A host built from a secret is never filed: the inbox would keep the secret.
         let shown = redactor.scrub_host(host);
         if shown != *host {
             return format!(
-                "host `{shown}` (hop {hop}) holds a secret; nothing was sent and no \
-                 approval was requested"
+                "host `{shown}`{at} holds a secret; {nothing} and no approval was requested"
             );
         }
         // A refused proxy is named as the proxy; a host merely reached through one keeps the route.
@@ -115,15 +123,18 @@ impl HostTrust {
         let shown_host = display_host(host);
         let subject = match route {
             Route::Proxy(proxy) if normalize_host(proxy).as_deref() == Some(host) => {
-                format!("proxy host `{host}` (hop {hop})")
+                format!("proxy host `{host}`{at}")
             }
-            Route::Proxy(proxy) => format!("host `{host}` (hop {hop}, via proxy {proxy})"),
+            Route::Proxy(proxy) => match hop {
+                Some(hop) => format!("host `{host}` (hop {hop}, via proxy {proxy})"),
+                None => format!("host `{host}` (via proxy {proxy})"),
+            },
             // The approval is for the address the name is mapped to, whatever the name is.
             Route::Mapped(name) => format!(
-                "address `{shown_host}` (hop {hop}), which a host override maps `{}` to,",
+                "address `{shown_host}`{at}, which a host override maps `{}` to,",
                 redactor.scrub_host(name)
             ),
-            Route::Direct => format!("host `{shown_host}` (hop {hop})"),
+            Route::Direct => format!("host `{shown_host}`{at}"),
         };
         // The name is context for the person approving; a name the redactor would change
         // might hold a secret, so it is not filed at all.
@@ -142,11 +153,11 @@ impl HostTrust {
         match filed {
             Some(Ok(Filing::Denied)) => {
                 self.filed_hosts().remove(host);
-                format!("{subject} is denied for this collection; nothing was sent")
+                format!("{subject} is denied for this collection; {nothing}")
             }
             Some(Ok(Filing::Written(_))) if !self.filed_hosts().insert(host.to_owned()) => {
                 format!(
-                    "{untrusted}; nothing was sent. The user dismissed the earlier \
+                    "{untrusted}; {nothing}. The user dismissed the earlier \
                      approval request without deciding (or it expired), so the host is \
                      still not approved; you may ask again: a new approval request was \
                      filed in the Apinata app; retry after the user approves."
@@ -155,12 +166,12 @@ impl HostTrust {
             Some(Ok(_)) => {
                 self.filed_hosts().insert(host.to_owned());
                 format!(
-                    "{untrusted}; nothing was sent. Approval requested in the Apinata \
+                    "{untrusted}; {nothing}. Approval requested in the Apinata \
                      app; retry after the user approves."
                 )
             }
-            Some(Err(e)) => not_filed(&untrusted, &e.to_string(), host),
-            None => not_filed(&untrusted, "no approval directory", host),
+            Some(Err(e)) => not_filed(&untrusted, nothing, &e.to_string(), host),
+            None => not_filed(&untrusted, nothing, "no approval directory", host),
         }
     }
 
@@ -174,8 +185,46 @@ impl HostTrust {
         label: &str,
         inbox: Option<&ApprovalInbox>,
     ) -> String {
+        self.refuse_reach(host, Some(hop), false, label, inbox, SENT)
+    }
+
+    /// Whether git may reach `host` for a pull or push, reading the trust file afresh first.
+    pub(crate) fn allows_fresh(&self, host: &str) -> bool {
         self.refresh();
-        let message = self.untrusted(hop, host, Route::Direct, label, inbox, &Redactor::default());
+        self.allows(host)
+    }
+
+    /// The answer to a pull or push whose remote, or with `proxy` the proxy it goes through,
+    /// is on the untrusted `host`, filed like a refused fetch under `label` and ending with
+    /// `nothing`, such as "nothing was pulled".
+    pub(crate) fn refuse_remote(
+        &self,
+        host: &str,
+        proxy: bool,
+        label: &str,
+        inbox: Option<&ApprovalInbox>,
+        nothing: &str,
+    ) -> String {
+        self.refuse_reach(host, None, proxy, label, inbox, nothing)
+    }
+
+    fn refuse_reach(
+        &self,
+        host: &str,
+        hop: Option<usize>,
+        proxy: bool,
+        label: &str,
+        inbox: Option<&ApprovalInbox>,
+        nothing: &str,
+    ) -> String {
+        self.refresh();
+        let none = Redactor::default();
+        let route = if proxy {
+            Route::Proxy(host)
+        } else {
+            Route::Direct
+        };
+        let message = self.untrusted(hop, host, route, label, inbox, &none, nothing);
         // The approval is per host, not per tool, so the user should know what it unlocks.
         if message.contains("retry after the user approves") {
             format!("{message} Approving this host also lets send_request reach it.")
@@ -206,11 +255,14 @@ impl HostTrust {
                 ..
             } => {
                 let route = mapped_from.as_deref().map_or(Route::Direct, Route::Mapped);
-                self.untrusted(*hop, host, route, request, inbox, redactor)
+                self.untrusted(Some(*hop), host, route, request, inbox, redactor, SENT)
             }
             ExecError::ProxyNotAllowed {
                 hop, host, proxy, ..
-            } => self.untrusted(*hop, host, Route::Proxy(proxy), request, inbox, redactor),
+            } => {
+                let route = Route::Proxy(proxy);
+                self.untrusted(Some(*hop), host, route, request, inbox, redactor, SENT)
+            }
             ExecError::HostOverrideViaProxy { hop, host, .. } => format!(
                 "host `{host}` (hop {hop}) has a host override but goes through a proxy, which \
                  ignores it; nothing was sent. Turn the proxy off for this collection or remove \
@@ -229,9 +281,9 @@ impl HostTrust {
     }
 }
 
-fn not_filed(untrusted: &str, why: &str, host: &str) -> String {
+fn not_filed(untrusted: &str, nothing: &str, why: &str, host: &str) -> String {
     format!(
-        "{untrusted}; nothing was sent. The approval request could not be filed ({why}); the \
+        "{untrusted}; {nothing}. The approval request could not be filed ({why}); the \
          user can run `apinata trust add {host}`."
     )
 }

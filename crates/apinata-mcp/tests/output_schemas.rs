@@ -383,6 +383,23 @@ async fn every_tool_result_matches_its_output_schema() {
     .await;
     ex.run(&server, "list_secret_renames", json!({"since": "HEAD~1"}))
         .await;
+    // Branches and a local bare remote, which needs no approval.
+    sb.git(
+        sb.path(),
+        &["init", "-q", "--bare", "-b", "main", "out.git"],
+    );
+    let bare = sb.path().join("out.git");
+    let root = server.root();
+    sb.git(root, &["remote", "add", "origin", bare.to_str().unwrap()]);
+    sb.git(root, &["push", "-q", "-u", "origin", "main"]);
+    sb.git(root, &["branch", "side"]);
+    ex.run(&server, "git_branches", json!({})).await;
+    ex.run(&server, "git_push", json!({})).await;
+    ex.run(&server, "git_pull", json!({})).await;
+    ex.run(&server, "git_switch_branch", json!({"branch": "side"}))
+        .await;
+    ex.run(&server, "git_switch_branch", json!({"branch": "main"}))
+        .await;
 
     // The mock, idle and then with a hit.
     let started = ex
