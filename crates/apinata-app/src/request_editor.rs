@@ -2225,6 +2225,7 @@ mod inherited_tests {
             variables: vec![EnvVariable::new("k", VarValue::Text("v".into()))],
             color: None,
             extends: extends.map(Into::into),
+            refused_parents: Vec::new(),
             dirty: false,
             disk: DiskState::Present,
             reloaded: 0,

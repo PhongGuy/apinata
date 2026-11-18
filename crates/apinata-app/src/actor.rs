@@ -1857,6 +1857,14 @@ impl Actor {
                 }
             }
             Target::Environment(name) => {
+                // A parent is refused as core's own setter refuses it, so no loop is drafted.
+                if let Edit::Extends(parent) = &edit
+                    && self.collection.environment(name).is_some()
+                {
+                    (self.collection)
+                        .check_environment_extends(name, parent.as_deref())
+                        .map_err(|e| self::failed(target, e))?;
+                }
                 let e = self
                     .collection
                     .environment_mut(name)
@@ -1887,6 +1895,13 @@ impl Actor {
                 target,
                 "Choose a name and folder to save this request",
             ));
+        }
+        // A file that already loops or names a missing parent is refused with core's message.
+        if let Target::Environment(name) = target
+            && let Some(env) = c.environment(name)
+        {
+            (c.check_environment_extends(name, env.extends().as_deref()))
+                .map_err(|e| failed(target, e))?;
         }
         let written = self.write_held(target)?;
         let c = &mut self.collection;
