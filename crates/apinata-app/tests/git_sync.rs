@@ -203,6 +203,27 @@ fn a_dirty_working_tree_asks_to_commit_or_discard_first(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
+fn a_pull_while_another_tool_holds_the_repository_says_so_and_changes_nothing(
+    cx: &mut TestAppContext,
+) {
+    let r = rig(cx, Sandbox::new(), |_| {});
+    advance(&r.sb, "c.txt", "c\n");
+    let head = r.head();
+    let held = apinata_core::repo_lock(r.root(), std::time::Duration::ZERO, &r.sb.options());
+    assert!(
+        held.as_ref().is_ok_and(|l| l.is_held()),
+        "the test holds the lock"
+    );
+    pull(cx, &r);
+    assert_eq!(
+        notice_text(cx, &r),
+        "Another tool is changing this collection; try again"
+    );
+    assert_eq!(r.head(), head);
+    assert!(!r.root().join("c.txt").exists());
+}
+
+#[gpui_kit::test]
 fn push_without_an_upstream_offers_publish_which_sets_it(cx: &mut TestAppContext) {
     let r = rig(cx, Sandbox::new(), |_| {});
     r.sb.git(r.root(), &["switch", "-q", "-c", "topic"]);

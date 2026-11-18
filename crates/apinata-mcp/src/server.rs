@@ -77,10 +77,14 @@ use crate::tree::{
 };
 use crate::writes;
 use crate::{McpError, McpOptions};
-use apinata_core::{GlobalEnvironments, KEYCHAIN_TIMEOUT, LazyKeychain, TimeoutStore};
+use apinata_core::{
+    GlobalEnvironments, KEYCHAIN_TIMEOUT, LazyKeychain, REPO_LOCK_WAIT, TimeoutStore, repo_lock,
+};
 
 /// What a client sees when a tool panics; the payload may quote a secret, so it is fixed.
 const PANICKED: &str = "internal error: the tool failed unexpectedly";
+const REPO_BUSY: &str = "a pull or branch switch is running in the app, or another tool is \
+                         changing this collection; try again";
 
 /// Tools that are not read-only (they send, run or change session state) yet write no collection
 /// file, so a call to one never changes the resource list.
@@ -406,8 +410,36 @@ impl ApinataServer {
         T: Send + 'static,
         F: FnOnce(&mut Collection) -> Result<T, String> + Send + 'static,
     {
+        self.on_collection(None, f).await
+    }
+
+    /// Like [`Self::with_collection`] for a tool that changes files or git state: it also holds
+    /// the repository lock, so it never lands mid-way through the app's pull or branch switch.
+    pub(crate) async fn with_collection_write<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Collection) -> Result<T, String> + Send + 'static,
+    {
+        let options = self.options.git_options().clone();
+        self.on_collection(Some(options), f).await
+    }
+
+    // With git options, the repository lock is taken before the reload, so the tool sees the
+    // tree as a finished pull or switch left it.
+    async fn on_collection<T, F>(&self, lock: Option<GitOptions>, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Collection) -> Result<T, String> + Send + 'static,
+    {
         let mut guard = Arc::clone(&self.collection).lock_owned().await;
         tokio::task::spawn_blocking(move || {
+            let _repo = match lock {
+                Some(options) => Some(
+                    repo_lock(guard.root(), REPO_LOCK_WAIT, &options)
+                        .map_err(|_| REPO_BUSY.to_owned())?,
+                ),
+                None => None,
+            };
             guard.reload();
             let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| f(&mut guard)));
             outcome.unwrap_or_else(|_| {
@@ -443,7 +475,7 @@ impl ApinataServer {
             flag.cancel();
         });
         let done = self
-            .with_collection(move |c| {
+            .with_collection_write(move |c| {
                 let root = c.root();
                 let gate = (label, nothing);
                 git::check_targets(root, direction, &options, &trust, inbox.as_ref(), gate)?;
@@ -655,7 +687,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<ReplaceArgs>,
     ) -> Result<Json<ReplaceDoc>, String> {
-        self.with_collection(move |c| replace::replace(c, &args).map(Json))
+        self.with_collection_write(move |c| replace::replace(c, &args).map(Json))
             .await
     }
 
@@ -1089,7 +1121,7 @@ impl ApinataServer {
     ) -> Result<Json<GraphqlFormatDoc>, String> {
         match graphql_query::source(args.path, args.query)? {
             Source::Path(item) => self
-                .with_collection(move |c| graphql_query::format_saved(c, &item))
+                .with_collection_write(move |c| graphql_query::format_saved(c, &item))
                 .await
                 .map(Json),
             Source::Query(text) => {
@@ -1250,7 +1282,7 @@ impl ApinataServer {
         Parameters(args): Parameters<CommitArgs>,
     ) -> Result<Json<CommitDoc>, String> {
         let options = self.options.git_options().clone();
-        self.with_collection(move |collection| {
+        self.with_collection_write(move |collection| {
             git::commit_paths(collection.root(), &args, &options).map(Json)
         })
         .await
@@ -1281,7 +1313,7 @@ impl ApinataServer {
         Parameters(args): Parameters<SwitchArgs>,
     ) -> Result<Json<SwitchedDoc>, String> {
         let options = self.options.git_options().clone();
-        self.with_collection(move |c| git::switch(c.root(), &args, &options).map(Json))
+        self.with_collection_write(move |c| git::switch(c.root(), &args, &options).map(Json))
             .await
     }
 
@@ -1342,8 +1374,10 @@ impl ApinataServer {
         &self,
         Parameters(patch): Parameters<RequestPatch>,
     ) -> Result<Json<RequestDoc>, String> {
-        self.with_collection(move |collection| writes::update_request(collection, &patch).map(Json))
-            .await
+        self.with_collection_write(move |collection| {
+            writes::update_request(collection, &patch).map(Json)
+        })
+        .await
     }
 
     #[tool(
@@ -1357,8 +1391,10 @@ impl ApinataServer {
         &self,
         Parameters(patch): Parameters<ConfigPatch>,
     ) -> Result<Json<ConfigDoc>, String> {
-        self.with_collection(move |collection| writes::update_folder(collection, &patch).map(Json))
-            .await
+        self.with_collection_write(move |collection| {
+            writes::update_folder(collection, &patch).map(Json)
+        })
+        .await
     }
     #[tool(
         description = "Create a request named `name` in the folder `parent` (empty for the \
@@ -1372,7 +1408,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<CreateRequestArgs>,
     ) -> Result<Json<ItemPathResult>, String> {
-        self.with_collection(move |c| tree::create_request(c, &args).map(Json))
+        self.with_collection_write(move |c| tree::create_request(c, &args).map(Json))
             .await
     }
 
@@ -1395,7 +1431,7 @@ impl ApinataServer {
         Parameters(args): Parameters<ImportRequestArgs>,
     ) -> Result<Json<ImportedRequestResult>, String> {
         let store = Arc::clone(&self.store);
-        self.with_collection(move |c| imports::import_request(c, &args, &*store).map(Json))
+        self.with_collection_write(move |c| imports::import_request(c, &args, &*store).map(Json))
             .await
     }
 
@@ -1455,7 +1491,7 @@ impl ApinataServer {
         };
         let bundles = import_collection::parse(&plan, &input, default_name)?;
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());
-        self.with_collection(move |c| {
+        self.with_collection_write(move |c| {
             if plan.is_update() {
                 import_collection::update(c, &plan, &bundles, bin.as_ref(), log)
             } else {
@@ -1475,7 +1511,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<CreateFolderArgs>,
     ) -> Result<Json<ItemPathResult>, String> {
-        self.with_collection(move |c| tree::create_folder(c, &args).map(Json))
+        self.with_collection_write(move |c| tree::create_folder(c, &args).map(Json))
             .await
     }
 
@@ -1488,7 +1524,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<NameItemArgs>,
     ) -> Result<Json<ItemPathResult>, String> {
-        self.with_collection(move |c| tree::clone_request(c, &args).map(Json))
+        self.with_collection_write(move |c| tree::clone_request(c, &args).map(Json))
             .await
     }
 
@@ -1501,7 +1537,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<NameItemArgs>,
     ) -> Result<Json<ItemPathResult>, String> {
-        self.with_collection(move |c| tree::clone_folder(c, &args).map(Json))
+        self.with_collection_write(move |c| tree::clone_folder(c, &args).map(Json))
             .await
     }
 
@@ -1514,7 +1550,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<NameItemArgs>,
     ) -> Result<Json<ItemPathResult>, String> {
-        self.with_collection(move |c| tree::rename_item(c, &args).map(Json))
+        self.with_collection_write(move |c| tree::rename_item(c, &args).map(Json))
             .await
     }
 
@@ -1709,7 +1745,7 @@ impl ApinataServer {
         Parameters(args): Parameters<SaveExampleArgs>,
     ) -> Result<Json<SavedExample>, String> {
         let (path, example, description, withheld) = examples::prepare(&self.last_sends, &args)?;
-        self.with_collection(move |c| {
+        self.with_collection_write(move |c| {
             let (index, name) = examples::save(c, &path, &args.name, &description, &example)?;
             Ok(Json(SavedExample {
                 path: args.path,
@@ -1731,7 +1767,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<RenameExampleArgs>,
     ) -> Result<Json<RenamedExample>, String> {
-        self.with_collection(move |c| examples::rename(c, args).map(Json))
+        self.with_collection_write(move |c| examples::rename(c, args).map(Json))
             .await
     }
 
@@ -1745,7 +1781,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<DeleteExampleArgs>,
     ) -> Result<Json<DeletedExample>, String> {
-        self.with_collection(move |c| examples::delete(c, args).map(Json))
+        self.with_collection_write(move |c| examples::delete(c, args).map(Json))
             .await
     }
 
@@ -1824,7 +1860,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<ScrubArgs>,
     ) -> Result<Json<ScrubbedUserinfo>, String> {
-        self.with_collection(move |c| examples::scrub(c, args.write).map(Json))
+        self.with_collection_write(move |c| examples::scrub(c, args.write).map(Json))
             .await
     }
 
@@ -2084,7 +2120,7 @@ impl ApinataServer {
         &self,
         Parameters(args): Parameters<MoveArgs>,
     ) -> Result<Json<ItemPathResult>, String> {
-        self.with_collection(move |c| tree::move_item(c, &args).map(Json))
+        self.with_collection_write(move |c| tree::move_item(c, &args).map(Json))
             .await
     }
 
@@ -2099,7 +2135,7 @@ impl ApinataServer {
         Parameters(args): Parameters<PathArgs>,
     ) -> Result<Json<Deleted>, String> {
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());
-        self.with_collection(move |c| {
+        self.with_collection_write(move |c| {
             tree::delete_item(c, &args.path, bin.as_ref(), log.as_ref()).map(Json)
         })
         .await
@@ -2119,8 +2155,10 @@ impl ApinataServer {
     )]
     async fn restore_item(&self) -> Result<Json<RestoredItem>, String> {
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());
-        self.with_collection(move |c| tree::restore_item(c, bin.as_ref(), log.as_ref()).map(Json))
-            .await
+        self.with_collection_write(move |c| {
+            tree::restore_item(c, bin.as_ref(), log.as_ref()).map(Json)
+        })
+        .await
     }
 
     #[tool(
@@ -2145,7 +2183,7 @@ impl ApinataServer {
         Parameters(args): Parameters<RestorePrunedArgs>,
     ) -> Result<Json<RestoredPrune>, String> {
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());
-        self.with_collection(move |c| {
+        self.with_collection_write(move |c| {
             tree::restore_pruned(c, bin.as_ref(), log.as_ref(), args.batch.as_deref()).map(Json)
         })
         .await
@@ -2161,7 +2199,7 @@ impl ApinataServer {
         Parameters(args): Parameters<NameArgs>,
     ) -> Result<Json<EnvNameResult>, String> {
         let store = Arc::clone(&self.store);
-        self.with_collection(move |c| envs::create(c, &args.name, store.as_ref()).map(Json))
+        self.with_collection_write(move |c| envs::create(c, &args.name, store.as_ref()).map(Json))
             .await
     }
 
@@ -2176,8 +2214,10 @@ impl ApinataServer {
         Parameters(args): Parameters<NameArgs>,
     ) -> Result<Json<EnvNameResult>, String> {
         let store = Arc::clone(&self.store);
-        self.with_collection(move |c| envs::duplicate(c, &args.name, store.as_ref()).map(Json))
-            .await
+        self.with_collection_write(move |c| {
+            envs::duplicate(c, &args.name, store.as_ref()).map(Json)
+        })
+        .await
     }
 
     #[tool(
@@ -2191,7 +2231,7 @@ impl ApinataServer {
         Parameters(args): Parameters<RenameEnvArgs>,
     ) -> Result<Json<EnvNameResult>, String> {
         let store = Arc::clone(&self.store);
-        self.with_collection(move |c| envs::rename(c, &args, store.as_ref()).map(Json))
+        self.with_collection_write(move |c| envs::rename(c, &args, store.as_ref()).map(Json))
             .await
     }
 
@@ -2207,7 +2247,7 @@ impl ApinataServer {
         Parameters(args): Parameters<NameArgs>,
     ) -> Result<Json<DeletedEnv>, String> {
         let store = Arc::clone(&self.store);
-        self.with_collection(move |c| envs::delete(c, &args.name, store.as_ref()).map(Json))
+        self.with_collection_write(move |c| envs::delete(c, &args.name, store.as_ref()).map(Json))
             .await
     }
 
@@ -2229,7 +2269,7 @@ impl ApinataServer {
         Parameters(args): Parameters<UpdateEnvArgs>,
     ) -> Result<Json<EnvironmentDoc>, String> {
         let store = Arc::clone(&self.store);
-        self.with_collection(move |c| envs::update(c, &args, store.as_ref()).map(Json))
+        self.with_collection_write(move |c| envs::update(c, &args, store.as_ref()).map(Json))
             .await
     }
 

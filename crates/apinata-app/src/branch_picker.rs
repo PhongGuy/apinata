@@ -8,8 +8,8 @@ use crate::blocking::{off_thread, off_thread_events};
 use crate::command::Command;
 use crate::sync_text::{self, Direction};
 use apinata_core::{
-    Branch, CancelFlag, FetchError, GitOptions, Pulled, Pushed, SwitchError, Switched, SyncError,
-    Upstream,
+    Branch, CancelFlag, FetchError, GitOptions, Pulled, Pushed, REPO_LOCK_WAIT, SwitchError,
+    Switched, SyncError, Upstream,
 };
 use gpui_kit::{Context, Entity, EventEmitter, Subscription};
 
@@ -43,6 +43,8 @@ pub enum Notice {
     Dirty,
     /// A tab of the collection has edits not yet saved to disk.
     Unsaved,
+    /// Another process, such as an MCP server, holds the repository lock.
+    Busy,
     /// The switch landed but unsaved work appeared meanwhile, so the collection stays open.
     KeptOpen,
     /// Git refused or failed; its text.
@@ -64,6 +66,7 @@ impl Notice {
         match self {
             Notice::Dirty => "Commit or discard your changes first",
             Notice::Unsaved => "Save or discard your unsaved edits first",
+            Notice::Busy => "Another tool is changing this collection; try again",
             Notice::KeptOpen => {
                 "The branch switched, but the open tabs were not reloaded because of unsaved edits"
             }
@@ -116,6 +119,7 @@ pub struct BranchPicker {
 
 // What a running pull reports from its thread.
 enum PullStep {
+    Busy,
     Fetched,
     Done(Result<Pulled, SyncError>),
 }
@@ -310,6 +314,11 @@ impl BranchPicker {
         self.workspace.update(cx, |w, cx| w.begin_pull(&root, cx));
         let (options, cancel) = (self.options(cx), self.cancel.clone());
         let rx = off_thread_events(move |tx| {
+            // Held for the whole pull, so another tool's write never lands mid-checkout.
+            let Ok(_repo) = apinata_core::repo_lock(&root, REPO_LOCK_WAIT, &options) else {
+                let _ = tx.try_send(PullStep::Busy);
+                return;
+            };
             let done = apinata_core::pull_reporting(&root, &cancel, &options, &mut || {
                 let _ = tx.try_send(PullStep::Fetched);
             });
@@ -319,6 +328,7 @@ impl BranchPicker {
         cx.spawn(async move |this, cx| {
             while let Ok(step) = rx.recv().await {
                 let _ = this.update(cx, |this, cx| match step {
+                    PullStep::Busy => this.busy(cx),
                     PullStep::Fetched => {
                         this.fetched = true;
                         cx.notify();
@@ -455,11 +465,18 @@ impl BranchPicker {
             .or_else(|| remote.map(|u| u.name.clone()))
             .unwrap_or_default();
         let picked = remote.map_or_else(String::new, |u| format!("{}/{}", u.remote, u.name));
-        let rx = off_thread(move || apinata_core::switch_branch(&root, &branch, &options));
+        // The lock is held for the whole switch, as for a pull.
+        let rx = off_thread(move || {
+            apinata_core::repo_lock(&root, REPO_LOCK_WAIT, &options)
+                .map(|_repo| apinata_core::switch_branch(&root, &branch, &options))
+        });
         cx.notify();
         cx.spawn(async move |this, cx| {
             let Ok(result) = rx.recv().await else { return };
-            let _ = this.update(cx, |this, cx| this.switched(name, &picked, result, cx));
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(result) => this.switched(name, &picked, result, cx),
+                Err(_) => this.busy(cx),
+            });
         })
         .detach();
     }
@@ -502,6 +519,12 @@ impl BranchPicker {
             Err(SwitchError::Dirty) => self.notice = Some(Notice::Dirty),
             Err(e) => self.notice = Some(Notice::Failed(e.to_string())),
         }
+        self.release(true, cx);
+    }
+
+    // Ends a pull or switch that never started because another tool held the repository.
+    fn busy(&mut self, cx: &mut Context<Self>) {
+        self.notice = Some(Notice::Busy);
         self.release(true, cx);
     }
 
