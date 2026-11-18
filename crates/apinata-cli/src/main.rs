@@ -26,7 +26,9 @@ mod mcp;
 mod mock_cmd;
 mod network;
 mod network_notice;
+mod network_secrets;
 mod oauth2_cmd;
+mod proxy_cmd;
 mod query_notice;
 mod renames_cmd;
 mod replace_cmd;
@@ -1179,6 +1181,111 @@ pub struct NetworkCmdArgs {
 pub enum NetworkAction {
     /// Send chosen host names to chosen addresses instead of their DNS answer.
     Hosts(HostsArgs),
+    /// Show or set the collection's proxy.
+    Proxy(ProxyArgs),
+    /// List, set and remove the client certificates offered to matching hosts.
+    Cert(CertArgs),
+    /// Move a literal proxy password and certificate passphrases from the collection file
+    /// into `.env`, leaving `{{process.env.NAME}}` references behind.
+    MoveSecrets {
+        /// The collection directory or a directory inside it; defaults to the working directory.
+        #[arg(long)]
+        collection: Option<PathBuf>,
+    },
+}
+
+#[derive(clap::Args)]
+pub struct ProxyArgs {
+    #[command(subcommand)]
+    pub action: ProxyAction,
+    /// The collection directory or a directory inside it; defaults to the working directory.
+    #[arg(long, global = true)]
+    pub collection: Option<PathBuf>,
+}
+
+#[derive(Subcommand)]
+pub enum ProxyAction {
+    /// Print the proxy mode and a custom proxy's fields; a literal password is never shown.
+    Show,
+    /// Use a custom proxy. Flags left out keep the values the file already holds.
+    ///
+    /// A password is never a plain flag value: `--password` takes only a `{{variable}}`
+    /// reference, and `--password-stdin` reads one line from stdin (or a hidden prompt) and
+    /// stores it in `.env`.
+    Set {
+        /// `http`, `https`, `socks4` or `socks5`.
+        #[arg(long)]
+        protocol: Option<String>,
+        /// The proxy host.
+        #[arg(long)]
+        host: Option<String>,
+        /// The proxy port, 1 to 65535; empty for the protocol default.
+        #[arg(long)]
+        port: Option<String>,
+        /// Comma separated hosts that skip the proxy.
+        #[arg(long)]
+        bypass: Option<String>,
+        /// The proxy user name.
+        #[arg(long)]
+        username: Option<String>,
+        /// The password as a `{{variable}}` reference.
+        #[arg(long, conflicts_with = "password_stdin")]
+        password: Option<String>,
+        /// Read the password from stdin or a hidden prompt and store it in `.env`.
+        #[arg(long)]
+        password_stdin: bool,
+        /// Remove the user name and password.
+        #[arg(long, conflicts_with_all = ["username", "password", "password_stdin"])]
+        no_auth: bool,
+    },
+    /// Connect directly, keeping the custom fields in the file.
+    Off,
+    /// Use the global proxy setting again, the default.
+    Clear,
+}
+
+#[derive(clap::Args)]
+pub struct CertArgs {
+    #[command(subcommand)]
+    pub action: CertAction,
+    /// The collection directory or a directory inside it; defaults to the working directory.
+    #[arg(long, global = true)]
+    pub collection: Option<PathBuf>,
+}
+
+#[derive(Subcommand)]
+pub enum CertAction {
+    /// Print each certificate as `domain -> kind files`; a literal passphrase is never shown.
+    List,
+    /// Offer a certificate to hosts matching a domain (`*` wildcards allowed), replacing that
+    /// domain's entry. Give `--cert` and `--key`, or `--pfx`.
+    ///
+    /// A path inside the collection is stored relative to it, and a relative path is read
+    /// from the collection. A passphrase is never a plain flag value: `--passphrase` takes
+    /// only a `{{variable}}` reference, and `--passphrase-stdin` stores the value in `.env`.
+    Set {
+        domain: String,
+        /// The PEM certificate file.
+        #[arg(long)]
+        cert: Option<String>,
+        /// The PEM private key file.
+        #[arg(long)]
+        key: Option<String>,
+        /// The PKCS#12 bundle.
+        #[arg(long)]
+        pfx: Option<String>,
+        /// The passphrase as a `{{variable}}` reference.
+        #[arg(long, conflicts_with = "passphrase_stdin")]
+        passphrase: Option<String>,
+        /// Read the passphrase from stdin or a hidden prompt and store it in `.env`.
+        #[arg(long)]
+        passphrase_stdin: bool,
+        /// Keep the entry in the file but do not use it.
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// Remove a domain's certificates.
+    Remove { domain: String },
 }
 
 #[derive(clap::Args)]

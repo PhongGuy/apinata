@@ -653,9 +653,14 @@ fn no_file_hint(e: EnvError) -> anyhow::Error {
 /// The secret value: one line of piped stdin, or a hidden prompt on a terminal. It is never
 /// an argument, so it stays out of shell history and the process list.
 fn read_secret_value() -> anyhow::Result<String> {
+    read_secret_line("Secret value: ")
+}
+
+/// [`read_secret_value`] with its own prompt, for the other commands that take a secret.
+pub(crate) fn read_secret_line(prompt: &str) -> anyhow::Result<String> {
     use std::io::{BufRead, IsTerminal};
     if std::io::stdin().is_terminal() {
-        return Ok(rpassword::prompt_password("Secret value: ")?);
+        return Ok(rpassword::prompt_password(prompt)?);
     }
     let mut line = String::new();
     let n = std::io::stdin().lock().read_line(&mut line)?;

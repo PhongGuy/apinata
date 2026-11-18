@@ -1,4 +1,4 @@
-//! `apinata network hosts`: edit the collection's host overrides in `opencollection.yml`.
+//! `apinata network`: dispatch, and `network hosts`, which edits the collection's host overrides.
 
 use std::process::ExitCode;
 
@@ -8,10 +8,17 @@ use apinata_core::{Collection, HostOverride, normalize_bare_host};
 use crate::trust::{collection_root, shown};
 use crate::{EXIT_USAGE, HostsAction, NetworkAction, NetworkCmdArgs};
 
-/// Apply the action: exit 0 on success, 3 with `error: ...` on any failure.
+/// Apply any `network` action: exit 0 on success, 3 with `error: ...` on any failure.
 pub fn run(args: &NetworkCmdArgs) -> ExitCode {
-    let NetworkAction::Hosts(hosts) = &args.action;
-    match apply(hosts) {
+    let result = match &args.action {
+        NetworkAction::Hosts(hosts) => apply(hosts),
+        NetworkAction::Proxy(proxy) => crate::proxy_cmd::proxy(proxy),
+        NetworkAction::Cert(cert) => crate::proxy_cmd::cert(cert),
+        NetworkAction::MoveSecrets { collection } => {
+            crate::proxy_cmd::move_secrets(collection.as_deref())
+        }
+    };
+    match result {
         Ok(lines) => {
             for line in lines {
                 outln!("{}", shown(&line));

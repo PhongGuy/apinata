@@ -352,6 +352,32 @@ separated by commas; a port counts only for a URL that names none. The name stay
 the URL and the `Host` header, and a send to an MCP agent is judged by the address it
 is mapped to, so a mapping off loopback needs approval whatever the name is.
 
+### Proxy and client certificates
+
+`apinata network proxy show` prints the collection's proxy mode (`inherit`, `off` or
+`custom`) and a custom proxy's fields. `proxy set` switches to a custom proxy with
+`--protocol` (`http`, `https`, `socks4`, `socks5`), `--host`, `--port`, `--bypass`
+(comma separated hosts) and `--username`; a flag left out keeps the value the file
+already holds, and `--no-auth` drops the credentials. `proxy off` connects directly
+and `proxy clear` goes back to the global setting; both keep the custom fields in the
+file, as the app does.
+
+`apinata network cert list` shows the client certificates as `domain -> kind files`.
+`cert set <domain> --cert <file> --key <file>` (PEM) or `cert set <domain> --pfx <file>`
+(PKCS#12) adds or replaces the domain's entry, `--disabled` keeps it unused, and
+`cert remove <domain>` deletes it. A path inside the collection is stored relative to
+it, and a relative path is read from the collection.
+
+A proxy password or certificate passphrase is never taken as a plain flag value, so it
+stays out of shell history. `--password` and `--passphrase` accept only a
+`{{variable}}` reference. `--password-stdin` and `--passphrase-stdin` read the value
+from one line of stdin, or a hidden prompt on a terminal, store it in the collection's
+`.env` (as `APINATA_PROXY_PASSWORD` or `APINATA_CERT_PASSPHRASE_<n>`, adding `.env` to
+`.gitignore`) and write a `{{process.env.NAME}}` reference to the file. `apinata
+network move-secrets` does the same for literal secrets already in the file. `show` and
+`list` print references as written and never a literal value. These settings are CLI
+and app only: the MCP server cannot change them.
+
 ### Replace
 
 `apinata replace [collection] <pattern> <replacement>` rewrites the matches in the same
