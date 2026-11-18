@@ -387,26 +387,20 @@ fn field_fills(t: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `selection.background` as the kit draws it over the `field` fill: alpha capped at 0.3.
+/// `selection.background` as drawn over the `field` fill, at its configured alpha.
 fn selection_over(t: &Value, field: &str) -> String {
     selection_over_hex(t, &col(t, field))
 }
 
-/// `selection.background` as the kit draws it over the opaque `fill`: alpha capped at 0.3.
+/// `selection.background` as drawn over the opaque `fill`: the app restores the configured
+/// alpha the kit clamps on load, so the composite uses it as written.
 fn selection_over_hex(t: &Value, fill: &str) -> String {
-    let sel = col(t, "selection.background");
-    let alpha = if sel.len() == 9 {
-        u8::from_str_radix(&sel[7..9], 16).unwrap()
-    } else {
-        255
-    };
-    let alpha = alpha.min((0.3_f64 * 255.0).round() as u8);
-    over(&format!("{}{alpha:02X}", &sel[..7]), fill)
+    over(&col(t, "selection.background"), fill)
 }
 
-/// The input selection as drawn: the kit caps its alpha at 0.3, so the highlight is that
-/// share of `selection.background` over the field fill. Foreground text must hold the text
-/// floor on that composite. Muted text is not measured: a focused locked input draws foreground.
+/// The input selection as drawn over every field fill, at its configured alpha. Foreground
+/// text must hold the text floor on that composite. Muted text is not measured: a focused
+/// locked input draws foreground.
 #[test]
 fn the_input_selection_is_visible_on_both_field_fills() {
     let mut bad = Vec::new();
@@ -414,11 +408,14 @@ fn the_input_selection_is_visible_on_both_field_fills() {
     for (mode, t) in themes() {
         seen += 1;
         let name = t["name"].as_str().unwrap();
-        // Best reachable fill-to-field ratio per theme, with a little slack for rounding.
+        // Selected text keeps the foreground, so the text floor caps the edge wherever
+        // foreground on the field is under three times that floor; there the floor is the best
+        // reachable, with a little slack for rounding.
         let edge_floor = match (name, mode) {
-            (HC_DARK, _) => 2.1,
-            (_, ThemeMode::Dark) => 2.6,
-            _ => 2.0,
+            (HC_DARK, _) => 2.35,
+            (HC_LIGHT, _) => 2.3,
+            (_, ThemeMode::Dark) => 2.9,
+            _ => 3.0,
         };
         for (field, fill) in field_fills(&t) {
             let drawn = selection_over_hex(&t, &fill);

@@ -146,12 +146,14 @@ fn toast_bottom(zoom: f32) -> Pixels {
     at_zoom(STATUS_BAR_HEIGHT, zoom) + at_zoom(SPACE_3, zoom)
 }
 
-/// Switches the kit to `mode`, reloads its theme, restores the opaque selected-row fill and
-/// reapplies the focus modality's ring. Every mode change in the app goes through here.
+/// Switches the kit to `mode`, reloads its theme, restores the opaque selected-row fill and the
+/// input selection's configured alpha, and reapplies the focus modality's ring. Every mode
+/// change in the app goes through here.
 pub fn set_mode(mode: ThemeMode, window: Option<&mut Window>, cx: &mut App) {
     Theme::change(mode, window, cx);
     let modality = crate::focus_mode::modality(cx);
-    // The kit clamps `list.active.background` to 20% alpha on load, which hides the fill.
+    // The kit clamps `list.active.background` to 20% alpha and `selection.background` to 30%
+    // on load, which hides the fill and leaves a selection too faint to see; restore both.
     Theme::update(cx, |t| {
         crate::focus_mode::apply_ring(t, modality);
         let config = if t.mode.is_dark() {
@@ -159,14 +161,17 @@ pub fn set_mode(mode: ThemeMode, window: Option<&mut Window>, cx: &mut App) {
         } else {
             &t.light_theme
         };
-        let opaque = config
-            .colors
-            .list_active
-            .as_deref()
-            .and_then(crate::ui::parse_color);
-        if let Some(fill) = opaque {
+        let colors = &config.colors;
+        let unclamped = |raw: Option<&str>| raw.and_then(crate::ui::parse_color);
+        let list_active = unclamped(colors.list_active.as_deref());
+        let selection = unclamped(colors.selection.as_deref());
+        if let Some(fill) = list_active {
             t.list_active = fill;
             t.tokens.list_active = fill.into();
+        }
+        if let Some(fill) = selection {
+            t.selection = fill;
+            t.tokens.selection = fill.into();
         }
     });
 }

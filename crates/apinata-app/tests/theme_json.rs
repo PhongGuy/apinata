@@ -14,8 +14,8 @@ const TOKENS: &[(&str, &str, &str)] = &[
     ("raised", "#23212C", "#FFFFFF"),
     ("hover", "#2A2834", "#ECE9F1"),
     ("selection", "#3B2A1F", "#FFE3CC"),
-    // The kit paints the input selection at most 30% over the field; see theme_contrast.
-    ("input_selection", "#FFFFFF", "#000000"),
+    // A translucent tint, so the selection follows each field fill under it.
+    ("input_selection", "#FFFFFF53", "#00000070"),
     ("selected", "#33303F", "#E2DEE9"),
     ("divider", "#2F2C3A", "#DEDAE5"),
     // Control outlines sit darker than dividers so unchecked boxes reach 3:1.
