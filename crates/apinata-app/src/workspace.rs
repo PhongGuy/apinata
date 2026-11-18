@@ -1786,6 +1786,22 @@ impl Workspace {
         })
     }
 
+    /// The collection folders that are gone but still hold stored secrets, with counts, off the
+    /// main thread.
+    pub fn gone_roots(
+        &self,
+        cx: &App,
+    ) -> Task<Result<Vec<crate::orphan_section::GoneRoot>, String>> {
+        let store = Arc::clone(&self.store);
+        cx.background_spawn(async move { crate::orphan_section::list_gone_roots(&*store) })
+    }
+
+    /// Forgets every secret stored under the gone folder `root`, off the main thread.
+    pub fn forget_gone_root(&self, root: PathBuf, cx: &App) -> Task<Result<(), String>> {
+        let store = Arc::clone(&self.store);
+        cx.background_spawn(async move { crate::orphan_section::forget_gone_root(&root, &*store) })
+    }
+
     /// Whether an edit from [`Self::edit_globals`] is queued or running.
     pub fn global_edits_pending(&self) -> bool {
         self.global_draining

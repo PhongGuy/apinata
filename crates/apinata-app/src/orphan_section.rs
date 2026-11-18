@@ -1,12 +1,14 @@
 //! The section both environment editors show under the variable table: stored secrets the
 //! environment's file no longer marks secret, then those of environments with no file at all,
-//! each with a Remove behind a confirmation. Only names appear here, never a value.
+//! each with a Remove behind a confirmation. The global editor also lists collection folders
+//! that are gone but still hold stored secrets, each with a count and a Forget. Only names and
+//! counts appear here, never a value.
 
 use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use apinata_core::{EnvVariable, OrphanReport, SecretError, SecretKey, SecretStore};
+use apinata_core::{EnvVariable, MovedRoot, OrphanReport, SecretError, SecretKey, SecretStore};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
@@ -292,6 +294,206 @@ pub fn fileless_section(
                 .child("These stored secrets belong to environments with no file here."),
         )
         .children(groups);
+    Some(section.into_any_element())
+}
+
+/// A collection folder that no longer exists but still has stored secrets.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct GoneRoot {
+    /// The folder as stored, which is untrusted text.
+    pub root: PathBuf,
+    /// How many secrets are stored under it.
+    pub secrets: usize,
+}
+
+impl GoneRoot {
+    /// A gone `root` holding `secrets` stored secrets.
+    pub fn new(root: PathBuf, secrets: usize) -> GoneRoot {
+        GoneRoot { root, secrets }
+    }
+}
+
+/// What the gone-folders part of the section has to say.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum GoneRoots {
+    /// Nothing listed yet.
+    #[default]
+    Unknown,
+    /// The roots as last listed, sorted by path.
+    Roots(Vec<GoneRoot>),
+    /// Why the list failed, which never reads as "none".
+    Failed(String),
+}
+
+/// Every collection folder `store` holds secrets under that is certainly gone, sorted, each with
+/// how many secrets it holds. Never reads a value.
+pub fn list_gone_roots(store: &dyn SecretStore) -> Result<Vec<GoneRoot>, String> {
+    let roots = MovedRoot::gone_roots(store).map_err(|e| e.to_string())?;
+    let mut listed = Vec::new();
+    for root in roots {
+        // A folder that came back since the first look is not gone, so it drops out.
+        let Ok(moved) = MovedRoot::new(root.as_path()) else {
+            continue;
+        };
+        let report = moved
+            .all_orphaned_secrets(&ListOnce::new(store))
+            .map_err(|e| e.to_string())?;
+        if !report.orphans.is_empty() {
+            listed.push(GoneRoot::new(root, report.orphans.len()));
+        }
+    }
+    Ok(listed)
+}
+
+/// Deletes every secret stored under the gone folder `root`, one environment at a time. Refused,
+/// deleting nothing more, once the folder exists again; a failed delete is reported after the
+/// rest have gone.
+pub fn forget_gone_root(root: &Path, store: &dyn SecretStore) -> Result<(), String> {
+    let text = |e: &dyn std::fmt::Display| e.to_string();
+    let moved = MovedRoot::new(root).map_err(|e| text(&e))?;
+    let report = moved
+        .all_orphaned_secrets(&ListOnce::new(store))
+        .map_err(|e| text(&e))?;
+    let mut warnings = Vec::new();
+    for group in fileless_groups(&report) {
+        let failed = moved
+            .remove_fileless_secrets(&group.environment, &group.variables, store)
+            .map_err(|e| text(&e))?;
+        warnings.extend(failed.iter().map(|w| text(w)));
+    }
+    match warnings.is_empty() {
+        true => Ok(()),
+        false => Err(warnings.join("; ")),
+    }
+}
+
+/// "1 stored secret" or "N stored secrets".
+pub fn secrets_count(n: usize) -> String {
+    match n {
+        1 => "1 stored secret".to_owned(),
+        n => format!("{n} stored secrets"),
+    }
+}
+
+/// The confirm step's detail for forgetting a gone folder's secrets.
+pub const GONE_ROOT_DETAIL: &str = "No folder exists at this path. Opening a moved collection from its new place does not bring these values along, so forget them once the collection is not coming back. They are deleted for good.";
+
+/// Asks to forget every secret stored under gone `root`, naming its path and count; on
+/// "Delete", `forget` gets the root.
+pub fn ask_forget_root<E: 'static>(
+    root: &GoneRoot,
+    window: &mut Window,
+    cx: &mut Context<E>,
+    forget: impl FnOnce(&mut E, PathBuf, &mut Context<E>) + 'static,
+) {
+    let title = format!(
+        "Forget {} of \"{}\"?",
+        secrets_count(root.secrets),
+        root.root.to_string_lossy()
+    );
+    let ask = crate::confirm::delete_ask(title, Some(GONE_ROOT_DETAIL));
+    let answer = crate::confirm::ask(ask, window, cx);
+    let path = root.root.clone();
+    cx.spawn(async move |this, cx| {
+        if answer.recv().await == Ok(1) {
+            this.update(cx, |e, cx| forget(e, path, cx)).ok();
+        }
+    })
+    .detach();
+}
+
+/// The gone-folders part, or nothing when there is nothing to say; `on_forget` gets the row's
+/// root. Ids: `env-gone-roots`, `env-gone-roots-hint`, `("env-gone-root-row", ix)`,
+/// `("env-gone-root-path", ix)`, `("env-gone-root-count", ix)`, `("env-gone-root-forget", ix)`,
+/// `env-gone-roots-failed`.
+pub fn gone_roots_section(
+    state: &GoneRoots,
+    follow: &FocusFollow,
+    on_forget: impl Fn(&GoneRoot, &mut Window, &mut App) + Clone + 'static,
+    cx: &App,
+) -> Option<AnyElement> {
+    let muted = cx.theme().muted_foreground;
+    let roots = match state {
+        GoneRoots::Unknown => return None,
+        GoneRoots::Roots(roots) if roots.is_empty() => return None,
+        GoneRoots::Roots(roots) => roots,
+        GoneRoots::Failed(message) => {
+            let message = ui::plain_quotes(message);
+            let line = format!(
+                "Could not check for stored secrets of collections no longer on disk: {message}."
+            );
+            let failed = div()
+                .id("env-gone-roots-failed")
+                .test_support()
+                .aria_label(line.clone())
+                .w_full()
+                .min_w_0()
+                .text_color(muted)
+                .child(line);
+            return Some(failed.into_any_element());
+        }
+    };
+    let rows = roots.iter().enumerate().map(|(ix, root)| {
+        let on_forget = on_forget.clone();
+        let clicked = root.clone();
+        let path = root.root.to_string_lossy().into_owned();
+        let count = secrets_count(root.secrets);
+        h_flex()
+            .id(("env-gone-root-row", ix))
+            .test_support()
+            .w_full()
+            .gap_2()
+            // The button leads, so a long path cannot push it out of the pane.
+            .child(Followed::new(
+                ("env-gone-root-forget-follow", ix),
+                follow,
+                Button::new(("env-gone-root-forget", ix))
+                    .solid_ring(cx)
+                    .ghost()
+                    .compact()
+                    .label("Forget")
+                    .accessibility_label(format!("Forget {count} of {path}"))
+                    .on_click(move |_, window, cx| on_forget(&clicked, window, cx)),
+            ))
+            .child(
+                div()
+                    .id(("env-gone-root-path", ix))
+                    .test_support()
+                    .aria_label(path.clone())
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .child(path),
+            )
+            .child(
+                div()
+                    .id(("env-gone-root-count", ix))
+                    .test_support()
+                    .aria_label(count.clone())
+                    .flex_none()
+                    .text_color(muted)
+                    .child(count),
+            )
+    });
+    let rows: Vec<_> = rows.collect();
+    let hint = "These collection folders no longer exist, but secrets stored for them remain. \
+                Forgetting them is safe once the collection is not coming back.";
+    let section = v_flex()
+        .id("env-gone-roots")
+        .test_support()
+        .w_full()
+        .gap_1()
+        .child(div().child("Collections no longer on disk"))
+        .child(
+            div()
+                .id("env-gone-roots-hint")
+                .test_support()
+                .aria_label(hint)
+                .text_color(muted)
+                .child(hint),
+        )
+        .children(rows);
     Some(section.into_any_element())
 }
 

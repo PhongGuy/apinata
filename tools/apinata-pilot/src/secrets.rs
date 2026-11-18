@@ -128,6 +128,18 @@ impl SecretStore for FileSecrets {
         let keys = entries.keys().filter(|k| k.collection == collection);
         Ok(keys.cloned().collect())
     }
+
+    // Per-install keys have an empty collection and name no folder.
+    fn list_roots(&self) -> Result<Vec<PathBuf>, SecretError> {
+        let entries = self.entries();
+        let mut roots: Vec<PathBuf> = (entries.keys())
+            .filter(|k| !k.collection.as_os_str().is_empty())
+            .map(|k| k.collection.clone())
+            .collect();
+        roots.sort();
+        roots.dedup();
+        Ok(roots)
+    }
 }
 
 /// Shows how many values the store holds, never the values.
@@ -151,5 +163,17 @@ mod tests {
         store.set(&SecretKey::new("/b", "dev", "y"), "2").unwrap();
         let got = store.list(Path::new("/a")).unwrap();
         assert_eq!(got, [SecretKey::new("/a", "dev", "x")]);
+    }
+
+    #[test]
+    fn list_roots_names_each_collection_once_without_per_install_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileSecrets::open(dir.path(), false).unwrap();
+        store.set(&SecretKey::new("/b", "dev", "x"), "1").unwrap();
+        store.set(&SecretKey::new("/a", "dev", "y"), "2").unwrap();
+        store.set(&SecretKey::new("/a", "prod", "y"), "3").unwrap();
+        store.set(&SecretKey::new("", "", "k"), "4").unwrap();
+        let roots = store.list_roots().unwrap();
+        assert_eq!(roots, [PathBuf::from("/a"), PathBuf::from("/b")]);
     }
 }

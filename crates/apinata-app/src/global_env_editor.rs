@@ -5,7 +5,7 @@
 //! reads the workspace's published snapshot and its last error.
 
 use crate::ui::SolidRing as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use apinata_core::EnvVariable;
 use gpui_kit::assets::IconName;
@@ -29,7 +29,7 @@ use crate::env_table::{
     secrets_collide,
 };
 use crate::import_report::failure_text;
-use crate::orphan_section::{self, Fileless, Orphans};
+use crate::orphan_section::{self, Fileless, GoneRoots, Orphans};
 use crate::scroll_follow::{FocusFollow, Followed};
 use crate::secret_lock::{self, LockStep};
 use crate::style;
@@ -74,6 +74,10 @@ pub struct GlobalEnvEditor {
     fileless: Fileless,
     /// The number of the newest fileless list sent; an older answer arriving late is dropped.
     fileless_asked: u64,
+    /// Collection folders that no longer exist but still hold stored secrets.
+    gone_roots: GoneRoots,
+    /// The number of the newest gone-folder list sent.
+    gone_asked: u64,
     // Set while a lock or Save check is reading the store or asking; a further one is dropped,
     // and a blur stores nothing, since a dialog taking focus must not commit the typing.
     checking: bool,
@@ -158,6 +162,8 @@ impl GlobalEnvEditor {
             orphans: Orphans::default(),
             fileless: Fileless::default(),
             fileless_asked: 0,
+            gone_roots: GoneRoots::default(),
+            gone_asked: 0,
             checking: false,
             name_input,
             naming: None,
@@ -223,9 +229,10 @@ impl GlobalEnvEditor {
     }
 
     /// Lists the selected environment's orphans, and with them the stored secrets of global
-    /// environments with no file, off the main thread; an orphan answer for an environment no
-    /// longer selected is dropped.
+    /// environments with no file and of gone collection folders, off the main thread; an orphan
+    /// answer for an environment no longer selected is dropped.
     pub fn list_orphans(&mut self, cx: &mut Context<Self>) {
+        self.list_gone_roots(cx);
         let env = self.selected.clone();
         let listing = (self.workspace.read(cx)).global_secrets_to_tidy(env.as_deref(), cx);
         self.fileless_asked += 1;
@@ -246,6 +253,56 @@ impl GlobalEnvEditor {
             .ok();
         })
         .detach();
+    }
+
+    // Lists the gone collection folders, an older answer arriving late being dropped.
+    fn list_gone_roots(&mut self, cx: &mut Context<Self>) {
+        let listing = self.workspace.read(cx).gone_roots(cx);
+        self.gone_asked += 1;
+        let asked = self.gone_asked;
+        cx.spawn(async move |this, cx| {
+            let answer = listing.await;
+            this.update(cx, |e, cx| {
+                if e.gone_asked == asked {
+                    e.gone_roots = answer.map_or_else(GoneRoots::Failed, GoneRoots::Roots);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Asks to forget every secret stored under the gone folder `root`; forgets on "Delete".
+    pub fn ask_forget_root(
+        &mut self,
+        root: &orphan_section::GoneRoot,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        orphan_section::ask_forget_root(root, window, cx, Self::forget_root);
+    }
+
+    // A failure, such as the folder having come back, shows as this editor's error.
+    fn forget_root(&mut self, root: PathBuf, cx: &mut Context<Self>) {
+        let forgetting = self.workspace.read(cx).forget_gone_root(root, cx);
+        cx.spawn(async move |this, cx| {
+            let outcome = forgetting.await;
+            this.update(cx, |e, cx| {
+                if let Err(message) = outcome {
+                    e.error = Some(message);
+                    cx.notify();
+                }
+                e.list_gone_roots(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The collection folders that are gone but still hold stored secrets, as last listed.
+    pub fn gone_roots(&self) -> &GoneRoots {
+        &self.gone_roots
     }
 
     /// The stored secrets of global environments with no file, as last listed.
@@ -1276,6 +1333,15 @@ impl Render for GlobalEnvEditor {
         };
         let fileless =
             orphan_section::fileless_section(&self.fileless, &self.follow, on_remove, cx);
+        let editor = cx.entity().downgrade();
+        let on_forget =
+            move |root: &orphan_section::GoneRoot, window: &mut Window, cx: &mut App| {
+                editor
+                    .update(cx, |e, cx| e.ask_forget_root(root, window, cx))
+                    .ok();
+            };
+        let gone =
+            orphan_section::gone_roots_section(&self.gone_roots, &self.follow, on_forget, cx);
         // Each header button reports to the follow, so Tab onto it scrolls it into view.
         let follow = self.follow.clone();
         let followed = move |id: &'static str, button: Button| Followed::new(id, &follow, button);
@@ -1368,6 +1434,7 @@ impl Render for GlobalEnvEditor {
                 .child(self.table.clone())
                 .children(orphans)
                 .children(fileless)
+                .children(gone)
                 .into_any_element()
         } else {
             // The message and its action hug their content as one group, centred in the pane
@@ -1428,6 +1495,7 @@ impl Render for GlobalEnvEditor {
                 .child(empty)
                 .children(orphans.map(|o| div().w_full().child(o)))
                 .children(fileless.map(|f| div().w_full().child(f)))
+                .children(gone.map(|g| div().w_full().child(g)))
                 .into_any_element()
         };
         // With nothing listed the list would be an empty strip, so the empty pane takes the
