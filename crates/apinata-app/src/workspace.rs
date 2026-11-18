@@ -2934,6 +2934,15 @@ impl Workspace {
         self.entry(root)?.team.as_ref()?.renames.clone()
     }
 
+    /// Test seam: sets the rename rows of `root`'s team without asking or settling, so a test
+    /// can reach states an ask cannot.
+    #[doc(hidden)]
+    pub fn set_team_renames(&mut self, root: &Path, rows: RenameRows) {
+        if let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) {
+            team.renames = Some(rows);
+        }
+    }
+
     /// Asks the actor which stored secrets the pending pull range of `root`'s team left under
     /// an old name. With no pending range the rows go; without git nothing is asked.
     pub fn ask_secret_renames(&mut self, root: &Path, cx: &mut Context<Self>) {
@@ -3054,8 +3063,9 @@ impl Workspace {
         .detach();
     }
 
-    /// Marks the row of `from` as typed again under `to` and opens `root`'s environments with
-    /// a new `to` row, as adding a variable does; the old key goes once that value is saved.
+    /// Opens `root`'s environments with a new `to` row, as adding a variable does, and then
+    /// marks the row of `from` as typed again under `to`; with no tab opened the row stays open.
+    /// The old key goes once that value is saved.
     pub fn reenter_secret(
         &mut self,
         root: &Path,
@@ -3069,16 +3079,18 @@ impl Workspace {
             add_var: to.variable.clone(),
             create: false,
         };
-        self.update_renames(&root, cx, |rows| rows.reenter(from, to));
         // Stored before the tab opens, so an open editor's observer sees it on the notify;
-        // dropped again when no tab opens, so a later reopen cannot apply it.
+        // dropped again when no tab opens, so a later reopen cannot apply it. The row is marked
+        // only once the tab is open, or it would hide with nowhere to type the value.
         self.env_intents.insert(root.clone(), intent);
         if self
             .open_settings(&root, TabKind::Environments, cx)
             .is_none()
         {
             self.env_intents.remove(&root);
+            return;
         }
+        self.update_renames(&root, cx, |rows| rows.reenter(from, to));
     }
 
     /// Leaves the stored secret of `from` where it is and closes its row.

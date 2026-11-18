@@ -2588,7 +2588,8 @@ impl Shell {
                 let status = workspace.team_status(root)?;
                 let read_only = workspace.is_team_read_only(root);
                 let clashes = workspace.team_clashes(root).len();
-                let (kind, text) = team_text::sync_status(&status, read_only, clashes);
+                let renames = (workspace.team_renames(root)).map_or(0, |r| r.open_rows().len());
+                let (kind, text) = team_text::sync_status(&status, read_only, clashes, renames);
                 Some((ix, root.to_path_buf(), kind, text))
             })
             .collect()

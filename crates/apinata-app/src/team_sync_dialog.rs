@@ -1,20 +1,24 @@
 //! The team sync dialog: what stands in the way of a team collection's sync, line by line, with
-//! the action that clears it, then one row per clash with its answers. It keeps no state of its
-//! own; it renders the workspace's live status and redraws whenever the workspace notifies.
+//! the action that clears it, then one row per clash with its answers, then one row per stored
+//! secret a pulled rename left behind. It keeps no state of its own; it renders the workspace's
+//! live status and redraws whenever the workspace notifies.
 
 use std::path::{Path, PathBuf};
 
 use apinata_core::team::{Block, ConflictCopies, TeamState, TeamStore, TeamSync};
+use apinata_core::{SecretName, SecretRename, TargetState};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, App, Entity, Global, Subscription, TestSupportExt, WeakEntity, Window, div,
+    AnyElement, App, Entity, Global, SharedString, Subscription, TestSupportExt, WeakEntity,
+    Window, div,
 };
 
 use crate::app::AppState;
 use crate::style::{SPACE_2, TEXT_SMALL};
+use crate::team_renames::row_text;
 use crate::team_text::problem_lines;
 use crate::ui::dialog_footer;
 use crate::workspace::{Clash, ClashAnswer, ClashKind, Workspace};
@@ -91,6 +95,18 @@ impl SyncView {
         let workspace = self.workspace.read(cx);
         (workspace.team_status(&self.root))
             .map(|status| problem_lines(&status, workspace.team_clashes(&self.root).len()))
+            .unwrap_or_default()
+    }
+
+    /// The text of each open secret rename row, in order.
+    pub fn rename_lines(&self, cx: &App) -> Vec<String> {
+        (self.workspace.read(cx).team_renames(&self.root))
+            .map(|rows| {
+                rows.open_rows()
+                    .into_iter()
+                    .map(|r| row_text(r, 0))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -185,6 +201,89 @@ impl SyncView {
             .into_any_element()
     }
 
+    // One rename row: its text, any note, then its answers. A single free or same target moves
+    // or is typed again; several targets each get their own Move; a row with nothing it may
+    // move to is only dismissed, so a different stored value is never overwritten.
+    fn rename_row(
+        &self,
+        ix: usize,
+        row: &SecretRename,
+        error: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let movable: Vec<(usize, &SecretName)> = (row.to.iter().enumerate())
+            .filter(|(_, (_, state))| matches!(state, TargetState::Free | TargetState::Same))
+            .map(|(c, (to, _))| (c, to))
+            .collect();
+        let move_to =
+            |id: gpui_kit::ElementId, label: String, to: &SecretName, cx: &mut Context<Self>| {
+                let moves = vec![(row.from.clone(), to.clone())];
+                Button::new(id)
+                    .label(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let (workspace, root) = (this.workspace.clone(), this.root.clone());
+                        workspace
+                            .update(cx, |w, cx| w.move_secret_renames(&root, moves.clone(), cx));
+                    }))
+            };
+        let mut buttons = Vec::new();
+        match (row.to.len(), movable.as_slice()) {
+            (_, []) => {
+                let from = row.from.clone();
+                buttons.push(
+                    Button::new(("team-rename-dismiss", ix))
+                        .label("Dismiss")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let (workspace, root) = (this.workspace.clone(), this.root.clone());
+                            workspace.update(cx, |w, cx| w.dismiss_secret_rename(&root, &from, cx));
+                        })),
+                );
+            }
+            (1, [(_, to)]) => {
+                buttons.push(move_to(
+                    ("team-rename-move", ix).into(),
+                    "Move".into(),
+                    to,
+                    cx,
+                ));
+                let (from, to) = (row.from.clone(), (*to).clone());
+                buttons.push(
+                    Button::new(("team-rename-enter", ix))
+                        .label("Enter again")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let (workspace, root) = (this.workspace.clone(), this.root.clone());
+                            let (from, to) = (from.clone(), to.clone());
+                            workspace.update(cx, |w, cx| w.reenter_secret(&root, from, to, cx));
+                        })),
+                );
+            }
+            (_, candidates) => {
+                for &(c, to) in candidates {
+                    let id = SharedString::from(format!("team-rename-pick-{ix}-{c}"));
+                    let label = format!("Move to {} / {}", to.environment, to.variable);
+                    buttons.push(move_to(id.into(), label, to, cx));
+                }
+            }
+        }
+        let note = match error {
+            Some(error) => Some(format!("Could not move it: {error}")),
+            None => movable
+                .is_empty()
+                .then(|| "a different value is already stored".to_owned()),
+        };
+        let text = row_text(row, 0);
+        h_flex()
+            .id(("team-rename", ix))
+            .test_support()
+            .aria_label(text.clone())
+            .gap(SPACE_2)
+            .child(v_flex().flex_1().min_w_0().child(text).children(
+                note.map(|note| div().text_color(cx.theme().muted_foreground).child(note)),
+            ))
+            .children(buttons)
+            .into_any_element()
+    }
+
     // Runs `act` on the collection's sync loop, if it still has one.
     fn with_sync(&self, cx: &App, act: impl FnOnce(&TeamSync)) {
         if let Some(sync) = self.workspace.read(cx).team_sync(&self.root) {
@@ -245,16 +344,42 @@ impl Render for SyncView {
         let clashes: Vec<_> = (clashes.into_iter().enumerate())
             .map(|(ix, clash)| self.clash_row(ix, clash, read_only, cx))
             .collect();
+        let rows = self.workspace.read(cx).team_renames(&self.root);
+        let renames: Vec<_> = (rows.iter())
+            .flat_map(|rows| rows.open_rows().into_iter().enumerate())
+            .map(|(ix, row)| {
+                let error = rows.as_ref().and_then(|r| r.error(&row.from));
+                self.rename_row(ix, row, error, cx)
+            })
+            .collect();
+        // A failed ask says so in one muted line, so it never reads as nothing to move.
+        let failed = (rows.as_ref().and_then(|r| r.failed())).map(|why| {
+            div()
+                .id("team-rename-failed")
+                .test_support()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("Could not check for secrets to move: {why}"))
+        });
+        let sure = rows.as_ref().map_or(Vec::new(), |r| r.movable_sure());
+        let move_all = (sure.len() >= 2).then(|| {
+            Button::new("team-rename-move-all")
+                .label("Move all")
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let (workspace, root) = (this.workspace.clone(), this.root.clone());
+                    workspace.update(cx, |w, cx| w.move_secret_renames(&root, sure.clone(), cx));
+                }))
+        });
         // Long output and many clashes scroll inside the lines, so the footer with its fix stays
         // in the window.
         let cap = crate::dialog_frame::titled_body_room(window) * OUTPUT_SHARE;
         let close = Button::new("team-sync-close")
             .label("Close")
             .on_click(|_, window, cx| window.close_dialog(cx));
-        // The fix is the primary button when there is one; otherwise Close is.
-        let footer = match retry.or(discard).or(sign_in) {
-            Some(fix) => dialog_footer(Some(close), [], fix.primary()),
-            None => dialog_footer(None, [], close.primary()),
+        // The fix is the primary button when there is one, then Move all; otherwise Close is.
+        let footer = match (retry.or(discard).or(sign_in), move_all) {
+            (Some(fix), move_all) => dialog_footer(Some(close), move_all, fix.primary()),
+            (None, Some(move_all)) => dialog_footer(Some(close), [], move_all.primary()),
+            (None, None) => dialog_footer(None, [], close.primary()),
         };
         v_flex()
             .id("team-sync-dialog")
@@ -268,7 +393,9 @@ impl Render for SyncView {
                     .max_h(cap)
                     .overflow_y_scroll()
                     .children(lines)
-                    .children(clashes),
+                    .children(clashes)
+                    .children(renames)
+                    .children(failed),
             )
             .child(footer)
     }

@@ -220,8 +220,13 @@ pub enum SyncKind {
 }
 
 /// The status-bar kind and text for a team collection. A block wins, then a paused
-/// read-only folder, then unsettled clashes, then the loop's state.
-pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (SyncKind, String) {
+/// read-only folder, then unsettled clashes and secrets to move, then the loop's state.
+pub fn sync_status(
+    status: &TeamStatus,
+    read_only: bool,
+    clashes: usize,
+    renames: usize,
+) -> (SyncKind, String) {
     let problem = |text: &str| (SyncKind::Problem, format!("problem: {text}"));
     match &status.state {
         TeamState::Blocked(block) => problem(match block {
@@ -234,8 +239,19 @@ pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (Syn
             _ => "sync stopped",
         }),
         TeamState::ReadOnly { paused: true } => problem("outside edits"),
-        _ if clashes == 1 => problem("1 clash to settle"),
-        _ if clashes > 1 => problem(&format!("{clashes} clashes to settle")),
+        _ if clashes > 0 || renames > 0 => {
+            let counted = |n: usize, one: &str, many: &str, rest: &str| {
+                (n > 0).then(|| format!("{n} {} {rest}", if n == 1 { one } else { many }))
+            };
+            let parts: Vec<String> = [
+                counted(clashes, "clash", "clashes", "to settle"),
+                counted(renames, "secret", "secrets", "to move"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            problem(&parts.join(", "))
+        }
         TeamState::Offline if status.unpushed > 0 => (
             SyncKind::Offline,
             format!("offline, {} unpushed", status.unpushed),
