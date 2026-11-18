@@ -2,13 +2,17 @@
 //! referenced from the collection file as `{{process.env.NAME}}`.
 
 use crate::command::Edit;
-use apinata_core::{Collection, CollectionNetwork, CollectionProxy, dotenv_quotable};
+use apinata_core::{
+    Collection, CollectionNetwork, CollectionProxy, DotenvMoves as Moves, dotenv_quotable,
+};
 use std::collections::BTreeSet;
-use std::path::Path;
-use std::process::{Command, Stdio};
 
-/// The base `.env` name of the collection's proxy password.
-pub const PROXY_PASSWORD: &str = "APINATA_PROXY_PASSWORD";
+// The naming rule lives in core, so the CLI names a moved secret exactly as the app does.
+pub use apinata_core::{
+    PROXY_PASSWORD_DOTENV as PROXY_PASSWORD, dotenv_reference_name as env_name,
+    dotenv_tracked_by_git as git_tracks_dotenv, free_dotenv_name as dotenv_name, is_template,
+    passphrase_dotenv_base as passphrase_base,
+};
 /// The refusal when git tracks `.env`.
 pub const TRACKED: &str = ".env is tracked by git, so nothing was saved; untrack .env first";
 /// The warning when `.env` was added to `.gitignore`.
@@ -38,7 +42,6 @@ pub fn apply(
         .map_err(|e| format!("Could not read .env: {e}"))?;
     taken.extend(held.iter().cloned());
     let all = matches!(edit, Edit::MoveNetworkSecrets);
-    let mut moves = Moves::new(literals(&current), all, taken, BTreeSet::new());
 
     // Plan every move against the edited values first, so a refusal writes nothing.
     let (mut proxy, mut certificates) = match edit {
@@ -53,12 +56,13 @@ pub fn apply(
     // The values the file will hold after the edit: the edited part, the rest unchanged.
     let kept_proxy = proxy.as_ref().unwrap_or(&current.proxy);
     let kept_certs = certificates.as_deref().unwrap_or(&current.certificates);
-    moves.referenced = std::iter::once(proxy_password(kept_proxy))
+    let referenced: BTreeSet<String> = std::iter::once(proxy_password(kept_proxy))
         .chain(kept_certs.iter().map(|c| c.passphrase.as_str()))
         .filter_map(env_name)
         .map(str::to_owned)
         .collect();
-    moves.taken.extend(moves.referenced.iter().cloned());
+    taken.extend(referenced.iter().cloned());
+    let mut moves = Moves::new(literals(&current), all, taken, referenced);
     if let Some(CollectionProxy::Custom(p)) = &mut proxy
         && let Some(auth) = &mut p.auth
     {
@@ -77,17 +81,17 @@ pub fn apply(
     }
 
     // Only a move touches `.env`; a "Move to .env" with nothing to move leaves the draft alone.
-    if moves.planned.is_empty() && moves.all {
+    if moves.planned().is_empty() && all {
         return Ok(Vec::new());
     }
-    check(c, &moves.planned)?;
+    check(c, moves.planned())?;
     if let Some(proxy) = &proxy {
         c.file_mut().set_proxy(proxy);
     }
     if let Some(certificates) = &certificates {
         c.file_mut().set_client_certificates(certificates);
     }
-    Ok(moves.planned)
+    Ok(moves.into_planned())
 }
 
 /// Refuses `planned` moves that `.env` could not take: a value that cannot be quoted, or a
@@ -129,54 +133,6 @@ pub(crate) fn write(
     Ok(warnings)
 }
 
-/// The secrets an edit moves to `.env`, as (name, value), with the names already in use.
-pub(crate) struct Moves {
-    /// Literal secrets already in the collection file, which stay unless `all`.
-    known: BTreeSet<String>,
-    all: bool,
-    taken: BTreeSet<String>,
-    /// Names the edited values still refer to, which a moved value must not take over.
-    referenced: BTreeSet<String>,
-    pub(crate) planned: Vec<(String, String)>,
-}
-
-impl Moves {
-    /// No moves yet. `known` literals stay unless `all`; `taken` names are never chosen, and
-    /// `referenced` names, which edited values still use, are never reused for a field.
-    pub(crate) fn new(
-        known: BTreeSet<String>,
-        all: bool,
-        taken: BTreeSet<String>,
-        referenced: BTreeSet<String>,
-    ) -> Moves {
-        Moves {
-            known,
-            all,
-            taken,
-            referenced,
-            planned: Vec::new(),
-        }
-    }
-
-    /// Replace a literal `value` with a `.env` reference when it moves: under the name the
-    /// field's `previous` value referred to while no edited value still does, else the first
-    /// free name from `base`.
-    pub(crate) fn plan(&mut self, value: &mut String, previous: &str, base: &str) {
-        let literal = !value.is_empty() && !is_template(value);
-        if !literal || (!self.all && self.known.contains(value.as_str())) {
-            return;
-        }
-        let name = match env_name(previous) {
-            Some(name) if !self.referenced.contains(name) => name.to_owned(),
-            _ => dotenv_name(base, &self.taken),
-        };
-        self.taken.insert(name.clone());
-        let reference = format!("{{{{process.env.{name}}}}}");
-        self.planned
-            .push((name, std::mem::replace(value, reference)));
-    }
-}
-
 /// The literal passwords and passphrases in `network`.
 fn literals(network: &CollectionNetwork) -> BTreeSet<String> {
     let proxy = std::iter::once(proxy_password(&network.proxy));
@@ -194,25 +150,6 @@ fn proxy_password(proxy: &CollectionProxy) -> &str {
         CollectionProxy::Custom(p) => p.auth.as_ref().map_or("", |a| a.password.as_str()),
         _ => "",
     }
-}
-
-/// Whether `value` holds a `{{...}}` reference, so it is written as is rather than moved to
-/// `.env`. A stray `{{` with no `}}` after it is a literal secret.
-pub fn is_template(value: &str) -> bool {
-    value
-        .find("{{")
-        .is_some_and(|open| value[open + 2..].contains("}}"))
-}
-
-/// The `.env` name a value refers to when it is exactly `{{process.env.NAME}}` and NAME is
-/// a portable environment variable name: a letter or `_`, then letters, digits or `_`.
-pub fn env_name(value: &str) -> Option<&str> {
-    let name = value.strip_prefix("{{process.env.")?.strip_suffix("}}")?;
-    let mut chars = name.chars();
-    let first = chars.next()?;
-    let portable = (first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
-    portable.then_some(name)
 }
 
 /// The `.env` names the secrets of `target`'s draft refer to: its OAuth 2.0 client secret
@@ -237,24 +174,6 @@ pub(crate) fn referenced_names(
         .collect()
 }
 
-/// The base `.env` name for the passphrase of certificate row `row`, counted from zero.
-pub fn passphrase_base(row: usize) -> String {
-    format!("APINATA_CERT_PASSPHRASE_{}", row + 1)
-}
-
-/// `base` when it is free, else the first of `base_2`, `base_3`, ... not in `taken`.
-// The candidate sequence never ends, so `find` returns only once a name is free.
-#[allow(clippy::expect_used)]
-pub fn dotenv_name(base: &str, taken: &BTreeSet<String>) -> String {
-    if !taken.contains(base) {
-        return base.to_owned();
-    }
-    (2..)
-        .map(|n| format!("{base}_{n}"))
-        .find(|name| !taken.contains(name))
-        .expect("an unbounded range finds a free name")
-}
-
 /// Whether the network settings hold a literal secret: a non-empty proxy password or
 /// passphrase that is not a template.
 pub fn plain_secrets(network: &CollectionNetwork) -> bool {
@@ -264,23 +183,4 @@ pub fn plain_secrets(network: &CollectionNetwork) -> bool {
         _ => false,
     };
     proxy || network.certificates.iter().any(|c| plain(&c.passphrase))
-}
-
-/// Whether git tracks `<root>/.env`. The variables a git hook may set are removed so the
-/// check always asks the repository around `root`; any failure to ask reads as untracked.
-pub fn git_tracks_dotenv(root: &Path) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["ls-files", "--error-unmatch", "--", ".env"])
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .env_remove("GIT_COMMON_DIR")
-        .env_remove("GIT_OBJECT_DIRECTORY")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
 }

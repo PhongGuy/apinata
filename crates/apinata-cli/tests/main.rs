@@ -74,6 +74,7 @@ mod cli_mock;
 mod cli_network;
 mod cli_network_hosts;
 mod cli_network_notice;
+mod cli_network_proxy;
 mod cli_oauth1;
 mod cli_oauth2;
 mod cli_oauth2_tokens;
