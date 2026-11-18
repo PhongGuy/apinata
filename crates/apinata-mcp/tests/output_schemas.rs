@@ -444,6 +444,18 @@ async fn every_tool_result_matches_its_output_schema() {
         json!({"path": "r.yml", "name": "one"}),
     )
     .await;
+    ex.run(
+        &server,
+        "rename_example",
+        json!({"path": "r.yml", "example": "one", "name": "two"}),
+    )
+    .await;
+    ex.run(
+        &server,
+        "delete_example",
+        json!({"path": "r.yml", "example": "two"}),
+    )
+    .await;
     ex.run(&server, "export_har", json!({"path": "r.yml"}))
         .await;
     ex.run(&server, "export_openapi", json!({})).await;

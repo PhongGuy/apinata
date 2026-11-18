@@ -19,14 +19,14 @@ fn request(url: &str) -> String {
 }
 
 /// A spawned `apinata mock` that is killed through its own child handle when dropped.
-struct Mock {
+pub(crate) struct Mock {
     child: Child,
     addr: SocketAddr,
     out: BufReader<std::process::ChildStdout>,
 }
 
 impl Mock {
-    fn start(args: &[&str]) -> Mock {
+    pub(crate) fn start(args: &[&str]) -> Mock {
         let mut child = common::apinata_std()
             .arg("mock")
             .args(args)
@@ -46,7 +46,7 @@ impl Mock {
             .expect("addr");
         Mock { child, addr, out }
     }
-    fn get(&self, path: &str) -> String {
+    pub(crate) fn get(&self, path: &str) -> String {
         let mut s = TcpStream::connect_timeout(&self.addr, Duration::from_secs(5)).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         write!(

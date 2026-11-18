@@ -444,3 +444,37 @@ fn right_and_left_on_a_request_row_show_and_hide_its_examples(cx: &mut TestAppCo
         "the request stays selected"
     );
 }
+
+#[gpui_kit::test]
+fn renaming_an_example_onto_a_taken_name_changes_nothing_and_shows_why(cx: &mut TestAppContext) {
+    use apinata_app::command::NoticeKind;
+    use apinata_app::workspace::WorkspaceEvent;
+    let h = open_sidebar_with(cx, files());
+    let failed = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen = failed.clone();
+    let _sub = cx.update(|cx| {
+        cx.subscribe(&h.ws, move |_, e: &WorkspaceEvent, _| {
+            if let WorkspaceEvent::Notices { notices, .. } = e {
+                for n in notices {
+                    if let NoticeKind::Failed { message, .. } = &n.kind {
+                        seen.borrow_mut().push(message.clone());
+                    }
+                }
+            }
+        })
+    });
+    expand(cx, &h);
+    choose_on(cx, &h, ex(1), MenuEntry::Rename);
+    cx.update_window(h.win, |_, w, cx| {
+        w.input("ok", cx);
+        w.press("enter", cx);
+    })
+    .unwrap();
+    wait_for(cx, "the refusal", |_| !failed.borrow().is_empty());
+    assert!(
+        failed.borrow()[0].contains("already has an example named `ok`"),
+        "{:?}",
+        failed.borrow()
+    );
+    assert_eq!(disk(&h), USERS, "both examples keep their names");
+}

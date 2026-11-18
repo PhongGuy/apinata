@@ -1,16 +1,20 @@
 //! `save_example`: the last response `send_request` got for a request, scrubbed of every
-//! secret known at send time, appended to the request file's examples.
+//! secret known at send time, appended to the request file's examples; `rename_example` and
+//! `delete_example` edit saved ones by name.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use apinata_core::export::{har, sent_exchange};
-use apinata_core::{Collection, ExampleResponse, ItemPath, NamedSecret, Response, TreeError};
+use apinata_core::{
+    Collection, ExampleResponse, ItemPath, NamedSecret, Response, TreeError, item_ops,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::send::{DEFAULT_BODY_BYTES, MAX_BODY_BYTES};
+use crate::writes::{Failure, write_retrying};
 
 /// What one completed send left to save: the response as received and the secrets the request
 /// knew then, or why they could not be found.
@@ -94,6 +98,72 @@ pub(crate) fn save(
         .add_example(path, &name, description, example)
         .map_err(|e| e.to_string())?;
     Ok((index, name))
+}
+
+/// `rename_example`'s arguments.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenameExampleArgs {
+    /// Collection-relative path of the request, such as `users/get.yml`.
+    pub path: String,
+    /// The example's current name.
+    pub example: String,
+    /// The new name; it must not be blank or taken by another example of the request.
+    pub name: String,
+}
+
+/// What `rename_example` reports.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct RenamedExample {
+    pub path: String,
+    /// The name as saved, trimmed.
+    pub name: String,
+}
+
+/// `delete_example`'s arguments.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeleteExampleArgs {
+    /// Collection-relative path of the request, such as `users/get.yml`.
+    pub path: String,
+    /// The example's name.
+    pub example: String,
+}
+
+/// What `delete_example` reports.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct DeletedExample {
+    pub path: String,
+    /// The removed example's name.
+    pub removed: String,
+}
+
+/// Rename the example through core, which refuses an unknown, taken or ambiguous name.
+pub(crate) fn rename(
+    c: &mut Collection,
+    args: RenameExampleArgs,
+) -> Result<RenamedExample, String> {
+    let name = write_retrying(c, |c| {
+        item_ops::rename_example(c, &args.path, &args.example, &args.name).map_err(Failure::item)
+    })?;
+    Ok(RenamedExample {
+        path: args.path,
+        name,
+    })
+}
+
+/// Remove the example through core, which refuses an unknown or ambiguous name.
+pub(crate) fn delete(
+    c: &mut Collection,
+    args: DeleteExampleArgs,
+) -> Result<DeletedExample, String> {
+    let removed = write_retrying(c, |c| {
+        item_ops::delete_example(c, &args.path, &args.example).map_err(Failure::item)
+    })?;
+    Ok(DeletedExample {
+        path: args.path,
+        removed,
+    })
 }
 
 /// `export_har`'s arguments.

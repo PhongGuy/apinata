@@ -222,7 +222,8 @@ enum Command {
         or a folder updated or left unchanged\n  \
         3  usage or collection error, an unknown path, an invalid name, \
         a move that is not allowed, no trash to remove into, a broken folder.yml, \
-        an unknown header or variable to unset, or a refused edit")]
+        an unknown header or variable to unset, an unknown, taken or ambiguous example name, \
+        or a refused edit")]
     Item(ItemArgs),
 }
 
@@ -555,6 +556,24 @@ pub enum ItemAction {
         /// the record.
         #[arg(long, value_name = "ID", requires = "pruned")]
         batch: Option<String>,
+    },
+    /// Rename a request's saved example, found by its name. Refused when another example
+    /// has the new name, or more than one has the old.
+    RenameExample {
+        /// The request.
+        path: String,
+        /// The example's current name.
+        example: String,
+        /// The new name.
+        name: String,
+    },
+    /// Remove a request's saved example, found by its name, so `apinata mock` no longer
+    /// serves it. Refused when more than one example has that name.
+    RmExample {
+        /// The request.
+        path: String,
+        /// The example's name.
+        example: String,
     },
     /// Remove the username and password from the URLs saved examples recorded. The requests'
     /// own URLs are left as they are. Lists what would change unless --write is given.

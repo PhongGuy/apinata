@@ -37,8 +37,8 @@ use crate::cookies::{self, ClearArgs, Cleared, CookieList};
 use crate::dto::{ConfigDoc, EnvironmentDoc, RequestDoc};
 use crate::envs::{self, DeletedEnv, EnvNameResult, GlobalNames, RenameEnvArgs, UpdateEnvArgs};
 use crate::examples::{
-    self, ExportHarArgs, ExportedHar, LastSend, LastSends, SaveExampleArgs, SavedExample,
-    ScrubArgs, ScrubbedUserinfo,
+    self, DeleteExampleArgs, DeletedExample, ExportHarArgs, ExportedHar, LastSend, LastSends,
+    RenameExampleArgs, RenamedExample, SaveExampleArgs, SavedExample, ScrubArgs, ScrubbedUserinfo,
 };
 use crate::export::{self, ExportDoc, ExportOpenapiArgs, ExportPostmanArgs};
 use crate::generate::{self, GenerateArgs, GeneratedCode};
@@ -122,6 +122,8 @@ const WRITES_FILES: &[&str] = &[
     "delete_environment",
     "update_environment",
     "save_example",
+    "rename_example",
+    "delete_example",
     "scrub_example_userinfo",
 ];
 
@@ -1574,6 +1576,34 @@ impl ApinataServer {
             }))
         })
         .await
+    }
+
+    #[tool(
+        description = "Rename the saved example named `example` of the request at `path` to \
+                       `name`, both trimmed. Errors when no example or more than one has that \
+                       name, or another example already has `name`.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn rename_example(
+        &self,
+        Parameters(args): Parameters<RenameExampleArgs>,
+    ) -> Result<Json<RenamedExample>, String> {
+        self.with_collection(move |c| examples::rename(c, args).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "Remove the saved example named `example` from the request at `path`, so \
+                       mock_start no longer serves it. The request file is git-tracked, so git \
+                       can bring it back. Errors when no example or more than one has that name.",
+        annotations(destructive_hint = true, open_world_hint = false)
+    )]
+    async fn delete_example(
+        &self,
+        Parameters(args): Parameters<DeleteExampleArgs>,
+    ) -> Result<Json<DeletedExample>, String> {
+        self.with_collection(move |c| examples::delete(c, args).map(Json))
+            .await
     }
 
     #[tool(

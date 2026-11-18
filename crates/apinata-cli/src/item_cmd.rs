@@ -62,6 +62,20 @@ struct ScrubChangeDoc<'a> {
     url: &'a str,
 }
 
+/// What `rename-example` left: the MCP tool's `RenamedExample`.
+#[derive(Serialize)]
+struct RenamedExampleDoc<'a> {
+    path: &'a str,
+    name: &'a str,
+}
+
+/// What `rm-example` removed: the MCP tool's `DeletedExample`.
+#[derive(Serialize)]
+struct RemovedExampleDoc<'a> {
+    path: &'a str,
+    removed: &'a str,
+}
+
 /// What `folder` did, by collection-relative paths.
 #[derive(Serialize)]
 struct FolderDoc<'a> {
@@ -142,6 +156,33 @@ fn go(args: &ItemArgs) -> anyhow::Result<()> {
             pruned: true,
             batch,
         } => return restore_pruned(&mut c, batch.as_deref(), json),
+        ItemAction::RenameExample {
+            path,
+            example,
+            name,
+        } => {
+            let name = item_ops::rename_example(&mut c, path, example, name)?;
+            if json {
+                let doc = RenamedExampleDoc { path, name: &name };
+                outln!("{}", serde_json::to_string(&doc)?);
+            } else {
+                outln!("renamed example {:?} of {path} to {name:?}", example.trim());
+            }
+            return Ok(());
+        }
+        ItemAction::RmExample { path, example } => {
+            let removed = item_ops::delete_example(&mut c, path, example)?;
+            if json {
+                let doc = RemovedExampleDoc {
+                    path,
+                    removed: &removed,
+                };
+                outln!("{}", serde_json::to_string(&doc)?);
+            } else {
+                outln!("removed example {removed:?} from {path}");
+            }
+            return Ok(());
+        }
         ItemAction::ScrubUserinfo { write } => return scrub_userinfo(&mut c, *write, json),
         ItemAction::Folder(args) => return update_folder(&mut c, args, json),
         ItemAction::Request(args) => return item_request::update_request(&mut c, args, json),

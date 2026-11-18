@@ -29,6 +29,7 @@ mod derived_credentials;
 mod empty_url;
 mod env_not_found;
 mod env_ops;
+mod example_edit;
 mod export_har;
 mod export_tools;
 mod generate_code;
