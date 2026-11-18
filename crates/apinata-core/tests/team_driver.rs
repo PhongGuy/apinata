@@ -4,14 +4,18 @@
 
 use crate::git_branch::cloned;
 use crate::git_support::{Sandbox, write};
+use crate::git_sync::rev;
+use crate::secret_renames::{env, env_with_host, names, row};
 use crate::team_auth::TOKEN;
+use crate::team_rebase::teammate;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use apinata_core::ConflictKind;
+use apinata_core::team::ConflictCopies;
 use apinata_core::team::{Block, Identity, Role, TeamAuth, TeamConfig, TeamState, TeamSync};
+use apinata_core::{Collection, ConflictKind, MemoryStore, PullRange, SecretStore};
 
 fn config(sb: &Sandbox, col: &Path, role: Role) -> TeamConfig {
     let copies = sb.path().join("copies").join(col.file_name().unwrap());
@@ -360,4 +364,120 @@ fn a_change_with_nothing_to_commit_does_not_push() {
     });
     let states = seen.lock().unwrap().clone();
     assert!(!states.contains(&TeamState::Pushing), "{states:?}");
+}
+
+#[test]
+fn unanswered_pulls_accumulate_into_one_pending_range() {
+    let sb = Sandbox::new();
+    let a = cloned(&sb);
+    let sync = start(config(&sb, &a, Role::Write));
+    wait("the start pull", || settled(&sync));
+    assert_eq!(
+        sync.pending_renames(),
+        None,
+        "a pull that moved nothing records no range"
+    );
+    let before = rev(&sb, &a, "HEAD");
+    let first_tip = teammate(&sb, &[("x.txt", Some("x\n"))]);
+    sync.remote_moved(None);
+    wait("the first pull", || {
+        rev(&sb, &a, "HEAD") == first_tip && settled(&sync)
+    });
+    let first = sync.pending_renames().expect("recorded");
+    assert_eq!(first, PullRange::new(before.clone(), first_tip));
+    let tip = teammate(&sb, &[("y.txt", Some("y\n"))]);
+    sync.remote_moved(None);
+    wait("the second pull", || {
+        rev(&sb, &a, "HEAD") == tip && settled(&sync)
+    });
+    let both = PullRange::new(before, tip);
+    assert_eq!(sync.pending_renames(), Some(both.clone()));
+    assert!(
+        !sync.renames_settled(&first),
+        "a stale range clears nothing"
+    );
+    assert_eq!(sync.pending_renames(), Some(both.clone()));
+    assert!(sync.renames_settled(&both));
+    assert_eq!(sync.pending_renames(), None);
+}
+
+#[test]
+fn a_rename_held_back_by_a_clash_survives_a_later_pull_and_is_offered_once_settled() {
+    let sb = Sandbox::new();
+    let a = cloned(&sb);
+    let (dev, qa) = (env("dev", &["token"]), env("qa", &["key"]));
+    teammate(
+        &sb,
+        &[
+            ("environments/dev.yml", Some(dev.as_str())),
+            ("environments/qa.yml", Some(qa.as_str())),
+        ],
+    );
+    sb.git(&a, &["pull", "-q", "--ff-only"]);
+    let cfg = config(&sb, &a, Role::Write);
+    let copies = ConflictCopies::new(cfg.copies().to_path_buf());
+    let sync = start(cfg);
+    wait("the start pull", || settled(&sync));
+    let c = Collection::open(&a).unwrap();
+    let store = MemoryStore::new();
+    store.set(&c.secret_key("dev", "token"), "t1").unwrap();
+    store.set(&c.secret_key("qa", "key"), "k1").unwrap();
+
+    // A local edit of dev clashes with the teammate's rename of it.
+    let theirs = env_with_host("staging", &["token"], "theirs");
+    teammate(
+        &sb,
+        &[
+            ("environments/dev.yml", None),
+            ("environments/staging.yml", Some(theirs.as_str())),
+        ],
+    );
+    write(
+        &a,
+        "environments/dev.yml",
+        &env_with_host("dev", &["token"], "mine"),
+    );
+    sync.changed();
+    let dev_copy = "environments/dev.yml".to_owned();
+    wait("the clash", || {
+        copies.list().unwrap().contains(&dev_copy) && settled(&sync)
+    });
+    let held_range = sync.pending_renames().expect("the clash pull left a range");
+    let c = Collection::open(&a).unwrap();
+    let held = c
+        .secret_renames(&held_range, Some(&copies), &store, &sb.options())
+        .unwrap();
+    assert_eq!((held.renames.len(), held.held_back), (0, 1));
+
+    // A later pull renames qa's variable while the clash is still open.
+    let renamed_qa = env("qa", &["qa_key"]);
+    let tip = teammate(&sb, &[("environments/qa.yml", Some(renamed_qa.as_str()))]);
+    sync.remote_moved(None);
+    wait("the second pull", || {
+        rev(&sb, &a, "HEAD") == tip && settled(&sync)
+    });
+    let merged = sync.pending_renames().expect("still pending");
+    assert_eq!(merged, PullRange::new(held_range.from.clone(), tip));
+    let c = Collection::open(&a).unwrap();
+    let still = c
+        .secret_renames(&merged, Some(&copies), &store, &sb.options())
+        .unwrap();
+    assert_eq!(names(&still), [row("qa/key", &["qa/qa_key"], false)]);
+    assert_eq!(still.held_back, 1);
+
+    copies.remove("environments/dev.yml").unwrap();
+    let all = c
+        .secret_renames(&merged, Some(&copies), &store, &sb.options())
+        .unwrap();
+    assert_eq!(all.held_back, 0);
+    assert_eq!(
+        names(&all)
+            .into_iter()
+            .map(|(f, t, _)| (f, t))
+            .collect::<Vec<_>>(),
+        [
+            ("dev/token".to_owned(), vec!["staging/token".to_owned()]),
+            ("qa/key".to_owned(), vec!["qa/qa_key".to_owned()]),
+        ]
+    );
 }

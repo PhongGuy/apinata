@@ -14,7 +14,7 @@ pub(crate) use diff::hunks_within;
 pub use diff::text_hunks;
 mod porcelain;
 mod renames;
-pub(crate) use renames::{EnvChanges, blob_at, env_changes};
+pub(crate) use renames::{EnvChanges, blob_at, env_changes, pre_sync_tip};
 mod rebase;
 pub(crate) use rebase::deleted_marks;
 pub use rebase::{ConflictKind, ConflictPath, RebasePulled, rebase_pull};

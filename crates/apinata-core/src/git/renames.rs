@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use super::rebase::PRE_SYNC;
+use super::sync::{SyncError, verify};
 use super::{GitError, GitOptions, run};
 
 /// The environment files a range touched, each by its file stem.
@@ -75,6 +77,11 @@ pub(crate) fn blob_at(
         opts,
     )?;
     Ok(out.status.success().then_some(out.stdout))
+}
+
+/// The tip the latest pull or squash started from, `None` before the first one.
+pub(crate) fn pre_sync_tip(root: &Path, opts: &GitOptions) -> Result<Option<String>, SyncError> {
+    verify(root, PRE_SYNC, opts)
 }
 
 /// Read `-z` name-status output: `R<score>\0old\0new\0` for a rename, `<letter>\0path\0` for

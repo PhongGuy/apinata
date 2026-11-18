@@ -2,15 +2,18 @@
 //! action's git calls to completion before reading the next, so git never runs twice at once.
 
 use std::collections::VecDeque;
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use crate::git::pre_sync_tip;
 use crate::{
-    CancelFlag, CommitError, ConflictPath, GitOptions, RebasePulled, SyncError, commit_all,
-    discard_changes, is_dirty, push, rebase_pull, redact_url, remote_tip, squash_unpushed,
-    tracking_tip, unpushed,
+    CancelFlag, CommitError, ConflictPath, GitOptions, PullRange, RebasePulled, SyncError,
+    commit_all, discard_changes, is_dirty, push, rebase_pull, redact_url, remote_tip,
+    squash_unpushed, tracking_tip, unpushed,
 };
 
 use super::{
@@ -143,6 +146,73 @@ fn lock(shared: &SharedState) -> MutexGuard<'_, Shared> {
     shared.0.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The pulls whose renamed secrets nobody has answered yet, kept as `<copies>.renames` so they
+/// outlive a restart. One lock, shared by the driver and the app side, covers every
+/// read-modify-write, so a pull landing during a clear is never lost.
+#[derive(Clone)]
+struct RangeFile {
+    path: PathBuf,
+    lock: Arc<Mutex<()>>,
+}
+
+impl RangeFile {
+    fn new(copies: &Path) -> RangeFile {
+        let mut name = copies.as_os_str().to_owned();
+        name.push(".renames");
+        RangeFile {
+            path: PathBuf::from(name),
+            lock: Arc::new(Mutex::new(())),
+        }
+    }
+
+    fn hold(&self) -> MutexGuard<'_, ()> {
+        self.lock.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The stored range; a missing or malformed file is none.
+    fn read(&self) -> Option<PullRange> {
+        let text = fs::read_to_string(&self.path).ok()?;
+        let mut lines = text.lines();
+        let (from, to) = (lines.next()?.trim(), lines.next()?.trim());
+        (!from.is_empty() && !to.is_empty() && lines.next().is_none())
+            .then(|| PullRange::new(from, to))
+    }
+
+    /// Extends the range to `to`, keeping its start, or starts it at `pre` when there is none.
+    /// A failed write is ignored: the orphaned values stay listed elsewhere.
+    fn record(&self, pre: Option<String>, to: &str) {
+        let _held = self.hold();
+        let Some(from) = self.read().map(|r| r.from).or(pre) else {
+            return;
+        };
+        let _ = self.write(&PullRange::new(from, to));
+    }
+
+    /// Written to a temporary file and renamed into place, so a crash never leaves one line.
+    fn write(&self, range: &PullRange) -> std::io::Result<()> {
+        let dir = self
+            .path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("the range file needs a parent folder"))?;
+        fs::create_dir_all(dir)?;
+        let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+        write!(tmp, "{}\n{}\n", range.from, range.to)?;
+        tmp.as_file().sync_all()?;
+        tmp.persist(&self.path).map_err(|e| e.error)?;
+        Ok(())
+    }
+
+    fn pending(&self) -> Option<PullRange> {
+        let _held = self.hold();
+        self.read()
+    }
+
+    fn settle(&self, range: &PullRange) -> bool {
+        let _held = self.hold();
+        self.read().as_ref() == Some(range) && fs::remove_file(&self.path).is_ok()
+    }
+}
+
 /// A running team sync loop. Dropping it stops the thread and cancels its git call in flight
 /// without waiting for it.
 #[non_exhaustive]
@@ -150,6 +220,7 @@ pub struct TeamSync {
     tx: Sender<Input>,
     shared: SharedState,
     cancel: CancelFlag,
+    ranges: RangeFile,
 }
 
 impl TeamSync {
@@ -171,10 +242,12 @@ impl TeamSync {
         ));
         let (tx, rx) = mpsc::channel();
         let cancel = CancelFlag::new();
+        let ranges = RangeFile::new(&config.copies);
         let sync = TeamSync {
             tx,
             shared: Arc::clone(&shared),
             cancel: cancel.clone(),
+            ranges: ranges.clone(),
         };
         // A machine at rest pulls on a remote move, which is how the start pull begins.
         sync.send(Input::Event(TeamEvent::RemoteMoved));
@@ -187,6 +260,7 @@ impl TeamSync {
             cancel,
             on_status,
             deadline: None,
+            ranges,
         };
         std::thread::spawn(move || driver.run(rx));
         sync
@@ -267,6 +341,16 @@ impl TeamSync {
         lock(&self.shared).status.clone()
     }
 
+    /// The range of pulls not yet answered: `<copies>.renames`, two lines `from`, `to`.
+    pub fn pending_renames(&self) -> Option<PullRange> {
+        self.ranges.pending()
+    }
+
+    /// Clears the pending range if it still equals `range`; whether it did.
+    pub fn renames_settled(&self, range: &PullRange) -> bool {
+        self.ranges.settle(range)
+    }
+
     fn event(&self, event: TeamEvent) {
         self.send(Input::Event(event));
     }
@@ -303,6 +387,7 @@ struct Driver {
     cancel: CancelFlag,
     on_status: Box<dyn Fn(&TeamStatus) + Send>,
     deadline: Option<Instant>,
+    ranges: RangeFile,
 }
 
 impl Driver {
@@ -464,8 +549,19 @@ impl Driver {
         }
     }
 
-    /// The event a pull or squash result stands for; it also records the pull's conflicts.
+    /// The event a pull or squash result stands for; it also records the pull's conflicts, and
+    /// widens the pending rename range when HEAD moved.
     fn pulled(&mut self, result: Result<RebasePulled, SyncError>) -> TeamEvent {
+        if let Ok(
+            RebasePulled::FastForwarded { to }
+            | RebasePulled::Rebased { to, .. }
+            | RebasePulled::Conflicted { to, .. },
+        ) = &result
+        {
+            // Git runs before the range lock is taken, never under it.
+            let pre = pre_sync_tip(&self.config.root, &self.opts).ok().flatten();
+            self.ranges.record(pre, to);
+        }
         let (paths, conflicted) = match result {
             Ok(RebasePulled::Conflicted { paths, .. }) => (paths, true),
             Ok(_) => (Vec::new(), false),
