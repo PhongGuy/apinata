@@ -1,11 +1,13 @@
 //! The `git_status` and `git_diff` tools, which pass core's git state and file diff through
-//! unchanged, and the local `git_commit` tool, so the agent sees the same JSON as `apinata git`.
+//! unchanged, the local `git_commit` tool, so the agent sees the same JSON as `apinata git`, and
+//! `list_secret_renames`, which names the stored secrets a pull left under an old name.
 
 use std::path::{Component, Path, PathBuf};
 
 use apinata_core::{
-    FileDiff, FileStatus, GitError, GitOptions, GitState, StageState, collection_status_with,
-    commit, file_diff_with, stage,
+    Collection, FileDiff, FileStatus, GitError, GitOptions, GitState, PullRange, RenameStatus,
+    SecretRename, SecretStore, StageState, TargetState, collection_status_with, commit,
+    file_diff_with, stage,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -187,5 +189,101 @@ fn plain(path: &str) -> PathBuf {
         PathBuf::from(".")
     } else {
         rebuilt
+    }
+}
+
+/// Arguments of `list_secret_renames`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SinceArgs {
+    /// The commit before the pull, such as the first id `apinata git pull` printed. Omit to
+    /// start at `ORIG_HEAD`, which a pull sets but a merge, rebase or reset also moves.
+    #[serde(default)]
+    since: Option<String>,
+}
+
+/// A secret's place in the store: an environment's file stem and a variable.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct SecretNameDoc {
+    environment: String,
+    variable: String,
+}
+
+/// One candidate new name and what the store holds there: `free`, `same` (the old value) or
+/// `taken` (a different value, never overwritten).
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct RenameTargetDoc {
+    environment: String,
+    variable: String,
+    state: &'static str,
+}
+
+/// One stored secret left under an old name.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct RenameDoc {
+    from: SecretNameDoc,
+    /// Candidate new names, most likely first.
+    to: Vec<RenameTargetDoc>,
+    /// `ready` (one sure new name, free or same), `ambiguous` (a person picks) or `taken`.
+    status: &'static str,
+}
+
+/// The renames between `from` and `to` that left a stored value under an old name.
+#[derive(Serialize, JsonSchema)]
+pub(crate) struct SecretRenamesDoc {
+    from: String,
+    to: String,
+    renames: Vec<RenameDoc>,
+}
+
+/// The pending renames of the collection `c` from `since` (or `ORIG_HEAD`) to `HEAD`, by name
+/// and status; values are compared in the store but never returned.
+pub(crate) fn secret_renames(
+    c: &Collection,
+    args: &SinceArgs,
+    store: &dyn SecretStore,
+    options: &GitOptions,
+) -> Result<SecretRenamesDoc, String> {
+    let rev = args.since.as_deref().unwrap_or("ORIG_HEAD");
+    let range = PullRange::to_head(c.root(), rev, options)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| match &args.since {
+            Some(rev) => format!("{rev} names no commit in the collection's repository"),
+            None => {
+                "no ORIG_HEAD to start from; pass `since`, the commit before the pull".to_owned()
+            }
+        })?;
+    let found = c
+        .secret_renames(&range, None, store, options)
+        .map_err(|e| e.to_string())?;
+    let renames = found.renames.iter().map(rename_doc).collect();
+    Ok(SecretRenamesDoc {
+        from: range.from,
+        to: range.to,
+        renames,
+    })
+}
+
+fn rename_doc(row: &SecretRename) -> RenameDoc {
+    let to = row.to.iter().map(|(name, state)| RenameTargetDoc {
+        environment: name.environment.clone(),
+        variable: name.variable.clone(),
+        state: match state {
+            TargetState::Free => "free",
+            TargetState::Same => "same",
+            _ => "taken",
+        },
+    });
+    RenameDoc {
+        from: SecretNameDoc {
+            environment: row.from.environment.clone(),
+            variable: row.from.variable.clone(),
+        },
+        to: to.collect(),
+        status: match row.status() {
+            RenameStatus::Ready => "ready",
+            RenameStatus::Taken => "taken",
+            _ => "ambiguous",
+        },
     }
 }

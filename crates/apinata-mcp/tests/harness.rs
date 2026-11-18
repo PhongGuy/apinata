@@ -74,6 +74,7 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "list_cookies",
             "list_items",
             "list_runtime_variables",
+            "list_secret_renames",
             "list_trusted_hosts",
             "mock_hits",
             "mock_start",

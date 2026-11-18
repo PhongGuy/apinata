@@ -42,7 +42,9 @@ use crate::examples::{
 };
 use crate::export::{self, ExportDoc, ExportOpenapiArgs, ExportPostmanArgs};
 use crate::generate::{self, GenerateArgs, GeneratedCode};
-use crate::git::{self, CommitArgs, CommitDoc, GitDiffDoc, GitStatusDoc};
+use crate::git::{
+    self, CommitArgs, CommitDoc, GitDiffDoc, GitStatusDoc, SecretRenamesDoc, SinceArgs,
+};
 use crate::graphql::{self, GraphqlSchemaArgs, GraphqlSchemaDoc};
 use crate::graphql_query::{
     self, GraphqlFormatArgs, GraphqlFormatDoc, GraphqlValidateArgs, GraphqlValidateDoc, Source,
@@ -1101,6 +1103,27 @@ impl ApinataServer {
         let options = self.options.git_options().clone();
         self.with_collection(move |collection| git::status(collection.root(), &options).map(Json))
             .await
+    }
+
+    #[tool(
+        description = "List the stored secrets that renames between `since` (default \
+                       ORIG_HEAD) and HEAD left under an old name: each old name, its candidate \
+                       new names with what the store holds there, and a status of `ready`, \
+                       `ambiguous` or `taken`. Names only; values are never returned. Moving \
+                       touches the keychain, so it is not a tool: the user runs `apinata env \
+                       renames --move` (or `--pick`) or moves them in the app.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_secret_renames(
+        &self,
+        Parameters(args): Parameters<SinceArgs>,
+    ) -> Result<Json<SecretRenamesDoc>, String> {
+        let options = self.options.git_options().clone();
+        let store = Arc::clone(&self.store);
+        self.with_collection(move |c| {
+            git::secret_renames(c, &args, store.as_ref(), &options).map(Json)
+        })
+        .await
     }
 
     #[tool(

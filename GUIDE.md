@@ -247,6 +247,18 @@ prints each root that no longer exists but still holds stored secrets, followed 
 data). Values are never read, and a root it cannot be sure is gone is left out. A store
 that cannot list every collection makes it fail rather than print nothing.
 
+When a pull renames an environment or a secret variable, the stored value stays under the
+old name, and `apinata git pull` says so with a hint.
+`apinata env renames --since <REV>` lists each such secret from that commit to `HEAD`
+as `dev / token → staging / token` with a status: `ready`, `ambiguous` (more than one new
+name, or a guess; every candidate is listed) or `taken` (a different value is already
+stored under the new name). Without `--since` it starts at `ORIG_HEAD`, which a pull sets
+but a merge, rebase or reset also moves, so `--since` with the first id the pull printed is
+the safe choice. `--move` moves every ready one: it writes the new name, reads it back and
+only then deletes the old one, and lists the others as skipped, never overwriting a value.
+`--pick dev/token=staging/api_token` (repeatable) settles an ambiguous one. A secret moved
+here is no longer offered in the app, and the reverse. Values are never printed.
+
 ### Items and folders
 
 `apinata item` edits the tree the way the sidebar does, naming items by their
@@ -331,7 +343,7 @@ the command never exits with that code.
 | `ls` | listed | - | - | usage or collection error, the path is not a folder, or JSON output could not be written |
 | `search` | searched, with or without hits | - | - | usage or collection error, or JSON output could not be written |
 | `replace` | replaced or previewed, with or without matches | - | - | usage or collection error, or an invalid regular expression |
-| `env` | listed, created, copied, renamed, set or removed | - | - | usage or collection error, unknown environment, a name that is invalid or taken, an environment another extends, or a refused edit |
+| `env` | listed, created, copied, renamed, set or removed, or every rename asked for moved | `renames --move` or `--pick` skipped an ambiguous or taken rename | - | usage or collection error, unknown environment, a name that is invalid or taken, an environment another extends, a refused edit, an unknown `--since`, or a store error |
 | `network` | listed, set or removed | - | - | usage or collection error, or a refused edit |
 | `item` | created, copied, renamed, moved, removed, or a folder updated or left unchanged | - | - | usage or collection error, an unknown path, an invalid name, a move that is not allowed, no trash to remove into, a broken folder.yml, an unknown header or variable to unset, or a refused edit |
 | `trust` | done | - | - | any failure |

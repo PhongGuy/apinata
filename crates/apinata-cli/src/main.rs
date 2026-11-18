@@ -26,12 +26,15 @@ mod mock_cmd;
 mod network;
 mod network_notice;
 mod query_notice;
+mod renames_cmd;
 mod replace_cmd;
 mod run;
 mod search_cmd;
 mod self_update;
 mod send;
 mod show;
+#[cfg(debug_assertions)]
+mod test_store;
 mod trust;
 mod watch;
 
@@ -206,9 +209,10 @@ enum Command {
     /// List, create, copy, rename and delete a collection's environments, and set or remove
     /// their variables.
     #[command(after_help = "Exit codes:\n  \
-        0  listed, created, copied, renamed, set or removed\n  \
+        0  listed, created, copied, renamed, set or removed, or every rename asked for moved\n  \
+        1  renames --move or --pick skipped an ambiguous or taken rename\n  \
         3  usage or collection error, an unknown environment, a name that is invalid or taken, \
-        an environment another extends, or a refused edit")]
+        an environment another extends, a refused edit, an unknown --since, or a store error")]
     Env(EnvArgs),
     /// Create, copy, rename, move and remove a collection's requests and folders, and change a
     /// folder's or the collection's headers, variables, auth and docs.
@@ -385,6 +389,28 @@ pub enum EnvAction {
         /// Use the global environments; `--collection` is ignored.
         #[arg(long)]
         global: bool,
+    },
+    /// List the stored secrets a pulled rename left under an old name, and move them.
+    ///
+    /// Compares REV with HEAD. Without `--since` it starts at ORIG_HEAD, which a pull sets but
+    /// a merge, rebase or reset also moves, so that is a best guess: pass `--since` with the
+    /// first id `apinata git pull` printed to be sure. Each rename is ready, ambiguous (more
+    /// than one new name, or a guess) or taken (a different value is stored under the new
+    /// name, and is never overwritten). Values are never printed.
+    Renames {
+        /// The commit before the pull.
+        #[arg(long, value_name = "REV")]
+        since: Option<String>,
+        /// Move every ready rename; ambiguous and taken ones are listed as skipped.
+        #[arg(long = "move")]
+        move_ready: bool,
+        /// Move one rename to the new name chosen; repeat for more.
+        #[arg(
+            long,
+            value_name = "FROM_ENV/FROM_VAR=TO_ENV/TO_VAR",
+            value_parser = renames_cmd::parse_pick
+        )]
+        pick: Vec<renames_cmd::Pick>,
     },
     /// Delete stored secrets the environment's file no longer marks secret.
     ///

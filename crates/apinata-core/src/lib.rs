@@ -295,7 +295,9 @@ pub use secret_names::{
     is_credential_header, known_secrets, mask_response_header, named_secrets, redact_base64_runs,
     replace_base64_fragment, replace_secrets, request_secrets,
 };
-pub use secret_renames::{PullRange, SecretName, SecretRename, SecretRenames, TargetState};
+pub use secret_renames::{
+    PullRange, RenameStatus, SecretName, SecretRename, SecretRenames, TargetState,
+};
 pub use secrets::{EnvWarning, MemoryStore, SecretError, SecretKey, SecretStore};
 pub use session_log::{
     ConsoleLine, LogLimits, LogSlice, LoggedBody, LoggedHop, NetworkEntry, SendSource, SessionLog,

@@ -31,6 +31,7 @@ mod cli_env_manage;
 mod cli_env_not_found;
 mod cli_env_orphans;
 mod cli_env_prompt;
+mod cli_env_renames;
 mod cli_env_var_from_env;
 mod cli_example_identity;
 mod cli_exit_codes;

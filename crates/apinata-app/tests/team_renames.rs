@@ -162,3 +162,45 @@ fn typing_again_after_a_return_checks_the_value_again() {
     r.finished(&name("dev/token"));
     assert!(r.settle_now());
 }
+
+#[test]
+fn a_secret_moved_outside_the_app_drops_its_row_without_an_error() {
+    use crate::git_support::{Sandbox, write};
+    use apinata_core::{Collection, MemoryStore, SecretStore};
+    let env = |name: &str, var: &str| {
+        format!("name: {name}\nvariables:\n  - name: {var}\n    secret: true\n")
+    };
+    let sb = Sandbox::new();
+    let col = sb.repo("col");
+    write(
+        &col,
+        "opencollection.yml",
+        "opencollection: 1.0.0\ninfo:\n  name: c\n",
+    );
+    write(&col, "environments/dev.yml", &env("dev", "token"));
+    sb.commit_all(&col, "base");
+    let head = || sb.git(&col, &["rev-parse", "HEAD"]).trim().to_owned();
+    let base = head();
+    std::fs::remove_file(col.join("environments/dev.yml")).unwrap();
+    write(&col, "environments/staging.yml", &env("staging", "token"));
+    sb.commit_all(&col, "rename");
+    let range = PullRange::new(base, head());
+    let c = Collection::open(&col).unwrap();
+    let store = MemoryStore::new();
+    store.set(&c.secret_key("dev", "token"), "v").unwrap();
+    let scan = || {
+        c.secret_renames(&range, None, &store, &sb.options())
+            .unwrap()
+    };
+    let mut r = RenameRows::new(range.clone(), scan());
+    assert_eq!(r.open_rows().len(), 1);
+    // The CLI moves it while the dialog is open; the next ask finds nothing left to move.
+    c.move_renamed_secret(&name("dev/token"), &name("staging/token"), &store)
+        .unwrap();
+    r.refresh(range.clone(), scan());
+    assert!(r.open_rows().is_empty());
+    assert_eq!(r.error(&name("dev/token")), None);
+    assert_eq!(r.failed(), None);
+    assert!(r.settle_now());
+    assert!(r.movable_sure().is_empty());
+}

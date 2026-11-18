@@ -61,6 +61,28 @@ pub(crate) fn env_changes(
     parse_name_status(&out.stdout).map(Some)
 }
 
+/// The full id of the commit `rev` names in the repository holding `root`, `None` when it
+/// names none.
+pub(crate) fn resolve_commit(
+    root: &Path,
+    rev: &str,
+    opts: &GitOptions,
+) -> Result<Option<String>, GitError> {
+    let commit = format!("{rev}^{{commit}}");
+    let args = [
+        "rev-parse",
+        "--verify",
+        "-q",
+        "--end-of-options",
+        commit.as_str(),
+    ];
+    let out = run::git(&args, root, opts)?;
+    Ok(out
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned()))
+}
+
 /// The bytes of `rel`, relative to the collection at `root`, in commit `rev`; `None` when that
 /// commit has no such file.
 pub(crate) fn blob_at(
