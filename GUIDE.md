@@ -575,8 +575,9 @@ apinata run ./my-api --env staging --refetch-tokens
 is defined (a request, a folder or the collection), the grant, when the token expires or that it
 has, its scope and whether a refresh token came with it. Token values are never shown.
 `apinata oauth2 clear` forgets them, so the next run fetches new ones; clearing nothing is not an
-error. Both take a request or folder path to act on just that item's auth, `--env` for tokens
-fetched under an environment, and `--format json`:
+error. Both take a request or folder path to act on just that item's auth, `--env` and
+`--global-env` for tokens fetched with an environment or a global environment, and
+`--format json`:
 
 ```sh
 apinata oauth2 status --collection ./my-api --env staging

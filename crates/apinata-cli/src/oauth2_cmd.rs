@@ -6,13 +6,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail};
 use apinata_core::{
-    AuthSource, AuthSpec, Collection, ContextOptions, Folder, ItemPath, OAuth2Error, OAuth2Flow,
-    OAuth2Target, Persistence, RequestFile, ResolveError, TokenStatus, VarContext,
+    AuthSource, AuthSpec, Collection, Folder, ItemPath, OAuth2Error, OAuth2Flow, OAuth2Target,
+    Persistence, RequestFile, ResolveError, TokenStatus, VarContext,
 };
 use serde::Serialize;
 
 use crate::import::secret_store;
-use crate::run::token_cache;
+use crate::run::{global_options, token_cache};
 use crate::{EXIT_USAGE, Format, OAuth2Action, OAuth2Args, collection_arg, plural, trust};
 
 /// One cached token, its values withheld; the MCP `oauth2_token` fields plus where it lives.
@@ -127,7 +127,13 @@ fn go(args: &OAuth2Args) -> anyhow::Result<bool> {
     )?;
     let c = Collection::open(&root)?;
     let tokens = token_cache();
-    let mut options = ContextOptions::new()
+    // Global variables resolve exactly as for `run`, so the cache key matches the one it wrote.
+    let (options, _) = global_options(
+        args.global_env.as_deref(),
+        args.workspace.as_deref(),
+        &args.global_env_var,
+    )?;
+    let mut options = options
         .oauth2_tokens(tokens.clone())
         .secrets(secret_store(args.no_keychain));
     if let Some(env) = &args.env {
@@ -182,7 +188,13 @@ fn named<'a>(c: &'a Collection, ctx: &VarContext, raw: &str) -> anyhow::Result<S
     let level = own.unwrap_or_else(|| inherited(c, &path));
     let scope = Scope { subject, level };
     if !apinata_core::is_oauth2(scope.target(), ctx) {
-        bail!("{}", OAuth2Error::NotOAuth2);
+        // Named by the item asked about, not the level its auth would come from.
+        let item = match scope.subject {
+            Subject::Request(_) => place("request", path.as_str()),
+            Subject::Folder(_) => place("folder", path.as_str()),
+            Subject::Collection => place("collection", ""),
+        };
+        bail!("{item}: its auth is not OAuth 2.0");
     }
     Ok(scope)
 }

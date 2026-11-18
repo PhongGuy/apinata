@@ -246,6 +246,15 @@ pub struct OAuth2Args {
     /// Define a variable the auth settings use, like `run --env-var`.
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var, global = true)]
     pub env_var: Vec<EnvVar>,
+    /// The global environment the tokens were fetched with, as `run --global-env`.
+    #[arg(long, value_name = "NAME", global = true)]
+    pub global_env: Option<String>,
+    /// Set or override a global environment variable, like `run --global-env-var`.
+    #[arg(long = "global-env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var, global = true)]
+    pub global_env_var: Vec<EnvVar>,
+    /// A workspace folder whose environments `--global-env` can also name, as for `run`.
+    #[arg(long, value_name = "DIR", global = true)]
+    pub workspace: Option<PathBuf>,
     /// Do not read secret values from the platform keychain.
     #[arg(long, global = true)]
     pub no_keychain: bool,

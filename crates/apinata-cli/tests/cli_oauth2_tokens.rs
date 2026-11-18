@@ -258,5 +258,64 @@ fn a_request_without_oauth2_is_a_usage_error() {
             &["oauth2", action, "p.yml", "--collection", root],
         );
         assert_eq!(out.status.code(), Some(3), "{}", shown(&out));
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains("request p.yml: its auth is not OAuth 2.0"),
+            "{action}: {err}"
+        );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_token_fetched_with_global_variables_is_found_with_global_env() {
+    let server = provider(3600).await;
+    let uri = server.uri();
+    // The token URL and client id live only in the global environment.
+    let global = format!(
+        "name: shared\nvariables:\n  - name: issuer\n    value: {uri}\n  - name: client\n    value: app\n"
+    );
+    let profile = write_tree(&[("global-environments/shared.yml", &global)]);
+    let settings = auth("{{issuer}}", "main").replace("clientId: app", "clientId: \"{{client}}\"");
+    let text = request("a", &format!("{uri}/r"), &settings);
+    let dir = write_tree(&[("opencollection.yml", ROOT), ("a.yml", &text)]);
+    let cache = TempDir::new().unwrap();
+    let root = dir.path().to_str().unwrap();
+    let with_profile = |args: &[&str]| {
+        apinata()
+            .args(args)
+            .env("APINATA_PROFILE_DIR", profile.path())
+            .env("APINATA_TEST_TOKEN_CACHE", cache.path())
+            .env("APINATA_TEST_TOKEN_KEY", KEY)
+            .output()
+            .expect("runs")
+    };
+    let out = with_profile(&["run", root, "--global-env", "shared"]);
+    assert_eq!(out.status.code(), Some(0), "{}", shown(&out));
+
+    let out = with_profile(&[
+        "oauth2",
+        "status",
+        "--collection",
+        root,
+        "--global-env",
+        "shared",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", shown(&out));
+    assert_no_token(&out);
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("json");
+    assert_eq!(doc["tokens"][0]["path"], "a.yml", "{doc}");
+
+    let out = with_profile(&[
+        "oauth2",
+        "clear",
+        "a.yml",
+        "--collection",
+        root,
+        "--global-env",
+        "shared",
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", shown(&out));
+    assert!(stdout(&out).contains("cleared"), "{}", shown(&out));
 }
