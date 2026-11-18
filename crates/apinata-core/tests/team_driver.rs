@@ -175,6 +175,10 @@ fn under_the_read_role_a_pull_never_pushes() {
     sb.git(&b, &["push", "-q"]);
     let sync = start(config(&sb, &a, Role::Read));
     wait("the start pull", || a.join("x.txt").is_file());
+    wait("the read-only rest", || {
+        sync.status().state == TeamState::ReadOnly { paused: false }
+    });
+    // Settled, the driver gets a window in which a wrong push would land before the check.
     std::thread::sleep(Duration::from_millis(300));
     assert!(!origin_has(&sb, "kept.txt", "k"));
     let status = sync.status();
