@@ -67,6 +67,29 @@ pub fn served_lines(routes: &[ServedRoute]) -> Vec<String> {
     lines
 }
 
+/// How many received calls the list shows, newest first.
+pub const RECEIVED_CAP: usize = 20;
+
+/// The line under a received list of `total` calls that counts the ones not shown.
+pub fn received_more(total: usize) -> Option<String> {
+    (total > RECEIVED_CAP).then(|| format!("and {} older", total - RECEIVED_CAP))
+}
+
+/// One received call as "time METHOD path · example", the example being "no match" for a miss.
+/// The time is core's UTC stamp shown in local time.
+pub fn received_line(hit: &mock::MockHit) -> String {
+    let time = chrono::DateTime::parse_from_rfc3339(&hit.at).map_or_else(
+        |_| hit.at.clone(),
+        |at| {
+            at.with_timezone(&chrono::Local)
+                .format("%H:%M:%S")
+                .to_string()
+        },
+    );
+    let answer = hit.example.as_deref().unwrap_or("no match");
+    format!("{time} {} {} · {answer}", hit.method, hit.path)
+}
+
 /// The mock command's label in the palette and the collection menu: what choosing it does.
 pub fn command_label(on: bool) -> &'static str {
     if on {
@@ -147,6 +170,21 @@ impl MockServers {
                     .collect(),
             ),
             _ => None,
+        }
+    }
+
+    /// The calls `root`'s running server has answered, oldest first.
+    pub fn hits(&self, root: &Path) -> Option<Vec<mock::MockHit>> {
+        match self.slots.get(root) {
+            Some(Slot::On { handle, .. }) => Some(handle.hits()),
+            _ => None,
+        }
+    }
+
+    /// Empties `root`'s running server's record of the calls it answered.
+    pub fn clear_hits(&self, root: &Path) {
+        if let Some(Slot::On { handle, .. }) = self.slots.get(root) {
+            handle.clear_hits();
         }
     }
 
@@ -325,20 +363,26 @@ fn saved_part(r: &RequestView) -> (Vec<&str>, u64) {
 }
 
 /// Starts core's mock over `source` on 127.0.0.1:`port`, on the tokio runtime. With
-/// `fallback`, a port that cannot be bound gives way to a free one.
+/// `fallback`, a port that cannot be bound gives way to a free one. Every answered call
+/// signals `hits`; a full channel already holds a signal, so a burst coalesces into one.
 pub fn start(
     source: MockSource,
     port: u16,
     fallback: bool,
+    hits: async_channel::Sender<()>,
     cx: &App,
 ) -> Task<Result<MockHandle, String>> {
     if !tokio_bridge::is_running(cx) {
         return Task::ready(Err("the background runtime is not running".into()));
     }
-    let options = |port| {
+    let options = move |port| {
+        let hits = hits.clone();
         MockOptions::new()
             .bind(IpAddr::V4(Ipv4Addr::LOCALHOST))
             .port(port)
+            .on_hit(move |_| {
+                let _ = hits.try_send(());
+            })
     };
     let job = tokio_bridge::spawn(cx, async move {
         let (collection, context) = (&source.collection, &source.context);

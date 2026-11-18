@@ -2699,7 +2699,8 @@ impl Shell {
     }
 
     // The example count opens what the running mock serves: one line per route, then what a
-    // miss gets and which of several examples answers. Read when opened, so it stays current.
+    // miss gets and which of several examples answers, then the calls it received. Read on
+    // every draw, so it stays current.
     fn mock_served_popover(&self, root: &Path, status: String, cx: &App) -> impl IntoElement {
         let (workspace, root) = (self.workspace.clone(), root.to_path_buf());
         let trigger = Button::new("mock-status")
@@ -2744,7 +2745,79 @@ impl Shell {
                         crate::mock_server::WINNER_NOTE,
                         cx,
                     ))
+                    .child(Self::mock_received(&workspace, &root, cx))
             })
+    }
+
+    // The calls the running mock answered, newest first and read from core on every draw, so
+    // a hit (which notifies the workspace) shows at once. A matched row opens its example.
+    fn mock_received(workspace: &Entity<Workspace>, root: &Path, cx: &App) -> impl IntoElement {
+        let hits = workspace.read(cx).mock_hits(root).unwrap_or_default();
+        let more = crate::mock_server::received_more(hits.len());
+        let empty = hits.is_empty();
+        let rows = hits
+            .into_iter()
+            .rev()
+            .take(crate::mock_server::RECEIVED_CAP);
+        let clear = {
+            let (workspace, root) = (workspace.clone(), root.to_path_buf());
+            Button::new("mock-received-clear")
+                .ghost()
+                .xsmall()
+                .label("Clear")
+                .accessibility_label("Clear received calls")
+                .on_click(move |_, _, cx| {
+                    workspace.update(cx, |w, cx| w.clear_mock_hits(&root, cx));
+                })
+        };
+        let muted = cx.theme().muted_foreground;
+        v_flex()
+            .id("mock-received")
+            .test_support()
+            .aria_label("Received")
+            .gap(style::SPACE_1)
+            .child(
+                h_flex()
+                    .justify_between()
+                    .child(div().child("Received"))
+                    .child(clear),
+            )
+            .children(rows.enumerate().map(|(ix, hit)| {
+                let line = crate::mock_server::received_line(&hit);
+                let (workspace, root) = (workspace.clone(), root.to_path_buf());
+                Button::new(SharedString::from(format!("mock-hit-{ix}")))
+                    .ghost()
+                    .xsmall()
+                    .w_full()
+                    // A full-width child keeps the line flush left; a label would be centred.
+                    .child(div().w_full().child(line.clone()))
+                    .accessibility_label(line)
+                    .on_click(move |_, _, cx| {
+                        if let (Some(request), Some(example)) = (&hit.request, &hit.example) {
+                            workspace.update(cx, |w, cx| {
+                                w.open_mock_hit(&root, request, example, cx);
+                            });
+                        }
+                    })
+            }))
+            .when(empty, |d| {
+                d.child(
+                    div()
+                        .id("mock-received-empty")
+                        .test_support()
+                        .aria_label("No calls yet")
+                        .text_color(muted)
+                        .child("No calls yet"),
+                )
+            })
+            .children(more.map(|more| {
+                div()
+                    .id("mock-received-more")
+                    .test_support()
+                    .aria_label(more.clone())
+                    .text_color(muted)
+                    .child(more)
+            }))
     }
 
     // The kit's bar owns drag, double click and the window controls; its close goes through

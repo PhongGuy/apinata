@@ -300,3 +300,19 @@ async fn a_reload_serves_newly_saved_examples_on_the_same_address() {
     assert_eq!(r.status().as_u16(), 200);
     h.stop().await;
 }
+
+#[tokio::test]
+async fn clearing_the_hits_empties_the_log_and_later_hits_are_kept() {
+    let (_d, c, ctx) = open(&[("u.yml", &req("u", 1, "GET", "/users", USERS))]);
+    let h = start(&c, &ctx, options()).await.unwrap();
+    let url = format!("http://{}/users", h.addr());
+    client().get(&url).send().await.unwrap();
+    assert_eq!(h.hits().len(), 1);
+    h.clear_hits();
+    assert!(h.hits().is_empty());
+    client().get(format!("{url}/x")).send().await.unwrap();
+    let hits = h.hits();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].path, "/users/x");
+    h.stop().await;
+}

@@ -811,3 +811,133 @@ fn clicking_the_status_lists_what_the_mock_serves(cx: &mut TestAppContext) {
         Some(WINNER_NOTE)
     );
 }
+
+// A running mock over `mocked()`, its address, and the status popover not yet opened.
+fn serving_mock(cx: &mut TestAppContext, col: &tempfile::TempDir) -> (Started, SocketAddr) {
+    let s = start(cx, col);
+    let root = s.root.clone();
+    s.ws.update(cx, |w, cx| w.set_mock(&root, true, cx));
+    let addr = running(cx, &s.ws, &s.root);
+    frame(cx, s.win);
+    (s, addr)
+}
+
+fn open_received(cx: &mut TestAppContext, s: &Started) {
+    click(cx, s.win, "mock-status");
+    assert!(present(cx, s.win, "mock-received"));
+}
+
+fn core_hits(cx: &mut TestAppContext, s: &Started) -> usize {
+    s.ws.read_with(cx, |w, _| w.mock_hits(&s.root).map(|h| h.len()))
+        .unwrap()
+}
+
+#[gpui_kit::test]
+fn two_calls_show_in_the_received_list_newest_first(cx: &mut TestAppContext) {
+    let col = mocked();
+    let (s, addr) = serving_mock(cx, &col);
+    open_received(cx, &s);
+    get(addr, "/users");
+    get(addr, "/nothing-here");
+    wait_real(cx, |cx| core_hits(cx, &s) == 2);
+    let newest = label(cx, s.win, "mock-hit-0").unwrap();
+    let older = label(cx, s.win, "mock-hit-1").unwrap();
+    assert!(newest.contains("GET /nothing-here"), "{newest}");
+    assert!(older.contains("GET /users · ok"), "{older}");
+    assert!(label(cx, s.win, "mock-hit-2").is_none());
+}
+
+#[gpui_kit::test]
+fn an_unmatched_call_shows_no_match(cx: &mut TestAppContext) {
+    let col = mocked();
+    let (s, addr) = serving_mock(cx, &col);
+    open_received(cx, &s);
+    get(addr, "/nothing-here");
+    wait_real(cx, |cx| core_hits(cx, &s) == 1);
+    let row = label(cx, s.win, "mock-hit-0").unwrap();
+    assert!(row.ends_with("GET /nothing-here · no match"), "{row}");
+}
+
+#[gpui_kit::test]
+fn a_call_redraws_the_open_list_without_any_other_event(cx: &mut TestAppContext) {
+    let col = mocked();
+    let (s, addr) = serving_mock(cx, &col);
+    open_received(cx, &s);
+    let notified = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = notified.clone();
+    let _watch = cx.update(|cx| {
+        cx.observe(&s.ws, move |_, _| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+    });
+    get(addr, "/users");
+    wait_real(cx, |_| {
+        notified.load(std::sync::atomic::Ordering::SeqCst) > 0
+    });
+    assert!(
+        label(cx, s.win, "mock-hit-0")
+            .unwrap()
+            .contains("GET /users")
+    );
+}
+
+#[gpui_kit::test]
+fn clear_empties_the_list_and_the_core_log(cx: &mut TestAppContext) {
+    let col = mocked();
+    let (s, addr) = serving_mock(cx, &col);
+    open_received(cx, &s);
+    get(addr, "/users");
+    wait_real(cx, |cx| core_hits(cx, &s) == 1);
+    assert!(present(cx, s.win, "mock-hit-0"));
+    cx.update_window(s.win, |_, w, cx| w.click("mock-received-clear", cx))
+        .unwrap();
+    frame(cx, s.win);
+    assert!(!present(cx, s.win, "mock-hit-0"));
+    assert_eq!(core_hits(cx, &s), 0);
+    assert!(label(cx, s.win, "mock-received-empty").is_some());
+}
+
+#[gpui_kit::test]
+fn a_call_made_while_the_list_was_closed_shows_when_it_opens(cx: &mut TestAppContext) {
+    let col = mocked();
+    let (s, addr) = serving_mock(cx, &col);
+    get(addr, "/users");
+    wait_real(cx, |cx| core_hits(cx, &s) == 1);
+    assert!(!present(cx, s.win, "mock-received"));
+    open_received(cx, &s);
+    let row = label(cx, s.win, "mock-hit-0").unwrap();
+    assert!(row.ends_with("GET /users · ok"), "{row}");
+}
+
+#[gpui_kit::test]
+fn activating_a_matched_call_opens_its_example(cx: &mut TestAppContext) {
+    use apinata_app::tabs::TabKind;
+    let col = mocked();
+    let (s, addr) = serving_mock(cx, &col);
+    open_received(cx, &s);
+    get(addr, "/users");
+    wait_real(cx, |cx| core_hits(cx, &s) == 1);
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.click("mock-hit-0", cx))
+        .unwrap();
+    frame(cx, s.win);
+    let kind =
+        s.ws.read_with(cx, |w, _| w.tabs().active().map(|t| t.kind.clone()));
+    assert_eq!(
+        kind,
+        Some(TabKind::Example {
+            item: apinata_core::ItemPath::new("users.yml").unwrap(),
+            index: 0
+        })
+    );
+}
+
+#[test]
+fn the_received_list_shows_the_newest_rows_and_counts_the_older_ones() {
+    use apinata_app::mock_server::{RECEIVED_CAP, received_more};
+    assert_eq!(received_more(RECEIVED_CAP), None);
+    assert_eq!(
+        received_more(RECEIVED_CAP + 3).as_deref(),
+        Some("and 3 older")
+    );
+}
