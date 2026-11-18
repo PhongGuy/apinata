@@ -119,10 +119,7 @@ impl<'a> Move<'a> {
         if !orphaned {
             return Err(self.refused(RenameRefusal::NotOrphaned));
         }
-        let declared = self
-            .collection
-            .try_saved_secret_names(&self.to.environment)
-            .unwrap_or_default();
+        let declared = self.collection.declared_on_disk(&self.to.environment);
         if !declared.contains(&self.to.variable) {
             return Err(self.refused(RenameRefusal::NotDeclared));
         }

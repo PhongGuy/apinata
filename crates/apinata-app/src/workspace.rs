@@ -13,9 +13,9 @@ use apinata_core::team::{
 };
 use apinata_core::{
     CommitError, DraftSnapshot, EnvOverlay, EnvVariable, GIT_TIMEOUT, GitError, GitOptions,
-    GitState, GlobalEnvironments, ItemPath, OpenError, RequestKind, RuntimeVars, ScriptPhase,
-    SecretStore, StageState, WorkspaceFile, collection_status_with, commit, is_workspace_dir,
-    stage, unstage,
+    GitState, GlobalEnvironments, ItemPath, OpenError, PullRange, RequestKind, RuntimeVars,
+    ScriptPhase, SecretName, SecretRenames, SecretStore, StageState, WorkspaceFile,
+    collection_status_with, commit, is_workspace_dir, stage, unstage,
 };
 use gpui_kit::{App, AppContext, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 
@@ -38,6 +38,7 @@ use crate::session::{
 };
 use crate::snapshot::{CollectionSnapshot, ConfigView, Content, DiskState, RequestView};
 use crate::tabs::{TabEntry, TabId, TabKind, Tabs};
+use crate::team_renames::RenameRows;
 use crate::watch::rules::{WatchMsg, translate};
 use crate::watch::set::{EventHandler, Watch, WatchError, WatchFactory};
 use crate::watch::watcher::CollectionWatcher;
@@ -428,6 +429,10 @@ struct Team {
     told_read_only: bool,
     // The block last announced, kept through the retries that pass back into it.
     problem: Option<Block>,
+    // A pull landed since the last rename ask, so the next settled status asks again; and the
+    // rows that ask found, until the range they answer is cleared.
+    ask_renames: bool,
+    renames: Option<RenameRows>,
     _pump: Task<()>,
     _events: Option<Task<Result<(), crate::tokio_bridge::JoinError>>>,
 }
@@ -1332,6 +1337,10 @@ impl Workspace {
             Command::Revert(target) => Some(target.clone()),
             _ => None,
         };
+        let env_written = matches!(
+            command,
+            Command::Env(_) | Command::Save(Target::Environment(_))
+        );
         let ticket_op = match &command {
             Command::Tree(TreeOp::Restore { ticket }) => Some((true, *ticket)),
             Command::Tree(TreeOp::ForgetTrash { ticket }) => Some((false, *ticket)),
@@ -1361,6 +1370,10 @@ impl Workspace {
         }
         if changes_env && let Some(entry) = self.entry_mut(root) {
             entry.env_sent = id;
+        }
+        // The actor runs commands in order, so this ask already sees the environment change.
+        if env_written {
+            self.ask_secret_renames(root, cx);
         }
         self.check_busy(root, cx);
         Some(id)
@@ -2670,6 +2683,8 @@ impl Workspace {
             clashes: Vec::new(),
             told_read_only: false,
             problem: None,
+            ask_renames: false,
+            renames: None,
             _pump: pump,
             _events: events,
         });
@@ -2855,13 +2870,18 @@ impl Workspace {
             }
             _ => false,
         };
+        team.ask_renames |= pulled;
         team.status = status;
         let settled = !rewriting(&team.status.state);
+        let ask = settled && std::mem::take(&mut team.ask_renames);
         if settled && let Some(held) = self.entry_mut(root).and_then(|e| e.held.take()) {
             self.release(root, held, cx);
         }
         if adopt {
             self.adopt_copies(root, cx);
+        }
+        if ask {
+            self.ask_secret_renames(root, cx);
         }
         self.refresh_clashes(root);
         cx.emit(WorkspaceEvent::TeamStatus {
@@ -2906,6 +2926,205 @@ impl Workspace {
         let changed = fresh != team.clashes;
         team.clashes = fresh;
         changed
+    }
+
+    /// The secret rename rows the last ask found for the team collection at `root`; `None`
+    /// with no team loop, no pending pull range or no answer yet.
+    pub fn team_renames(&self, root: &Path) -> Option<RenameRows> {
+        self.entry(root)?.team.as_ref()?.renames.clone()
+    }
+
+    /// Asks the actor which stored secrets the pending pull range of `root`'s team left under
+    /// an old name. With no pending range the rows go; without git nothing is asked.
+    pub fn ask_secret_renames(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let git = self.git_options.clone();
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        let Some(range) = team.sync.pending_renames() else {
+            if team.renames.take().is_some() {
+                self.renames_changed(root, cx);
+            }
+            return;
+        };
+        let Some(git) = git else {
+            return;
+        };
+        let (reply, found) = async_channel::bounded(1);
+        let command = Command::FindSecretRenames {
+            range: range.clone(),
+            copies: Some(team.copies.clone()),
+            git,
+            reply,
+        };
+        self.send(root, command, cx);
+        let key = absolute(root);
+        cx.spawn(async move |this, cx| {
+            let Ok(found) = found.recv().await else {
+                return;
+            };
+            this.update(cx, |w, cx| w.found_secret_renames(&key, range, found, cx))
+                .ok();
+        })
+        .detach();
+    }
+
+    // Takes an ask's answer: a good one refreshes the rows and finishes the values typed again,
+    // a failed one marks the rows so the range stays.
+    fn found_secret_renames(
+        &mut self,
+        root: &Path,
+        range: PullRange,
+        found: Result<SecretRenames, String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut()) else {
+            return;
+        };
+        let reentering = match found {
+            Ok(found) => match team.renames.as_mut() {
+                Some(rows) => {
+                    rows.refresh(range, found);
+                    rows.reentering()
+                }
+                None => team
+                    .renames
+                    .insert(RenameRows::new(range, found))
+                    .reentering(),
+            },
+            Err(message) => {
+                let empty = || RenameRows::new(range, SecretRenames::new(Vec::new(), 0));
+                team.renames.get_or_insert_with(empty).fail(message);
+                Vec::new()
+            }
+        };
+        for (from, to) in reentering {
+            let (reply, done) = async_channel::bounded(1);
+            let command = Command::FinishReentered {
+                from: from.clone(),
+                to,
+                reply,
+            };
+            self.send(root, command, cx);
+            let key = absolute(root);
+            cx.spawn(async move |this, cx| {
+                if let Ok(Ok(true)) = done.recv().await {
+                    this.update(cx, |w, cx| {
+                        w.update_renames(&key, cx, |rows| rows.finished(&from))
+                    })
+                    .ok();
+                }
+            })
+            .detach();
+        }
+        self.settle_renames(root, cx);
+    }
+
+    /// Moves each stored secret of `moves` from its old name to its new one; a move that works
+    /// answers its row, one that fails shows its error there.
+    pub fn move_secret_renames(
+        &mut self,
+        root: &Path,
+        moves: Vec<(SecretName, SecretName)>,
+        cx: &mut Context<Self>,
+    ) {
+        let froms: Vec<SecretName> = moves.iter().map(|(from, _)| from.clone()).collect();
+        let (reply, moved) = async_channel::bounded(1);
+        let command = Command::MoveSecretRenames { moves, reply };
+        if self.send(root, command, cx).is_none() {
+            return;
+        }
+        let key = absolute(root);
+        cx.spawn(async move |this, cx| {
+            let Ok(results) = moved.recv().await else {
+                return;
+            };
+            this.update(cx, |w, cx| {
+                w.update_renames(&key, cx, |rows| {
+                    for (from, result) in froms.iter().zip(results) {
+                        match result {
+                            Ok(()) => rows.answer(from),
+                            Err(message) => rows.set_error(from, message),
+                        }
+                    }
+                })
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Marks the row of `from` as typed again under `to` and opens `root`'s environments with
+    /// a new `to` row, as adding a variable does; the old key goes once that value is saved.
+    pub fn reenter_secret(
+        &mut self,
+        root: &Path,
+        from: SecretName,
+        to: SecretName,
+        cx: &mut Context<Self>,
+    ) {
+        let root = absolute(root);
+        let intent = EnvIntent {
+            select: Some(to.environment.clone()),
+            add_var: to.variable.clone(),
+            create: false,
+        };
+        self.update_renames(&root, cx, |rows| rows.reenter(from, to));
+        // Stored before the tab opens, so an open editor's observer sees it on the notify;
+        // dropped again when no tab opens, so a later reopen cannot apply it.
+        self.env_intents.insert(root.clone(), intent);
+        if self
+            .open_settings(&root, TabKind::Environments, cx)
+            .is_none()
+        {
+            self.env_intents.remove(&root);
+        }
+    }
+
+    /// Leaves the stored secret of `from` where it is and closes its row.
+    pub fn dismiss_secret_rename(
+        &mut self,
+        root: &Path,
+        from: &SecretName,
+        cx: &mut Context<Self>,
+    ) {
+        self.update_renames(root, cx, |rows| rows.answer(from));
+    }
+
+    // Changes `root`'s rows, if it has any, then clears the range when nothing is left.
+    fn update_renames(
+        &mut self,
+        root: &Path,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut RenameRows),
+    ) {
+        let rows =
+            (self.entry_mut(root).and_then(|e| e.team.as_mut())).and_then(|t| t.renames.as_mut());
+        let Some(rows) = rows else {
+            return;
+        };
+        change(rows);
+        self.settle_renames(root, cx);
+    }
+
+    // Clears the pending range once the rows allow it. A range a newer pull widened stays,
+    // with its rows, for the ask that pull brings.
+    fn settle_renames(&mut self, root: &Path, cx: &mut Context<Self>) {
+        if let Some(team) = self.entry_mut(root).and_then(|e| e.team.as_mut())
+            && let Some(rows) = team.renames.as_ref()
+            && rows.settle_now()
+            && team.sync.renames_settled(rows.range())
+        {
+            team.renames = None;
+        }
+        self.renames_changed(root, cx);
+    }
+
+    fn renames_changed(&mut self, root: &Path, cx: &mut Context<Self>) {
+        cx.emit(WorkspaceEvent::TeamStatus {
+            root: root.to_path_buf(),
+        });
+        cx.notify();
     }
 
     /// Settles the clash at `rel` of the team collection at `root`. UseMine puts a copy's bytes
@@ -2959,6 +3178,8 @@ impl Workspace {
         }
         team.sync.changed();
         self.refresh_clashes(root);
+        // A settled clash may release renames it held back.
+        self.ask_secret_renames(root, cx);
         cx.emit(WorkspaceEvent::TeamStatus {
             root: root.to_path_buf(),
         });

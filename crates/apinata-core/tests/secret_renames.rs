@@ -433,6 +433,33 @@ fn a_target_the_current_file_no_longer_declares_is_dropped() {
 }
 
 #[test]
+fn a_collection_opened_before_the_pull_still_sees_the_new_file() {
+    let sb = Sandbox::new();
+    let (col, base) = repo(
+        &sb,
+        &[("environments/dev.yml", env("dev", &["token"]).as_str())],
+    );
+    // The app's collection learns of pulled files only when its watcher reloads, which may
+    // come after the ask; the new file is read from disk all the same.
+    let c = Collection::open(&col).unwrap();
+    let store = stored(&c, &[("dev", "token")]);
+    let staging = env("staging", &["token"]);
+    edit(
+        &sb,
+        &col,
+        &[
+            ("environments/dev.yml", None),
+            ("environments/staging.yml", Some(staging.as_str())),
+        ],
+    );
+    let range = PullRange::new(base, rev(&sb, &col, "HEAD"));
+    let found = c
+        .secret_renames(&range, None, &store, &sb.options())
+        .unwrap();
+    assert_eq!(names(&found), [row("dev/token", &["staging/token"], true)]);
+}
+
+#[test]
 fn a_renamed_environment_whose_old_file_did_not_mark_the_variable_secret_offers_nothing() {
     let sb = Sandbox::new();
     let plain = "name: dev\nvariables:\n  - name: token\n    value: plain\n";

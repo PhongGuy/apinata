@@ -185,6 +185,19 @@ impl Collection {
         Ok(doc.map(|doc| Environment::from_parts(stem.to_owned(), doc)))
     }
 
+    /// The names environment `stem`'s file on disk marks secret; empty when it is missing,
+    /// does not parse or `stem` is not a plain file stem. Read from disk rather than the loaded
+    /// environments, since a pull lands before the collection reloads.
+    pub(crate) fn declared_on_disk(&self, stem: &str) -> Vec<String> {
+        if stem.is_empty() || stem == ".." || stem.contains(['/', '\\']) {
+            return Vec::new();
+        }
+        let path = self.root().join(format!("environments/{stem}.yml"));
+        Document::load(&path)
+            .map(|doc| secret_names(&Environment::from_parts(stem.to_owned(), doc)))
+            .unwrap_or_default()
+    }
+
     /// Each of `wanted` that its environment's file declares secret now, with the store's
     /// state there compared against the value under `from`.
     fn targets(
@@ -203,9 +216,7 @@ impl Collection {
         let old = read(&self.secret_key(&from.environment, &from.variable))?;
         let mut out = Vec::new();
         for to in wanted {
-            let declared = self
-                .try_saved_secret_names(&to.environment)
-                .unwrap_or_default();
+            let declared = self.declared_on_disk(&to.environment);
             if !declared.contains(&to.variable) {
                 continue;
             }
