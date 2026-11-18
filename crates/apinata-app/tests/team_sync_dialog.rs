@@ -662,3 +662,117 @@ fn an_ask_the_store_cannot_answer_says_so_in_the_dialog(cx: &mut TestAppContext)
     );
     assert_no_values(&drawn_labels(cx, &s));
 }
+
+/// The Environments tab of `s`, if one is open.
+fn env_tab(cx: &mut TestAppContext, s: &Started) -> Option<apinata_app::tabs::TabId> {
+    use apinata_app::tabs::TabKind;
+    s.ws.read_with(cx, |w, _| {
+        (w.tabs().entries().iter())
+            .find(|e| e.root == s.root && e.kind == TabKind::Environments)
+            .map(|e| e.id)
+    })
+}
+
+/// A pulled environment rename with "Enter again" pressed on the `host_key` row, which hides.
+fn reentering(
+    cx: &mut TestAppContext,
+    sb: &Sandbox,
+    col: &tempfile::TempDir,
+) -> (Started, std::sync::Arc<apinata_core::MemoryStore>) {
+    let (s, secrets) = seeded(cx, sb, col);
+    mate_renames(cx, sb, &s, &DEV.replace("dev", "staging"));
+    wait_for(cx, "the offer", |cx| open_rows(cx, &s) == 2);
+    let _view = open(cx, &s);
+    press(cx, &s, ("team-rename-enter", 0usize));
+    assert!(env_tab(cx, &s).is_some(), "Enter again opens the tab");
+    assert_eq!(open_rows(cx, &s), 1);
+    (s, secrets)
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn closing_the_tab_without_a_value_brings_the_row_back(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, secrets) = reentering(cx, &sb, &col);
+    let tab = env_tab(cx, &s).unwrap();
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.close(tab)));
+    wait_for(cx, "the row to return", |cx| open_rows(cx, &s) == 2);
+    assert_eq!(
+        stored(&*secrets, col.path(), "dev", "host_key").as_deref(),
+        Some("k1")
+    );
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn saving_a_value_finishes_the_row_and_removes_the_old_entry(cx: &mut TestAppContext) {
+    use apinata_app::command::{Command, EnvOp};
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, secrets) = reentering(cx, &sb, &col);
+    let op = EnvOp::SetSecretValue {
+        env: "staging".into(),
+        var: "host_key".into(),
+        value: "k2".into(),
+    };
+    // The pull's new environment file reaches the actor through the watcher, after the ask.
+    wait_for(cx, "staging to load", |cx| {
+        s.ws.read_with(cx, |w, cx| {
+            w.environments(&s.root, cx).contains(&"staging".into())
+        })
+    });
+    s.ws.update(cx, |w, cx| w.send(&s.root, Command::Env(op), cx));
+    wait_for(cx, "the old entry to go", |_| {
+        stored(&*secrets, col.path(), "dev", "host_key").is_none()
+    });
+    let tab = env_tab(cx, &s).unwrap();
+    s.ws.update(cx, |w, cx| w.update_tabs(cx, |t| t.close(tab)));
+    wait_for(cx, "the row to finish", |cx| {
+        s.ws.read_with(cx, |w, _| {
+            w.team_renames(&s.root)
+                .is_none_or(|r| r.reentering().is_empty())
+        })
+    });
+    assert_eq!(open_rows(cx, &s), 1);
+    assert_eq!(
+        stored(&*secrets, col.path(), "staging", "host_key").as_deref(),
+        Some("k2")
+    );
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn picking_a_candidate_holding_the_same_value_deletes_the_old_entry_without_writing(
+    cx: &mut TestAppContext,
+) {
+    use std::sync::atomic::Ordering;
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, store) = seeded_faulty(cx, &sb, &col);
+    let c = apinata_core::Collection::open(col.path()).unwrap();
+    store.set(&c.secret_key("staging", "token"), "t1").unwrap();
+    let mate = sb.path().join("mate");
+    write(&mate, "environments/qa.yml", QA);
+    mate_renames(cx, &sb, &s, &DEV.replace("dev", "staging"));
+    wait_for(cx, "the offer", |cx| open_rows(cx, &s) == 2);
+    let rows = s.ws.read_with(cx, |w, _| w.team_renames(&s.root)).unwrap();
+    let token = rows.open_rows()[1].clone();
+    let staging = (token.to.iter())
+        .position(|(to, state)| {
+            to.environment == "staging" && *state == apinata_core::TargetState::Same
+        })
+        .expect("staging holds the same value");
+    let _view = open(cx, &s);
+    // Any write now fails, so the move can only succeed by not writing.
+    store.no_set.store(true, Ordering::SeqCst);
+    press(
+        cx,
+        &s,
+        gpui_kit::SharedString::from(format!("team-rename-pick-1-{staging}")),
+    );
+    wait_for(cx, "the pick to move", |cx| open_rows(cx, &s) == 1);
+    assert_eq!(stored(&*store, col.path(), "dev", "token"), None);
+    assert_eq!(
+        stored(&*store, col.path(), "staging", "token").as_deref(),
+        Some("t1")
+    );
+    assert_eq!(stored(&*store, col.path(), "qa", "token"), None);
+}

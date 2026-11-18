@@ -2258,8 +2258,64 @@ impl Workspace {
     pub fn update_tabs<R>(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Tabs) -> R) -> R {
         let result = f(&mut self.tabs);
         self.persist_tabs(cx);
+        self.check_closed_reentries(cx);
         cx.notify();
         result
+    }
+
+    // Once a team collection's Environments tab is gone, each value typed again there is checked
+    // once: saved under its new name, its row finishes; otherwise the row opens again.
+    fn check_closed_reentries(&mut self, cx: &mut Context<Self>) {
+        let tabs = &self.tabs;
+        let closed: Vec<(PathBuf, Vec<(SecretName, SecretName)>)> = (self.collections.iter_mut())
+            .filter(|c| {
+                !(tabs.entries().iter())
+                    .any(|e| e.root == c.root && e.kind == TabKind::Environments)
+            })
+            .filter_map(|c| {
+                let rows = c.team.as_mut()?.renames.as_mut()?;
+                Some((c.root.clone(), rows.editor_closed()))
+            })
+            .filter(|(_, checks)| !checks.is_empty())
+            .collect();
+        for (root, checks) in closed {
+            for (from, to) in checks {
+                self.finish_reentered(&root, from, to, true, cx);
+            }
+        }
+    }
+
+    // Asks the actor to drop the old key of `from` once a value is stored under `to`. A value
+    // found finishes the row; with none, `closed` opens the row again, as its editor is gone.
+    fn finish_reentered(
+        &mut self,
+        root: &Path,
+        from: SecretName,
+        to: SecretName,
+        closed: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let (reply, done) = async_channel::bounded(1);
+        let command = Command::FinishReentered {
+            from: from.clone(),
+            to,
+            reply,
+        };
+        self.send(root, command, cx);
+        let key = absolute(root);
+        cx.spawn(async move |this, cx| {
+            let finished = matches!(done.recv().await, Ok(Ok(true)));
+            if finished || closed {
+                this.update(cx, |w, cx| {
+                    w.update_renames(&key, cx, |rows| match finished {
+                        true => rows.finished(&from),
+                        false => rows.returned(&from),
+                    })
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     /// Reopens the most recently closed tab whose target still exists, as a permanent tab;
@@ -3008,23 +3064,7 @@ impl Workspace {
             }
         };
         for (from, to) in reentering {
-            let (reply, done) = async_channel::bounded(1);
-            let command = Command::FinishReentered {
-                from: from.clone(),
-                to,
-                reply,
-            };
-            self.send(root, command, cx);
-            let key = absolute(root);
-            cx.spawn(async move |this, cx| {
-                if let Ok(Ok(true)) = done.recv().await {
-                    this.update(cx, |w, cx| {
-                        w.update_renames(&key, cx, |rows| rows.finished(&from))
-                    })
-                    .ok();
-                }
-            })
-            .detach();
+            self.finish_reentered(root, from, to, false, cx);
         }
         self.settle_renames(root, cx);
     }
