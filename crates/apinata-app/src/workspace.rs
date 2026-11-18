@@ -4316,6 +4316,33 @@ impl Workspace {
         self.mocks.served(&absolute(root))
     }
 
+    /// The calls the running mock server of `root` has answered, oldest first, from core.
+    pub fn mock_hits(&self, root: &Path) -> Option<Vec<apinata_core::mock::MockHit>> {
+        self.mocks.hits(&absolute(root))
+    }
+
+    /// Empties the record of calls in core, so every reader of it sees the list cleared.
+    pub fn clear_mock_hits(&mut self, root: &Path, cx: &mut Context<Self>) {
+        self.mocks.clear_hits(&absolute(root));
+        cx.notify();
+    }
+
+    /// Opens the example named `example` of the request at item path `request`, as a mock
+    /// hit names them; `None` when that request or example is no longer there.
+    pub fn open_mock_hit(
+        &mut self,
+        root: &Path,
+        request: &str,
+        example: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<TabId> {
+        let item = ItemPath::new(request)?;
+        let snapshot = self.snapshot(&absolute(root), cx)?;
+        let view = snapshot.content.requests.get(&item)?;
+        let index = view.examples.iter().position(|e| e.name == example)?;
+        self.open_example(root, item, index, true, cx)
+    }
+
     /// Test-only: how many mock rebuilds have started.
     #[doc(hidden)]
     pub fn mock_rebuilds(&self) -> u64 {
@@ -4366,6 +4393,17 @@ impl Workspace {
         let stopped = self.mocks.stopped(&root);
         let seen = self.snapshot(&root, cx);
         let key = root.clone();
+        // Each answered call redraws whoever shows the hits; the channel closes, ending the
+        // watch, once the server's handle and its hook are gone.
+        let (hit, hits) = async_channel::bounded(1);
+        cx.spawn(async move |this, cx| {
+            while hits.recv().await.is_ok() {
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         self.mocks.begin(root, seen, |id| {
             cx.spawn(async move |this, cx| {
                 let source = (source.recv().await)
@@ -4375,7 +4413,7 @@ impl Workspace {
                 }
                 let started = match source {
                     Ok(source) => {
-                        cx.update(|cx| mock_server::start(source, port, fallback, cx))
+                        cx.update(|cx| mock_server::start(source, port, fallback, hit, cx))
                             .await
                     }
                     Err(e) => Err(e),

@@ -119,6 +119,11 @@ impl MockHandle {
         self.log.snapshot()
     }
 
+    /// Forgets every hit so far; later hits are recorded as usual.
+    pub fn clear_hits(&self) {
+        self.log.clear();
+    }
+
     /// Rebuilds the routes from `collection` and answers from them from now on, on the same
     /// listener, so clients keep their address. Requests already being answered finish with
     /// the routes they started with.

@@ -133,6 +133,13 @@ impl HitLog {
         hits.push_back(hit);
     }
 
+    pub(crate) fn clear(&self) {
+        self.hits
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
     pub(crate) fn snapshot(&self) -> Vec<MockHit> {
         let hits = self.hits.lock().unwrap_or_else(PoisonError::into_inner);
         hits.iter().cloned().collect()
