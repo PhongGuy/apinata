@@ -3,6 +3,7 @@
 //! all of them. Each change is saved in the background; nothing is editable until the saved
 //! jar has loaded.
 
+use crate::ui::SolidRing as _;
 use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime};
 
@@ -618,7 +619,7 @@ impl CookieJarView {
                 ("jar-reveal", IconName::Eye, "Show value")
             };
             // Each jar button takes Enter as its own press, not the dialog's Confirm.
-            let button = ui::swap_icon_button(("jar-eye", ix), (id, ix), icon, words)
+            let button = ui::swap_icon_button(("jar-eye", ix), (id, ix), icon, words, cx)
                 .key_context(ui::DIALOG_FOOTER_CONTEXT)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if !this.revealed.remove(&key) {
@@ -707,6 +708,7 @@ impl CookieJarView {
             )
             .child(
                 Button::new(("jar-edit", ix))
+                    .solid_ring(cx)
                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                     .label("Edit")
                     .lock(!self.editable(), cx)
@@ -718,6 +720,7 @@ impl CookieJarView {
             )
             .child(
                 Button::new(("jar-delete", ix))
+                    .solid_ring(cx)
                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                     .label("Delete")
                     .lock(!self.editable(), cx)
@@ -844,11 +847,13 @@ impl CookieJarView {
                     .justify_end()
                     .child(
                         Button::new("jar-form-cancel")
+                            .solid_ring(cx)
                             .label("Cancel")
                             .on_click(cx.listener(|this, _, _, cx| this.cancel_form(cx))),
                     )
                     .child(
                         Button::new("jar-form-save")
+                            .solid_ring(cx)
                             .label("Save")
                             .primary()
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -883,6 +888,7 @@ impl Render for CookieJarView {
             .child(
                 h_flex().child(
                     Button::new("jar-add")
+                        .solid_ring(cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .label("Add cookie")
                         .lock(!self.editable(), cx)
@@ -943,6 +949,7 @@ impl Render for CookieJarView {
                             )
                             .child(
                                 Button::new(("jar-domain-delete", domains))
+                                    .solid_ring(cx)
                                     .key_context(ui::DIALOG_FOOTER_CONTEXT)
                                     .label("Delete domain")
                                     .lock(!self.editable(), cx)
@@ -966,6 +973,7 @@ impl Render for CookieJarView {
                 };
                 list = list.child(
                     Button::new("jar-clear")
+                        .solid_ring(cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .label(label)
                         .lock(!self.editable(), cx)

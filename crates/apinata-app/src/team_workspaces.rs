@@ -4,6 +4,7 @@
 //! can create a seeded workspace there and sees whether the server has a newer release, and
 //! each server has its own sign out.
 
+use crate::ui::SolidRing as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -837,6 +838,7 @@ impl Render for WorkspacesView {
                 )
                 .child(
                     Button::new(("team-sign-out", i))
+                        .solid_ring(cx)
                         .label(if s.signing_out {
                             "Signing out…"
                         } else {
@@ -857,6 +859,7 @@ impl Render for WorkspacesView {
                     .child(format!("You are signed out of {}.", s.server))
                     .child(
                         Button::new(("team-sign-in-again", i))
+                            .solid_ring(cx)
                             .label("Sign in again")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.sign_in_again(i, window, cx)
@@ -886,6 +889,7 @@ impl Render for WorkspacesView {
                             .child(div().text_color(muted).child(row.role.label()))
                             .child(
                                 Button::new(id)
+                                    .solid_ring(cx)
                                     .label(if self.cloning { "Opening…" } else { "Open" })
                                     .lock(self.cloning, cx)
                                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -917,6 +921,7 @@ impl Render for WorkspacesView {
                             .child(field("team-new-name", &s.new_name))
                             .child(
                                 Button::new(("team-create", i))
+                                    .solid_ring(cx)
                                     .label(if s.creating { "Creating…" } else { "Create" })
                                     .lock(s.creating, cx)
                                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -931,6 +936,7 @@ impl Render for WorkspacesView {
                 .map(|u| {
                     let notes = u.notes.clone().map(|url| {
                         Button::new(("team-update-notes", i))
+                            .solid_ring(cx)
                             .link()
                             .label("Release notes")
                             .tooltip(url.clone())
@@ -951,6 +957,7 @@ impl Render for WorkspacesView {
                         .children(notes)
                         .child(
                             Button::new(("team-update-check", i))
+                                .solid_ring(cx)
                                 .label(if s.checking_update {
                                     "Checking…"
                                 } else {
@@ -988,6 +995,7 @@ impl Render for WorkspacesView {
                 None,
                 [],
                 Button::new("team-workspaces-close")
+                    .solid_ring(cx)
                     .label("Close")
                     .primary()
                     .on_click(|_, window, cx| window.close_dialog(cx)),

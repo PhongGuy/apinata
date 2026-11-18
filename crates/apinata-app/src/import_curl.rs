@@ -1,5 +1,6 @@
 //! The Import curl dialog: a pasted curl command becomes a new draft at the collection root.
 
+use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 
 use apinata_core::import::{ImportedRequest, RequestFormat, parse_request};
@@ -90,11 +91,13 @@ pub fn open(workspace: &Entity<Workspace>, root: PathBuf, window: &mut Window, c
         let buttons = ui::dialog_footer(
             Some(
                 Button::new("import-curl-cancel")
+                    .solid_ring(cx)
                     .label("Cancel")
                     .on_click(|_, window, cx| window.close_dialog(cx)),
             ),
             [],
             Button::new("import-curl-import")
+                .solid_ring(cx)
                 .label("Import")
                 .primary()
                 .on_click(move |_, window, cx| match form_ok.read(cx).parse(cx) {

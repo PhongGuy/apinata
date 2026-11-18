@@ -2,6 +2,7 @@
 //! written as a file.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use apinata_core::ItemPath;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -372,6 +373,7 @@ impl Render for SaveDraftForm {
                     .gap(SPACE_2)
                     .child(
                         Button::new("save-draft-open-collection")
+                            .solid_ring(cx)
                             .key_context(ui::DIALOG_FOOTER_CONTEXT)
                             .label("Open collection…")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -380,6 +382,7 @@ impl Render for SaveDraftForm {
                     )
                     .child(
                         Button::new("save-draft-new-collection")
+                            .solid_ring(cx)
                             .key_context(ui::DIALOG_FOOTER_CONTEXT)
                             .label("New collection…")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -477,14 +480,18 @@ pub fn ask(
             let cancel_tx = tx.clone();
             let click_tx = tx.clone();
             let buttons = ui::dialog_footer(
-                Some(Button::new("save-draft-cancel").label("Cancel").on_click(
-                    move |_, window, cx| {
-                        let _ = click_tx.try_send(None);
-                        window.close_dialog(cx);
-                    },
-                )),
+                Some(
+                    Button::new("save-draft-cancel")
+                        .solid_ring(cx)
+                        .label("Cancel")
+                        .on_click(move |_, window, cx| {
+                            let _ = click_tx.try_send(None);
+                            window.close_dialog(cx);
+                        }),
+                ),
                 [],
                 Button::new("save-draft-save")
+                    .solid_ring(cx)
                     .label("Save")
                     .primary()
                     .lock_filled(answer.is_none(), cx)

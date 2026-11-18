@@ -46,10 +46,13 @@ fn name_of(
     .unwrap()
 }
 
-#[test]
+#[gpui_kit::test]
 #[should_panic(expected = "tooltip")]
-fn an_icon_button_without_a_tooltip_is_refused() {
-    let _ = ui::icon_button("nameless", IconName::Close, "", None);
+fn an_icon_button_without_a_tooltip_is_refused(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.update(|cx| {
+        let _ = ui::icon_button("nameless", IconName::Close, "", None, cx);
+    });
 }
 
 #[gpui_kit::test]

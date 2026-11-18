@@ -3,6 +3,7 @@
 //! secret a pulled rename left behind. It keeps no state of its own; it renders the workspace's
 //! live status and redraws whenever the workspace notifies.
 
+use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 
 use apinata_core::team::{Block, ConflictCopies, TeamState, TeamStore, TeamSync};
@@ -173,6 +174,7 @@ impl SyncView {
         let answer = |id: &'static str, label: &'static str, answer: ClashAnswer| {
             let rel = clash.rel.clone();
             Button::new((id, ix))
+                .solid_ring(cx)
                 .label(label)
                 .on_click(cx.listener(move |this, _, window, cx| {
                     settle(&this.workspace, &this.root, &rel, answer, window, cx)
@@ -191,6 +193,7 @@ impl SyncView {
         let compare = (clash.kind == ClashKind::Copy).then(|| {
             let rel = clash.rel.clone();
             Button::new(("team-compare", ix))
+                .solid_ring(cx)
                 .label("Compare")
                 .on_click(cx.listener(move |this, _, window, cx| this.compare(&rel, window, cx)))
         });
@@ -224,6 +227,7 @@ impl SyncView {
             |id: gpui_kit::ElementId, label: String, to: &SecretName, cx: &mut Context<Self>| {
                 let moves = vec![(row.from.clone(), to.clone())];
                 Button::new(id)
+                    .solid_ring(cx)
                     .label(label)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let (workspace, root) = (this.workspace.clone(), this.root.clone());
@@ -237,6 +241,7 @@ impl SyncView {
                 let from = row.from.clone();
                 buttons.push(
                     Button::new(("team-rename-dismiss", ix))
+                        .solid_ring(cx)
                         .label("Dismiss")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let (workspace, root) = (this.workspace.clone(), this.root.clone());
@@ -254,6 +259,7 @@ impl SyncView {
                 let (from, to) = (row.from.clone(), (*to).clone());
                 buttons.push(
                     Button::new(("team-rename-enter", ix))
+                        .solid_ring(cx)
                         .label("Enter again")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let (workspace, root) = (this.workspace.clone(), this.root.clone());
@@ -321,16 +327,19 @@ impl Render for SyncView {
         )
         .then(|| {
             Button::new("team-retry")
+                .solid_ring(cx)
                 .label("Retry")
                 .on_click(cx.listener(|this, _, _, cx| this.with_sync(cx, TeamSync::retry)))
         });
         let discard = matches!(state, Some(TeamState::ReadOnly { paused: true })).then(|| {
             Button::new("team-discard")
+                .solid_ring(cx)
                 .label("Discard")
                 .on_click(cx.listener(|this, _, _, cx| this.with_sync(cx, TeamSync::discard)))
         });
         let sign_in = matches!(state, Some(TeamState::Blocked(Block::SignedOut))).then(|| {
             Button::new("team-sign-in-again")
+                .solid_ring(cx)
                 .label("Sign in again")
                 .on_click(cx.listener(|this, _, window, cx| this.sign_in_again(window, cx)))
         });
@@ -381,6 +390,7 @@ impl Render for SyncView {
         let sure = rows.as_ref().map_or(Vec::new(), |r| r.movable_sure());
         let move_all = (sure.len() >= 2).then(|| {
             Button::new("team-rename-move-all")
+                .solid_ring(cx)
                 .label("Move all")
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let (workspace, root) = (this.workspace.clone(), this.root.clone());
@@ -391,6 +401,7 @@ impl Render for SyncView {
         // in the window.
         let cap = crate::dialog_frame::titled_body_room(window) * OUTPUT_SHARE;
         let close = Button::new("team-sync-close")
+            .solid_ring(cx)
             .label("Close")
             .on_click(|_, window, cx| window.close_dialog(cx));
         // The fix is the primary button when there is one, then Move all; otherwise Close is.

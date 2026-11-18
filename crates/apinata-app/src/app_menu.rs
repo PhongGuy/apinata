@@ -1,5 +1,6 @@
 //! The title bar's app menu: one dropdown over the window-level actions the shell handles.
 
+use crate::ui::SolidRing as _;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -119,7 +120,10 @@ pub fn app_menu(
     // The open popup holds focus, so entries dispatch from the shell's handle to reach
     // the same handlers as the shell's key bindings.
     let disabled = app_menu_disabled_reasons(scratch_only, in_repo, updates);
-    crate::ui::solid_ring(Button::new("app-menu").ghost().compact(), cx)
+    Button::new("app-menu")
+        .solid_ring(cx)
+        .ghost()
+        .compact()
         .icon(IconName::Menu)
         .accessibility_label("Application menu")
         .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {

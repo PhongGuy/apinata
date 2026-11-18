@@ -1,5 +1,6 @@
 //! One editable name and value table for params, headers, vars and form bodies.
 
+use crate::ui::SolidRing as _;
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -1456,6 +1457,7 @@ impl KvTable {
             .when(file_body && !blank, |r| {
                 r.child(
                     Button::new(("kv-delete", ix))
+                        .solid_ring(cx)
                         .ghost()
                         .label("Remove")
                         .lock(locked, cx)
@@ -1500,7 +1502,7 @@ impl KvTable {
             .child(action_slot(
                 kv_grid::button_focusing(
                     remove_id,
-                    ui::icon_button(remove_id, IconName::Close, "Remove row", None)
+                    ui::icon_button(remove_id, IconName::Close, "Remove row", None, cx)
                         .lock(locked || fixed, cx)
                         .tab_stop(!slotted && !file_body)
                         .on_click(cx.listener(move |t, _, window, cx| t.delete(ix, window, cx))),
@@ -1603,7 +1605,7 @@ impl KvTable {
         };
         self.bulk_offered().then(|| {
             div().flex_none().track_focus(&self.toggle_slot).child(
-                ui::icon_button("kv-bulk-toggle", icon, tooltip, None).on_click(cx.listener(
+                ui::icon_button("kv-bulk-toggle", icon, tooltip, None, cx).on_click(cx.listener(
                     move |t, event: &ClickEvent, window, cx| {
                         t.set_bulk(!on, window, cx);
                         // A click moves on to what it opened; a key press stays on the

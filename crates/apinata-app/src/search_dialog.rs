@@ -2,6 +2,7 @@
 //! hits grouped under their request. Opening a hit opens its request and shows the section
 //! that holds the match.
 
+use crate::ui::SolidRing as _;
 use crate::ui::{ChooseButton as _, LockButton as _};
 use std::path::PathBuf;
 
@@ -262,6 +263,7 @@ impl SearchForm {
             .child(
                 // The press lives on the button so Enter or Space on it toggles too.
                 Button::new(SharedString::from(format!("{id}-button")))
+                    .solid_ring(cx)
                     .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
                     .compact()
                     .label(text)
@@ -423,6 +425,7 @@ impl SearchForm {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(
                             Button::new(("search-replace-hit-button", ix))
+                                .solid_ring(cx)
                                 .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
                                 .ghost()
                                 .compact()
@@ -518,6 +521,7 @@ impl Render for SearchForm {
             .aria_label(toggle_name)
             .child(
                 Button::new("search-replace-toggle-button")
+                    .solid_ring(cx)
                     .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
                     .compact()
                     .label("Replace")
@@ -533,6 +537,7 @@ impl Render for SearchForm {
             .aria_label("Replace all")
             .child(
                 Button::new("search-replace-all-button")
+                    .solid_ring(cx)
                     .track_focus(&self.replace_all_focus)
                     .key_context(crate::ui::DIALOG_FOOTER_CONTEXT)
                     .compact()

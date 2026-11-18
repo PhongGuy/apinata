@@ -1,6 +1,7 @@
 //! The Script and Tests sections: one JavaScript code editor per script phase, the Script
 //! section showing one phase at a time under a Pre-request / Post-response switch.
 
+use crate::ui::SolidRing as _;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -86,8 +87,10 @@ fn snippet_button(
     snippet: &'static Snippet,
     phase: ScriptPhase,
     this: Entity<ScriptSection>,
+    cx: &App,
 ) -> Button {
     Button::new(SharedString::from(format!("snippet-{}", snippet.id)))
+        .solid_ring(cx)
         .small()
         .label(snippet.label)
         .tooltip(snippet_tooltip(snippet))
@@ -516,7 +519,7 @@ impl Render for ScriptSection {
                                     .gap(SPACE_1)
                                     .children(
                                         snippets_for(e.phase)
-                                            .map(|s| snippet_button(s, e.phase, this.clone())),
+                                            .map(|s| snippet_button(s, e.phase, this.clone(), cx)),
                                     ),
                             )
                             .child({

@@ -891,7 +891,7 @@ impl AssertionsSection {
                     .track_focus(&row.remove)
                     .child(kv_grid::button_focusing(
                         remove_id,
-                        ui::icon_button(remove_id, IconName::Close, "Remove assertion", None)
+                        ui::icon_button(remove_id, IconName::Close, "Remove assertion", None, cx)
                             .tab_stop(!blank)
                             .on_click(
                                 cx.listener(move |t, _, window, cx| t.delete(ix, window, cx)),

@@ -3,6 +3,7 @@
 //! One environment exports the same way, as a Postman environment; every environment of a
 //! collection or of the global set goes to a chosen folder, one file each.
 
+use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 
 use apinata_core::export::{ExportNote, ExportNoteKind};
@@ -169,6 +170,7 @@ fn exported_toast(path: &Path, notes: Vec<ExportNote>) -> Notification {
         let details = details.clone().map(|(summary, groups)| {
             let this = this.clone();
             Button::new("export-details")
+                .solid_ring(cx)
                 .ghost()
                 .small()
                 .label("Show details")
@@ -186,6 +188,7 @@ fn exported_toast(path: &Path, notes: Vec<ExportNote>) -> Notification {
         });
         let folder = folder.clone();
         let show = Button::new("export-show-folder")
+            .solid_ring(cx)
             .ghost()
             .small()
             .label("Show in file manager")

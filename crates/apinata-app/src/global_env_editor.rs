@@ -4,6 +4,7 @@
 //! Every change is a [`GlobalOp`] the workspace applies off the main thread; the dialog only
 //! reads the workspace's published snapshot and its last error.
 
+use crate::ui::SolidRing as _;
 use std::path::Path;
 
 use apinata_core::EnvVariable;
@@ -1122,6 +1123,7 @@ impl GlobalEnvEditor {
                             "global-env-create-follow",
                             &self.follow,
                             Button::new("global-env-create")
+                                .solid_ring(cx)
                                 .label("New")
                                 .on_click(cx.listener(|e, _, window, cx| {
                                     // Don't save drops the edits here, so the name commits
@@ -1200,6 +1202,7 @@ impl GlobalEnvEditor {
                     let text = e.name_input.read(cx).value().trim().to_string();
                     e.commit_name(&text, window, cx);
                 }),
+                cx,
             ));
         Some(field.into_any_element())
     }
@@ -1248,10 +1251,14 @@ impl Render for GlobalEnvEditor {
         let selected = self.selected.is_some();
         let this = cx.entity().downgrade();
         let disk_banner = (selected && self.disk_changed).then(|| {
-            banner::plain_banner_row(Banner::ChangedOnDisk, move |_, choice, window, cx| {
-                this.update(cx, |e, cx| e.answer_disk(choice, window, cx))
-                    .ok();
-            })
+            banner::plain_banner_row(
+                Banner::ChangedOnDisk,
+                move |_, choice, window, cx| {
+                    this.update(cx, |e, cx| e.answer_disk(choice, window, cx))
+                        .ok();
+                },
+                cx,
+            )
         });
         let orphans = self.orphans.without_drafts(&self.draft_variables(cx));
         let editor = cx.entity().downgrade();
@@ -1286,9 +1293,11 @@ impl Render for GlobalEnvEditor {
         );
         let edits = self.has_edits(cx);
         let this = cx.entity();
-        let more = env_editor::more_button("global-env-more", move |menu| {
-            global_menu(menu, this.clone())
-        });
+        let more = env_editor::more_button(
+            "global-env-more",
+            move |menu| global_menu(menu, this.clone()),
+            cx,
+        );
         // The collection editor's header: the name, the "…" menu, then Duplicate, Discard
         // changes and Save. A focused header button takes Enter as its press, not the dialog's.
         let header = env_editor::pane_header(
@@ -1309,7 +1318,7 @@ impl Render for GlobalEnvEditor {
         ))
         .child(followed(
             "global-env-save-follow",
-            env_editor::save_button("global-env-save", edits).on_click(cx.listener(
+            env_editor::save_button("global-env-save", edits, cx).on_click(cx.listener(
                 |e, _, window, cx| {
                     let _ = e.save_asking(window, cx);
                 },
@@ -1399,6 +1408,7 @@ impl Render for GlobalEnvEditor {
                 .when(!naming, |d| {
                     d.child(
                         Button::new("global-env-empty-create")
+                            .solid_ring(cx)
                             .label("New global environment")
                             .on_click(cx.listener(|e, _, window, cx| {
                                 e.start_naming(Naming::Create, window, cx)

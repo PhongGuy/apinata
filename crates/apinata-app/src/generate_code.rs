@@ -234,7 +234,7 @@ impl Render for GenerateCodeView {
             style::CODE_PREVIEW_HEIGHT.to_pixels(rem).min(room * 0.6)
         };
         // Enter on Copy copies; the target select keeps its own Enter.
-        let copy = ui::icon_button("generate-code-copy", IconName::Copy, "Copy", None)
+        let copy = ui::icon_button("generate-code-copy", IconName::Copy, "Copy", None, cx)
             .key_context(ui::DIALOG_FOOTER_CONTEXT)
             .on_click(cx.listener(|this, _, window, cx| this.copy(window, cx)));
         // Tall enough that every target shows without scrolling.

@@ -2,6 +2,7 @@
 //! The form rules live in `clone_form`, the git work in `clone_job`.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -466,6 +467,7 @@ impl CloneView {
                 None,
                 [],
                 Button::new("clone-cancel")
+                    .solid_ring(cx)
                     .label("Cancel")
                     .lock(cancelling, cx)
                     .on_click(cx.listener(|this, _, window, cx| this.cancel(window, cx))),
@@ -569,6 +571,7 @@ impl CloneView {
                 .child(
                     // Browse sits beside no input, and takes Enter as its own press.
                     Button::new("clone-browse")
+                        .solid_ring(cx)
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .flex_none()
                         .label("Browse…")
@@ -586,11 +589,13 @@ impl CloneView {
             .child(ui::dialog_footer(
                 Some(
                     Button::new("clone-cancel")
+                        .solid_ring(cx)
                         .label("Cancel")
                         .on_click(|_, window, cx| window.close_dialog(cx)),
                 ),
                 [],
                 Button::new("clone-start")
+                    .solid_ring(cx)
                     .label("Clone")
                     .primary()
                     .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),

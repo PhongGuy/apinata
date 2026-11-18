@@ -1,5 +1,6 @@
 //! The conflict banners an editor shows, and the commands each choice sends.
 
+use crate::ui::SolidRing as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::h_flex;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -76,22 +77,25 @@ pub fn commands(banner: Banner, choice: Choice, target: &Target, held: &[Edit]) 
 pub fn banner_row(
     banner: Banner,
     answer: impl Fn(Banner, Choice, &mut Window, &mut App) + Clone + 'static,
+    cx: &App,
 ) -> AnyElement {
-    row(banner, true, answer)
+    row(banner, true, answer, cx)
 }
 
 /// [`banner_row`] without Compare, for an editor with no document to diff against.
 pub fn plain_banner_row(
     banner: Banner,
     answer: impl Fn(Banner, Choice, &mut Window, &mut App) + Clone + 'static,
+    cx: &App,
 ) -> AnyElement {
-    row(banner, false, answer)
+    row(banner, false, answer, cx)
 }
 
 fn row(
     banner: Banner,
     compare: bool,
     answer: impl Fn(Banner, Choice, &mut Window, &mut App) + Clone + 'static,
+    cx: &App,
 ) -> AnyElement {
     let (id, text, primary, secondary) = match banner {
         Banner::ChangedOnDisk => (
@@ -122,6 +126,7 @@ fn row(
     let button = |(bid, label): (&'static str, &'static str), choice| {
         let answer = answer.clone();
         Button::new(bid)
+            .solid_ring(cx)
             .label(label)
             .on_click(move |_, window, cx| answer(banner, choice, window, cx))
     };

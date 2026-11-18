@@ -1,6 +1,7 @@
 //! The Inherited headers group under a request's headers: what the collection and folders
 //! add, read-only, with the level that supplies each and a mark when it is overridden.
 
+use crate::ui::SolidRing as _;
 use apinata_core::{Collection, HeaderSource, InheritedHeader, ItemPath, KeyValue};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
@@ -118,6 +119,7 @@ impl Render for InheritedHeadersSection {
                 )
                 .child(
                     Button::new(SharedString::from(format!("inherited-header-{n}-source")))
+                        .solid_ring(cx)
                         .link()
                         .xsmall()
                         .px(SPACE_1)

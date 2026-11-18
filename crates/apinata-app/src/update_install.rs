@@ -2,6 +2,7 @@
 //! for this install, and the quit that installs an armed release and restarts into it.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -107,6 +108,7 @@ pub fn install_controls(
     };
     let (updates, workspace) = (updates.clone(), workspace.clone());
     let button = Button::new("update-install")
+        .solid_ring(cx)
         .label(label)
         .lock(phase == InstallPhase::Downloading, cx)
         .on_click(move |_, window, cx| {

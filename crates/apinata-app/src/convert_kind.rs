@@ -1,6 +1,7 @@
 //! Convert to GraphQL and Convert to HTTP: the collection actor rewrites a saved request as the
 //! other kind, and a toast reports it with an Undo that puts the file back as it was.
 
+use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -177,6 +178,7 @@ fn converted(
         .action(move |_, _, cx| {
             let (undo, this) = (Rc::clone(&undo), cx.entity());
             Button::new("undo-convert")
+                .solid_ring(cx)
                 .ghost()
                 .label("Undo")
                 .on_click(move |_, window, cx| {

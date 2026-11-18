@@ -2,6 +2,7 @@
 //! Get token, Refresh and Clear for the auth a request, a folder or the collection uses.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -462,6 +463,7 @@ impl Render for TokenPanel {
                         .gap(style::SPACE_2)
                         .child(
                             Button::new("oauth2-get-token")
+                                .solid_ring(cx)
                                 .label("Get token")
                                 .lock(busy, cx)
                                 .on_click(cx.listener(|p, _, _, cx| p.get_token(cx))),
@@ -469,6 +471,7 @@ impl Render for TokenPanel {
                         .when(can_refresh, |row| {
                             row.child(
                                 Button::new("oauth2-refresh-token")
+                                    .solid_ring(cx)
                                     .label("Refresh")
                                     .lock(busy, cx)
                                     .on_click(cx.listener(|p, _, _, cx| p.refresh_token(cx))),
@@ -476,6 +479,7 @@ impl Render for TokenPanel {
                         })
                         .child(
                             Button::new("oauth2-clear-token")
+                                .solid_ring(cx)
                                 .label("Clear")
                                 .lock(busy, cx)
                                 .on_click(cx.listener(|p, _, _, cx| p.clear(cx))),

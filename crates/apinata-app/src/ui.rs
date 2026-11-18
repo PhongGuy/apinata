@@ -1469,13 +1469,18 @@ pub fn icon_button(
     icon: IconName,
     tooltip: &str,
     action: Option<&dyn Action>,
+    cx: &App,
 ) -> Button {
     // The kit names a button from its label or `accessibility_label`, never its tooltip, so
     // an icon-only button would be nameless without this.
     debug_assert!(!tooltip.trim().is_empty(), "an icon button needs a tooltip");
+    // Square by its height, so an out-of-flow child, which sizes it as a labelled button, and
+    // the ring's reserved border leave it as wide as it is tall.
     let button = Button::new(id)
+        .solid_ring(cx)
         .ghost()
         .compact()
+        .aspect_ratio(1.)
         .icon(icon)
         .accessibility_label(tooltip.to_string());
     match action {
@@ -1499,10 +1504,11 @@ pub fn swap_icon_button(
     face: impl Into<ElementId>,
     icon: IconName,
     tooltip: &str,
+    cx: &App,
 ) -> Button {
     // An icon-only button sizes itself square only without children; the compact padding
     // around the one icon comes to the same square.
-    icon_button(id, icon, tooltip, None).child(
+    icon_button(id, icon, tooltip, None, cx).child(
         div()
             .id(face)
             .test_support()
@@ -1531,20 +1537,34 @@ pub fn label_with_key(label: &str, action: &dyn Action, cx: &App) -> String {
 
 /// A kit button whose keyboard focus draws the app's solid ring, the colour and weight of a
 /// tab's, in place of the kit's half-transparent band. A mouse press draws none.
-pub fn solid_ring(button: Button, cx: &App) -> Button {
-    use gpui_kit::component::FocusableExt as _;
-    let ring = cx.theme().ring;
-    // The border is reserved in every state, so focus never moves the control's content. It
-    // stays transparent until the ring shows, unless the button already has an edge colour.
-    let mut button = button.focus_ring(false).border_1();
-    if button.style().border_color.is_none() {
-        button = button.border_color(gpui_kit::transparent_black());
+pub trait SolidRing: Sized {
+    /// Swaps the kit's focus band for the solid ring; every app button takes it.
+    fn solid_ring(self, cx: &App) -> Self;
+}
+
+impl SolidRing for Button {
+    fn solid_ring(self, cx: &App) -> Self {
+        use gpui_kit::component::FocusableExt as _;
+        let ring = cx.theme().ring;
+        // The border is reserved in every state, so focus never moves the content. It keeps
+        // the variant's own edge colour, which a borderless variant draws transparent.
+        let button = self.focus_ring(false).border_1();
+        if !crate::focus_mode::is_keyboard(cx) {
+            return button;
+        }
+        // A 1px gap inside the ring, so a fill as bright as the ring still shows one; an
+        // inset shadow two wide, under the ring's border, leaves the layout as it is.
+        let gap = BoxShadow::new(px(0.), px(0.), focus_gap(cx.theme()))
+            .spread_radius(px(2.))
+            .inset();
+        button.focus(move |s| s.border_color(ring).shadow(vec![gap]))
     }
-    if crate::focus_mode::is_keyboard(cx) {
-        button.focus(move |s| s.border_color(ring))
-    } else {
-        button
-    }
+}
+
+/// The colour between a focused button's ring and its fill: the page, which the ring already
+/// reaches 3:1 against.
+pub fn focus_gap(theme: &gpui_kit::component::Theme) -> Hsla {
+    theme.background
 }
 
 /// Marks `control` as a title-bar control: a press that lands on it never arms the bar's
@@ -1590,10 +1610,12 @@ pub fn strip_overflow(
     labels: Vec<SharedString>,
     selected: usize,
     on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     let on_pick = Rc::new(on_pick);
     strip_chevron(
         Button::new(id)
+            .solid_ring(cx)
             .ghost()
             .compact()
             .icon(IconName::ChevronDown)
@@ -1653,6 +1675,7 @@ pub fn select(
     let chevron_id = SharedString::from(format!("{id}-chevron"));
     let accessible = format!("{name}: {current}");
     Button::new(id)
+        .solid_ring(cx)
         .outline()
         .compact()
         .when_some(crate::theme::select_open_fill(cx.theme()), |b, fill| {
@@ -2477,6 +2500,7 @@ pub fn tab_strip(id: impl Into<ElementId>, cx: &App) -> TabBar {
 
 impl RenderOnce for Segmented {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        use gpui_kit::component::FocusableExt as _;
         // The track keeps each segment's focus handle and hands it to the kit button, so the
         // track's key handlers can tell which segment holds focus and move it to a neighbour.
         let ids: Vec<ElementId> = (0..self.options.len())
@@ -2493,7 +2517,7 @@ impl RenderOnce for Segmented {
                 .collect()
         });
         let t = cx.theme();
-        let (fg, muted, radius) = (t.foreground, t.muted_foreground, t.radius);
+        let (fg, muted, radius, ring) = (t.foreground, t.muted_foreground, t.radius, t.ring);
         let track = t.muted;
         let focused = {
             let handles = Rc::clone(&handles);
@@ -2529,6 +2553,7 @@ impl RenderOnce for Segmented {
                 let on_select = Rc::clone(&self.on_select);
                 // `selected` stops the kit painting its hover over the current choice.
                 let button = Button::new(id)
+                    .focus_ring(false)
                     .track_focus(&handles[ix])
                     .ghost()
                     .label(label)
@@ -2540,15 +2565,20 @@ impl RenderOnce for Segmented {
                 } else {
                     button.text_color(muted)
                 };
-                // The edge floats over the button so the segment keeps a ghost button's size.
-                let edge = segment_edge(sel, cx).map(|edge| {
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .rounded(radius)
-                        .border_1()
-                        .border_color(edge)
-                });
+                // The edge floats over the button so the segment keeps a ghost button's size; a
+                // segment Tab reached draws it in the ring colour instead.
+                let ringed = crate::focus_mode::is_keyboard(cx) && handles[ix].is_focused(window);
+                let edge = ringed
+                    .then_some(ring)
+                    .or(segment_edge(sel, cx))
+                    .map(|edge| {
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .rounded(radius)
+                            .border_1()
+                            .border_color(edge)
+                    });
                 // The kit button's own tooltip is not findable, so a hint rides on a wrapper.
                 match (self.tips.get(ix).cloned(), edge) {
                     (Some((tip_id, text)), edge) => div()
@@ -3345,6 +3375,7 @@ impl RenderOnce for DialogX {
             .child(div().absolute().size_0().track_focus(&anchor))
             .child(
                 Button::new("close")
+                    .solid_ring(cx)
                     .small()
                     .ghost()
                     .icon(IconName::Close)
@@ -3832,6 +3863,7 @@ impl RenderOnce for EmptyState {
                     .relative()
                     .child(
                         Button::new(("empty-action", ix))
+                            .solid_ring(cx)
                             .ghost()
                             .label(label)
                             .on_click(move |_, window, cx| {
@@ -3990,6 +4022,7 @@ pub fn stored_secret(
         .child(div().text_color(cx.theme().muted_foreground).child(text))
         .child(
             Button::new(replace_id)
+                .solid_ring(cx)
                 .label("Replace")
                 .small()
                 .on_click(on_replace),

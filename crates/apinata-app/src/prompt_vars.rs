@@ -1,6 +1,7 @@
 //! The "Input required" dialog that asks for a request's `{{?label}}` prompt variables, and
 //! the per-collection memory of answers given this app session.
 
+use crate::ui::SolidRing as _;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -141,7 +142,7 @@ fn open(
         }
         let first = form.read(cx).inputs.first().cloned();
         let builder_form = form.clone();
-        window.open_dialog(cx, move |dialog, window, _| {
+        window.open_dialog(cx, move |dialog, window, cx| {
             let dialog = crate::dialog_frame::place(dialog, window);
             // Every answer is accepted as typed, empty included, so Continue is always enabled.
             let answer = {
@@ -156,14 +157,18 @@ fn open(
                 .key_context(ui::DIALOG_FOOTER_CONTEXT)
                 .gap_2()
                 .justify_end()
-                .child(Button::new("prompt-vars-cancel").label("Cancel").on_click(
-                    move |_, window, cx| {
-                        let _ = click_tx.try_send(None);
-                        window.close_dialog(cx);
-                    },
-                ))
+                .child(
+                    Button::new("prompt-vars-cancel")
+                        .solid_ring(cx)
+                        .label("Cancel")
+                        .on_click(move |_, window, cx| {
+                            let _ = click_tx.try_send(None);
+                            window.close_dialog(cx);
+                        }),
+                )
                 .child(
                     Button::new("prompt-vars-continue")
+                        .solid_ring(cx)
                         .label("Continue")
                         .primary()
                         .on_click(move |_, window, cx| {

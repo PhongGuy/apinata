@@ -3,6 +3,7 @@
 //! for images, and a bar with the mode toggles, the detected format, a JSONPath or XPath
 //! filter, copy and save.
 
+use crate::ui::SolidRing as _;
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::path::PathBuf;
@@ -1063,7 +1064,7 @@ impl BodyView {
                 flip(this, cx);
                 this.refocus_find(window, cx);
             }))
-            .child(ui::icon_button(ids.1, icon, &tooltip, None).toggle(on, cx))
+            .child(ui::icon_button(ids.1, icon, &tooltip, None, cx).toggle(on, cx))
     }
 
     /// Moves to the previous match, wrapping, and scrolls it into view.
@@ -2286,6 +2287,7 @@ impl BodyView {
                     )
                     .child(
                         Button::new("body-download-cancel")
+                            .solid_ring(cx)
                             .label("Cancel")
                             .small()
                             .on_click(
@@ -2295,6 +2297,7 @@ impl BodyView {
             }
             _ => h_flex().child(
                 Button::new("body-download-full")
+                    .solid_ring(cx)
                     .label("Download full response")
                     .small()
                     .tooltip("Sends the request again")
@@ -3337,7 +3340,8 @@ impl Render for BodyView {
                 ("body-reveal", IconName::Eye, "Show secrets")
             };
             // One button across the flip, so a keyboard press keeps focus on it.
-            let eye = ui::swap_icon_button("body-eye", face, ui::glyph("body-eye", icon), words);
+            let eye =
+                ui::swap_icon_button("body-eye", face, ui::glyph("body-eye", icon), words, cx);
             bar = bar.child(
                 eye.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                     this.set_reveal(!on, window, cx)
@@ -3350,6 +3354,7 @@ impl Render for BodyView {
                 "body-reveal",
                 ui::glyph("body-eye", IconName::Eye),
                 SCRUBBED_TIP,
+                cx,
             );
             bar = bar.child(ui::LockButton::lock(eye, true, cx));
         }
@@ -3361,6 +3366,7 @@ impl Render for BodyView {
             bar = bar.child(
                 div().id("body-filter").test_support().child(
                     Button::new("body-filter-button")
+                        .solid_ring(cx)
                         .label("Filter")
                         .toggle(self.filter_open, cx)
                         .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
@@ -3415,6 +3421,7 @@ impl Render for BodyView {
                             ui::glyph("body-copy-button", IconName::Copy),
                             "Copy body",
                             None,
+                            cx,
                         )
                         .lock(!self.can_copy(), cx),
                     ),
@@ -3423,6 +3430,7 @@ impl Render for BodyView {
         if !self.compact && self.has_body() {
             let lock = self.schema_test_lock();
             let button = Button::new("body-schema-test-button")
+                .solid_ring(cx)
                 .ghost()
                 .label("Schema test")
                 .tooltip(self.schema_test_tooltip());
@@ -3448,6 +3456,7 @@ impl Render for BodyView {
                             ui::glyph("body-save-button", IconName::Download),
                             self.save_lock().unwrap_or("Save body"),
                             None,
+                            cx,
                         )
                         .lock(self.save_lock().is_some(), cx),
                     ),
@@ -3458,6 +3467,7 @@ impl Render for BodyView {
             let truncated = self.truncated();
             let page = self.browser_page().is_some();
             let mut open = Button::new("body-open")
+                .solid_ring(cx)
                 .label(if page {
                     "Open in browser"
                 } else {
@@ -3542,6 +3552,7 @@ impl Render for BodyView {
                             IconName::ChevronUp,
                             &ui::label_with_key("Previous match", &FindPreviousInResponse, cx),
                             None,
+                            cx,
                         )),
                 )
                 .child(
@@ -3557,6 +3568,7 @@ impl Render for BodyView {
                             IconName::ChevronDown,
                             &ui::label_with_key("Next match", &FindNextInResponse, cx),
                             None,
+                            cx,
                         )),
                 )
                 .child(
@@ -3571,6 +3583,7 @@ impl Render for BodyView {
                             IconName::Close,
                             "Close find",
                             None,
+                            cx,
                         )),
                 )
         });
@@ -3625,6 +3638,7 @@ impl Render for BodyView {
                 .child(
                     div().id("body-filter-clear").test_support().child(
                         Button::new("body-filter-clear-button")
+                            .solid_ring(cx)
                             .link()
                             .small()
                             .label("Clear")

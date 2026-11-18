@@ -1230,6 +1230,7 @@ impl EnvVarTable {
                                 IconName::Close,
                                 "Remove variable",
                                 None,
+                                cx,
                             )
                             .tab_stop(!blank)
                             .on_click(
@@ -1344,7 +1345,7 @@ impl EnvVarTable {
                 };
                 // One button across the flip keeps its element state, like every other eye.
                 d.child(
-                    ui::swap_icon_button(("env-eye", ix), (face, ix), icon, words)
+                    ui::swap_icon_button(("env-eye", ix), (face, ix), icon, words, cx)
                         .tab_stop(false)
                         .on_click(cx.listener(move |t, _, w, cx| {
                             if revealed {

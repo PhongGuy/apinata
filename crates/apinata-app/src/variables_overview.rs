@@ -7,6 +7,7 @@ use crate::env_table::SECRET_HIDDEN;
 use crate::runtime_vars::Masking;
 use crate::shell::OpenRuntimeVariables;
 use crate::style;
+use crate::ui::SolidRing as _;
 use crate::ui::{self, RingRoom as _, RingSides};
 use apinata_core::{ScopedVariable, VarScope};
 use gpui_kit::assets::IconName;
@@ -98,6 +99,7 @@ impl Render for VariablesOverview {
                     .ring_room(RingSides::LEFT | RingSides::RIGHT | RingSides::BOTTOM)
                     .child(
                         Button::new("var-overview-edit-runtime")
+                            .solid_ring(cx)
                             .label("Edit variables set by requests")
                             .on_click(|_, window, cx| {
                                 window.close_dialog(cx);
@@ -274,16 +276,15 @@ impl VariablesOverview {
             )
             .when(shown.eye, |d| {
                 d.child(
-                    ui::swap_icon_button(("var-overview-eye", ix), (id, ix), icon, words).on_click(
-                        cx.listener(move |t, _, _, cx| {
+                    ui::swap_icon_button(("var-overview-eye", ix), (id, ix), icon, words, cx)
+                        .on_click(cx.listener(move |t, _, _, cx| {
                             if now {
                                 t.revealed.remove(&key);
                             } else {
                                 t.revealed.insert(key.clone());
                             }
                             cx.notify();
-                        }),
-                    ),
+                        })),
                 )
             })
             .when(shadowed, |d| {

@@ -205,7 +205,7 @@ impl Render for TagField {
                 .text_size(style::TEXT_SMALL)
                 .child(tag.clone())
                 .child(
-                    ui::icon_button(("tag-remove", ix), IconName::Close, "Remove tag", None)
+                    ui::icon_button(("tag-remove", ix), IconName::Close, "Remove tag", None, cx)
                         .tab_stop(false)
                         .on_click(cx.listener(move |t, _, _, cx| t.remove(ix, cx))),
                 )

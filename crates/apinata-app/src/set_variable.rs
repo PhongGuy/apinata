@@ -3,6 +3,7 @@
 //! collection's own edit and save path; the runtime target only fills the in-memory store.
 
 use crate::ui::LockButton as _;
+use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 
 use apinata_core::{EnvVariable, VarValue, Variable};
@@ -315,11 +316,13 @@ pub fn open_value(
             let buttons = ui::dialog_footer(
                 Some(
                     Button::new("set-variable-cancel")
+                        .solid_ring(cx)
                         .label("Cancel")
                         .on_click(|_, window, cx| window.close_dialog(cx)),
                 ),
                 [],
                 Button::new("set-variable-set")
+                    .solid_ring(cx)
                     .label("Set")
                     .primary()
                     .lock_filled(!ready, cx)

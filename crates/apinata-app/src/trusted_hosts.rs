@@ -1,6 +1,7 @@
 //! The "Trusted hosts" settings of a collection: its trusted and denied hosts from the
 //! per-user trust file, which this view edits in place.
 
+use crate::ui::SolidRing as _;
 use std::path::{Path, PathBuf};
 
 use apinata_core::{TrustError, TrustStore, bare_host_refusal, normalize_bare_host};
@@ -169,6 +170,7 @@ fn host_rows(
                 )
                 .child(
                     Button::new((remove, ix))
+                        .solid_ring(cx)
                         .label("Remove")
                         .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                             // The next host moves up under the pointer, so the second half
@@ -216,6 +218,7 @@ impl Render for TrustedHostsView {
             ))
             .child(
                 Button::new("hosts-add-button")
+                    .solid_ring(cx)
                     .label("Add")
                     .on_click(cx.listener(|this, _, window, cx| this.trust_typed(window, cx))),
             );

@@ -2,6 +2,7 @@
 //! draft as the writer would save it, read-only until Reload or Overwrite. The same dialog over
 //! two fixed texts settles a team clash: the file now against the saved local side.
 
+use crate::ui::SolidRing as _;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -360,11 +361,14 @@ fn present(
             };
             let button = |(id, label, act): Action| {
                 let state = state.clone();
-                Button::new(id).label(label).on_click(move |_, window, cx| {
-                    state.update(cx, |d, _| d.open = false);
-                    act(window, cx);
-                    window.close_dialog(cx);
-                })
+                Button::new(id)
+                    .solid_ring(cx)
+                    .label(label)
+                    .on_click(move |_, window, cx| {
+                        state.update(cx, |d, _| d.open = false);
+                        act(window, cx);
+                        window.close_dialog(cx);
+                    })
             };
             let dismissed = {
                 let state = state.clone();
@@ -379,11 +383,18 @@ fn present(
                 .close_button(false)
                 .on_ok(dismissed.clone())
                 .on_cancel(dismissed)
-                .child(v_flex().gap_2().child(state.clone()).child(dialog_footer(
-                    Some(Button::new("compare-close").label("Close").on_click(close)),
-                    others.into_iter().map(button),
-                    button(primary),
-                )))
+                .child(
+                    v_flex().gap_2().child(state.clone()).child(dialog_footer(
+                        Some(
+                            Button::new("compare-close")
+                                .solid_ring(cx)
+                                .label("Close")
+                                .on_click(close),
+                        ),
+                        others.into_iter().map(button),
+                        button(primary),
+                    )),
+                )
         });
     });
 }

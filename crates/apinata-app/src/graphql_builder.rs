@@ -1,5 +1,6 @@
 //! The GraphQL query builder: schema fields as a tree of rows ticked from the query text.
 
+use crate::ui::SolidRing as _;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
@@ -388,6 +389,7 @@ impl BuilderPanel {
         let chevron = matches!(row.kind, RowKind::Root | RowKind::Composite).then(|| {
             let path = row.path.clone();
             Button::new(("graphql-builder-chevron", ix))
+                .solid_ring(cx)
                 .ghost()
                 .xsmall()
                 .icon(if row.expanded {

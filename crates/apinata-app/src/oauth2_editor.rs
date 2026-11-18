@@ -1,5 +1,6 @@
 //! The OAuth 2.0 editor inside the auth tab: each grant's fields, selects and toggles.
 
+use crate::ui::SolidRing as _;
 use std::sync::Arc;
 
 use apinata_core::{
@@ -1109,6 +1110,7 @@ impl Render for OAuth2Editor {
                 .child(PLAIN_NOTICE)
                 .child(
                     Button::new("oauth2-move-secrets")
+                        .solid_ring(cx)
                         .label("Move to .env")
                         .on_click(cx.listener(|this, _, _, cx| this.move_secrets(cx))),
                 )
@@ -1248,6 +1250,7 @@ impl OAuth2Editor {
                             IconName::Close,
                             "Remove parameter",
                             None,
+                            cx,
                         )
                         .on_click(cx.listener(move |t, _, w, cx| t.remove_param(ix, w, cx))),
                     )
@@ -1261,6 +1264,7 @@ impl OAuth2Editor {
             .child(
                 h_flex().child(
                     Button::new("oauth2-param-add")
+                        .solid_ring(cx)
                         .label("Add parameter")
                         .on_click(cx.listener(|t, _, w, cx| t.add_param(w, cx))),
                 ),

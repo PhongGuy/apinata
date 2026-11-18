@@ -1,6 +1,7 @@
 //! A themed in-app confirmation dialog that replaces the platform prompt: Enter answers the
 //! default, Escape the cancel choice, and each button carries an id the pilot can see.
 
+use crate::ui::SolidRing as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{WindowExt, v_flex};
 use gpui_kit::prelude::FluentBuilder;
@@ -47,7 +48,7 @@ pub fn ask(spec: Ask, window: &mut Window, cx: &mut App) -> async_channel::Recei
     window.defer(cx, move |window, cx| {
         let nested = window.has_active_dialog(cx);
         // The builder runs every frame, so each handler clones what it captures.
-        window.open_dialog(cx, move |dialog, window, _| {
+        window.open_dialog(cx, move |dialog, window, cx| {
             let dialog = if nested {
                 crate::dialog_frame::place_nested(dialog, window)
             } else {
@@ -78,6 +79,7 @@ pub fn ask(spec: Ask, window: &mut Window, cx: &mut App) -> async_channel::Recei
                 .map(|(ix, c)| {
                     let tx = tx.clone();
                     Button::new(c.id)
+                        .solid_ring(cx)
                         .label(c.label.clone())
                         .when(c.danger, |b| b.danger())
                         .when(!c.danger && ix == spec.default, |b| b.primary())

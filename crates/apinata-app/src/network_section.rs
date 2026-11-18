@@ -1,6 +1,7 @@
 //! The collection's Network tab: the proxy choice and its fields, the client certificates,
 //! and a way to move literal secrets out of the collection file.
 
+use crate::ui::SolidRing as _;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
@@ -1153,6 +1154,7 @@ impl NetworkSection {
                             IconName::Close,
                             "Remove host override",
                             None,
+                            cx,
                         )
                         .tab_stop(false)
                         .on_click(cx.listener(
@@ -1193,7 +1195,7 @@ impl NetworkSection {
             .children(rows)
             .child(
                 h_flex().child(
-                    Button::new("host-add")
+                    Button::new("host-add").solid_ring(cx)
                         .label("Add host override")
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.add_host_override(window, cx)
@@ -1230,9 +1232,12 @@ impl NetworkSection {
             .children(rows)
             .child(
                 h_flex().child(
-                    Button::new("cert-add").label("Add certificate").on_click(
-                        cx.listener(|this, _, window, cx| this.add_certificate(window, cx)),
-                    ),
+                    Button::new("cert-add")
+                        .solid_ring(cx)
+                        .label("Add certificate")
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.add_certificate(window, cx)),
+                        ),
                 ),
             )
     }
@@ -1255,7 +1260,7 @@ impl NetworkSection {
             )
         };
         let picker = |id: &'static str, tip: &str, which: CertField, cx: &mut Context<Self>| {
-            ui::icon_button((id, ix), IconName::FolderOpen, tip, None)
+            ui::icon_button((id, ix), IconName::FolderOpen, tip, None, cx)
                 .tab_stop(false)
                 .on_click(cx.listener(move |this, _, window, cx| this.pick(ix, which, window, cx)))
         };
@@ -1306,6 +1311,7 @@ impl NetworkSection {
                     IconName::Close,
                     "Remove certificate",
                     None,
+                    cx,
                 )
                 .tab_stop(false)
                 .on_click(
@@ -1479,6 +1485,7 @@ impl Render for NetworkSection {
                 .child("Stored in plain text")
                 .child(
                     Button::new("network-move-secrets")
+                        .solid_ring(cx)
                         .label("Move to .env")
                         .on_click(cx.listener(|this, _, _, cx| this.move_secrets(cx))),
                 )
@@ -1508,12 +1515,14 @@ impl Render for NetworkSection {
                 .children(notice.lines.into_iter().map(|line| format!("- {line}")))
                 .child(div().child(if unreadable {
                     Button::new("network-reset-acks")
+                        .solid_ring(cx)
                         .label("Reset network acknowledgements")
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(NetworkAction(crate::command::NetworkOp::Reset));
                         }))
                 } else {
                     Button::new("network-change-ack")
+                        .solid_ring(cx)
                         .label("Acknowledge")
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(NetworkAction(crate::command::NetworkOp::Acknowledge));
