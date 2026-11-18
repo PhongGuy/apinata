@@ -58,7 +58,12 @@ fn the_collection_menu_is_split_into_groups(cx: &mut TestAppContext) {
         [
             some(&["New request", "New GraphQL request", "New folder"]),
             some(&["Paste", "Sort by name"]),
-            some(&["Run collection", "Collection settings", "Start mock server"]),
+            some(&[
+                "Run collection",
+                "Check collection",
+                "Collection settings",
+                "Start mock server"
+            ]),
             some(&[
                 MenuEntry::ExportPostman.label(),
                 MenuEntry::ExportPostmanKeepScripts.label(),

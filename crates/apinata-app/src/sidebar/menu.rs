@@ -46,6 +46,8 @@ pub enum MenuEntry {
     RunCollection,
     /// Open the folder's runner tab.
     RunFolder,
+    /// Check the collection for problems.
+    CheckCollection,
     /// Open the collection's settings tab.
     CollectionSettings,
     /// Start or stop the collection's mock server; the menu labels it by the server's state.
@@ -100,6 +102,7 @@ impl MenuEntry {
             MenuEntry::ConvertToHttp => label("request.convert_to_http"),
             MenuEntry::RunCollection => label("collection.run"),
             MenuEntry::RunFolder => label("collection.run_folder"),
+            MenuEntry::CheckCollection => label("collection.check"),
             MenuEntry::CollectionSettings => label("collection.settings"),
             MenuEntry::MockServer => crate::mock_server::command_label(false),
             MenuEntry::Settings => label("collection.folder_settings"),
@@ -132,7 +135,7 @@ impl MenuEntry {
             E::NewRequest | E::NewGraphqlRequest | E::NewFolder => 0,
             E::CloneItem | E::CopyItem | E::CutItem | E::PasteItem | E::SortByName => 1,
             E::RunCollection | E::RunFolder | E::CollectionSettings | E::Settings => 2,
-            E::MockServer => 2,
+            E::MockServer | E::CheckCollection => 2,
             E::CopyAsCurl | E::GenerateCode | E::ConvertToGraphql | E::ConvertToHttp => 3,
             E::ExportPostman | E::ExportPostmanKeepScripts | E::ExportOpenApi | E::ExportHtml => 4,
             E::ShowInFileManager | E::OpenInTerminal | E::ShowChanges => 5,
@@ -177,6 +180,7 @@ pub fn scratch_blocked(entry: MenuEntry) -> bool {
     matches!(
         entry,
         E::RunCollection
+            | E::CheckCollection
             | E::CollectionSettings
             | E::MockServer
             | E::ExportPostman
@@ -198,6 +202,7 @@ pub fn menu_entries(kind: NodeKind) -> &'static [MenuEntry] {
             E::PasteItem,
             E::SortByName,
             E::RunCollection,
+            E::CheckCollection,
             E::CollectionSettings,
             E::MockServer,
             E::ExportPostman,

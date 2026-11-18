@@ -43,6 +43,7 @@ use crate::approvals::{Approvals, ApprovalsEvent, Prompt, ScriptPrompt};
 use crate::autosave::Autosave;
 use crate::cached_part::{Part, PartOwner, Slot};
 use crate::changes_dialog::open_changes;
+use crate::check_dialog::{CheckCollection, FindingTarget, OpenCheckFinding};
 use crate::closing::CloseScope;
 use crate::command::{Command, NoticeKind, Target};
 use crate::commands;
@@ -1800,6 +1801,24 @@ impl Shell {
         (secrets, global_secrets)
     }
 
+    // Opens the tab a check finding names; a file no tab shows, such as one that does not
+    // parse, is revealed in the sidebar by its folder instead.
+    fn open_check_finding(&mut self, a: &OpenCheckFinding, _: &mut Window, cx: &mut Context<Self>) {
+        let root = &a.root;
+        let opened = self.workspace.update(cx, |w, cx| match &a.target {
+            FindingTarget::Tab(TabKind::Request(path)) => {
+                w.open_item(root, path.clone(), false, cx)
+            }
+            FindingTarget::Tab(kind) => w.open_settings(root, kind.clone(), cx),
+            FindingTarget::Reveal(_) => None,
+        });
+        if opened.is_none() {
+            let path = crate::check_dialog::fallback_reveal(&a.target);
+            self.workspace
+                .update(cx, |w, cx| w.reveal_folder(root, path, cx));
+        }
+    }
+
     // Asks the actor for the active request's variable set, then lists it off the render
     // path: the set is built and flattened on a worker, so the dialog opens with finished rows.
     fn open_variables_overview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3156,6 +3175,13 @@ impl Render for Shell {
                     );
                 }
             }))
+            .on_action(cx.listener(|this, _: &CheckCollection, window, cx| {
+                if let Some(root) = this.workspace.read(cx).current_root() {
+                    let fallback = this.focus.clone();
+                    crate::check_dialog::open(&this.workspace, &root, fallback, window, cx);
+                }
+            }))
+            .on_action(cx.listener(Self::open_check_finding))
             .on_action(cx.listener(|this, a: &OpenSearchHit, window, cx| {
                 let tab = (this.workspace)
                     .update(cx, |w, cx| w.open_item(&a.root, a.path.clone(), false, cx));

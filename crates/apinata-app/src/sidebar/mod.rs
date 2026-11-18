@@ -1770,6 +1770,13 @@ impl Sidebar {
                 cx.emit(SidebarEvent::OpenSettings { root, folder });
             }
             MenuEntry::RunCollection => cx.emit(SidebarEvent::Run { root, folder: None }),
+            // Opened once the menu has handed focus back, so the dialog returns focus there.
+            MenuEntry::CheckCollection => {
+                let (workspace, fallback) = (self.workspace.clone(), self.tree_focus.clone());
+                window.defer(cx, move |window, cx| {
+                    crate::check_dialog::open(&workspace, &root, fallback, window, cx)
+                });
+            }
             MenuEntry::MockServer => self.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx)),
             MenuEntry::RunFolder => {
                 let folder = Some(path);
