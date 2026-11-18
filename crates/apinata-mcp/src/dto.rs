@@ -463,6 +463,9 @@ pub(crate) struct EnvVarDoc {
 #[derive(Serialize, JsonSchema)]
 pub(crate) struct EnvironmentDoc {
     pub name: String,
+    /// The environment this one extends, when it names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
     pub variables: Vec<EnvVarDoc>,
 }
 

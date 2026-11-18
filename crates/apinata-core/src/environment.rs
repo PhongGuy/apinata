@@ -106,6 +106,25 @@ fn upsert(map: &mut Vec<Row>, row: Row) {
     }
 }
 
+/// Where an `extends` walk ended: at a root, at a parent with no file, or back at a name it
+/// had already walked.
+#[derive(Debug, PartialEq)]
+pub(crate) enum ChainEnd {
+    Root,
+    Missing { child: String, parent: String },
+    Cycle(Vec<String>),
+}
+
+/// The run-time warning for a parent with no file, also the text of its refusal.
+pub(crate) fn missing_text(child: &str, parent: &str) -> String {
+    format!("environment `{child}` extends `{parent}`, which does not exist")
+}
+
+/// The run-time warning for an inheritance cycle, also the text of its refusal.
+pub(crate) fn cycle_text(path: &[String]) -> String {
+    format!("environment inheritance cycle: {}", path.join(" -> "))
+}
+
 /// Port of `getInheritedEnvironments`: the `extends` chain, root first, stopping at a missing
 /// parent or at a name already walked, each reported as a warning.
 fn ancestors<'a>(
@@ -113,33 +132,47 @@ fn ancestors<'a>(
     target: &'a Environment,
     warnings: &mut Vec<String>,
 ) -> Vec<&'a Environment> {
-    let index: HashMap<&str, &Environment> = envs.iter().map(|e| (e.name(), e)).collect();
-    let mut walked = vec![target.name()];
-    let mut found = Vec::new();
-    let mut current = target;
-    while let Some(parent_name) = extends(current) {
-        let Some(parent) = index.get(parent_name.as_str()).copied() else {
-            warnings.push(format!(
-                "environment `{}` extends `{parent_name}`, which does not exist",
-                current.name()
-            ));
-            break;
-        };
-        if let Some(start) = walked.iter().position(|n| *n == parent.name()) {
-            let mut path = walked[start..].to_vec();
-            path.push(parent.name());
-            warnings.push(format!(
-                "environment inheritance cycle: {}",
-                path.join(" -> ")
-            ));
-            break;
-        }
-        walked.push(parent.name());
-        found.push(parent);
-        current = parent;
+    let (found, end) = walk(envs, target.name(), extends(target));
+    match end {
+        ChainEnd::Root => {}
+        ChainEnd::Missing { child, parent } => warnings.push(missing_text(&child, &parent)),
+        ChainEnd::Cycle(path) => warnings.push(cycle_text(&path)),
     }
-    found.reverse();
     found
+}
+
+/// Walks up from environment `name` as if it extended `first`, so a proposed parent is checked
+/// with the same walk a run makes. Returns the ancestors, root first, and where the walk ended.
+pub(crate) fn walk<'a>(
+    envs: &'a [Environment],
+    name: &str,
+    first: Option<String>,
+) -> (Vec<&'a Environment>, ChainEnd) {
+    let index: HashMap<&str, &Environment> = envs.iter().map(|e| (e.name(), e)).collect();
+    let mut walked = vec![name.to_owned()];
+    let mut found = Vec::new();
+    let mut next = first;
+    let end = loop {
+        let Some(parent_name) = next else {
+            break ChainEnd::Root;
+        };
+        let Some(parent) = index.get(parent_name.as_str()).copied() else {
+            break ChainEnd::Missing {
+                child: walked.last().cloned().unwrap_or_default(),
+                parent: parent_name,
+            };
+        };
+        if let Some(start) = walked.iter().position(|n| n == parent.name()) {
+            let mut path = walked[start..].to_vec();
+            path.push(parent.name().to_owned());
+            break ChainEnd::Cycle(path);
+        }
+        walked.push(parent.name().to_owned());
+        found.push(parent);
+        next = extends(parent);
+    };
+    found.reverse();
+    (found, end)
 }
 
 /// The trimmed `extends` name, when it is a non-empty string.

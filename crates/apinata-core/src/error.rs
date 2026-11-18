@@ -548,6 +548,26 @@ pub enum EnvError {
         /// Whether these are global environments.
         global: bool,
     },
+    /// The environment was asked to extend itself.
+    #[error("environment `{name}` cannot extend itself")]
+    ExtendsItself {
+        /// The environment.
+        name: String,
+    },
+    /// The proposed parent has no environment file.
+    #[error("{}", crate::environment::missing_text(name, parent))]
+    ExtendsMissing {
+        /// The environment.
+        name: String,
+        /// The parent asked for.
+        parent: String,
+    },
+    /// The proposed parent's own chain leads back to the environment.
+    #[error("{}", crate::environment::cycle_text(path))]
+    ExtendsCycle {
+        /// The chain from the environment back to itself.
+        path: Vec<String>,
+    },
     /// The file rename failed and writing the old name back failed too, so the file at `path`
     /// still names the new environment.
     #[error("renaming failed ({rename}) and the old name could not be restored in {}: {rollback}", path.display())]

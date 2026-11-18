@@ -2076,7 +2076,9 @@ impl ApinataServer {
                        has a stored value. Two phases: the plain edits are saved \
                        first, then each variable is made secret, so a failure in the second \
                        phase leaves the plain edits saved and the error lists the variables \
-                       still plain. Returns the environment without secret values.",
+                       still plain. `extends` names the environment this one inherits from, \
+                       or null to clear it; extending itself, a missing environment or a \
+                       cycle is refused. Returns the environment without secret values.",
         annotations(destructive_hint = false, open_world_hint = false)
     )]
     async fn update_environment(
