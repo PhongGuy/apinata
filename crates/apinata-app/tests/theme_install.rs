@@ -63,6 +63,31 @@ fn install_twice_is_harmless(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_input_selection_keeps_its_configured_alpha_in_both_modes(cx: &mut TestAppContext) {
+    support::init(cx);
+    cx.update(|cx| {
+        for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::Dark] {
+            theme::set_mode(mode, None, cx);
+            let t = Theme::global(cx);
+            let config = if mode.is_dark() {
+                &t.dark_theme
+            } else {
+                &t.light_theme
+            };
+            let want = config
+                .colors
+                .selection
+                .as_deref()
+                .and_then(apinata_app::ui::parse_color)
+                .expect("the theme sets a selection");
+            assert!(want.a > 0.3, "{mode:?} configures more than the kit's cap");
+            assert_eq!(t.selection, want, "{mode:?}");
+            assert_eq!(t.tokens.selection.color, want, "{mode:?} token");
+        }
+    });
+}
+
+#[gpui_kit::test]
 fn the_selected_fill_is_installed_opaque_in_both_modes(cx: &mut TestAppContext) {
     support::init(cx);
     cx.update(|cx| {
