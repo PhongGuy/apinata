@@ -14,9 +14,11 @@ pub(crate) use diff::hunks_within;
 pub use diff::text_hunks;
 mod porcelain;
 mod renames;
+mod repo_lock;
 pub(crate) use renames::{
     EnvChanges, blob_at, env_changes, is_ancestor, pre_sync_tip, resolve_commit,
 };
+pub use repo_lock::{REPO_LOCK_WAIT, RepoBusy, RepoLock, repo_lock};
 mod rebase;
 pub(crate) use rebase::deleted_marks;
 pub use rebase::{ConflictKind, ConflictPath, RebasePulled, rebase_pull};

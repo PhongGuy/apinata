@@ -62,6 +62,7 @@ mod read_request;
 mod refusals;
 mod remote_addr;
 mod replace;
+mod repo_lock;
 mod resource_notify;
 mod resource_safety;
 mod resources;

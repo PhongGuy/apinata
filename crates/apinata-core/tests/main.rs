@@ -190,6 +190,7 @@ mod git_commit;
 mod git_diff;
 mod git_edges;
 mod git_lock;
+mod git_repo_lock;
 mod git_runner;
 mod git_staged_gone;
 mod git_status;

@@ -322,6 +322,28 @@ fn a_switch_over_a_held_head_lock_says_git_is_busy(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_switch_while_another_tool_holds_the_repository_says_so_and_stays(cx: &mut TestAppContext) {
+    let sb = Sandbox::new();
+    let options = sb.options();
+    let r = rig(cx, sb, options.clone(), |_| {});
+    let held = apinata_core::repo_lock(r.dir.path(), std::time::Duration::ZERO, &options);
+    assert!(
+        held.as_ref().is_ok_and(|l| l.is_held()),
+        "the test holds the lock"
+    );
+    let feature = find(cx, &r, "feature");
+    r.picker.update(cx, |p, cx| p.switch(feature, cx));
+    idle(cx, &r);
+    let notice = r.picker.read_with(cx, |p, _| p.notice().cloned());
+    assert_eq!(
+        notice.as_ref().map(|n| n.text()),
+        Some("Another tool is changing this collection; try again")
+    );
+    let head = r.sb.git(r.dir.path(), &["branch", "--show-current"]);
+    assert_eq!(head.trim(), "main");
+}
+
+#[gpui_kit::test]
 fn fetching_without_a_remote_says_so(cx: &mut TestAppContext) {
     let sb = Sandbox::new();
     init(cx);
