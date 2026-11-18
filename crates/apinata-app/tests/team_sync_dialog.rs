@@ -12,6 +12,11 @@ use std::time::Duration;
 
 const FAST: Duration = Duration::from_millis(50);
 
+// Stored values long and odd enough that no temp path or message holds them by chance, so a
+// check that no label shows them fails only on a real leak.
+const TOKEN: &str = "secret-value-token-7f3a";
+const HOST_KEY: &str = "secret-value-host-key-7f3a";
+
 fn app(cx: &mut TestAppContext, sb: &Sandbox, col: &tempfile::TempDir) -> Started {
     http_ready(cx);
     team_started(cx, sb, col, |_, _| {}).0
@@ -287,8 +292,10 @@ fn seeded(
     http_ready(cx);
     let (s, secrets) = team_started(cx, sb, col, |_, _| {});
     let c = apinata_core::Collection::open(col.path()).unwrap();
-    secrets.set(&c.secret_key("dev", "token"), "t1").unwrap();
-    secrets.set(&c.secret_key("dev", "host_key"), "k1").unwrap();
+    secrets.set(&c.secret_key("dev", "token"), TOKEN).unwrap();
+    secrets
+        .set(&c.secret_key("dev", "host_key"), HOST_KEY)
+        .unwrap();
     start_team_as(cx, sb, &s, Role::Write, FAST);
     (s, secrets)
 }
@@ -323,7 +330,7 @@ fn a_pulled_rename_offers_its_secrets_and_moving_them_makes_requests_resolve(
     wait_for(cx, "the second move", |cx| open_rows(cx, &s) == 0);
     assert_eq!(
         resolved(col.path(), "staging", secrets.clone()),
-        "http://x/t1/k1"
+        format!("http://x/{TOKEN}/{HOST_KEY}")
     );
     let sync = s.ws.read_with(cx, |w, _| w.team_sync(&s.root)).unwrap();
     wait_for(cx, "the range to clear", |_| {
@@ -348,7 +355,7 @@ fn an_environment_rename_alone_moves_all_with_one_click(cx: &mut TestAppContext)
             .get(&c.secret_key("staging", "token"))
             .unwrap()
             .as_deref(),
-        Some("t1")
+        Some(TOKEN)
     );
     assert_eq!(secrets.get(&c.secret_key("dev", "host_key")).unwrap(), None);
 }
@@ -452,8 +459,10 @@ fn seeded_faulty(
     let store = std::sync::Arc::new(Faulty::default());
     let s = team_started_on(cx, sb, col, |_| {}, store.clone());
     let c = apinata_core::Collection::open(col.path()).unwrap();
-    store.set(&c.secret_key("dev", "token"), "t1").unwrap();
-    store.set(&c.secret_key("dev", "host_key"), "k1").unwrap();
+    store.set(&c.secret_key("dev", "token"), TOKEN).unwrap();
+    store
+        .set(&c.secret_key("dev", "host_key"), HOST_KEY)
+        .unwrap();
     start_team_as(cx, sb, &s, Role::Write, FAST);
     (s, store)
 }
@@ -485,7 +494,7 @@ fn label_of(
 }
 
 fn assert_no_values(labels: &[String]) {
-    for value in ["t1", "k1", "0ther-s3cret"] {
+    for value in [TOKEN, HOST_KEY, "0ther-s3cret"] {
         assert!(
             labels.iter().all(|l| !l.contains(value)),
             "{value} shown in {labels:?}"
@@ -556,7 +565,7 @@ fn an_ambiguous_row_offers_one_move_per_open_target_and_moves_to_the_pick(cx: &m
     assert_eq!(stored(&*secrets, col.path(), "dev", "token"), None);
     assert_eq!(
         stored(&*secrets, col.path(), "qa", "token").as_deref(),
-        Some("t1")
+        Some(TOKEN)
     );
     assert_eq!(
         stored(&*secrets, col.path(), "staging", "token").as_deref(),
@@ -586,7 +595,7 @@ fn dismissing_a_taken_row_hides_it_and_keeps_the_old_value(cx: &mut TestAppConte
     );
     assert_eq!(
         stored(&*secrets, col.path(), "dev", "token").as_deref(),
-        Some("t1")
+        Some(TOKEN)
     );
     assert_eq!(
         stored(&*secrets, col.path(), "staging", "token").as_deref(),
@@ -628,7 +637,7 @@ fn a_move_the_store_refuses_says_why_under_its_row(cx: &mut TestAppContext) {
     assert_no_values(&drawn_labels(cx, &s));
     assert_eq!(
         stored(&*store, col.path(), "dev", "host_key").as_deref(),
-        Some("k1")
+        Some(HOST_KEY)
     );
     assert_eq!(stored(&*store, col.path(), "staging", "host_key"), None);
 }
@@ -699,7 +708,7 @@ fn closing_the_tab_without_a_value_brings_the_row_back(cx: &mut TestAppContext) 
     wait_for(cx, "the row to return", |cx| open_rows(cx, &s) == 2);
     assert_eq!(
         stored(&*secrets, col.path(), "dev", "host_key").as_deref(),
-        Some("k1")
+        Some(HOST_KEY)
     );
 }
 
@@ -748,7 +757,7 @@ fn picking_a_candidate_holding_the_same_value_deletes_the_old_entry_without_writ
     let (sb, col) = (Sandbox::new(), secrets_collection());
     let (s, store) = seeded_faulty(cx, &sb, &col);
     let c = apinata_core::Collection::open(col.path()).unwrap();
-    store.set(&c.secret_key("staging", "token"), "t1").unwrap();
+    store.set(&c.secret_key("staging", "token"), TOKEN).unwrap();
     let mate = sb.path().join("mate");
     write(&mate, "environments/qa.yml", QA);
     mate_renames(cx, &sb, &s, &DEV.replace("dev", "staging"));
@@ -772,7 +781,7 @@ fn picking_a_candidate_holding_the_same_value_deletes_the_old_entry_without_writ
     assert_eq!(stored(&*store, col.path(), "dev", "token"), None);
     assert_eq!(
         stored(&*store, col.path(), "staging", "token").as_deref(),
-        Some("t1")
+        Some(TOKEN)
     );
     assert_eq!(stored(&*store, col.path(), "qa", "token"), None);
 }
