@@ -161,6 +161,7 @@ pub mod tabs;
 pub mod tag_input;
 pub mod team_join;
 pub mod team_mode;
+pub mod team_renames;
 pub mod team_sync_dialog;
 pub mod team_text;
 pub mod team_workspaces;

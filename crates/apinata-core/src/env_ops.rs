@@ -1091,7 +1091,7 @@ pub(crate) fn remove_fileless_secrets<H: SecretHome + ?Sized>(
     delete_allowed(home, env, names, &stored, store)
 }
 
-fn secret_names(env: &Environment) -> Vec<String> {
+pub(crate) fn secret_names(env: &Environment) -> Vec<String> {
     env.variables()
         .into_iter()
         .filter(|v| v.secret)

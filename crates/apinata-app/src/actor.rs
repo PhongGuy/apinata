@@ -13,9 +13,10 @@ use apinata_core::import::{
 };
 use apinata_core::team::ConflictCopies;
 use apinata_core::{
-    AuthSpec, Change, ChangeKind, Collection, DiskState, DropTarget, EnvOverlay, EnvWarning,
-    IgnorePolicy, ItemKind, ItemPath, OpenError, OpenOptions, RuntimeVars, SaveError, SecretKey,
-    SecretStore, TokenCache, Trash, Trashed, TreeError, VarContext, VariableSet,
+    AuthSpec, Change, ChangeKind, Collection, DiskState, DropTarget, EnvError, EnvOverlay,
+    EnvWarning, IgnorePolicy, ItemKind, ItemPath, OpenError, OpenOptions, RuntimeVars, SaveError,
+    SecretError, SecretKey, SecretName, SecretStore, TokenCache, Trash, Trashed, TreeError,
+    VarContext, VariableSet,
 };
 use async_channel::{Receiver, Sender};
 
@@ -613,6 +614,31 @@ impl Actor {
                     .map(|warnings| warnings.iter().map(ToString::to_string).collect())
                     .map_err(|e| e.to_string());
                 let _ = reply.try_send(warnings);
+                Ok(())
+            }
+            Command::FindSecretRenames {
+                range,
+                copies,
+                git,
+                reply,
+            } => {
+                let found = self
+                    .collection
+                    .secret_renames(&range, copies.as_ref(), &*self.store, &git)
+                    .map_err(|e| e.to_string());
+                let _ = reply.try_send(found);
+                Ok(())
+            }
+            Command::MoveSecretRenames { moves, reply } => {
+                let _ = reply.try_send(self.move_secret_renames(&moves));
+                Ok(())
+            }
+            Command::FinishReentered { from, to, reply } => {
+                let done = self
+                    .collection
+                    .finish_reentered(&from, &to, &*self.store)
+                    .map_err(|e| e.to_string());
+                let _ = reply.try_send(done);
                 Ok(())
             }
             Command::RemoveOrphanedSecrets { env, names, reply } => {
@@ -2017,6 +2043,25 @@ impl Actor {
         }
     }
 
+    /// Moves each renamed secret in order. A store that answers unavailable will refuse the
+    /// rest too, so they come back untried instead of each prompting or timing out again.
+    fn move_secret_renames(&self, moves: &[(SecretName, SecretName)]) -> Vec<Result<(), String>> {
+        let mut stopped = false;
+        moves
+            .iter()
+            .map(|(from, to)| {
+                if stopped {
+                    return Err(NOT_TRIED.to_owned());
+                }
+                let moved = self.collection.move_renamed_secret(from, to, &*self.store);
+                if let Err(EnvError::RenameNotMoved { error, .. }) = &moved {
+                    stopped = matches!(**error, SecretError::Unavailable { .. });
+                }
+                moved.map_err(|e| e.to_string())
+            })
+            .collect()
+    }
+
     // The stored secrets of environments with no file, grouped by environment.
     fn fileless_groups(&self, store: &dyn SecretStore) -> Result<Vec<FilelessGroup>, String> {
         let report = self.collection.all_orphaned_secrets(store);
@@ -2256,12 +2301,15 @@ fn shapes_context(command: &Command) -> bool {
         | Command::RemoveOrphanedSecrets { .. }
         | Command::FilelessSecrets { .. }
         | Command::RemoveFilelessSecrets { .. }
+        | Command::FindSecretRenames { .. }
+        | Command::FinishReentered { .. }
         | Command::Network(_)
         | Command::ApplyImport { .. } => false,
         _ => true,
     }
 }
 
+const NOT_TRIED: &str = "not tried: the secret store is unavailable";
 const NO_BASELINE: &str = "Not imported from a spec, so it cannot be updated";
 const TRASH_UNAVAILABLE: &str = "The trash is not available, so nothing was removed. Turn off removing missing requests, or fix the system trash.";
 const UNSAVED_UPDATE: &str = "Save or discard your unsaved edits in this collection first";

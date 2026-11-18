@@ -3,8 +3,27 @@
 use crate::document::rebase;
 use crate::item_path::ItemPath;
 use crate::not_found::{env_text, not_found_text};
+use crate::secret_renames::SecretName;
 use crate::secrets::SecretError;
 use std::path::{Path, PathBuf};
+
+/// Why a stored secret may not move to its renamed key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum RenameRefusal {
+    /// The old name is still declared, so its value is in use.
+    #[error("the old name is still in use")]
+    NotOrphaned,
+    /// The new name is not declared secret by its environment's file.
+    #[error("the new name is not a secret of its environment")]
+    NotDeclared,
+    /// The store holds nothing under the old name.
+    #[error("nothing is stored under the old name")]
+    NothingStored,
+    /// The store holds a different value under the new name.
+    #[error("a different value is already stored")]
+    Taken,
+}
 
 /// Why a collection directory could not be opened at all.
 #[derive(Debug, thiserror::Error)]
@@ -604,6 +623,33 @@ pub enum EnvError {
         path: PathBuf,
         /// What the file system reported.
         message: String,
+    },
+    /// Git could not say what a pull changed, so whether a secret was left behind is unknown.
+    #[error("cannot read the pulled changes: {message}")]
+    RenameScan {
+        /// What git reported.
+        message: String,
+    },
+    /// A stored secret was not moved to its renamed key because a precondition failed;
+    /// nothing in the store changed.
+    #[error("cannot move secret `{from}` to `{to}`: {reason}")]
+    RenameRefused {
+        /// The name the value is stored under.
+        from: SecretName,
+        /// The name it was to move to.
+        to: SecretName,
+        /// Which precondition failed.
+        reason: RenameRefusal,
+    },
+    /// The store failed part way through a move; the value is still under the old name.
+    #[error("secret `{from}` was not moved to `{to}`: {error}")]
+    RenameNotMoved {
+        /// The name the value is stored under.
+        from: SecretName,
+        /// The name it was to move to.
+        to: SecretName,
+        /// What the store reported, boxed to keep every `EnvError` small.
+        error: Box<SecretError>,
     },
     /// Writing, renaming or removing a file failed.
     #[error(transparent)]

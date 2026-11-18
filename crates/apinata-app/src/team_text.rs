@@ -107,17 +107,19 @@ pub fn finding_line(f: &Finding) -> String {
     format!("{place}: {}{note} on {git_ref}", f.rule)
 }
 
-/// What the sync dialog says about `status` with `clashes` unsettled, one line each. Offline,
-/// read-only and blocked folders end with how many local commits wait for the server.
-pub fn problem_lines(status: &TeamStatus, clashes: usize) -> Vec<String> {
+/// What the sync dialog says about `status` with `clashes` unsettled and `renames` secrets to
+/// move, one line each. Offline, read-only and blocked folders end with how many local commits
+/// wait for the server.
+pub fn problem_lines(status: &TeamStatus, clashes: usize, renames: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let waits = match &status.state {
-        // Clashes listed below are not in sync, even when the loop itself is idle.
+        // Clashes and secret moves listed below are not in sync, even when the loop is idle.
         TeamState::Idle => {
-            lines.push(match clashes {
-                0 => "In sync.".into(),
-                1 => "1 clash to settle.".into(),
-                n => format!("{n} clashes to settle."),
+            let parts = open_items(clashes, renames);
+            lines.push(if parts.is_empty() {
+                "In sync.".into()
+            } else {
+                format!("{}.", parts.join(", "))
             });
             false
         }
@@ -219,9 +221,28 @@ pub enum SyncKind {
     Problem,
 }
 
+// The counted items still waiting on the user, such as "1 clash to settle", none when zero.
+fn open_items(clashes: usize, renames: usize) -> Vec<String> {
+    let counted = |n: usize, one: &str, many: &str, rest: &str| {
+        (n > 0).then(|| format!("{n} {} {rest}", if n == 1 { one } else { many }))
+    };
+    [
+        counted(clashes, "clash", "clashes", "to settle"),
+        counted(renames, "secret", "secrets", "to move"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 /// The status-bar kind and text for a team collection. A block wins, then a paused
-/// read-only folder, then unsettled clashes, then the loop's state.
-pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (SyncKind, String) {
+/// read-only folder, then unsettled clashes and secrets to move, then the loop's state.
+pub fn sync_status(
+    status: &TeamStatus,
+    read_only: bool,
+    clashes: usize,
+    renames: usize,
+) -> (SyncKind, String) {
     let problem = |text: &str| (SyncKind::Problem, format!("problem: {text}"));
     match &status.state {
         TeamState::Blocked(block) => problem(match block {
@@ -234,8 +255,7 @@ pub fn sync_status(status: &TeamStatus, read_only: bool, clashes: usize) -> (Syn
             _ => "sync stopped",
         }),
         TeamState::ReadOnly { paused: true } => problem("outside edits"),
-        _ if clashes == 1 => problem("1 clash to settle"),
-        _ if clashes > 1 => problem(&format!("{clashes} clashes to settle")),
+        _ if clashes > 0 || renames > 0 => problem(&open_items(clashes, renames).join(", ")),
         TeamState::Offline if status.unpushed > 0 => (
             SyncKind::Offline,
             format!("offline, {} unpushed", status.unpushed),

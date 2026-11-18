@@ -154,7 +154,7 @@ fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
         "environments/dev.yml: secret_value on refs/\u{2060}heads/\u{2060}main"
     );
     assert_eq!(
-        problem_lines(&status, 0),
+        problem_lines(&status, 0, 0),
         [
             "The server refused the push because it found secrets:",
             "environments/dev.yml: secret_value on refs/\u{2060}heads/\u{2060}main",
@@ -169,7 +169,7 @@ fn secret_lines_name_path_rule_code_and_ref_and_count_the_rest() {
 fn a_paused_read_only_folder_explains_discard_and_counts_one_commit() {
     let status = TeamStatus::new(TeamState::ReadOnly { paused: true }, 1, vec![]);
     assert_eq!(
-        problem_lines(&status, 0),
+        problem_lines(&status, 0, 0),
         [
             "You can only read this workspace, so changes are not saved.",
             "Files changed here outside the app hold back updates. Discard them to keep pulling.",
@@ -181,11 +181,11 @@ fn a_paused_read_only_folder_explains_discard_and_counts_one_commit() {
 #[test]
 fn quiet_states_say_so_in_one_line() {
     assert_eq!(
-        problem_lines(&TeamStatus::new(TeamState::Idle, 0, vec![]), 0),
+        problem_lines(&TeamStatus::new(TeamState::Idle, 0, vec![]), 0, 0),
         ["In sync."]
     );
     assert_eq!(
-        problem_lines(&TeamStatus::new(TeamState::Pushing, 4, vec![]), 0),
+        problem_lines(&TeamStatus::new(TeamState::Pushing, 4, vec![]), 0, 0),
         ["Syncing."]
     );
     let hook = TeamStatus::new(
@@ -196,14 +196,14 @@ fn quiet_states_say_so_in_one_line() {
         vec![],
     );
     assert_eq!(
-        problem_lines(&hook, 0),
+        problem_lines(&hook, 0, 0),
         ["A commit hook refused the commit:", "nope"]
     );
 }
 
 #[test]
 fn every_other_state_has_its_own_line() {
-    let line = |state: TeamState| problem_lines(&TeamStatus::new(state, 0, vec![]), 0);
+    let line = |state: TeamState| problem_lines(&TeamStatus::new(state, 0, vec![]), 0, 0);
     assert_eq!(
         line(TeamState::Offline),
         ["The server cannot be reached. Changes are committed here and pushed once it is back."]
@@ -233,40 +233,55 @@ fn each_state_has_one_status() {
     let at = |state, unpushed| TeamStatus::new(state, unpushed, vec![]);
     let cases = [
         (
-            sync_status(&at(TeamState::Idle, 0), false, 0),
+            sync_status(&at(TeamState::Idle, 0), false, 0, 0),
             (SyncKind::Synced, "synced"),
         ),
         (
-            sync_status(&at(TeamState::ReadOnly { paused: false }, 0), true, 0),
+            sync_status(&at(TeamState::ReadOnly { paused: false }, 0), true, 0, 0),
             (SyncKind::Synced, "synced, read only"),
         ),
         (
-            sync_status(&at(TeamState::Pulling, 0), false, 0),
+            sync_status(&at(TeamState::Pulling, 0), false, 0, 0),
             (SyncKind::Syncing, "syncing"),
         ),
         (
-            sync_status(&at(TeamState::Offline, 0), false, 0),
+            sync_status(&at(TeamState::Offline, 0), false, 0, 0),
             (SyncKind::Offline, "offline"),
         ),
         (
-            sync_status(&at(TeamState::Offline, 3), false, 0),
+            sync_status(&at(TeamState::Offline, 3), false, 0, 0),
             (SyncKind::Offline, "offline, 3 unpushed"),
         ),
         (
-            sync_status(&at(TeamState::Blocked(Block::SignedOut), 0), false, 2),
+            sync_status(&at(TeamState::Blocked(Block::SignedOut), 0), false, 2, 0),
             (SyncKind::Problem, "problem: signed out"),
         ),
         (
-            sync_status(&at(TeamState::ReadOnly { paused: true }, 0), true, 0),
+            sync_status(&at(TeamState::ReadOnly { paused: true }, 0), true, 0, 0),
             (SyncKind::Problem, "problem: outside edits"),
         ),
         (
-            sync_status(&at(TeamState::Idle, 0), false, 1),
+            sync_status(&at(TeamState::Idle, 0), false, 1, 0),
             (SyncKind::Problem, "problem: 1 clash to settle"),
         ),
         (
-            sync_status(&at(TeamState::Idle, 0), false, 2),
+            sync_status(&at(TeamState::Idle, 0), false, 2, 0),
             (SyncKind::Problem, "problem: 2 clashes to settle"),
+        ),
+        (
+            sync_status(&at(TeamState::Idle, 0), false, 0, 1),
+            (SyncKind::Problem, "problem: 1 secret to move"),
+        ),
+        (
+            sync_status(&at(TeamState::Idle, 0), false, 0, 2),
+            (SyncKind::Problem, "problem: 2 secrets to move"),
+        ),
+        (
+            sync_status(&at(TeamState::Idle, 0), false, 1, 2),
+            (
+                SyncKind::Problem,
+                "problem: 1 clash to settle, 2 secrets to move",
+            ),
         ),
     ];
     for ((kind, text), (want_kind, want_text)) in cases {
@@ -302,7 +317,7 @@ fn a_finding_outside_any_file_is_named_instead_of_showing_a_slash() {
         0,
         vec![],
     );
-    let lines = problem_lines(&status, 0);
+    let lines = problem_lines(&status, 0, 0);
     assert_eq!(
         lines[1],
         "a.yml: secret_value on refs/\u{2060}heads/\u{2060}main"
@@ -325,8 +340,24 @@ fn a_finding_names_its_code_only_when_it_differs_from_the_rule() {
 #[test]
 fn an_idle_folder_with_clashes_says_they_wait_instead_of_in_sync() {
     let idle = TeamStatus::new(TeamState::Idle, 0, vec![]);
-    assert_eq!(problem_lines(&idle, 1), ["1 clash to settle."]);
-    assert_eq!(problem_lines(&idle, 2), ["2 clashes to settle."]);
+    assert_eq!(problem_lines(&idle, 1, 0), ["1 clash to settle."]);
+    assert_eq!(problem_lines(&idle, 2, 0), ["2 clashes to settle."]);
+}
+
+#[test]
+fn an_idle_folder_with_secrets_to_move_says_they_wait_instead_of_in_sync() {
+    let idle = TeamStatus::new(TeamState::Idle, 0, vec![]);
+    assert_eq!(problem_lines(&idle, 0, 1), ["1 secret to move."]);
+    assert_eq!(problem_lines(&idle, 0, 2), ["2 secrets to move."]);
+}
+
+#[test]
+fn an_idle_folder_with_clashes_and_secrets_to_move_names_both() {
+    let idle = TeamStatus::new(TeamState::Idle, 0, vec![]);
+    assert_eq!(
+        problem_lines(&idle, 1, 2),
+        ["1 clash to settle, 2 secrets to move."]
+    );
 }
 
 fn refused(findings: Vec<Finding>, more: usize) -> Block {
@@ -380,7 +411,7 @@ fn a_mixed_refusal_lists_secrets_and_other_refusals_under_their_own_headings() {
     let status = TeamStatus::new(TeamState::Blocked(block.clone()), 0, vec![]);
     let at = "on refs/\u{2060}heads/\u{2060}main";
     assert_eq!(
-        problem_lines(&status, 0),
+        problem_lines(&status, 0, 0),
         [
             "The server refused the push because it found secrets:".to_owned(),
             format!("environments/prod.yml: secret_value (token) {at}"),
@@ -394,7 +425,7 @@ fn a_mixed_refusal_lists_secrets_and_other_refusals_under_their_own_headings() {
         ]
     );
     assert_eq!(
-        sync_status(&status, false, 0),
+        sync_status(&status, false, 0, 0),
         (SyncKind::Problem, "problem: secrets found".into())
     );
     assert_eq!(
@@ -409,7 +440,7 @@ fn a_refusal_without_secrets_never_says_secrets_were_found() {
     let block = refused(vec![found], 0);
     let status = TeamStatus::new(TeamState::Blocked(block.clone()), 0, vec![]);
     assert_eq!(
-        problem_lines(&status, 0),
+        problem_lines(&status, 0, 0),
         [
             "The server refused the push:",
             "a.yml: scripts (safety_relaxation) on refs/\u{2060}heads/\u{2060}main",
@@ -417,7 +448,7 @@ fn a_refusal_without_secrets_never_says_secrets_were_found() {
         ]
     );
     assert_eq!(
-        sync_status(&status, false, 0),
+        sync_status(&status, false, 0, 0),
         (SyncKind::Problem, "problem: push refused".into())
     );
     assert_eq!(

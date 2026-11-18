@@ -380,3 +380,90 @@ fn closing_a_collection_pushes_its_pending_save(cx: &mut TestAppContext) {
         origin_has(&sb, &bare, "b.yml", "x/b")
     });
 }
+
+const DEV_HOST: &str =
+    "name: dev\nvariables:\n  - name: host\n    value: base\n  - name: token\n    secret: true\n";
+
+fn renames_of(
+    cx: &mut TestAppContext,
+    s: &Started,
+) -> Option<apinata_app::team_renames::RenameRows> {
+    s.ws.read_with(cx, |w, _| w.team_renames(&s.root))
+}
+
+fn pending(cx: &mut TestAppContext, s: &Started) -> Option<apinata_core::PullRange> {
+    s.ws.read_with(cx, |w, _| w.team_sync(&s.root))
+        .and_then(|t| t.pending_renames())
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_pull_with_nothing_to_move_clears_its_range(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), collection());
+    shared(&sb, &col);
+    let s = app(cx, &sb, &col);
+    start_team(cx, &sb, &s, Duration::from_millis(50));
+    let mate = sb.path().join("mate");
+    write(&mate, "b.yml", &request("b", "http://x/b"));
+    sb.commit_all(&mate, "theirs");
+    sb.git(&mate, &["push", "-q"]);
+    s.ws.read_with(cx, |w, _| w.team_sync(&s.root))
+        .unwrap()
+        .remote_moved(None);
+    wait_for(cx, "the pull", |_| col.path().join("b.yml").is_file());
+    wait_for(cx, "the range to clear", |cx| pending(cx, &s).is_none());
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_rename_held_back_by_a_clash_keeps_the_range_and_is_offered_after_keep_theirs(
+    cx: &mut TestAppContext,
+) {
+    let (sb, col) = (Sandbox::new(), collection());
+    std::fs::create_dir_all(col.path().join("environments")).unwrap();
+    std::fs::write(col.path().join("environments/dev.yml"), DEV_HOST).unwrap();
+    shared(&sb, &col);
+    http_ready(cx);
+    let (s, store) = crate::support::team::team_started(cx, &sb, &col, |_, _| {});
+    let c = apinata_core::Collection::open(col.path()).unwrap();
+    apinata_core::SecretStore::set(&*store, &c.secret_key("dev", "token"), "t1").unwrap();
+    start_team(cx, &sb, &s, Duration::from_millis(50));
+    let mate = sb.path().join("mate");
+    std::fs::remove_file(mate.join("environments/dev.yml")).unwrap();
+    write(
+        &mate,
+        "environments/staging.yml",
+        &DEV_HOST.replace("dev", "staging").replace("base", "theirs"),
+    );
+    sb.commit_all(&mate, "rename");
+    sb.git(&mate, &["push", "-q"]);
+    std::fs::write(
+        col.path().join("environments/dev.yml"),
+        DEV_HOST.replace("base", "mine"),
+    )
+    .unwrap();
+    wait_for(cx, "the copy", |_| {
+        copies_dir(&s).join("environments/dev.yml").is_file()
+    });
+    wait_for(cx, "the held ask", |cx| {
+        renames_of(cx, &s).is_some_and(|r| r.held_back() == 1)
+    });
+    assert!(renames_of(cx, &s).unwrap().open_rows().is_empty());
+    assert!(
+        pending(cx, &s).is_some(),
+        "a held-back rename keeps its range"
+    );
+    s.ws.update(cx, |w, cx| {
+        w.settle_clash(
+            &s.root,
+            "environments/dev.yml",
+            apinata_app::workspace::ClashAnswer::KeepTheirs,
+            cx,
+        )
+    })
+    .unwrap();
+    wait_for(cx, "the offer", |cx| {
+        renames_of(cx, &s).is_some_and(|r| r.open_rows().len() == 1)
+    });
+    assert!(pending(cx, &s).is_some());
+}
