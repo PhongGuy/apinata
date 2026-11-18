@@ -51,7 +51,7 @@ pub fn find_root(path: &Path) -> anyhow::Result<&Path> {
 
 /// The OAuth 2.0 token cache: the encrypted file under the data directory, its key in the
 /// keychain (opened only when a request needs a token), or memory when there is no data directory.
-fn token_cache() -> TokenCache {
+pub(crate) fn token_cache() -> TokenCache {
     if let Some(cache) = test_token_cache() {
         return cache;
     }

@@ -74,6 +74,7 @@ mod cli_network_hosts;
 mod cli_network_notice;
 mod cli_oauth1;
 mod cli_oauth2;
+mod cli_oauth2_tokens;
 mod cli_output_errors;
 mod cli_output_large;
 mod cli_prompt;

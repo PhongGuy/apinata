@@ -376,6 +376,7 @@ the command never exits with that code.
 | `env` | listed, created, copied, renamed, set or removed, or every rename asked for moved | `renames --move` or `--pick` skipped an ambiguous or taken rename | - | usage or collection error, unknown environment, a name that is invalid or taken, an environment another extends, a refused edit, an unknown `--since`, or a store error |
 | `network` | listed, set or removed | - | - | usage or collection error, or a refused edit |
 | `item` | created, copied, renamed, moved, removed, or a folder updated or left unchanged | - | - | usage or collection error, an unknown path, an invalid name, a move that is not allowed, no trash to remove into, a broken folder.yml, an unknown header or variable to unset, or a refused edit |
+| `oauth2` | shown, cleared, or nothing to clear | - | - | usage or collection error, an unknown path, auth that is not OAuth 2.0, or settings that do not resolve |
 | `trust` | done | - | - | any failure |
 | `gen` | printed | - | - | usage, collection or resolve error |
 | `graphql` | printed or written | the server answered without a schema (an error status, not JSON, GraphQL errors), a syntax error, a validation error, or `fmt --check` found a change | the request or its token fetch errored (no response) | usage, collection or resolve error, not a GraphQL request, the file could not be written, or an unreadable query or schema file |
@@ -568,6 +569,18 @@ OAuth 2.0 requests with the client credentials or password grant fetch their tok
 
 ```sh
 apinata run ./my-api --env staging --refetch-tokens
+```
+
+`apinata oauth2 status` lists the cached tokens of a collection, one line each: where the auth
+is defined (a request, a folder or the collection), the grant, when the token expires or that it
+has, its scope and whether a refresh token came with it. Token values are never shown.
+`apinata oauth2 clear` forgets them, so the next run fetches new ones; clearing nothing is not an
+error. Both take a request or folder path to act on just that item's auth, `--env` for tokens
+fetched under an environment, and `--format json`:
+
+```sh
+apinata oauth2 status --collection ./my-api --env staging
+apinata oauth2 clear users/get.yml --collection ./my-api --env staging
 ```
 
 Collection, folder and request scripts run by default, and their `test()` results
