@@ -25,6 +25,7 @@ use crate::keymap::{
 };
 use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
+use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
     KEY_CONTEXT as REQUEST_EDITOR, RedoEdit, SaveRequest, SendRequest, UndoEdit,
 };
@@ -447,6 +448,13 @@ pub fn registry() -> Vec<Command> {
             "Check collection",
             Collection,
             shell(CheckCollection),
+            &[],
+        ),
+        command(
+            "collection.check_secret_renames",
+            "Check for renamed secrets",
+            Collection,
+            shell(CheckSecretRenames),
             &[],
         ),
         command(

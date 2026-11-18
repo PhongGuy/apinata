@@ -69,6 +69,7 @@ use crate::palette::{GoToRequest, OpenCommandPalette, OpenRequest};
 use crate::path_display;
 use crate::persisted::{Persisted, SaveFailed};
 use crate::preferences::OpenPreferences;
+use crate::renames_dialog::CheckSecretRenames;
 use crate::runner_view::OpenRunResult;
 use crate::search_dialog::{OpenCollectionSearch, OpenSearchHit};
 use crate::session::{SavedBounds, Session};
@@ -1533,6 +1534,10 @@ impl Shell {
                     window.push_notification(Notification::warning(text), cx);
                 }
             }
+            WorkspaceEvent::SecretRenames { root } => {
+                let note = renamed_secrets_toast(&self.workspace, root);
+                window.push_notification(note, cx);
+            }
             WorkspaceEvent::TeamReadOnly { root } => {
                 let text = team_text::read_only_toast(&display_name(root));
                 window.push_notification(ui::info_toast(text), cx);
@@ -1799,6 +1804,29 @@ impl Shell {
             })
             .unwrap_or_default();
         (secrets, global_secrets)
+    }
+
+    // Shows the current collection's secrets a pull left under an old name: a team collection's
+    // in its sync dialog, any other's from a check since ORIG_HEAD, or says none were found.
+    fn check_secret_renames(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(root) = self.workspace.read(cx).current_root() else {
+            return;
+        };
+        if self.workspace.read(cx).team_status(&root).is_some() {
+            crate::team_sync_dialog::open(&self.workspace, root, window, cx);
+            return;
+        }
+        let check = (self.workspace).update(cx, |w, cx| w.check_secret_renames(&root, cx));
+        let workspace = self.workspace.clone();
+        cx.spawn_in(window, async move |_, cx| {
+            let found = check.await;
+            cx.update(|window, cx| match found {
+                true => drop(crate::renames_dialog::open(&workspace, root, window, cx)),
+                false => window.push_notification(ui::info_toast("No renamed secrets found"), cx),
+            })
+            .ok();
+        })
+        .detach();
     }
 
     // Opens the tab a check finding names; a file no tab shows, such as one that does not
@@ -3182,6 +3210,9 @@ impl Render for Shell {
                 }
             }))
             .on_action(cx.listener(Self::open_check_finding))
+            .on_action(cx.listener(|this, _: &CheckSecretRenames, window, cx| {
+                this.check_secret_renames(window, cx)
+            }))
             .on_action(cx.listener(|this, a: &OpenSearchHit, window, cx| {
                 let tab = (this.workspace)
                     .update(cx, |w, cx| w.open_item(&a.root, a.path.clone(), false, cx));
@@ -3802,4 +3833,30 @@ pub fn close_collection_at(
     }
     let scope = crate::closing::CloseScope::Collection(root);
     crate::closing::confirm_close(workspace.clone(), scope, window, cx);
+}
+
+// The offer after a pull outside team mode: which collection, and Review to open its rows.
+// One toast per collection, so a second pull replaces it rather than stacking.
+fn renamed_secrets_toast(workspace: &Entity<Workspace>, root: &Path) -> Notification {
+    struct RenamedSecretsToast;
+    let text = format!(
+        "Secret variables were renamed in {}. Review to move their stored values.",
+        display_name(root)
+    );
+    let (workspace, root) = (workspace.clone(), root.to_path_buf());
+    Notification::new()
+        .id1::<RenamedSecretsToast>(SharedString::from(root.to_string_lossy().into_owned()))
+        .message(text)
+        .action(move |_, _, cx| {
+            let (workspace, root) = (workspace.clone(), root.clone());
+            let this = cx.entity();
+            Button::new("renamed-secrets-review")
+                .solid_ring(cx)
+                .ghost()
+                .label("Review")
+                .on_click(move |_, window, cx| {
+                    crate::renames_dialog::open(&workspace, root.clone(), window, cx);
+                    this.update(cx, |n, cx| n.dismiss(window, cx));
+                })
+        })
 }

@@ -83,6 +83,18 @@ pub(crate) fn resolve_commit(
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned()))
 }
 
+/// Whether the commit `old` is an ancestor of the commit `new`, both full ids; git's answer
+/// other than yes, such as an unknown commit, is no.
+pub(crate) fn is_ancestor(
+    root: &Path,
+    old: &str,
+    new: &str,
+    opts: &GitOptions,
+) -> Result<bool, GitError> {
+    let args = ["merge-base", "--is-ancestor", "--end-of-options", old, new];
+    Ok(run::git(&args, root, opts)?.status.success())
+}
+
 /// The bytes of `rel`, relative to the collection at `root`, in commit `rev`; `None` when that
 /// commit has no such file.
 pub(crate) fn blob_at(

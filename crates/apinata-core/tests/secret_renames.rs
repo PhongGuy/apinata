@@ -544,3 +544,28 @@ fn a_range_to_head_resolves_both_ends_or_is_none() {
         Some(PullRange::new(base, tip))
     );
 }
+
+#[test]
+fn a_forward_range_needs_head_to_have_moved_on_from_the_seen_commit() {
+    let sb = Sandbox::new();
+    let (col, base) = repo(
+        &sb,
+        &[("environments/dev.yml", env("dev", &["token"]).as_str())],
+    );
+    let key = env("dev", &["key"]);
+    let tip = edit(&sb, &col, &[("environments/dev.yml", Some(key.as_str()))]);
+    let o = sb.options();
+    assert_eq!(
+        PullRange::forward(&col, &base, &o).unwrap(),
+        Some(PullRange::new(base.clone(), tip.clone()))
+    );
+    assert_eq!(PullRange::forward(&col, &tip, &o).unwrap(), None);
+    assert_eq!(PullRange::forward(&col, "--all", &o).unwrap(), None);
+    // Back on the older commit, or on a line that does not hold the seen one, is not a pull.
+    sb.git(&col, &["switch", "-q", "--detach", &base]);
+    assert_eq!(PullRange::forward(&col, &tip, &o).unwrap(), None);
+    sb.git(&col, &["switch", "-q", "--orphan", "other"]);
+    write(&col, "x.txt", "x\n");
+    sb.commit_all(&col, "unrelated");
+    assert_eq!(PullRange::forward(&col, &base, &o).unwrap(), None);
+}

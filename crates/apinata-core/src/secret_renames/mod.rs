@@ -9,7 +9,9 @@ use crate::document::Document;
 use crate::env_file::EnvVariable;
 use crate::env_ops::secret_names;
 use crate::error::EnvError;
-use crate::git::{EnvChanges, GitError, GitOptions, blob_at, env_changes, resolve_commit};
+use crate::git::{
+    EnvChanges, GitError, GitOptions, blob_at, env_changes, is_ancestor, resolve_commit,
+};
 use crate::secrets::{SecretKey, SecretStore};
 use crate::team::ConflictCopies;
 
@@ -45,6 +47,21 @@ impl PullRange {
             return Ok(None);
         };
         Ok(resolve_commit(root, "HEAD", opts)?.map(|to| PullRange::new(from, to)))
+    }
+
+    /// From the commit `seen` to `HEAD` when `HEAD` has moved on from it, as a pull does;
+    /// `None` when either names no commit, they are the same, or `seen` is not an ancestor of
+    /// `HEAD`, as after a switch to another line or a reset backwards.
+    pub fn forward(
+        root: &Path,
+        seen: &str,
+        opts: &GitOptions,
+    ) -> Result<Option<PullRange>, GitError> {
+        let Some(range) = PullRange::to_head(root, seen, opts)? else {
+            return Ok(None);
+        };
+        let ahead = range.from != range.to && is_ancestor(root, &range.from, &range.to, opts)?;
+        Ok(ahead.then_some(range))
     }
 }
 

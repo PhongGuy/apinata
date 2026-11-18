@@ -164,6 +164,7 @@ fn session_round_trips_with_per_collection_state() {
         runners: Default::default(),
         mock: true,
         mock_port: Some(4567),
+        seen_head: Some("0123456789abcdef0123456789abcdef01234567".into()),
     };
     s.collections.insert("/c/a".into(), c);
     s.window = Some(SavedBounds::from_window(WindowBounds::Maximized(b(

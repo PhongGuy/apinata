@@ -121,6 +121,7 @@ pub mod preferences;
 pub mod prefs_section;
 pub mod presets_section;
 pub mod prompt_vars;
+pub mod renames_dialog;
 pub mod request_chrome;
 pub mod request_editor;
 pub mod response_pane;
