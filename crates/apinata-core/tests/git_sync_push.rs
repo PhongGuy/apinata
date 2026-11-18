@@ -7,7 +7,7 @@ use crate::git_sync::{local_commit, logged, rev, unborn, wrapped};
 
 use std::fs;
 
-use apinata_core::{CancelFlag, Pushed, SyncDirection, SyncError, push, sync_urls};
+use apinata_core::{CancelFlag, Pushed, SyncDirection, SyncError, push, sync_targets};
 
 fn ok(root: &std::path::Path, set: Option<&str>, sb: &Sandbox) -> Pushed {
     push(root, set, &CancelFlag::new(), &sb.options()).unwrap()
@@ -181,11 +181,11 @@ fn an_unborn_branch_is_refused_then_set_upstream_publishes_its_first_commit() {
 }
 
 #[test]
-fn sync_urls_are_the_upstream_remote_urls_with_push_urls_and_rewrites_applied() {
+fn sync_targets_are_the_upstream_remote_urls_with_push_urls_and_rewrites_applied() {
     let sb = Sandbox::new();
     let root = cloned(&sb);
     let bare = sb.path().join("origin.git");
-    let urls = |direction| sync_urls(&root, direction, &sb.options()).unwrap();
+    let urls = |direction| sync_targets(&root, direction, &sb.options()).unwrap().urls;
     assert_eq!(urls(SyncDirection::Pull), [bare.to_str().unwrap()]);
     assert_eq!(urls(SyncDirection::Push), [bare.to_str().unwrap()]);
     // An explicit push URL takes `insteadOf`; a fetch URL used for pushing takes `pushInsteadOf`.
@@ -215,10 +215,50 @@ fn sync_urls_are_the_upstream_remote_urls_with_push_urls_and_rewrites_applied() 
 }
 
 #[test]
-fn sync_urls_refuse_as_the_sync_would_without_an_upstream() {
+fn sync_targets_refuse_as_the_sync_would_without_an_upstream() {
     let sb = Sandbox::new();
     let root = cloned(&sb);
     sb.git(&root, &["switch", "-q", "-c", "loose"]);
-    let err = sync_urls(&root, SyncDirection::Push, &sb.options()).unwrap_err();
+    let err = sync_targets(&root, SyncDirection::Push, &sb.options()).unwrap_err();
     assert!(matches!(err, SyncError::NoUpstream { .. }), "{err}");
+}
+
+#[test]
+fn sync_targets_name_the_proxies_and_command_overrides_that_apply() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    let options = sb.options().env("https_proxy", "http://env.invalid:1");
+    let plain = sync_targets(&root, SyncDirection::Pull, &options).unwrap();
+    // A path remote is never proxied.
+    assert!(plain.proxies.is_empty(), "{:?}", plain.proxies);
+    assert!(plain.overrides.is_empty(), "{:?}", plain.overrides);
+
+    sb.git(
+        &root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://example.invalid/r.git",
+        ],
+    );
+    sb.git(&root, &["config", "http.proxy", "http://config.invalid:2"]);
+    sb.git(
+        &root,
+        &["config", "remote.origin.proxy", "remote.invalid:3"],
+    );
+    sb.git(&root, &["config", "remote.origin.uploadpack", "x"]);
+    let got = sync_targets(&root, SyncDirection::Pull, &options).unwrap();
+    for proxy in [
+        "http://config.invalid:2",
+        "remote.invalid:3",
+        "http://env.invalid:1",
+    ] {
+        assert!(
+            got.proxies.iter().any(|p| p == proxy),
+            "{proxy}: {:?}",
+            got.proxies
+        );
+    }
+    assert_eq!(got.overrides, ["remote.origin.uploadpack"]);
 }

@@ -159,6 +159,15 @@ fn ssh_host(authority: &str) -> RemoteHost {
     authority_host(authority)
 }
 
+/// The host a proxy setting such as `http://user:pw@proxy:3128` or `proxy:3128` connects to,
+/// judged like a remote's host.
+pub fn proxy_host(proxy: &str) -> RemoteHost {
+    let proxy = proxy.trim();
+    let rest = proxy.split_once("://").map_or(proxy, |(_, rest)| rest);
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    authority_host(&rest[..end])
+}
+
 /// `scheme` and the rest when `url` starts with a scheme followed by `separator`.
 fn helper_scheme<'a>(url: &'a str, separator: &str) -> Option<(&'a str, &'a str)> {
     let (scheme, rest) = url.split_once(separator)?;

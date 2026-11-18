@@ -1,5 +1,5 @@
 use apinata_core::{
-    CloneError, CloneUrlKind, RemoteHost, default_folder_name, redact_url, remote_host,
+    CloneError, CloneUrlKind, RemoteHost, default_folder_name, proxy_host, redact_url, remote_host,
     validate_clone_url, validate_folder_name,
 };
 
@@ -162,5 +162,21 @@ fn a_transport_whose_destination_cannot_be_read_is_unknown() {
         "file://evil.invalid/share/r.git",
     ] {
         assert_eq!(remote_host(url), RemoteHost::Unknown, "{url:?}");
+    }
+}
+
+#[test]
+fn a_proxy_names_its_host_or_is_local() {
+    let host = |h: &str| RemoteHost::Host(h.to_owned());
+    for (proxy, want) in [
+        ("http://proxy.invalid:3128", host("proxy.invalid")),
+        ("proxy.invalid:3128", host("proxy.invalid")),
+        ("http://u:pw@Proxy.Invalid/", host("proxy.invalid")),
+        ("socks5h://u:p@127.0.0.1:1080", RemoteHost::Local),
+        ("localhost:8080", RemoteHost::Local),
+        ("", RemoteHost::Unknown),
+        ("http://", RemoteHost::Unknown),
+    ] {
+        assert_eq!(proxy_host(proxy), want, "{proxy}");
     }
 }

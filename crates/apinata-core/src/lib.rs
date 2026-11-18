@@ -198,12 +198,12 @@ pub use git::{
     CommitOutcome, ConflictKind, ConflictPath, DiffLine, FetchError, FileDiff, FileStatus,
     GIT_FILE_CAP, GIT_TIMEOUT, GitError, GitOptions, GitState, Hunk, LineKind, Pulled, Pushed,
     RebasePulled, RemoteBranch, RemoteHost, RepoStatus, Section, StageState, SwitchError, Switched,
-    SyncDirection, SyncError, Upstream, branches, clone_repo, collection_status,
+    SyncDirection, SyncError, SyncTargets, Upstream, branches, clone_repo, collection_status,
     collection_status_with, commit, commit_all, default_folder_name, discard_changes, fetch,
-    file_diff, file_diff_with, is_dirty, pull, push, rebase_pull, redact_url, redact_url_userinfo,
-    remote_branches, remote_host, remote_tip, remotes, squash_unpushed, stage, switch_branch,
-    switch_to_remote, sync_urls, text_hunks, tracking_tip, unpushed, unstage, validate_clone_url,
-    validate_folder_name,
+    file_diff, file_diff_with, is_dirty, proxy_host, pull, push, rebase_pull, redact_url,
+    redact_url_userinfo, remote_branches, remote_host, remote_tip, remotes, squash_unpushed, stage,
+    switch_branch, switch_to_remote, sync_targets, text_hunks, tracking_tip, unpushed, unstage,
+    validate_clone_url, validate_folder_name,
 };
 pub use global_env::GlobalEnvironments;
 pub use graphql_query::{

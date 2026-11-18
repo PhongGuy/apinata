@@ -27,12 +27,12 @@ pub use branch::{
 pub use clone::{CloneError, CloneProgress, CloneRequest, clone_repo};
 pub use stream::CancelFlag;
 mod sync;
-pub use sync::{Pulled, Pushed, SyncDirection, SyncError, pull, push, sync_urls};
+pub use sync::{Pulled, Pushed, SyncDirection, SyncError, SyncTargets, pull, push, sync_targets};
 mod url;
 pub(crate) use url::redact_header_url;
 pub use url::{
-    CloneUrlKind, RemoteHost, default_folder_name, redact_url, redact_url_userinfo, remote_host,
-    validate_clone_url, validate_folder_name,
+    CloneUrlKind, RemoteHost, default_folder_name, proxy_host, redact_url, redact_url_userinfo,
+    remote_host, validate_clone_url, validate_folder_name,
 };
 #[cfg(windows)]
 #[allow(unsafe_code)]
@@ -356,6 +356,15 @@ impl GitOptions {
     /// No extra environment, [`GIT_TIMEOUT`] and no check for kept copies.
     pub fn new() -> GitOptions {
         GitOptions::default()
+    }
+
+    /// The value git would see for variable `name`: the last one set here, else the process's.
+    pub(crate) fn env_value(&self, name: &str) -> Option<String> {
+        let set = self.env.iter().rev().find(|(key, _)| key == name);
+        match set {
+            Some((_, value)) => Some(value.to_string_lossy().into_owned()),
+            None => std::env::var(name).ok(),
+        }
     }
 
     /// Set `key` in git's environment; a later call for the same key wins. The fixed

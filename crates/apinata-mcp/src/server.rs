@@ -10,10 +10,10 @@ use apinata_core::mock::{self as core_mock, MockHandle, MockOptions};
 use apinata_core::{
     ApprovalInbox, AuthorizeOptions, CancelFlag, CancelHandle, Collection, CookieJar, EnvOverlay,
     ExecError, ExecOptions, ExecutionMode, Executor, GitOptions, IntrospectGuard,
-    IntrospectOptions, ItemPath, OAuth2Error, Outcome, RemoteHost, RunError, RunEvent, RunOptions,
-    RuntimeVars, SCHEMA_BODY_LIMIT, ScriptPhase, ScriptTextKind, SecretStore, SyncDirection,
-    TokenCache, assertion_sensitive_values, introspect, plan_script_texts, request_secrets,
-    script_texts, send_one,
+    IntrospectOptions, ItemPath, OAuth2Error, Outcome, RunError, RunEvent, RunOptions, RuntimeVars,
+    SCHEMA_BODY_LIMIT, ScriptPhase, ScriptTextKind, SecretStore, SyncDirection, TokenCache,
+    assertion_sensitive_values, introspect, plan_script_texts, request_secrets, script_texts,
+    send_one,
 };
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::tool::ToolCallContext;
@@ -418,43 +418,20 @@ impl ApinataServer {
         .map_err(|_| PANICKED.to_owned())?
     }
 
-    /// Refuse a pull or push whose remote URLs reach a host that is neither local nor trusted,
-    /// filing it for approval as a refused send is; nothing has contacted the remote yet.
-    async fn sync_gate(
+    /// Check where a pull or push would go, then run the sync `f`, both under one hold of the
+    /// collection lock so no other tool call runs between them; the client's cancel stops `f`.
+    async fn gated_sync<T, F>(
         &self,
-        direction: SyncDirection,
-        label: &str,
-        nothing: &str,
-    ) -> Result<(), String> {
-        let options = self.options.git_options().clone();
-        let hosts = self
-            .with_collection(move |c| git::remote_hosts(c.root(), direction, &options))
-            .await?;
-        for host in hosts {
-            match host {
-                RemoteHost::Local => {}
-                RemoteHost::Host(host) if self.trust.allows_fresh(&host) => {}
-                RemoteHost::Host(host) => {
-                    let inbox = self.inbox.as_ref();
-                    return Err(self.trust.refuse_remote(&host, label, inbox, nothing));
-                }
-                _ => {
-                    return Err(format!(
-                        "the remote uses a transport whose host cannot be checked; {nothing}"
-                    ));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Run the git call `f` on the collection, stopping it when the client cancels.
-    async fn git_with_cancel<T, F>(&self, ct: CancellationToken, f: F) -> Result<T, String>
+        (direction, label, nothing): (SyncDirection, &'static str, &'static str),
+        ct: CancellationToken,
+        f: F,
+    ) -> Result<T, String>
     where
         T: Send + 'static,
         F: FnOnce(&std::path::Path, &CancelFlag, &GitOptions) -> Result<T, String> + Send + 'static,
     {
         let options = self.options.git_options().clone();
+        let (trust, inbox) = (self.trust.clone(), self.inbox.clone());
         let cancel = CancelFlag::new();
         let flag = cancel.clone();
         let watch = tokio::spawn(async move {
@@ -462,7 +439,12 @@ impl ApinataServer {
             flag.cancel();
         });
         let done = self
-            .with_collection(move |c| f(c.root(), &cancel, &options))
+            .with_collection(move |c| {
+                let root = c.root();
+                let gate = (label, nothing);
+                git::check_targets(root, direction, &options, &trust, inbox.as_ref(), gate)?;
+                f(root, &cancel, &options)
+            })
             .await;
         watch.abort();
         done
@@ -1285,9 +1267,8 @@ impl ApinataServer {
         Parameters(SyncArgs {}): Parameters<SyncArgs>,
         ct: CancellationToken,
     ) -> Result<Json<PulledDoc>, String> {
-        self.sync_gate(SyncDirection::Pull, "git_pull", "nothing was pulled")
-            .await?;
-        self.git_with_cancel(ct, git::pull_branch).await.map(Json)
+        let gate = (SyncDirection::Pull, "git_pull", "nothing was pulled");
+        self.gated_sync(gate, ct, git::pull_branch).await.map(Json)
     }
 
     #[tool(
@@ -1307,9 +1288,8 @@ impl ApinataServer {
         Parameters(SyncArgs {}): Parameters<SyncArgs>,
         ct: CancellationToken,
     ) -> Result<Json<PushedDoc>, String> {
-        self.sync_gate(SyncDirection::Push, "git_push", "nothing was pushed")
-            .await?;
-        self.git_with_cancel(ct, git::push_branch).await.map(Json)
+        let gate = (SyncDirection::Push, "git_push", "nothing was pushed");
+        self.gated_sync(gate, ct, git::push_branch).await.map(Json)
     }
 
     #[tool(

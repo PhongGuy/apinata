@@ -185,7 +185,7 @@ impl HostTrust {
         label: &str,
         inbox: Option<&ApprovalInbox>,
     ) -> String {
-        self.refuse_reach(host, Some(hop), label, inbox, "nothing was sent")
+        self.refuse_reach(host, Some(hop), false, label, inbox, SENT)
     }
 
     /// Whether git may reach `host` for a pull or push, reading the trust file afresh first.
@@ -194,29 +194,37 @@ impl HostTrust {
         self.allows(host)
     }
 
-    /// The answer to a pull or push whose remote is on the untrusted `host`, filed like a
-    /// refused fetch under `label` and ending with `nothing`, such as "nothing was pulled".
+    /// The answer to a pull or push whose remote, or with `proxy` the proxy it goes through,
+    /// is on the untrusted `host`, filed like a refused fetch under `label` and ending with
+    /// `nothing`, such as "nothing was pulled".
     pub(crate) fn refuse_remote(
         &self,
         host: &str,
+        proxy: bool,
         label: &str,
         inbox: Option<&ApprovalInbox>,
         nothing: &str,
     ) -> String {
-        self.refuse_reach(host, None, label, inbox, nothing)
+        self.refuse_reach(host, None, proxy, label, inbox, nothing)
     }
 
     fn refuse_reach(
         &self,
         host: &str,
         hop: Option<usize>,
+        proxy: bool,
         label: &str,
         inbox: Option<&ApprovalInbox>,
         nothing: &str,
     ) -> String {
         self.refresh();
         let none = Redactor::default();
-        let message = self.untrusted(hop, host, Route::Direct, label, inbox, &none, nothing);
+        let route = if proxy {
+            Route::Proxy(host)
+        } else {
+            Route::Direct
+        };
+        let message = self.untrusted(hop, host, route, label, inbox, &none, nothing);
         // The approval is per host, not per tool, so the user should know what it unlocks.
         if message.contains("retry after the user approves") {
             format!("{message} Approving this host also lets send_request reach it.")

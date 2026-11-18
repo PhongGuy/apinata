@@ -93,7 +93,12 @@ async fn tracking(sb: &Sandbox) -> (TestServer, PathBuf) {
 /// A served repository whose `main` tracks `origin/main` at `url`, with the tracking ref in
 /// place so nothing but the remote's reach stops a pull or push.
 async fn tracking_url(sb: &Sandbox, url: &str) -> TestServer {
-    let server = serve(sb).await;
+    tracking_url_with(sb, url, &[]).await
+}
+
+/// As [`tracking_url`], with git running under `env` too.
+async fn tracking_url_with(sb: &Sandbox, url: &str, env: &[(&str, &str)]) -> TestServer {
+    let server = serve_with(sb, env).await;
     let root = server.root();
     sb.git(root, &["remote", "add", "origin", url]);
     sb.git(root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
@@ -393,4 +398,80 @@ async fn a_local_http_remote_cannot_redirect_a_pull_or_push_elsewhere() {
         0,
         "a redirect was followed"
     );
+}
+
+/// Require `tool` to be refused over the untrusted proxy host `proxy.invalid`, filed for it.
+async fn refused_proxy(server: &TestServer, tool: &str, nothing: &str) {
+    let message = server.err(tool, json!({})).await;
+    assert!(
+        message.contains("proxy host `proxy.invalid` is not trusted for this collection"),
+        "{message}"
+    );
+    assert!(message.contains(nothing), "{message}");
+    assert!(!message.contains("secret-pw"), "{message}");
+    let pending = server.inbox().pending().expect("inbox");
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert_eq!(pending[0].host, "proxy.invalid");
+}
+
+#[tokio::test]
+async fn a_configured_http_proxy_must_be_trusted_too() {
+    let sb = Sandbox::new();
+    let server = tracking_url(&sb, "http://127.0.0.1:9/r.git").await;
+    let proxy = "http://user:secret-pw@proxy.invalid:3128";
+    sb.git(server.root(), &["config", "http.proxy", proxy]);
+    refused_proxy(&server, "git_pull", "nothing was pulled").await;
+}
+
+#[tokio::test]
+async fn a_remote_proxy_must_be_trusted_too() {
+    let sb = Sandbox::new();
+    let server = tracking_url(&sb, "https://127.0.0.1:9/r.git").await;
+    let proxy = "proxy.invalid:3128";
+    sb.git(server.root(), &["config", "remote.origin.proxy", proxy]);
+    refused_proxy(&server, "git_push", "nothing was pushed").await;
+}
+
+#[tokio::test]
+async fn a_proxy_from_the_environment_must_be_trusted_too() {
+    for name in ["HTTPS_PROXY", "https_proxy", "all_proxy", "ALL_PROXY"] {
+        let sb = Sandbox::new();
+        let env = [(name, "http://proxy.invalid:3128")];
+        let server = tracking_url_with(&sb, "https://127.0.0.1:9/r.git", &env).await;
+        refused_proxy(&server, "git_pull", "nothing was pulled").await;
+    }
+}
+
+#[tokio::test]
+async fn a_local_proxy_needs_no_approval() {
+    let sb = Sandbox::new();
+    let server = tracking_url(&sb, "http://127.0.0.1:9/r.git").await;
+    sb.git(
+        server.root(),
+        &["config", "http.proxy", "http://127.0.0.1:9"],
+    );
+    let message = server.err("git_pull", json!({})).await;
+    assert!(!message.contains("not trusted"), "{message}");
+    assert!(server.inbox().pending().expect("inbox").is_empty());
+}
+
+#[tokio::test]
+async fn a_remote_that_runs_its_own_command_is_refused() {
+    for (key, tool, nothing) in [
+        ("remote.origin.uploadpack", "git_pull", "nothing was pulled"),
+        (
+            "remote.origin.receivepack",
+            "git_push",
+            "nothing was pushed",
+        ),
+        ("remote.origin.vcs", "git_pull", "nothing was pulled"),
+    ] {
+        let sb = Sandbox::new();
+        let (server, _) = tracking(&sb).await;
+        sb.git(server.root(), &["config", key, "touch pwned"]);
+        let message = server.err(tool, json!({})).await;
+        assert!(message.contains(key), "{key}: {message}");
+        assert!(message.contains(nothing), "{key}: {message}");
+        assert!(!server.root().join("pwned").exists(), "{key}");
+    }
 }

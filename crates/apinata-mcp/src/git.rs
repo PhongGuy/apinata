@@ -2,17 +2,19 @@
 //! unchanged, the local `git_commit` tool, so the agent sees the same JSON as `apinata git`, and
 //! `list_secret_renames`, which names the stored secrets a pull left under an old name. The
 //! branch tools list and switch branches; pull and push reach the remote only once its host is
-//! local or trusted, which the server checks with [`remote_hosts`] first.
+//! local or trusted, which [`check_targets`] decides under the same lock as the sync.
 
 use std::path::{Component, Path, PathBuf};
 
 use apinata_core::{
-    Branch, CancelFlag, Collection, FileDiff, FileStatus, GitError, GitOptions, GitState,
-    PullRange, RemoteHost, RenameStatus, SecretRename, SecretStore, StageState, SyncDirection,
-    TargetState, Upstream, branches, collection_status_with, commit, file_diff_with, pull, push,
-    remote_host, stage, switch_branch, sync_urls,
+    ApprovalInbox, Branch, CancelFlag, Collection, FileDiff, FileStatus, GitError, GitOptions,
+    GitState, PullRange, RemoteHost, RenameStatus, SecretRename, SecretStore, StageState,
+    SyncDirection, TargetState, Upstream, branches, collection_status_with, commit, file_diff_with,
+    proxy_host, pull, push, remote_host, stage, switch_branch, sync_targets,
 };
 use schemars::JsonSchema;
+
+use crate::policy::HostTrust;
 use serde::{Deserialize, Serialize};
 
 /// The collection's git state, serialized exactly as core does.
@@ -429,15 +431,49 @@ pub(crate) struct PushedDoc {
     to: String,
 }
 
-/// Where a pull or push of the current branch would go: the hosts of its remote URLs, without
-/// contacting any. Fails as the sync would without a branch or upstream.
-pub(crate) fn remote_hosts(
+/// Refuse a pull or push of the repository at `root` unless every remote URL and every proxy
+/// that may carry one is local or trusted, and no remote setting runs its own command. A
+/// refused host is filed under `label`; every refusal ends with `nothing`.
+pub(crate) fn check_targets(
     root: &Path,
     direction: SyncDirection,
     options: &GitOptions,
-) -> Result<Vec<RemoteHost>, String> {
-    let urls = sync_urls(root, direction, options).map_err(|e| e.to_string())?;
-    Ok(urls.iter().map(|url| remote_host(url)).collect())
+    trust: &HostTrust,
+    inbox: Option<&ApprovalInbox>,
+    (label, nothing): (&str, &str),
+) -> Result<(), String> {
+    let targets = sync_targets(root, direction, options).map_err(|e| e.to_string())?;
+    if let Some(key) = targets.overrides.first() {
+        return Err(format!(
+            "{key} is set, which makes git run a command Apinata cannot check; {nothing}"
+        ));
+    }
+    let hosts = targets.urls.iter().map(|url| (remote_host(url), false));
+    let proxies = targets
+        .proxies
+        .iter()
+        .map(|proxy| (proxy_host(proxy), true));
+    for (host, proxy) in hosts.chain(proxies) {
+        match host {
+            RemoteHost::Local => {}
+            RemoteHost::Host(host) if trust.allows_fresh(&host) => {}
+            RemoteHost::Host(host) => {
+                return Err(trust.refuse_remote(&host, proxy, label, inbox, nothing));
+            }
+            // A proxy's text may hold a password, so neither text is repeated.
+            _ if proxy => {
+                return Err(format!(
+                    "a proxy for the remote cannot be checked; {nothing}"
+                ));
+            }
+            _ => {
+                return Err(format!(
+                    "the remote uses a transport whose host cannot be checked; {nothing}"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Fast-forward the current branch to its upstream, as core does.
