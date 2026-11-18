@@ -107,6 +107,54 @@ fn enter_opens_the_selected_finding(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_file_that_does_not_parse_selects_its_collection_in_the_sidebar(cx: &mut TestAppContext) {
+    let col = broken();
+    let s = started(cx, &col);
+    open_tab(cx, &s.ws, &s.root, "a.yml");
+    frame(cx, s.win);
+    check(cx, &s);
+    cx.simulate_keystrokes(s.win, "down enter");
+    frame(cx, s.win);
+    assert!(!dialog_open(cx, &s));
+    let selected = s
+        .shell
+        .read_with(cx, |sh, cx| sh.sidebar().read(cx).selected(cx));
+    assert_eq!(
+        selected,
+        Some((s.root.clone(), apinata_core::ItemPath::root()))
+    );
+}
+
+#[gpui_kit::test]
+fn a_file_that_does_not_parse_is_revealed_after_a_check_from_the_menu(cx: &mut TestAppContext) {
+    let col = broken();
+    let s = started(cx, &col);
+    cx.update_window(s.win, |_, w, cx| w.click(row("a.yml"), cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| w.right_click(row(""), cx))
+        .unwrap();
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, cx| {
+        let ix = menu_index(w, "Check collection");
+        w.within("popup-menu").click(ix, cx)
+    })
+    .unwrap();
+    wait_answered(cx, &s);
+    cx.update_window(s.win, |_, w, cx| w.click(("check-finding", 1usize), cx))
+        .unwrap();
+    frame(cx, s.win);
+    frame(cx, s.win);
+    let selected = s
+        .shell
+        .read_with(cx, |sh, cx| sh.sidebar().read(cx).selected(cx));
+    assert_eq!(
+        selected,
+        Some((s.root.clone(), apinata_core::ItemPath::root()))
+    );
+}
+
+#[gpui_kit::test]
 fn down_moves_the_selection(cx: &mut TestAppContext) {
     let col = broken();
     let s = started(cx, &col);

@@ -357,7 +357,8 @@ impl Render for CheckView {
                 v.child(
                     div()
                         .relative()
-                        .pt(style::FOCUS_RING_ROOM)
+                        // Room on both edges, so the dialog's clip spares the ring's outer band.
+                        .py(style::FOCUS_RING_ROOM)
                         .child(
                             v_flex()
                                 .id("check-findings")
@@ -388,7 +389,7 @@ impl Render for CheckView {
                                     .top(style::FOCUS_RING_ROOM)
                                     .left_0()
                                     .right_0()
-                                    .bottom_0()
+                                    .bottom(style::FOCUS_RING_ROOM)
                                     .focus_ring_style(window, cx),
                             )
                         }),
