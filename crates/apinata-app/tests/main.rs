@@ -99,6 +99,7 @@ mod actor_orphans;
 mod actor_plan_items;
 mod actor_reload;
 mod actor_secret_cleanup;
+mod actor_secret_renames;
 mod actor_secret_values;
 mod actor_secrets;
 mod actor_stop;

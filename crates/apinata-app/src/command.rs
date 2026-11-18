@@ -536,6 +536,36 @@ pub enum Command {
         /// Each warning's text, or why nothing was removed.
         reply: async_channel::Sender<Result<Vec<String>, String>>,
     },
+    /// Find the stored secrets a pulled `range` left behind under renamed environments or
+    /// variables, and send the rows, or why the scan failed, on `reply` only.
+    FindSecretRenames {
+        /// The commits the pull moved between.
+        range: apinata_core::PullRange,
+        /// The team binding's conflict copies, which hold back renames touching a clash.
+        copies: Option<ConflictCopies>,
+        /// How git runs.
+        git: apinata_core::GitOptions,
+        /// Where the renames, or the error's text, go.
+        reply: async_channel::Sender<Result<apinata_core::SecretRenames, String>>,
+    },
+    /// Move each stored secret from its old name to its new one, in order, each named by a
+    /// person's confirmed action. A store that is unavailable stops the rest untried.
+    MoveSecretRenames {
+        /// Each move, old name first.
+        moves: Vec<(apinata_core::SecretName, apinata_core::SecretName)>,
+        /// One result per move, in order, with no value in any error.
+        reply: async_channel::Sender<Vec<Result<(), String>>>,
+    },
+    /// Remove the old key of a renamed secret whose value was typed again under its new
+    /// name, and send whether anything was removed on `reply`.
+    FinishReentered {
+        /// The name the old value is stored under.
+        from: apinata_core::SecretName,
+        /// The name the value was typed under.
+        to: apinata_core::SecretName,
+        /// Whether the old key went, or why it could not.
+        reply: async_channel::Sender<Result<bool, String>>,
+    },
     /// Replace a request draft's method, URL, params, headers, body, auth, docs and settings
     /// with an import through `ImportedRequest::apply_to`; its name stays and the draft stays
     /// unsaved.
