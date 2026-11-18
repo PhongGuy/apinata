@@ -1,5 +1,6 @@
 //! Keyboard focus on a kit button draws a solid ring at 3:1 against the surface behind it in
-//! both High Contrast themes, as the app's own controls do.
+//! every theme, as the app's own controls do, and a filled button's ring stands apart from
+//! its fill.
 
 use crate::support;
 
@@ -23,14 +24,17 @@ fn over(top: Hsla, under: Hsla) -> Hsla {
     .into()
 }
 
-/// What keyboard focus on `id` draws: the border colour of every quad outlining it in the
-/// `ring` hue at any alpha, and the opaque surface painted under it.
-fn ring_and_surface(
-    cx: &mut TestAppContext,
-    win: AnyWindowHandle,
-    id: &str,
-    ring: Hsla,
-) -> (Vec<Hsla>, Hsla) {
+/// What keyboard focus on `id` draws.
+struct Seen {
+    /// The border colour of every quad outlining it in the ring hue, at any alpha.
+    rings: Vec<Hsla>,
+    /// The opaque surface painted under it.
+    surface: Hsla,
+    /// Its own opaque fill, if it has one.
+    fill: Option<Hsla>,
+}
+
+fn ring_and_surface(cx: &mut TestAppContext, win: AnyWindowHandle, id: &str, ring: Hsla) -> Seen {
     let id = id.to_string();
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
@@ -73,18 +77,41 @@ fn ring_and_surface(
             .max_by_key(|(order, _)| *order)
             .map(|(_, c)| c)
             .expect("no surface under the button");
-        (rings, surface)
+        let fill = quads
+            .iter()
+            .filter(|q| {
+                let (x, y) = (q.bounds.origin.x.0, q.bounds.origin.y.0);
+                let (x2, y2) = (x + q.bounds.size.width.0, y + q.bounds.size.height.0);
+                (x - l).abs() < 1.
+                    && (y - t).abs() < 1.
+                    && (x2 - r).abs() < 1.
+                    && (y2 - bt).abs() < 1.
+            })
+            .filter_map(|q| {
+                q.background
+                    .as_solid()
+                    .filter(|c| c.a >= 1.)
+                    .map(|c| (q.order, c))
+            })
+            .max_by_key(|(order, _)| *order)
+            .map(|(_, c)| c);
+        Seen {
+            rings,
+            surface,
+            fill,
+        }
     })
     .unwrap()
 }
 
 // Tab onto a Tests snippet button, a ghost icon button and a filled primary one: each draws
-// its ring opaque and at 3:1 over the surface behind it, in both High Contrast themes.
+// its ring opaque and at 3:1 over the surface behind it, and apart from its own fill, in every
+// theme.
 #[gpui_kit::test]
 fn a_tab_focused_button_rings_opaque_at_three_to_one(cx: &mut TestAppContext) {
     use gpui_kit::component::ActiveTheme as _;
     let (mut seen_all, mut bad) = (Vec::new(), false);
-    for name in [theme::HC_DARK, theme::HC_LIGHT] {
+    for name in [theme::DARK, theme::LIGHT, theme::HC_DARK, theme::HC_LIGHT] {
         for id in ["snippet-status-200", "generate-code-button", "send-button"] {
             let col = write_tree(&[
                 ("opencollection.yml", ROOT),
@@ -99,7 +126,21 @@ fn a_tab_focused_button_rings_opaque_at_three_to_one(cx: &mut TestAppContext) {
             tab_to(cx, win, id);
             frame(cx, win);
             let ring = cx.update(|cx| cx.theme().ring);
-            let (rings, surface) = ring_and_surface(cx, win, id, ring);
+            let Seen {
+                rings,
+                surface,
+                fill,
+            } = ring_and_surface(cx, win, id, ring);
+            // A ring as bright as the fill stands apart through the gap painted inside it.
+            if let Some(fill) = fill {
+                let gap = cx.update(|cx| apinata_app::ui::focus_gap(cx.theme()));
+                let apart = contrast(ring, fill);
+                let through = contrast(gap, ring).min(contrast(gap, fill));
+                seen_all.push(format!(
+                    "{name} {id}: ring on fill = {apart:.2}, gap between = {through:.2}"
+                ));
+                bad |= apart < 3.0 && through < 3.0;
+            }
             if rings.is_empty() {
                 seen_all.push(format!("{name} {id}: no ring"));
                 bad = true;

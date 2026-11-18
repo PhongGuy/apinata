@@ -1549,12 +1549,22 @@ impl SolidRing for Button {
         // The border is reserved in every state, so focus never moves the content. It keeps
         // the variant's own edge colour, which a borderless variant draws transparent.
         let button = self.focus_ring(false).border_1();
-        if crate::focus_mode::is_keyboard(cx) {
-            button.focus(move |s| s.border_color(ring))
-        } else {
-            button
+        if !crate::focus_mode::is_keyboard(cx) {
+            return button;
         }
+        // A 1px gap inside the ring, so a fill as bright as the ring still shows one; an
+        // inset shadow two wide, under the ring's border, leaves the layout as it is.
+        let gap = BoxShadow::new(px(0.), px(0.), focus_gap(cx.theme()))
+            .spread_radius(px(2.))
+            .inset();
+        button.focus(move |s| s.border_color(ring).shadow(vec![gap]))
     }
+}
+
+/// The colour between a focused button's ring and its fill: the page, which the ring already
+/// reaches 3:1 against.
+pub fn focus_gap(theme: &gpui_kit::component::Theme) -> Hsla {
+    theme.background
 }
 
 /// Marks `control` as a title-bar control: a press that lands on it never arms the bar's
