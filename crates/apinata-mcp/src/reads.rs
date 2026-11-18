@@ -63,15 +63,5 @@ pub(crate) fn folder(c: &Collection, raw: &str) -> Result<ConfigDoc, String> {
 
 /// The variables of the environment `name`, secrets without their values.
 pub(crate) fn environment(c: &Collection, name: &str) -> Result<EnvironmentDoc, String> {
-    let env = c
-        .environment(name)
-        .ok_or_else(|| c.environment_not_found(name).to_string())?;
-    Ok(EnvironmentDoc {
-        name: env.name().to_owned(),
-        variables: env
-            .variables()
-            .iter()
-            .map(dto::env_var)
-            .collect::<Result<_, _>>()?,
-    })
+    crate::envs::read(c, name)
 }

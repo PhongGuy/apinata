@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use apinata_core::{
     AssertionOutcome, Collection, ContextOptions, CookieOutcome, CookieRejection, EnvOverlay,
-    ExecError, ItemPath, OAuth2Error, RequestFile, RequestResult, ResolveError, ResolvedRequest,
-    Response, RuntimeVars, SecretStore, SetCookie, StreamLimits, TokenCache, VarContext,
-    VarOutcome, VarResult, Verdict, normalize_host,
+    ExecError, GlobalEnvironments, ItemPath, OAuth2Error, RequestFile, RequestResult, ResolveError,
+    ResolvedRequest, Response, RuntimeVars, SecretStore, SetCookie, StreamLimits, TokenCache,
+    VarContext, VarOutcome, VarResult, Verdict, normalize_host,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -274,8 +274,11 @@ pub(crate) fn context(
     for (name, value) in options.env_vars() {
         opts = opts.sensitive_env_var(name, value);
     }
+    // Re-read at every send, as the collection is, so a global edit made since launch counts;
+    // a directory that no longer reads falls back to what launch loaded.
     if let Some((globals, name)) = options.default_global_env() {
-        opts = opts.global_env(Arc::clone(globals), name);
+        let fresh = GlobalEnvironments::open(globals.dir()).map(Arc::new);
+        opts = opts.global_env(fresh.unwrap_or_else(|_| Arc::clone(globals)), name);
     }
     for (name, value) in options.global_env_vars() {
         opts = opts.sensitive_global_env_var(name, value);

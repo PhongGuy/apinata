@@ -35,7 +35,7 @@ use crate::apply::{ConfigPatch, RequestPatch};
 use crate::check::{self, CheckArgs};
 use crate::cookies::{self, ClearArgs, Cleared, CookieList};
 use crate::dto::{ConfigDoc, EnvironmentDoc, RequestDoc};
-use crate::envs::{self, DeletedEnv, EnvNameResult, RenameEnvArgs, UpdateEnvArgs};
+use crate::envs::{self, DeletedEnv, EnvNameResult, GlobalNames, RenameEnvArgs, UpdateEnvArgs};
 use crate::examples::{
     self, ExportHarArgs, ExportedHar, LastSend, LastSends, SaveExampleArgs, SavedExample,
     ScrubArgs, ScrubbedUserinfo,
@@ -73,7 +73,7 @@ use crate::tree::{
 };
 use crate::writes;
 use crate::{McpError, McpOptions};
-use apinata_core::{KEYCHAIN_TIMEOUT, LazyKeychain, TimeoutStore};
+use apinata_core::{GlobalEnvironments, KEYCHAIN_TIMEOUT, LazyKeychain, TimeoutStore};
 
 /// What a client sees when a tool panics; the payload may quote a secret, so it is fixed.
 const PANICKED: &str = "internal error: the tool failed unexpectedly";
@@ -91,6 +91,10 @@ const NO_FILE_WRITES: &[&str] = &[
     "set_runtime_variable",
     "clear_runtime_variables",
     "git_commit",
+    "create_global_environment",
+    "duplicate_global_environment",
+    "rename_global_environment",
+    "update_global_environment",
 ];
 
 /// Tools that write collection files and so announce a resource change after every call. Only
@@ -405,6 +409,21 @@ impl ApinataServer {
         })
         .await
         .map_err(|_| PANICKED.to_owned())?
+    }
+
+    /// Run `f` on a fresh open of the global environments, one call at a time as collection
+    /// writes are; nothing in the collection changes.
+    pub(crate) async fn with_globals<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut GlobalEnvironments) -> Result<T, String> + Send + 'static,
+    {
+        let dir = self
+            .options
+            .global_environments_dir()
+            .map(ToOwned::to_owned);
+        self.with_collection(move |_| f(&mut envs::open_globals(dir.as_deref())?))
+            .await
     }
 }
 
@@ -2036,6 +2055,81 @@ impl ApinataServer {
     ) -> Result<Json<EnvironmentDoc>, String> {
         let store = Arc::clone(&self.store);
         self.with_collection(move |c| envs::update(c, &args, store.as_ref()).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "List the global environments by name: the profile's environments that \
+                       every collection can select, outside any collection and not in git.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn list_global_environments(&self) -> Result<Json<GlobalNames>, String> {
+        self.with_globals(|g| Ok(Json(envs::list_globals(g)))).await
+    }
+
+    #[tool(
+        description = "Read one global environment's variables. A secret variable shows its \
+                       name and that it is secret, never its value.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn read_global_environment(
+        &self,
+        Parameters(args): Parameters<NameArgs>,
+    ) -> Result<Json<EnvironmentDoc>, String> {
+        self.with_globals(move |g| envs::read(g, &args.name).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "As create_environment, for the global environments.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn create_global_environment(
+        &self,
+        Parameters(args): Parameters<NameArgs>,
+    ) -> Result<Json<EnvNameResult>, String> {
+        let store = Arc::clone(&self.store);
+        self.with_globals(move |g| envs::create(g, &args.name, store.as_ref()).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "As duplicate_environment, for the global environments.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn duplicate_global_environment(
+        &self,
+        Parameters(args): Parameters<NameArgs>,
+    ) -> Result<Json<EnvNameResult>, String> {
+        let store = Arc::clone(&self.store);
+        self.with_globals(move |g| envs::duplicate(g, &args.name, store.as_ref()).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "As rename_environment, for the global environments.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn rename_global_environment(
+        &self,
+        Parameters(args): Parameters<RenameEnvArgs>,
+    ) -> Result<Json<EnvNameResult>, String> {
+        let store = Arc::clone(&self.store);
+        self.with_globals(move |g| envs::rename(g, &args, store.as_ref()).map(Json))
+            .await
+    }
+
+    #[tool(
+        description = "As update_environment, for the global environments, under the same \
+                       secret rules.",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn update_global_environment(
+        &self,
+        Parameters(args): Parameters<UpdateEnvArgs>,
+    ) -> Result<Json<EnvironmentDoc>, String> {
+        let store = Arc::clone(&self.store);
+        self.with_globals(move |g| envs::update(g, &args, store.as_ref()).map(Json))
             .await
     }
 }

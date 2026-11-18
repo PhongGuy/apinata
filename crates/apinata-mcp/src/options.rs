@@ -29,6 +29,7 @@ pub struct McpOptions {
     git: GitOptions,
     trash: Arc<dyn Trash>,
     trash_log: Option<PathBuf>,
+    global_dir: Option<PathBuf>,
 }
 
 impl McpOptions {
@@ -60,6 +61,12 @@ impl McpOptions {
                 None
             } else {
                 TrashLog::default_dir()
+            },
+            // Unit tests never edit the user's own global environments either.
+            global_dir: if cfg!(test) {
+                None
+            } else {
+                GlobalEnvironments::default_dir()
             },
         }
     }
@@ -93,6 +100,12 @@ impl McpOptions {
         value: impl Into<String>,
     ) -> McpOptions {
         self.global_env_vars.push((name.into(), value.into()));
+        self
+    }
+
+    /// Edit the global environments in `dir` instead of the profile's.
+    pub fn global_dir(mut self, dir: impl Into<PathBuf>) -> McpOptions {
+        self.global_dir = Some(dir.into());
         self
     }
 
@@ -231,6 +244,11 @@ impl McpOptions {
     /// The variable overrides in the order they were given.
     pub fn env_vars(&self) -> &[(String, String)] {
         &self.env_vars
+    }
+
+    /// Where the global environment tools work; `None` without a config directory.
+    pub(crate) fn global_environments_dir(&self) -> Option<&Path> {
+        self.global_dir.as_deref()
     }
 
     /// The global environments and the selected name, if one was selected.

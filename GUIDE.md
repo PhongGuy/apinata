@@ -228,12 +228,22 @@ re-points every environment that `extends` it; a name already taken is refused.
 refused while another environment extends it, naming each one. With
 `--no-keychain`, `cp`, `mv` and `rm` leave the stored values alone and say which.
 
+`--global` makes `ls`, `show`, `set`, `unset`, `new`, `cp`, `mv` and `rm` work on the
+[global environments](#variables-and-environments) instead of a collection's, with the same
+output, exit codes and secret handling; no collection is needed, and `--global` with
+`--collection` is a usage error:
+
+```sh
+apinata env new shared --global
+apinata env set shared host=api.example.com --global
+```
+
 `apinata env orphans <name>` lists stored secrets the environment's file no longer
 marks secret (`--json` prints them as data), and
 `apinata env forget <name> <VARIABLE>...` deletes them after a confirmation (`--all`
 takes every one, `--yes` skips the question for scripts). This cannot be undone,
 and another git branch may still use the values. With `--global` both work on a
-global environment. `apinata env orphans --all` looks across every environment and
+global environment, and `--collection` is then refused. `apinata env orphans --all` looks across every environment and
 marks stored secrets whose environment has no file, as after a deletion or a rename
 outside the app. `--no-file` makes either action take such a name as stored, and
 `--old-root <path>` does the same for a collection root that no longer exists, for
@@ -791,7 +801,8 @@ A client config looks like this:
 ```
 
 The agent can read, search, create, edit, move and delete requests, folders and
-environments, import a request, send a request, run a folder, list and clear
+environments (and the global environments, with the `_global_environment`
+tools under the same secret rules), import a request, send a request, run a folder, list and clear
 cookies, list the trusted hosts, and read the git status and one file's
 diff since the last commit, and commit collection changes locally with
 `git_commit` (the repository's hooks run; nothing is pushed). It can also find and replace text across the
@@ -851,7 +862,9 @@ writes collection files also sends `list_changed`; the read-only tools never
 do. Change notifications are debounced, so a burst of edits arrives as one
 after about 250 ms.
 
-The agent may edit collection files freely, since git tracks them. Sending to a
+The agent may edit collection files freely, since git tracks them. Global
+environments live outside git, so the agent cannot delete one; delete it with
+`apinata env rm --global` or in the app. Sending to a
 host other than `localhost` or a loopback address needs approval: the request waits for you
 to approve it in the desktop app, or you can trust the host beforehand. Denied
 hosts are refused outright.
