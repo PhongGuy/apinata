@@ -117,7 +117,16 @@ pub fn fetch(
         });
     }
     match git_stream(
-        &["fetch", "--prune", "--", remote],
+        // Only the named remote is reached: no submodule's own remote and no redirect.
+        &[
+            "-c",
+            "http.followRedirects=false",
+            "fetch",
+            "--prune",
+            "--no-recurse-submodules",
+            "--",
+            remote,
+        ],
         root,
         opts,
         cancel,

@@ -208,7 +208,14 @@ pub(super) fn fast_forward(
     }
     // A fresh flag: stopping a checkout halfway would leave the tree half moved.
     match git_stream(
-        &["merge", "--ff-only", "--no-autostash", oid],
+        &[
+            "-c",
+            "submodule.recurse=false",
+            "merge",
+            "--ff-only",
+            "--no-autostash",
+            oid,
+        ],
         root,
         opts,
         &CancelFlag::new(),
@@ -267,7 +274,10 @@ pub fn push(
         return Err(SyncError::Busy { lock });
     }
     let refspec = format!("{full}:{dst}");
+    // A remote reached over http must not hand the push on to another host.
     let mut args = vec![
+        "-c",
+        "http.followRedirects=false",
         "push",
         "--porcelain",
         "--no-recurse-submodules",
