@@ -28,6 +28,8 @@ struct VarDoc {
 #[derive(Serialize)]
 struct EnvDoc {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extends: Option<String>,
     variables: Vec<VarDoc>,
 }
 
@@ -194,6 +196,8 @@ trait Editable {
         name: &str,
         store: &dyn SecretStore,
     ) -> Result<Vec<EnvWarning>, EnvError>;
+    fn set_environment_extends(&mut self, name: &str, parent: Option<&str>)
+    -> Result<(), EnvError>;
 }
 
 /// Forwards every [`Editable`] method to the inherent method of the same name.
@@ -267,6 +271,13 @@ macro_rules! editable {
             ) -> Result<Vec<EnvWarning>, EnvError> {
                 <$ty>::delete_environment(self, name, store)
             }
+            fn set_environment_extends(
+                &mut self,
+                name: &str,
+                parent: Option<&str>,
+            ) -> Result<(), EnvError> {
+                <$ty>::set_environment_extends(self, name, parent)
+            }
         }
     };
 }
@@ -286,6 +297,7 @@ fn wants_global(action: &EnvAction) -> bool {
             | EnvAction::Cp { global: true, .. }
             | EnvAction::Mv { global: true, .. }
             | EnvAction::Rm { global: true, .. }
+            | EnvAction::Extends { global: true, .. }
     )
 }
 
@@ -705,6 +717,15 @@ fn go_with(
             }
             outln!("removed {} from {}", shown(key), shown(name));
         }
+        EnvAction::Extends { name, parent, .. } => {
+            // Core's refusals name environments from files, so they are escaped.
+            collection
+                .set_environment_extends(name, parent.as_deref())
+                .map_err(escaped)?;
+            let parent = collection.environment(name).and_then(|e| e.extends());
+            let parent = parent.map_or("nothing".to_owned(), |p| shown(&p));
+            outln!("{} extends {parent}", shown(name));
+        }
         EnvAction::New { .. }
         | EnvAction::Cp { .. }
         | EnvAction::Mv { .. }
@@ -871,11 +892,15 @@ fn show_or_list(collection: &dyn Editable, action: &EnvAction) -> anyhow::Result
                 .collect();
             let doc = EnvDoc {
                 name: env.name().to_owned(),
+                extends: env.extends(),
                 variables,
             };
             if *json {
                 print_json(&doc)?;
             } else {
+                if let Some(parent) = &doc.extends {
+                    outln!("extends: {}", shown(parent));
+                }
                 for v in &doc.variables {
                     let value = v.value.as_deref().map_or("<secret>".to_owned(), shown);
                     let kind = v

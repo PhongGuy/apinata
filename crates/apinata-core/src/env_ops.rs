@@ -8,7 +8,9 @@ use crate::document::Document;
 use crate::edit::VarValue;
 use crate::env_file::EnvVariable;
 use crate::env_file::TOP as ENV_TOP;
+use crate::environment::{self, ChainEnd};
 use crate::error::{EnvError, SaveError};
+use crate::js;
 use crate::naming::{sanitize_name, validate_name};
 use crate::secrets::{EnvWarning, SecretError, SecretKey, SecretStore};
 use std::collections::{BTreeMap, BTreeSet};
@@ -120,6 +122,26 @@ impl Collection {
         store: &dyn SecretStore,
     ) -> Result<Vec<EnvWarning>, EnvError> {
         rename_environment(self, from, to, store)
+    }
+
+    /// Set or clear (`None`) which environment `name` extends, then save it. The parent is
+    /// trimmed; one that is `name` itself, has no file, or leads back to `name` is refused
+    /// before anything changes. Clearing is never refused.
+    pub fn set_environment_extends(
+        &mut self,
+        name: &str,
+        parent: Option<&str>,
+    ) -> Result<(), EnvError> {
+        set_environment_extends(self, name, parent)
+    }
+
+    /// The refusal [`Collection::set_environment_extends`] would give, without changing anything.
+    pub fn check_environment_extends(
+        &self,
+        name: &str,
+        parent: Option<&str>,
+    ) -> Result<(), EnvError> {
+        check_environment_extends(self, name, parent)
     }
 
     /// The other environments whose `extends` names `name`, in name order; empty for an
@@ -606,6 +628,57 @@ pub(crate) fn rename_environment<H: EnvHost + ?Sized>(
         }
     }
     Ok(warnings)
+}
+
+/// The body of [`Collection::check_environment_extends`] for any [`EnvHost`].
+pub(crate) fn check_environment_extends<H: EnvHost + ?Sized>(
+    host: &H,
+    name: &str,
+    parent: Option<&str>,
+) -> Result<(), EnvError> {
+    if host.env(name).is_none() {
+        return Err(not_found(host, name));
+    }
+    let Some(parent) = parent.map(js::js_trim).filter(|p| !p.is_empty()) else {
+        return Ok(());
+    };
+    if parent == name {
+        return Err(EnvError::ExtendsItself {
+            name: name.to_owned(),
+        });
+    }
+    // The run's own walk, so a refusal reads like the warning a run would give. A break further
+    // up that does not involve `name` was there before and stays a run-time warning.
+    match environment::walk(host.envs(), name, Some(parent.to_owned())).1 {
+        ChainEnd::Missing { child, parent } if child == name => Err(EnvError::ExtendsMissing {
+            name: child,
+            parent,
+        }),
+        ChainEnd::Cycle(path) if path.first().map(String::as_str) == Some(name) => {
+            Err(EnvError::ExtendsCycle { path })
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The body of [`Collection::set_environment_extends`] for any [`EnvHost`].
+pub(crate) fn set_environment_extends<H: EnvHost + ?Sized>(
+    host: &mut H,
+    name: &str,
+    parent: Option<&str>,
+) -> Result<(), EnvError> {
+    check_environment_extends(host, name, parent)?;
+    // Checked above, so the environment is loaded.
+    #[allow(clippy::expect_used)]
+    let env = host.env_mut(name).expect("the environment was found above");
+    let before = env.extends();
+    env.set_extends(parent.map(str::to_owned));
+    // A failed save puts the old parent back, so no refused draft lingers.
+    if let Err(e) = env.save() {
+        env.set_extends(before);
+        return Err(e.into());
+    }
+    Ok(())
 }
 
 /// The body of [`Collection::extended_by`] for any [`EnvHost`].

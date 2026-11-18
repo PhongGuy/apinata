@@ -49,6 +49,7 @@ pub(crate) trait EnvSet {
         secret: bool,
         store: &dyn SecretStore,
     ) -> Result<Vec<EnvWarning>, EnvError>;
+    fn check_environment_extends(&self, name: &str, parent: Option<&str>) -> Result<(), EnvError>;
     /// Run `attempt` as one write, retried as this set's writes are.
     fn write<T>(
         &mut self,
@@ -110,6 +111,13 @@ macro_rules! forward {
             store: &dyn SecretStore,
         ) -> Result<Vec<EnvWarning>, EnvError> {
             <$ty>::set_variable_secret(self, env, var, secret, store)
+        }
+        fn check_environment_extends(
+            &self,
+            name: &str,
+            parent: Option<&str>,
+        ) -> Result<(), EnvError> {
+            <$ty>::check_environment_extends(self, name, parent)
         }
     };
 }
@@ -180,6 +188,7 @@ pub(crate) fn read<E: EnvSet>(c: &E, name: &str) -> Result<EnvironmentDoc, Strin
         .ok_or_else(|| c.environment_not_found(name).to_string())?;
     Ok(EnvironmentDoc {
         name: env.name().to_owned(),
+        extends: env.extends(),
         variables: env
             .variables()
             .iter()
@@ -230,6 +239,15 @@ pub(crate) struct UpdateEnvArgs {
     /// Names of plain variables to remove; a secret cannot be removed through MCP.
     #[serde(default)]
     pub remove: Vec<String>,
+    /// The environment this one extends: a name sets it, null clears it, absent keeps it.
+    /// Extending itself, a missing environment or one that leads back here is refused.
+    #[serde(default, deserialize_with = "present")]
+    pub extends: Option<Option<String>>,
+}
+
+/// Tells a field given as null (`Some(None)`) from one left out (`None`, by `default`).
+fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(d).map(Some)
 }
 
 /// An environment's name after a create or rename, and what could not be finished.
@@ -336,6 +354,10 @@ pub(crate) fn update<E: EnvSet>(
         let Some(env) = c.environment(&a.name) else {
             return Err(not_found(c));
         };
+        if let Some(parent) = &a.extends {
+            c.check_environment_extends(&a.name, parent.as_deref())
+                .map_err(|e| Failure::refused(e.to_string()))?;
+        }
         // Planned from the file as loaded for this attempt, so a retry re-plans after a conflict.
         let (vars, to_secret) = plan(env.variables(), a).map_err(Failure::refused)?;
         refuse_stored(c, &a.name, &to_secret, store).map_err(Failure::refused)?;
@@ -343,6 +365,9 @@ pub(crate) fn update<E: EnvSet>(
             return Err(not_found(c));
         };
         env.set_variables(vars);
+        if let Some(parent) = &a.extends {
+            env.set_extends(parent.clone());
+        }
         env.save().map_err(Failure::save)?;
         Ok(to_secret)
     })?;
@@ -594,6 +619,7 @@ mod tests {
             name: "prod".into(),
             set: Vec::new(),
             remove: vec!["token".into()],
+            extends: None,
         };
         let err = super::plan(vars, &args).expect_err("refused");
         assert!(err.contains("token is secret"), "{err}");

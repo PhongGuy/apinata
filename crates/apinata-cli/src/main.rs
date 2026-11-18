@@ -208,8 +208,8 @@ enum Command {
         0  listed, set or removed\n  \
         3  usage or collection error, or a refused edit")]
     Network(NetworkCmdArgs),
-    /// List, create, copy, rename and delete a collection's environments, and set or remove
-    /// their variables.
+    /// List, create, copy, rename and delete a collection's environments, set or remove
+    /// their variables, and set which environment each extends.
     #[command(after_help = "Exit codes:\n  \
         0  listed, created, copied, renamed, set or removed, or every rename asked for moved\n  \
         1  renames --move or --pick skipped an ambiguous or taken rename\n  \
@@ -418,6 +418,22 @@ pub enum EnvAction {
         /// Do not use the platform keychain; secret values stay under the old name.
         #[arg(long)]
         no_keychain: bool,
+        /// Use the global environments instead of a collection's.
+        #[arg(long, conflicts_with = "collection")]
+        global: bool,
+    },
+    /// Set which environment this one extends (inherits variables from), or clear it.
+    ///
+    /// Refused when the parent is the environment itself, has no file, or leads back to it.
+    Extends {
+        /// The environment to change.
+        name: String,
+        /// The environment to extend.
+        #[arg(required_unless_present = "clear", conflicts_with = "clear")]
+        parent: Option<String>,
+        /// Extend nothing.
+        #[arg(long)]
+        clear: bool,
         /// Use the global environments instead of a collection's.
         #[arg(long, conflicts_with = "collection")]
         global: bool,

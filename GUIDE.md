@@ -228,7 +228,14 @@ re-points every environment that `extends` it; a name already taken is refused.
 refused while another environment extends it, naming each one. With
 `--no-keychain`, `cp`, `mv` and `rm` leave the stored values alone and say which.
 
-`--global` makes `ls`, `show`, `set`, `unset`, `new`, `cp`, `mv` and `rm` work on the
+`apinata env extends <name> <parent>` makes an environment inherit the variables of
+another, and `apinata env extends <name> --clear` removes the parent. A parent that
+is the environment itself, has no file, or leads back to it (`environment
+inheritance cycle: a -> b -> a`) is refused with exit code 3 and nothing changes.
+`env show` prints the parent as an `extends:` line, or an `extends` field with
+`--json`.
+
+`--global` makes `ls`, `show`, `set`, `unset`, `new`, `cp`, `mv`, `rm` and `extends` work on the
 [global environments](#variables-and-environments) instead of a collection's, with the same
 output, exit codes and secret handling; no collection is needed, and `--global` with
 `--collection` is a usage error:
@@ -891,6 +898,11 @@ saved example, with every secret value the request knew replaced by its
 placeholder, and `read_request` lists a request's examples. `rename_example` and
 `delete_example` rename or remove a saved example by name, refusing as `apinata item
 rename-example` and `rm-example` do.
+
+`update_environment` and `update_global_environment` take an `extends` field: a
+name sets the environment's parent, `null` clears it, and leaving it out keeps it.
+They refuse the same parents `apinata env extends` does, with the same message, and
+the read tools report the parent as `extends`.
 
 The server also lists the collection's requests, folders and environments as MCP
 resources (`apinata://<collection>/<path>`, read-only JSON, secret values never

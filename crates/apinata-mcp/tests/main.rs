@@ -27,6 +27,7 @@ mod check;
 mod cookies;
 mod derived_credentials;
 mod empty_url;
+mod env_extends;
 mod env_not_found;
 mod env_ops;
 mod example_edit;

@@ -110,6 +110,24 @@ impl GlobalEnvironments {
         env_ops::rename_environment(self, from, to, store)
     }
 
+    /// As [`Collection::set_environment_extends`](crate::Collection::set_environment_extends).
+    pub fn set_environment_extends(
+        &mut self,
+        name: &str,
+        parent: Option<&str>,
+    ) -> Result<(), EnvError> {
+        env_ops::set_environment_extends(self, name, parent)
+    }
+
+    /// As [`Collection::check_environment_extends`](crate::Collection::check_environment_extends).
+    pub fn check_environment_extends(
+        &self,
+        name: &str,
+        parent: Option<&str>,
+    ) -> Result<(), EnvError> {
+        env_ops::check_environment_extends(self, name, parent)
+    }
+
     /// As [`Collection::extended_by`](crate::Collection::extended_by).
     pub fn extended_by(&self, name: &str) -> Vec<String> {
         env_ops::extended_by(self, name)

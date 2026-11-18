@@ -99,6 +99,7 @@ mod env_not_found;
 mod env_overlay_remove;
 mod env_variable_edit;
 mod environment_duplicate;
+mod environment_extends;
 mod environment_ops;
 mod environment_rollback;
 mod environment_secrets;
