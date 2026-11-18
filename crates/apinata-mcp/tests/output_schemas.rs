@@ -420,6 +420,18 @@ async fn every_tool_result_matches_its_output_schema() {
     assert!(refused["error"].is_string(), "{refused}");
     ex.run(&server, "list_cookies", json!({})).await;
     ex.run(&server, "clear_cookies", json!({})).await;
+    ex.run(
+        &server,
+        "set_cookie",
+        json!({"url": "http://127.0.0.1:9/", "name": "n", "value": "v"}),
+    )
+    .await;
+    ex.run(
+        &server,
+        "delete_cookie",
+        json!({"domain": "127.0.0.1", "path": "/", "name": "n"}),
+    )
+    .await;
     ex.run(&server, "graphql_schema", json!({"path": "q.yml"}))
         .await;
     ex.run(

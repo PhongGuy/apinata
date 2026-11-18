@@ -33,7 +33,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::apply::{ConfigPatch, RequestPatch};
 use crate::check::{self, CheckArgs};
-use crate::cookies::{self, ClearArgs, Cleared, CookieList};
+use crate::cookies::{
+    self, ClearArgs, Cleared, CookieDeleted, CookieList, CookieSet, DeleteArgs, SetArgs,
+};
 use crate::dto::{ConfigDoc, EnvironmentDoc, RequestDoc};
 use crate::envs::{self, DeletedEnv, EnvNameResult, GlobalNames, RenameEnvArgs, UpdateEnvArgs};
 use crate::examples::{
@@ -86,6 +88,8 @@ const NO_FILE_WRITES: &[&str] = &[
     "mock_start",
     "mock_stop",
     "clear_cookies",
+    "set_cookie",
+    "delete_cookie",
     "oauth2_token",
     "graphql_schema",
     "set_runtime_variable",
@@ -818,6 +822,37 @@ impl ApinataServer {
     )]
     async fn clear_cookies(&self, Parameters(args): Parameters<ClearArgs>) -> Json<Cleared> {
         Json(cookies::clear(self.exec.cookies(), args.domain.as_deref()))
+    }
+
+    #[tool(
+        description = "Store one cookie in this session's jar as if a response from `url` had \
+                       set it; later sends to a matching domain and path carry it. Contacts no \
+                       host. `domain` widens it to that domain and its subdomains and must be \
+                       the URL's host or a parent of it; `path` defaults to the URL's \
+                       directory; `expires` is unix seconds, absent for a session cookie. The \
+                       result describes the cookie as list_cookies does, never with its value.",
+        annotations(
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn set_cookie(
+        &self,
+        Parameters(args): Parameters<SetArgs>,
+    ) -> Result<Json<CookieSet>, String> {
+        cookies::set(self.exec.cookies(), args)
+            .map(Json)
+            .map_err(|e| self.seen().scrub(&e))
+    }
+
+    #[tool(
+        description = "Delete the one cookie with this domain, path and name, as list_cookies \
+                       shows them. `removed` is false when nothing matched.",
+        annotations(destructive_hint = true, open_world_hint = false)
+    )]
+    async fn delete_cookie(&self, Parameters(args): Parameters<DeleteArgs>) -> Json<CookieDeleted> {
+        Json(cookies::delete(self.exec.cookies(), &args))
     }
 
     #[tool(
