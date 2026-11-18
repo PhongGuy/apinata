@@ -128,6 +128,8 @@ const WRITES_FILES: &[&str] = &[
     "rename_example",
     "delete_example",
     "scrub_example_userinfo",
+    "git_switch_branch",
+    "git_pull",
 ];
 
 /// The most response body the executor reads, as the app does.
