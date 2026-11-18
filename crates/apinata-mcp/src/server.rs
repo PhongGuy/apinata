@@ -94,7 +94,6 @@ const NO_FILE_WRITES: &[&str] = &[
     "create_global_environment",
     "duplicate_global_environment",
     "rename_global_environment",
-    "delete_global_environment",
     "update_global_environment",
 ];
 
@@ -2117,20 +2116,6 @@ impl ApinataServer {
     ) -> Result<Json<EnvNameResult>, String> {
         let store = Arc::clone(&self.store);
         self.with_globals(move |g| envs::rename(g, &args, store.as_ref()).map(Json))
-            .await
-    }
-
-    #[tool(
-        description = "As delete_environment, for the global environments: one holding secret \
-                       variables or extended by another is refused.",
-        annotations(destructive_hint = true, open_world_hint = false)
-    )]
-    async fn delete_global_environment(
-        &self,
-        Parameters(args): Parameters<NameArgs>,
-    ) -> Result<Json<DeletedEnv>, String> {
-        let store = Arc::clone(&self.store);
-        self.with_globals(move |g| envs::delete(g, &args.name, store.as_ref()).map(Json))
             .await
     }
 

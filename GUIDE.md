@@ -862,7 +862,9 @@ writes collection files also sends `list_changed`; the read-only tools never
 do. Change notifications are debounced, so a burst of edits arrives as one
 after about 250 ms.
 
-The agent may edit collection files freely, since git tracks them. Sending to a
+The agent may edit collection files freely, since git tracks them. Global
+environments live outside git, so the agent cannot delete one; delete it with
+`apinata env rm --global` or in the app. Sending to a
 host other than `localhost` or a loopback address needs approval: the request waits for you
 to approve it in the desktop app, or you can trust the host beforehand. Denied
 hosts are refused outright.

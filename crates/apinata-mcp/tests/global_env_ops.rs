@@ -81,14 +81,13 @@ async fn secrets_are_never_set_shown_or_removed_and_making_one_moves_the_value()
 }
 
 #[tokio::test]
-async fn duplicate_and_rename_carry_secrets_and_delete_refuses_one_holding_a_secret() {
+async fn duplicate_and_rename_carry_secrets() {
     let server = server().await;
     server.write_global(
         "base",
         "name: base\nvariables:\n  - secret: true\n    name: tok\n",
     );
     server.write_global("dev", "name: dev\nextends: base\n");
-    server.write_global("tmp", "name: tmp\n");
     server.set_global_secret("base", "tok", SECRET);
 
     let copied = server
@@ -110,24 +109,6 @@ async fn duplicate_and_rename_carry_secrets_and_delete_refuses_one_holding_a_sec
     assert!(read(&server, "dev").contains("extends: root"));
     assert_eq!(server.global_secret("root", "tok").as_deref(), Some(SECRET));
     assert_eq!(server.global_secret("base", "tok"), None);
-
-    let err = server
-        .err("delete_global_environment", json!({"name": "base copy"}))
-        .await;
-    assert!(err.contains("secret") && !err.contains(SECRET), "{err}");
-    assert!(server.global_dir().join("base copy.yml").is_file());
-    let deleted = server
-        .ok("delete_global_environment", json!({"name": "tmp"}))
-        .await;
-    assert_eq!(deleted, json!({"deleted": "tmp"}));
-    assert!(!server.global_dir().join("tmp.yml").exists());
-    let err = server
-        .err("delete_global_environment", json!({"name": "nope"}))
-        .await;
-    assert!(
-        err.contains("global environment") && err.contains("nope"),
-        "{err}"
-    );
 }
 
 #[tokio::test]
@@ -140,7 +121,6 @@ async fn the_global_tools_are_annotated_like_the_collection_ones() {
         ("create_global_environment", false, false),
         ("duplicate_global_environment", false, false),
         ("rename_global_environment", false, false),
-        ("delete_global_environment", false, true),
         ("update_global_environment", false, false),
     ] {
         let tool = tools
@@ -154,4 +134,16 @@ async fn the_global_tools_are_annotated_like_the_collection_ones() {
         }
         assert_eq!(hints.open_world_hint, Some(false), "{name}");
     }
+}
+
+#[tokio::test]
+async fn no_tool_deletes_a_global_environment() {
+    let server = server().await;
+    let tools = server.tools().await;
+    let deletes: Vec<_> = tools
+        .iter()
+        .filter(|t| t.name.contains("global") && t.name.contains("delete"))
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(deletes.is_empty(), "{deletes:?}");
 }

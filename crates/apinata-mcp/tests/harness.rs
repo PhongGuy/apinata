@@ -57,7 +57,6 @@ async fn the_server_lists_the_read_and_write_tools_of_the_spec() {
             "create_global_environment",
             "create_request",
             "delete_environment",
-            "delete_global_environment",
             "delete_item",
             "duplicate_environment",
             "duplicate_global_environment",

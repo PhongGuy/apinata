@@ -623,8 +623,6 @@ async fn every_tool_result_matches_its_output_schema() {
     ex.run(&server, "list_global_environments", json!({})).await;
     ex.run(&server, "read_global_environment", json!({"name": "g2"}))
         .await;
-    ex.run(&server, "delete_global_environment", json!({"name": "g2"}))
-        .await;
 
     let listed: BTreeSet<String> = ex.schemas.keys().cloned().collect();
     let missed: Vec<&String> = listed.difference(&ex.seen).collect();
