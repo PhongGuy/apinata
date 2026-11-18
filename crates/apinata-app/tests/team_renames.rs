@@ -118,9 +118,9 @@ fn move_all_takes_only_sure_rows_with_a_free_or_same_target() {
 fn a_row_reads_old_to_new_and_says_when_it_is_a_guess() {
     let sure = rename("dev/host_key", &[("staging/host_key", Free)], true);
     let guess = rename("dev/token", &[("staging/api_token", Free)], false);
-    assert_eq!(row_text(&sure, 0), "dev / host_key -> staging / host_key");
+    assert_eq!(row_text(&sure, 0), "dev / host_key → staging / host_key");
     assert_eq!(
         row_text(&guess, 0),
-        "dev / token -> staging / api_token (renamed? check before moving)"
+        "dev / token → staging / api_token (renamed? check before moving)"
     );
 }

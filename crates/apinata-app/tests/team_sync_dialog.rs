@@ -309,8 +309,8 @@ fn a_pulled_rename_offers_its_secrets_and_moving_them_makes_requests_resolve(
     assert_eq!(
         rename_lines(cx, &view),
         [
-            "dev / host_key -> staging / host_key",
-            "dev / token -> staging / api_token (renamed? check before moving)"
+            "dev / host_key → staging / host_key",
+            "dev / token → staging / api_token (renamed? check before moving)"
         ]
     );
     assert!(
@@ -396,4 +396,269 @@ fn reentering_where_no_environments_tab_opens_keeps_the_row_open(cx: &mut TestAp
     });
     assert!(!loaded);
     assert_eq!(open, Some(1));
+}
+
+/// A store that refuses every `set`, or every `list`, while its flag is on.
+#[derive(Default)]
+struct Faulty {
+    inner: apinata_core::MemoryStore,
+    no_set: std::sync::atomic::AtomicBool,
+    no_list: std::sync::atomic::AtomicBool,
+}
+
+impl apinata_core::SecretStore for Faulty {
+    fn get(
+        &self,
+        key: &apinata_core::SecretKey,
+    ) -> Result<Option<String>, apinata_core::SecretError> {
+        self.inner.get(key)
+    }
+    fn set(
+        &self,
+        key: &apinata_core::SecretKey,
+        value: &str,
+    ) -> Result<(), apinata_core::SecretError> {
+        if self.no_set.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(apinata_core::SecretError::Unavailable {
+                message: "the store is locked".into(),
+            });
+        }
+        self.inner.set(key, value)
+    }
+    fn delete(&self, key: &apinata_core::SecretKey) -> Result<(), apinata_core::SecretError> {
+        self.inner.delete(key)
+    }
+    fn list(
+        &self,
+        root: &std::path::Path,
+    ) -> Result<Vec<apinata_core::SecretKey>, apinata_core::SecretError> {
+        if self.no_list.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(apinata_core::SecretError::Unavailable {
+                message: "the store cannot list".into(),
+            });
+        }
+        self.inner.list(root)
+    }
+}
+
+/// `seeded`, on a `Faulty` store.
+fn seeded_faulty(
+    cx: &mut TestAppContext,
+    sb: &Sandbox,
+    col: &tempfile::TempDir,
+) -> (Started, std::sync::Arc<Faulty>) {
+    shared_origin(sb, col.path());
+    http_ready(cx);
+    let store = std::sync::Arc::new(Faulty::default());
+    let s = team_started_on(cx, sb, col, |_| {}, store.clone());
+    let c = apinata_core::Collection::open(col.path()).unwrap();
+    store.set(&c.secret_key("dev", "token"), "t1").unwrap();
+    store.set(&c.secret_key("dev", "host_key"), "k1").unwrap();
+    start_team_as(cx, sb, &s, Role::Write, FAST);
+    (s, store)
+}
+
+/// Every accessible label the window drew, which is all the dialog's text and buttons.
+fn drawn_labels(cx: &mut TestAppContext, s: &Started) -> Vec<String> {
+    use gpui_kit::test::TestQueryExt as _;
+    frame(cx, s.win);
+    cx.update_window(s.win, |_, w, _| {
+        w.elements()
+            .iter()
+            .filter_map(|e| e.label().map(str::to_owned))
+            .collect()
+    })
+    .unwrap()
+}
+
+fn label_of(
+    cx: &mut TestAppContext,
+    s: &Started,
+    id: impl Into<gpui_kit::ElementId>,
+) -> Option<String> {
+    frame(cx, s.win);
+    let id = id.into();
+    cx.update_window(s.win, |_, w, _| {
+        w.try_find(id).and_then(|e| e.label().map(str::to_owned))
+    })
+    .unwrap()
+}
+
+fn assert_no_values(labels: &[String]) {
+    for value in ["t1", "k1", "0ther-s3cret"] {
+        assert!(
+            labels.iter().all(|l| !l.contains(value)),
+            "{value} shown in {labels:?}"
+        );
+    }
+}
+
+fn stored(
+    store: &dyn apinata_core::SecretStore,
+    col: &std::path::Path,
+    env: &str,
+    var: &str,
+) -> Option<String> {
+    let c = apinata_core::Collection::open(col).unwrap();
+    store.get(&c.secret_key(env, var)).unwrap()
+}
+
+const QA: &str = "name: qa\nvariables:\n  - name: token\n    secret: true\n  - name: host_key\n    secret: true\n  - name: region\n    value: eu\n";
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn an_ambiguous_row_offers_one_move_per_open_target_and_moves_to_the_pick(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, secrets) = seeded(cx, &sb, &col);
+    let c = apinata_core::Collection::open(col.path()).unwrap();
+    secrets
+        .set(&c.secret_key("staging", "token"), "0ther-s3cret")
+        .unwrap();
+    // dev goes and two environments arrive, so each old name has two places it may have gone.
+    let mate = sb.path().join("mate");
+    write(&mate, "environments/qa.yml", QA);
+    mate_renames(cx, &sb, &s, &DEV.replace("dev", "staging"));
+    wait_for(cx, "the offer", |cx| open_rows(cx, &s) == 2);
+    let rows = s.ws.read_with(cx, |w, _| w.team_renames(&s.root)).unwrap();
+    let token = rows.open_rows()[1].clone();
+    assert_eq!(token.from, apinata_core::SecretName::new("dev", "token"));
+    let at = |env: &str| {
+        token
+            .to
+            .iter()
+            .position(|(to, _)| to.environment == env)
+            .unwrap()
+    };
+    let (qa, staging) = (at("qa"), at("staging"));
+    let _view = open(cx, &s);
+    assert_eq!(
+        label_of(
+            cx,
+            &s,
+            gpui_kit::SharedString::from(format!("team-rename-pick-1-{qa}"))
+        )
+        .as_deref(),
+        Some("Move to qa / token")
+    );
+    assert!(!shown(
+        cx,
+        s.win,
+        gpui_kit::SharedString::from(format!("team-rename-pick-1-{staging}"))
+    ));
+    assert!(!shown(cx, s.win, ("team-rename-move", 1usize)));
+    assert_no_values(&drawn_labels(cx, &s));
+    press(
+        cx,
+        &s,
+        gpui_kit::SharedString::from(format!("team-rename-pick-1-{qa}")),
+    );
+    wait_for(cx, "the pick to move", |cx| open_rows(cx, &s) == 1);
+    assert_eq!(stored(&*secrets, col.path(), "dev", "token"), None);
+    assert_eq!(
+        stored(&*secrets, col.path(), "qa", "token").as_deref(),
+        Some("t1")
+    );
+    assert_eq!(
+        stored(&*secrets, col.path(), "staging", "token").as_deref(),
+        Some("0ther-s3cret")
+    );
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn dismissing_a_taken_row_hides_it_and_keeps_the_old_value(cx: &mut TestAppContext) {
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, secrets) = seeded(cx, &sb, &col);
+    let c = apinata_core::Collection::open(col.path()).unwrap();
+    secrets
+        .set(&c.secret_key("staging", "token"), "0ther-s3cret")
+        .unwrap();
+    mate_renames(cx, &sb, &s, &DEV.replace("dev", "staging"));
+    wait_for(cx, "the offer", |cx| open_rows(cx, &s) == 2);
+    let _view = open(cx, &s);
+    assert!(!shown(cx, s.win, ("team-rename-move", 1usize)));
+    assert_no_values(&drawn_labels(cx, &s));
+    press(cx, &s, ("team-rename-dismiss", 1usize));
+    wait_for(cx, "the row to go", |cx| open_rows(cx, &s) == 1);
+    assert_eq!(
+        rename_lines(cx, &_view),
+        ["dev / host_key → staging / host_key"]
+    );
+    assert_eq!(
+        stored(&*secrets, col.path(), "dev", "token").as_deref(),
+        Some("t1")
+    );
+    assert_eq!(
+        stored(&*secrets, col.path(), "staging", "token").as_deref(),
+        Some("0ther-s3cret")
+    );
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn a_move_the_store_refuses_says_why_under_its_row(cx: &mut TestAppContext) {
+    use std::sync::atomic::Ordering;
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, store) = seeded_faulty(cx, &sb, &col);
+    mate_renames(cx, &sb, &s, &DEV.replace("dev", "staging"));
+    wait_for(cx, "the offer", |cx| open_rows(cx, &s) == 2);
+    let _view = open(cx, &s);
+    store.no_set.store(true, Ordering::SeqCst);
+    press(cx, &s, ("team-rename-move", 0usize));
+    let from = apinata_core::SecretName::new("dev", "host_key");
+    wait_for(cx, "the error", |cx| {
+        s.ws.read_with(cx, |w, _| {
+            w.team_renames(&s.root)
+                .is_some_and(|r| r.error(&from).is_some())
+        })
+    });
+    let error = s.ws.read_with(cx, |w, _| {
+        w.team_renames(&s.root)
+            .unwrap()
+            .error(&from)
+            .unwrap()
+            .to_owned()
+    });
+    assert_eq!(
+        label_of(cx, &s, ("team-rename-note", 0usize)),
+        Some(format!("Could not move it: {error}"))
+    );
+    assert!(error.contains("the store is locked"), "{error}");
+    assert_eq!(open_rows(cx, &s), 2);
+    assert_no_values(&drawn_labels(cx, &s));
+    assert_eq!(
+        stored(&*store, col.path(), "dev", "host_key").as_deref(),
+        Some("k1")
+    );
+    assert_eq!(stored(&*store, col.path(), "staging", "host_key"), None);
+}
+
+#[cfg(unix)]
+#[gpui_kit::test]
+fn an_ask_the_store_cannot_answer_says_so_in_the_dialog(cx: &mut TestAppContext) {
+    use std::sync::atomic::Ordering;
+    let (sb, col) = (Sandbox::new(), secrets_collection());
+    let (s, store) = seeded_faulty(cx, &sb, &col);
+    store.no_list.store(true, Ordering::SeqCst);
+    mate_renames(cx, &sb, &s, &DEV.replace("dev", "staging"));
+    wait_for(cx, "the failed ask", |cx| {
+        s.ws.read_with(cx, |w, _| {
+            w.team_renames(&s.root)
+                .is_some_and(|r| r.failed().is_some())
+        })
+    });
+    let why = s.ws.read_with(cx, |w, _| {
+        w.team_renames(&s.root)
+            .unwrap()
+            .failed()
+            .unwrap()
+            .to_owned()
+    });
+    assert!(why.contains("the store cannot list"), "{why}");
+    let _view = open(cx, &s);
+    assert_eq!(
+        label_of(cx, &s, "team-rename-failed"),
+        Some(format!("Could not check for secrets to move: {why}"))
+    );
+    assert_no_values(&drawn_labels(cx, &s));
 }

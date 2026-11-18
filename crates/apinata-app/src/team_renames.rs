@@ -121,12 +121,12 @@ impl RenameRows {
     }
 }
 
-/// "dev / token -> staging / api_token", plus " (renamed? check before moving)" when not sure.
+/// "dev / token → staging / api_token", plus " (renamed? check before moving)" when not sure.
 pub fn row_text(row: &SecretRename, candidate: usize) -> String {
     let from = &row.from;
     let mut text = match row.to.get(candidate) {
         Some((to, _)) => format!(
-            "{} / {} -> {} / {}",
+            "{} / {} → {} / {}",
             from.environment, from.variable, to.environment, to.variable
         ),
         None => format!("{} / {}", from.environment, from.variable),

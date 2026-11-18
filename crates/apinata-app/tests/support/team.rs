@@ -139,7 +139,19 @@ pub fn team_started(
 ) -> (Started, Arc<MemoryStore>) {
     let secrets = Arc::new(MemoryStore::new());
     let store: Arc<dyn SecretStore> = secrets.clone();
-    let s = super::started_on(cx, col, |paths| prepare(paths, &secrets), store);
+    let s = team_started_on(cx, sb, col, |paths| prepare(paths, &secrets), store);
+    (s, secrets)
+}
+
+/// `team_started` with `store` as the app's secret store, for a fake that can fail.
+pub fn team_started_on(
+    cx: &mut TestAppContext,
+    sb: &Sandbox,
+    col: &TempDir,
+    prepare: impl FnOnce(&Paths),
+    store: Arc<dyn SecretStore>,
+) -> Started {
+    let s = super::started_on(cx, col, prepare, store);
     let before = super::ws_snap(cx, &s.ws, &s.root).seq;
     s.ws.update(cx, |w, cx| {
         w.set_git(Some(sb.options()), cx);
@@ -150,7 +162,7 @@ pub fn team_started(
     super::wait_for(cx, "watching to start", |cx| {
         super::ws_snap(cx, &s.ws, &s.root).seq > before
     });
-    (s, secrets)
+    s
 }
 
 /// Team mode on `s` as `role` with copies under `<files>/conflicts/b1`, settled after its start pull.

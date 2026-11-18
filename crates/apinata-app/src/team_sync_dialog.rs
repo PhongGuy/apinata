@@ -282,9 +282,20 @@ impl SyncView {
             .test_support()
             .aria_label(text.clone())
             .gap(SPACE_2)
-            .child(v_flex().flex_1().min_w_0().child(text).children(
-                note.map(|note| div().text_color(cx.theme().muted_foreground).child(note)),
-            ))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(text)
+                    .children(note.map(|note| {
+                        div()
+                            .id(("team-rename-note", ix))
+                            .test_support()
+                            .aria_label(note.clone())
+                            .text_color(cx.theme().muted_foreground)
+                            .child(note)
+                    })),
+            )
             .children(buttons)
             .into_any_element()
     }
@@ -359,11 +370,13 @@ impl Render for SyncView {
             .collect();
         // A failed ask says so in one muted line, so it never reads as nothing to move.
         let failed = (rows.as_ref().and_then(|r| r.failed())).map(|why| {
+            let line = format!("Could not check for secrets to move: {why}");
             div()
                 .id("team-rename-failed")
                 .test_support()
+                .aria_label(line.clone())
                 .text_color(cx.theme().muted_foreground)
-                .child(format!("Could not check for secrets to move: {why}"))
+                .child(line)
         });
         let sure = rows.as_ref().map_or(Vec::new(), |r| r.movable_sure());
         let move_all = (sure.len() >= 2).then(|| {
