@@ -12,6 +12,7 @@ use crate::body_find::{
 use crate::body_node::{
     AssertCaretJsonValue, CopyCaretJsonPath, CopyCaretJsonValue, SetCaretJsonVariable,
 };
+use crate::check_dialog::CheckCollection;
 use crate::config_editor::SaveConfig;
 use crate::env_editor::SaveEnvironment;
 use crate::env_table::ENV_TABLE_CONTEXT as ENV_TABLE;
@@ -439,6 +440,13 @@ pub fn registry() -> Vec<Command> {
             "Run collection",
             Collection,
             shell(RunCollection),
+            &[],
+        ),
+        command(
+            "collection.check",
+            "Check collection",
+            Collection,
+            shell(CheckCollection),
             &[],
         ),
         command(

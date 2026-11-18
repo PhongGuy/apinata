@@ -55,6 +55,7 @@ fn entries_follow_the_row_kind() {
             E::PasteItem,
             E::SortByName,
             E::RunCollection,
+            E::CheckCollection,
             E::CollectionSettings,
             E::MockServer,
             E::ExportPostman,
@@ -399,6 +400,7 @@ fn tree_entries_take_the_registry_names() {
         (E::GenerateCode, "request.generate_code"),
         (E::RunCollection, "collection.run"),
         (E::RunFolder, "collection.run_folder"),
+        (E::CheckCollection, "collection.check"),
         (E::CollectionSettings, "collection.settings"),
         (E::ExportPostman, "collection.export"),
         (

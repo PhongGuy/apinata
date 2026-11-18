@@ -1770,6 +1770,10 @@ impl Sidebar {
                 cx.emit(SidebarEvent::OpenSettings { root, folder });
             }
             MenuEntry::RunCollection => cx.emit(SidebarEvent::Run { root, folder: None }),
+            MenuEntry::CheckCollection => {
+                let fallback = self.tree_focus.clone();
+                crate::check_dialog::open(&self.workspace, &root, fallback, window, cx);
+            }
             MenuEntry::MockServer => self.workspace.update(cx, |w, cx| w.toggle_mock(&root, cx)),
             MenuEntry::RunFolder => {
                 let folder = Some(path);

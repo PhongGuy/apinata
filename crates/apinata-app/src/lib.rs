@@ -25,6 +25,7 @@ pub mod branch_picker;
 pub mod busy;
 pub mod cached_part;
 pub mod changes_dialog;
+pub mod check_dialog;
 pub mod clone_dialog;
 pub mod clone_form;
 pub mod clone_job;

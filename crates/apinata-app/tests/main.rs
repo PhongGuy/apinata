@@ -163,6 +163,7 @@ mod changes_dialog_qa;
 mod changes_dialog_stage;
 mod changes_dialog_states;
 mod changes_draft;
+mod check_dialog;
 mod clone_dialog;
 mod clone_entry;
 mod clone_form;
