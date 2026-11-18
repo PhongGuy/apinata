@@ -16,7 +16,7 @@ fn every_shell_prints_a_script_naming_the_subcommands() {
         assert_eq!(out.status.code(), Some(0), "{shell}");
         let script = String::from_utf8(out.stdout).unwrap();
         assert!(!script.is_empty(), "{shell} printed nothing");
-        for word in ["run", "gen", "ls", "env"] {
+        for word in ["run", "gen", "ls", "env", "init"] {
             assert!(script.contains(word), "{shell} script lacks `{word}`");
         }
     }

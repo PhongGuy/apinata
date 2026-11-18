@@ -57,6 +57,7 @@ mod cli_import_folder;
 mod cli_import_request;
 mod cli_import_update;
 mod cli_import_url;
+mod cli_init;
 mod cli_item;
 mod cli_item_folder;
 mod cli_item_pruned;
