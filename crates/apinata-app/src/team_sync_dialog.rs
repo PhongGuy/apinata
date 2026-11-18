@@ -94,7 +94,12 @@ impl SyncView {
     pub fn lines(&self, cx: &App) -> Vec<String> {
         let workspace = self.workspace.read(cx);
         (workspace.team_status(&self.root))
-            .map(|status| problem_lines(&status, workspace.team_clashes(&self.root).len()))
+            .map(|status| {
+                let clashes = workspace.team_clashes(&self.root).len();
+                let renames =
+                    (workspace.team_renames(&self.root)).map_or(0, |r| r.open_rows().len());
+                problem_lines(&status, clashes, renames)
+            })
             .unwrap_or_default()
     }
 
