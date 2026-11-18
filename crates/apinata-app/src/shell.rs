@@ -107,6 +107,10 @@ actions!(
         OpenDemoCollection,
         /// Opens the remote branch picker for the current collection.
         SwitchBranch,
+        /// Pulls the current collection's branch from its upstream.
+        PullBranch,
+        /// Pushes the current collection's branch to its upstream.
+        PushBranch,
         /// Opens the Changes dialog, where the current collection's files are staged and committed.
         ShowChanges,
         /// Prompts for a file and exports the current collection there as Postman JSON.
@@ -1080,16 +1084,34 @@ impl Shell {
 
     // The picker needs a repository; its events refresh the label, since a switch keeps the root
     // and `refresh_branch` would otherwise leave the old name up.
-    fn open_branch_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.repository_root(window, cx) else {
-            return;
-        };
+    fn open_branch_picker(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<crate::branch_picker::BranchPicker>> {
+        let root = self.repository_root(window, cx)?;
         let picker = crate::branch_dialog::open(&self.workspace, root, window, cx);
         cx.subscribe_in(&picker, window, Self::on_picker_event)
             .detach();
         // A switch can end with no event (timeout, failure after HEAD moved), yet always notifies.
         cx.observe(&picker, |this, _, cx| this.refresh_branch(true, cx))
             .detach();
+        Some(picker)
+    }
+
+    // The palette's Pull and Push run in the branch dialog, which shows their progress, Stop
+    // and any notice. A team collection syncs on its own and is refused.
+    fn sync_branch(&mut self, pull: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let ws = self.workspace.read(cx);
+        if let Some(root) = ws.current_root()
+            && ws.team_status(&root).is_some()
+        {
+            window.push_notification(ui::info_toast("A team collection syncs on its own"), cx);
+            return;
+        }
+        if let Some(picker) = self.open_branch_picker(window, cx) {
+            picker.update(cx, |p, cx| if pull { p.pull(cx) } else { p.push(cx) });
+        }
     }
 
     fn on_picker_event(
@@ -1110,6 +1132,9 @@ impl Shell {
                 if let Some(Notice::OtherUpstream(text)) = picker.read(cx).notice() {
                     window.push_notification(ui::info_toast(text.clone()), cx);
                 }
+            }
+            PickerEvent::Synced { message } => {
+                window.push_notification(ui::info_toast(message.clone()), cx);
             }
         }
     }
@@ -2360,7 +2385,9 @@ impl Shell {
                 // No right padding, so only the ring's border parts the comma from the name:
                 // any more reads as a space before the comma.
                 .when(comma_shows, |b| b.pr_0())
-                .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_branch_picker(window, cx);
+                }))
                 .child(icon())
                 .child(
                     text_box(name.to_string(), cell)
@@ -2434,7 +2461,9 @@ impl Shell {
             .icon(IconName::ChevronDown)
             .accessibility_label("Switch branch")
             .tooltip("Switch branch")
-            .on_click(cx.listener(|this, _, window, cx| this.open_branch_picker(window, cx)));
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_branch_picker(window, cx);
+            }));
         Some(
             h_flex()
                 .id("git-group")
@@ -3124,10 +3153,14 @@ impl Render for Shell {
             .on_action(cx.listener(Self::join_team_server))
             .on_action(cx.listener(Self::team_workspaces))
             .on_action(cx.listener(Self::open_demo))
+            .on_action(cx.listener(|this, _: &SwitchBranch, window, cx| {
+                this.open_branch_picker(window, cx);
+            }))
             .on_action(
-                cx.listener(|this, _: &SwitchBranch, window, cx| {
-                    this.open_branch_picker(window, cx)
-                }),
+                cx.listener(|this, _: &PullBranch, window, cx| this.sync_branch(true, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &PushBranch, window, cx| this.sync_branch(false, window, cx)),
             )
             .on_action(cx.listener(Self::show_changes))
             .on_action(cx.listener(Self::toggle_mock_server))

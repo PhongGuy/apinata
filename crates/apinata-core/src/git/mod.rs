@@ -29,7 +29,9 @@ pub use branch::{
 pub use clone::{CloneError, CloneProgress, CloneRequest, clone_repo};
 pub use stream::CancelFlag;
 mod sync;
-pub use sync::{Pulled, Pushed, SyncDirection, SyncError, SyncTargets, pull, push, sync_targets};
+pub use sync::{
+    Pulled, Pushed, SyncDirection, SyncError, SyncTargets, pull, pull_reporting, push, sync_targets,
+};
 mod url;
 pub(crate) use url::redact_header_url;
 pub use url::{

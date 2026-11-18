@@ -224,3 +224,31 @@ fn an_unborn_branch_is_refused_before_any_fetch() {
     }
     assert!(!logged(&log).contains(" fetch "));
 }
+
+#[test]
+fn pull_reporting_says_when_the_fetch_is_done_and_before_the_fast_forward() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    let before = rev(&sb, &root, "HEAD");
+    let tip = advance(&sb, "c.txt");
+    let mut heads = Vec::new();
+    let opts = sb.options();
+    let p = apinata_core::pull_reporting(&root, &CancelFlag::new(), &opts, &mut || {
+        heads.push((rev(&sb, &root, "HEAD"), rev(&sb, &root, "origin/main")));
+    })
+    .unwrap();
+    assert_eq!(p.to, tip);
+    assert_eq!(heads, [(before, tip)], "once, fetched and not yet moved");
+}
+
+#[test]
+fn pull_reporting_never_reports_a_pull_refused_before_the_fetch() {
+    let sb = Sandbox::new();
+    let root = cloned(&sb);
+    write(&root, "scratch.txt", "mine\n");
+    let mut calls = 0;
+    let r =
+        apinata_core::pull_reporting(&root, &CancelFlag::new(), &sb.options(), &mut || calls += 1);
+    assert!(matches!(r, Err(SyncError::Dirty)), "{r:?}");
+    assert_eq!(calls, 0);
+}

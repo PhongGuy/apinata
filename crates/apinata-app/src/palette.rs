@@ -30,7 +30,7 @@ use crate::keymap::{
     ToggleOrientation, UndoActive,
 };
 use crate::mock_server::MockState;
-use crate::shell::{ShowChanges, SwitchBranch, ToggleMockServer};
+use crate::shell::{PullBranch, PushBranch, ShowChanges, SwitchBranch, ToggleMockServer};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, FolderSettings, RedoInTree, RenameSelected, RunSelected,
@@ -314,6 +314,9 @@ pub struct Availability {
     pub redo_in_sidebar: bool,
     /// "Switch branch" and "Show changes": the current collection sits in a git repository.
     pub git_repo: bool,
+    /// "Pull from remote" and "Push to remote": in a git repository, and not a team collection,
+    /// which syncs on its own.
+    pub git_sync: bool,
     /// "Check for updates": this build has an update source.
     pub updates: bool,
     /// "Toggle layout": the active request has room to show side by side.
@@ -359,6 +362,7 @@ impl Availability {
             undo_delete: true,
             redo_in_sidebar: true,
             git_repo: true,
+            git_sync: true,
             updates: true,
             side_by_side: true,
             mock_on: false,
@@ -457,6 +461,8 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.redo_in_sidebar, RedoInTree.name()),
         (available.git_repo, SwitchBranch.name()),
         (available.git_repo, ShowChanges.name()),
+        (available.git_sync, PullBranch.name()),
+        (available.git_sync, PushBranch.name()),
         (available.updates, CheckForUpdates.name()),
         (available.side_by_side, ToggleOrientation.name()),
     ]
@@ -754,6 +760,11 @@ fn availability_now(
         redo_in_sidebar: sidebar.is_none_or(|s| s.read(cx).can_redo_in_tree(cx)),
         collection_open: workspace.is_none_or(|w| !w.read(cx).shows_empty_state(cx)),
         git_repo,
+        git_sync: git_repo
+            && workspace.is_none_or(|w| {
+                let w = w.read(cx);
+                (w.current_root()).is_none_or(|r| w.team_status(&r).is_none())
+            }),
         updates,
         side_by_side: tab_area.is_none_or(|t| !t.read(cx).too_narrow_for_side_by_side(window, cx)),
         mock_on: workspace.is_some_and(|w| {

@@ -118,6 +118,17 @@ fn no_upstream_text(branch: &str, gone: Option<&str>) -> String {
 /// unborn branch, a missing upstream or any change refuses before the fetch; a diverged branch
 /// is refused after it, with nothing touched. Only `cancel` stops the fetch early.
 pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulled, SyncError> {
+    pull_reporting(root, cancel, opts, &mut || {})
+}
+
+/// [`pull`], calling `fetched` once the fetch has finished and before the fast-forward starts;
+/// from then on `cancel` no longer stops the pull. A pull refused before the fetch never calls it.
+pub fn pull_reporting(
+    root: &Path,
+    cancel: &CancelFlag,
+    opts: &GitOptions,
+    fetched: &mut dyn FnMut(),
+) -> Result<Pulled, SyncError> {
     check_root(root).map_err(from_git)?;
     let branch = current_branch(root, opts)?;
     let full = format!("refs/heads/{branch}");
@@ -135,6 +146,7 @@ pub fn pull(root: &Path, cancel: &CancelFlag, opts: &GitOptions) -> Result<Pulle
     if cancel.is_cancelled() {
         return Err(SyncError::Cancelled);
     }
+    fetched();
     let Some(oid) = verify(root, &format!("{tracking}^{{commit}}"), opts)? else {
         return Err(SyncError::NoUpstream {
             branch,

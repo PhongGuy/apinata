@@ -1,4 +1,5 @@
-//! The branch dialog: lists a collection's branches, fetches and switches to one.
+//! The branch dialog: lists a collection's branches, fetches and switches to one, and pulls or
+//! pushes the current one.
 //! The model is `branch_picker`; this is the view over it.
 
 use crate::ui::LockButton as _;
@@ -59,8 +60,13 @@ pub fn open(
         crate::dialog_frame::place(dialog, window)
             .title("Switch branch")
             .close_button(false)
-            // Escape waits out a running switch: closing then would lose its result.
-            .on_cancel(move |_, _, cx| guard.read(cx).activity() != Activity::Switching)
+            // Escape waits out a running switch or pull: closing then would lose its result.
+            .on_cancel(move |_, _, cx| {
+                !matches!(
+                    guard.read(cx).activity(),
+                    Activity::Switching | Activity::Pulling
+                )
+            })
             // Enter acts on the focused row or button only, never confirms the list away.
             .on_ok(|_, _, _| false)
             .child(view.clone())
@@ -147,6 +153,19 @@ impl Render for BranchView {
                     .label("Open changes")
                     .on_click(cx.listener(|this, _, window, cx| this.open_changes(window, cx)))
             });
+            let publish = match &n {
+                Notice::Publish { remote, .. } => Some(
+                    Button::new("branch-publish")
+                        .solid_ring(cx)
+                        .key_context(ui::DIALOG_FOOTER_CONTEXT)
+                        .label(format!("Publish to {remote}"))
+                        .lock(!idle, cx)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.picker.update(cx, |p, cx| p.publish(cx));
+                        })),
+                ),
+                _ => None,
+            };
             v_flex()
                 .gap(SPACE_2)
                 .child(
@@ -157,6 +176,7 @@ impl Render for BranchView {
                         .child(n.text().to_owned()),
                 )
                 .children(changes)
+                .children(publish)
         });
         let fetching = activity == Activity::Fetching;
         let fetch = Button::new("branch-fetch")
@@ -166,10 +186,42 @@ impl Render for BranchView {
         let fetch = fetch.on_click(cx.listener(|this, _, _, cx| {
             this.picker.update(cx, |p, cx| p.fetch(cx));
         }));
-        let stop = fetching.then(|| {
+        // A team collection syncs on its own, so it offers no pull or push.
+        let root = picker.root().to_owned();
+        let syncs = self.workspace.read(cx).team_status(&root).is_none();
+        let sync_button = |id: &'static str, label: &'static str, busy: &'static str, on: bool| {
+            Button::new(id)
+                .solid_ring(cx)
+                .label(if on { busy } else { label })
+                .lock(!(idle || activity == Activity::Listing), cx)
+        };
+        let pull = syncs.then(|| {
+            let on = activity == Activity::Pulling;
+            sync_button("branch-pull", "Pull", "Pulling…", on).on_click(cx.listener(
+                |this, _, _, cx| {
+                    this.picker.update(cx, |p, cx| p.pull(cx));
+                },
+            ))
+        });
+        let push = syncs.then(|| {
+            let on = activity == Activity::Pushing;
+            sync_button("branch-push", "Push", "Pushing…", on).on_click(cx.listener(
+                |this, _, _, cx| {
+                    this.picker.update(cx, |p, cx| p.push(cx));
+                },
+            ))
+        });
+        // Stop shows while git talks to the remote; a pull's fast-forward cannot stop, so it
+        // stays visible but off once the fetch is over.
+        let running = matches!(
+            activity,
+            Activity::Fetching | Activity::Pulling | Activity::Pushing
+        );
+        let stop = running.then(|| {
             Button::new("branch-fetch-cancel")
                 .solid_ring(cx)
                 .label("Stop")
+                .lock(!picker.can_cancel(), cx)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.picker.update(cx, |p, _| p.cancel_fetch());
                 }))
@@ -178,7 +230,10 @@ impl Render for BranchView {
             .solid_ring(cx)
             .label("Close")
             .primary()
-            .lock_filled(activity == Activity::Switching, cx)
+            .lock_filled(
+                matches!(activity, Activity::Switching | Activity::Pulling),
+                cx,
+            )
             .on_click(|_, window, cx| window.close_dialog(cx));
         v_flex()
             .id("branch-dialog")
@@ -186,6 +241,10 @@ impl Render for BranchView {
             .gap(SPACE_2)
             .child(list)
             .children(notice)
-            .child(ui::dialog_footer(Some(fetch), stop, close))
+            .child(ui::dialog_footer(
+                Some(fetch),
+                pull.into_iter().chain(push).chain(stop),
+                close,
+            ))
     }
 }
