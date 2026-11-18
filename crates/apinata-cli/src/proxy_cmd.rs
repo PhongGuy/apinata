@@ -5,11 +5,11 @@ use std::path::Path;
 
 use anyhow::{bail, ensure};
 use apinata_core::{
-    CertificateKind, ClientCertificate, Collection, CollectionProxy, ProxyAuth, ProxyConfig,
-    collection_relative,
+    CertificateKind, ClientCertificate, Collection, CollectionProxy, PROXY_PASSWORD_DOTENV,
+    ProxyAuth, ProxyConfig, collection_relative, is_template, passphrase_dotenv_base,
 };
 
-use crate::network_secrets::{Moves, PROXY_PASSWORD, is_template, masked, passphrase_base};
+use crate::network_secrets::{masked, moves, proxy_password, write};
 use crate::trust::collection_root;
 use crate::{CertAction, CertArgs, ProxyAction, ProxyArgs};
 
@@ -86,14 +86,14 @@ pub(crate) fn proxy(args: &ProxyArgs) -> anyhow::Result<Vec<String>> {
     };
     let mut after = network.clone();
     after.proxy = chosen;
-    let mut moves = Moves::new(&c, &after)?;
+    let mut plan = moves(&c, &network, &after, false)?;
     if let CollectionProxy::Custom(p) = &mut after.proxy
         && let Some(auth) = &mut p.auth
     {
-        let previous = crate::network_secrets::proxy_password(&network.proxy);
-        moves.plan(&mut auth.password, previous, PROXY_PASSWORD);
+        let previous = proxy_password(&network.proxy);
+        plan.plan(&mut auth.password, previous, PROXY_PASSWORD_DOTENV);
     }
-    let mut lines = moves.write(&mut c)?;
+    let mut lines = write(&mut c, &plan)?;
     c.file_mut().set_proxy(&after.proxy);
     c.file_mut().save()?;
     lines.extend(describe_proxy(&after.proxy));
@@ -163,17 +163,17 @@ pub(crate) fn cert(args: &CertArgs) -> anyhow::Result<Vec<String>> {
                     after.certificates.len() - 1
                 }
             };
-            let mut moves = Moves::new(&c, &after)?;
+            let mut plan = moves(&c, &network, &after, false)?;
             let previous = network
                 .certificates
                 .get(row)
                 .map_or("", |c| c.passphrase.as_str());
-            moves.plan(
+            plan.plan(
                 &mut after.certificates[row].passphrase,
                 previous,
-                &passphrase_base(row),
+                &passphrase_dotenv_base(row),
             );
-            let mut lines = moves.write(&mut c)?;
+            let mut lines = write(&mut c, &plan)?;
             c.file_mut().set_client_certificates(&after.certificates);
             c.file_mut().save()?;
             lines.push(describe_cert(&after.certificates[row]));
@@ -187,21 +187,25 @@ pub(crate) fn move_secrets(collection: Option<&Path>) -> anyhow::Result<Vec<Stri
     let mut c = Collection::open(&collection_root(collection)?)?;
     let network = c.file().network();
     let mut after = network.clone();
-    let mut moves = Moves::new(&c, &after)?;
+    let mut plan = moves(&c, &network, &after, true)?;
     if let CollectionProxy::Custom(p) = &mut after.proxy
         && let Some(auth) = &mut p.auth
     {
         let previous = auth.password.clone();
-        moves.plan(&mut auth.password, &previous, PROXY_PASSWORD);
+        plan.plan(&mut auth.password, &previous, PROXY_PASSWORD_DOTENV);
     }
     for (row, cert) in after.certificates.iter_mut().enumerate() {
         let previous = cert.passphrase.clone();
-        moves.plan(&mut cert.passphrase, &previous, &passphrase_base(row));
+        plan.plan(
+            &mut cert.passphrase,
+            &previous,
+            &passphrase_dotenv_base(row),
+        );
     }
-    if moves.planned.is_empty() {
+    if plan.planned().is_empty() {
         return Ok(vec!["nothing to move".to_owned()]);
     }
-    let lines = moves.write(&mut c)?;
+    let lines = write(&mut c, &plan)?;
     c.file_mut().set_proxy(&after.proxy);
     c.file_mut().set_client_certificates(&after.certificates);
     c.file_mut().save()?;

@@ -28,6 +28,7 @@ mod digest;
 mod digest_key;
 mod document;
 mod dotenv;
+mod dotenv_names;
 mod dynamic;
 mod dynamic_data;
 mod edgegrid;
@@ -167,6 +168,11 @@ pub use curl_export::to_curl;
 pub use default_headers::{DefaultHeader, default_headers};
 pub use digest_key::DigestKey;
 pub use document::DiskState;
+pub use dotenv_names::{
+    DotenvMoves, OAUTH2_CLIENT_SECRET_DOTENV, OAUTH2_PASSWORD_DOTENV, PROXY_PASSWORD_DOTENV,
+    dotenv_reference_name, dotenv_tracked_by_git, free_dotenv_name, is_template,
+    passphrase_dotenv_base,
+};
 pub use dynamic::dynamic_variables;
 pub use edit::{
     ApiKeyPlacement, AuthJsonError, AuthJsonPosition, AuthSpec, BodySpec, ClientAuth, EdgeGridSpec,

@@ -3,14 +3,13 @@
 //! The draft takes the reference at once; `.env` is written only when the target is saved.
 
 use crate::command::Target;
-use crate::network_secrets::{self, Moves, env_name, is_template};
-use apinata_core::{AuthSpec, Collection};
+use crate::network_secrets::{self, env_name, is_template};
+use apinata_core::{AuthSpec, Collection, DotenvMoves};
 use std::collections::BTreeSet;
 
-/// The base `.env` name of an OAuth 2.0 client secret.
-pub const CLIENT_SECRET: &str = "APINATA_OAUTH2_CLIENT_SECRET";
-/// The base `.env` name of an OAuth 2.0 resource-owner password.
-pub const PASSWORD: &str = "APINATA_OAUTH2_PASSWORD";
+pub use apinata_core::{
+    OAUTH2_CLIENT_SECRET_DOTENV as CLIENT_SECRET, OAUTH2_PASSWORD_DOTENV as PASSWORD,
+};
 
 /// Rewrites a new literal secret in `auth` to a `.env` reference; Ok holds the moved secrets
 /// as (name, value), which the caller writes to `.env` when the target is saved, Err a
@@ -48,12 +47,12 @@ pub fn apply(
 
     // Plan on a copy, so a refusal leaves the caller's edit as it was.
     let mut planned = edited.clone();
-    let mut moves = Moves::new(known, all, taken, referenced);
+    let mut moves = DotenvMoves::new(known, all, taken, referenced);
     moves.plan(&mut planned.client_secret, &previous_secret, CLIENT_SECRET);
     moves.plan(&mut planned.password, &previous_password, PASSWORD);
-    network_secrets::check(c, &moves.planned)?;
+    network_secrets::check(c, moves.planned())?;
     *edited = planned;
-    Ok(moves.planned)
+    Ok(moves.into_planned())
 }
 
 /// The auth the target's draft holds now, or None for a target that is gone.
