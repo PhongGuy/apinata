@@ -44,6 +44,7 @@ const IDS: &[&str] = &[
     "collection.settings",
     "collection.folder_settings",
     "collection.run",
+    "collection.check",
     "collection.run_folder",
     "request.send",
     "request.stop",
