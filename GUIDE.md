@@ -104,7 +104,13 @@ the [exit codes](#exit-codes)). `apinata git clone` clones a repository into a
 new folder, `apinata git branches` lists the remote branches and
 `apinata git switch` checks one out. `apinata git pull` fetches and
 fast-forwards the current branch, and `apinata git push` pushes it to its
-upstream; neither merges, rebases or forces.
+upstream; neither merges, rebases or forces. A new branch with no upstream yet
+takes `--set-upstream <REMOTE>`, which publishes it under its own name on that
+remote and tracks it from then on:
+
+```sh
+apinata git push --set-upstream origin --collection ./my-api
+```
 
 `apinata git commit -m <MESSAGE>` commits locally and prints the new short id
 and subject (`--json` prints `{"short_id", "subject"}`). Name files or folders
@@ -287,7 +293,12 @@ with its file, and `mv <path>` moves one `--into` a folder (`.` is the root) or
 `--before` or `--after` a sibling, renumbering both places. `rm <path>` moves the item
 to the system trash and fails when there is none, and `restore` puts back the newest item
 `rm` (or the MCP `delete_item` tool) trashed in this collection, refusing when something
-is at its path now. A name already taken in the folder
+is at its path now. `restore --pruned` instead puts back every request the newest
+`apinata import --update --prune` removed, and `--batch <ID>` picks an older prune by the id
+a refusal lists; if any of them clashes with what is there now, nothing is restored.
+`scrub-userinfo` lists the saved examples whose recorded URL holds a username or password
+and, with `--write`, removes them from those URLs; the requests' own URLs stay as they are.
+A name already taken in the folder
 gets a number, as `Find 1.yml`. Each prints the item's new path; `--format json` prints
 it as data.
 
@@ -471,6 +482,104 @@ apinata run ./my-api/users/get-user.yml --env local
 
 ```sh
 apinata run ./my-api --env local --watch
+```
+
+Every `run` flag, by what it changes. `apinata run --help` lists the same flags with their
+defaults. `-q` (`--quiet`) works on every command and hides notices that are not errors, such
+as the warning that a collection's network settings changed since the last run.
+
+Environments and variables (see [Variables and environments](#variables-and-environments)):
+
+| Flag | Meaning |
+| --- | --- |
+| `--collection <DIR>` | The collection, the same as the PATH argument. |
+| `--env <NAME>` | The environment to use, by file name without `.yml`. |
+| `--env-var KEY[=VALUE]` | Set or override a variable; a bare `KEY` reads the process environment. Repeatable. |
+| `--no-keychain` | Never read secrets from the keychain; each one then needs `--env-var`. |
+| `--global-env <NAME>` | The global environment to use. |
+| `--global-env-var KEY[=VALUE]` | Set or override a global environment variable. Repeatable. |
+| `--workspace <DIR>` | Also offer a workspace folder's environments to `--global-env`. |
+
+Filtering:
+
+| Flag | Meaning |
+| --- | --- |
+| `--tags <TAGS>` | Run only the requests that have at least one of these comma-separated tags. |
+| `--exclude-tags <TAGS>` | Skip the requests that have any of these tags, even when `--tags` picks them. |
+| `--bail` | Stop after the first failed or errored request. |
+
+Data-driven runs:
+
+| Flag | Meaning |
+| --- | --- |
+| `--csv-file-path <PATH>` | Run once per row of a CSV file whose first row names the columns; each column is a `{{variable}}` for its row. |
+| `--json-file-path <PATH>` | Run once per object of a JSON array file; each key is a `{{variable}}`. Not with `--csv-file-path`. |
+| `--iterations <N>` | Run the collection N times; with a data file, use at most its first N rows. |
+| `--delay <MS>` | Wait this many milliseconds between requests (default 0). |
+
+Retries and status:
+
+| Flag | Meaning |
+| --- | --- |
+| `--retries <N>` | Send again, up to N more times, when the send fails in transit (timeout, refused or reset connection) or the reply is 502, 503 or 504. Scripts and assertions run once, on the last attempt. |
+| `--retry-delay <MS>` | Wait this long before each retry; a `Retry-After` header can lengthen it, up to 60 seconds. |
+| `--retry-unsafe` | Also retry POST and PATCH, which a repeat could apply twice. Without it only GET, HEAD, OPTIONS, PUT, DELETE and TRACE retry. |
+| `--fail-on-status[=4xx\|5xx]` | Fail a request whose final status is 400 or above (or in the class given), even without assertions. |
+
+Cookies:
+
+| Flag | Meaning |
+| --- | --- |
+| `--disable-cookies` | Neither store nor send cookies between the requests of this run. |
+| `--cookie-jar <FILE>` | Load cookies from this JSON file before the run and save them back after it, so later runs keep them. A missing file starts empty; the file is plain text, so keep it out of git. Not with `--disable-cookies`. |
+
+Network:
+
+| Flag | Meaning |
+| --- | --- |
+| `--insecure` | Accept TLS certificates that fail verification. |
+| `--cacert <FILE>` | Also trust the CA certificates in this PEM file. |
+| `--ignore-truststore` | With `--cacert`, trust only that file and not the system's certificates. |
+| `--client-cert-config <FILE>` | Add client certificates from a JSON file (`{"enabled": true, "certs": [...]}`). |
+| `--noproxy` | Connect directly, ignoring the collection's proxy and the system's. |
+| `--proxy-pac <URL\|PATH>` | Pick the proxy for requests that use the global proxy setting from this proxy auto-config (PAC) file. Not with `--noproxy`. |
+| `--http-version <VERSION>` | `1.1` (the default) sends HTTP/1.1 only, `auto` uses HTTP/2 over HTTPS when the server offers it, and `2-prior-knowledge` uses HTTP/2 without asking, plain `http` too. |
+
+Scripts, tokens and limits (see [OAuth 2.0 and scripts](#oauth-20-and-scripts) and
+[Timeouts, streams and body size](#timeouts-streams-and-body-size)):
+
+| Flag | Meaning |
+| --- | --- |
+| `--no-scripts` | Do not run scripts; their tests count as skipped. |
+| `--script-timeout <SECS>` | The longest one script phase may take (default 30). |
+| `--refetch-tokens` | Fetch new OAuth 2.0 tokens instead of using cached ones. |
+| `--timeout <SECS>` | Cap every request's timeout for this run. |
+| `--stream-max-time <SECS>` | End an event stream after this long (default 30, 0 for no limit). |
+| `--stream-max-events <N>` | End an event stream after about this many events (default 10000, 0 for no limit). |
+| `--max-body-bytes <BYTES>` | Cut a response body after this many bytes (default 10 MiB, 0 for no limit). |
+
+Output (see [Reports](#reports) and [Reading responses](#reading-responses)):
+
+| Flag | Meaning |
+| --- | --- |
+| `--format text\|json` | The report written to stdout. |
+| `--reporter-json <PATH>` | Also write the JSON report to a file, or `-` for stdout. |
+| `--reporter-junit <PATH>` | Also write a JUnit XML report. |
+| `--reporter-html <PATH>` | Also write a self-contained HTML report. |
+| `--verbose` | Print one line per network exchange to stderr: method, URL, status or error, the address reached and the time, plus each cookie set. Never a body or a header. |
+| `-i`, `--show-response` | Print each response's status line, headers and body. |
+| `--body` | Print only each response body. |
+| `--filter <EXPR>` | Narrow what `--body` or `-i` prints with a JSONPath or XPath. |
+| `-o`, `--output <PATH>` | Write the response body bytes to a file, or one file per request in a directory. |
+| `--har <FILE>` | Also record every exchange the run sent as one HAR 1.2 log, with secret values and credentials replaced by `[redacted]`. |
+| `--save-example <NAME>` | Save the response of the one request run as a saved example in its file. |
+| `--keep-secrets` | With `--save-example`, keep the response exactly as received. |
+| `--watch` | Rerun whenever a collection file changes, until Ctrl+C. |
+
+```sh
+apinata run ./my-api --env staging --tags smoke --exclude-tags slow --retries 2 --retry-delay 500
+apinata run ./my-api/users --csv-file-path users.csv --delay 200 --har run.har
+apinata run ./my-api --cookie-jar .cookies.json --http-version auto --cacert ca.pem
 ```
 
 ### Variables and environments
@@ -975,6 +1084,15 @@ apinata trust list --collection ./my-api
 
 `apinata trust list` prints the trusted hosts, then the denied ones;
 `apinata trust deny` and `apinata trust remove` change the lists.
+
+The desktop app and the MCP server run a collection's scripts only once you approve them.
+`apinata trust scripts` prints every script text in the collection not yet approved (scripts,
+script variables and assertion expressions), asks once, and on `y` approves exactly those and
+allows scripts for the collection; `--yes` skips the question. `apinata run` does not ask.
+
+```sh
+apinata trust scripts --collection ./my-api
+```
 
 ## Updates
 
