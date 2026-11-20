@@ -245,3 +245,44 @@ fn a_folder_scope_does_not_adopt_from_the_root_record() {
     let c = reference_only(dir.path(), "update-v1.json");
     assert!(!can_update(&c, &ip("people")));
 }
+
+/// The v1 spec with an example on getUser's response, which the v1 import does not have.
+fn v1_with_example() -> apinata_core::import::ImportBundle {
+    let text = String::from_utf8(spec("update-v1.json")).unwrap().replacen(
+        r#""200":{"description":"ok"}"#,
+        r#""200":{"description":"ok","content":{"application/json":{"example":{"id":"1"}}}}"#,
+        1,
+    );
+    bundle(text.as_bytes())
+}
+
+#[test]
+fn a_request_without_examples_is_not_reported_as_differing_and_gets_them_next_time() {
+    let dir = TempDir::new().unwrap();
+    let mut c = reference_only(dir.path(), "update-v1.json");
+    assert!(
+        c.request(&ip("people/getUser.yml"))
+            .unwrap()
+            .examples()
+            .is_empty()
+    );
+    let first = apply_update(&mut c, &v1_with_example(), &UpdateOptions::default(), None).unwrap();
+    assert!(first.differs.is_empty(), "{first:?}");
+    assert!(paths(&first.kept).contains(&"people/getUser.yml"));
+    assert!(
+        c.request(&ip("people/getUser.yml"))
+            .unwrap()
+            .examples()
+            .is_empty()
+    );
+    let mut again = Collection::open(c.root()).unwrap();
+    let second = apply_update(
+        &mut again,
+        &v1_with_example(),
+        &UpdateOptions::default(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(second.changed.len(), 1, "{second:?}");
+    assert_eq!(second.changed[0].fields, [ChangedField::Examples]);
+}

@@ -419,9 +419,17 @@ fn adopt(
     let on_file = file_field_hashes(file);
     let mut differing = Vec::new();
     let mut equal = Vec::new();
+    let absent = fields::absent_hash();
     for field in ChangedField::ALL {
         let spec_hash = spec.get(field).unwrap_or("");
-        match unrecorded_state(spec_hash, on_file.get(field).unwrap_or("")) {
+        let file_hash = on_file.get(field).unwrap_or("");
+        // A request with no examples counts as generated without them, so the next update adds
+        // the spec's examples as it does for an older baseline; it is not reported as differing.
+        if field == ChangedField::Examples && file_hash == absent && spec_hash != absent {
+            equal.push((field, absent.clone()));
+            continue;
+        }
+        match unrecorded_state(spec_hash, file_hash) {
             FieldState::Differs => differing.push(field),
             FieldState::Adopt => equal.push((field, spec_hash.to_owned())),
             _ => {}
