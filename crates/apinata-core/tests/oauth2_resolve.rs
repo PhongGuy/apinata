@@ -166,7 +166,8 @@ fn an_empty_query_key_is_reported_by_resolve() {
 
 #[tokio::test]
 async fn an_expired_token_kept_by_policy_is_sent_with_a_warning() {
-    let server = provider(json!({"expires_in": 1})).await;
+    // `expires_in: 0` has lapsed the moment it is stored, so no clock is needed.
+    let server = provider(json!({"expires_in": 0})).await;
     let f = fixture(
         &server,
         &[("a.yml", ""), ("b.yml", &settings(false, false))],
@@ -183,6 +184,26 @@ async fn an_expired_token_kept_by_policy_is_sent_with_a_warning() {
         "{:?}",
         r.warnings()
     );
+}
+
+#[tokio::test]
+async fn a_short_lived_token_fetched_for_the_send_carries_no_expired_warning() {
+    // Inside the refresh margin from the start, so each prepare refetches; the token sent
+    // is still valid, so the send must not claim it expired.
+    let server = MockServer::start().await;
+    on_grant(
+        &server,
+        "client_credentials",
+        token_response(json!({"expires_in": 2})),
+        2,
+    )
+    .await;
+    let f = fixture(&server, &[("a.yml", "")]);
+    for _ in 0..2 {
+        f.prepare("a.yml", &AuthorizeOptions::new()).await.unwrap();
+        let r = resolve(f.request("a.yml"), &f.ctx).unwrap();
+        assert!(r.warnings().is_empty(), "{:?}", r.warnings());
+    }
 }
 
 #[tokio::test]

@@ -128,6 +128,11 @@ impl Entry {
 
     /// `expires_in` may be a number or a numeric string; without one the token never expires.
     pub(crate) fn expires_at(&self) -> Option<SystemTime> {
+        self.expiry_less(EXPIRY_MARGIN)
+    }
+
+    /// The provider's own expiry moved `margin` earlier.
+    fn expiry_less(&self, margin: Duration) -> Option<SystemTime> {
         let seconds = match self.token.get("expires_in")? {
             Value::Number(n) => n.as_f64()?,
             Value::String(s) => s.trim().parse::<f64>().ok()?,
@@ -136,7 +141,7 @@ impl Entry {
         if !seconds.is_finite() {
             return None;
         }
-        let margin = EXPIRY_MARGIN.as_millis() as f64;
+        let margin = margin.as_millis() as f64;
         let end_ms = (self.obtained_at_ms as f64 + seconds * 1000.0 - margin).max(0.0);
         SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(end_ms as u64))
     }
@@ -144,6 +149,15 @@ impl Entry {
     /// A clock that reads earlier than the time the token was obtained also counts as expired.
     pub(crate) fn is_expired(&self, now: SystemTime) -> bool {
         now < self.obtained_at() || self.expires_at().is_some_and(|end| now >= end)
+    }
+
+    /// Past the provider's expiry itself: a token inside the refresh margin still works, so
+    /// only this one is reported as sent expired.
+    pub(crate) fn has_lapsed(&self, now: SystemTime) -> bool {
+        now < self.obtained_at()
+            || self
+                .expiry_less(Duration::ZERO)
+                .is_some_and(|end| now >= end)
     }
 }
 
@@ -654,6 +668,10 @@ mod tests {
         assert!(!never.is_expired(at + Duration::from_secs(10_000_000)));
         // A clock set back before the token was obtained reads as expired.
         assert!(never.is_expired(at - Duration::from_secs(1)));
+        // Inside the margin the token is refreshed early but has not lapsed yet.
+        assert!(!number.has_lapsed(at + Duration::from_secs(99)));
+        assert!(number.has_lapsed(at + Duration::from_secs(100)));
+        assert!(never.has_lapsed(at - Duration::from_secs(1)));
     }
 
     #[tokio::test]
