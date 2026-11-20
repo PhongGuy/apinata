@@ -778,6 +778,12 @@ impl ResponsePane {
             inputs.push(cx.observe(&approvals, |_, _, cx| cx.notify()));
         }
         inputs.extend(ui::redraw_on_settings(cx));
+        // The Jar view lists the live jar, so any change to it, from any tab or dialog, relists.
+        inputs.push(cx.observe_global::<executor::JarChanged>(|this, cx| {
+            this.list_cookies(cx);
+            this.tick_expiry(cx);
+            cx.notify();
+        }));
         let mut pane = ResponsePane {
             renders: 0,
             send,
@@ -1138,6 +1144,7 @@ impl ResponsePane {
         if let (Some(c), Some(exec)) = (self.cookies.get(ix), executor::shared(cx)) {
             exec.cookies().delete(&c.domain, &c.path, &c.name);
         }
+        executor::jar_changed(cx);
         self.list_cookies(cx);
         self.tick_expiry(cx);
         cx.notify();

@@ -1105,3 +1105,74 @@ fn a_showing_hop_tooltip_goes_when_a_resize_frees_the_hop(cx: &mut TestAppContex
     assert!(!cut, "the hop fits in a 1280 px pane");
     assert_eq!(tip, None);
 }
+
+// A pane over a response that set `c=1`, showing its Jar view.
+fn jar_pane(
+    cx: &mut TestAppContext,
+) -> (
+    gpui_kit::AnyWindowHandle,
+    gpui_kit::Entity<ResponsePane>,
+    Sent,
+) {
+    let s = send_once(
+        cx,
+        ResponseTemplate::new(200).insert_header("set-cookie", "c=1; Path=/"),
+        "",
+    );
+    support::init(cx);
+    let model = s.model.clone();
+    let (win, view) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| ResponsePane::new(model, w, cx))
+            })
+        })
+        .unwrap();
+    cx.run_until_parked();
+    view.update(cx, |p, cx| jar_tab(p, ResponseTab::Cookies, cx));
+    assert_eq!(view.read_with(cx, |p, _| p.cookie_rows()).len(), 1);
+    (win, view, s)
+}
+
+#[gpui_kit::test]
+fn the_jar_view_empties_when_the_cookie_dialog_clears_the_jar(cx: &mut TestAppContext) {
+    let (win, view, _s) = jar_pane(cx);
+    cx.update_window(win, |_, w, cx| {
+        apinata_app::cookie_jar::open_cookie_jar(w, cx);
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("jar-clear", cx))
+        .unwrap();
+    cx.run_until_parked();
+    answer_confirm(cx, "confirm-delete");
+    cx.run_until_parked();
+    let jar = cx.update(|cx| executor::shared(cx).unwrap());
+    assert!(jar.cookies().list().is_empty());
+    assert!(view.read_with(cx, |p, _| p.cookie_rows()).is_empty());
+    assert!(present(cx, win, "cookies-none"));
+}
+
+#[gpui_kit::test]
+fn the_jar_view_relists_when_another_tab_finishes_a_send(cx: &mut TestAppContext) {
+    let (_win, view, s) = jar_pane(cx);
+    // A cookie that reached the jar some other way shows once any send elsewhere finishes.
+    let jar = cx.update(|cx| executor::shared(cx).unwrap());
+    let host = url::Url::parse(&s.server.uri()).unwrap();
+    let host = host.host_str().unwrap().to_owned();
+    jar.cookies()
+        .insert(apinata_core::CookieInfo::new(&host, "d", "2"))
+        .unwrap();
+    let other = sender(cx, &s.ws);
+    let root = s.root.clone();
+    other.update(cx, |m, cx| m.send(&root, ip("a.yml"), cx));
+    finished(cx, &other);
+    cx.run_until_parked();
+    let mut names: Vec<String> = view
+        .read_with(cx, |p, _| p.cookie_rows())
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+    names.sort();
+    assert_eq!(names, ["c", "d"]);
+}
