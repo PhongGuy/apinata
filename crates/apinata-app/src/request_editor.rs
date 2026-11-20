@@ -82,8 +82,11 @@ actions!(
     [
         /// Saves the request to its file.
         SaveRequest,
-        /// Sends the request's current draft.
+        /// Sends the request's current draft; on a running request it does what the send
+        /// button's slot does, cancelling it or stopping its streaming body.
         SendRequest,
+        /// Cancels the running request, or stops its streaming body, as the slot's button does.
+        CancelRequest,
         /// Undoes the last edit to a table: params, headers, variables, assertions or form body.
         UndoEdit,
         /// Redoes the table edit [`UndoEdit`] took back.
@@ -93,6 +96,12 @@ actions!(
 
 /// The key context of the request editor, where Save and Send bind.
 pub const KEY_CONTEXT: &str = "RequestEditor";
+
+/// The context Cancel binds in, which the request editor adds to its own while its request runs.
+pub const RUNNING_CONTEXT: &str = "RunningRequest";
+
+/// The request editor's whole key context while its request runs.
+pub const RUNNING_KEY_CONTEXT: &str = "RequestEditor RunningRequest";
 
 /// The custom method field's placeholder, short to fit; its tooltip says "Custom method".
 pub const CUSTOM_METHOD_PLACEHOLDER: &str = "Method";
@@ -873,7 +882,11 @@ impl RequestEditor {
 
     /// Sends the request as it is now; the tab's root and item are read at call time, so
     /// a rename or move the tab followed sends the new path.
+    /// While the request runs, sending again cancels it instead, as the slot's button does.
     pub fn send(&mut self, _: &SendRequest, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.cancel_running(cx) {
+            return;
+        }
         let Some((root, item)) = self.target(cx) else {
             return;
         };
@@ -881,6 +894,20 @@ impl RequestEditor {
         let key = history_key(self.workspace.read(cx), self.tab);
         self.send_model
             .update(cx, |m, cx| m.send_keyed(&root, item, key, cx));
+    }
+
+    /// Does what the slot's button shows: Stop ends a streaming body and keeps what arrived,
+    /// Cancel drops a send in flight. Returns false when nothing runs.
+    pub fn cancel_running(&mut self, cx: &mut Context<Self>) -> bool {
+        let model = self.send_model.read(cx);
+        if model.is_streaming() {
+            self.send_model.update(cx, |m, cx| m.stop(cx));
+        } else if model.is_sending() {
+            self.send_model.update(cx, |m, cx| m.cancel(cx));
+        } else {
+            return false;
+        }
+        true
     }
 
     /// The variables the request reads, once the actor has answered.
@@ -2360,12 +2387,22 @@ impl Render for RequestEditor {
             .gap_2()
             .px(style::PANE_INSET)
             .pt(style::PANE_INSET)
-            .key_context(KEY_CONTEXT)
+            // Cancel's Escape binds only while a request runs, so idle Escape stays free.
+            .key_context(if self.send_model.read(cx).is_sending() {
+                RUNNING_KEY_CONTEXT
+            } else {
+                KEY_CONTEXT
+            })
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &SaveRequest, window, cx| this.save(window, cx)))
             .on_action(cx.listener(|this, _: &UndoEdit, window, cx| this.undo_edit(window, cx)))
             .on_action(cx.listener(|this, _: &RedoEdit, window, cx| this.redo_edit(window, cx)))
-            .on_action(cx.listener(Self::send));
+            .on_action(cx.listener(Self::send))
+            .on_action(cx.listener(|this, _: &CancelRequest, _, cx| {
+                if !this.cancel_running(cx) {
+                    cx.propagate();
+                }
+            }));
         if self.target(cx).is_none() {
             return root;
         }
@@ -3236,6 +3273,7 @@ impl RequestEditor {
                             .solid_ring(cx)
                             .w_full()
                             .label("Stop")
+                            .tooltip_with_action("Stop", &CancelRequest, Some(RUNNING_KEY_CONTEXT))
                             .on_click(move |_, _, cx| model.update(cx, |m, cx| m.stop(cx))),
                     )
                     .child(
@@ -3265,6 +3303,11 @@ impl RequestEditor {
                             .solid_ring(cx)
                             .w_full()
                             .label("Cancel")
+                            .tooltip_with_action(
+                                "Cancel",
+                                &CancelRequest,
+                                Some(RUNNING_KEY_CONTEXT),
+                            )
                             .on_click(move |_, _, cx| model.update(cx, |m, cx| m.cancel(cx))),
                     )
                     .child(

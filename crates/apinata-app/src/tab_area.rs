@@ -38,7 +38,7 @@ use crate::keymap::{
 };
 use crate::menu_focus::{self, Before};
 use crate::palette::OpenCommandPalette;
-use crate::request_editor::{RequestEditor, SendRequest};
+use crate::request_editor::{CancelRequest, RequestEditor, SendRequest};
 use crate::runner_view::RunnerView;
 use crate::save_draft;
 use crate::save_example;
@@ -200,6 +200,7 @@ pub(crate) struct TabPaletteFlags {
     pub close_others: bool,
     pub reopen_closed: bool,
     pub stop: bool,
+    pub cancel: bool,
     pub discard: bool,
     pub save_all: bool,
     pub beautify: bool,
@@ -1057,6 +1058,7 @@ impl TabArea {
                 .is_some_and(|a| tabs.entries().iter().any(|e| e.id != a.id && !e.pinned)),
             reopen_closed: tabs.has_closed(),
             stop: editor.is_some_and(|e| e.read(cx).is_streaming(cx)),
+            cancel: editor.is_some_and(|e| e.read(cx).send_model().read(cx).is_sending()),
             discard: active.is_some_and(|a| self.discardable(a, cx)),
             save_all: tabs.entries().iter().any(|e| self.is_dirty(e, cx)),
             beautify: editor.is_some_and(|e| e.read(cx).can_reformat_body(cx)),
@@ -1092,6 +1094,17 @@ impl TabArea {
         let model = editor.read(cx).send_model().clone();
         if model.read(cx).is_streaming() {
             model.update(cx, |m, cx| m.stop(cx));
+        }
+    }
+
+    /// Cancels the active tab's running request, as its Cancel or Stop button would; with
+    /// nothing running it does nothing.
+    pub fn cancel_active(&mut self, _: &CancelRequest, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.workspace.read(cx).tabs().active().map(|e| e.id) else {
+            return;
+        };
+        if let Some(editor) = self.editor(id).cloned() {
+            editor.update(cx, |e, cx| e.cancel_running(cx));
         }
     }
 

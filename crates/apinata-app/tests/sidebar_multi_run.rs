@@ -220,6 +220,7 @@ fn open_palette_lists_run_selected(cx: &mut TestAppContext, s: &Started) -> bool
         close_others: false,
         reopen_closed: false,
         stop: false,
+        cancel: false,
         discard: false,
         save_all: false,
         beautify: false,
