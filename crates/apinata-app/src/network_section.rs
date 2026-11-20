@@ -2,14 +2,16 @@
 //! and a way to move literal secrets out of the collection file.
 
 use crate::ui::SolidRing as _;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use apinata_core::{
     CertificateKind, ClientCertificate, CollectionNetwork, CollectionProxy, HostOverride,
     ProxyAuth, ProxyConfig,
 };
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -103,6 +105,8 @@ struct CertRow {
     outside: RefCell<Option<([String; 2], bool)>>,
     // Whether its `.env` passphrase is being replaced, so the passphrase input shows.
     replacing: bool,
+    // The width the path input's text had when last drawn, which fits the shown path.
+    file_room: Rc<Cell<Option<Pixels>>>,
     _subs: Vec<Subscription>,
 }
 
@@ -609,6 +613,7 @@ impl NetworkSection {
             draft: false,
             outside: RefCell::default(),
             replacing: false,
+            file_room: Rc::default(),
             _subs: subs,
         }
     }
@@ -623,7 +628,9 @@ impl NetworkSection {
     pub fn add_certificate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut row = self.new_row(ClientCertificate::pem("", "", ""), window, cx);
         row.draft = true;
+        let domain = row.inputs.0[CertField::Domain as usize].clone();
         self.certs.push(row);
+        domain.focus_handle(cx).focus(window, cx);
         cx.notify();
     }
 
@@ -1300,6 +1307,80 @@ impl NetworkSection {
             )
     }
 
+    // The certificate path input, covered while unfocused by the path with its middle folders
+    // elided when the whole path does not fit, so the file name stays in view. The cover
+    // takes no pointer events, so a click lands in the input and shows the whole path.
+    fn path_cell(
+        &self,
+        ix: usize,
+        row: &CertRow,
+        input: gpui_kit::AnyElement,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let state = &row.inputs.0[CertField::Certificate as usize];
+        let size = gpui_kit::rems(PATH_TEXT_REMS).to_pixels(window.rem_size());
+        let font = gpui_kit::font(cx.theme().mono_font_family.clone());
+        let shown = row.file_room.get().and_then(|room| {
+            if state.focus_handle(cx).is_focused(window) {
+                return None;
+            }
+            let path = state.read(cx).value().to_string();
+            let measure = crate::path_display::font_measurer(window, font, size);
+            let shown =
+                crate::path_display::display(Path::new(&path), None, f32::from(room), &measure);
+            (shown != path).then_some(SharedString::from(shown))
+        });
+        // A changed room redraws the section once the frame is done, so the path refits.
+        let measure = {
+            let (cell, me) = (Rc::clone(&row.file_room), cx.entity().downgrade());
+            gpui_kit::canvas(
+                move |bounds, window, cx| {
+                    let now = Some(bounds.size.width - style::SMALL_INPUT_TEXT_INSET * 2.);
+                    if cell.replace(now) != now {
+                        window.defer(cx, move |_, cx| {
+                            me.update(cx, |_, cx| cx.notify()).ok();
+                        });
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full()
+        };
+        let cover = shown.map(|shown| {
+            div()
+                .id(("cert-file-shown", ix))
+                .test_support()
+                .absolute()
+                .top(px(1.))
+                .bottom(px(1.))
+                .left(px(1.))
+                .right(px(1.))
+                .pl(style::SMALL_INPUT_TEXT_INSET - px(1.))
+                .flex()
+                .items_center()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                // Opaque, so the input's own text cannot show through: the field's translucent
+                // fill as it lands on the page's background.
+                .rounded(cx.theme().radius - px(1.))
+                .bg(cx.theme().background.blend(ui::field_fill(false, cx)))
+                .font_family(cx.theme().mono_font_family.clone())
+                .text_size(gpui_kit::rems(PATH_TEXT_REMS))
+                .text_color(cx.theme().foreground)
+                // No accessible name of its own: the input under it already reads the path.
+                .child(div().child(shown.clone()).test_text(shown))
+        });
+        h_flex()
+            .relative()
+            .flex_1()
+            .min_w_0()
+            .child(input)
+            .child(measure)
+            .children(cover)
+    }
+
     fn cert_row(
         &self,
         ix: usize,
@@ -1322,8 +1403,7 @@ impl NetworkSection {
                 .tab_stop(false)
                 .on_click(cx.listener(move |this, _, window, cx| this.pick(ix, which, window, cx)))
         };
-        // A path and its picker share one column, so a PKCS#12 row's empty key column keeps
-        // the passphrase aligned with the PEM rows'.
+        // A path and its picker share one column.
         let column = || {
             h_flex()
                 .flex_1()
@@ -1363,25 +1443,42 @@ impl NetworkSection {
             )
             .child(div().flex_none().w(CERT_TYPE_WIDTH).child(kind))
             .child(field("cert-domain", domain, cx))
-            .child(column().child(field("cert-file", file, cx)).child(picker(
-                "cert-file-pick",
-                file_pick,
-                CertField::Certificate,
-                cx,
-            )))
-            .child(column().when(pem, |el| {
-                el.child(field("cert-key", key, cx)).child(picker(
-                    "cert-key-pick",
-                    "Choose key",
-                    CertField::Key,
-                    cx,
-                ))
-            }))
-            .child(if let Some(home) = row.stored_home(&self.dotenv) {
-                div()
+            // Both path columns share one box, which a bundle's one column fills alone, so
+            // its path takes the key's room and every row's passphrase lines up.
+            .child(
+                h_flex()
                     .flex_1()
+                    .flex_grow(2.)
                     .min_w_0()
-                    .child(ui::stored_secret(
+                    .gap(style::SPACE_2)
+                    .child(
+                        column()
+                            .child(self.path_cell(
+                                ix,
+                                row,
+                                field("cert-file", file, cx).into_any_element(),
+                                window,
+                                cx,
+                            ))
+                            .child(picker(
+                                "cert-file-pick",
+                                file_pick,
+                                CertField::Certificate,
+                                cx,
+                            )),
+                    )
+                    .when(pem, |el| {
+                        el.child(column().child(field("cert-key", key, cx)).child(picker(
+                            "cert-key-pick",
+                            "Choose key",
+                            CertField::Key,
+                            cx,
+                        )))
+                    }),
+            )
+            .child(h_flex().flex_1().min_w_0().child(
+                if let Some(home) = row.stored_home(&self.dotenv) {
+                    ui::stored_secret(
                         ("cert-passphrase-stored", ix),
                         ("cert-passphrase-replace", ix),
                         home,
@@ -1389,11 +1486,12 @@ impl NetworkSection {
                             this.replace_passphrase(ix, window, cx)
                         }),
                         cx,
-                    ))
+                    )
                     .into_any_element()
-            } else {
-                field("cert-passphrase", passphrase, cx).into_any_element()
-            })
+                } else {
+                    field("cert-passphrase", passphrase, cx).into_any_element()
+                },
+            ))
             .child(
                 ui::icon_button(
                     ("cert-remove", ix),
@@ -1409,6 +1507,9 @@ impl NetworkSection {
             )
     }
 }
+
+// The text size of a small kit input, which the fitted path matches.
+const PATH_TEXT_REMS: f32 = 0.875;
 
 // The 1px frame around each host input, which sits between the row gap and the input.
 const HOST_FRAME_BORDER: Pixels = px(1.);

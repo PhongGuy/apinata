@@ -817,3 +817,198 @@ fn the_save_key_keeps_a_proxy_password_still_being_typed(cx: &mut TestAppContext
     let env = save_key_while_typing(cx, &root_with_password(""), "proxy-password", "pw");
     assert_eq!(env, "APINATA_PROXY_PASSWORD='pw'\n");
 }
+
+// A PEM row over a PKCS#12 row whose bundle sits deep in folders, its passphrase held in
+// `.env` until the save, drawn in a window `width` wide.
+fn pem_over_bundle(cx: &mut TestAppContext, width: f32) -> (AnyWindowHandle, Host) {
+    let pem = apinata_core::ClientCertificate::pem("a.test", "c.pem", "k.pem");
+    let mut bundle = apinata_core::ClientCertificate::pkcs12("p.test", BUNDLE);
+    bundle.passphrase = "{{process.env.APINATA_CERT_PASSPHRASE_2}}".into();
+    let mut network = CollectionNetwork::default();
+    network.certificates = vec![pem, bundle];
+    let (win, host) = section(cx, network, false);
+    gpui_kit::VisualTestContext::from_window(win, cx)
+        .simulate_resize(gpui_kit::size(gpui_kit::px(width), gpui_kit::px(700.)));
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    let names = apinata_app::snapshot::DotenvNames {
+        stored: Default::default(),
+        held: ["APINATA_CERT_PASSPHRASE_2".to_string()].into(),
+    };
+    cx.update_window(win, |_, _, cx| {
+        s.update(cx, |s, cx| s.set_dotenv(names, cx))
+    })
+    .unwrap();
+    for _ in 0..3 {
+        frame(cx, win);
+    }
+    (win, host)
+}
+
+const BUNDLE: &str = "certs/staging/eu-west/clients/team-payments/client-bundle.p12";
+
+#[gpui_kit::test]
+fn a_held_passphrase_note_never_pushes_replace_under_remove(cx: &mut TestAppContext) {
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let row = w.find(("cert-row", 1usize)).bounds();
+        let note = w.find(("cert-passphrase-stored", 1usize)).bounds();
+        let replace = w.find(("cert-passphrase-replace", 1usize)).bounds();
+        let remove = w.find(("cert-remove", 1usize)).bounds();
+        assert!(!replace.intersects(&remove), "{replace:?} under {remove:?}");
+        assert!(replace.right() <= remove.left(), "{replace:?} {remove:?}");
+        assert!(replace.right() <= row.right(), "{replace:?} past {row:?}");
+        assert!(note.right() <= remove.left(), "{note:?} {remove:?}");
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_bundle_path_takes_the_unused_key_room_and_keeps_its_file_name(cx: &mut TestAppContext) {
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let pem_key_pick = w.find(("cert-key-pick", 0usize)).bounds();
+        let bundle = w.find(("cert-file", 1usize)).bounds();
+        let bundle_pick = w.find(("cert-file-pick", 1usize)).bounds();
+        assert_eq!(
+            bundle_pick.right(),
+            pem_key_pick.right(),
+            "the bundle's picker ends where the PEM key's does"
+        );
+        assert!(bundle.right() < bundle_pick.left());
+        let pem_pass = w.find(("cert-passphrase", 0usize)).bounds().left();
+        let bundle_pass = w.find(("cert-passphrase-stored", 1usize)).bounds().left();
+        assert_eq!(pem_pass, bundle_pass, "the passphrase columns line up");
+        let shown = shown_path(w).expect("a cut path shows its fitted form");
+        assert!(shown.ends_with("/client-bundle.p12"), "{shown:?}");
+        assert!(shown.contains('…'), "{shown:?}");
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn add_certificate_focuses_the_new_domain(cx: &mut TestAppContext) {
+    let (win, host) = pem_over_bundle(cx, 1040.);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    cx.update_window(win, |_, w, cx| w.click("cert-add", cx))
+        .unwrap();
+    frame(cx, win);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    use apinata_app::network_section::CertField;
+    let domain = s.read_with(cx, |s, _| s.cert_input(2, CertField::Domain).cloned());
+    let domain = domain.expect("a third row");
+    cx.update_window(win, |_, w, cx| {
+        assert!(
+            domain.focus_handle(cx).is_focused(w),
+            "focus is on the new domain"
+        )
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_type_menu_opens_with_every_entry_shown(cx: &mut TestAppContext) {
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    cx.update_window(win, |_, w, cx| w.click("cert-type-1", cx))
+        .unwrap();
+    for _ in 0..3 {
+        frame(cx, win);
+    }
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let menu = w.find("popup-menu").bounds();
+        let first = w.within("popup-menu").find(0usize).bounds();
+        let last = w.within("popup-menu").find(1usize).bounds();
+        assert!(first.top() >= menu.top(), "PEM {first:?} cut by {menu:?}");
+        assert!(last.bottom() <= menu.bottom(), "{last:?} cut by {menu:?}");
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_click_on_the_fitted_path_edits_the_whole_path(cx: &mut TestAppContext) {
+    let (win, host) = pem_over_bundle(cx, 1040.);
+    assert!(present(cx, win, ("cert-file-shown", 1usize)));
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    cx.update_window(win, |_, w, cx| w.click(("cert-file", 1usize), cx))
+        .unwrap();
+    frame(cx, win);
+    let s = host.read_with(cx, |h, _| h.view.clone());
+    use apinata_app::network_section::CertField;
+    let file = s.read_with(cx, |s, _| s.cert_input(1, CertField::Certificate).cloned());
+    cx.update_window(win, |_, w, cx| {
+        assert!(
+            file.unwrap().focus_handle(cx).is_focused(w),
+            "the click focuses the path"
+        )
+    })
+    .unwrap();
+    assert!(
+        !present(cx, win, ("cert-file-shown", 1usize)),
+        "the whole path shows"
+    );
+}
+
+// The text the fitted-path cover over the bundle row painted, if it is drawn.
+fn shown_path(w: &gpui_kit::Window) -> Option<String> {
+    let id = gpui_kit::ElementId::from(("cert-file-shown", 1usize));
+    let texts = gpui_kit::base::test_support::texts(w);
+    let mut parts = texts.iter().filter(|t| t.path().contains(&id));
+    parts.next().map(|t| t.text().to_owned())
+}
+
+#[gpui_kit::test]
+fn the_fitted_path_is_not_a_second_accessible_name(cx: &mut TestAppContext) {
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let cover = w.find(("cert-file-shown", 1usize));
+        assert_eq!(cover.label(), None, "the input already names the path");
+        assert_eq!(cover.role(), None);
+    })
+    .unwrap();
+}
+
+// The cover hides the live input's text, so in every bundled theme it paints the field's
+// look as one opaque fill, rounded just inside the input's border.
+#[gpui_kit::test]
+fn the_fitted_path_cover_is_opaque_in_every_theme(cx: &mut TestAppContext) {
+    use apinata_app::theme::{DARK, HC_DARK, HC_LIGHT, LIGHT};
+    use gpui_kit::component::ActiveTheme as _;
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    for theme in [DARK, LIGHT, HC_LIGHT, HC_DARK] {
+        support::use_theme(cx, theme);
+        for _ in 0..3 {
+            frame(cx, win);
+        }
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let scale = w.scale_factor();
+            let b = w.find(("cert-file-shown", 1usize)).bounds();
+            let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
+            let width = b.size.width.as_f32() * scale;
+            let fills: Vec<_> = (w.painted_quads().into_iter())
+                .filter(|q| {
+                    (q.bounds.origin.x.0 - l).abs() < 0.5
+                        && (q.bounds.origin.y.0 - t).abs() < 0.5
+                        && (q.bounds.size.width.0 - width).abs() < 0.5
+                })
+                .filter_map(|q| Some((q.background.as_solid()?, q.corner_radii.top_left.0)))
+                .collect();
+            let want = (cx.theme().background).blend(apinata_app::ui::field_fill(false, cx));
+            let radius = (cx.theme().radius - gpui_kit::px(1.)).as_f32() * scale;
+            assert!(
+                fills
+                    .iter()
+                    .any(|(c, r)| *c == want && c.a >= 0.999 && (r - radius).abs() < 0.01),
+                "{theme}: cover painted {fills:?}, wanted {want:?} at radius {radius}"
+            );
+        })
+        .unwrap();
+    }
+}
