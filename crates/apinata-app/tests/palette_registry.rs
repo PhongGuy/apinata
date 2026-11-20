@@ -151,7 +151,7 @@ fn entries_come_group_by_group_with_unique_labels() {
     assert!(
         items
             .iter()
-            .all(|e| ["Shell", "RequestEditor", "Sidebar"].contains(&e.context))
+            .all(|e| ["Shell", "RequestEditor", "RunningRequest", "Sidebar"].contains(&e.context))
     );
 }
 

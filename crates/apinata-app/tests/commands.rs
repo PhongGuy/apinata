@@ -52,6 +52,7 @@ const IDS: &[&str] = &[
     "collection.run_folder",
     "request.send",
     "request.stop",
+    "request.cancel",
     "request.copy_as_curl",
     "request.generate_code",
     "request.convert_to_graphql",
@@ -169,6 +170,7 @@ fn today() -> Vec<Triple> {
     let s = "Shell";
     let mut e: Vec<(String, &str, &str)> = vec![
         (secondary("enter"), "apinata::SendActive", s),
+        ("escape".into(), "apinata::CancelRequest", "RunningRequest"),
         (secondary("enter"), "apinata::SendRequest", "RequestEditor"),
         (
             secondary("enter"),

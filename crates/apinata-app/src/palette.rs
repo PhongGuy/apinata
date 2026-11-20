@@ -30,6 +30,7 @@ use crate::keymap::{
     ToggleOrientation, UndoActive,
 };
 use crate::mock_server::MockState;
+use crate::request_editor::CancelRequest;
 use crate::shell::{
     PullBranch, PushBranch, ShowChanges, ShowTeamSync, SwitchBranch, ToggleMockServer,
 };
@@ -257,6 +258,8 @@ pub struct Availability {
     pub reopen_closed: bool,
     /// "Stop": the active tab's response is streaming.
     pub stop: bool,
+    /// "Cancel request": the active tab's request is running.
+    pub cancel: bool,
     /// "Discard changes": the active tab holds edits to revert to a saved file.
     pub discard: bool,
     /// "Save all": some tab holds unsaved edits.
@@ -339,6 +342,7 @@ impl Availability {
             close_others: true,
             reopen_closed: true,
             stop: true,
+            cancel: true,
             discard: true,
             save_all: true,
             beautify: true,
@@ -425,6 +429,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.close_others, CloseOtherTabs.name()),
         (available.reopen_closed, ReopenClosedTab.name()),
         (available.stop, StopActive.name()),
+        (available.cancel, CancelRequest.name()),
         (available.discard, DiscardChanges.name()),
         (available.save_all, SaveAll.name()),
         (available.beautify, BeautifyBody.name()),
@@ -733,6 +738,7 @@ fn availability_now(
         close_others: tabs.is_none_or(|t| t.close_others),
         reopen_closed: tabs.is_none_or(|t| t.reopen_closed),
         stop: tabs.is_none_or(|t| t.stop),
+        cancel: tabs.is_none_or(|t| t.cancel),
         discard: tabs.is_none_or(|t| t.discard),
         save_all: tabs.is_none_or(|t| t.save_all),
         beautify: tabs.is_none_or(|t| t.beautify),

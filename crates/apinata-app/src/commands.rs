@@ -28,7 +28,8 @@ use crate::palette::{GoToRequest, OpenCommandPalette, PaletteGroup};
 use crate::preferences::{KEY_CONTEXT as PREFERENCES, OpenPreferences};
 use crate::renames_dialog::CheckSecretRenames;
 use crate::request_editor::{
-    KEY_CONTEXT as REQUEST_EDITOR, RedoEdit, SaveRequest, SendRequest, UndoEdit,
+    CancelRequest, KEY_CONTEXT as REQUEST_EDITOR, RUNNING_CONTEXT as RUNNING_REQUEST, RedoEdit,
+    SaveRequest, SendRequest, UndoEdit,
 };
 use crate::row_move::{MoveRowDown, MoveRowUp};
 use crate::search_dialog::OpenCollectionSearch;
@@ -100,6 +101,12 @@ pub fn places() -> &'static [Place] {
             context: STRUCTURED_ROWS,
             place: "in tables",
             label: "Tables",
+            within: &[],
+        },
+        Place {
+            context: RUNNING_REQUEST,
+            place: "in a running request",
+            label: "Request",
             within: &[],
         },
         Place {
@@ -525,6 +532,14 @@ pub fn registry() -> Vec<Command> {
             Request,
             shell(StopActive),
             &[],
+        ),
+        // The palette runs it from anywhere: the shell cancels the active tab's request.
+        command(
+            "request.cancel",
+            "Cancel request",
+            Request,
+            vec![at(CancelRequest, RUNNING_REQUEST)],
+            &["escape"],
         ),
         command(
             "request.copy_as_curl",

@@ -345,6 +345,7 @@ mod invalid_cue;
 mod item_chords_scope;
 mod kept_digests;
 mod kept_digests_store;
+mod keyboard_cancel;
 mod keyboard_prefs;
 mod keyboard_reach;
 mod keyboard_record;

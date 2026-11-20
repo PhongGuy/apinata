@@ -3399,6 +3399,7 @@ impl Render for Shell {
             .on_action(cx.listener(to_sidebar(Sidebar::redo_in_tree)))
             .on_action(cx.listener(to_tabs(TabArea::redo_active)))
             .on_action(cx.listener(to_tabs(TabArea::stop_active)))
+            .on_action(cx.listener(to_tabs(TabArea::cancel_active)))
             .on_action(cx.listener(to_tabs(TabArea::copy_active_as_curl)))
             .on_action(cx.listener(to_tabs(TabArea::generate_active_code)))
             .on_action(cx.listener(to_tabs(TabArea::convert_active_to_graphql)))
