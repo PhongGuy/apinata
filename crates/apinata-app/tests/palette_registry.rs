@@ -65,6 +65,7 @@ const NOT_LISTED: &[&str] = &[
     "list_keys::ListUp",
     "list_keys::ListDown",
     "list_keys::ListOpen",
+    "list_keys::ListBack",
     "zed::NoAction",
 ];
 

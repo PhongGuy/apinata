@@ -1,6 +1,6 @@
-//! Up, Down and Enter for a flat focusable list the kit does not draw itself, such as the
-//! GraphQL Docs rows and the network dock. The list sets [`KEY_CONTEXT`] where it tracks
-//! focus and handles the three actions; the keymap binds them.
+//! Up, Down, Enter and Escape for a flat focusable list the kit does not draw itself, such as
+//! the GraphQL Docs rows and the network dock. The list sets [`KEY_CONTEXT`] where it tracks
+//! focus and handles the actions it has a use for; the keymap binds them.
 
 use gpui_kit::actions;
 
@@ -12,11 +12,13 @@ actions!(
         /// Moves the focused list's selection one row down.
         ListDown,
         /// Opens the focused list's selected row, as a click on it does.
-        ListOpen
+        ListOpen,
+        /// Goes back one level in the focused list, where it has levels.
+        ListBack
     ]
 );
 
-/// The key context of a list that takes [`ListUp`], [`ListDown`] and [`ListOpen`].
+/// The key context of a list that takes [`ListUp`], [`ListDown`], [`ListOpen`] and [`ListBack`].
 pub const KEY_CONTEXT: &str = "KeyList";
 
 /// The row a step lands on among `stops`, the selectable row indices in order. With nothing

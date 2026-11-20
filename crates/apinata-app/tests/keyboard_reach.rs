@@ -454,26 +454,9 @@ fn is_selected(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<Elem
         == Some(true)
 }
 
-// A docs panel in its own window with the fixture schema loaded, at the root page.
-fn docs_panel(
-    cx: &mut TestAppContext,
-) -> (
-    AnyWindowHandle,
-    Entity<apinata_app::graphql_docs::DocsPanel>,
-) {
-    use apinata_app::graphql_docs::DocsPanel;
+// Loads the fixture schema as the answer for `url`.
+fn seed_schema(cx: &mut TestAppContext, url: &str) {
     use apinata_app::graphql_schema_store::SchemaStore;
-    support::init(cx);
-    cx.update(apinata_app::keymap::init);
-    let url = "http://127.0.0.1:9/g";
-    let (win, panel) = cx
-        .update(|cx| {
-            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
-                cx.new(|cx| DocsPanel::new(w, cx))
-            })
-        })
-        .unwrap();
-    panel.update(cx, |p, cx| p.set_url(url.into(), cx));
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../apinata-core/tests/fixtures/graphql/schema.json"
@@ -486,6 +469,28 @@ fn docs_panel(
         s.finish(url, generation, Ok(schema));
     });
     cx.run_until_parked();
+}
+
+// A docs panel in its own window with the fixture schema loaded, at the root page.
+fn docs_panel(
+    cx: &mut TestAppContext,
+) -> (
+    AnyWindowHandle,
+    Entity<apinata_app::graphql_docs::DocsPanel>,
+) {
+    use apinata_app::graphql_docs::DocsPanel;
+    support::init(cx);
+    cx.update(apinata_app::keymap::init);
+    let url = "http://127.0.0.1:9/g";
+    let (win, panel) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| DocsPanel::new(w, cx))
+            })
+        })
+        .unwrap();
+    panel.update(cx, |p, cx| p.set_url(url.into(), cx));
+    seed_schema(cx, url);
     // Tab needs a focused start; the search box is the panel's first stop.
     cx.update_window(win, |_, w, cx| {
         w.render_frame(cx);
@@ -547,6 +552,82 @@ fn enter_on_a_docs_link_opens_its_page(cx: &mut TestAppContext) {
         matches!(panel.read_with(cx, |p, _| p.view().clone()), DocsView::Field { owner, .. } if owner == "Query"),
         "Enter on a field link opens the field"
     );
+}
+
+#[gpui_kit::test]
+fn escape_in_the_docs_list_goes_back_one_page(cx: &mut TestAppContext) {
+    use apinata_app::graphql_docs::DocsView;
+    let (win, panel) = docs_panel(cx);
+    assert!(tab_to(cx, win, "graphql-docs-list"), "Tab reaches the list");
+    press(cx, win, "down");
+    press(cx, win, "enter");
+    press(cx, win, "down");
+    press(cx, win, "enter");
+    assert!(matches!(
+        panel.read_with(cx, |p, _| p.view().clone()),
+        DocsView::Field { .. }
+    ));
+    press(cx, win, "escape");
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.view().clone()),
+        DocsView::Type("Query".into()),
+        "Escape goes back as the Back button does"
+    );
+    press(cx, win, "escape");
+    assert_eq!(panel.read_with(cx, |p, _| p.view().clone()), DocsView::Root);
+    // At the top there is nowhere to go, and the list keeps the keyboard.
+    press(cx, win, "escape");
+    assert_eq!(panel.read_with(cx, |p, _| p.view().clone()), DocsView::Root);
+    let focused = cx
+        .update_window(win, |_, w, _| w.find("graphql-docs-list").focused())
+        .unwrap();
+    assert_eq!(focused, Some(true));
+}
+
+// In a short window the section body scrolls around the Docs panel, whose list believes every
+// row fits; arrowing down must still keep the selected row inside the body's viewport.
+#[gpui_kit::test]
+fn the_docs_selection_stays_inside_a_scrolled_section_body(cx: &mut TestAppContext) {
+    use apinata_app::request_editor::Section;
+    use gpui_kit::{px, size};
+    let url = "http://127.0.0.1:9/g";
+    let file = format!(
+        "info:\n  name: g\n  type: graphql\n  seq: 1\ngraphql:\n  url: {url}\n  body:\n    query: '{{ me }}'\n"
+    );
+    let col = write_tree(&[("opencollection.yml", ROOT), ("g.yml", file.as_str())]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    let (win, _ed) = editor_for(cx, &ws, &root, "g.yml", false);
+    seed_schema(cx, url);
+    VisualTestContext::from_window(win, cx).simulate_resize(size(px(1000.), px(400.)));
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| {
+        w.click(("section", Section::Body as usize), cx)
+    })
+    .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("graphql-docs-toggle", cx))
+        .unwrap();
+    frame(cx, win);
+    cx.update_window(win, |_, w, cx| w.click("graphql-docs-search", cx))
+        .unwrap();
+    assert!(tab_to(cx, win, "graphql-docs-list"), "Tab reaches the list");
+    for row in [1usize, 2, 4, 5, 6, 7] {
+        press(cx, win, "down");
+        frame(cx, win);
+        assert!(is_selected(cx, win, ("graphql-docs-row", row)));
+        let (at, body) = cx
+            .update_window(win, |_, w, _| {
+                (
+                    w.find(("graphql-docs-row", row)).bounds(),
+                    w.find("section-body").bounds(),
+                )
+            })
+            .unwrap();
+        assert!(
+            at.top() >= body.top() - px(0.5) && at.bottom() <= body.bottom() + px(0.5),
+            "row {row} at {at:?} is outside the body {body:?}"
+        );
+    }
 }
 
 // Two sends, so the network list has two rows to walk.

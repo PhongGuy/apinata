@@ -258,8 +258,8 @@ pub struct RequestEditor {
     follow: FocusFollow,
     // The request column's scroll, read for the cue that more lies below.
     column_scroll: ScrollHandle,
-    // The focused GraphQL caret last followed, and how many renders may still follow it.
-    caret_key: Option<(usize, usize)>,
+    // The focused GraphQL caret or Docs row last followed, and how many renders may still follow it.
+    caret_key: Option<crate::graphql_section::CaretKey>,
     caret_follow: u8,
     // Renders left in which the section body follows the script caret a snippet insert placed.
     snippet_follow: u8,
@@ -3585,8 +3585,9 @@ impl RequestEditor {
             )
     }
 
-    // The editors scroll inside themselves and know nothing of the section body around them,
-    // so a caret that typing pushed past the body's edge is brought back by scrolling the body.
+    // The editors and the Docs rows scroll inside themselves and know nothing of the section body
+    // around them, so a caret or selected row pushed past the body's edge is brought back by
+    // scrolling the body.
     // Only an edit or a move arms this, so wheeling the body away afterwards is left alone. The
     // caret is measured from the last paint, so a few renders stay armed to catch the new one.
     fn follow_graphql_caret(&mut self, window: &Window, cx: &App) {

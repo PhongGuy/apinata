@@ -18,7 +18,7 @@ use crate::body_find::{
 use crate::changes_dialog::{CommitChanges, MESSAGE_CONTEXT};
 use crate::commands::registry;
 use crate::graphql_section::GRAPHQL_QUERY_CONTEXT;
-use crate::list_keys::{KEY_CONTEXT as KEY_LIST, ListDown, ListOpen, ListUp};
+use crate::list_keys::{KEY_CONTEXT as KEY_LIST, ListBack, ListDown, ListOpen, ListUp};
 use crate::preferences::{
     ClearPreferencesSearch, FocusPreferencesSearch, KEY_CONTEXT as PREFERENCES,
 };
@@ -260,6 +260,7 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("up", ListUp, Some(KEY_LIST)),
         KeyBinding::new("down", ListDown, Some(KEY_LIST)),
         KeyBinding::new("enter", ListOpen, Some(KEY_LIST)),
+        KeyBinding::new("escape", ListBack, Some(KEY_LIST)),
     ]
 }
 

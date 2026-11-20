@@ -2,7 +2,9 @@
 //! shows it with a navigation stack, a search on the root page and a show-deprecated toggle.
 
 use crate::ui::SolidRing as _;
+use std::cell::Cell;
 use std::ops::Range;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use apinata_core::{Directive, Field, InputValue, Schema, SchemaType, TypeKind};
@@ -11,14 +13,15 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Div, Entity, EventEmitter, FocusHandle, Result, Role, ScrollStrategy, Subscription,
-    TestSupportExt, UniformListScrollHandle, Window, div, uniform_list,
+    AnyElement, Bounds, Div, Entity, EventEmitter, FocusHandle, Pixels, Result, Role,
+    ScrollStrategy, Subscription, TestSupportExt, UniformListScrollHandle, Window, canvas, div,
+    uniform_list,
 };
 
 use crate::graphql_hover::directive_signature;
 use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
-use crate::graphql_section::SchemaAction;
-use crate::list_keys::{self, ListDown, ListOpen, ListUp};
+use crate::graphql_section::{Caret, CaretKey, SchemaAction};
+use crate::list_keys::{self, ListBack, ListDown, ListOpen, ListUp};
 use crate::{style, ui};
 
 /// Where the explorer stands: the schema root, one named type, one field of a type, or one
@@ -319,6 +322,8 @@ pub struct DocsPanel {
     selected: Option<usize>,
     list_focus: FocusHandle,
     list_scroll: UniformListScrollHandle,
+    // Where the selected row was last painted, so a scroll area around the panel can reveal it.
+    selected_drawn: Rc<Cell<Option<Bounds<Pixels>>>>,
     _subs: Vec<Subscription>,
 }
 
@@ -346,6 +351,7 @@ impl DocsPanel {
             selected: None,
             list_focus: cx.focus_handle().tab_stop(true),
             list_scroll: UniformListScrollHandle::new(),
+            selected_drawn: Rc::default(),
             _subs: subs,
         }
     }
@@ -400,6 +406,18 @@ impl DocsPanel {
         }
     }
 
+    /// The selected row while the rows hold focus, keyed on the page depth and row, with where
+    /// it was last painted in window coordinates (`None` while the list has not drawn it).
+    pub fn selection(&self, window: &Window) -> Option<Caret> {
+        let ix = self
+            .selected
+            .filter(|_| self.list_focus.is_focused(window))?;
+        Some(Caret {
+            drawn: self.selected_drawn.get(),
+            key: CaretKey::Docs(self.stack.len(), ix),
+        })
+    }
+
     /// Whether deprecated fields and values are listed.
     pub fn show_deprecated(&self) -> bool {
         self.show_deprecated
@@ -411,6 +429,8 @@ impl DocsPanel {
         let search = self.search.read(cx).value().to_string();
         let page = page(schema, &view, &search, self.show_deprecated);
         self.rows = page.rows;
+        // The selected row reports itself again when painted; until then it is not drawn.
+        self.selected_drawn.set(None);
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let back = (self.stack.len() > 1).then(|| {
@@ -456,6 +476,7 @@ impl DocsPanel {
             .on_action(cx.listener(|this, _: &ListUp, _, cx| this.step(false, cx)))
             .on_action(cx.listener(|this, _: &ListDown, _, cx| this.step(true, cx)))
             .on_action(cx.listener(|this, _: &ListOpen, _, cx| this.open_selected(cx)))
+            .on_action(cx.listener(|this, _: &ListBack, _, cx| this.back(cx)))
             .relative()
             .size_full()
             .child(list)
@@ -502,7 +523,16 @@ impl DocsPanel {
                 base.role(Role::ListBoxOption)
                     .aria_label(label.clone())
                     .aria_selected(on)
-                    .when(on, |row| row.bg(theme.list_active))
+                    .when(on, |row| {
+                        let drawn = Rc::clone(&self.selected_drawn);
+                        row.bg(theme.list_active).relative().child(
+                            canvas(move |bounds, _, _| drawn.set(Some(bounds)), |_, _, _, _| {})
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full(),
+                        )
+                    })
                     .text_color(theme.link)
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| this.open(to.clone(), cx)))
