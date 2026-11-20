@@ -4,8 +4,9 @@
 
 use super::scope_baseline;
 use crate::collection::Collection;
+use crate::collection::ROOT_FILE;
 use crate::config_file::CollectionFile;
-use crate::import::GroupBy;
+use crate::import::{GroupBy, ImportNote, NoteKind};
 use crate::item_path::ItemPath;
 use std::path::{Path, PathBuf};
 
@@ -50,12 +51,17 @@ pub fn recorded_spec(c: &Collection) -> Option<RecordedSpec> {
     Some(RecordedSpec { location, group_by })
 }
 
-/// Record `spec` as the source the root at `root` came from, unless it already is. A file
-/// inside the collection is kept relative to it, so the record survives a move or a clone.
+/// Record `spec` as the source the root at `root` came from, unless it already is. A file is
+/// kept relative to the root, so the record is shareable; a link that may carry a secret, or a
+/// file no relative path reaches, leaves any earlier record as it was.
 pub(crate) fn record_source(file: &mut CollectionFile, spec: &RecordedSpec, root: &Path) {
     let source = match &spec.location {
+        SpecLocation::Link(url) if may_hold_secret(url) => return,
         SpecLocation::Link(url) => url.clone(),
-        SpecLocation::File(path) => stored_path(path, root),
+        SpecLocation::File(path) => match stored_path(path, root) {
+            Some(path) => path,
+            None => return,
+        },
     };
     let group = match spec.group_by {
         GroupBy::Path => "path",
@@ -66,20 +72,56 @@ pub(crate) fn record_source(file: &mut CollectionFile, spec: &RecordedSpec, root
     }
 }
 
-// Both sides are resolved first, so a symlinked temp or home directory still compares equal; a
-// root not created yet falls back to its absolute form.
-fn stored_path(path: &Path, root: &Path) -> String {
-    let resolve = |p: &Path| p.canonicalize().or_else(|_| std::path::absolute(p));
-    let (Ok(path), Ok(root)) = (resolve(path), resolve(root)) else {
-        return path.to_string_lossy().into_owned();
+/// The note for a source that is read but not recorded because its link may hold a secret.
+pub(crate) fn unrecorded_note(spec: Option<&RecordedSpec>) -> Option<ImportNote> {
+    let SpecLocation::Link(url) = &spec?.location else {
+        return None;
     };
-    match path.strip_prefix(&root) {
-        Ok(inside) => inside
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/"),
-        Err(_) => path.to_string_lossy().into_owned(),
+    may_hold_secret(url).then(|| {
+        let detail = "the link was not remembered for the next update because it has a query or \
+                      fragment, which can hold a token";
+        ImportNote::new(ROOT_FILE, NoteKind::Dropped, detail)
+    })
+}
+
+// A query or fragment can carry a token or a signed, expiring address.
+fn may_hold_secret(url: &str) -> bool {
+    url.contains(['?', '#'])
+}
+
+// `path` relative to `root` with `/` separators, both resolved first so a symlinked temp or
+// home directory still compares equal. `None` when they share no root, such as two drives.
+fn stored_path(path: &Path, root: &Path) -> Option<String> {
+    let (path, root) = (resolve(path)?, resolve(root)?);
+    let (path, root): (Vec<_>, Vec<_>) = (path.components().collect(), root.components().collect());
+    let shared = path.iter().zip(&root).take_while(|(a, b)| a == b).count();
+    if shared == 0 {
+        return None;
+    }
+    let up = root[shared..].iter().map(|_| "..".into());
+    let down = path[shared..]
+        .iter()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned());
+    Some(up.chain(down).collect::<Vec<String>>().join("/"))
+}
+
+// The real path of `p`; a part not created yet (a collection still being written) is joined
+// onto its nearest existing ancestor.
+fn resolve(p: &Path) -> Option<PathBuf> {
+    let p = std::path::absolute(p).ok()?;
+    let mut missing = Vec::new();
+    let mut at = p.as_path();
+    loop {
+        if let Ok(real) = at.canonicalize() {
+            return Some(
+                missing
+                    .iter()
+                    .rev()
+                    .fold(real, |acc: PathBuf, part| acc.join(part)),
+            );
+        }
+        missing.push(at.file_name()?.to_owned());
+        at = at.parent()?;
     }
 }
 

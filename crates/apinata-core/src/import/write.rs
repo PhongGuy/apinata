@@ -3,7 +3,9 @@
 //! once the collection exists at its final root.
 
 use super::environment::{store_secrets, write_environment_file};
-use super::update::{SpecBaseline, file_field_hashes, operation_key, record_source};
+use super::update::{
+    SpecBaseline, file_field_hashes, operation_key, record_source, unrecorded_note,
+};
 use super::{
     ImportError, ImportNote, ImportReport, ImportedCollection, ImportedEnvironment, ImportedItem,
     NoteKind,
@@ -85,6 +87,10 @@ pub(crate) fn write_collection_with(
         if let Some(spec) = &imported.spec_from {
             record_source(collection.file_mut(), spec, &target);
         }
+        let unrecorded = unrecorded_note(imported.spec_from.as_ref());
+        report
+            .notes
+            .extend(placed(unrecorded.as_slice(), ROOT_FILE.to_owned()));
         record_spec_baseline(&mut collection, &ItemPath::root(), &report.items)?;
     }
     let written = envs

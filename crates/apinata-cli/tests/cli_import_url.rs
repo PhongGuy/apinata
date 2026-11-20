@@ -81,11 +81,27 @@ async fn a_url_gives_the_same_files_as_the_saved_file() {
     let (mut ta, mut tb) = (tree(from_url.path()), tree(from_file.path()));
     assert!(!ta.is_empty());
     source(&mut ta, url.clone());
-    source(
-        &mut tb,
-        fs::canonicalize(&file).unwrap().display().to_string(),
-    );
+    // The file sits beside the collection's parent, so it is recorded relative to the root.
+    let saved_name = saved.path().file_name().unwrap().to_string_lossy();
+    source(&mut tb, format!("../../{saved_name}/petstore.json"));
     assert_eq!(ta, tb);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_url_with_a_query_is_imported_but_not_remembered() {
+    let s = serve("/specs/petstore.json", OPENAPI).await;
+    let into = tempfile::tempdir().unwrap();
+    let url = format!("{}/specs/petstore.json?token=s3cret", s.uri());
+    let out = import(&url, into.path(), &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("not remembered"), "{err}");
+    assert!(!err.contains("s3cret"), "{err}");
+    let root = fs::read_to_string(into.path().join("Pets/opencollection.yml")).unwrap();
+    assert!(
+        !root.contains("s3cret") && !root.contains("source:"),
+        "{root}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

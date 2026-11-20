@@ -4,8 +4,8 @@ use crate::import_update_support::{bundle, imported, spec};
 use apinata_core::Collection;
 use apinata_core::MemoryStore;
 use apinata_core::import::{
-    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, SpecLocation, UpdateOptions,
-    apply_update, parse_collections, recorded_spec, write_collection,
+    CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportNote, SpecLocation,
+    UpdateOptions, apply_update, parse_collections, plan_update, recorded_spec, write_collection,
 };
 use std::fs;
 use std::path::Path;
@@ -53,25 +53,87 @@ fn an_import_from_a_link_records_the_link_and_its_grouping() {
 }
 
 #[test]
-fn an_import_from_a_file_outside_the_collection_records_its_absolute_path() {
+fn an_import_from_a_file_outside_the_collection_records_it_relative_to_the_root() {
     let dir = TempDir::new().unwrap();
-    let file = fs::canonicalize(dir.path()).unwrap().join("spec.json");
+    let file = dir.path().join("specs/spec.json");
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
     fs::write(&file, spec("update-v1.json")).unwrap();
+    let b = from("update-v1.json", SpecLocation::File(file), GroupBy::Tags);
+    let into = dir.path().join("collections");
+    fs::create_dir_all(&into).unwrap();
+    let (c, _) =
+        write_collection(&into, &b.collection, &b.environments, &MemoryStore::new()).unwrap();
+    let text = root_text(c.root());
+    assert!(
+        text.contains("      source: ../../specs/spec.json\n"),
+        "{text}"
+    );
+    let recorded = recorded_spec(&Collection::open(c.root()).unwrap()).expect("recorded");
+    assert_eq!(
+        recorded.location,
+        SpecLocation::File(c.root().join("../../specs/spec.json"))
+    );
+    assert_eq!(recorded.group_by, GroupBy::Tags);
+}
+
+/// Whether any note says the link was not remembered, and none repeats the secret.
+fn says_not_remembered(notes: &[ImportNote]) -> bool {
+    assert!(
+        notes.iter().all(|n| !n.detail.contains("s3cret")),
+        "{notes:?}"
+    );
+    notes.iter().any(|n| n.detail.contains("not remembered"))
+}
+
+#[test]
+fn an_import_from_a_link_with_a_query_records_nothing_and_says_so() {
+    let dir = TempDir::new().unwrap();
+    let url = "http://127.0.0.1:9/spec.json?token=s3cret";
     let b = from(
         "update-v1.json",
-        SpecLocation::File(file.clone()),
+        SpecLocation::Link(url.to_owned()),
         GroupBy::Tags,
     );
-    let (c, _) = write_collection(
+    let (c, report) = write_collection(
         dir.path(),
         &b.collection,
         &b.environments,
         &MemoryStore::new(),
     )
     .unwrap();
+    assert!(says_not_remembered(&report.notes), "{:?}", report.notes);
+    assert!(!root_text(c.root()).contains("s3cret"));
+    assert!(recorded_spec(&Collection::open(c.root()).unwrap()).is_none());
+}
+
+#[test]
+fn an_update_from_a_link_with_a_fragment_keeps_the_earlier_record_and_says_so() {
+    let dir = TempDir::new().unwrap();
+    let plain = "http://127.0.0.1:9/spec.json";
+    let b = from(
+        "update-v1.json",
+        SpecLocation::Link(plain.to_owned()),
+        GroupBy::Tags,
+    );
+    let (mut c, _) = write_collection(
+        dir.path(),
+        &b.collection,
+        &b.environments,
+        &MemoryStore::new(),
+    )
+    .unwrap();
+    let signed = from(
+        "update-v2.json",
+        SpecLocation::Link("http://127.0.0.1:9/spec.json#s3cret".to_owned()),
+        GroupBy::Tags,
+    );
+    let planned = plan_update(&c, &signed, &UpdateOptions::default()).unwrap();
+    assert!(says_not_remembered(&planned.notes), "{planned:?}");
+    let s = apply_update(&mut c, &signed, &UpdateOptions::default(), None).unwrap();
+    assert!(says_not_remembered(&s.notes), "{s:?}");
+    assert!(!root_text(c.root()).contains("s3cret"));
     let recorded = recorded_spec(&Collection::open(c.root()).unwrap()).expect("recorded");
-    assert_eq!(recorded.location, SpecLocation::File(file));
-    assert_eq!(recorded.group_by, GroupBy::Tags);
+    assert_eq!(recorded.location, SpecLocation::Link(plain.to_owned()));
 }
 
 #[test]

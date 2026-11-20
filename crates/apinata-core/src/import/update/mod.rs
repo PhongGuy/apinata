@@ -6,9 +6,9 @@ mod reference;
 
 pub use baseline::SpecBaseline;
 pub use fields::{ChangedField, FieldHashes, file_field_hashes, operation_key, spec_field_hashes};
-pub(crate) use reference::record_source;
 use reference::update_baseline;
 pub use reference::{RecordedSpec, SpecLocation, can_update, recorded_spec};
+pub(crate) use reference::{record_source, unrecorded_note};
 
 use super::{
     ImportBundle, ImportError, ImportNote, ImportedItem, ImportedRequest, NoteKind, add_request,
@@ -766,6 +766,12 @@ pub(crate) fn plan(
         summary.notes.push(note("opencollection.yml", detail, None));
         return Ok(Plan { summary, actions });
     };
+    // Only the root records a source, so only a root update says one was not recorded.
+    if scope.is_root() {
+        summary
+            .notes
+            .extend(unrecorded_note(bundle.collection.spec_from.as_ref()));
+    }
 
     let mut files = Vec::new();
     if let Some(start) = c.folder(&scope) {

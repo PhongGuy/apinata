@@ -83,7 +83,7 @@ fn a_link_source_is_a_link_and_the_first_usable_entry_wins_with_tags_by_default(
 }
 
 #[test]
-fn our_own_record_wins_over_the_reference_one() {
+fn our_baseline_drives_the_update_while_the_reference_source_is_still_offered() {
     let dir = TempDir::new().unwrap();
     let c = imported(dir.path(), "update-v1.json");
     let ours = fs::read_to_string(c.root().join("opencollection.yml")).unwrap();
