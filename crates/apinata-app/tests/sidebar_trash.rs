@@ -1098,11 +1098,20 @@ fn with_the_sidebar_hidden_a_palette_delete_keeps_focus_in_the_tab(cx: &mut Test
     assert_restored(cx, &h, "a.yml", &bin);
 }
 
-// The Undo button of the toast showing, as its tooltip describes it.
+// The words and key of the tooltip the toast's Undo button shows under the pointer.
 fn undo_tooltip(cx: &mut TestAppContext, h: &SidebarHarness) -> Option<String> {
     cx.update_window(h.win, |_, w, cx| {
         w.render_frame(cx);
-        w.find("undo-delete").description().map(str::to_owned)
+        w.hover("undo-delete", cx);
+    })
+    .unwrap();
+    cx.executor().advance_clock(Duration::from_secs(1));
+    frame(cx, h.win);
+    frame(cx, h.win);
+    cx.update_window(h.win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(apinata_app::ui::KEY_TIP_ID)
+            .and_then(|t| t.label().map(str::to_owned))
     })
     .unwrap()
 }

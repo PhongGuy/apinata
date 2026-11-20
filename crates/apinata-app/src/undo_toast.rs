@@ -1,5 +1,6 @@
 //! The toast that follows a delete into the trash: an Undo button for as long as it shows.
 
+use crate::ui::KeyTooltip as _;
 use crate::ui::SolidRing as _;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -122,7 +123,7 @@ fn undo_toast(
                 .solid_ring(cx)
                 .ghost()
                 .label("Undo")
-                .tooltip(crate::ui::label_with_key("Undo", &UndoDelete, cx))
+                .key_tooltip(crate::ui::KeyTip::new("Undo", &UndoDelete, cx))
                 .child(hover.watch("undo-button-hover"))
                 .on_click(move |_, window, cx| {
                     on_undo(window, cx);

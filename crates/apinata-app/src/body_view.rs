@@ -1052,7 +1052,7 @@ impl BodyView {
         &self,
         ids: (&'static str, &'static str),
         icon: IconName,
-        tooltip: String,
+        tip: ui::KeyTip,
         on: bool,
         flip: fn(&mut Self, &mut Context<Self>),
         cx: &mut Context<Self>,
@@ -1064,7 +1064,7 @@ impl BodyView {
                 flip(this, cx);
                 this.refocus_find(window, cx);
             }))
-            .child(ui::icon_button(ids.1, icon, &tooltip, None, cx).toggle(on, cx))
+            .child(ui::key_icon_button(ids.1, icon, tip, cx).toggle(on, cx))
     }
 
     /// Moves to the previous match, wrapping, and scrolls it into view.
@@ -3518,7 +3518,7 @@ impl Render for BodyView {
                 .child(self.find_toggle(
                     ("body-find-case", "body-find-case-button"),
                     IconName::CaseSensitive,
-                    "Match case".into(),
+                    ui::KeyTip::plain("Match case"),
                     self.find_case_sensitive,
                     |this, cx| this.set_find_case_sensitive(!this.find_case_sensitive, cx),
                     cx,
@@ -3526,7 +3526,7 @@ impl Render for BodyView {
                 .child(self.find_toggle(
                     ("body-find-word", "body-find-word-button"),
                     IconName::WholeWord,
-                    ui::label_with_key("Match whole word", &ToggleFindWholeWord, cx),
+                    ui::KeyTip::new("Match whole word", &ToggleFindWholeWord, cx),
                     self.find_whole_word,
                     |this, cx| this.set_find_whole_word(!this.find_whole_word, cx),
                     cx,
@@ -3534,7 +3534,7 @@ impl Render for BodyView {
                 .child(self.find_toggle(
                     ("body-find-regex", "body-find-regex-button"),
                     IconName::Regex,
-                    ui::label_with_key("Use regular expression", &ToggleFindRegex, cx),
+                    ui::KeyTip::new("Use regular expression", &ToggleFindRegex, cx),
                     self.find_regex,
                     |this, cx| this.set_find_regex(!this.find_regex, cx),
                     cx,
@@ -3547,11 +3547,10 @@ impl Render for BodyView {
                             this.find_previous(window, cx);
                             this.refocus_find(window, cx);
                         }))
-                        .child(ui::icon_button(
+                        .child(ui::key_icon_button(
                             "body-find-prev-button",
                             IconName::ChevronUp,
-                            &ui::label_with_key("Previous match", &FindPreviousInResponse, cx),
-                            None,
+                            ui::KeyTip::new("Previous match", &FindPreviousInResponse, cx),
                             cx,
                         )),
                 )
@@ -3563,11 +3562,10 @@ impl Render for BodyView {
                             this.find_next(window, cx);
                             this.refocus_find(window, cx);
                         }))
-                        .child(ui::icon_button(
+                        .child(ui::key_icon_button(
                             "body-find-next-button",
                             IconName::ChevronDown,
-                            &ui::label_with_key("Next match", &FindNextInResponse, cx),
-                            None,
+                            ui::KeyTip::new("Next match", &FindNextInResponse, cx),
                             cx,
                         )),
                 )
