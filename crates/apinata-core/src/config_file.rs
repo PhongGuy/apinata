@@ -397,6 +397,16 @@ impl CollectionFile {
         })
     }
 
+    /// Our own record of the spec source and grouping, under `extensions.apinata.openapi`.
+    pub(crate) fn spec_source(&self) -> Option<(String, Option<String>)> {
+        SpecBaseline::read_source(&self.inner.doc)
+    }
+
+    /// Record `source` and `group_by` beside the root baseline.
+    pub(crate) fn set_spec_source(&mut self, source: &str, group_by: &str) {
+        SpecBaseline::write_source(&mut self.inner.doc, COLLECTION_TOP, source, group_by);
+    }
+
     /// Write the baseline as `extensions.apinata.openapi.ops`. An empty baseline still writes an
     /// empty `ops`, so a collection whose generated requests were all pruned stays updatable.
     pub fn set_spec_baseline(&mut self, baseline: &SpecBaseline) {

@@ -207,3 +207,25 @@ async fn take_spec_naming_an_unknown_request_writes_nothing() {
         .await;
     assert!(message.contains("require `update`"), "{message}");
 }
+
+#[tokio::test]
+async fn an_update_from_a_link_is_offered_as_the_next_updates_source() {
+    let upstream = MockServer::start().await;
+    Mock::given(path("/new.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(V2))
+        .expect(2)
+        .mount(&upstream)
+        .await;
+    let server = reference_only("gone.json", "tags").await;
+    let url = format!("{}/new.json", upstream.uri());
+    server
+        .ok("import_collection", json!({"update": true, "url": url}))
+        .await;
+    let out = server
+        .ok("import_collection", json!({"update": true}))
+        .await;
+    assert!(out["added"].as_array().unwrap().is_empty(), "{out}");
+    let root = fs::read_to_string(server.root().join("opencollection.yml")).unwrap();
+    assert!(root.contains(&format!("      source: {url}\n")), "{root}");
+    assert!(root.contains("      - sourceUrl: gone.json\n"), "{root}");
+}

@@ -1,12 +1,13 @@
-//! The OpenAPI source the reference app records under `extensions.bruno.openapi`. A collection
-//! with that record and none of our own is adopted on its first update.
+//! Where a collection's spec comes from: our own record under `extensions.apinata.openapi`,
+//! written by each import and update from a link or file, or else the reference app's under
+//! `extensions.bruno.openapi`. A collection with only the latter is adopted on its first update.
 
 use super::scope_baseline;
 use crate::collection::Collection;
 use crate::config_file::CollectionFile;
 use crate::import::GroupBy;
 use crate::item_path::ItemPath;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Where a recorded spec lives.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,13 +29,13 @@ pub struct RecordedSpec {
     pub group_by: GroupBy,
 }
 
-/// The first usable source in the reference app's record, offered only while the collection
-/// root has no update record of our own; `None` otherwise.
+/// The source the collection root was last imported or updated from: our own record when it
+/// holds one, else the first usable source in the reference app's record.
 pub fn recorded_spec(c: &Collection) -> Option<RecordedSpec> {
-    if c.file().spec_baseline().is_some() {
-        return None;
-    }
-    let (source, group) = c.file().reference_openapi_source()?;
+    let (source, group) = c
+        .file()
+        .spec_source()
+        .or_else(|| c.file().reference_openapi_source())?;
     // The reference app treats anything that is not an http(s) link as a collection-relative path.
     let lower = source.to_ascii_lowercase();
     let location = if lower.starts_with("http://") || lower.starts_with("https://") {
@@ -47,6 +48,39 @@ pub fn recorded_spec(c: &Collection) -> Option<RecordedSpec> {
         _ => GroupBy::Tags,
     };
     Some(RecordedSpec { location, group_by })
+}
+
+/// Record `spec` as the source the root at `root` came from, unless it already is. A file
+/// inside the collection is kept relative to it, so the record survives a move or a clone.
+pub(crate) fn record_source(file: &mut CollectionFile, spec: &RecordedSpec, root: &Path) {
+    let source = match &spec.location {
+        SpecLocation::Link(url) => url.clone(),
+        SpecLocation::File(path) => stored_path(path, root),
+    };
+    let group = match spec.group_by {
+        GroupBy::Path => "path",
+        _ => "tags",
+    };
+    if file.spec_source() != Some((source.clone(), Some(group.to_owned()))) {
+        file.set_spec_source(&source, group);
+    }
+}
+
+// Both sides are resolved first, so a symlinked temp or home directory still compares equal; a
+// root not created yet falls back to its absolute form.
+fn stored_path(path: &Path, root: &Path) -> String {
+    let resolve = |p: &Path| p.canonicalize().or_else(|_| std::path::absolute(p));
+    let (Ok(path), Ok(root)) = (resolve(path), resolve(root)) else {
+        return path.to_string_lossy().into_owned();
+    };
+    match path.strip_prefix(&root) {
+        Ok(inside) => inside
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+        Err(_) => path.to_string_lossy().into_owned(),
+    }
 }
 
 /// Whether `folder` (the root when it is the root path) can be updated from a spec: it has

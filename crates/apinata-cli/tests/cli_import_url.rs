@@ -69,8 +69,22 @@ async fn a_url_gives_the_same_files_as_the_saved_file() {
     assert_eq!(a.status.code(), Some(0), "{}", stderr(&a));
     let b = import(file.to_str().unwrap(), from_file.path(), &[]);
     assert_eq!(b.status.code(), Some(0), "{}", stderr(&b));
-    let (ta, tb) = (tree(from_url.path()), tree(from_file.path()));
+    // Each records where it came from; everything else is byte for byte the same.
+    let root = Path::new("Pets/opencollection.yml");
+    let source = |t: &mut Vec<(PathBuf, Vec<u8>)>, want: String| {
+        let (_, bytes) = t.iter_mut().find(|(p, _)| p == root).expect("root file");
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        let line = format!("      source: {want}\n");
+        assert!(text.contains(&line), "{text}");
+        *bytes = text.replacen(&line, "", 1).into_bytes();
+    };
+    let (mut ta, mut tb) = (tree(from_url.path()), tree(from_file.path()));
     assert!(!ta.is_empty());
+    source(&mut ta, url.clone());
+    source(
+        &mut tb,
+        fs::canonicalize(&file).unwrap().display().to_string(),
+    );
     assert_eq!(ta, tb);
 }
 

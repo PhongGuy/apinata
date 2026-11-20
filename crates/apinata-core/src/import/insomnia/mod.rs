@@ -191,6 +191,7 @@ fn bundle(
             notes: Vec::new(),
             unwritten,
             spec_source: false,
+            spec_from: None,
         },
         environments: Vec::new(),
     }

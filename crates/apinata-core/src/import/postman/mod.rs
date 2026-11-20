@@ -101,6 +101,7 @@ pub fn parse_postman(json: &[u8]) -> Result<ImportedCollection, PostmanError> {
         notes,
         unwritten,
         spec_source: false,
+        spec_from: None,
     })
 }
 

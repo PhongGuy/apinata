@@ -110,6 +110,7 @@ fn parse_with_limits(
         notes,
         unwritten,
         spec_source: false,
+        spec_from: None,
     };
     Ok(vec![ImportBundle {
         collection,

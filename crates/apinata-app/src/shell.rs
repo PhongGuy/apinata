@@ -9,7 +9,7 @@ use std::sync::{Arc, LazyLock};
 
 use apinata_core::import::{
     CollectionOptions, EnvironmentFormat, FormatError, GroupBy, ImportBundle, ImportReport,
-    ImportedRequest, parse_collections, write_collection,
+    ImportedRequest, SpecLocation, parse_collections, write_collection,
 };
 use apinata_core::team::TeamState;
 use apinata_core::{DraftSnapshot, ItemPath};
@@ -3872,7 +3872,8 @@ pub fn parse_bundles_grouped(
 ) -> Result<Vec<ImportBundle>, String> {
     let input =
         std::fs::read(file).map_err(|e| crate::import_report::failure_at(file, &e.to_string()))?;
-    parse_bundles_with(file, &input, formats_shown, group_by)
+    let source = SpecLocation::File(file.to_path_buf());
+    parse_bundles_with(file, &input, formats_shown, group_by, source)
 }
 
 /// `parse_bundles` over bytes already read from `file`, which only names the collection. With
@@ -3882,18 +3883,22 @@ pub fn parse_bundles_from(
     input: &[u8],
     formats_shown: bool,
 ) -> Result<Vec<ImportBundle>, String> {
-    parse_bundles_with(file, input, formats_shown, GroupBy::Tags)
+    let source = SpecLocation::File(file.to_path_buf());
+    parse_bundles_with(file, input, formats_shown, GroupBy::Tags, source)
 }
 
-/// `parse_bundles_from` with OpenAPI operations grouped by `group_by`.
+/// `parse_bundles_from` with OpenAPI operations grouped by `group_by`, recording `source` as
+/// where a spec came from.
 pub fn parse_bundles_with(
     file: &Path,
     input: &[u8],
     formats_shown: bool,
     group_by: GroupBy,
+    source: SpecLocation,
 ) -> Result<Vec<ImportBundle>, String> {
     let mut options = CollectionOptions::default();
     options.group_by = group_by;
+    options.source = Some(source);
     options.name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
     parse_collections(None, input, &options).map_err(|e| match e {
         // An environment file is a near miss: point at the action that takes it.

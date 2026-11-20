@@ -6,6 +6,7 @@ mod reference;
 
 pub use baseline::SpecBaseline;
 pub use fields::{ChangedField, FieldHashes, file_field_hashes, operation_key, spec_field_hashes};
+pub(crate) use reference::record_source;
 use reference::update_baseline;
 pub use reference::{RecordedSpec, SpecLocation, can_update, recorded_spec};
 
@@ -364,6 +365,13 @@ pub fn apply_update(
     }
     if baseline != c.file().spec_baseline_in(&scope).unwrap_or_default() {
         c.file_mut().set_spec_baseline_in(&scope, &baseline);
+    }
+    // The recorded source belongs to the root; an update without one keeps what was recorded.
+    if scope.is_root()
+        && let Some(spec) = &bundle.collection.spec_from
+    {
+        let root = c.root().to_path_buf();
+        record_source(c.file_mut(), spec, &root);
     }
     if c.file().is_dirty()
         && let Err(e) = c.file_mut().save()

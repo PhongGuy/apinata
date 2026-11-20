@@ -12,8 +12,10 @@ use yaml_serde::{Mapping, Value};
 const FILE: &str = "file";
 const OPS: [&str; 4] = ["extensions", "apinata", "openapi", "ops"];
 const FOLDERS: [&str; 4] = ["extensions", "apinata", "openapi", "folders"];
-/// Key order inside `openapi`: the root `ops` first, then `folders`.
-const OPENAPI_ORDER: &[&str] = &["ops", "folders"];
+const SOURCE: [&str; 4] = ["extensions", "apinata", "openapi", "source"];
+const GROUP_BY: [&str; 4] = ["extensions", "apinata", "openapi", "groupBy"];
+/// Key order inside `openapi`: where the spec came from, then the root `ops`, then `folders`.
+const OPENAPI_ORDER: &[&str] = &["source", "groupBy", "ops", "folders"];
 
 /// What each generated request's spec-owned fields hashed to when they were last written from
 /// the spec, by operation key.
@@ -108,6 +110,19 @@ impl SpecBaseline {
             }
         }
         Some(baseline)
+    }
+
+    /// The recorded source and grouping; `None` without a non-empty source.
+    pub(crate) fn read_source(doc: &Document) -> Option<(String, Option<String>)> {
+        let source = doc.get(&SOURCE)?.as_str().filter(|s| !s.is_empty())?;
+        let group = doc.get(&GROUP_BY).and_then(Value::as_str);
+        Some((source.to_owned(), group.map(str::to_owned)))
+    }
+
+    pub(crate) fn write_source(doc: &mut Document, top: &[&str], source: &str, group_by: &str) {
+        let order: &[&[&str]] = &[top, &[], &[], OPENAPI_ORDER];
+        doc.set(&SOURCE, Value::from(source), order);
+        doc.set(&GROUP_BY, Value::from(group_by), order);
     }
 
     /// Hashes go in as strings, which the writer quotes when they could read as numbers.

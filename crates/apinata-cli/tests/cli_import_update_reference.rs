@@ -132,6 +132,15 @@ fn no_input_and_no_recorded_source_is_refused() {
         .arg(parent.path())
         .assert()
         .code(0);
+    // Forget the source the import recorded, as a collection imported elsewhere would have none.
+    let file = parent.path().join("Shop/opencollection.yml");
+    let text = fs::read_to_string(&file).unwrap();
+    let kept: String = text
+        .lines()
+        .filter(|l| !l.starts_with("      source: ") && !l.starts_with("      groupBy: "))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    fs::write(&file, kept).unwrap();
     update(&parent.path().join("Shop"))
         .failure()
         .stderr(contains("FILE_OR_URL"));
