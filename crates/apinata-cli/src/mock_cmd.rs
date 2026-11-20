@@ -35,7 +35,14 @@ pub fn run(args: &MockArgs) -> ExitCode {
             "`apinata mock <PATH>` or `apinata mock --collection <DIR>`",
         )?;
         collection_arg::with_hint(
-            open_at(&path, args.env.as_deref(), &args.env_var, &secrets, options),
+            open_at(
+                &path,
+                args.env.as_deref(),
+                args.no_env,
+                &args.env_var,
+                &secrets,
+                options,
+            ),
             "pass the collection as `apinata mock <PATH>` or `apinata mock --collection <DIR>`",
         )
     });

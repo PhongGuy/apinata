@@ -18,6 +18,8 @@ pub use adopt::AdoptError;
 mod conflict;
 pub use conflict::FileTexts;
 mod create;
+mod default_env;
+pub use default_env::EnvironmentChoice;
 mod dotenv_write;
 mod draft;
 mod ignore;

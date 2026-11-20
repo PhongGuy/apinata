@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use apinata_core::{
-    ApprovalInbox, ClientCertificate, GitOptions, GlobalEnvironments, HttpVersionPolicy,
-    NetworkSettings, ScriptTrust, SystemTrash, Trash, TrashLog, TrustStore,
+    ApprovalInbox, ClientCertificate, Collection, GitOptions, GlobalEnvironments,
+    HttpVersionPolicy, NetworkSettings, ScriptTrust, SystemTrash, Trash, TrashLog, TrustStore,
 };
 
 /// The collection to serve and the defaults every tool call starts from.
@@ -15,6 +15,7 @@ use apinata_core::{
 pub struct McpOptions {
     root: PathBuf,
     env: Option<String>,
+    no_env: bool,
     env_vars: Vec<(String, String)>,
     global_env: Option<(Arc<GlobalEnvironments>, String)>,
     global_env_vars: Vec<(String, String)>,
@@ -38,6 +39,7 @@ impl McpOptions {
         McpOptions {
             root: root.into(),
             env: None,
+            no_env: false,
             env_vars: Vec::new(),
             global_env: None,
             global_env_vars: Vec::new(),
@@ -74,6 +76,12 @@ impl McpOptions {
     /// Select the default environment by file stem (`--env`).
     pub fn env(mut self, name: impl Into<String>) -> McpOptions {
         self.env = Some(name.into());
+        self
+    }
+
+    /// Use no environment by default, even when the collection names a default one (`--no-env`).
+    pub fn no_env(mut self) -> McpOptions {
+        self.no_env = true;
         self
     }
 
@@ -239,6 +247,16 @@ impl McpOptions {
     /// The default environment's name, if one was selected.
     pub fn default_env(&self) -> Option<&str> {
         self.env.as_deref()
+    }
+
+    /// The environment a tool call resolves against: `explicit`, else the launch `--env`, else
+    /// `c`'s preset default environment while it exists, unless the launch chose none.
+    pub fn environment_for(&self, c: &Collection, explicit: Option<&str>) -> Option<String> {
+        let named = explicit.or(self.default_env());
+        if named.is_none() && self.no_env {
+            return None;
+        }
+        c.choose_environment(named).name().map(str::to_owned)
     }
 
     /// The variable overrides in the order they were given.

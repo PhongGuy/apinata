@@ -47,9 +47,13 @@ pub enum GraphqlAction {
 pub struct SchemaArgs {
     /// The GraphQL request file.
     pub path: PathBuf,
-    /// The environment to use, by file name without `.yml`.
+    /// The environment to use, by file name without `.yml`; by default the collection's preset
+    /// default environment, when it has one.
     #[arg(long)]
     pub env: Option<String>,
+    /// Use no environment, even when the collection names a default one.
+    #[arg(long, conflicts_with = "env")]
+    pub no_env: bool,
     /// Set or override an environment variable; repeatable. `KEY=VALUE`, or `KEY` to read the value
     /// from the process environment (empty if set but empty; kept secret).
     #[arg(long = "env-var", value_name = "KEY[=VALUE]", value_parser = parse_env_var)]
@@ -126,6 +130,7 @@ fn fetch(args: &SchemaArgs, secrets: &mut Vec<NamedSecret>) -> Result<(), Failur
     let target = run::open_at(
         &path,
         args.env.as_deref(),
+        args.no_env,
         &args.env_var,
         &BTreeSet::new(),
         options,

@@ -589,8 +589,9 @@ impl ApinataServer {
         annotations(read_only_hint = true)
     )]
     async fn get_collection(&self) -> Result<Json<CollectionInfo>, String> {
-        let default_environment = self.options.default_env().map(str::to_owned);
+        let options = Arc::clone(&self.options);
         self.with_collection(move |collection| {
+            let default_environment = options.environment_for(collection, None);
             Ok(Json(CollectionInfo {
                 name: collection.name().to_owned(),
                 root: collection.root().display().to_string(),

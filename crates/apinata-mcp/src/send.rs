@@ -268,7 +268,7 @@ pub(crate) fn context(
         .oauth2_tokens(tokens)
         .env_overlay(overlay)
         .client_certificates(options.certificates().to_vec());
-    if let Some(env) = environment.or(options.default_env()) {
+    if let Some(env) = options.environment_for(c, environment) {
         opts = opts.env(env);
     }
     for (name, value) in options.env_vars() {

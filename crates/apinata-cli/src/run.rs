@@ -9,10 +9,10 @@ use std::time::Duration;
 use anyhow::{Context, anyhow, bail};
 use apinata_core::{
     AuthorizeOptions, CancelHandle, Collection, ContextOptions, CookieJar, Environment,
-    ExecOptions, ExecutionMode, Executor, GlobalEnvironments, HttpVersion, IterationData,
-    NetworkEntry, RequestResult, RunEvent, RunOptions, RunPlan, ScriptOptions, SecretStore,
-    SelectError, SessionLog, StreamBound, StreamEnd, StreamLimits, TagFilter, TokenCache,
-    VarContext,
+    EnvironmentChoice, ExecOptions, ExecutionMode, Executor, GlobalEnvironments, HttpVersion,
+    IterationData, NetworkEntry, RequestResult, RunEvent, RunOptions, RunPlan, ScriptOptions,
+    SecretStore, SelectError, SessionLog, StreamBound, StreamEnd, StreamLimits, TagFilter,
+    TokenCache, VarContext,
 };
 
 use crate::import::{default_keychain, platform_store, secret_store};
@@ -140,6 +140,7 @@ pub fn open_with(args: &RunArgs, keychain: Arc<dyn SecretStore>) -> anyhow::Resu
         open_at(
             args.target(),
             args.env.as_deref(),
+            args.no_env,
             &args.env_var,
             &global_secrets,
             options,
@@ -161,12 +162,14 @@ fn tag_filter(args: &RunArgs) -> TagFilter {
 }
 
 /// Open the collection that contains `path`, plan `path` in it and build the variable context
-/// from `options` plus the token cache, the environment `env` and the `env_var` overrides.
+/// from `options` plus the token cache, the environment `env` (else the collection's preset
+/// default, unless `no_env`) and the `env_var` overrides.
 /// `global_secrets` names the selected global environment's secrets, which an `env_var` of
 /// the same name keeps sensitive.
 pub fn open_at(
     path: &Path,
     env: Option<&str>,
+    no_env: bool,
     env_var: &[EnvVar],
     global_secrets: &BTreeSet<String>,
     options: ContextOptions,
@@ -185,7 +188,8 @@ pub fn open_at(
     })?;
     let mut options = options.oauth2_tokens(token_cache());
     let mut secrets = global_secrets.clone();
-    if let Some(env) = env {
+    let choice = chosen_environment(&collection, env, no_env);
+    if let Some(env) = choice.name() {
         secrets.extend(declared_secrets(collection.environments(), env));
         options = options.env(env);
     }
@@ -213,6 +217,23 @@ pub fn open_at(
         plan,
         ctx,
     })
+}
+
+/// The environment a command uses: `env`, else the collection's preset default unless `no_env`.
+/// A preset naming a missing environment warns on stderr and leaves none, as the reference CLI does.
+pub fn chosen_environment(
+    collection: &Collection,
+    env: Option<&str>,
+    no_env: bool,
+) -> EnvironmentChoice {
+    if no_env {
+        return EnvironmentChoice::None;
+    }
+    let choice = collection.choose_environment(env);
+    if let Some(warning) = choice.warning() {
+        eprintln!("warning: {warning}");
+    }
+    choice
 }
 
 /// The names environment `name` or any environment it extends declares `secret: true` and enabled.

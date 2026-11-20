@@ -68,6 +68,7 @@ mod credential_headers;
 mod credential_names;
 mod curl_export;
 mod curl_round_trip;
+mod default_environment;
 mod default_timeout;
 mod demo_collection;
 mod derived_credentials;

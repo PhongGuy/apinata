@@ -71,6 +71,9 @@ fn options(args: &McpArgs) -> anyhow::Result<McpOptions> {
     if let Some(env) = &args.env {
         options = options.env(env);
     }
+    if args.no_env {
+        options = options.no_env();
+    }
     // The server already treats every override as sensitive, so the origin flag is not needed.
     for v in &args.env_var {
         options = options.env_var(&v.key, &v.value);

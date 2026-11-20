@@ -12,7 +12,7 @@ use apinata_core::{
 use serde::Serialize;
 
 use crate::import::secret_store;
-use crate::run::{global_options, token_cache};
+use crate::run::{self, global_options, token_cache};
 use crate::{EXIT_USAGE, Format, OAuth2Action, OAuth2Args, collection_arg, plural, trust};
 
 /// One cached token, its values withheld; the MCP `oauth2_token` fields plus where it lives.
@@ -136,7 +136,7 @@ fn go(args: &OAuth2Args) -> anyhow::Result<bool> {
     let mut options = options
         .oauth2_tokens(tokens.clone())
         .secrets(secret_store(args.no_keychain));
-    if let Some(env) = &args.env {
+    if let Some(env) = run::chosen_environment(&c, args.env.as_deref(), args.no_env).name() {
         options = options.env(env);
     }
     // Every override is kept sensitive: nothing here prints a value, and a message never should.
