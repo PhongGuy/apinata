@@ -267,7 +267,8 @@ pub enum Verdict {
     #[non_exhaustive]
     Skipped {
         /// Why: which side needs JavaScript and its text, the truncated `res.body` expression,
-        /// `no expression`, or that the expected value is not valid JavaScript.
+        /// `no expression`, that the expected value is a template literal, or that it is not valid
+        /// JavaScript.
         reason: String,
     },
 }
@@ -424,6 +425,11 @@ fn verdict(
     match rhs::operand(op, &text, vars, scripted) {
         Err(RhsError::NeedsJs) => Verdict::Skipped {
             reason: format!("right side `{text}` needs a JavaScript runtime"),
+        },
+        Err(RhsError::TemplateLiteral) => Verdict::Skipped {
+            reason: format!(
+                "right side `{text}` is a template literal, which needs a JavaScript runtime"
+            ),
         },
         Err(RhsError::NotJs) => Verdict::Skipped {
             reason: "the expected value is not valid JavaScript".to_owned(),
@@ -859,6 +865,23 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_template_literal_value_is_skipped_as_needing_a_javascript_runtime() {
+        let res = Response::new(200);
+        for (op, value) in [
+            ("eq", "`/echo?u=${1}`"),
+            ("eq", "  `a`  "),
+            ("in", "200, `${1}`"),
+        ] {
+            let verdict = run("res.status", op, Some(value), &res, json!({}));
+            assert!(
+                matches!(&verdict, Verdict::Skipped { reason }
+                    if reason.contains("template literal") && reason.contains("needs a JavaScript runtime")),
+                "{op} {value}: {verdict:?}"
+            );
         }
     }
 
