@@ -939,6 +939,19 @@ update from the description. `--into` is then the collection's own directory:
 apinata import collection openapi.yaml --into ./collections/Shop --update --dry-run
 ```
 
+A collection set up for OpenAPI sync in another app records its spec's link or
+file in `opencollection.yml`. Leave the description out and `--update` uses that
+source, grouped as recorded, and names it on stderr (a link is fetched like any
+other; in the app, Update fills in the recorded source). The recorded source
+updates the whole collection, so updating a folder still needs the description. The first update of such a collection does not know
+which values were generated, so it adds new operations, keeps every request that
+already differs from the description as it is and lists it under "differs", and
+removes nothing. From then on updates work as above.
+
+```sh
+apinata import collection --into ./collections/Shop --update
+```
+
 To keep several descriptions in one collection, import each into its own folder
 with `--folder`. The folder is created when missing and must not hold requests
 yet, no environments are written, and `--update --folder` refreshes just that

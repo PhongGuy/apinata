@@ -386,6 +386,7 @@ async fn update_refreshes_adds_and_orphans_and_keeps_local_tests() {
         "kept",
         "edited",
         "edited_fields",
+        "differs",
         "orphaned",
         "pruned",
         "notes",
@@ -393,7 +394,7 @@ async fn update_refreshes_adds_and_orphans_and_keeps_local_tests() {
         assert!(keys.contains(&k), "{k} in {keys:?}");
     }
     keys.retain(|k| !["collections", "skipped"].contains(k));
-    assert_eq!(keys.len(), 10, "{keys:?}");
+    assert_eq!(keys.len(), 11, "{keys:?}");
     assert_eq!(out["collection"], server.root().display().to_string());
     assert_eq!(out["dry_run"], false);
     assert_eq!(out["added"], json!(["people/listUsers.yml"]));

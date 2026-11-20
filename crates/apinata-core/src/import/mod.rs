@@ -34,8 +34,9 @@ pub use postman::{parse_postman, parse_postman_environment};
 pub use request::{add_request, store_request_secrets};
 pub use source::{ImportSource, SourceError, classify_source};
 pub use update::{
-    ChangedField, FieldHashes, PrunedRequest, RequestChange, SpecBaseline, UpdateOptions,
-    UpdateSummary, apply_update, file_field_hashes, operation_key, plan_update, spec_field_hashes,
+    ChangedField, FieldHashes, PrunedRequest, RecordedSpec, RequestChange, SpecBaseline,
+    SpecLocation, UpdateOptions, UpdateSummary, apply_update, can_update, file_field_hashes,
+    operation_key, plan_update, recorded_spec, spec_field_hashes,
 };
 pub use write::{record_spec_baseline, write_collection};
 

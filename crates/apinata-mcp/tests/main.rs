@@ -47,6 +47,7 @@ mod harness;
 mod host_overrides;
 mod http_version;
 mod import_collection;
+mod import_collection_reference;
 mod import_request;
 mod leak;
 mod list_items;

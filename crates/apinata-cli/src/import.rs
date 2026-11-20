@@ -12,9 +12,10 @@ use anyhow::{Context, anyhow};
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, EnvironmentFormat, FetchError, GroupBy, ImportBundle,
     ImportError, ImportNote, ImportReport, ImportSource, RequestFormat, SourceError, SourceFetch,
-    UpdateOptions, UpdateSummary, add_environment, add_request, apply_update, classify_source,
-    default_import_name, ensure_folder, fetch_source, parse_collections, parse_environments,
-    parse_request, place_items, plan_update, store_request_secrets, write_collection,
+    SpecLocation, UpdateOptions, UpdateSummary, add_environment, add_request, apply_update,
+    classify_source, default_import_name, ensure_folder, fetch_source, parse_collections,
+    parse_environments, parse_request, place_items, plan_update, recorded_spec,
+    store_request_secrets, write_collection,
 };
 use apinata_core::{
     Collection, Folder, ItemPath, PacSource, SecretError, SecretKey, SecretStore, SystemTrash,
@@ -49,9 +50,10 @@ pub enum ImportKind {
 #[derive(clap::Args)]
 pub struct CollectionArgs {
     /// The collection file, or an http(s) link to one. A link is fetched without approval,
-    /// through the system proxy unless a flag below says otherwise.
-    #[arg(value_name = "FILE_OR_URL")]
-    pub file: PathBuf,
+    /// through the system proxy unless a flag below says otherwise. With `--update` it may be
+    /// left out when the collection records the spec it was synced from.
+    #[arg(value_name = "FILE_OR_URL", required_unless_present = "update")]
+    pub file: Option<PathBuf>,
     #[command(flatten)]
     pub fetch: FetchNetworkArgs,
     /// The input format, or `auto` to detect it.
@@ -319,10 +321,7 @@ fn import_request(args: &RequestArgs) -> anyhow::Result<Imported> {
 // Every input is parsed before any collection directory is created, so one bad file writes
 // nothing. Each bundle then gets its own write; a failure keeps the collections already written.
 fn import_collection(args: &CollectionArgs) -> anyhow::Result<Vec<Imported>> {
-    let (input, default_name) = match link(&args.file)? {
-        Some(url) => (fetch_link(url, &args.fetch)?, default_import_name(url)),
-        None => (read_file(&args.file)?, file_stem(&args.file)),
-    };
+    let (input, default_name) = read_source(input_file(args)?, &args.fetch)?;
     let options = collection_options(args, &input, default_name)?;
     let bundles = parse_collections(args.from.0, &input, &options)?;
     let mut extra = Vec::new();
@@ -394,10 +393,7 @@ fn import_into_folder(args: &CollectionArgs) -> anyhow::Result<Imported> {
     let target = ItemPath::new(raw)
         .filter(|p| !p.is_root())
         .ok_or_else(|| anyhow!("invalid folder path: {raw:?}"))?;
-    let (input, default_name) = match link(&args.file)? {
-        Some(url) => (fetch_link(url, &args.fetch)?, default_import_name(url)),
-        None => (read_file(&args.file)?, file_stem(&args.file)),
-    };
+    let (input, default_name) = read_source(input_file(args)?, &args.fetch)?;
     let options = collection_options(args, &input, default_name)?;
     let mut bundles = parse_collections(args.from.0, &input, &options)?;
     if bundles.len() != 1 {
@@ -493,11 +489,11 @@ struct Updated {
 // Parse and open the target before anything is written. A prune moves files to the system
 // trash, and core refuses it up front when none is available.
 fn import_update(args: &CollectionArgs) -> anyhow::Result<Updated> {
-    let bundle = update_bundle(args)?;
     let dir = args.into.as_deref().unwrap_or(Path::new("."));
     let root =
         std::fs::canonicalize(dir).with_context(|| format!("cannot open {}", dir.display()))?;
     let mut collection = Collection::open(&root)?;
+    let bundle = update_bundle(args, &collection)?;
     let update = update_options(args)?;
     let summary = if args.dry_run {
         plan_update(&collection, &bundle, &update)?
@@ -512,13 +508,33 @@ fn import_update(args: &CollectionArgs) -> anyhow::Result<Updated> {
     })
 }
 
-// Read the input and require exactly one collection that came from an OpenAPI description.
-fn update_bundle(args: &CollectionArgs) -> anyhow::Result<ImportBundle> {
-    let (input, default_name) = match link(&args.file)? {
-        Some(url) => (fetch_link(url, &args.fetch)?, default_import_name(url)),
-        None => (read_file(&args.file)?, file_stem(&args.file)),
+// Read the input, or with none the spec the collection records, and require exactly one
+// collection that came from an OpenAPI description.
+fn update_bundle(args: &CollectionArgs, c: &Collection) -> anyhow::Result<ImportBundle> {
+    let (input, default_name, recorded_group) = match &args.file {
+        Some(file) => {
+            let (input, name) = read_source(file, &args.fetch)?;
+            (input, name, None)
+        }
+        None => {
+            // The record belongs to the root; a folder keeps its own spec and must be given one.
+            if args.folder.is_some() {
+                return Err(anyhow!("{FOLDER_NEEDS_INPUT}"));
+            }
+            let recorded = recorded_spec(c).ok_or_else(|| {
+                anyhow!(
+                    "--update needs FILE_OR_URL: this collection records no spec to update from"
+                )
+            })?;
+            let (input, name) = read_recorded(&recorded.location, &args.fetch)?;
+            (input, name, Some(recorded.group_by))
+        }
     };
-    let options = collection_options(args, &input, default_name)?;
+    let mut options = collection_options(args, &input, default_name)?;
+    // An explicit --group-by wins over the grouping the record names.
+    if let (None, Some(group)) = (args.group_by, recorded_group) {
+        options.group_by = group;
+    }
     let mut bundles = parse_collections(args.from.0, &input, &options)?;
     if !bundles.iter().all(|b| b.collection.spec_source) {
         return Err(anyhow!("--update needs an OpenAPI description"));
@@ -602,6 +618,15 @@ fn print_update_text(updated: &Updated) {
             None => outln!("edited {}", path.as_str()),
         }
     }
+    // With no recorded generated value nobody knows who changed these, so they stay as they are.
+    for d in &s.differs {
+        let fields: Vec<_> = d.fields.iter().map(|f| f.id()).collect();
+        outln!(
+            "differs {} ({}): not refreshed",
+            d.path.as_str(),
+            fields.join(", ")
+        );
+    }
     for path in &s.orphaned {
         outln!("orphaned {}", path.as_str());
     }
@@ -644,6 +669,7 @@ fn print_update_json(updated: &Updated) -> anyhow::Result<()> {
         "kept": paths(&s.kept),
         "edited": paths(&s.edited),
         "edited_fields": with_fields(&s.edited_fields),
+        "differs": with_fields(&s.differs),
         "orphaned": paths(&s.orphaned),
         "pruned": paths(&s.pruned),
         "notes": notes_json(&s.notes),
@@ -844,6 +870,48 @@ fn import_environments(args: &EnvironmentArgs) -> anyhow::Result<Imported> {
         report,
     })
 }
+
+/// The required input of a plain import; clap already insists on it without `--update`.
+fn input_file(args: &CollectionArgs) -> anyhow::Result<&Path> {
+    args.file
+        .as_deref()
+        .ok_or_else(|| anyhow!("FILE_OR_URL is required"))
+}
+
+/// The bytes of a file or link, with the name a collection would default to.
+fn read_source(
+    source: &Path,
+    fetch: &FetchNetworkArgs,
+) -> anyhow::Result<(Vec<u8>, Option<String>)> {
+    Ok(match link(source)? {
+        Some(url) => (fetch_link(url, fetch)?, default_import_name(url)),
+        None => (read_file(source)?, file_stem(source)),
+    })
+}
+
+/// The bytes of the spec a collection records, fetched with the same flags as a given link.
+fn read_recorded(
+    location: &SpecLocation,
+    fetch: &FetchNetworkArgs,
+) -> anyhow::Result<(Vec<u8>, Option<String>)> {
+    let unknown = || anyhow!("the recorded spec has a kind of source this version cannot read");
+    let shown = match location {
+        SpecLocation::Link(url) => url.clone(),
+        SpecLocation::File(path) => path.display().to_string(),
+        _ => return Err(unknown()),
+    };
+    // The user never typed this source, so say which one is used; stderr keeps JSON clean.
+    eprintln!("Updating from the recorded source {shown}");
+    let read = match location {
+        SpecLocation::Link(url) => fetch_link(url, fetch).map(|b| (b, default_import_name(url))),
+        SpecLocation::File(path) => read_file(path).map(|b| (b, file_stem(path))),
+        _ => Err(unknown()),
+    };
+    read.with_context(|| format!("cannot read the recorded spec {shown}"))
+}
+
+const FOLDER_NEEDS_INPUT: &str =
+    "the recorded source updates the whole collection; give a spec file or link to update a folder";
 
 fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
     std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))

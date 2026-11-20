@@ -293,6 +293,7 @@ mod import_update_method;
 mod import_update_plan;
 mod import_update_prune;
 mod import_update_prune_restore;
+mod import_update_reference;
 mod import_update_source;
 mod import_update_support;
 mod import_write;
