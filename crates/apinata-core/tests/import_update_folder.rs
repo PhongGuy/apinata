@@ -416,3 +416,22 @@ fn baseline_folders_come_back_in_tree_order() {
     assert_eq!(paths(&c.file().spec_baseline_folders()), ["b", "a", "gone"]);
     assert_eq!(paths(&c.baseline_folders()), ["a", "b"]);
 }
+
+#[test]
+fn a_take_outside_the_folder_or_in_a_nested_spec_folder_is_not_matched() {
+    use apinata_core::import::{ImportError, TakeSpec};
+    let dir = TempDir::new().unwrap();
+    let mut c = two_folders(dir.path());
+    place_in(&mut c, &ip("a"), "inner", "update-v1.json");
+    for path in ["b/people/getUser.yml", "a/inner/people/getUser.yml"] {
+        let mut o = opts("a");
+        o.take_spec = vec![TakeSpec::request(ip(path))];
+        let before = snapshot(c.root());
+        let s = apply_update(&mut c, &v2(), &o, None);
+        assert!(
+            matches!(s, Err(ImportError::NotMatched { path: ref p }) if p.as_str() == path),
+            "{path}: {s:?}"
+        );
+        assert_eq!(snapshot(c.root()), before, "{path}");
+    }
+}

@@ -173,3 +173,75 @@ fn take_spec_parses_a_path_with_or_without_fields() {
     assert!(err.contains("colour"), "{err}");
     assert!(TakeSpec::parse("").is_err());
 }
+
+#[cfg(unix)]
+#[test]
+fn a_failed_take_of_an_unrecorded_request_leaves_it_unrecorded() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new().unwrap();
+    let mut c = edited_get_user(dir.path());
+    let mut b = c.file().spec_baseline().unwrap();
+    assert!(b.remove("GET /users/{}"));
+    c.file_mut().set_spec_baseline_in(&ip(""), &b);
+    c.file_mut().save().unwrap();
+    let o = taking(vec![TakeSpec::request(ip("people/getUser.yml"))]);
+    let people = c.root().join("people");
+    fs::set_permissions(&people, fs::Permissions::from_mode(0o555)).unwrap();
+    let s = apply_update(&mut c, &v2(), &o, None);
+    fs::set_permissions(&people, fs::Permissions::from_mode(0o755)).unwrap();
+    let s = s.unwrap();
+    assert!(
+        s.notes.iter().any(|n| n.detail.contains("not updated")),
+        "{s:?}"
+    );
+    let after = Collection::open(c.root())
+        .unwrap()
+        .file()
+        .spec_baseline()
+        .unwrap();
+    assert!(after.get("GET /users/{}").is_none(), "{after:?}");
+    assert_eq!(after.file("GET /users/{}"), None, "{after:?}");
+}
+
+#[test]
+fn a_named_request_with_unsaved_edits_is_skipped_with_a_note() {
+    let dir = TempDir::new().unwrap();
+    let mut c = imported(dir.path(), "update-v1.json");
+    let before = fs::read(c.root().join("people/getUser.yml")).unwrap();
+    c.request_mut(&ip("people/getUser.yml"))
+        .unwrap()
+        .set_docs("unsaved");
+    let o = taking(vec![TakeSpec::request(ip("people/getUser.yml"))]);
+    let s = apply_update(&mut c, &v2(), &o, None).unwrap();
+    assert_eq!(paths(&s.edited), ["people/getUser.yml"], "{s:?}");
+    assert!(
+        s.changed
+            .iter()
+            .all(|ch| ch.path.as_str() != "people/getUser.yml")
+    );
+    let note = s
+        .notes
+        .iter()
+        .find(|n| n.file.as_deref() == Some("people/getUser.yml"))
+        .expect("a note for the skipped request");
+    assert!(note.detail.contains("unsaved edits"), "{note:?}");
+    assert_eq!(
+        fs::read(c.root().join("people/getUser.yml")).unwrap(),
+        before
+    );
+    assert_eq!(
+        c.request(&ip("people/getUser.yml")).unwrap().docs(),
+        "unsaved"
+    );
+}
+
+#[test]
+fn take_spec_rejects_dotted_and_backslashed_paths_and_names_an_empty_field() {
+    for raw in ["./a.yml", "a\\b.yml"] {
+        let err = TakeSpec::parse(raw).unwrap_err();
+        assert!(err.contains("invalid request path"), "{raw}: {err}");
+    }
+    let err = TakeSpec::parse("a.yml:target,").unwrap_err();
+    assert!(err.contains("empty"), "{err}");
+    assert!(!err.contains("unknown field"), "{err}");
+}
