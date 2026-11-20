@@ -993,6 +993,62 @@ diff since the last commit, and commit collection changes locally with
 requests with `replace`, which only previews the hits until `dry_run` is set
 to false.
 
+These are all the tools the server offers.
+
+Reading the collection:
+
+- `get_collection`: the collection's name, root, environments, default environment and any files that failed to load.
+- `list_items`: the folders and requests as a tree, one folder or one page at a time on a large collection.
+- `search`: find text in requests' names, URLs, headers, bodies, scripts and docs, never in secret values.
+- `check_collection`: the `apinata check` report, without sending anything.
+- `read_request`: one request file, with its saved examples.
+- `read_folder`: the headers, auth, variables and docs a folder (or the collection root) shares.
+- `list_trusted_hosts`: the hosts this collection may reach without approval, and the denied ones.
+
+Changing requests and folders:
+
+- `update_request` and `update_folder`: change only the fields sent.
+- `create_request` and `create_folder`: add a new request or folder.
+- `import_request`: create a request from a curl command, without sending it.
+- `import_collection`: add a Postman, OpenAPI, Swagger, Insomnia, Hoppscotch or HAR collection as a new folder, or refresh an earlier OpenAPI import with `update`.
+- `clone_request` and `clone_folder`: copy an item beside itself under a new name.
+- `rename_item` and `move_item`: rename an item, or move it into a folder or next to a sibling.
+- `delete_item`: move an item to the trash.
+- `restore_item`: put back the item the newest delete moved to the trash.
+- `restore_pruned`: put back the requests one pruning `import_collection` update moved to the trash.
+- `replace`: find and replace text across the requests, previewing until `dry_run` is false.
+
+Sending, examples and exports:
+
+- `send_request`: send one request and return its response.
+- `run_folder`: run every request under a folder.
+- `generate_code`: write a request as code, sending nothing.
+- `oauth2_token`: show, fetch, refresh or clear a request's or folder's OAuth 2.0 token, never returning the token.
+- `save_example`, `rename_example` and `delete_example`: keep the last response as a saved example, or rename or remove one.
+- `scrub_example_userinfo`: remove usernames and passwords from the URLs saved examples recorded, previewing until `write` is true.
+- `export_har`: the last exchange of a request as HAR, with secrets and credentials replaced by `[redacted]`.
+- `export_openapi` and `export_postman`: the whole collection as OpenAPI 3.1 or Postman v2.1 text, without secret values.
+- `graphql_schema`, `graphql_format` and `graphql_validate`: fetch a GraphQL schema, and format or check a query.
+- `mock_start`, `mock_hits` and `mock_stop`: run the mock server on `127.0.0.1`, read what it answered, stop it.
+
+Session state:
+
+- `list_cookies`, `set_cookie`, `delete_cookie` and `clear_cookies`: read and change this session's cookie jar.
+- `list_runtime_variables`, `set_runtime_variable` and `clear_runtime_variables`: read and change the variables responses captured this session.
+
+Environments:
+
+- `read_environment`: one environment's variables, secrets by name only.
+- `create_environment`, `duplicate_environment`, `rename_environment`, `update_environment` and `delete_environment`: manage the collection's environments.
+- `list_global_environments`, `read_global_environment`, `create_global_environment`, `duplicate_global_environment`, `rename_global_environment` and `update_global_environment`: the same for the global environments, which cannot be deleted from MCP.
+- `list_secret_renames`: stored secrets that renames since `ORIG_HEAD` left under an old name, names only; `apinata env renames --move` or the app moves them.
+
+Git:
+
+- `git_status` and `git_diff`: the changed files, and one file's changed sections and line diff since the last commit.
+- `git_commit`: commit collection changes locally.
+- `git_branches`, `git_switch_branch`, `git_pull` and `git_push`: list and switch branches, and sync with the upstream.
+
 The agent can also work with branches and the remote. `git_branches` lists the
 local branches and the remote branches as of the last fetch, and never fetches.
 `git_switch_branch` switches to a local branch, or to a remote one as
@@ -1003,6 +1059,22 @@ push follow the same trust rule as sends: a remote on a host other than a local
 path, a `file://` URL, `localhost` or a loopback address needs that host
 trusted for the collection, and an untrusted one is refused before git runs and
 waits for your approval in the desktop app.
+
+The desktop app and the MCP server share a lock on the repository, `apinata.lock`
+in its git dir. The app holds it while it pulls or switches branch, and every
+MCP tool that writes collection files or git state (edits, imports, deletes and
+restores, the collection's environments, `git_commit`, `git_switch_branch`,
+`git_pull` and `git_push`) holds it for the whole call, so neither lands half
+way through the other. The lock belongs to the repository, so two collections in
+one repository share it, and a linked worktree has its own. A tool that finds
+the lock taken waits up to 2 seconds, then changes nothing and returns an error
+result (`isError` true) with this text:
+
+```text
+a pull or branch switch is running in the app, or another tool is changing this collection; try again
+```
+
+Read-only tools never wait for the lock, and outside a git repository there is none.
 
 `send_request` takes `body_filter`, a JSONPath for a JSON response or an XPath for an XML one,
 and returns only the matched text, so an agent can read a large list in parts. `total_bytes`
