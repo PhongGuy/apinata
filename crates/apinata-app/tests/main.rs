@@ -206,6 +206,7 @@ mod demo_offer;
 mod derived_credentials;
 mod description_keep;
 mod dialog_close_x;
+mod dialog_errors;
 mod dialog_escape;
 mod dialog_focus;
 mod dialog_frame;

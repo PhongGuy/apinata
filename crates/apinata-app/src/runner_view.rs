@@ -348,7 +348,7 @@ impl RunnerView {
             .expect("the option inputs are made above when missing")
     }
 
-    // Asks for one data file; a cancelled or failed prompt leaves the current one.
+    // Asks for one data file; a cancelled prompt leaves the current one.
     fn pick_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -357,7 +357,8 @@ impl RunnerView {
             prompt: None,
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
+            let Some(paths) = crate::file_dialog::picked(reply, "choose a data file", cx).await
+            else {
                 return;
             };
             let _ = this.update(cx, |this, cx| {

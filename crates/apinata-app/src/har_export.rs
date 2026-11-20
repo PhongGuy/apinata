@@ -78,7 +78,7 @@ pub fn save(exchange: HarExchange, window: &mut Window, cx: &mut App) {
     let reply = cx.prompt_for_new_path(&dir, Some(file_name(&exchange).as_str()));
     window
         .spawn(cx, async move |cx| {
-            let Ok(Ok(Some(path))) = reply.await else {
+            let Some(path) = crate::file_dialog::picked(reply, "export the HAR", cx).await else {
                 return;
             };
             let job = cx.background_spawn(async move {

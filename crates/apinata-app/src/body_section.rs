@@ -530,7 +530,7 @@ impl BodySection {
     }
 
     // Asks for files for table row `ix` and gives the row the answer; a multipart field
-    // takes several files, a file body one. A cancelled or failed prompt does nothing.
+    // takes several files, a file body one. A cancelled prompt does nothing.
     fn pick(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let multiple = self.mode == Some(BodyMode::Multipart);
         let reply = cx.prompt_for_paths(PathPromptOptions {
@@ -540,7 +540,8 @@ impl BodySection {
             prompt: None,
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
+            let Some(paths) = crate::file_dialog::picked(reply, "choose a body file", cx).await
+            else {
                 return;
             };
             let _ = this.update_in(cx, |this, window, cx| {

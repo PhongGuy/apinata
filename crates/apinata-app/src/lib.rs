@@ -62,6 +62,7 @@ pub mod env_table;
 pub mod example_view;
 pub mod executor;
 pub mod export;
+pub mod file_dialog;
 pub mod focus_mode;
 pub mod focus_redraw;
 pub mod form_drafts;

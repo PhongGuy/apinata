@@ -324,6 +324,22 @@ fn a_broken_trust_file_still_opens_the_new_collection(cx: &mut TestAppContext) {
     );
 }
 
+#[gpui_kit::test]
+fn a_trust_answer_that_cannot_be_stored_shows_an_error_toast(cx: &mut TestAppContext) {
+    http_ready(cx);
+    let col = scripted();
+    let s = started_with(cx, &col, |p| {
+        std::fs::write(&p.script_trust, "not json").unwrap()
+    });
+    let model = start_send(cx, &s);
+    wait_real(cx, |cx| asked(cx, &s));
+    assert!(!present(cx, s.win, "toast-error"));
+    click(cx, &s, "script-trust-never");
+    finished(cx, &model);
+    frame(cx, s.win);
+    assert!(present(cx, s.win, "toast-error"));
+}
+
 // Writes `a.yml` into the created collection from outside the app and waits for the reload.
 pub(crate) fn add_request(
     cx: &mut TestAppContext,

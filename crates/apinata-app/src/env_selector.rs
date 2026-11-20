@@ -250,7 +250,8 @@ impl EnvSelector {
             prompt: Some("Import environment".into()),
         });
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(files))) = reply.await else {
+            let Some(files) = crate::file_dialog::picked(reply, "import an environment", cx).await
+            else {
                 return;
             };
             let parsed = cx.background_spawn(async move { parse_all(&files) }).await;

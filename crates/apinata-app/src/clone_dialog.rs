@@ -400,16 +400,16 @@ impl CloneView {
         }
     }
 
-    // Asks for the parent folder; a cancelled or failed prompt changes nothing.
-    fn browse(&mut self, cx: &mut Context<Self>) {
+    // Asks for the parent folder; a cancelled prompt changes nothing.
+    fn browse(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let reply = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
             prompt: Some("Choose folder".into()),
         });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = reply.await else {
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(paths) = crate::file_dialog::picked(reply, "choose a folder", cx).await else {
                 return;
             };
             if let Some(dir) = paths.into_iter().next() {
@@ -575,7 +575,7 @@ impl CloneView {
                         .key_context(ui::DIALOG_FOOTER_CONTEXT)
                         .flex_none()
                         .label("Browse…")
-                        .on_click(cx.listener(|this, _, _, cx| this.browse(cx))),
+                        .on_click(cx.listener(|this, _, window, cx| this.browse(window, cx))),
                 ),
         )
         .label_width(SHORT_FORM_LABEL_WIDTH);
