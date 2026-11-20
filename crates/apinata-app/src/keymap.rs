@@ -18,6 +18,7 @@ use crate::body_find::{
 use crate::changes_dialog::{CommitChanges, MESSAGE_CONTEXT};
 use crate::commands::registry;
 use crate::graphql_section::GRAPHQL_QUERY_CONTEXT;
+use crate::list_keys::{KEY_CONTEXT as KEY_LIST, ListDown, ListOpen, ListUp};
 use crate::preferences::{
     ClearPreferencesSearch, FocusPreferencesSearch, KEY_CONTEXT as PREFERENCES,
 };
@@ -255,6 +256,10 @@ pub fn fixed_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl-home", RowFirst, body),
         KeyBinding::new("end", RowLast, body),
         KeyBinding::new("ctrl-end", RowLast, body),
+        // A plain focusable list, such as the GraphQL Docs rows or the network dock.
+        KeyBinding::new("up", ListUp, Some(KEY_LIST)),
+        KeyBinding::new("down", ListDown, Some(KEY_LIST)),
+        KeyBinding::new("enter", ListOpen, Some(KEY_LIST)),
     ]
 }
 

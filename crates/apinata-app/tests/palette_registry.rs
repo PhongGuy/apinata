@@ -62,6 +62,9 @@ const NOT_LISTED: &[&str] = &[
     "apinata::RowPageDown",
     "apinata::RowFirst",
     "apinata::RowLast",
+    "list_keys::ListUp",
+    "list_keys::ListDown",
+    "list_keys::ListOpen",
     "zed::NoAction",
 ];
 

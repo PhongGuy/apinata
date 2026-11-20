@@ -22,6 +22,7 @@ use gpui_kit::{
 
 use crate::body_text;
 use crate::har_export;
+use crate::list_keys::{self, ListDown, ListOpen, ListUp};
 use crate::log_feed::{self, Feed, SOURCE_FILTERS};
 use crate::response_pane::{self, CONSOLE_FILTERS};
 use crate::tab_area::TabArea;
@@ -67,6 +68,8 @@ pub struct ConsoleDock {
     selected: Option<u64>,
     polling: Option<Task<()>>,
     focus: FocusHandle,
+    // The network list's own Tab stop, where the arrows and Enter act.
+    list_focus: FocusHandle,
     // A focus marker under each dock tab, Console then Network.
     tab_markers: [FocusHandle; 2],
     collapsed: bool,
@@ -109,6 +112,7 @@ impl ConsoleDock {
             selected: None,
             polling: None,
             focus: cx.focus_handle(),
+            list_focus: cx.focus_handle().tab_stop(true),
             tab_markers: [ui::tab_marker_handle(cx), ui::tab_marker_handle(cx)],
             collapsed: false,
             _subs: subs,
@@ -261,6 +265,30 @@ impl ConsoleDock {
         cx.notify();
     }
 
+    // The network rows as drawn: the newest `DOCK_NETWORK_ROWS` shown entries, oldest first.
+    fn network_drawn(&self) -> Vec<Arc<NetworkEntry>> {
+        let mut shown = self.network_shown();
+        shown.drain(..shown.len().saturating_sub(DOCK_NETWORK_ROWS));
+        shown
+    }
+
+    // Up and Down move the selection one drawn row, so the detail follows the keyboard. Enter
+    // opens the selected row's detail as a click does, or the first row's with none selected.
+    fn step_network(&mut self, down: Option<bool>, cx: &mut Context<Self>) {
+        let drawn = self.network_drawn();
+        let at = self
+            .selected
+            .and_then(|seq| drawn.iter().position(|e| e.seq == seq));
+        let stops: Vec<usize> = (0..drawn.len()).collect();
+        let next = match down {
+            Some(down) => list_keys::step(&stops, at, down),
+            None => at.or(stops.first().copied()),
+        };
+        if let Some(e) = next.and_then(|ix| drawn.get(ix)) {
+            self.select(Some(e.seq), cx);
+        }
+    }
+
     /// The selected network entry, if it is still held.
     pub fn selected(&self) -> Option<Arc<NetworkEntry>> {
         let seq = self.selected?;
@@ -379,7 +407,7 @@ impl ConsoleDock {
 
     // The source filter above the newest `DOCK_NETWORK_ROWS` shown entries, one clickable
     // row each; the selected row takes the theme's list selection colour.
-    fn network_tab(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn network_tab(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let current = SOURCE_FILTERS
             .iter()
             .position(|f| *f == self.source)
@@ -422,30 +450,51 @@ impl ConsoleDock {
                 .aria_selected(on)
                 .gap(style::SPACE_2)
                 .cursor_pointer()
-                .on_click(cx.listener(move |d, _, _, cx| d.select(Some(seq), cx)))
+                // A click leaves the keyboard in the list, so the arrows carry on from there.
+                .on_click(cx.listener(move |d, _, window, cx| {
+                    window.focus(&d.list_focus, cx);
+                    d.select(Some(seq), cx)
+                }))
                 .child(div().flex_none().text_color(muted).child(source))
                 .child(div().flex_none().child(e.method.clone()))
                 .child(div().flex_1().min_w_0().truncate().child(e.url.clone()))
                 .child(div().flex_none().child(status))
                 .child(div().flex_none().text_color(muted).child(time))
         });
+        // The selected row's place among the scrolled children, under the omitted note.
+        let reveal = self.selected.and_then(|seq| {
+            let ix = entries[left..].iter().position(|e| e.seq == seq)?;
+            Some((seq, ix + usize::from(omitted.is_some())))
+        });
+        let focused = self.list_focus.is_focused(window);
         // The list and the detail share the row; items_stretch keeps the scroll frames sized.
         let list = v_flex()
             .id("dock-network-column")
             .test_support()
+            .track_focus(&self.list_focus)
+            .key_context(list_keys::KEY_CONTEXT)
+            .on_action(cx.listener(|d, _: &ListUp, _, cx| d.step_network(Some(false), cx)))
+            .on_action(cx.listener(|d, _: &ListDown, _, cx| d.step_network(Some(true), cx)))
+            .on_action(cx.listener(|d, _: &ListOpen, _, cx| d.step_network(None, cx)))
             .role(Role::ListBox)
+            .aria_label("Network requests")
+            .relative()
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(response_pane::scroll_frame(
+            .child(response_pane::scroll_frame_revealing(
                 "dock-network-list",
+                reveal,
                 // Rows stop short of the overlay scrollbar; the empty note stays centred.
                 v_flex()
                     .when(none.is_none(), |c| c.pr(style::SCROLLBAR_GUTTER))
                     .children(omitted)
                     .children(none)
                     .children(rows),
-            ));
+            ))
+            .when(focused, |l| {
+                l.child(ui::ring_overlay("dock-network-ring", cx))
+            });
         let detail = self
             .selected()
             .map(|e| detail_pane(&e, self.tab_area.clone(), cx));
@@ -755,7 +804,7 @@ impl Focusable for ConsoleDock {
 }
 
 impl Render for ConsoleDock {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.renders += 1;
         let tab = self.tab;
         let dock = cx.entity().downgrade();
@@ -810,7 +859,7 @@ impl Render for ConsoleDock {
         let collapsed = self.collapsed;
         let body = (!collapsed).then(|| match tab {
             DockTab::Console => self.console_tab(cx),
-            DockTab::Network => self.network_tab(cx),
+            DockTab::Network => self.network_tab(window, cx),
         });
         v_flex()
             .id("console-dock")

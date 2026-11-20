@@ -442,3 +442,160 @@ fn an_event_row_takes_tab_and_enter_copies_it_with_a_toast(cx: &mut TestAppConte
     finished(cx, &model);
     drop(server);
 }
+
+// Whether the element `id` reads as selected, as assistive technology hears it.
+fn is_selected(cx: &mut TestAppContext, win: AnyWindowHandle, id: impl Into<ElementId>) -> bool {
+    let id = id.into();
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.try_find(id).and_then(|e| e.selected())
+    })
+    .unwrap()
+        == Some(true)
+}
+
+// A docs panel in its own window with the fixture schema loaded, at the root page.
+fn docs_panel(
+    cx: &mut TestAppContext,
+) -> (
+    AnyWindowHandle,
+    Entity<apinata_app::graphql_docs::DocsPanel>,
+) {
+    use apinata_app::graphql_docs::DocsPanel;
+    use apinata_app::graphql_schema_store::SchemaStore;
+    support::init(cx);
+    cx.update(apinata_app::keymap::init);
+    let url = "http://127.0.0.1:9/g";
+    let (win, panel) = cx
+        .update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| DocsPanel::new(w, cx))
+            })
+        })
+        .unwrap();
+    panel.update(cx, |p, cx| p.set_url(url.into(), cx));
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../apinata-core/tests/fixtures/graphql/schema.json"
+    ))
+    .unwrap();
+    let schema = apinata_core::Schema::from_json(&text).unwrap();
+    cx.update(|cx| {
+        let s = cx.default_global::<SchemaStore>();
+        let generation = s.begin(url);
+        s.finish(url, generation, Ok(schema));
+    });
+    cx.run_until_parked();
+    // Tab needs a focused start; the search box is the panel's first stop.
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("graphql-docs-search", cx)
+    })
+    .unwrap();
+    cx.run_until_parked();
+    (win, panel)
+}
+
+// The root page reads: heading, query, mutation, heading, then four directive links.
+#[gpui_kit::test]
+fn the_docs_list_takes_tab_and_the_arrows_stop_at_either_end(cx: &mut TestAppContext) {
+    let (win, _panel) = docs_panel(cx);
+    assert!(tab_to(cx, win, "graphql-docs-list"), "Tab reaches the list");
+    press(cx, win, "down");
+    assert!(
+        is_selected(cx, win, ("graphql-docs-row", 1usize)),
+        "first link"
+    );
+    press(cx, win, "up");
+    assert!(
+        is_selected(cx, win, ("graphql-docs-row", 1usize)),
+        "Up stops at the top"
+    );
+    press(cx, win, "down");
+    assert!(is_selected(cx, win, ("graphql-docs-row", 2usize)));
+    // Down skips the Directives heading, which opens nothing.
+    press(cx, win, "down");
+    assert!(
+        is_selected(cx, win, ("graphql-docs-row", 4usize)),
+        "headings are skipped"
+    );
+    for _ in 0..6 {
+        press(cx, win, "down");
+    }
+    assert!(
+        is_selected(cx, win, ("graphql-docs-row", 7usize)),
+        "Down stops at the end"
+    );
+    assert!(!is_selected(cx, win, ("graphql-docs-row", 4usize)));
+}
+
+#[gpui_kit::test]
+fn enter_on_a_docs_link_opens_its_page(cx: &mut TestAppContext) {
+    use apinata_app::graphql_docs::DocsView;
+    let (win, panel) = docs_panel(cx);
+    assert!(tab_to(cx, win, "graphql-docs-list"), "Tab reaches the list");
+    press(cx, win, "down");
+    press(cx, win, "enter");
+    assert_eq!(
+        panel.read_with(cx, |p, _| p.view().clone()),
+        DocsView::Type("Query".into())
+    );
+    // The new page starts with no selection; Down picks its first link.
+    press(cx, win, "down");
+    press(cx, win, "enter");
+    assert!(
+        matches!(panel.read_with(cx, |p, _| p.view().clone()), DocsView::Field { owner, .. } if owner == "Query"),
+        "Enter on a field link opens the field"
+    );
+}
+
+// Two sends, so the network list has two rows to walk.
+fn network_with_two_rows(cx: &mut TestAppContext) -> (Started, Entity<ConsoleDock>) {
+    let (s, dock) = dock_with_rows(cx, DockTab::Network);
+    let model = sender(cx, &s.ws);
+    assert!(model.update(cx, |m, cx| m.send(&s.root, ip("a.yml"), cx)));
+    finished(cx, &model);
+    dock.update(cx, |d, cx| d.poll(cx));
+    frame(cx, s.win);
+    assert_eq!(dock.read_with(cx, |d, _| d.network_shown().len()), 2);
+    (s, dock)
+}
+
+#[gpui_kit::test]
+fn the_network_list_takes_tab_and_the_arrows_stop_at_either_end(cx: &mut TestAppContext) {
+    let (s, dock) = network_with_two_rows(cx);
+    let seq =
+        |cx: &mut TestAppContext, ix: usize| dock.read_with(cx, |d, _| d.network_shown()[ix].seq);
+    let picked = |cx: &mut TestAppContext| dock.read_with(cx, |d, _| d.selected().map(|e| e.seq));
+    assert!(
+        tab_to(cx, s.win, "dock-network-column"),
+        "Tab reaches the list"
+    );
+    press(cx, s.win, "down");
+    assert_eq!(picked(cx), Some(seq(cx, 0)));
+    assert!(is_selected(cx, s.win, ("dock-network", 0usize)));
+    press(cx, s.win, "up");
+    assert_eq!(picked(cx), Some(seq(cx, 0)), "Up stops at the top");
+    press(cx, s.win, "down");
+    press(cx, s.win, "down");
+    assert_eq!(picked(cx), Some(seq(cx, 1)), "Down stops at the end");
+    assert!(is_selected(cx, s.win, ("dock-network", 1usize)));
+    assert!(present(cx, s.win, "dock-detail"));
+}
+
+#[gpui_kit::test]
+fn enter_on_the_network_list_opens_a_rows_detail(cx: &mut TestAppContext) {
+    let (s, dock) = network_with_two_rows(cx);
+    assert!(
+        tab_to(cx, s.win, "dock-network-column"),
+        "Tab reaches the list"
+    );
+    assert!(dock.read_with(cx, |d, _| d.selected().is_none()));
+    press(cx, s.win, "enter");
+    let first = dock.read_with(cx, |d, _| d.network_shown()[0].seq);
+    assert_eq!(
+        dock.read_with(cx, |d, _| d.selected().map(|e| e.seq)),
+        Some(first)
+    );
+    assert!(present(cx, s.win, "dock-detail"));
+}

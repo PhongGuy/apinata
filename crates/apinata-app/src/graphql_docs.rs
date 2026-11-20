@@ -11,13 +11,14 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    AnyElement, Div, Entity, EventEmitter, Result, Subscription, TestSupportExt, Window, div,
-    uniform_list,
+    AnyElement, Div, Entity, EventEmitter, FocusHandle, Result, Role, ScrollStrategy, Subscription,
+    TestSupportExt, UniformListScrollHandle, Window, div, uniform_list,
 };
 
 use crate::graphql_hover::directive_signature;
 use crate::graphql_schema_store::{self, SchemaState, SchemaStore};
 use crate::graphql_section::SchemaAction;
+use crate::list_keys::{self, ListDown, ListOpen, ListUp};
 use crate::{style, ui};
 
 /// Where the explorer stands: the schema root, one named type, one field of a type, or one
@@ -314,6 +315,10 @@ pub struct DocsPanel {
     search: Entity<InputState>,
     show_deprecated: bool,
     rows: Vec<DocRow>,
+    // The keyboard's place among the page's links, reset whenever the page changes.
+    selected: Option<usize>,
+    list_focus: FocusHandle,
+    list_scroll: UniformListScrollHandle,
     _subs: Vec<Subscription>,
 }
 
@@ -325,8 +330,9 @@ impl DocsPanel {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search the schema"));
         let subs = vec![
             cx.observe_global::<SchemaStore>(|_, cx| cx.notify()),
-            cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
+            cx.subscribe(&search, |this: &mut Self, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    this.selected = None;
                     cx.notify();
                 }
             }),
@@ -337,6 +343,9 @@ impl DocsPanel {
             search,
             show_deprecated: false,
             rows: Vec::new(),
+            selected: None,
+            list_focus: cx.focus_handle().tab_stop(true),
+            list_scroll: UniformListScrollHandle::new(),
             _subs: subs,
         }
     }
@@ -346,6 +355,7 @@ impl DocsPanel {
         if self.url != url {
             self.url = url;
             self.stack.truncate(1);
+            self.selected = None;
             cx.notify();
         }
     }
@@ -358,6 +368,7 @@ impl DocsPanel {
     /// Shows `view`, remembering the current one for `back`.
     pub fn open(&mut self, view: DocsView, cx: &mut Context<Self>) {
         self.stack.push(view);
+        self.selected = None;
         cx.notify();
     }
 
@@ -365,7 +376,27 @@ impl DocsPanel {
     pub fn back(&mut self, cx: &mut Context<Self>) {
         if self.stack.len() > 1 {
             self.stack.pop();
+            self.selected = None;
             cx.notify();
+        }
+    }
+
+    // Up and Down walk the page's links only; headings and plain lines open nothing.
+    fn step(&mut self, down: bool, cx: &mut Context<Self>) {
+        let links: Vec<usize> = (0..self.rows.len())
+            .filter(|&ix| matches!(self.rows[ix], DocRow::Link { .. }))
+            .collect();
+        if let Some(ix) = list_keys::step(&links, self.selected, down) {
+            self.selected = Some(ix);
+            self.list_scroll.scroll_to_item(ix, ScrollStrategy::Nearest);
+            cx.notify();
+        }
+    }
+
+    // Enter follows the selected link, as a click on it does.
+    fn open_selected(&mut self, cx: &mut Context<Self>) {
+        if let Some(DocRow::Link { to, .. }) = self.selected.and_then(|ix| self.rows.get(ix)) {
+            self.open(to.clone(), cx);
         }
     }
 
@@ -375,7 +406,7 @@ impl DocsPanel {
     }
 
     // The loaded page: header, root-only search, toggle, back, then the rows as a virtual list.
-    fn loaded(&mut self, schema: &Schema, cx: &mut Context<Self>) -> Div {
+    fn loaded(&mut self, schema: &Schema, window: &Window, cx: &mut Context<Self>) -> Div {
         let view = self.view().clone();
         let search = self.search.read(cx).value().to_string();
         let page = page(schema, &view, &search, self.show_deprecated);
@@ -401,6 +432,7 @@ impl DocsPanel {
             .label("Show deprecated")
             .on_click(cx.listener(|this, on: &bool, _, cx| {
                 this.show_deprecated = *on;
+                this.selected = None;
                 cx.notify();
             }));
         let list = uniform_list(
@@ -410,7 +442,26 @@ impl DocsPanel {
                 range.map(|ix| this.row(ix, cx)).collect::<Vec<_>>()
             }),
         )
+        .track_scroll(&self.list_scroll)
         .size_full();
+        // The rows are one Tab stop; the arrows and Enter act inside it, as in the sidebar.
+        let focused = self.list_focus.is_focused(window);
+        let list = div()
+            .id("graphql-docs-list")
+            .test_support()
+            .track_focus(&self.list_focus)
+            .key_context(list_keys::KEY_CONTEXT)
+            .role(Role::ListBox)
+            .aria_label("Schema docs")
+            .on_action(cx.listener(|this, _: &ListUp, _, cx| this.step(false, cx)))
+            .on_action(cx.listener(|this, _: &ListDown, _, cx| this.step(true, cx)))
+            .on_action(cx.listener(|this, _: &ListOpen, _, cx| this.open_selected(cx)))
+            .relative()
+            .size_full()
+            .child(list)
+            .when(focused, |d| {
+                d.child(ui::ring_overlay("graphql-docs-list-ring", cx))
+            });
         v_flex()
             .size_full()
             .gap_2()
@@ -447,7 +498,12 @@ impl DocsPanel {
             DocRow::Plain(text) => base.child(text.clone()).test_support().into_any_element(),
             DocRow::Link { label, to } => {
                 let to = to.clone();
-                base.text_color(theme.link)
+                let on = self.selected == Some(ix);
+                base.role(Role::ListBoxOption)
+                    .aria_label(label.clone())
+                    .aria_selected(on)
+                    .when(on, |row| row.bg(theme.list_active))
+                    .text_color(theme.link)
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| this.open(to.clone(), cx)))
                     .child(label.clone())
@@ -459,9 +515,9 @@ impl DocsPanel {
 }
 
 impl Render for DocsPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body = match schema_state(&self.url, &DOCS_IDS, cx) {
-            Ok(schema) => self.loaded(&schema, cx).into_any_element(),
+            Ok(schema) => self.loaded(&schema, window, cx).into_any_element(),
             Err(state) => state,
         };
         v_flex()
