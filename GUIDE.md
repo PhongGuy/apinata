@@ -32,6 +32,7 @@ and a quick start, see the [README](README.md).
   - [Reading responses](#reading-responses)
 - [Mock server](#mock-server)
 - [Desktop app](#desktop-app)
+  - [Team workspaces](#team-workspaces)
 - [Importing and exporting](#importing-and-exporting)
 - [Legacy .bru collections](#legacy-bru-collections)
 - [MCP server](#mcp-server)
@@ -826,7 +827,8 @@ used. Other names stay as written, and environment variables are never filled
 in, so secrets cannot leak into a response. Binary bodies are served unchanged.
 
 Examples are read once at start, so restart the server to pick up edits. Press
-ctrl-c to stop it.
+Ctrl+C to stop it. The desktop app's mock server reloads edits on its own (see
+[Desktop app](#desktop-app)).
 
 ## Desktop app
 
@@ -846,6 +848,52 @@ folder that does not exist yet.
 In the Import dialog, Update refreshes a collection from a newer OpenAPI link, shows a preview of what changes and can move requests whose operation vanished to the trash. Open tabs show the result at once.
 
 Clone repository fetches a collection from a git URL into a folder you pick, and Switch branch (the chevron beside the branch name in the title bar) moves a cloned collection to another remote branch.
+The same dialog has Pull, which fetches and fast-forwards the current branch,
+and Push, which pushes it to its upstream; the command palette has them as Pull
+from remote and Push to remote. A branch that is not on the remote yet offers
+Publish to followed by the remote's name instead.
+
+When a pull renames a secret variable, its stored value stays under the old
+name, and a notice offers Review (a team collection lists them in its Team sync
+dialog). Check for renamed secrets in the command palette looks again. The Renamed secrets dialog lists each one: Move carries
+the value to the new name, Enter again lets you type it afresh, and Dismiss
+drops a row whose new name already holds a different value.
+
+Check collection, in a collection's sidebar menu or the command palette, runs
+the same checks as [`apinata check`](#check) and lists the findings, errors
+first. Choosing a finding opens the tab for its file, or shows the file in the
+sidebar when no tab can show it. Re-run checks again after you fix something.
+
+Start mock server, in a collection's sidebar menu or the command palette, or
+the Mock button in the status bar, serves that collection's saved examples on
+127.0.0.1, as [`apinata mock`](#mock-server) does. While it runs, the status
+bar shows its address with a copy button and the number of examples. Click the
+number to see the routes served and, under Received, the latest calls, newest
+first, each with the example it got; choosing a call opens that example. The
+server picks up saved edits by itself, and Stop mock server (or the Mock
+button again) stops it.
+
+### Team workspaces
+
+Join team server in the command palette signs in to a self-hosted
+[Potluck](https://github.com/PhongGuy/potluck) server with its address, your
+username and your password. The password is sent once and never stored; the
+sign-in is kept in the system keychain. The Team workspaces dialog then opens,
+and Team workspaces… in the command palette brings it back. It lists each
+server's workspaces: Open clones one and opens it as a collection, a server
+admin can create a new one, and Sign out leaves that server.
+
+A team collection syncs by itself: saved changes are committed and pushed, and
+your teammates' changes are pulled in, so its Switch branch dialog has no Pull
+or Push. The status bar shows each team collection's sync state, and clicking
+it opens the Team sync dialog, which says what holds the sync up and how to
+clear it. When two people changed the same request, Compare shows both sides,
+and Keep theirs or Use mine settles it. Offline, changes are committed and pushed
+once the server is back.
+
+When the server refuses a push, the dialog says "The server refused the push"
+and lists each finding with its file and git ref; when it found secrets, it says
+so. Remove the secrets or fix what it names, save, then choose Retry.
 
 ## Importing and exporting
 
@@ -914,8 +962,8 @@ apinata export ./my-api --format postman --out my-api.postman_collection.json --
 Scripts are translated to Postman's script API on the way out, each call
 becoming its `pm` counterpart. A call with no Postman translation is kept as
 written and noted. `--keep-scripts` exports every script
-unchanged instead; in the app, the collection's "Export collection to Postman
-(keep scripts as written)" entry does the same:
+unchanged instead; in the app, "Export collection to Postman, keeping scripts as
+written…" in the app menu or a collection's sidebar menu does the same:
 
 ```sh
 apinata export ./my-api --format postman --keep-scripts --out my-api.postman_collection.json
