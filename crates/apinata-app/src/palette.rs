@@ -30,7 +30,9 @@ use crate::keymap::{
     ToggleOrientation, UndoActive,
 };
 use crate::mock_server::MockState;
-use crate::shell::{PullBranch, PushBranch, ShowChanges, SwitchBranch, ToggleMockServer};
+use crate::shell::{
+    PullBranch, PushBranch, ShowChanges, ShowTeamSync, SwitchBranch, ToggleMockServer,
+};
 use crate::sidebar::menu::MenuEntry;
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, FolderSettings, RedoInTree, RenameSelected, RunSelected,
@@ -323,6 +325,8 @@ pub struct Availability {
     pub side_by_side: bool,
     /// The mock command reads "Stop mock server": the current collection's mock runs.
     pub mock_on: bool,
+    /// "Team sync…": the current collection syncs with a team server.
+    pub team_sync: bool,
 }
 
 impl Availability {
@@ -366,6 +370,7 @@ impl Availability {
             updates: true,
             side_by_side: true,
             mock_on: false,
+            team_sync: true,
         }
     }
 }
@@ -465,6 +470,7 @@ pub fn palette_items_for(available: Availability) -> Vec<PaletteEntry> {
         (available.git_sync, PushBranch.name()),
         (available.updates, CheckForUpdates.name()),
         (available.side_by_side, ToggleOrientation.name()),
+        (available.team_sync, ShowTeamSync.name()),
     ]
     .into_iter()
     .filter(|(on, _)| !on)
@@ -770,6 +776,10 @@ fn availability_now(
         mock_on: workspace.is_some_and(|w| {
             let w = w.read(cx);
             (w.current_user_root()).is_some_and(|r| w.mock_state(&r) != MockState::Off)
+        }),
+        team_sync: workspace.is_none_or(|w| {
+            let w = w.read(cx);
+            (w.current_root()).is_some_and(|r| w.team_status(&r).is_some())
         }),
     }
 }

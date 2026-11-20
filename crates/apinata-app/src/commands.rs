@@ -36,8 +36,8 @@ use crate::shell::{
     ExportCollectionOpenApi, ExportCollectionPostmanKeepScripts, ExportEnvironment,
     ExportEnvironments, ImportCollection, ImportCurl, ImportEnvironment, JoinTeamServer,
     NewCollection, OpenCollection, OpenCookies, OpenDemoCollection, OpenGlobalEnvironments,
-    OpenRuntimeVariables, OpenVariablesOverview, PullBranch, PushBranch, ShowChanges, SwitchBranch,
-    TeamWorkspaces, ToggleMockServer,
+    OpenRuntimeVariables, OpenVariablesOverview, PullBranch, PushBranch, ShowChanges, ShowTeamSync,
+    SwitchBranch, TeamWorkspaces, ToggleMockServer,
 };
 use crate::sidebar::{
     CloneSelected, CloseSelectedDraft, CollapseAll, CopySelected, CutSelected, DeleteSelected,
@@ -381,6 +381,16 @@ pub fn registry() -> Vec<Command> {
                 "Team workspaces…",
                 Collection,
                 shell(TeamWorkspaces),
+                &[],
+            ),
+        ),
+        found_by(
+            &["team", "sync", "status", "potluck"],
+            command(
+                "collection.team_sync",
+                "Team sync…",
+                Collection,
+                shell(ShowTeamSync),
                 &[],
             ),
         ),

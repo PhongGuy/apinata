@@ -1,6 +1,5 @@
 //! The GraphQL query builder: schema fields as a tree of rows ticked from the query text.
 
-use crate::ui::SolidRing as _;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
@@ -8,9 +7,9 @@ use std::sync::Arc;
 use apinata_core::{
     FieldPath, Lock, QUERY_VALIDATE_LIMIT, QueryEdit, QueryOutline, Schema, TypeKind, query_outline,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{EditorState, Rope};
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::{
     AnyElement, App, Div, Entity, EventEmitter, Result, Subscription, TestSupportExt, Window, div,
@@ -388,15 +387,14 @@ impl BuilderPanel {
         let muted = cx.theme().muted_foreground;
         let chevron = matches!(row.kind, RowKind::Root | RowKind::Composite).then(|| {
             let path = row.path.clone();
-            Button::new(("graphql-builder-chevron", ix))
-                .solid_ring(cx)
-                .ghost()
+            // Named by what a click does to which field, since the icon alone says neither.
+            let field = path.names().last().cloned().unwrap_or_default();
+            let (icon, tip) = match row.expanded {
+                true => (IconName::ChevronDown, format!("Collapse {field}")),
+                false => (IconName::ChevronRight, format!("Expand {field}")),
+            };
+            ui::icon_button(("graphql-builder-chevron", ix), icon, &tip, None, cx)
                 .xsmall()
-                .icon(if row.expanded {
-                    IconName::ChevronDown
-                } else {
-                    IconName::ChevronRight
-                })
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_expanded(&path, cx)))
         });
         let check = (row.kind != RowKind::Root).then(|| {

@@ -282,3 +282,23 @@ fn each_field_row_shows_its_type(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(shown.as_deref(), Some(ty.as_str()));
 }
+
+// The chevron names what a click does to its row, as words and as its tooltip.
+#[gpui_kit::test]
+fn the_chevron_names_its_field_and_what_it_does(cx: &mut TestAppContext) {
+    let (win, _s) = section(cx, "{ users { id } }", true);
+    click(cx, win, "graphql-builder-toggle");
+    let named = |cx: &mut TestAppContext| {
+        cx.update_window(win, |_, w, _| {
+            let chevron = w.find(("graphql-builder-chevron", 0usize));
+            let label = chevron.label().map(str::to_owned);
+            (label, chevron.description().map(str::to_owned))
+        })
+        .unwrap()
+    };
+    let expand = Some("Expand Query".to_owned());
+    assert_eq!(named(cx), (expand.clone(), expand));
+    click(cx, win, ("graphql-builder-chevron", 0usize));
+    let collapse = Some("Collapse Query".to_owned());
+    assert_eq!(named(cx), (collapse.clone(), collapse));
+}

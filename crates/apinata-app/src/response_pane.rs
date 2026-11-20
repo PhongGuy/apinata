@@ -4575,8 +4575,8 @@ impl ResponsePane {
         self.send.read(cx).live().map_or(0, |l| l.dropped_events())
     }
 
-    /// Copies the whole data of event `ix` to the clipboard.
-    pub fn copy_event(&mut self, ix: usize, cx: &mut Context<Self>) {
+    /// Copies the whole data of event `ix` to the clipboard and confirms it with a toast.
+    pub fn copy_event(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let data = match self.send.read(cx).live() {
             Some(live) => live.events().get(ix).map(|e| e.data.clone()),
             None => self
@@ -4584,7 +4584,7 @@ impl ResponsePane {
                 .and_then(|e| e.get(ix).map(|e| e.data.clone())),
         };
         if let Some(data) = data {
-            cx.write_to_clipboard(ClipboardItem::new_string(data));
+            copy_with_toast(data, "Copied event data", window, cx);
         }
     }
 
@@ -4629,22 +4629,15 @@ impl ResponsePane {
                     .zip(rows)
                     .map(|(ix, row)| {
                         let pane = pane.clone();
-                        v_flex()
-                            .id(("event-row", ix))
-                            .test_support()
-                            .h(style::EVENT_ROW_HEIGHT)
-                            // Each list item lays out on its own and would shrink to its
-                            // text, cutting the separator short; it spans the list instead.
-                            .w_full()
-                            .overflow_hidden()
-                            .px_2()
-                            .py_1()
-                            // The last row ends the list, so it paints no edge at the dock.
-                            .when(ix + 1 < count, |r| r.border_b_1().border_color(border))
-                            .cursor_pointer()
-                            .on_click(move |_, _, cx| {
-                                pane.update(cx, |p, cx| p.copy_event(ix, cx));
-                            })
+                        let first = row.preview.lines().next().unwrap_or_default();
+                        let name = format!("{}: {first}", row.name);
+                        // A ghost button, so Tab reaches the row and Enter copies it as a
+                        // click does; its lines start at the left like any list row.
+                        let lines = v_flex()
+                            .size_full()
+                            .min_w_0()
+                            .items_start()
+                            .justify_start()
                             .child(
                                 h_flex()
                                     .gap_2()
@@ -4662,7 +4655,29 @@ impl ResponsePane {
                                     .text_size(style::TEXT_SMALL)
                                     .whitespace_nowrap()
                                     .child(line.to_owned())
-                            }))
+                            }));
+                        let button = Button::new(("event-row", ix))
+                            .solid_ring(cx)
+                            .ghost()
+                            .size_full()
+                            .rounded_none()
+                            .px_2()
+                            .py_1()
+                            .accessibility_label(name)
+                            .tooltip("Copy event data")
+                            .on_click(move |_, window, cx| {
+                                pane.update(cx, |p, cx| p.copy_event(ix, window, cx));
+                            })
+                            .child(lines);
+                        // Each list item lays out on its own and would shrink to its text,
+                        // cutting the separator short; it spans the list instead. The last
+                        // row ends the list, so it paints no edge at the dock.
+                        div()
+                            .h(style::EVENT_ROW_HEIGHT)
+                            .w_full()
+                            .overflow_hidden()
+                            .when(ix + 1 < count, |r| r.border_b_1().border_color(border))
+                            .child(button)
                     })
                     .collect::<Vec<_>>()
             },
