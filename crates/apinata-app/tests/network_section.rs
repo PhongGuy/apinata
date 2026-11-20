@@ -880,11 +880,7 @@ fn a_bundle_path_takes_the_unused_key_room_and_keeps_its_file_name(cx: &mut Test
         let pem_pass = w.find(("cert-passphrase", 0usize)).bounds().left();
         let bundle_pass = w.find(("cert-passphrase-stored", 1usize)).bounds().left();
         assert_eq!(pem_pass, bundle_pass, "the passphrase columns line up");
-        let shown = w
-            .find(("cert-file-shown", 1usize))
-            .label()
-            .map(str::to_owned);
-        let shown = shown.expect("a cut path shows its fitted form");
+        let shown = shown_path(w).expect("a cut path shows its fitted form");
         assert!(shown.ends_with("/client-bundle.p12"), "{shown:?}");
         assert!(shown.contains('…'), "{shown:?}");
     })
@@ -956,4 +952,63 @@ fn a_click_on_the_fitted_path_edits_the_whole_path(cx: &mut TestAppContext) {
         !present(cx, win, ("cert-file-shown", 1usize)),
         "the whole path shows"
     );
+}
+
+// The text the fitted-path cover over the bundle row painted, if it is drawn.
+fn shown_path(w: &gpui_kit::Window) -> Option<String> {
+    let id = gpui_kit::ElementId::from(("cert-file-shown", 1usize));
+    let texts = gpui_kit::base::test_support::texts(w);
+    let mut parts = texts.iter().filter(|t| t.path().contains(&id));
+    parts.next().map(|t| t.text().to_owned())
+}
+
+#[gpui_kit::test]
+fn the_fitted_path_is_not_a_second_accessible_name(cx: &mut TestAppContext) {
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    cx.update_window(win, |_, w, cx| {
+        w.render_frame(cx);
+        let cover = w.find(("cert-file-shown", 1usize));
+        assert_eq!(cover.label(), None, "the input already names the path");
+        assert_eq!(cover.role(), None);
+    })
+    .unwrap();
+}
+
+// The cover hides the live input's text, so in every bundled theme it paints the field's
+// look as one opaque fill, rounded just inside the input's border.
+#[gpui_kit::test]
+fn the_fitted_path_cover_is_opaque_in_every_theme(cx: &mut TestAppContext) {
+    use apinata_app::theme::{DARK, HC_DARK, HC_LIGHT, LIGHT};
+    use gpui_kit::component::ActiveTheme as _;
+    let (win, _host) = pem_over_bundle(cx, 1040.);
+    for theme in [DARK, LIGHT, HC_LIGHT, HC_DARK] {
+        support::use_theme(cx, theme);
+        for _ in 0..3 {
+            frame(cx, win);
+        }
+        cx.update_window(win, |_, w, cx| {
+            w.render_frame(cx);
+            let scale = w.scale_factor();
+            let b = w.find(("cert-file-shown", 1usize)).bounds();
+            let (l, t) = (b.left().as_f32() * scale, b.top().as_f32() * scale);
+            let width = b.size.width.as_f32() * scale;
+            let fills: Vec<_> = (w.painted_quads().into_iter())
+                .filter(|q| {
+                    (q.bounds.origin.x.0 - l).abs() < 0.5
+                        && (q.bounds.origin.y.0 - t).abs() < 0.5
+                        && (q.bounds.size.width.0 - width).abs() < 0.5
+                })
+                .filter_map(|q| Some((q.background.as_solid()?, q.corner_radii.top_left.0)))
+                .collect();
+            let want = (cx.theme().background).blend(apinata_app::ui::field_fill(false, cx));
+            let radius = (cx.theme().radius - gpui_kit::px(1.)).as_f32() * scale;
+            assert!(
+                fills
+                    .iter()
+                    .any(|(c, r)| *c == want && c.a >= 0.999 && (r - radius).abs() < 0.01),
+                "{theme}: cover painted {fills:?}, wanted {want:?} at radius {radius}"
+            );
+        })
+        .unwrap();
+    }
 }

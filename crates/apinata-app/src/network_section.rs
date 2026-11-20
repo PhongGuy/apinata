@@ -11,6 +11,7 @@ use apinata_core::{
     ProxyAuth, ProxyConfig,
 };
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TestTextExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -1351,7 +1352,6 @@ impl NetworkSection {
             div()
                 .id(("cert-file-shown", ix))
                 .test_support()
-                .aria_label(shown.clone())
                 .absolute()
                 .top(px(1.))
                 .bottom(px(1.))
@@ -1362,12 +1362,15 @@ impl NetworkSection {
                 .items_center()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .rounded(cx.theme().radius)
-                .bg(ui::field_fill(false, cx))
+                // Opaque, so the input's own text cannot show through: the field's translucent
+                // fill as it lands on the page's background.
+                .rounded(cx.theme().radius - px(1.))
+                .bg(cx.theme().background.blend(ui::field_fill(false, cx)))
                 .font_family(cx.theme().mono_font_family.clone())
                 .text_size(gpui_kit::rems(PATH_TEXT_REMS))
                 .text_color(cx.theme().foreground)
-                .child(shown)
+                // No accessible name of its own: the input under it already reads the path.
+                .child(div().child(shown.clone()).test_text(shown))
         });
         h_flex()
             .relative()
