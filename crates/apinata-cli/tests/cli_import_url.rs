@@ -69,9 +69,39 @@ async fn a_url_gives_the_same_files_as_the_saved_file() {
     assert_eq!(a.status.code(), Some(0), "{}", stderr(&a));
     let b = import(file.to_str().unwrap(), from_file.path(), &[]);
     assert_eq!(b.status.code(), Some(0), "{}", stderr(&b));
-    let (ta, tb) = (tree(from_url.path()), tree(from_file.path()));
+    // Each records where it came from; everything else is byte for byte the same.
+    let root = Path::new("Pets/opencollection.yml");
+    let source = |t: &mut Vec<(PathBuf, Vec<u8>)>, want: String| {
+        let (_, bytes) = t.iter_mut().find(|(p, _)| p == root).expect("root file");
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        let line = format!("      source: {want}\n");
+        assert!(text.contains(&line), "{text}");
+        *bytes = text.replacen(&line, "", 1).into_bytes();
+    };
+    let (mut ta, mut tb) = (tree(from_url.path()), tree(from_file.path()));
     assert!(!ta.is_empty());
+    source(&mut ta, url.clone());
+    // The file sits beside the collection's parent, so it is recorded relative to the root.
+    let saved_name = saved.path().file_name().unwrap().to_string_lossy();
+    source(&mut tb, format!("../../{saved_name}/petstore.json"));
     assert_eq!(ta, tb);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_url_with_a_query_is_imported_but_not_remembered() {
+    let s = serve("/specs/petstore.json", OPENAPI).await;
+    let into = tempfile::tempdir().unwrap();
+    let url = format!("{}/specs/petstore.json?token=s3cret", s.uri());
+    let out = import(&url, into.path(), &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("not remembered"), "{err}");
+    assert!(!err.contains("s3cret"), "{err}");
+    let root = fs::read_to_string(into.path().join("Pets/opencollection.yml")).unwrap();
+    assert!(
+        !root.contains("s3cret") && !root.contains("source:"),
+        "{root}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

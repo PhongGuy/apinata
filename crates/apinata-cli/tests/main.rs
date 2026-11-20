@@ -61,6 +61,7 @@ mod cli_import_flags;
 mod cli_import_folder;
 mod cli_import_request;
 mod cli_import_update;
+mod cli_import_update_recorded;
 mod cli_import_update_reference;
 mod cli_import_url;
 mod cli_init;

@@ -269,6 +269,8 @@ pub struct ImportedCollection {
     pub unwritten: Vec<ImportNote>,
     /// Whether the collection came from an OpenAPI description, so a later update can find its requests.
     pub spec_source: bool,
+    /// Where an OpenAPI input was read from and how it was grouped, recorded on write.
+    pub(crate) spec_from: Option<RecordedSpec>,
 }
 
 /// An environment ready to be written.

@@ -4,7 +4,7 @@ use crate::common;
 
 use apinata_core::MemoryStore;
 use apinata_core::import::{
-    CollectionFormat, CollectionOptions, GroupBy, parse_collections, write_collection,
+    CollectionFormat, CollectionOptions, GroupBy, SpecLocation, parse_collections, write_collection,
 };
 use common::apinata;
 use predicates::str::contains;
@@ -69,6 +69,7 @@ fn group_by_path_writes_what_core_writes() {
     import(&api, &[], by_tag.path()).code(0);
     let mut options = CollectionOptions::default();
     options.group_by = GroupBy::Path;
+    options.source = Some(SpecLocation::File(api.clone()));
     let bundles = parse_collections(
         Some(CollectionFormat::OpenApi),
         OPENAPI.as_bytes(),

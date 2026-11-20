@@ -148,6 +148,8 @@ fn an_openapi_link_writes_what_browse_writes(cx: &mut TestAppContext) {
     let core = tempfile::tempdir().unwrap();
     let mut options = apinata_core::import::CollectionOptions::default();
     options.name = Some("pets".into());
+    let link = format!("{}/pets.json", server.uri());
+    options.source = Some(apinata_core::import::SpecLocation::Link(link));
     let bundles =
         apinata_core::import::parse_collections(None, OPENAPI.as_bytes(), &options).unwrap();
     write_collection(

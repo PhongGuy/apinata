@@ -36,6 +36,7 @@ pub(super) fn root(value: Value, budget: &mut Budget) -> Result<ImportedCollecti
         notes,
         unwritten,
         spec_source: false,
+        spec_from: None,
     })
 }
 

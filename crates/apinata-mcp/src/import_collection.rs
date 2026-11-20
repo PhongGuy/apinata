@@ -6,6 +6,7 @@
 //! are reported as skipped, and no secret store is ever involved.
 
 use std::fs;
+use std::path::PathBuf;
 
 use apinata_core::import::{
     CollectionFormat, CollectionOptions, GroupBy, ImportBundle, ImportError, SpecLocation,
@@ -270,6 +271,7 @@ pub(crate) enum RecordedSource {
     Read {
         bytes: Vec<u8>,
         name: Option<String>,
+        path: PathBuf,
     },
 }
 
@@ -299,7 +301,7 @@ pub(crate) fn recorded(c: &mut Collection) -> Result<Recorded, String> {
             let bytes = fs::read(&real)
                 .map_err(|e| format!("cannot read the recorded spec {shown}: {e}"))?;
             let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
-            RecordedSource::Read { bytes, name }
+            RecordedSource::Read { bytes, name, path }
         }
         _ => {
             return Err(
@@ -344,6 +346,7 @@ pub(crate) fn parse(
     plan: &Plan,
     input: &[u8],
     default_name: Option<String>,
+    source: Option<SpecLocation>,
 ) -> Result<Vec<ImportBundle>, String> {
     if let Some(format) = plan.format.or_else(|| CollectionFormat::detect(input)) {
         if plan.group_by.is_some() && format != CollectionFormat::OpenApi {
@@ -356,6 +359,7 @@ pub(crate) fn parse(
     let mut options = CollectionOptions::default();
     options.group_by = plan.group_by.unwrap_or_default();
     options.name = plan.name.clone().or(default_name);
+    options.source = source;
     parse_collections(plan.format, input, &options).map_err(|e| e.to_string())
 }
 
@@ -641,7 +645,7 @@ mod tests {
             take_spec: None,
         };
         let plan = plan(&args).unwrap();
-        let bundles = parse(&plan, INPUT.as_bytes(), None).unwrap();
+        let bundles = parse(&plan, INPUT.as_bytes(), None, None).unwrap();
         let store = Counting::default();
         place(&mut c, &plan, &bundles, &store).unwrap();
         assert_eq!(store.0.load(Ordering::SeqCst), 0);

@@ -17,6 +17,7 @@ mod xml;
 use super::load::{Loaded, Syntax, merge_key_notes};
 use super::{
     CollectionOptions, DocumentError, ImportBundle, ImportNote, ImportedCollection, NoteKind,
+    RecordedSpec,
 };
 use bounds::{Bounds, Budget};
 use refs::{RefKind, Resolved, Resolver};
@@ -190,6 +191,10 @@ pub(crate) fn parse_openapi_with(
         notes,
         unwritten,
         spec_source: true,
+        spec_from: options.source.clone().map(|location| RecordedSpec {
+            location,
+            group_by: options.group_by,
+        }),
     };
     Ok(vec![ImportBundle {
         collection,

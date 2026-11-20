@@ -87,7 +87,11 @@ pub fn place_items(
         path: std::env::temp_dir(),
         source,
     })?;
-    let (staged, report) = write_collection(scratch.path(), &bundle.collection, &[], secrets)?;
+    let (staged, mut report) = write_collection(scratch.path(), &bundle.collection, &[], secrets)?;
+    // A folder never records a source, so the staged root's note about one does not apply.
+    if let Some(skip) = super::update::unrecorded_note(bundle.collection.spec_from.as_ref()) {
+        report.notes.retain(|n| n.detail != skip.detail);
+    }
     let dest = collection.root().join(folder.as_str());
     let mut copied = Vec::new();
     let undo = |copied: &[PathBuf]| {

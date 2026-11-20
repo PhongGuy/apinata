@@ -374,6 +374,9 @@ pub struct CollectionOptions {
     pub group_by: GroupBy,
     /// The collection name for a HAR log, which has none of its own.
     pub name: Option<String>,
+    /// Where the input was read from, recorded with an OpenAPI import or update so the next
+    /// update can offer it; `None` for input with no link or file, such as pasted text.
+    pub source: Option<super::SpecLocation>,
 }
 
 fn unrecognized<F: Copy>(

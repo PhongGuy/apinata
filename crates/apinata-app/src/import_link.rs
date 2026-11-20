@@ -1010,13 +1010,15 @@ impl ImportLinkDialog {
                 let _ = this.update_in(cx, |this, window, cx| this.fetched(parsed, window, cx));
                 return;
             }
+            let link = url.clone();
             let fetched =
-                tokio_bridge::spawn(cx, async move { fetch_source(&url, &fetch).await }).await;
+                tokio_bridge::spawn(cx, async move { fetch_source(&link, &fetch).await }).await;
             let parsed = match fetched {
                 Ok(Ok(bytes)) => {
                     cx.background_spawn(async move {
                         let file = format!("{name}.json");
-                        parse_bundles_with(Path::new(&file), &bytes, true, group_by)
+                        let source = SpecLocation::Link(url);
+                        parse_bundles_with(Path::new(&file), &bytes, true, group_by, source)
                     })
                     .await
                 }

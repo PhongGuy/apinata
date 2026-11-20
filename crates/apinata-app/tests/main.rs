@@ -332,6 +332,7 @@ mod import_link;
 mod import_link_layout;
 mod import_update;
 mod import_update_folder;
+mod import_update_recorded;
 mod import_update_reference;
 mod import_update_source;
 mod import_update_undo;

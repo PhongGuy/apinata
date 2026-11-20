@@ -327,8 +327,10 @@ fn import_request(args: &RequestArgs) -> anyhow::Result<Imported> {
 // Every input is parsed before any collection directory is created, so one bad file writes
 // nothing. Each bundle then gets its own write; a failure keeps the collections already written.
 fn import_collection(args: &CollectionArgs) -> anyhow::Result<Vec<Imported>> {
-    let (input, default_name) = read_source(input_file(args)?, &args.fetch)?;
-    let options = collection_options(args, &input, default_name)?;
+    let file = input_file(args)?;
+    let (input, default_name) = read_source(file, &args.fetch)?;
+    let mut options = collection_options(args, &input, default_name)?;
+    options.source = Some(spec_location(file)?);
     let bundles = parse_collections(args.from.0, &input, &options)?;
     let mut extra = Vec::new();
     for path in &args.envs {
@@ -517,10 +519,10 @@ fn import_update(args: &CollectionArgs) -> anyhow::Result<Updated> {
 // Read the input, or with none the spec the collection records, and require exactly one
 // collection that came from an OpenAPI description.
 fn update_bundle(args: &CollectionArgs, c: &Collection) -> anyhow::Result<ImportBundle> {
-    let (input, default_name, recorded_group) = match &args.file {
+    let (input, default_name, recorded_group, source) = match &args.file {
         Some(file) => {
             let (input, name) = read_source(file, &args.fetch)?;
-            (input, name, None)
+            (input, name, None, spec_location(file)?)
         }
         None => {
             // The record belongs to the root; a folder keeps its own spec and must be given one.
@@ -533,10 +535,11 @@ fn update_bundle(args: &CollectionArgs, c: &Collection) -> anyhow::Result<Import
                 )
             })?;
             let (input, name) = read_recorded(&recorded.location, &args.fetch)?;
-            (input, name, Some(recorded.group_by))
+            (input, name, Some(recorded.group_by), recorded.location)
         }
     };
     let mut options = collection_options(args, &input, default_name)?;
+    options.source = Some(source);
     // An explicit --group-by wins over the grouping the record names.
     if let (None, Some(group)) = (args.group_by, recorded_group) {
         options.group_by = group;
@@ -883,6 +886,14 @@ fn input_file(args: &CollectionArgs) -> anyhow::Result<&Path> {
     args.file
         .as_deref()
         .ok_or_else(|| anyhow!("FILE_OR_URL is required"))
+}
+
+/// Where `source` points, as the collection records it.
+fn spec_location(source: &Path) -> anyhow::Result<SpecLocation> {
+    Ok(match link(source)? {
+        Some(url) => SpecLocation::Link(url.to_owned()),
+        None => SpecLocation::File(source.to_path_buf()),
+    })
 }
 
 /// The bytes of a file or link, with the name a collection would default to.

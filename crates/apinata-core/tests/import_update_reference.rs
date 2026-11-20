@@ -83,7 +83,7 @@ fn a_link_source_is_a_link_and_the_first_usable_entry_wins_with_tags_by_default(
 }
 
 #[test]
-fn our_own_record_wins_over_the_reference_one() {
+fn our_baseline_drives_the_update_while_the_reference_source_is_still_offered() {
     let dir = TempDir::new().unwrap();
     let c = imported(dir.path(), "update-v1.json");
     let ours = fs::read_to_string(c.root().join("opencollection.yml")).unwrap();
@@ -105,7 +105,12 @@ fn our_own_record_wins_over_the_reference_one() {
     with_extensions(c.root(), &block);
     let mut c = Collection::open(c.root()).unwrap();
     assert!(c.file().spec_baseline().is_some());
-    assert!(recorded_spec(&c).is_none(), "our record holds no source");
+    // Our record holds no source, so the reference one is still offered.
+    let offered = recorded_spec(&c).expect("the reference source");
+    assert_eq!(
+        offered.location,
+        SpecLocation::File(c.root().join("spec.json"))
+    );
     let s = apply_update(
         &mut c,
         &bundle(&spec("update-v2.json")),
@@ -237,6 +242,27 @@ fn the_reference_keys_survive_the_update_byte_for_byte() {
             .is_some()
     );
     assert_eq!(reference_block(c.root()), before);
+}
+
+#[test]
+fn the_reference_source_is_still_offered_after_the_first_update() {
+    let dir = TempDir::new().unwrap();
+    let mut c = reference_only(dir.path(), "update-v1.json");
+    apply_update(
+        &mut c,
+        &bundle(&spec("update-v2.json")),
+        &UpdateOptions::default(),
+        None,
+    )
+    .unwrap();
+    let c = Collection::open(c.root()).unwrap();
+    assert!(c.file().spec_baseline().is_some());
+    let recorded = recorded_spec(&c).expect("still offered");
+    assert_eq!(
+        recorded.location,
+        SpecLocation::File(c.root().join("spec.json"))
+    );
+    assert_eq!(recorded.group_by, GroupBy::Path);
 }
 
 #[test]

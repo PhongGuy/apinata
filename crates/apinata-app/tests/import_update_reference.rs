@@ -14,7 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Write the v1 import under `parent` with its `extensions` swapped for a reference record.
-fn reference_only(parent: &Path, source: &str, group_by: &str) -> PathBuf {
+pub(crate) fn reference_only(parent: &Path, source: &str, group_by: &str) -> PathBuf {
     reference_only_from(V1, parent, source, group_by)
 }
 

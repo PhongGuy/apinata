@@ -5,7 +5,9 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 
-use apinata_core::import::{FetchError, SourceFetch, default_import_name, fetch_source};
+use apinata_core::import::{
+    FetchError, SourceFetch, SpecLocation, default_import_name, fetch_source,
+};
 use apinata_core::mock::{self as core_mock, MockHandle, MockOptions};
 use apinata_core::{
     ApprovalInbox, AuthorizeOptions, CancelFlag, CancelHandle, Collection, CookieJar, EnvOverlay,
@@ -1489,12 +1491,13 @@ impl ApinataServer {
         Parameters(args): Parameters<ImportCollectionArgs>,
     ) -> Result<Json<ImportedCollections>, String> {
         let mut plan = import_collection::plan(&args)?;
-        let (input, default_name) = match (&args.url, &args.text) {
+        let (input, default_name, source) = match (&args.url, &args.text) {
             (Some(url), _) => (
                 self.fetch_import(url, "the link").await?,
                 default_import_name(url),
+                Some(SpecLocation::Link(url.clone())),
             ),
-            (None, Some(text)) => (text.clone().into_bytes(), None),
+            (None, Some(text)) => (text.clone().into_bytes(), None, None),
             // An update with no input takes the spec the served collection records.
             (None, None) => {
                 let recorded = self.with_collection(import_collection::recorded).await?;
@@ -1505,13 +1508,16 @@ impl ApinataServer {
                         (
                             self.fetch_import(&url, &what).await?,
                             default_import_name(&url),
+                            Some(SpecLocation::Link(url)),
                         )
                     }
-                    RecordedSource::Read { bytes, name } => (bytes, name),
+                    RecordedSource::Read { bytes, name, path } => {
+                        (bytes, name, Some(SpecLocation::File(path)))
+                    }
                 }
             }
         };
-        let bundles = import_collection::parse(&plan, &input, default_name)?;
+        let bundles = import_collection::parse(&plan, &input, default_name, source)?;
         let (bin, log) = (self.options.trash_bin(), self.options.trash_record());
         self.with_collection_write(move |c| {
             if plan.is_update() {
