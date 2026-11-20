@@ -122,17 +122,21 @@ pub const SOURCE_FILTERS: [Option<SendSource>; 6] = [
     Some(SendSource::GraphqlSchema),
 ];
 
+/// The display name of a network entry's kind, shared by the filter chips and the dock rows.
+pub fn entry_source_label(source: SendSource) -> &'static str {
+    match source {
+        SendSource::Request => "Request",
+        SendSource::Runner => "Runner",
+        SendSource::Script => "Script",
+        SendSource::OAuth2 => "OAuth2",
+        SendSource::GraphqlSchema => "GraphQL schema",
+        _ => "Other",
+    }
+}
+
 /// The segment text of a source filter.
 pub fn source_label(filter: Option<SendSource>) -> &'static str {
-    match filter {
-        None => "All",
-        Some(SendSource::Request) => "Request",
-        Some(SendSource::Runner) => "Runner",
-        Some(SendSource::Script) => "Script",
-        Some(SendSource::OAuth2) => "OAuth2",
-        Some(SendSource::GraphqlSchema) => "GraphQL schema",
-        Some(_) => "Other",
-    }
+    filter.map_or("All", entry_source_label)
 }
 
 /// The status column: the status code, or "error" when there is none.

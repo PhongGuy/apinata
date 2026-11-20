@@ -437,7 +437,10 @@ impl ConsoleDock {
                 .child(log_feed::omitted_label(left, "request"))
         });
         let rows = entries[left..].iter().enumerate().map(|(ix, e)| {
-            let (source, status) = (e.source.as_str(), log_feed::status_label(e.status));
+            let (source, status) = (
+                log_feed::entry_source_label(e.source),
+                log_feed::status_label(e.status),
+            );
             let time = body_text::format_time(e.duration);
             let seq = e.seq;
             let on = self.selected == Some(seq);

@@ -4,8 +4,8 @@ use crate::support;
 
 use apinata_app::log_feed;
 use apinata_app::log_feed::{
-    Feed, SOURCE_FILTERS, Sequenced, clock_label, console_keeps, network_keeps, omitted_label,
-    source_label, status_label,
+    Feed, SOURCE_FILTERS, Sequenced, clock_label, console_keeps, entry_source_label, network_keeps,
+    omitted_label, source_label, status_label,
 };
 use apinata_core::{ConsoleLevel, SendSource};
 use gpui_kit::TestAppContext;
@@ -198,4 +198,15 @@ fn status_and_clock_labels() {
 fn the_omitted_note_agrees_with_its_count() {
     assert_eq!(omitted_label(1, "line"), "1 earlier line not shown");
     assert_eq!(omitted_label(3, "request"), "3 earlier requests not shown");
+}
+
+#[test]
+fn a_row_names_its_kind_the_way_its_filter_chip_does() {
+    for f in SOURCE_FILTERS.iter().flatten() {
+        assert_eq!(entry_source_label(*f), source_label(Some(*f)));
+    }
+    assert_eq!(
+        entry_source_label(SendSource::GraphqlSchema),
+        "GraphQL schema"
+    );
 }

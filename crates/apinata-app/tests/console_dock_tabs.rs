@@ -210,7 +210,7 @@ fn network_rows_select_filter_and_clear(cx: &mut TestAppContext) {
     let s = started(cx, &col);
     let dock = send_and_show(cx, &s, DockTab::Network);
     let row = label_of(cx, &s, ("dock-network", 0usize));
-    assert!(row.starts_with("request GET "), "{row}");
+    assert!(row.starts_with("Request GET "), "{row}");
     assert!(row.contains("/ok") && row.contains(" 200 "), "{row}");
     assert_ne!(selected(cx, &s, 0), Some(true));
     click_row(cx, &s, 0);
