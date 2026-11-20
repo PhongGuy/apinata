@@ -1272,7 +1272,7 @@ Windows signing notes are in the [README](README.md#signing-and-checksums) and
 ## Building and packaging
 
 Building needs Rust 1.99 or newer and, on Linux, the packages listed in
-[Build from source](README.md#build-from-source). Run the checks (format, lint,
+[Build from source](CONTRIBUTING.md#build-from-source). Run the checks (format, lint,
 tests), then build:
 
 ```sh
@@ -1301,4 +1301,4 @@ reset on every run; the demo profile is kept until you delete that folder.
 
 `make install` builds and installs the app and the CLI for the current user,
 and `make uninstall` removes them; where the files go is in
-[Build from source](README.md#build-from-source).
+[Build from source](CONTRIBUTING.md#build-from-source).

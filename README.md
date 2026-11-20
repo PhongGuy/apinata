@@ -75,7 +75,7 @@ source under MIT or Apache-2.0.
 ## Download and install
 
 The links below always download the latest release. To build it yourself
-instead, see [build from source](#build-from-source).
+instead, see [Build from source](CONTRIBUTING.md#build-from-source).
 
 | Platform | Download |
 | --- | --- |
@@ -119,40 +119,6 @@ xattr -dr com.apple.quarantine /Applications/Apinata.app
 then "Run anyway".
 
 The macOS and Windows packages have not yet been tested on those systems.
-
-### Build from source
-
-You need Rust 1.99 or newer. On Linux, install the build packages first (the
-Debian and Ubuntu names):
-
-```sh
-sudo apt-get install pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libvulkan1 libegl1
-```
-
-Then build and install the app and the CLI for the current user:
-
-```sh
-make install
-```
-
-- **Linux:** `apinata` and `apinata-app` go to `~/.local/bin`, with a launcher
-  entry and icon under `~/.local/share`. Set `PREFIX` in the environment to
-  install elsewhere, and `DESTDIR` to stage the files for a package.
-- **macOS:** the app goes to `~/Applications/Apinata.app` and `apinata` to
-  `~/.local/bin`.
-- **Windows** (Git Bash or MSYS2): both programs go to
-  `%LOCALAPPDATA%\Programs\Apinata`; add that folder to your `PATH`.
-
-A bare `make` does the same. The MCP server needs no separate install: it is
-`apinata mcp`. To remove everything again:
-
-```sh
-make uninstall
-```
-
-To build without installing, run `cargo build --release`; the binaries land in
-`target/release/`. Packaging and the checks are in
-[Building and packaging](GUIDE.md#building-and-packaging).
 
 ## Quick start
 
@@ -286,8 +252,7 @@ The tools, resources and prompts the server offers are in
   [Importing and exporting](GUIDE.md#importing-and-exporting),
   [Legacy collections](GUIDE.md#legacy-bru-collections),
   [MCP server](GUIDE.md#mcp-server), [Updates](GUIDE.md#updates);
-- [Release files](GUIDE.md#release-files) and
-  [Building and packaging](GUIDE.md#building-and-packaging).
+- [Release files](GUIDE.md#release-files).
 
 ## Licence
 
@@ -301,3 +266,22 @@ Licensed under either of
 at your option.
 
 The bundled fonts and icons keep their own licences, in `licenses/`.
+
+## For developers
+
+Apinata is written in Rust with [GPUI](https://www.gpui.rs/), so there is no
+web view. To build it from source you need Rust 1.99 or newer, and on Linux
+the system packages listed in [Requirements](CONTRIBUTING.md#requirements).
+Then:
+
+```sh
+git clone https://github.com/PhongGuy/apinata.git
+cd apinata
+make demo
+make check
+```
+
+`make demo` opens a sample collection on a throwaway profile, and `make check`
+runs the formatting, lints and tests. Building, installing from source, the
+checks, CI, the QA setup and how to send a change are all in
+[CONTRIBUTING.md](CONTRIBUTING.md).

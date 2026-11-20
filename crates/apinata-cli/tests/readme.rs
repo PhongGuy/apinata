@@ -1,4 +1,5 @@
-//! The README's and GUIDE's claims checked against the real binary and the house rules.
+//! The README's, GUIDE's and CONTRIBUTING guide's claims checked against the real binary and the
+//! house rules.
 
 use crate::common;
 use std::path::{Path, PathBuf};
@@ -15,9 +16,19 @@ fn guide() -> String {
     std::fs::read_to_string(root().join("GUIDE.md")).unwrap()
 }
 
-/// The user-facing docs whose commands are checked, by file name.
+fn contributing() -> String {
+    std::fs::read_to_string(root().join("CONTRIBUTING.md")).unwrap()
+}
+
+/// The user-facing docs whose `apinata` commands are checked, by file name.
 fn docs() -> [(&'static str, String); 2] {
     [("README.md", readme()), ("GUIDE.md", guide())]
+}
+
+/// Every doc whose make targets and anchor links are checked, the developer guide included.
+fn all_docs() -> [(&'static str, String); 3] {
+    let [readme, guide] = docs();
+    [readme, guide, ("CONTRIBUTING.md", contributing())]
 }
 
 /// Lines inside fenced code blocks, without a leading `$ ` prompt.
@@ -110,9 +121,11 @@ fn check_commands(file: &str, text: &str, top: &[String]) {
 #[test]
 fn every_make_target_in_the_docs_exists() {
     let makefile = std::fs::read_to_string(root().join("Makefile")).unwrap();
-    for (file, text) in docs() {
+    for (file, text) in all_docs() {
         for line in code_lines(&text) {
             if let Some(targets) = line.strip_prefix("make ") {
+                // A trailing `# ...` explains the command and names no targets.
+                let targets = targets.split('#').next().unwrap_or_default();
                 for t in targets.split_whitespace() {
                     assert!(
                         makefile.contains(&format!("\n{t}:")),
@@ -143,11 +156,11 @@ fn anchors(markdown: &str) -> Vec<String> {
         .collect()
 }
 
-// Every `#anchor` link between and within the two docs must land on a heading, so moving a
-// section between them cannot leave a dead link behind.
+// Every `#anchor` link between and within the docs must land on a heading, so moving a section
+// between them cannot leave a dead link behind.
 #[test]
 fn every_doc_link_lands_on_a_heading() {
-    let docs = docs();
+    let docs = all_docs();
     let mut checked = 0;
     for (file, text) in &docs {
         for (at, _) in text.match_indices("](") {
@@ -177,10 +190,16 @@ fn the_readme_links_the_guide() {
 }
 
 #[test]
+fn the_readme_links_the_contributing_guide() {
+    assert!(readme().contains("](CONTRIBUTING.md)"));
+}
+
+#[test]
 fn user_facing_docs_never_name_another_client() {
     let mut files = vec![
         root().join("README.md"),
         root().join("GUIDE.md"),
+        root().join("CONTRIBUTING.md"),
         root().join("RELEASING.md"),
     ];
     for entry in std::fs::read_dir(root().join(".github/workflows")).unwrap() {
