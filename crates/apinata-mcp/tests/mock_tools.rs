@@ -79,23 +79,64 @@ async fn an_empty_collection_starts_with_no_routes() {
 
 #[tokio::test]
 async fn stop_frees_the_port_and_a_new_start_succeeds() {
-    let server = TestServer::start(MOCK_ITEMS).await;
-    let started = server.ok("mock_start", json!({"env": "dev"})).await;
+    // Parallel tests bind port 0 too and may be handed the freed port at once, so the stopped
+    // mock is told apart from them by a body only it serves.
+    let nonce = format!("stopped-mock-{}-{}", std::process::id(), rand_suffix());
+    let ping = format!(
+        "info:\n  name: Ping\n  type: http\n  seq: 1\nhttp:\n  method: GET\n  url: \"/ping\"\n\
+         examples:\n  - name: ok\n    response:\n      status: 201\n      body:\n        \
+         type: text\n        data: '{nonce}'\n"
+    );
+    let server = TestServer::start(&[("opencollection.yml", ROOT), ("ping.yml", &ping)]).await;
+    let started = server.ok("mock_start", json!({})).await;
     let url = started["url"].as_str().unwrap().to_owned();
     let port = port_of(&url);
-    http_get(port, "/ping").await;
+    assert_eq!(http_get(port, "/ping").await, (201, nonce.clone()));
     let stopped = server.ok("mock_stop", json!({})).await;
     assert_eq!(stopped["url"], url);
     assert_eq!(stopped["hits"], 1);
     assert!(
-        tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .is_err()
+        !serves(port, &nonce).await,
+        "the stopped mock still answers on {port}"
     );
-    let again = server
-        .ok("mock_start", json!({"env": "dev", "port": port}))
-        .await;
+    // A neighbour holding the port only lives as long as its test, so wait it out.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    let again = loop {
+        let result = server.call("mock_start", json!({"port": port})).await;
+        if result.is_error != Some(true) || tokio::time::Instant::now() > deadline {
+            break result;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    };
+    assert_ne!(again.is_error, Some(true), "{:?}", again.content);
+    let again = again.structured_content.expect("structured content");
     assert_eq!(port_of(again["url"].as_str().unwrap()), port);
+    assert_eq!(http_get(port, "/ping").await, (201, nonce));
+}
+
+/// A suffix that differs between runs, so a nonce never matches another process's mock.
+fn rand_suffix() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+}
+
+/// Whether whatever listens on 127.0.0.1:`port` serves `body` for `GET /ping`. A refused
+/// connect, a socket the OS connected to itself, or another server all answer false.
+async fn serves(port: u16, body: &str) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Ok(mut stream) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await else {
+        return false;
+    };
+    let req = "GET /ping HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    if stream.write_all(req.as_bytes()).await.is_err() {
+        return false;
+    }
+    let mut raw = Vec::new();
+    let read = stream.read_to_end(&mut raw);
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), read).await;
+    String::from_utf8_lossy(&raw).contains(body)
 }
 
 #[tokio::test]
