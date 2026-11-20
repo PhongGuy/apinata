@@ -186,6 +186,8 @@ pub struct NetworkSection {
     focus: FocusHandle,
     // Counts loads, so an edit can tell whether one came between its sending and delivery.
     loads: u64,
+    // Collects the edits instead of emitting them while a save takes the pending typing.
+    outbox: Option<Vec<Edit>>,
     _subs: Vec<Subscription>,
 }
 
@@ -250,6 +252,7 @@ impl NetworkSection {
             change: None,
             focus: cx.focus_handle(),
             loads: 0,
+            outbox: None,
             _subs: subs,
         }
     }
@@ -556,8 +559,9 @@ impl NetworkSection {
     }
 
     fn emit_hosts(&mut self, cx: &mut Context<Self>) {
-        cx.emit(
+        self.send(
             SectionEdit::new(Edit::HostOverrides(self.host_overrides())).after_loads(self.loads),
+            cx,
         );
         cx.notify();
     }
@@ -770,9 +774,52 @@ impl NetworkSection {
         }
     }
 
+    /// Whether a password or passphrase still being typed would send an edit on Enter or blur,
+    /// so a close asks to save it as it does for other unsent secrets.
+    pub fn holds_pending(&self, cx: &App) -> bool {
+        // A replace left empty keeps the stored value, and a stored one stays unless replaced.
+        let sends = |text: &str, before: &str, replacing: bool, stored: bool| {
+            text != before && if replacing { !text.is_empty() } else { !stored }
+        };
+        let password = self.password.read(cx).value();
+        let proxy = self.choice == ProxyChoice::Custom
+            && !self.held_back(cx)
+            && sends(
+                &password,
+                &self.password_committed,
+                self.password_replacing,
+                self.password_home().is_some(),
+            );
+        proxy
+            || self.certs.iter().filter(|row| !row.draft).any(|row| {
+                let typed = row.inputs.0[CertField::Passphrase as usize]
+                    .read(cx)
+                    .value();
+                let stored = row.stored_home(&self.dotenv).is_some();
+                sends(&typed, &row.cert.passphrase, row.replacing, stored)
+            })
+    }
+
+    /// The edits a password or passphrase still being typed owes, as Enter or blur would send
+    /// them. They are returned rather than emitted, so a save can send them ahead of itself.
+    pub fn take_pending(&mut self, cx: &mut Context<Self>) -> Vec<Edit> {
+        self.outbox = Some(Vec::new());
+        self.commit_password(cx);
+        self.commit_passphrases(cx);
+        self.outbox.take().unwrap_or_default()
+    }
+
+    fn send(&mut self, edit: SectionEdit, cx: &mut Context<Self>) {
+        match &mut self.outbox {
+            Some(outbox) => outbox.push(edit.edit),
+            None => cx.emit(edit),
+        }
+    }
+
     fn emit_certificates(&mut self, cx: &mut Context<Self>) {
-        cx.emit(
+        self.send(
             SectionEdit::new(Edit::ClientCertificates(self.certificates())).after_loads(self.loads),
+            cx,
         );
         cx.notify();
     }
@@ -1000,7 +1047,10 @@ impl NetworkSection {
         if !self.held_back(cx) && !unchanged {
             let proxy = self.current(cx);
             self.filed = self.choice;
-            cx.emit(SectionEdit::new(Edit::Proxy(proxy)).after_loads(self.loads));
+            self.send(
+                SectionEdit::new(Edit::Proxy(proxy)).after_loads(self.loads),
+                cx,
+            );
         }
         cx.notify();
     }
