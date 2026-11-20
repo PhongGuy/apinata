@@ -774,6 +774,32 @@ impl NetworkSection {
         }
     }
 
+    /// Whether a password or passphrase still being typed would send an edit on Enter or blur,
+    /// so a close asks to save it as it does for other unsent secrets.
+    pub fn holds_pending(&self, cx: &App) -> bool {
+        // A replace left empty keeps the stored value, and a stored one stays unless replaced.
+        let sends = |text: &str, before: &str, replacing: bool, stored: bool| {
+            text != before && if replacing { !text.is_empty() } else { !stored }
+        };
+        let password = self.password.read(cx).value();
+        let proxy = self.choice == ProxyChoice::Custom
+            && !self.held_back(cx)
+            && sends(
+                &password,
+                &self.password_committed,
+                self.password_replacing,
+                self.password_home().is_some(),
+            );
+        proxy
+            || self.certs.iter().filter(|row| !row.draft).any(|row| {
+                let typed = row.inputs.0[CertField::Passphrase as usize]
+                    .read(cx)
+                    .value();
+                let stored = row.stored_home(&self.dotenv).is_some();
+                sends(&typed, &row.cert.passphrase, row.replacing, stored)
+            })
+    }
+
     /// The edits a password or passphrase still being typed owes, as Enter or blur would send
     /// them. They are returned rather than emitted, so a save can send them ahead of itself.
     pub fn take_pending(&mut self, cx: &mut Context<Self>) -> Vec<Edit> {

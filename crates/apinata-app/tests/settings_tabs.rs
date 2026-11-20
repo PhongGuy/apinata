@@ -390,3 +390,40 @@ fn a_folder_settings_tab_names_its_collection(cx: &mut TestAppContext) {
         .unwrap();
     assert_eq!(detail, "c");
 }
+
+#[gpui_kit::test]
+fn closing_settings_with_a_passphrase_being_typed_asks_and_save_keeps_it(cx: &mut TestAppContext) {
+    use apinata_app::config_editor::ConfigSection;
+    let root_file = format!(
+        "{ROOT}config:\n  clientCertificates:\n    - domain: p.test\n      type: pkcs12\n      pkcs12FilePath: c.p12\n"
+    );
+    let col = write_tree(&[("opencollection.yml", &root_file)]);
+    let (_state, ws, root) = open_dir(cx, &col);
+    support::init(cx);
+    cx.update(apinata_app::keymap::init);
+    let shared = ws.clone();
+    let (win, area) = cx
+        .update(|cx| {
+            gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |w, cx| {
+                cx.new(|cx| TabArea::new(shared, w, cx))
+            })
+        })
+        .unwrap();
+    let id = open(cx, &ws, &root, TabKind::Collection).unwrap();
+    frame(cx, win);
+    let ed = area.read_with(cx, |a, _| a.config_editor(id).cloned().unwrap());
+    ed.update(cx, |e, cx| e.set_section(ConfigSection::Network, cx));
+    cx.update_window(win, |_, w, _| w.activate_window())
+        .unwrap();
+    frame(cx, win);
+    // The field keeps the focus, so no Enter or blur commits the typing before the close.
+    type_at_end(cx, win, None, ("cert-passphrase", 0usize), "p12-pass");
+    frame(cx, win);
+    cx.dispatch_action(win, apinata_app::tab_area::CloseTab);
+    cx.run_until_parked();
+    assert!(present(cx, win, "confirm-save"), "the close asks to save");
+    answer_confirm(cx, "confirm-save");
+    cx.run_until_parked();
+    let env = std::fs::read_to_string(col.path().join(".env")).unwrap_or_default();
+    assert!(env.contains("='p12-pass'"), "{env:?}");
+}

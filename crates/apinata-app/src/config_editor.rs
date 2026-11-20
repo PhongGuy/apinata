@@ -580,9 +580,11 @@ impl ConfigEditor {
         self.dispatch(edit, section, cx);
     }
 
-    /// Whether an OAuth secret is typed here but not yet sent.
+    /// Whether an OAuth secret, proxy password or certificate passphrase is typed here but
+    /// not yet sent.
     pub fn holds_secret_typing(&self, cx: &App) -> bool {
         self.auth.read(cx).holds_pending(cx)
+            || (self.network.as_ref()).is_some_and(|n| n.read(cx).holds_pending(cx))
     }
 
     /// Sends the edits an OAuth secret, proxy password or certificate passphrase still focused
